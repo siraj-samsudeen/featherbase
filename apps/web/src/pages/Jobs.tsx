@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { jobTitle } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
-import { fmtInstantIST } from '../lib/inr'
+import { fmtInstantIST } from '@featherbase/shop-floor'
 import { JobMonitor } from '../components/JobMonitor'
-import { Button, DataList, Notice, StatusPill, cx, useMediaQuery, type DataColumn, type StatusTone } from '../components/ui'
+import { Button, DataList, Notice, StatusPill, cx, useMediaQuery, type DataColumn, type StatusTone } from '@featherbase/shop-floor'
 
 // #464: the Jobs page. Every scheduled job in one list: an on/off switch, its
 // schedule, its last run (time, OK / Failed / Refused and the one-line

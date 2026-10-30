@@ -3,8 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { ApiError, api, listResource } from '../lib/api'
 import { useMeta } from '../lib/meta'
-import { buttonClasses, inputClasses, pillClasses } from './ui'
-import { fmtCount } from '../lib/inr'
+import { buttonClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 

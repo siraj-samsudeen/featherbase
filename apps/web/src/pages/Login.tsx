@@ -3,7 +3,7 @@ import { useRouter, useRouterState } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
 import { markSetupOffer } from './FirstRunSetup'
 import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser, type SignedIn } from '../lib/api'
-import { Button, Field, Notice, TextInput, buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
+import { Button, Field, Notice, TextInput, buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
 import { Logo } from '../components/Logo'
 
 export function safeLoginNext(

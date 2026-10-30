@@ -22,8 +22,8 @@ import {
   parseWorkbook,
 } from '../lib/parse-file'
 import { sendImportRun } from '../lib/import-run'
-import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, touchRowClasses, touchTargetClasses } from '../components/ui'
-import { fmtCount, fmtDate, fmtDay } from '../lib/inr'
+import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, touchRowClasses, touchTargetClasses } from '@featherbase/shop-floor'
+import { fmtCount, fmtDate, fmtDay } from '@featherbase/shop-floor'
 
 // A column as SENT: its grid row travels with it. The payload drops
 // blank-named rows, so the server's `columns.<n>` counts a different list

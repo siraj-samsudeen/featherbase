@@ -12,9 +12,9 @@ import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName, usePrincipalLabels } from '../lib/people'
-import { Button, DataCards, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from './ui'
-import { ArrowDown, ArrowUp } from './ui/icons'
-import { fmtCount } from '../lib/inr'
+import { Button, DataCards, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
+import { ArrowDown, ArrowUp } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 import { failureMessage } from '../lib/import-run'
 
 export type Filter = [string, string, unknown]

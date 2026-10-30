@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { DISPLAY_DEFAULTS } from 'shared'
 import { api } from './api'
-import { fmtCurrency, fmtDate, fmtDateTime, fmtNumber } from './inr'
+import { fmtCurrency, fmtDate, fmtDateTime, fmtNumber } from '@featherbase/shop-floor'
 
 // SET-004: global display settings drive how Date and Currency/Float values
 // render across every list and form. Fetched once and cached; the Admin reads

@@ -2,8 +2,8 @@ import { useMemo, useRef, useState } from 'react'
 import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PrincipalName, isOpaqueId, usePrincipalName } from '../lib/people'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses } from './ui'
-import { fmtInstantIST } from '../lib/inr'
+import { buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
+import { fmtInstantIST } from '@featherbase/shop-floor'
 
 interface CommentRow {
   row_id: string

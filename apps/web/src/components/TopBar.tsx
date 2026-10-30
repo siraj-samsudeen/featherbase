@@ -11,8 +11,8 @@ import { useThemeChoice } from '../lib/theme-choice'
 import { useI18n } from '../lib/i18n'
 import { BarControls } from './BarControls'
 import { Logo } from './Logo'
-import { TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from './ui'
-import { CalendarDays, ChartColumn, House, Inbox, List, ListChecks, Monitor, Moon, Sun, Target, UserRound, type LucideIcon } from './ui/icons'
+import { TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { CalendarDays, ChartColumn, House, Inbox, List, ListChecks, Monitor, Moon, Sun, Target, UserRound, type LucideIcon } from '@featherbase/shop-floor'
 
 // #489 (design D3, "One top bar on every address"): one bar, drawn by the
 // platform, on every address and every shell — the Admin screens, an app's

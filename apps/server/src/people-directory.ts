@@ -13,7 +13,7 @@ const UNNAMED = 'Unnamed person'
 /** A person's display name: full name, else @username — never an address
  *  (an address is personal data the name surfaces travel to), else
  *  "Unnamed person". */
-function displayName(r: Record<string, unknown>): string {
+export function displayName(r: Record<string, unknown>): string {
   return String(r.full_name ?? '').trim() || (r.username ? `@${String(r.username)}` : UNNAMED)
 }
 

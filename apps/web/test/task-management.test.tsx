@@ -769,11 +769,8 @@ test('a comment and a change made in the task details each show when they were m
   }
 })
 
-// SPEC: Discussion and history stay in Tasker — "each with the user's name and
-// the time" — suspected defect: the entries name their author by the Person's
-// row id (`created_by`, a minted psn_… id for anyone but Administrator), not
-// by the person's name.
-test.fails('a comment and a change made in the task details each show the name of the person who made them', async ({ admin, createUser }) => {
+// #547: activity names its authors even without directory access.
+test('a comment and a change made in the task details each show the name of the person who made them', async ({ admin, createUser }) => {
   await install()
   try {
     const rani = await createUser({ roles: [], fullName: 'Rani Storekeeper' })

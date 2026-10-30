@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from './ui'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
 
 // RPT-005: renders a server-side Code Report — its declared filter controls
 // and the columns+rows its execute() returns.

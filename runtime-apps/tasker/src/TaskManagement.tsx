@@ -1,5 +1,7 @@
+import { Button, cardClasses, buttonClasses } from '@featherbase/shop-floor'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { fmtDateTime } from '@featherbase/shop-floor'
 import { ApiError, api, getSessionUser, listAllResources } from './api'
 import { listVisiblePeople, PEOPLE_LIMITED_NOTICE, type PersonOption } from './people'
 import { Markdown } from './Markdown'
@@ -41,6 +43,7 @@ interface Project {
 }
 
 interface TaskComment {
+  author_name?: string
   ref_name: string
   content: string
   created_by: string
@@ -48,6 +51,7 @@ interface TaskComment {
 }
 
 interface TaskVersion {
+  author_name?: string
   ref_name: string
   data: { changed?: [string, unknown, unknown][] } | null
   created_by: string
@@ -547,7 +551,7 @@ export function TaskManagementPage() {
         <p className="tasker-brand-subtitle">Team workspace</p>
       <nav aria-label="Task views" className="tasker-primary-nav">
         {primaryTabs.slice(0, 3).map((tab) => (
-          <button
+          <Button
             key={tab.id}
             type="button"
             onClick={() => leaveSavedView(tab.id)}
@@ -557,31 +561,31 @@ export function TaskManagementPage() {
             <TaskerIcon name={tab.icon} />
             <span>{tab.label}</span>
             {tab.count != null && <span className="tasker-count">{tab.count}</span>}
-          </button>
+          </Button>
         ))}
         {primaryTabs.slice(3).map((tab) => (
-          <button key={tab.id} type="button" onClick={() => leaveSavedView(tab.id)} aria-current={view === tab.id ? 'page' : undefined} className={`tasker-nav-item tasker-nav-${tab.id}`}>
+          <Button key={tab.id} type="button" onClick={() => leaveSavedView(tab.id)} aria-current={view === tab.id ? 'page' : undefined} className={`tasker-nav-item tasker-nav-${tab.id}`}>
             <TaskerIcon name={tab.icon} />
             <span>{tab.label}</span>
             {tab.count != null && <span className="tasker-count">{tab.count}</span>}
-          </button>
+          </Button>
         ))}
-        <button type="button" onClick={() => leaveSavedView('views')} aria-current={view === 'views' ? 'page' : undefined} className="tasker-nav-item tasker-nav-views">
+        <Button type="button" onClick={() => leaveSavedView('views')} aria-current={view === 'views' ? 'page' : undefined} className="tasker-nav-item tasker-nav-views">
           <TaskerIcon name="views" />
           <span>Views</span>
           {savedViews.length > 0 && <span className="tasker-count">{savedViews.length}</span>}
-        </button>
-        <button type="button" onClick={() => leaveSavedView('projects', '')} aria-current={view === 'projects' ? 'page' : undefined} className="tasker-nav-item tasker-nav-projects">
+        </Button>
+        <Button type="button" onClick={() => leaveSavedView('projects', '')} aria-current={view === 'projects' ? 'page' : undefined} className="tasker-nav-item tasker-nav-projects">
           <TaskerIcon name="projects" />
           <span>Projects</span>
-        </button>
+        </Button>
         <div className="tasker-sidebar-projects" aria-label="Projects">
           {allProjects.map((project) => (
             <div key={project.row_id} className={`tasker-sidebar-project ${view === 'projects' && selectedProject === project.row_id ? 'is-selected' : ''}`}>
-              <button type="button" className="tasker-sidebar-project-name" aria-label={project.project_name} onClick={() => leaveSavedView('projects', project.row_id)}>
+              <Button type="button" className="tasker-sidebar-project-name" aria-label={project.project_name} onClick={() => leaveSavedView('projects', project.row_id)}>
                 <span>{project.project_name}</span>
                 <span className="tasker-count">{projectTaskCounts.get(project.row_id) ?? 0}</span>
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -591,16 +595,16 @@ export function TaskManagementPage() {
       {starredProjectIds.length > 0 && (
         <div className="tasker-project-tabs" aria-label="Starred projects">
           {starredProjectIds.map((id) => (
-            <button key={id} type="button" aria-current={view === 'projects' && selectedProject === id ? 'page' : undefined}
+            <Button key={id} type="button" aria-current={view === 'projects' && selectedProject === id ? 'page' : undefined}
               onClick={() => leaveSavedView('projects', id)}>
               {projectById.get(id)?.project_name}
-            </button>
+            </Button>
           ))}
         </div>
       )}
       {tasks.error && <p role="alert" className="mb-4">{tasks.error.message} · <a href="/featherbase/admin">Back to Featherbase</a></p>}
-      {error && <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-      {users.data?.limited && <p role="status" className="mb-4 rounded-md px-3 py-2 text-sm text-[var(--color-ink-muted)]">{PEOPLE_LIMITED_NOTICE}</p>}
+      {error && <p role="alert" className="mb-4 rounded-md bg-negative-tint px-3 py-2 pointer-fine:text-sm text-negative">{error}</p>}
+      {users.data?.limited && <p role="status" className="mb-4 rounded-md px-3 py-2 pointer-fine:text-sm text-[var(--color-ink-muted)]">{PEOPLE_LIMITED_NOTICE}</p>}
       {selectedTask && detailMode === 'compact' && (
         <div className="tasker-compact-detail">
           <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} onCompleted={actionCompleted} />
@@ -627,10 +631,10 @@ export function TaskManagementPage() {
               value={capture}
               onChange={(event) => setCapture(event.target.value)}
               placeholder="What do you need to remember?"
-              className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm outline-none focus:border-[var(--color-brand)] focus:ring-2 focus:ring-[var(--color-brand)]/15"
+              className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm outline-none focus:border-[var(--color-action)] focus:ring-2 focus:ring-[var(--color-action)]/15"
               autoFocus
             />
-            <button className="fc-btn-primary" disabled={saving || !capture.trim()}>Add</button>
+            <Button type="submit" variant="primary"  disabled={saving || !capture.trim()}>Add</Button>
           </form>
           {toolbarFor(inbox, filteredInbox, { kind: 'inbox' }, 'Inbox', true)}
           {filteredInbox.length
@@ -657,7 +661,7 @@ export function TaskManagementPage() {
             const rows = filteredTogether.filter((task) => task.assigned_to === owner)
             if (!rows.length) return null
             return <div key={owner ?? 'unassigned'} className="mb-7">
-              <h3 className="mb-2 text-sm font-semibold">{owner ?? 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
+              <h3 className="mb-2 pointer-fine:text-sm font-semibold">{owner ?? 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
               <TaskList tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
             </div>
           })}
@@ -680,8 +684,8 @@ export function TaskManagementPage() {
                 <ProjectDescription key={selectedProject} project={projectById.get(selectedProject)!} onSaved={refresh} />
                 <form className="tasker-composer" onSubmit={async (event) => { event.preventDefault(); const title = projectTask; try { await createTask(title, { project: selectedProject }); setProjectTask('') } catch { /* shown above */ } }}>
                   <label className="sr-only" htmlFor="project-task">Add task to project</label>
-                  <input id="project-task" value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" autoFocus />
-                  <button className="fc-btn-primary" disabled={saving || !projectTask.trim()}>Add</button>
+                  <input id="project-task" value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm" autoFocus />
+                  <Button type="submit" variant="primary"  disabled={saving || !projectTask.trim()}>Add</Button>
                 </form>
                 {toolbarFor(projectRows, filteredProjectRows, { kind: 'project', projectId: selectedProject }, 'This project', false)}
                 {filteredProjectRows.length
@@ -694,19 +698,19 @@ export function TaskManagementPage() {
                 <label htmlFor="project-name">New project</label>
                 <div>
                   <input id="project-name" value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Project name" />
-                  <button className="fc-btn-primary" disabled={creatingProject || !projectName.trim()}>Create project</button>
+                  <Button type="submit" variant="primary"  disabled={creatingProject || !projectName.trim()}>Create project</Button>
                 </div>
               </form>
               <div className="tasker-project-directory" aria-label="All projects">
                 {allProjects.map((project) => (
-                  <button key={project.row_id} type="button" aria-label={`Open project ${project.project_name}`} onClick={() => setSelectedProject(project.row_id)} className="tasker-project-directory-item">
+                  <Button key={project.row_id} type="button" aria-label={`Open project ${project.project_name}`} onClick={() => setSelectedProject(project.row_id)} className="tasker-project-directory-item">
                     <span className="tasker-project-directory-icon" aria-hidden="true"><TaskerIcon name="projects" /></span>
                     <span>
                       <strong>{project.project_name}</strong>
                       <small>{projectTaskCounts.get(project.row_id) ?? 0} {(projectTaskCounts.get(project.row_id) ?? 0) === 1 ? 'task' : 'tasks'}</small>
                     </span>
                     <span aria-hidden="true">›</span>
-                  </button>
+                  </Button>
                 ))}
                 {!allProjects.length && <Empty text="No projects yet. Create the first one above." />}
               </div>
@@ -717,14 +721,14 @@ export function TaskManagementPage() {
       {view === 'personal' && (
         <section aria-labelledby="personal-heading">
           <SectionTitle id="personal-heading" title="Personal tasks" hint="Team-visible individual task lists" />
-          <label className="mb-4 flex items-center gap-2 text-xs text-[var(--color-ink-muted)]">
+          <label className="mb-4 flex items-center gap-2 pointer-fine:text-xs text-[var(--color-ink-muted)]">
             Show tasks for
-            <select aria-label="Personal tasks owner" value={personalOwner} onChange={(event) => setPersonalOwner(event.target.value)} className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm text-[var(--color-ink)]">{people.map((user) => <option key={user.row_id}>{user.row_id}</option>)}</select>
+            <select aria-label="Personal tasks owner" value={personalOwner} onChange={(event) => setPersonalOwner(event.target.value)} className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 pointer-fine:text-sm text-[var(--color-ink)]">{people.map((user) => <option key={user.row_id}>{user.row_id}</option>)}</select>
           </label>
-          <form className="fc-card mb-5 flex gap-2 p-3" onSubmit={async (event) => { event.preventDefault(); const title = capture; try { await createTask(title, { personal_tasks_owner: personalOwner }); setCapture('') } catch { /* shown above */ } }}>
+          <form className={cardClasses("mb-5 flex gap-2 p-3")} onSubmit={async (event) => { event.preventDefault(); const title = capture; try { await createTask(title, { personal_tasks_owner: personalOwner }); setCapture('') } catch { /* shown above */ } }}>
             <label className="sr-only" htmlFor="personal-capture">Add personal task</label>
-            <input id="personal-capture" value={capture} onChange={(event) => setCapture(event.target.value)} placeholder="Add a personal task" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" autoFocus />
-            <button className="fc-btn-primary" disabled={saving || !capture.trim()}>Add</button>
+            <input id="personal-capture" value={capture} onChange={(event) => setCapture(event.target.value)} placeholder="Add a personal task" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm" autoFocus />
+            <Button type="submit" variant="primary"  disabled={saving || !capture.trim()}>Add</Button>
           </form>
           {toolbarFor(personalRows, filteredPersonalRows, { kind: 'personal', owner: personalOwner }, `${personalOwner}'s Personal tasks`, true)}
           {filteredPersonalRows.length
@@ -754,7 +758,7 @@ export function TaskManagementPage() {
                 const rows = filteredSavedViewTasks.filter((task) => task.assigned_to === owner)
                 if (!rows.length) return null
                 return <div key={owner ?? 'unassigned'} className="mb-7">
-                  <h3 className="mb-2 text-sm font-semibold">{owner ?? 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
+                  <h3 className="mb-2 pointer-fine:text-sm font-semibold">{owner ?? 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
                   <TaskList tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
                 </div>
               })}
@@ -922,23 +926,23 @@ function TaskViewToolbar({
           placeholder="Search tasks"
         />
       </label>
-      <button
+      <Button
         ref={filterButton}
         type="button"
-        className="fc-btn tasker-filter-button"
+        className="tasker-filter-button"
         aria-expanded={filtersOpen}
         aria-controls="tasker-filter-controls"
         onClick={() => setFiltersOpen((open) => !open)}
       >
         Filter{chips.filter((chip) => chip.remove).length ? ` (${chips.filter((chip) => chip.remove).length})` : ''}
-      </button>
+      </Button>
       {activeSavedView && dirty && <>
-        <button type="button" className="fc-btn" onClick={() => void onUpdate(activeSavedView)}>Update view</button>
-        <button type="button" className="fc-btn" onClick={onReset}>Reset</button>
+        <Button type="button"  onClick={() => void onUpdate(activeSavedView)}>Update view</Button>
+        <Button type="button"  onClick={onReset}>Reset</Button>
       </>}
-      <button type="button" className="fc-btn" onClick={() => setSavingAsNew((open) => !open)}>
+      <Button type="button"  onClick={() => setSavingAsNew((open) => !open)}>
         {activeSavedView ? 'Save as new' : 'Save view'}
-      </button>
+      </Button>
     </div>
     {filtersOpen && <TaskFilterControls
       filters={setup.filters}
@@ -952,7 +956,7 @@ function TaskViewToolbar({
     {(chips.length > 0 || setup.search || total > 0) && <div className="tasker-active-criteria">
       <div className="tasker-filter-chips">
         {chips.map((chip) => chip.remove
-          ? <button key={chip.key} type="button" onClick={chip.remove} aria-label={`Remove ${chip.label} filter`}>{chip.label} <span aria-hidden="true">×</span></button>
+          ? <Button key={chip.key} type="button" onClick={chip.remove} aria-label={`Remove ${chip.label} filter`}>{chip.label} <span aria-hidden="true">×</span></Button>
           : <span key={chip.key}>{chip.label}</span>)}
       </div>
       <span className="tasker-match-count" aria-live="polite">{matched} of {total} {total === 1 ? 'task' : 'tasks'}</span>
@@ -967,8 +971,8 @@ function TaskViewToolbar({
         {currentScope.kind !== 'all' && <label><input type="radio" name="view-scope" checked={scopeKind === 'all'} onChange={() => setScopeKind('all')} /> Across all tasks</label>}
       </fieldset>
       <div>
-        <button className="fc-btn-primary" disabled={!name.trim()}>Save private view</button>
-        <button type="button" className="fc-btn" onClick={() => { setSavingAsNew(false); setName('') }}>Cancel</button>
+        <Button type="submit" variant="primary"  disabled={!name.trim()}>Save private view</Button>
+        <Button type="button"  onClick={() => { setSavingAsNew(false); setName('') }}>Cancel</Button>
       </div>
       <p>Only you can see this saved view. Tasks are not changed.</p>
     </form>}
@@ -998,19 +1002,19 @@ function TaskFilterControls({ filters, people, projects, showProjects, onFilters
   }
 
   return <div className="tasker-filter-layer">
-    <button type="button" className="tasker-filter-backdrop" aria-label="Close filters" onClick={onClose} />
+    <Button type="button" className="tasker-filter-backdrop" aria-label="Close filters" onClick={onClose} />
     <div id="tasker-filter-controls" className="tasker-filter-popover" role="dialog" aria-label="Filter tasks" onKeyDown={(event) => {
       if (event.key === 'Escape') {
         event.stopPropagation()
         onClose()
       }
     }}>
-      <div className="tasker-filter-heading"><strong>Filters</strong><button type="button" aria-label="Close filters" onClick={onClose}>×</button></div>
+      <div className="tasker-filter-heading"><strong>Filters</strong><Button type="button" aria-label="Close filters" onClick={onClose}>×</Button></div>
       <FilterGroup label="State" values={STATES} selected={filters.states} onToggle={(value) => toggle('states', value)} firstControl={firstControl} />
       <FilterGroup label="Responsible person" values={[UNASSIGNED, ...people.map((person) => person.row_id)]} labels={new Map([[UNASSIGNED, 'Unassigned']])} selected={filters.responsiblePeople} onToggle={(value) => toggle('responsiblePeople', value)} />
       <FilterGroup label="Urgency" values={['urgent', 'not_urgent']} labels={new Map([['urgent', 'Urgent'], ['not_urgent', 'Not urgent']])} selected={filters.urgencies} onToggle={(value) => toggle('urgencies', value as TaskViewFilters['urgencies'][number])} />
       {showProjects && <FilterGroup label="Project" values={projects.map((project) => project.row_id)} labels={new Map(projects.map((project) => [project.row_id, project.project_name]))} selected={filters.projects} onToggle={(value) => toggle('projects', value)} />}
-      <div className="tasker-filter-actions"><button type="button" onClick={onClear}>Clear all</button><button type="button" className="fc-btn-primary" onClick={onClose}>Close</button></div>
+      <div className="tasker-filter-actions"><Button type="button" onClick={onClear}>Clear all</Button><Button type="button" variant="primary"  onClick={onClose}>Close</Button></div>
     </div>
   </div>
 }
@@ -1034,12 +1038,12 @@ function FilterGroup({ label, values, labels = new Map(), selected, onToggle, fi
 
 function NoTaskMatches({ total, setup, onSetup }: { total: number; setup: TaskViewSetup; onSetup: (setup: TaskViewSetup) => void }) {
   if (total === 0) return <Empty text="Nothing here yet." />
-  return <div className="fc-card tasker-no-matches">
+  return <div className={cardClasses("tasker-no-matches")}>
     <strong>No tasks match this search and filters</strong>
     <p>0 of {total} tasks. Your criteria are still applied.</p>
     <div>
-      {setup.search && <button type="button" className="fc-btn" onClick={() => onSetup({ ...setup, search: '' })}>Clear search</button>}
-      <button type="button" className="fc-btn" onClick={() => onSetup({ ...setup, filters: emptyTaskViewSetup().filters })}>Clear all filters</button>
+      {setup.search && <Button type="button"  onClick={() => onSetup({ ...setup, search: '' })}>Clear search</Button>}
+      <Button type="button"  onClick={() => onSetup({ ...setup, filters: emptyTaskViewSetup().filters })}>Clear all filters</Button>
     </div>
   </div>
 }
@@ -1066,19 +1070,19 @@ function SavedViewDirectory({ savedViews, projects, people, onOpen, onRename, on
         }}>
           <label className="sr-only" htmlFor={`rename-view-${savedView.id}`}>Rename saved view</label>
           <input id={`rename-view-${savedView.id}`} autoFocus value={name} onChange={(event) => setName(event.target.value)} />
-          <button className="fc-btn-primary" disabled={!name.trim()}>Save</button>
-          <button type="button" className="fc-btn" onClick={() => setRenaming(null)}>Cancel</button>
+          <Button type="submit" variant="primary"  disabled={!name.trim()}>Save</Button>
+          <Button type="button"  onClick={() => setRenaming(null)}>Cancel</Button>
         </form> : <>
-          <button type="button" className="tasker-saved-view-open" onClick={() => onOpen(savedView)}>
+          <Button type="button" className="tasker-saved-view-open" onClick={() => onOpen(savedView)}>
             <strong>{savedView.name}</strong>
             <span>{scopeLabel(savedView.scope, projects)}</span>
             {unavailable && <em>{unavailable}</em>}
-          </button>
+          </Button>
           <div className="tasker-saved-view-actions">
-            <button type="button" className="fc-btn" onClick={() => { setRenaming(savedView.id); setName(savedView.name) }}>Rename</button>
-            <button type="button" className="fc-btn" onClick={() => {
+            <Button type="button"  onClick={() => { setRenaming(savedView.id); setName(savedView.name) }}>Rename</Button>
+            <Button type="button"  onClick={() => {
               if (window.confirm(`Delete private saved view “${savedView.name}”?`)) void onDelete(savedView)
-            }}>Delete</button>
+            }}>Delete</Button>
           </div>
         </>}
       </article>
@@ -1106,18 +1110,18 @@ function ProjectHeading({ project, starred, onRename, onToggleStar, onMoveStar }
   }}>
     <label className="sr-only" htmlFor="rename-project">Project name</label>
     <input id="rename-project" aria-label="Rename project" autoFocus value={draft.project_name} onChange={(event) => setDraft({ ...draft, project_name: event.target.value })} className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] px-3 py-2 text-base font-semibold" />
-    <button className="fc-btn-primary" disabled={!draft.project_name.trim()}>Save</button>
-    <button type="button" className="fc-btn" onClick={() => setDraft(null)}>Cancel</button>
+    <Button type="submit" variant="primary"  disabled={!draft.project_name.trim()}>Save</Button>
+    <Button type="button"  onClick={() => setDraft(null)}>Cancel</Button>
   </form>
   return <div className="mb-3 flex items-start justify-between gap-3">
     <SectionTitle title={project.project_name} hint="Tasks begin unassigned; someone can take responsibility when work starts" />
     <div className="tasker-project-heading-actions">
-      <button type="button" className="fc-btn" onClick={() => void onToggleStar()}>{starred ? '★ Starred tab' : '☆ Add to tabs'}</button>
+      <Button type="button"  onClick={() => void onToggleStar()}>{starred ? '★ Starred tab' : '☆ Add to tabs'}</Button>
       {starred && <>
-        <button type="button" className="fc-btn" aria-label={`Move project ${project.project_name} tab left`} onClick={() => void onMoveStar(-1)}>←</button>
-        <button type="button" className="fc-btn" aria-label={`Move project ${project.project_name} tab right`} onClick={() => void onMoveStar(1)}>→</button>
+        <Button type="button"  aria-label={`Move project ${project.project_name} tab left`} onClick={() => void onMoveStar(-1)}>←</Button>
+        <Button type="button"  aria-label={`Move project ${project.project_name} tab right`} onClick={() => void onMoveStar(1)}>→</Button>
       </>}
-      <button type="button" className="fc-btn" onClick={() => setDraft({ ...project })}>Rename</button>
+      <Button type="button"  onClick={() => setDraft({ ...project })}>Rename</Button>
     </div>
   </div>
 }
@@ -1186,8 +1190,8 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
   }, [mode])
 
   const activity = [
-    ...(taskActivity.data?.comments ?? []).map((entry) => ({ kind: 'comment' as const, at: entry.created_at, who: entry.created_by, content: entry.content })),
-    ...(taskActivity.data?.versions ?? []).map((entry) => ({ kind: 'version' as const, at: entry.created_at, who: entry.created_by, changes: entry.data?.changed ?? [] })),
+    ...(taskActivity.data?.comments ?? []).map((entry) => ({ kind: 'comment' as const, at: entry.created_at, who: entry.author_name ?? 'Unknown person', content: entry.content })),
+    ...(taskActivity.data?.versions ?? []).map((entry) => ({ kind: 'version' as const, at: entry.created_at, who: entry.author_name ?? 'Unknown person', changes: entry.data?.changed ?? [] })),
   ].sort((left, right) => new Date(left.at).getTime() - new Date(right.at).getTime())
   const latestActivity = activity.at(-1)
   const formatValue = (value: unknown) => value == null || value === '' ? 'empty' : String(value)
@@ -1206,10 +1210,10 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     }
   }}>
     <div className="tasker-detail-toolbar">
-      <a href={sameDocumentHash(hashSavedViewId() ? savedViewHash(hashSavedViewId()!) : '#')} className="fc-btn" autoFocus>Close</a>
+      <a href={sameDocumentHash(hashSavedViewId() ? savedViewHash(hashSavedViewId()!) : '#')} className={buttonClasses({ className: "" })} autoFocus>Close</a>
       <div className="tasker-mode-switch" aria-label="Task detail view">
         {([['compact', 'Compact'], ['inspector', 'Inspector'], ['focus', 'Focus']] as [DetailMode, string][]).map(([value, label]) =>
-          <button key={value} type="button" aria-pressed={mode === value} onClick={() => void onMode(value)}>{label}</button>)}
+          <Button key={value} type="button" aria-pressed={mode === value} onClick={() => void onMode(value)}>{label}</Button>)}
       </div>
     </div>
     <h2 className="my-5 text-xl font-semibold">{task.data?.task_title ?? 'Task details'}</h2>
@@ -1231,17 +1235,17 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
           {people.map(user => <option key={user.row_id} value={`personal:${user.row_id}`}>Personal: {user.row_id}</option>)}
         </select></label>
         <div className="tasker-detail-signals">
-          {!task.data.assigned_to && <button type="button" className="fc-btn" onClick={() => void patch({ assigned_to: me })}>Take it</button>}
-          <button type="button" className="fc-btn" aria-pressed={task.data.urgent} onClick={() => void patch({ urgent: !task.data.urgent })}>{task.data.urgent ? 'Urgent' : 'Not urgent'}</button>
-          <button type="button" className="fc-btn" onClick={() => void patch({ is_done: !task.data.is_done })}>{task.data.is_done ? 'Undo Done' : 'Mark Done'}</button>
+          {!task.data.assigned_to && <Button type="button"  onClick={() => void patch({ assigned_to: me })}>Take it</Button>}
+          <Button type="button"  aria-pressed={task.data.urgent} onClick={() => void patch({ urgent: !task.data.urgent })}>{task.data.urgent ? 'Urgent' : 'Not urgent'}</Button>
+          <Button type="button"  onClick={() => void patch({ is_done: !task.data.is_done })}>{task.data.is_done ? 'Undo Done' : 'Mark Done'}</Button>
         </div>
       </fieldset>
       {mode === 'compact' ? <div className="tasker-compact-summary">
         <Markdown>{task.data.description || 'No description yet.'}</Markdown>
-        {latestActivity && <p className="mt-3 border-l-2 border-[var(--color-border)] pl-3 text-xs text-[var(--color-ink-muted)]">
+        {latestActivity && <p className="mt-3 border-l-2 border-[var(--color-border)] pl-3 pointer-fine:text-xs text-[var(--color-ink-muted)]">
           Latest: {latestActivity.kind === 'comment' ? latestActivity.content : 'Task fields changed'}
         </p>}
-        <p className="mt-3 text-xs text-[var(--color-ink-muted)]">Open Inspector to edit or join the discussion.</p>
+        <p className="mt-3 pointer-fine:text-xs text-[var(--color-ink-muted)]">Open Inspector to edit or join the discussion.</p>
       </div> : <>
       {draft ? <form className="tasker-description-editor" onSubmit={async (event) => {
         // Keep the draft's original revision even if another action refetches this row.
@@ -1258,29 +1262,29 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
         } catch (error) { setError(error instanceof Error ? error.message : 'Could not save') }
         finally { setSaving(false) }
       }}>
-        <label className="block text-sm mb-3">Task title
+        <label className="block pointer-fine:text-sm mb-3">Task title
           <input autoFocus className="mt-2 w-full rounded border border-[var(--color-border)] p-3"
             disabled={saving} value={draft?.task_title ?? task.data.task_title}
             onChange={(event) => setDraft({ ...draft, task_title: event.target.value })} />
         </label>
-        <label className="block text-sm">Description
+        <label className="block pointer-fine:text-sm">Description
           <textarea className="mt-2 w-full rounded border border-[var(--color-border)] p-3" rows={4} disabled={saving}
             value={draft?.description ?? task.data.description ?? ''}
             onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
         </label>
         <div className="mt-3 flex gap-2">
-          <button className="fc-btn-primary" disabled={saving || !draft?.task_title.trim()}>Save task</button>
-          <button type="button" className="fc-btn" disabled={saving || !draft} onClick={cancelDraft}>Cancel changes</button>
+          <Button type="submit" variant="primary"  disabled={saving || !draft?.task_title.trim()}>Save task</Button>
+          <Button type="button"  disabled={saving || !draft} onClick={cancelDraft}>Cancel changes</Button>
         </div>
       </form> : <div className="tasker-description-read">
         <div className="tasker-description-heading"><h3>Description</h3>
-          <button ref={editButton} type="button" className="fc-btn" onClick={() => setDraft({ task_title: task.data.task_title, description: task.data.description ?? '', updated_at: task.data.updated_at })}>Edit task</button>
+          <Button ref={editButton} type="button"  onClick={() => setDraft({ task_title: task.data.task_title, description: task.data.description ?? '', updated_at: task.data.updated_at })}>Edit task</Button>
         </div>
         <Markdown>{task.data.description || 'No description yet. Add context when it helps.'}</Markdown>
       </div>}
 
       <div className="mt-7 border-t border-[var(--color-border)] pt-5">
-        <h3 className="mb-3 text-sm font-semibold">Discussion and history</h3>
+        <h3 className="mb-3 pointer-fine:text-sm font-semibold">Discussion and history</h3>
         {taskActivity.error && <p role="alert">Could not load discussion and history: {taskActivity.error.message}</p>}
         <form className="mb-5 flex gap-2" onSubmit={async (event) => {
           event.preventDefault()
@@ -1298,19 +1302,19 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
           finally { setSaving(false) }
         }}>
           <label className="sr-only" htmlFor={`task-comment-${id}`}>Add comment</label>
-          <input id={`task-comment-${id}`} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Add a comment" className="min-w-0 flex-1 rounded border border-[var(--color-border)] px-3 py-2 text-sm" />
-          <button className="fc-btn-primary" disabled={saving || !comment.trim()}>Comment</button>
+          <input id={`task-comment-${id}`} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Add a comment" className="min-w-0 flex-1 rounded border border-[var(--color-border)] px-3 py-2 pointer-fine:text-sm" />
+          <Button type="submit" variant="primary"  disabled={saving || !comment.trim()}>Comment</Button>
         </form>
-        {!activity.length && <p className="text-xs text-[var(--color-ink-faint)]">No discussion or changes yet.</p>}
+        {!activity.length && <p className="pointer-fine:text-xs text-[var(--color-ink-subtle)]">No discussion or changes yet.</p>}
         <ol className="space-y-4" data-testid="task-activity">
-          {activity.map((entry, index) => <li key={`${entry.kind}-${entry.at}-${index}`} className="border-l-2 border-[var(--color-border)] pl-3 text-sm">
-            <p className="text-xs text-[var(--color-ink-muted)]"><strong className="text-[var(--color-ink)]">{entry.who}</strong> {entry.kind === 'comment' ? 'commented' : 'edited'} · {new Date(entry.at).toLocaleString()}</p>
+          {activity.map((entry, index) => <li key={`${entry.kind}-${entry.at}-${index}`} className="border-l-2 border-[var(--color-border)] pl-3 pointer-fine:text-sm">
+            <p className="pointer-fine:text-xs text-[var(--color-ink-muted)]"><strong className="text-[var(--color-ink)]">{entry.who}</strong> {entry.kind === 'comment' ? 'commented' : 'edited'} · {fmtDateTime(new Date(entry.at))}</p>
             {entry.kind === 'comment'
               ? <p className="mt-1 whitespace-pre-wrap">{entry.content}</p>
-              : <ul className="mt-1 text-xs text-[var(--color-ink-muted)]">{entry.changes.length ? entry.changes.map(([field, from, to], changeIndex) => <li key={changeIndex}><strong>{field.replaceAll('_', ' ')}</strong>: {formatValue(from)} → {formatValue(to)}</li>) : <li>Task updated</li>}</ul>}
+              : <ul className="mt-1 pointer-fine:text-xs text-[var(--color-ink-muted)]">{entry.changes.length ? entry.changes.map(([field, from, to], changeIndex) => <li key={changeIndex}><strong>{field.replaceAll('_', ' ')}</strong>: {formatValue(from)} → {formatValue(to)}</li>) : <li>Task updated</li>}</ul>}
           </li>)}
         </ol>
-        <a className="mt-6 block text-xs text-[var(--color-brand)]" href={`/featherbase/admin/tasker.task/${encodeURIComponent(id)}`}>Attachments and advanced fields in Featherbase ↗</a>
+        <a className="mt-6 block pointer-fine:text-xs text-[var(--color-action)]" href={`/featherbase/admin/tasker.task/${encodeURIComponent(id)}`}>Attachments and advanced fields in Featherbase ↗</a>
       </div>
       </>}
     </>}
@@ -1318,7 +1322,7 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
 }
 
 function Empty({ text }: { text: string }) {
-  return <div className="fc-card border-dashed px-4 py-10 text-center text-sm text-[var(--color-ink-muted)]">{text}</div>
+  return <div className={cardClasses("border-dashed px-4 py-10 text-center text-sm text-[var(--color-ink-muted)]")}>{text}</div>
 }
 
 function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch, onFocus, onMove, savedViewId }: {
@@ -1375,9 +1379,9 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
           {explaining === task.row_id && (
             <form className="tasker-explanation-form" onSubmit={(event) => { event.preventDefault(); void addExplanation(task) }}>
               <label className="sr-only" htmlFor={`explain-${task.row_id}`}>Optional explanation</label>
-              <input id={`explain-${task.row_id}`} value={explanation} onChange={(event) => setExplanation(event.target.value)} placeholder="Optional explanation" autoFocus className="min-w-0 flex-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-xs" />
-              <button className="fc-btn-primary" disabled={posting}>Save note</button>
-              <button type="button" className="fc-btn" onClick={() => { setExplanation(''); setExplaining(null) }}>Skip</button>
+              <input id={`explain-${task.row_id}`} value={explanation} onChange={(event) => setExplanation(event.target.value)} placeholder="Optional explanation" autoFocus className="min-w-0 flex-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 pointer-fine:text-xs" />
+              <Button type="submit" variant="primary"  disabled={posting}>Save note</Button>
+              <Button type="button"  onClick={() => { setExplanation(''); setExplaining(null) }}>Skip</Button>
             </form>
           )}
           {explaining !== task.row_id && inactive && explanations.get(task.row_id) && (
@@ -1389,13 +1393,13 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
           <select aria-label={`Destination for ${task.task_title}`} value={task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }}><option value="">Inbox</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{users.map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{user.full_name || user.row_id}</option>)}</optgroup></select>
           <div className="tasker-responsibility">
             <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })}><option value="">Unassigned</option>{users.map((user) => <option key={user.row_id} value={user.row_id}>{user.full_name || user.row_id}</option>)}</select>
-            {!task.assigned_to && me && <button type="button" onClick={() => void onPatch(task, { assigned_to: me })} className="tasker-take-button">Take it</button>}
+            {!task.assigned_to && me && <Button type="button" onClick={() => void onPatch(task, { assigned_to: me })} className="tasker-take-button">Take it</Button>}
           </div>
         </div>
         <div className="tasker-task-signals">
-          <button type="button" aria-label={`${task.urgent ? 'Remove urgent flag from' : 'Mark urgent'} ${task.task_title}`} aria-pressed={task.urgent} title="Urgent is visible to the team" onClick={() => void onPatch(task, { urgent: !task.urgent })} className={`tasker-urgent ${task.urgent ? 'is-urgent' : ''}`}>{task.urgent && <span aria-hidden="true" />}{task.urgent ? 'Urgent' : 'Not urgent'}</button>
-          <button type="button" aria-label={`${focused ? 'Remove from' : 'Add to'} My Focus: ${task.task_title}`} title="My Focus is private to you" onClick={() => void onFocus(task.row_id)} className={`tasker-focus-star ${focused ? 'is-focused' : ''}`}>{focused ? '★' : '☆'} <span>Focus</span></button>
-          {onMove && focused && <div className="tasker-focus-order"><button type="button" aria-label={`Move ${task.task_title} up`} onClick={() => void onMove(task.row_id, -1)}>↑</button><button type="button" aria-label={`Move ${task.task_title} down`} onClick={() => void onMove(task.row_id, 1)}>↓</button></div>}
+          <Button type="button" aria-label={`${task.urgent ? 'Remove urgent flag from' : 'Mark urgent'} ${task.task_title}`} aria-pressed={task.urgent} title="Urgent is visible to the team" onClick={() => void onPatch(task, { urgent: !task.urgent })} className={`tasker-urgent ${task.urgent ? 'is-urgent' : ''}`}>{task.urgent && <span aria-hidden="true" />}{task.urgent ? 'Urgent' : 'Not urgent'}</Button>
+          <Button type="button" aria-label={`${focused ? 'Remove from' : 'Add to'} My Focus: ${task.task_title}`} title="My Focus is private to you" onClick={() => void onFocus(task.row_id)} className={`tasker-focus-star ${focused ? 'is-focused' : ''}`}>{focused ? '★' : '☆'} <span>Focus</span></Button>
+          {onMove && focused && <div className="tasker-focus-order"><Button type="button" aria-label={`Move ${task.task_title} up`} onClick={() => void onMove(task.row_id, -1)}>↑</Button><Button type="button" aria-label={`Move ${task.task_title} down`} onClick={() => void onMove(task.row_id, 1)}>↓</Button></div>}
         </div>
       </article>
     )

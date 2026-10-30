@@ -13,8 +13,8 @@ import { discoverPackages } from 'server/src/runtime-packages'
 import { setSession } from '../src/lib/api'
 import { mountBar } from '../src/bar/mount'
 import { PHONE_QUERY } from '../src/components/TopBar'
-import { TabBar } from '../src/components/ui'
-import { House, Target } from '../src/components/ui/icons'
+import { TabBar } from '@featherbase/shop-floor'
+import { House, Target } from '@featherbase/shop-floor'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]

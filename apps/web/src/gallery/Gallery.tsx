@@ -19,9 +19,9 @@ import {
   ToastProvider,
   useToast,
   type DataColumn,
-} from '../components/ui'
-import { fmtCount, fmtINR, fmtPct } from '../lib/inr'
-import { ChartColumn, ExternalLink, House, ListChecks, Moon, Plus, Sun, UserRound } from '../components/ui/icons'
+} from '@featherbase/shop-floor'
+import { fmtCount, fmtINR, fmtPct } from '@featherbase/shop-floor'
+import { ChartColumn, ExternalLink, House, ListChecks, Moon, Plus, Sun, UserRound } from '@featherbase/shop-floor'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (

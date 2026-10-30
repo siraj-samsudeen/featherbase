@@ -7,7 +7,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 import { dayLabel } from '../src/components/ChecklistView'
-import { timelineDayKey } from '../src/lib/inr'
+import { timelineDayKey } from '@featherbase/shop-floor'
 
 const T = 'Cr Opening'
 const ENC = encodeURIComponent(T)

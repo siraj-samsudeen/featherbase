@@ -27,8 +27,8 @@ import {
   shapeOf,
   type ImportDecisions,
 } from '../lib/import-session'
-import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '../components/ui'
-import { fmtCount } from '../lib/inr'
+import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 
 /**
  * Type-to-confirm for an update run: the prompt shows the count with Indian

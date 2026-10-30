@@ -2,7 +2,7 @@
 // src/index.css; design-guards.test.ts keeps raw colours and sizes out.
 export { Button, buttonClasses, iconButtonClasses, touchLinkClasses, touchRowClasses, touchTargetClasses } from './Button'
 export { Card, cardClasses } from './Card'
-export { cx } from './cx'
+export { cx, recipe } from './cx'
 export { EmptyState } from './EmptyState'
 export { Field, inputClasses, labelClasses, PasswordInput, SearchInput, Select, TextInput } from './Field'
 export { Notice } from './Notice'
@@ -13,3 +13,6 @@ export { DataCards, DataList, NARROW_QUERY, type DataColumn } from './DataList'
 export { achievementTone, Headline } from './Headline'
 export { TabBar, type TabBarItem } from './TabBar'
 export { useMediaQuery } from './useMediaQuery'
+
+export * from './icons'
+export * from './format'

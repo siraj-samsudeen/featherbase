@@ -7,7 +7,7 @@ import { ApiError } from '../lib/api'
 import { BarAddressContext, useDocumentAddress } from '../lib/bar-address'
 import { paintSavedTheme } from '../lib/theme'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
-import { paintOnto } from '../lib/theme-paint'
+import { paintOnto } from '@featherbase/shop-floor/theme'
 import platformCss from '../index.css?inline'
 import { shadowCss } from './style'
 

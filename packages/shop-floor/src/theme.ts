@@ -58,3 +58,6 @@ export function paintedChoice(): Theme {
 export function followDevice() {
   paintTheme('device')
 }
+
+/** Shared bar broadcasts a person's selected theme to the app page. */
+export const THEME_CHANGE_EVENT = 'featherbase:theme-change'

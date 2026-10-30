@@ -43,6 +43,6 @@ test('before React renders, a theme that cannot be read follows the device', asy
   // #650: the entry paints as it starts (main.tsx); the module never does.
   const { paintSavedTheme } = await import('../src/lib/theme')
   paintSavedTheme()
-  const { paintedChoice } = await import('../src/lib/theme-paint')
+  const { paintedChoice } = await import('@featherbase/shop-floor/theme')
   vexpect(paintedChoice()).toBe('device')
 })

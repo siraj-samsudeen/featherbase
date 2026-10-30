@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
-import { buttonClasses, inputClasses } from '../components/ui'
+import { buttonClasses, inputClasses } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 

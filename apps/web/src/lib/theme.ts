@@ -1,6 +1,6 @@
 import { getSessionUser } from './api'
 import { useAppearancePreference } from './appearance-preference'
-import { THEMES, followDevice, paintTheme, paintedChoice, type Theme } from './theme-paint'
+import { THEME_CHANGE_EVENT, THEMES, followDevice, paintTheme, paintedChoice, type Theme } from '@featherbase/shop-floor/theme'
 
 // UI-024 / #380: the theme is light, dark, or whatever the device is set to.
 // The choice is stored on the person (server); localStorage mirrors it so it
@@ -26,6 +26,7 @@ function storageKey(): string | null {
 /** Apply a person's choice and remember it on this browser for them. */
 export function applyTheme(theme: Theme) {
   paintTheme(theme)
+  window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: theme }))
   try {
     const key = storageKey()
     if (key) localStorage.setItem(key, theme)

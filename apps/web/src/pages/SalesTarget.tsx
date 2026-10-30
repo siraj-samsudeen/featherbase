@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Notice, Select, cardClasses } from '../components/ui'
+import { Button, Notice, Select, cardClasses } from '@featherbase/shop-floor'
 import { ApiError, api, clearSession, getSessionUser, getToken } from '../lib/api'
 import { TopBar } from '../components/TopBar'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 import { SCOPE_BASES, type ScopeBasis } from 'shared'
-import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '../lib/inr'
+import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '@featherbase/shop-floor'
 
 // #3755: the personalised sales-target report. The page holds no report
 // logic — MotherDuck renders the Dive inside a sandboxed iframe. What the page

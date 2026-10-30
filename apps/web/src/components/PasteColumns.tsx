@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react'
 import { inferColumnType } from 'shared'
 import { slugify } from '../lib/column-rules'
-import { buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses } from './ui'
+import { buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses } from '@featherbase/shop-floor'
 
 export interface PastedColumn {
   label: string

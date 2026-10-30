@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getSessionUser, listResource } from '../lib/api'
 import { adminPageTitle } from 'shared'
 import { useIsSystemManager } from '../lib/session'
-import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '../components/ui'
-import { fmtInstantIST } from '../lib/inr'
+import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '@featherbase/shop-floor'
+import { fmtInstantIST } from '@featherbase/shop-floor'
 
 // #131: automation credentials in one place — named access tokens (show-once
 // secret, optional expiry, one-click revoke) and the service accounts that
