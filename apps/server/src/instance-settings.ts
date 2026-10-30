@@ -711,6 +711,15 @@ function secretIn(value: unknown, appSecrets: readonly { name: string; value: st
  *  fields are left out (they keep their defaults, unmanaged). A field set from
  *  a variable exports as that variable's name, never its value (#703). */
 export async function exportInstanceSettings(): Promise<ExportResult> {
+  // Under the managed-settings lock: an apply committing between reading the
+  // origins and reading the values would export a variable's value (#703).
+  return withTransaction(async () => {
+    await holdManagedSet(sql, null)
+    return exportUnderLock()
+  })
+}
+
+async function exportUnderLock(): Promise<ExportResult> {
   const settings: Block = {}
   const withheld: string[] = []
   const appSecrets = await declaredAppSecrets()
