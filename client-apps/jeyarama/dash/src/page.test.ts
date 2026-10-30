@@ -2,7 +2,7 @@
 // writes money, days and times. Made-up figures.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { STORE_NAMES_TIMEOUT_MS } from './server.ts'
-import { BAR_STORE_WAIT_MS, DIVE_READY_TIMEOUT_MS, MEASURE_LINE, headingTitle, periodLine, whyLine, REPORT_TIMEOUT_MS, STORE_CHECK_TIMEOUT_MS, TOTALS_NOTE, sectionHeading, totalCells, blankNote, signedInr, dataLine, firstStore, inr, quickBody, subcategoryLabel, subtotalLabel, istTime, pageView, percent, reportLoader, shortDay } from './page.ts'
+import { noAccessHelp, MADE_UP_DATA_COMMAND, BAR_STORE_WAIT_MS, DIVE_READY_TIMEOUT_MS, MEASURE_LINE, headingTitle, periodLine, whyLine, REPORT_TIMEOUT_MS, STORE_CHECK_TIMEOUT_MS, TOTALS_NOTE, sectionHeading, totalCells, blankNote, signedInr, dataLine, firstStore, inr, quickBody, subcategoryLabel, subtotalLabel, istTime, pageView, percent, reportLoader, shortDay } from './page.ts'
 
 describe('the page', () => {
   const report = (state: string) => ({ ok: true as const, value: { state } })
@@ -646,5 +646,22 @@ describe("the page's header (#4486)", () => {
   })
   it('keeps the measure on its own line, in the old page\'s words', () => {
     expect(MEASURE_LINE).toBe('Sales before tax, net of returns')
+  })
+})
+
+describe('noAccessHelp: why the report refused, for the person reading it', () => {
+  it('a store reader keeps today\'s message, whatever the setup', () => {
+    expect(noAccessHelp({ manages: false, local: false })).toEqual({ kind: 'reader' })
+    expect(noAccessHelp({ manages: false, missing: ['secret X'], local: true })).toEqual({ kind: 'reader' })
+  })
+  it('a manager of an app not set up is told what it lacks; the command only on this machine', () => {
+    expect(noAccessHelp({ manages: true, missing: ['secret X'], fix: 'Set it.', local: false }))
+      .toEqual({ kind: 'not_set_up', missing: ['secret X'], fix: 'Set it.', command: null })
+    expect(noAccessHelp({ manages: true, missing: ['secret X'], local: true }))
+      .toEqual({ kind: 'not_set_up', missing: ['secret X'], fix: null, command: MADE_UP_DATA_COMMAND })
+  })
+  it('a manager of a set-up app is told it opens only for people who cover a store', () => {
+    expect(noAccessHelp({ manages: true, missing: [], local: false })).toEqual({ kind: 'manager_no_store', command: null })
+    expect(noAccessHelp({ manages: true, local: true })).toEqual({ kind: 'manager_no_store', command: MADE_UP_DATA_COMMAND })
   })
 })

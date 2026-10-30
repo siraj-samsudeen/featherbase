@@ -1,7 +1,7 @@
 // Feather Dash's report page (rendered by main.tsx).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { read } from './api'
-import { MEASURE_LINE, TOTALS_NOTE, headingTitle, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
+import { accessFacts, read } from './api'
+import { MEASURE_LINE, TOTALS_NOTE, noAccessHelp, type NoAccessHelp, headingTitle, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
 import type { Heading, Report, ReportRow, Totals } from './report'
 
 /** The store the bar's picker keeps in the address (`?store=`). */
@@ -102,9 +102,7 @@ export function FeatherDash() {
           {view.why === 'not_built' && 'The figures are being prepared. Try again in a few minutes.'}
         </Notice>
       )}
-      {view.kind === 'no_access' && (
-        <Notice testid="no-access">You don't have access to any store's report yet. Ask your Store Manager if you think you should.</Notice>
-      )}
+      {view.kind === 'no_access' && <NoAccess />}
       {view.kind === 'signed_out' && (
         <Notice testid="signed-out"><a href={`/featherbase/login?next=${encodeURIComponent('/feather_dash/' + window.location.search)}`}>Sign in</a> to open your report.</Notice>
       )}
@@ -128,6 +126,48 @@ function ReportHeading({ heading, period, wide }: { heading: Heading; period: { 
       {why && <p className="fd-muted" data-testid="why-line">{why}</p>}
       <p className="fd-muted" data-testid="measure-line">{MEASURE_LINE}</p>
     </header>
+  )
+}
+
+/** Why the report refused. Nothing is said until the platform has answered: a manager never
+ *  flashes the reader's "ask your Store Manager". */
+function NoAccess() {
+  const [help, setHelp] = useState<NoAccessHelp | undefined>(undefined)
+  useEffect(() => {
+    let live = true
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
+    accessFacts().then(facts => { if (live) setHelp(noAccessHelp({ ...facts, local })) })
+    return () => { live = false }
+  }, [])
+  if (!help) return <p className="fd-opening">Opening your report…</p>
+  if (help.kind === 'reader')
+    return <Notice testid="no-access">You don't have access to any store's report yet. Ask your Store Manager if you think you should.</Notice>
+  const health = <p><a href="/featherbase/admin/instance-health">Open instance health</a></p>
+  if (help.kind === 'not_set_up')
+    return (
+      <Notice testid="not-set-up">
+        <p><strong>Feather Dash isn't set up on this instance yet</strong>, so no store's report can open.</p>
+        <p data-testid="setup-missing">It lacks: {help.missing.join(', ')}.</p>
+        {help.fix && <p>{help.fix}</p>}
+        {help.command && (
+          <>
+            <p>To see the report with made-up data on this machine, stop the server (Ctrl-C) and run:</p>
+            <p><code data-testid="next-command">{help.command}</code></p>
+            <p>It prints who to sign in as.</p>
+          </>
+        )}
+        {health}
+      </Notice>
+    )
+  return (
+    <Notice testid="manager-no-store">
+      <p><strong>Feather Dash is set up, but your account covers no store</strong>, so it has no report to show you.</p>
+      <p>The report opens for people with the Feather Dash Reader role and a job in the store org chart. Give yourself or someone else those, or sign in as someone who has them.</p>
+      {help.command && (
+        <p>On this machine, <code data-testid="next-command">{help.command}</code> prints made-up people to sign in as. reader-sm@example.test is a made-up Store Manager.</p>
+      )}
+      {health}
+    </Notice>
   )
 }
 

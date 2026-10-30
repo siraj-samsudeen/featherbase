@@ -44,6 +44,39 @@ export function pageView({ embed, report, frameFailed = false }: {
   return embed?.ok && embed.value.too_large ? { kind: 'quick', why: 'too_large' } : { kind: 'quick' }
 }
 
+/** What the platform tells a person about their own rights and this app's setup. */
+export type AccessFacts = {
+  /** whoami's `capabilities.manage`: this person can manage the instance. */
+  manages: boolean
+  /** What this app lacks, from instance health; undefined when that couldn't be read. */
+  missing?: string[]
+  /** How to fix it, when instance health says. */
+  fix?: string | null
+  /** The page is served from this machine. */
+  local: boolean
+}
+export type NoAccessHelp =
+  | { kind: 'reader' }
+  /** A manager: the app lacks these. `command` is the next step on a developer's machine. */
+  | { kind: 'not_set_up'; missing: string[]; fix: string | null; command: string | null }
+  /** A manager, on a set-up app: it opens only for people who cover a store. */
+  | { kind: 'manager_no_store'; command: string | null }
+
+/** The command that makes the report work on a developer's machine. */
+export const MADE_UP_DATA_COMMAND = 'pnpm dev jeyarama/dash --made-up-data'
+
+/**
+ * Why the report refused, for the person reading it. A store reader keeps "ask your Store
+ * Manager". Someone who can manage the instance is told the true reason and what to do: they
+ * are refused too (the report opens only for its roles), but no Store Manager can help them.
+ */
+export function noAccessHelp({ manages, missing, fix = null, local }: AccessFacts): NoAccessHelp {
+  if (!manages) return { kind: 'reader' }
+  const command = local ? MADE_UP_DATA_COMMAND : null
+  if (missing?.length) return { kind: 'not_set_up', missing, fix, command }
+  return { kind: 'manager_no_store', command }
+}
+
 /** How long the page waits for the bar to choose a store before opening without one (a reader the bar offers none). */
 export const BAR_STORE_WAIT_MS = 2_000
 

@@ -207,6 +207,29 @@ describe('the checks (5.1)', () => {
       message: 'Health optional is set up, but lacks optional secret HEALTHOPT_EMBED (needed by read embed, action embed_note). Only those answer "not set up yet".' })
   })
 
+  // #703: a clean install on a developer's machine has nothing to raise, and
+  // the same state on a hosted server still does.
+  test('what a developer\'s machine is expected to lack needs no attention there, and still does everywhere else', async () => {
+    await noManagerEmails()
+    const manifest = { name: 'healthlocal', title: 'Health local', settings: [{ name: 'report_id', required: true }], secrets: ['HEALTHLOCAL_TOKEN'] }
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('healthlocal', ${sql.json(manifest)}, true, true)`
+    await sql`insert into data_source (row_id, engine, url_env, access) values ('healthlocal-warehouse', 'duckdb', 'HEALTHLOCAL_URL', 'read_only')`
+    const run = (environment: string) => withNamedVariable('HEALTHLOCAL_TOKEN', undefined, () => withNamedVariable('HEALTHLOCAL_URL', undefined, () => runHealthChecks({ environment })))
+    const local = await run('development')
+    expect(byKey(local, 'system-manager-email')).toMatchObject({ ok: true, fix: null })
+    expect(byKey(local, 'recommended-variables').message).not.toContain('HEALTHLOCAL_URL')
+    expect(byKey(local, 'app-setup:healthlocal')).toMatchObject({ ok: true, fix: null, missing: ['setting report_id', 'secret HEALTHLOCAL_TOKEN'] })
+    expect(byKey(local, 'app-setup:healthlocal').message).toContain('secret HEALTHLOCAL_TOKEN')
+
+    for (const environment of ['production', 'staging', 'test']) {
+      const hosted = await run(environment)
+      expect(byKey(hosted, 'system-manager-email')).toMatchObject({ ok: false, severity: 'error' })
+      expect(byKey(hosted, 'recommended-variables')).toMatchObject({ ok: false })
+      expect(byKey(hosted, 'recommended-variables').message).toContain('HEALTHLOCAL_URL')
+      expect(byKey(hosted, 'app-setup:healthlocal')).toMatchObject({ ok: false, severity: 'warning', missing: ['setting report_id', 'secret HEALTHLOCAL_TOKEN'] })
+    }
+  })
+
   test('every check names why it matters, and a failing one says how to fix it', async () => {
     await sql`delete from instance_settings_apply`
     for (const check of await runHealthChecks()) {

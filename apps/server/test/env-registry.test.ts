@@ -146,10 +146,13 @@ describe('settings-dependent requirements', () => {
     expect(assertVariables({ environment: 'production', conditions: on })).toContain('GOOGLE_CLIENT_SECRET set')
   })
 
-  it('a variable the data names only warns when missing, in every environment', () => {
+  it('a variable the data names only warns when missing, and on a developer\'s machine says nothing', () => {
     production()
     const named = [{ name: 'FB_TEST_WAREHOUSE_URL', reason: 'the url_env of data source warehouse' }]
-    for (const environment of ['production', 'staging', 'development']) {
+    const local = checkVariables({ environment: 'development', named })
+    expect(local.warnings).toEqual([])
+    expect(local.passed).toContain('FB_TEST_WAREHOUSE_URL unset, allowed on a "development" server (the url_env of data source warehouse)')
+    for (const environment of ['production', 'staging', 'test']) {
       const report = checkVariables({ environment, named })
       expect(report.refusals).toEqual([])
       expect(report.warnings).toEqual([expect.stringMatching(new RegExp(`^WARNING: FB_TEST_WAREHOUSE_URL is not set on a "${environment}" server \\(the url_env of data source warehouse\\)\\. That source refuses every query`))])

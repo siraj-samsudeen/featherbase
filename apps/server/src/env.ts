@@ -316,11 +316,14 @@ export function checkVariables(opts: CheckVariablesOptions): VariableReport {
     else if (req === 'recommended') report.warnings.push(`WARNING: ${missing(v)}`)
     else report.refusals.push(missing(v))
   }
-  // A data-named variable only ever warns, in every environment: without it
+  // A data-named variable only ever warns, outside development: without it
   // that one Data Source is unusable (its queries refuse, naming the
   // variable, sources/registry.ts resolveUrl), and the rest of the app is not.
   for (const { name, reason } of opts.named ?? []) {
     if (readNamedVariable(name)?.trim()) report.passed.push(`${name} set (${reason})`)
+    // A developer's machine has no warehouse to point it at, so saying so on
+    // every boot only teaches people to ignore warnings. Hosted, it still warns.
+    else if (environment === 'development') report.passed.push(`${name} unset, allowed on a "${environment}" server (${reason})`)
     else report.warnings.push(`WARNING: ${name} is not set on a "${environment}" server (${reason}). That source refuses every query until it is set; set it, or delete the data source.`)
   }
   return report

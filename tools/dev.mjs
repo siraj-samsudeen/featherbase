@@ -3,8 +3,11 @@
 // macOS and Linux. Needs only Node, pnpm and a running Postgres. Every step is
 // safe to repeat. ./init.sh remains the separate boot-and-smoke path.
 //
-//   pnpm dev jeyarama/dash [--check] [--environment <section>]
+//   pnpm dev jeyarama/dash [--made-up-data] [--check] [--environment <section>]
 //
+// --made-up-data fills the local instance with the made-up data its instance.json
+// declares ("madeUpData": a script), and gives each app a made-up value for every
+// secret it declares, so a report can be seen with no warehouse. Local only.
 // --check stops after proving the server answers and the apps are installed.
 // --environment picks the settings file's section (default: local).
 //
@@ -14,7 +17,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -39,8 +42,9 @@ export function listInstances(base = root) {
 /** The instance a command names: its folder, settings file and apps. */
 export function resolveInstance(name, base = root) {
   const known = listInstances(base)
-  if (!known.includes(name))
-    throw new DevError(`No instance "${name ?? ''}". Name one of: ${known.join(', ') || '(none)'}, as in: pnpm dev ${known[0] ?? '<client>/<instance>'}`)
+  const example = `pnpm dev ${known[0] ?? '<client>/<instance>'}`
+  if (!name) throw new DevError(`pnpm dev needs an instance name. Instances here: ${known.join(', ') || '(none)'}. For example: ${example}`)
+  if (!known.includes(name)) throw new DevError(`No instance "${name}". Name one of: ${known.join(', ') || '(none)'}, as in: ${example}`)
   const [client, instance] = name.split('/')
   const folder = join(base, 'client-apps', client, 'instances', instance)
   const declared = JSON.parse(readFileSync(join(folder, 'instance.json'), 'utf8'))
@@ -49,17 +53,59 @@ export function resolveInstance(name, base = root) {
     const appRoot = join(base, ...path.split('/'))
     const manifest = join(appRoot, 'featherbase.json')
     if (!existsSync(manifest)) throw new DevError(`${name}: instance.json lists ${path}, which has no featherbase.json`)
-    return { path, root: appRoot, name: JSON.parse(readFileSync(manifest, 'utf8')).name }
+    const { name: appName, title, secrets } = JSON.parse(readFileSync(manifest, 'utf8'))
+    return { path, root: appRoot, name: appName, title: title ?? appName, secrets: secrets ?? [] }
   })
-  return { name, client, instance, settingsFile: join(folder, 'instance-settings.json'), apps }
+  // Inside this repository: the file is data, and what it names gets run.
+  const madeUpData = declared.madeUpData === undefined ? undefined : resolve(base, String(declared.madeUpData))
+  if (madeUpData !== undefined && (relative(base, madeUpData).startsWith('..') || isAbsolute(relative(base, madeUpData)) || !existsSync(madeUpData)))
+    throw new DevError(`${name}: instance.json's madeUpData names ${declared.madeUpData}, which is not a file in this repository`)
+  return { name, client, instance, settingsFile: join(folder, 'instance-settings.json'), apps, madeUpData }
+}
+
+/** --made-up-data: what must hold before anything is touched. */
+export function assertMadeUpDataAllowed(command, instance) {
+  if (!command.madeUpData) return
+  if (command.environment !== 'local')
+    throw new DevError(`--made-up-data is for the local settings only, not --environment ${command.environment}.`)
+  if (!instance.madeUpData) throw new DevError(`${instance.name} declares no made-up data ("madeUpData" in its instance.json).`)
+}
+
+/** A made-up value for every secret the apps declare. Always made up, even over
+ *  a real one in .env.local: made-up data must never dial anything real. */
+export function madeUpSecrets(apps) {
+  const names = apps.flatMap((app) => app.secrets.map((secret) => (typeof secret === 'string' ? secret : secret.name)))
+  return Object.fromEntries(names.map((name) => [name, `made-up-local-${name.toLowerCase()}`]))
+}
+
+/** The closing lines: what this local instance has, what it lacks, what next.
+ *  `checks` are the health checks of the instance's apps that declare any setup. */
+export function localStatus({ instance, checks, madeUpOutput }) {
+  const setup = new Map(checks.filter((c) => c.key.startsWith('app-setup:')).map((c) => [c.key.slice('app-setup:'.length), c]))
+  const lacking = instance.apps.filter((app) => setup.get(app.name)?.missing?.length)
+  const lines = ['What this local instance has:']
+  for (const app of instance.apps) {
+    const missing = setup.get(app.name)?.missing ?? []
+    lines.push(missing.length ? `  ${app.title}: installed, but NOT set up. It lacks ${missing.join(', ')}.` : `  ${app.title}: installed and set up.`)
+  }
+  if (madeUpOutput !== undefined) {
+    lines.push('  Made-up data: yes. Nothing here is real.', '', ...madeUpOutput.trim().split(/\r?\n/))
+    return lines
+  }
+  lines.push('  Real data: none. There is no warehouse on this machine.', '')
+  if (!lacking.length) return lines
+  if (instance.madeUpData) lines.push(`Next, to see it working with made-up data: press Ctrl-C, then run`, `  pnpm dev ${instance.name} --made-up-data`)
+  else lines.push('Next: set each missing secret in .env.local, and each setting in the instance settings file, then run this again.')
+  return lines
 }
 
 /** Flags and the instance name. */
 export function parseCommand(argv) {
-  const out = { instance: undefined, check: false, environment: 'local' }
+  const out = { instance: undefined, check: false, madeUpData: false, environment: 'local' }
   const args = argv.filter((a) => a !== '--')
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--check') out.check = true
+    else if (args[i] === '--made-up-data') out.madeUpData = true
     else if (args[i] === '--environment') {
       out.environment = args[++i]
       if (!out.environment) throw new DevError('--environment takes a section of the settings file, such as dev')
@@ -99,7 +145,10 @@ export function postgresHelp(error, url, platform = process.platform) {
 // Node refuses to spawn a .cmd without a shell, and npm and pnpm are .cmd files
 // on Windows. Every argument given to these is a plain word or a relative path.
 function runTool(command, args, options) {
-  const result = spawnSync(command, args, { stdio: 'inherit', shell: isWindows, ...options })
+  // One string on Windows: Node warns about separate arguments with a shell.
+  const result = isWindows
+    ? spawnSync([command, ...args].join(' '), { stdio: 'inherit', shell: true, ...options })
+    : spawnSync(command, args, { stdio: 'inherit', ...options })
   if (result.error) throw new DevError(`Could not run ${command}: ${result.error.message}`)
   if (result.status !== 0) throw new DevError(`${command} ${args.join(' ')} failed (exit ${result.status})`)
 }
@@ -177,15 +226,64 @@ function startChild(label, script, args, cwd, env) {
   return child
 }
 
-function stopChild(child) {
-  if (child.exitCode !== null || child.signalCode !== null || !child.pid) return
-  if (isWindows) spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
-  else {
+const hasExited = (child) => child.exitCode !== null || child.signalCode !== null
+
+/** Stop one child and all it started; resolves once it has gone. On macOS and
+ *  Linux the child is asked first and given time: signalling its whole group at
+ *  once kills helpers it is still talking to (vite's esbuild, mid-transform),
+ *  and it prints "The service is no longer running". */
+async function stopChild(child) {
+  if (hasExited(child) || !child.pid) return
+  const gone = new Promise((done) => child.once('exit', done))
+  const signal = (pid) => {
     try {
-      process.kill(-child.pid, 'SIGTERM')
+      process.kill(pid, 'SIGTERM')
     } catch {
       /* already gone */
     }
+  }
+  if (isWindows) {
+    spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+    await gone
+    return
+  }
+  signal(child.pid)
+  await Promise.race([gone, new Promise((done) => setTimeout(done, 3000).unref())])
+  // Whatever it left behind, and the child itself if it didn't listen.
+  signal(-child.pid)
+  await Promise.race([gone, new Promise((done) => setTimeout(done, 2000).unref())])
+}
+
+/** The instance's own script, against the running server. Its output is shown
+ *  last, where the developer is looking: it says who to sign in as. */
+function runMadeUpData(instance, env) {
+  // Not spawnSync: blocking here leaves this process's idle connections unread,
+  // and the next fetch can then reuse one the server has already closed.
+  return new Promise((done, fail) => {
+    const child = spawn(process.execPath, ['--import', 'tsx', instance.madeUpData], {
+      cwd: join(root, 'apps/server'),
+      env: { ...env, FEATHERBASE_API_URL: `http://127.0.0.1:${env.API_PORT}` },
+      stdio: ['ignore', 'pipe', 'inherit'],
+    })
+    let output = ''
+    child.stdout.setEncoding('utf8').on('data', (chunk) => (output += chunk))
+    child.once('error', (error) => fail(new DevError(`Could not run the made-up data script: ${error.message}`)))
+    child.once('close', (code) => (code === 0 ? done(output) : fail(new DevError(`The made-up data script failed (exit ${code}); see above`))))
+  })
+}
+
+/** Administrator's view of the checks, or nothing if it can't be had: this only
+ *  adds to the closing lines, so it never fails a run that otherwise worked. */
+async function healthChecks(env) {
+  try {
+    const api = `http://127.0.0.1:${env.API_PORT}`
+    const login = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ usr: 'Administrator', pwd: 'admin' }) })
+    if (!login.ok) return []
+    const { token } = await login.json()
+    const health = await fetch(`${api}/api/instance-health`, { headers: { authorization: `Bearer ${token}` } })
+    return health.ok ? (await health.json()).checks : []
+  } catch {
+    return []
   }
 }
 
@@ -224,6 +322,7 @@ async function verify(instance, env) {
 async function main(argv) {
   const command = parseCommand(argv)
   const instance = resolveInstance(command.instance)
+  assertMadeUpDataAllowed(command, instance)
   loadEnvLocal()
   const env = {
     ...process.env,
@@ -234,6 +333,7 @@ async function main(argv) {
     // The mock Google sign-in, for a developer's machine: assertLocal holds this
     // to development, and the server refuses it anywhere else.
     ALLOW_MOCK_OAUTH: '1',
+    ...(command.madeUpData ? madeUpSecrets(instance.apps) : {}),
   }
   env.PORT = env.API_PORT
   assertLocal(env)
@@ -264,9 +364,10 @@ async function main(argv) {
   const stop = (code) => {
     if (stopping) return
     stopping = true
-    children.forEach(stopChild)
-    setTimeout(() => process.exit(code), 1000).unref?.()
-    Promise.all(children.map((c) => (c.exitCode !== null || c.signalCode !== null ? null : new Promise((r) => c.once('exit', r))))).then(() => process.exit(code))
+    // The web app first: it is what asks the API, and the page --check just
+    // fetched can leave it transforming. Nothing is left running when this exits.
+    const [api, webApp] = children
+    stopChild(webApp).then(() => stopChild(api)).then(() => process.exit(code))
   }
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP', ...(isWindows ? ['SIGBREAK'] : [])]) process.on(signal, () => stop(0))
   for (const child of children)
@@ -276,9 +377,14 @@ async function main(argv) {
       stop(1)
     })
 
+  let madeUpOutput
   try {
     await waitForAnswer(`http://127.0.0.1:${env.API_PORT}/api/ping`, 'The API')
     await waitForAnswer(`http://localhost:${env.WEB_PORT}/`, 'The web app')
+    if (command.madeUpData) {
+      step('Filling it with made-up data')
+      madeUpOutput = await runMadeUpData(instance, env)
+    }
     if (command.check) {
       await verify(instance, env)
       console.log(`\n==> ${instance.name} check passed`)
@@ -286,14 +392,17 @@ async function main(argv) {
       return
     }
   } catch (error) {
-    console.error(`!! ${error.message}`)
+    console.error(`!! ${error.message}${error.cause ? ` (${error.cause.code ?? error.cause.message})` : ''}`)
     stop(1)
     return
   }
+  const checks = await healthChecks(env)
   const first = instance.apps[0].name
   console.log(`\n==> ${instance.name} is running. Ctrl-C stops it.`)
   console.log(`    Sign in:  http://localhost:${env.WEB_PORT}/featherbase/login  as Administrator / admin (development only)`)
   for (const app of instance.apps) console.log(`    ${app.name === first ? 'Open:    ' : 'Also:    '} http://localhost:${env.WEB_PORT}/${app.name}/`)
+  if (checks.length) console.log(`\n${localStatus({ instance, checks, madeUpOutput }).map((line) => (line ? `    ${line}` : '')).join('\n')}`)
+  else if (madeUpOutput) console.log(`\n${madeUpOutput.trim()}`)
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

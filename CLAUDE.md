@@ -27,7 +27,7 @@ rewrites a live instance's data is rehearsed on a restored snapshot first
 | Deploying and environment variables | `docs/DEPLOY.md`, `docs/PREVIEW.md` |
 | Issues and triage labels | `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md` |
 | Apps shipped with the platform (Tasker); packages the tests install | `example-apps/`; `test-apps/` (never imported by platform source: `pnpm check:platform-imports`) |
-| Apps built for one client (`jeyarama/dash` is Feather Dash) | `client-apps/<client>/<app>/`, opt-in at boot with `FEATHERBASE_CLIENT_APPS`; the client's conventions in `client-apps/<client>/CLAUDE.md` |
+| Apps built for one client (`jeyarama/dash` is Feather Dash) | `client-apps/<client>/<app>/`, run with `pnpm dev <client>/<instance>`; the client's conventions in `client-apps/<client>/CLAUDE.md` |
 
 Don't add a document when a spec, test, ADR or PR body can carry it. A claim
 about the code that no check can verify drifts; don't write it down as fact.
