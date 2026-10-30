@@ -10,6 +10,7 @@ import { assertNothingRetained, repointRowActivity, retainedActivityCounts, reta
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
+import { holdBeforeRowLock } from './row-lock-order'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
 import { applySla } from './sla'
@@ -760,17 +761,6 @@ interface SaveOptions {
 function assertStoredFileUrl(meta: TableMeta, row: RowValues, allowed: unknown) {
   if (meta.name === 'File' && String(row.file_url ?? '') !== String(allowed ?? ''))
     throw new AppError('ValidationError', 'file_url is managed by uploads and cannot be assigned or changed')
-}
-
-/** The locks a write takes BEFORE it locks a row (#693): the managed-settings
- *  hold, then the Table's before_lock hooks (the Sign In Method controller
- *  takes the ways-in lock there). saveDoc and deleteDoc take them first; any
- *  other path that locks a row and then saves or deletes it calls this first
- *  too, so every path takes them in the same order and cannot deadlock.
- *  Both are re-entrant within a transaction. */
-export async function holdBeforeRowLock(db: typeof sql, meta: TableMeta, user: string, row: RowValues, isNew = false): Promise<void> {
-  await holdManagedSet(db, meta.name)
-  await runHooks('before_lock', { row, meta, user, isNew, tx: db })
 }
 
 export function saveDoc(...args: Parameters<typeof saveDocImpl>) {
