@@ -34,6 +34,8 @@ on:
       - tools/dev.mjs
       - client-apps/*/instances/**
       - test-apps/other/**
+      # No image holds a client app, so its manifest is not a build input.
+      - '!client-apps/**'
 
 permissions:
   contents: read

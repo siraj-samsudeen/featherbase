@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// `pnpm apps:prepare`: install, test and build the apps this repo ships that
-// are their own npm projects (Tasker and the client app Feather Dash, each with
-// its package-lock.json), and build the scope-proof fixture. Feather Dash is
-// built before its tests: one of them runs the platform's loader over its dist.
+// `pnpm apps:prepare`: install and build the apps this repo ships that are their
+// own npm projects (Tasker and the client app Feather Dash, each with its
+// package-lock.json), and build the scope-proof fixture. It does not test them:
+// that is each app's `npm test`, and CI's app-tests and unit-web jobs.
 //
 // They are run with npm, as their lockfiles say, but in npm's own environment.
 // pnpm hands its settings to every script it runs as npm_config_* variables
@@ -20,12 +20,10 @@ const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^
 
 const steps = [
   ['ci', '--prefix', 'example-apps/tasker', '--ignore-scripts'],
-  ['test', '--prefix', 'example-apps/tasker'],
   ['run', 'build', '--prefix', 'example-apps/tasker'],
   ['run', 'build', '--prefix', 'test-apps/scope-proof'],
   ['ci', '--prefix', 'client-apps/jeyarama/dash', '--ignore-scripts'],
   ['run', 'build', '--prefix', 'client-apps/jeyarama/dash'],
-  ['test', '--prefix', 'client-apps/jeyarama/dash'],
 ]
 for (const args of steps) {
   // npm is a .cmd file on Windows, which Node runs only through a shell. These

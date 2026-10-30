@@ -14,6 +14,8 @@
     "check:e2e-dsl": "node --test tools/check-e2e-dsl.test.mjs && node tools/check-e2e-dsl.mjs",
     "check:sensitive": "node --test tools/check-sensitive.test.mjs && node tools/check-sensitive.mjs",
     "check:dev": "node --test tools/dev.test.mjs tools/build-instance-apps.test.mjs",
+    "check:ci-scope": "node --test tools/ci-scope.test.mjs",
+    "check:app-versions": "node --test tools/check-app-versions.test.mjs && node tools/check-app-versions.mjs",
     "check:vocabulary": "node --test tools/check-vocabulary.test.mjs && node tools/check-vocabulary.mjs",
     "check:platform-imports": "node --test tools/check-platform-imports.test.mjs && node tools/check-platform-imports.mjs",
     "smoke": "pnpm --filter server test:smoke && pnpm --filter web smoke",

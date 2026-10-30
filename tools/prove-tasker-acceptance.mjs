@@ -366,7 +366,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   await page.getByRole('button', { name: `Move ${matching.task_title} up`, exact: true }).click()
   await page.getByRole('button', { name: `Remove from My Focus: ${matching.task_title}`, exact: true }).click()
   await expect(page.getByRole('link', { name: matching.task_title, exact: true })).toHaveCount(0)
-  assert.deepEqual((await api('/api/user_settings/Task%20Management%20Focus')).settings.task_ids, [ordinary.row_id])
+  await expect.poll(async () => (await api('/api/user_settings/Task%20Management%20Focus')).settings.task_ids).toEqual([ordinary.row_id])
   assert.deepEqual(await api(`/api/table/tasker.task/${matching.row_id}`), matching)
   await page.getByRole('button', { name: `Remove from My Focus: ${ordinary.task_title}`, exact: true }).click()
   await page.getByRole('button', { name: 'Together', exact: true }).click()
@@ -378,8 +378,8 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
 
   await page.getByRole('button', { name: 'Blank context proof', exact: true }).click()
   await page.getByRole('button', { name: '☆ Add to tabs', exact: true }).click()
+  await expect.poll(async () => (await api('/api/user_settings/tasker.projects')).settings.project_ids.at(-1)).toBe(projectId)
   const originalTabs = (await api('/api/user_settings/tasker.projects')).settings.project_ids
-  assert.equal(originalTabs.at(-1), projectId)
   await page.getByRole('button', { name: 'Move project Blank context proof tab left', exact: true }).click()
   await expect.poll(async () => (await api('/api/user_settings/tasker.projects')).settings.project_ids.at(-2)).toBe(projectId)
   await page.getByRole('button', { name: 'Move project Blank context proof tab right', exact: true }).click()
