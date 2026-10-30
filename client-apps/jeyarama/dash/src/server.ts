@@ -83,12 +83,10 @@ export function appOrigin(value: unknown): string | null {
  * that Dive: a version number means something only for its own Dive. A Dive before v12 reads a
  * missing `material_groups` as "every store", so anything not listed gets the legacy state.
  *
- * Shipped EMPTY in 0.10.0: every pin gets the legacy state. Listing a version before the owner
- * publishes it could name an older Dive. The follow-up (README, "Turning on the compact state"):
- * once `publish_dive.py` prints the new version N, a one-line 0.10.1 adds
- * `'9022f10f-be83-4fba-a729-5399c18d150e': [N]` here.
+ * The Sales Target Dive reads it from v13, its published cached-first version. v12 on MotherDuck
+ * is an older wording-only version that does not, so it is not listed.
  */
-export const COMPACT_DIVES: Readonly<Record<string, readonly number[]>> = Object.freeze({})
+export const COMPACT_DIVES: Readonly<Record<string, readonly number[]>> = Object.freeze({ '9022f10f-be83-4fba-a729-5399c18d150e': [13] })
 
 // Swappable for the tests, which exercise the compact path with a map of their own.
 let compactDives: Readonly<Record<string, readonly number[]>> = COMPACT_DIVES

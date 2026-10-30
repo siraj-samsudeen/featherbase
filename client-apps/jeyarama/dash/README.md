@@ -12,9 +12,11 @@ The instances' settings, the privacy notice and the one-off setup steps live in
 the client's private instance repository, never here. JeyaRama's conventions
 shared by its apps are in `../CLAUDE.md`.
 
-**Version 0.10.0**, the version data-warehouse last shipped; the next change is 0.10.1. It arrived here as a snapshot, without its earlier git history
-and with no upgrade history (`migrations` is empty): go-live is a fresh
-install, and the platform is fresh-install only. Its version changes only in a
+**Version 0.10.1.** It arrived here at 0.10.0, the version data-warehouse last
+shipped, as a snapshot without its earlier git history and with no upgrade
+history: go-live is a fresh install, and the platform is fresh-install only.
+0.10.1 lists the published Sales Target Dive v13 as compact-aware, with one
+code-only upgrade step (`compact_sales_target_dive_v13`, 0.10.0 → 0.10.1). Its version changes only in a
 release PR (ADR 0014, section 4). A client image is built when the app is
 released, not here.
 
@@ -25,9 +27,9 @@ view names subcategories without their codes, and the store picker names
 stores without plant codes. `sales_to_date` carries the month's target and
 actual quantities for the Dive's cache, and the page tells the Dive its own
 origin for the ready message. The compact whole-store state follows the pinned
-Dive (`COMPACT_DIVES` in `src/server.ts`), which ships empty, so every pin gets
-the plain scope keys until a release lists the published Dive version (see
-"Turning on the compact state"). The history behind these is in the client's
+Dive (`COMPACT_DIVES` in `src/server.ts`), which lists the Sales Target Dive at
+v13 only; every other pin gets the plain scope keys (see "Turning on the
+compact state"). The history behind these is in the client's
 repository (data-warehouse #4486, #4531, #4453).
 
 ## Layout
@@ -35,7 +37,7 @@ repository (data-warehouse #4486, #4531, #4453).
 | Path | What it is |
 |---|---|
 | `package.json` | the app's identity (`version` is the app version) and its build scripts |
-| `featherbase.json` | the manifest: Tables, the scope provider, roles, grants, datasets and declared reads; `migrations` is the upgrade history (empty: the app was installed fresh at 0.10.0) |
+| `featherbase.json` | the manifest: Tables, the scope provider, roles, grants, datasets and declared reads; `migrations` is the upgrade history (it starts at 0.10.0, where the app was installed fresh) |
 | `src/server.ts` | the server module, bundled by esbuild to `dist/server.mjs` |
 | `src/validators.ts` | the org chart Tables' save rules |
 | `src/coverage.ts`, `src/provider.ts` | coverage on the new org chart, and the scope provider |
@@ -253,7 +255,7 @@ written in the script.
       whole-store reader's keys follow the pinned Dive (`dive_id` and
       `dive_version`):
       - **compact**, only for a Dive and version listed in `COMPACT_DIVES`
-        (`src/server.ts`; empty today): no
+        (`src/server.ts`; the Sales Target Dive at v13): no
         `material_groups` or `section_by_material_group`; the Dive filters
         on the store alone, and the sections come as `sections: { <name>:
         [codes] }`;
@@ -261,8 +263,9 @@ written in the script.
         version that is not plain digits): the plain scope keys, the full
         `material_groups` (the places', the cache's and, with nothing cached,
         the warehouse's subcategories) and `section_by_material_group`. A
-        Dive before v12 reads a missing `material_groups` as "every store",
-        so no setting can give it the compact state. A later version that
+        Dive before v13 does not read the compact state (one before v12
+        reads a missing `material_groups` as "every store"), so no setting
+        can give it the compact state. A later version that
         keeps the format is added to `COMPACT_DIVES` in a new app version.
     - **`cached`, version 1:** `{ v: 1, refreshed_at, data_through, q, cols }`
       or the same with `z` in place of `cols` (the columns as JSON, gzipped,
@@ -299,21 +302,20 @@ written in the script.
   `MOTHERDUCK_TOKEN` (every read answers "not set up" while it is missing);
   `frameOrigins: ["https://embed-motherduck.com"]`.
 
-## Turning on the compact state (after the Dive is published)
+## Turning on the compact state
 
-The app ships `COMPACT_DIVES` empty, so every pin gets the legacy state: listing a
-version before it is published could name an older Dive, which reads a missing
-`material_groups` as every store. Until then, a whole-store reader of a store
-over about 600 subcategories gets no cache, and one over about 1,525 gets the
-cached table instead of the Dive.
+The app lists a Dive version in `COMPACT_DIVES` only once that version is
+published: listing one early could name an older Dive, which reads a missing
+`material_groups` as every store. On any other pin, a whole-store reader of a
+store over about 600 subcategories gets no cache, and one over about 1,525 gets
+the cached table instead of the Dive.
 
-1. Confirm which Sales Target Dive version is live.
-2. Publish the new Dive with `analysis/issue_4453_dive_cached_live/publish_dive.py`
-   (owner only) and note the version N it prints.
-3. Tell the team N. A one-line 0.10.1 adds
-   `'9022f10f-be83-4fba-a729-5399c18d150e': [N]` to `COMPACT_DIVES`.
-4. Pin `dive_version=N` on dev only, with 0.10.1 deployed.
-5. Check the real embed on dev (cached, then live, and whether the ready
+1. Done: the cached-first Sales Target Dive is published as v13 (v12 is an
+   older wording-only version, not compact-aware).
+2. Done: 0.10.1 adds `'9022f10f-be83-4fba-a729-5399c18d150e': [13]` to
+   `COMPACT_DIVES` (featherbase#712).
+3. Pin `dive_version=13` on dev only, with 0.10.1 deployed.
+4. Check the real embed on dev (cached, then live, and whether the ready
    message arrives); only then set `dive_ready_signal=on`.
 
 ## The coverage comparison
