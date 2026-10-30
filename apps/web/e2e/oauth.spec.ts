@@ -132,7 +132,11 @@ test('a Google account nobody set up lands on the sign-in page with a plain mess
   // Its own never-seen address and account ID, so no earlier spec's person or
   // link can let it in.
   const stranger = `oauth.e2e.stranger.${Date.now()}@gmail.com`
-  await session.visit('/login')
+  const next = '/featherbase/admin/Person'
+  // The isolated provider returns to the configured admin address; begin on
+  // that same origin so the saved destination belongs to the returning tab.
+  const origin = process.env.E2E_ISOLATED === '1' ? `http://admin.localhost:${process.env.E2E_WEB_PORT ?? '5193'}` : ''
+  await session.visit(`${origin}/login?next=${encodeURIComponent(next)}`)
   await session.step('sign in through the mock OAuth flow with an address nobody invited', async ({ page }) => {
     await page.getByTestId('google-login').click()
     await page.getByTestId('mock-email').fill(stranger)
@@ -141,7 +145,8 @@ test('a Google account nobody set up lands on the sign-in page with a plain mess
 
   // #474: a panel of next steps, not an empty form.
   await session.step('back on the sign-in page, told what to do, with no form to type into', async ({ page }) => {
-    await page.waitForURL(/\/featherbase\/login\?error=not_provisioned$/)
+    await expect(page).toHaveURL((url) => url.pathname === '/featherbase/login'
+      && url.searchParams.get('error') === 'not_provisioned' && url.searchParams.get('next') === next)
     const panel = page.getByTestId('sign-in-refused-panel')
     await expect(panel.getByRole('heading', { name: "We couldn't sign you in" })).toBeVisible()
     await expect(page.getByTestId('sign-in-refused')).toContainText("This Google account isn't set up for")

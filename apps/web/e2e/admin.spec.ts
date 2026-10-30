@@ -1,5 +1,21 @@
 import { anonymousTest as test, test as signedInTest, expect, ADMIN_PWD, adminAuth } from './fixtures'
 
+test('a lost connection during sign-in explains the failure and allows another attempt', async ({ session, page }) => {
+  await session.visit('/login').fillIn('Email or username', 'Administrator').fillIn('Password', ADMIN_PWD)
+  await session.step('submit without a connection', async () => {
+    await page.context().setOffline(true)
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await expect(page.getByTestId('login-error')).toHaveText('Sign-in failed. Please try again.')
+    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled()
+    await expect(page).toHaveURL(/\/login$/)
+    await page.context().setOffline(false)
+  })
+  await session.clickButton('Sign in').step('the same credentials work once the connection returns', async () => {
+    await expect(page).toHaveURL(/\/admin/)
+    await expect(page.getByTestId('session-user')).toContainText('Administrator')
+  })
+})
+
 // UI-001. The login form's fields ARE labelled,
 // so sign-in itself becomes DSL verbs; the sidebar/table-nav assertions stay
 // testid-addressed steps.

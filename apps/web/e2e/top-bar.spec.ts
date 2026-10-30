@@ -1,5 +1,7 @@
 import { anonymousTest as test, expect, adminAuth, type Page } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
+import { createServer, request as httpRequest } from 'node:http'
+import { once } from 'node:events'
 
 // #489 (design D3, "One top bar on every address"): the shared top bar on the
 // two addresses of one instance (playwright.config.ts INSTANCE_ADDRESSES):
@@ -15,6 +17,45 @@ const PASSWORD = 'top-bar-pw-489'
 const SHOTS = process.env.TOP_BAR_SHOTS
 
 test.skip(process.env.E2E_ISOLATED !== '1', 'needs the isolated stack, whose server lists the two addresses')
+
+test('the Admin bar remains named and usable when its public brand endpoint fails', async ({ session, page, request }) => {
+  const manager = await person(request, 'Brand Outage Manager', ['System Manager'])
+  let failures = 0
+  // A real HTTP reverse proxy isolates the outage to the public brand endpoint.
+  // Every other request reaches the same running application and database.
+  const proxy = createServer((incoming, outgoing) => {
+    if (incoming.url === '/api/brand') {
+      failures++
+      outgoing.writeHead(503, { 'content-type': 'text/plain' }).end('Brand temporarily unavailable')
+      return
+    }
+    const upstream = httpRequest(`http://localhost:${port}${incoming.url}`, {
+      method: incoming.method, headers: { ...incoming.headers, host: `localhost:${port}` },
+    }, (response) => {
+      outgoing.writeHead(response.statusCode!, response.headers)
+      response.pipe(outgoing)
+    })
+    upstream.on('error', () => outgoing.writeHead(502).end())
+    incoming.pipe(upstream)
+  })
+  proxy.listen(0, '127.0.0.1')
+  await once(proxy, 'listening')
+  const address = proxy.address() as { port: number }
+  try {
+    await session.step('sign in through the proxy while brand is unavailable', async () => {
+      await signInAt(page, `http://127.0.0.1:${address.port}`, manager)
+      await expect(page.getByTestId('admin-sidebar')).toBeVisible()
+      // Login's StrictMode effects plus the bar's initial read and two retries.
+      await expect.poll(() => failures).toBeGreaterThanOrEqual(5)
+      await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase Admin')
+      await page.getByTestId('session-user').click()
+      await expect(page.getByTestId('logout')).toBeVisible()
+    })
+  } finally {
+    proxy.closeAllConnections()
+    await new Promise<void>((resolve) => proxy.close(() => resolve()))
+  }
+})
 
 async function person(request: APIRequestContext, name: string, roles: string[]): Promise<string> {
   const headers = await adminAuth(request)
