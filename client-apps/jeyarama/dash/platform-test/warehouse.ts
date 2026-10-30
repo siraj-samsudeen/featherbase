@@ -23,11 +23,12 @@ export async function openWarehouse() {
     `attach ':memory:' as marts`, `attach ':memory:' as gold`,
     `create schema marts.sales`, `create schema gold.masters`, `create schema gold.sales`,
     `create table marts.sales.target_vs_actual_daily (plant_code varchar, hierarchy_code varchar, hierarchy_level varchar,
-       business_date date, target_daily_before_tax decimal(15,2), actual_before_tax decimal(15,2), actuals_as_of_date date)`,
+       business_date date, target_daily_before_tax decimal(15,2), actual_before_tax decimal(15,2), actuals_as_of_date date,
+       target_quantity decimal(15,3), actual_quantity decimal(15,3))`,
     `create table gold.masters.store (store_code varchar, store_name varchar, short_code varchar)`,
     `create table gold.masters.merchandise_hierarchy (material_group_code varchar, subcategory varchar)`,
     `create table gold.sales.sales_item_daily (store_code varchar, material_group varchar, business_date date,
-       sales_before_tax_net decimal(15,2), sale_line_kind varchar)`,
+       sales_before_tax_net decimal(15,2), sale_line_kind varchar, qty_net decimal(15,3))`,
     `insert into gold.masters.store values ('9901', 'Lakeside', 'LKS')`,
   ]) await run(statement)
   // The same wrapping and placeholders as the driver's own `query` (featherbase sources/duckdb-driver.ts).
@@ -63,7 +64,8 @@ type Day = number | null
 
 /**
  * Store 9901's month so far, one entry per subcategory: a number is that
- * subcategory's target (and a sale) on the 1st; `null` is a sale with no target.
+ * subcategory's target (and a sale) on the 1st; `null` is a sale with no target. Each day sells
+ * one piece against a target of two (the quantities, which only 0.9.0's query reads).
  * A list is one such entry per day from the 1st (only days up to today count).
  */
 export async function fillWarehouse(targets: Record<string, Day | Day[]>) {
@@ -73,9 +75,9 @@ export async function fillWarehouse(targets: Record<string, Day | Day[]>) {
   for (const [code, entry] of Object.entries(targets)) {
     await run(`insert into gold.masters.merchandise_hierarchy values (?, ?)`, [code, `Made-up ${code}`])
     for (const [offset, target] of (Array.isArray(entry) ? entry : [entry]).entries()) {
-      await run(`insert into gold.sales.sales_item_daily values ('9901', ?, cast(? as date) + ?, 100, 'merchandise')`, [code, day1, offset])
+      await run(`insert into gold.sales.sales_item_daily values ('9901', ?, cast(? as date) + ?, 100, 'merchandise', 1)`, [code, day1, offset])
       if (target !== null) await run(`insert into marts.sales.target_vs_actual_daily
-        values ('9901', ?, 'material_group', cast(? as date) + ?, ?, 100, cast(? as date) + ?)`, [code, day1, offset, target, day1, offset])
+        values ('9901', ?, 'material_group', cast(? as date) + ?, ?, 100, cast(? as date) + ?, 2, 1)`, [code, day1, offset, target, day1, offset])
     }
   }
 }

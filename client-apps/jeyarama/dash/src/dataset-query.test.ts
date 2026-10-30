@@ -26,23 +26,26 @@ beforeAll(async () => {
     `attach ':memory:' as marts`, `attach ':memory:' as gold`,
     `create schema marts.sales`, `create schema gold.masters`, `create schema gold.sales`,
     `create table marts.sales.target_vs_actual_daily (plant_code varchar, hierarchy_code varchar, hierarchy_level varchar,
-       business_date date, target_daily_before_tax decimal(15,2), actual_before_tax decimal(15,2), actuals_as_of_date date)`,
+       business_date date, target_daily_before_tax decimal(15,2), actual_before_tax decimal(15,2), actuals_as_of_date date,
+       target_quantity decimal(15,3), actual_quantity decimal(15,3))`,
     `create table gold.masters.store (store_code varchar, store_name varchar, short_code varchar)`,
     `create table gold.masters.merchandise_hierarchy (material_group_code varchar, subcategory varchar)`,
     `create table gold.sales.sales_item_daily (store_code varchar, material_group varchar, business_date date,
-       sales_before_tax_net decimal(15,2), sale_line_kind varchar)`,
+       sales_before_tax_net decimal(15,2), sale_line_kind varchar, qty_net decimal(15,3))`,
     `insert into gold.masters.store values ('9901', 'Lakeside', 'LKS')`,
     `insert into gold.masters.merchandise_hierarchy values ('010101001', 'Silk sarees'), ('010101002', 'Cotton sarees'),
        ('010909001', 'Gift vouchers'), ('010303001', 'Scarves')`,
     // Silk sarees: a target and a sale on day 1. Cotton sarees: a target and no sale (the mart
     // fills a zero actual). Scarves: a sale that nets to zero, with no target.
+    // Quantities: Silk sarees' mart row says 4 sold of a target of 5 (its sales lines say 3, which
+    // the mart's day row overrides, as it does for the value); Scarves sold 2 with no mart row.
     `insert into marts.sales.target_vs_actual_daily values
-       ('9901', '010101001', 'material_group', date '${day1}', 1000, 800, date '${day1}'),
-       ('9901', '010101002', 'material_group', date '${day1}', 500, 0, date '${day1}')`,
+       ('9901', '010101001', 'material_group', date '${day1}', 1000, 800, date '${day1}', 5, 4),
+       ('9901', '010101002', 'material_group', date '${day1}', 500, 0, date '${day1}', 2.5, 0)`,
     `insert into gold.sales.sales_item_daily values
-       ('9901', '010101001', date '${day1}', 800, 'merchandise'),
-       ('9901', '010303001', date '${day1}', 0, 'merchandise'),
-       ('9901', '010909001', date '${day1}', 2500, 'gift_voucher_issuance')`,
+       ('9901', '010101001', date '${day1}', 800, 'merchandise', 3),
+       ('9901', '010303001', date '${day1}', 0, 'merchandise', 2),
+       ('9901', '010909001', date '${day1}', 2500, 'gift_voucher_issuance', 1)`,
   ]) await run(statement)
 })
 
@@ -91,6 +94,26 @@ describe('the target days of a sales_to_date row', () => {
 
   it('count no day for a subcategory that only sold', async () => {
     expect(Number((await rowOf('010303001'))!.target_days)).toBe(0)
+  })
+})
+
+// The Dive's cached rows carry quantities beside the values (#4453), taken from the same rows:
+// the mart's day row when there is one, else the day's sales lines.
+describe('the quantities of a sales_to_date row', () => {
+  it("give a subcategory the month's target quantity from the mart", async () => {
+    expect(Number((await rowOf('010101002'))!.target_quantity)).toBe(2.5)
+  })
+
+  it("take the actual quantity from the mart's day row when there is one", async () => {
+    expect(Number((await rowOf('010101001'))!.actual_quantity)).toBe(4)
+  })
+
+  it('take the actual quantity from the sales lines on a day the mart has no row for', async () => {
+    expect(Number((await rowOf('010303001'))!.actual_quantity)).toBe(2)
+  })
+
+  it('give no target quantity to a subcategory that only sold', async () => {
+    expect((await rowOf('010303001'))!.target_quantity).toBeNull()
   })
 })
 

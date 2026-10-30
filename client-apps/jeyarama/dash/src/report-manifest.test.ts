@@ -37,7 +37,7 @@ describe('the report in the manifest', () => {
     const row: Record<keyof SalesRow, string> = {
       store_code: 'text', store_name: 'text', short_code: 'text', subcategory_code: 'text', subcategory: 'text',
       target: 'money', actual: 'money', days_with_actual: 'integer', days: 'integer', period_start: 'date', data_through: 'date',
-      targets_available: 'boolean', target_days: 'integer',
+      targets_available: 'boolean', target_days: 'integer', target_quantity: 'number', actual_quantity: 'number',
     }
     expect(sales().columns).toEqual(Object.entries(row).map(([name, type]) => ({ name, type })))
   })

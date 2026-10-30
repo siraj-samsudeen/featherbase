@@ -20,7 +20,11 @@ import { randomUUID } from 'node:crypto'
 
 const [checkout, appDir] = process.argv.slice(2)
 if (!checkout || !appDir) throw new Error('usage: seed-made-up.mts <featherbase checkout> <app folder>')
-const api = process.env.FEATHER_DASH_API ?? 'http://localhost:8100'
+// Both are required: without DATABASE_URL the checkout's db.ts falls back to the default local
+// database while the API calls reach another, and the seed lands in the wrong one (#4453).
+if (!process.env.DATABASE_URL || !process.env.FEATHER_DASH_API)
+  throw new Error('Set DATABASE_URL and FEATHER_DASH_API to the same throwaway instance (README, "Seeing the report locally")')
+const api = process.env.FEATHER_DASH_API
 const server = (path: string) => import(pathToFileURL(resolve(checkout, 'apps/server/src', path)).href)
 const { sql } = await server('db.ts')
 const { setUserPassword } = await server('auth.ts')
@@ -80,7 +84,8 @@ const people: Record<string, string> = {}
 for (const [key, name] of [['many', 'Asha Many-Stores'], ['one', 'Ravi One-Store'], ['none', 'Nila No-Access'], ['bare', 'Kumar Bare-Store'],
   ['quiet', 'Meena Quiet-Section'], ['sm', 'Selvi Store-Manager'], ['tl2', 'Tara Two-Sections'], ['tl4', 'Faiz Four-Sections'],
   ['several', 'Vani Several-Roles'], ['assigned', 'Arun Assigned'], ['preparing', 'Priya Preparing'], ['dm2', 'Deepa Department-Manager'],
-  ['staff1', 'Siva Section-Staff'], ['tl3', 'Tamil Three-Sections'], ['smtl', 'Mohan Manager-And-Leader']]) {
+  ['staff1', 'Siva Section-Staff'], ['tl3', 'Tamil Three-Sections'], ['smtl', 'Mohan Manager-And-Leader'],
+  ['smlarge', 'Bala Large-Store']]) {
   const email = `reader-${key}@example.test`
   const [found] = await sql`select row_id from person where lower(email) = ${email}`
   const id = found ? String(found.row_id) : String((await post('/api/table/Person', { email, full_name: name, enabled: true,
@@ -92,7 +97,7 @@ for (const [key, name] of [['many', 'Asha Many-Stores'], ['one', 'Ravi One-Store
 // Stores: Lakeside 9901 and Hillview 9902 have sections; Riverside 9903 has none; Northgate 9905 has
 // a section but nothing cached (its figures are being prepared). All live. Parkside 9904 is not live:
 // it is on the old rules, where a subcategory can be assigned to a person (#4486).
-for (const store of ['9901', '9902', '9903', '9905']) await save('feather_dash.store_rollout', { store, live_since: '2026-01-01' }).catch(() => {})
+for (const store of ['9901', '9902', '9903', '9905', '9906']) await save('feather_dash.store_rollout', { store, live_since: '2026-01-01' }).catch(() => {})
 const section = (store: string, name: string) => save('feather_dash.section', { store, section_name: name })
 const place = (store: string, subcategory: string, sectionId: string) =>
   save('feather_dash.section_subcategory', { store, subcategory, section: sectionId, starts_on: '2026-01-01' })
@@ -141,6 +146,13 @@ await job(people.staff1, 'Staff', '9901', { section: sarees.row_id })
 for (const s of [bags, footwear, watches]) await job(people.tl3, 'Team Leader', '9901', { section: s.row_id })
 await job(people.smtl, 'Store Manager', '9901')
 await job(people.smtl, 'Team Leader', '9901', { section: sarees.row_id })
+// #4453: a large store, Bayside 9906, with 1,600 made-up subcategories; two sections name a few of them.
+const LARGE = Array.from({ length: 1600 }, (_, i) => `02${String(Math.floor(i / 100)).padStart(2, '0')}${String(i % 100).padStart(5, '0')}`)
+const baysideHome = await section('9906', 'Home Linen')
+const baysideToys = await section('9906', 'Toys')
+for (const code of LARGE.slice(0, 3)) await place('9906', code, baysideHome.row_id)
+for (const code of LARGE.slice(3, 6)) await place('9906', code, baysideToys.row_id)
+await job(people.smlarge, 'Store Manager', '9906')
 // Parkside, on the old rules: its merchandise map, and one subcategory assigned to a person with no employee code.
 const oldRow = (table: string, row: Record<string, unknown>) => post(`/api/table/${encodeURIComponent(table)}`, row)
 await oldRow('Section Merchandise Map', { store_code: '9904', material_group: '010101001', mch_subcategory: 'Silk sarees', section_name: 'Ethnic' })
@@ -160,10 +172,12 @@ const periodStart = `${todayIst.slice(0, 8)}01`
 const lastMonth = new Date(Date.UTC(Number(todayIst.slice(0, 4)), Number(todayIst.slice(5, 7)) - 2, 1)).toISOString().slice(0, 10)
 const lastMonthEnd = new Date(Date.UTC(Number(todayIst.slice(0, 4)), Number(todayIst.slice(5, 7)) - 1, 0)).toISOString().slice(0, 10)
 // Lakeside and Parkside carry a short code, as the warehouse's store master does; the header names them by it.
-const SHORT_CODES: Record<string, string> = { '9901': 'LKS', '9904': 'PKS' }
+const SHORT_CODES: Record<string, string> = { '9901': 'LKS', '9904': 'PKS', '9906': 'BYS' }
 const row = (store: string, name: string, code: string, subcategory: string, target: number | null, actual: number | null, month = periodStart, through = dataThrough) => ({
   store_code: store, store_name: name, short_code: SHORT_CODES[store] ?? null, subcategory_code: code, subcategory, target, actual,
-  days_with_actual: actual == null ? 0 : 10, days: 10, period_start: month, data_through: through, targets_available: true })
+  days_with_actual: actual == null ? 0 : 10, days: 10, period_start: month, data_through: through, targets_available: true,
+  // 0.10.0's quantities (#4453): made up from the values, three decimals as the warehouse carries them.
+  target_quantity: target == null ? null : Math.round(target / 1.5) / 1000, actual_quantity: actual == null ? null : Math.round(actual / 1.5) / 1000 })
 // Figures with paise, so the two-decimal totals can be checked by hand.
 const facts = [
   row('9901', 'Lakeside', '010101001', 'Silk sarees', 1250000.49, 1010000.51),
@@ -180,8 +194,9 @@ const facts = [
   // Hillview's copy is of last month: the page says this month's figures haven't arrived.
   row('9902', 'Hillview', '010404001', 'Belts', 90000, 70000, lastMonth, lastMonthEnd),
   row('9903', 'Riverside', '010505001', 'Handbags', 50000, 40000),
+  ...LARGE.map((code, i) => row('9906', 'Bayside', code, `Made-up line ${i + 1}`, 20000 + (i % 37) * 1000.25, 15000 + (i % 29) * 1100.5)),
 ]
-const STORE_NAMES: Record<string, string> = { '9901': 'Lakeside', '9902': 'Hillview', '9903': 'Riverside', '9904': 'Parkside' }
+const STORE_NAMES: Record<string, string> = { '9901': 'Lakeside', '9902': 'Hillview', '9903': 'Riverside', '9904': 'Parkside', '9906': 'Bayside' }
 // The month's metadata, one row per store and subcategory, of the same refresh. Hillview's is last month's too.
 const month = [
   ...['010101001', '010101002', '010202001', '010606001', '010909001', '010707001', '010808001', '011010001', '011212001', '011313001'].map(code => ['9901', code, periodStart, dataThrough]),
@@ -189,6 +204,7 @@ const month = [
   // Northgate 9905 has no row in either copy: its figures are being prepared.
   ['9902', '010404001', lastMonth, lastMonthEnd],
   ['9903', '010505001', periodStart, dataThrough],
+  ...LARGE.map(code => ['9906', code, periodStart, dataThrough]),
 ].map(([store_code, subcategory_code, period_start, data_through]) => ({ store_code, store_name: STORE_NAMES[store_code], subcategory_code,
   period_start, data_through, targets_available: true }))
 
@@ -224,6 +240,7 @@ console.log(`Seeded. Sign in at /featherbase/login with the password in this scr
   reader-dm2@example.test       Department Manager of Menswear (2 sections) at Lakeside
   reader-staff1@example.test    section staff in Sarees at Lakeside ("because you work in them")
   reader-tl3@example.test       Team Leader of 3 sections at Lakeside (all three named)
-  reader-smtl@example.test      Store Manager of Lakeside and Team Leader of Sarees there`)
+  reader-smtl@example.test      Store Manager of Lakeside and Team Leader of Sarees there
+  reader-smlarge@example.test   Store Manager of Bayside, a large store (1,600 subcategories)`)
 await sql.end()
 process.exit(0)

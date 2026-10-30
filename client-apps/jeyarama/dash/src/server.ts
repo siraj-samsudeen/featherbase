@@ -4,7 +4,8 @@
 // chart Tables' save rules are its `validators`.
 export { validators } from './validators.ts'
 import { orgChartProvider, type Place } from './provider.ts'
-import { buildReport, headingOf, initialState, istToday, needsShortCodes, scopeIn, storeLabels, storeShortName, storesOf, type CachedAnswer, type Month, type SalesRow } from './report.ts'
+import { EMBED_STATE_LIMIT_BYTES, buildReport, headingOf, initialState, istToday, needsShortCodes, scopeIn, storeLabels, storeShortName, storesOf, type CachedAnswer, type Month, type SalesRow, type StateFormat } from './report.ts'
+import { gzipBase64 } from './compress.ts'
 
 /** The places each person covers (featherbase B2), per store: the new org chart or today's derivation. */
 export const scopeProviders = { org_chart: orgChartProvider() }
@@ -61,6 +62,45 @@ function chosenStore(ctx: ScopedContext): string {
   if (named === undefined || named === null || named === '') return stores[0]
   if (typeof named !== 'string' || !stores.includes(named)) ctx.reject('That store is not one of your stores')
   return named
+}
+
+/**
+ * The page's origin as the page sends it, when it is a plain http(s) origin: the Dive's ready
+ * message is sent to it. It carries no data, so a wrong origin only misdirects that message.
+ */
+export function appOrigin(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'https:' || url.protocol === 'http:') && url.origin === value ? value : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The Dives known to read the compact whole-store state (#4453), by Dive id and the versions of
+ * that Dive: a version number means something only for its own Dive. A Dive before v12 reads a
+ * missing `material_groups` as "every store", so anything not listed gets the legacy state.
+ *
+ * Shipped EMPTY in 0.10.0: every pin gets the legacy state. Listing a version before the owner
+ * publishes it could name an older Dive. The follow-up (README, "Turning on the compact state"):
+ * once `publish_dive.py` prints the new version N, a one-line 0.10.1 adds
+ * `'9022f10f-be83-4fba-a729-5399c18d150e': [N]` here.
+ */
+export const COMPACT_DIVES: Readonly<Record<string, readonly number[]>> = Object.freeze({})
+
+// Swappable for the tests, which exercise the compact path with a map of their own.
+let compactDives: Readonly<Record<string, readonly number[]>> = COMPACT_DIVES
+export function setCompactDives(known: Readonly<Record<string, readonly number[]>> | null) {
+  compactDives = known ?? COMPACT_DIVES
+}
+
+/** The state the pinned Dive gets: compact only for a known Dive id at a known version (digits only). */
+export function stateFormat(diveId: string | undefined, version: string | undefined,
+  known: Readonly<Record<string, readonly number[]>> = compactDives): StateFormat {
+  if (!diveId || !version || !/^\d+$/.test(version)) return 'legacy'
+  return Object.hasOwn(known, diveId) && known[diveId].includes(Number(version)) ? 'compact' : 'legacy'
 }
 
 async function cachedRows(ctx: ScopedContext, store?: string): Promise<CachedAnswer> {
@@ -149,7 +189,8 @@ export const reads = {
   /**
    * A fresh MotherDuck embed session for the reader's Dive (outbound: it runs after the
    * platform's transaction has closed). The Dive's state carries the reader's store,
-   * subcategories and sections, and the cached rows under `cached` when they fit.
+   * scope (a section reader's subcategories, or the whole store) and the cached month to date
+   * under `cached`, on the first rung of the 56 KB ladder that fits (`initialState`).
    */
   async embed_session(context: ReadContext) {
     const ctx = context as ScopedContext
@@ -164,20 +205,30 @@ export const reads = {
     } catch {
       // The Dive reads the warehouse itself; without a cached copy it opens without one.
     }
-    // A whole-store reader's Dive must not lose the store's unplaced subcategories when the
+    const format = stateFormat(diveId, version)
+    // Legacy: a whole-store reader's Dive must not lose the store's unplaced subcategories when the
     // cache is missing: the cached rows of any month name them, else the warehouse itself does.
     let storeCodes = (answer?.rows ?? []).filter(r => r.store_code === store).map(r => r.subcategory_code)
-    if (scopeIn(placesOf(ctx), store).wholeStore && !storeCodes.length) {
+    if (format === 'legacy' && scopeIn(placesOf(ctx), store).wholeStore && !storeCodes.length) {
       try {
         storeCodes = ((await ctx.datasets.live(SALES_DATASET, { store_code: store })).rows as SalesRow[]).map(r => r.subcategory_code)
       } catch {
-        // The Dive still gets `whole_store`, and filters on the store alone.
+        // The Dive still gets `whole_store`, and the places' own subcategories.
       }
     }
     const today = istToday()
     const report = buildReport({ store, places: placesOf(ctx), answer, month, today })
-    const body = JSON.stringify({ username: account, version: Number(version),
-      initial_state: initialState(report, answer, placesOf(ctx), today, storeCodes) })
+    const origin = appOrigin((ctx.payload as { app_origin?: unknown } | undefined)?.app_origin)
+    const state = initialState(report, answer, placesOf(ctx), today, { appOrigin: origin, compress: gzipBase64, format, storeCodes })
+    // Past MotherDuck's cap the session would be refused: never trimmed, the page shows the cached
+    // table. The operator log names the store, never the person.
+    const stateBytes = new TextEncoder().encode(JSON.stringify(state)).length
+    if (stateBytes > EMBED_STATE_LIMIT_BYTES) {
+      console.warn(JSON.stringify({ event: 'feather_dash_embed_state_too_large', store, bytes: stateBytes, limit: EMBED_STATE_LIMIT_BYTES,
+        message: `Store ${store}'s interactive report exceeds the embed size limit; readers see the cached table.` }))
+      return { too_large: true }
+    }
+    const body = JSON.stringify({ username: account, version: Number(version), initial_state: state })
     let failure: string
     const abort = new AbortController()
     const timer = setTimeout(() => abort.abort(), EMBED_API_TIMEOUT_MS)

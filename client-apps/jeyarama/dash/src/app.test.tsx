@@ -8,7 +8,7 @@ import { resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 type Deferred = { resolve: (body: unknown) => void }
-const calls: { name: string; store?: string; answer: Deferred }[] = []
+const calls: { name: string; store?: string; payload: Record<string, unknown>; answer: Deferred }[] = []
 let teardown: () => void = () => {}
 
 beforeAll(() => {
@@ -28,10 +28,11 @@ beforeAll(() => {
   ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
   ;(globalThis as Record<string, unknown>).fetch = (url: string, init: RequestInit) => {
     const name = decodeURIComponent(String(url).split('/').at(-1)!)
-    const store = (JSON.parse(String(init.body)).payload ?? {}).store
+    const payload = JSON.parse(String(init.body)).payload ?? {}
+    const store = payload.store
     return new Promise(resolveCall => {
       const answer: Deferred = { resolve: body => resolveCall(new Response(JSON.stringify({ result: body }), { status: 200 })) }
-      calls.push({ name, store, answer })
+      calls.push({ name, store, payload, answer })
       if (name === 'stores') answer.resolve([{ value: '9901', label: 'Lakeside · 9901' }, { value: '9902', label: 'Hillview · 9902' }])
     })
   }
@@ -79,7 +80,7 @@ describe('choosing another store on the rendered page', () => {
 
   // Codex round 9: the bar, or Back/Forward, repeating the store on show must never leave the
   // page waiting with nothing in flight.
-  async function openOn9901({ answer = true } = {}) {
+  async function openOn9901({ answer = true, embed = { not_set_up: true } as Record<string, unknown> } = {}) {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
     const { FeatherDash } = await import('./app')
@@ -92,7 +93,7 @@ describe('choosing another store on the rendered page', () => {
     await act(async () => { await settle() })
     const answerAll = async () => {
       for (const c of calls.filter(c => c.store === '9901'))
-        c.answer.resolve(c.name === 'report' ? report('9901', 'Lakeside silk') : { not_set_up: true })
+        c.answer.resolve(c.name === 'report' ? report('9901', 'Lakeside silk') : embed)
       await act(async () => { await settle() })
     }
     if (answer) await answerAll()
@@ -143,8 +144,22 @@ describe('choosing another store on the rendered page', () => {
     expect(container.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('quick')
     await unmount()
   })
-})
 
+  // The Dive's ready message is sent to the page's own origin, which only the page knows (#4453).
+  it("sends the page's own origin with the Dive's session request", async () => {
+    const { unmount } = await openOn9901()
+    expect(calls.find(c => c.name === 'embed_session')?.payload.app_origin).toBe('http://localhost')
+    await unmount()
+  })
+
+  // #4453: a store whose Dive state would pass MotherDuck's cap gets the cached table, and is told why.
+  it("says the store is too large for the interactive report when the Dive's state is too large", async () => {
+    const { container, unmount } = await openOn9901({ embed: { too_large: true } })
+    expect(container.querySelector('[data-testid=quick-label]')?.textContent)
+      .toBe('This store is too large for the interactive report yet. Showing the cached table.')
+    await unmount()
+  })
+})
 
 // #4486: the header says why the reader sees the store on show, and follows the bar's store picker.
 describe("the page's header", () => {

@@ -24,6 +24,10 @@ describe('the page', () => {
     expect(pageView({ embed: { ok: true, value: { unreachable: true } }, report: report('ready') })).toEqual({ kind: 'quick' })
   })
 
+  it("shows the quick view, saying why, when the store's Dive state is too large to embed", () => {
+    expect(pageView({ embed: { ok: true, value: { too_large: true } }, report: report('ready') })).toEqual({ kind: 'quick', why: 'too_large' })
+  })
+
   it('shows the quick view when the embed session read fails', () => {
     expect(pageView({ embed: { ok: false, status: 502 }, report: report('ready') })).toEqual({ kind: 'quick' })
   })

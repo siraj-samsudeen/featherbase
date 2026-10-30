@@ -3,16 +3,17 @@
 // recordView), and a stand-in for MotherDuck's embed API (the network
 // boundary). Made-up stores, people and figures.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { EMBED_API_TIMEOUT_MS, MONTH_DATASET, STORE_NAMES_TIMEOUT_MS, reads, setEmbedFetch, SALES_DATASET } from './server'
+import { COMPACT_DIVES, EMBED_API_TIMEOUT_MS, MONTH_DATASET, STORE_NAMES_TIMEOUT_MS, reads, setCompactDives, setEmbedFetch, SALES_DATASET, stateFormat } from './server'
 import type { Place } from './provider.ts'
-import type { SalesRow } from './report.ts'
+import { EMBED_STATE_LIMIT_BYTES, type SalesRow } from './report.ts'
 
 const AT = '2026-10-15T00:19:00.000Z'
 const place = (label: string, store: string, subcategory?: string[]): Place =>
   ({ label, filters: subcategory ? { store: [store], subcategory } : { store: [store] } })
 const row = (store: string, code: string, name: string | null = 'Lakeside'): SalesRow => ({
   store_code: store, store_name: name, short_code: null, subcategory_code: code, subcategory: `Name ${code}`, target: 1000, actual: 800,
-  days_with_actual: 14, days: 15, period_start: '2026-10-01', data_through: '2026-10-14', targets_available: true, target_days: 15 })
+  days_with_actual: 14, days: 15, period_start: '2026-10-01', data_through: '2026-10-14', targets_available: true, target_days: 15,
+  target_quantity: 10, actual_quantity: 8 })
 
 interface Options {
   places?: Place[]
@@ -29,6 +30,14 @@ interface Options {
   monthThrows?: boolean
 }
 const DIVE = { dive_id: 'dive-made-up', dive_version: '7', embed_service_account: 'svc-made-up' }
+/** The Sales Target Dive pinned at v12, the first version known to read the compact state (#4453). */
+const SALES_DIVE = '9022f10f-be83-4fba-a729-5399c18d150e'
+const V12 = { ...DIVE, dive_id: SALES_DIVE, dive_version: '12' }
+/**
+ * The compact path, tested with a map naming that Dive at 12. The SHIPPED map is empty until the
+ * owner publishes and a 0.9.1 lists the version publish_dive.py prints (#4453).
+ */
+const KNOWN = { [SALES_DIVE]: [12] }
 
 function context({ places = [place('9901 / Section: Sarees', '9901', ['010101001'])], rows = [row('9901', '010101001')], payload = {}, settings = DIVE,
   cacheThrows = false, live = [], month = null, monthStalls = false, monthThrows = false }: Options = {}) {
@@ -71,6 +80,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   setEmbedFetch(null)
+  setCompactDives(null)
   vi.useRealTimers()
 })
 
@@ -208,8 +218,24 @@ describe('the embed_session read', () => {
     const calls = upstream(ok)
     const { ctx } = context({ payload: { store: '9901' } })
     await reads.embed_session(ctx)
-    expect(JSON.parse(String(calls[0].init.body)).initial_state.cached).toMatchObject({ refreshed_at: AT, rows: [{ hierarchy_code: '010101001' }] })
+    expect(JSON.parse(String(calls[0].init.body)).initial_state.cached).toMatchObject({ v: 1, refreshed_at: AT, cols: { c: [10101001] } })
   })
+
+  // The Dive posts its ready message to the page's own origin, which the page sends (#4453).
+  const stateFor = async (payload: Record<string, unknown>) => {
+    const calls = upstream(ok)
+    await reads.embed_session(context({ payload }).ctx)
+    return JSON.parse(String(calls[0].init.body)).initial_state
+  }
+
+  it("gives the Dive the page's origin as `app_origin`, for its ready message", async () => {
+    expect((await stateFor({ store: '9901', app_origin: 'https://dash.example.test' })).app_origin).toBe('https://dash.example.test')
+  })
+
+  it.each([['a path', 'https://dash.example.test/feather_dash/'], ['a script address', 'javascript:alert(1)'], ['a number', 7]])(
+    'gives the Dive no `app_origin` when the page sends %s', async (_what, origin) => {
+      expect(await stateFor({ store: '9901', app_origin: origin })).not.toHaveProperty('app_origin')
+    })
 
   it("asks the page to wait for the Dive's ready message when the instance turns the signal on", async () => {
     upstream(ok)
@@ -281,6 +307,7 @@ describe('the embed_session read', () => {
   })
 
   describe("a whole-store reader's Dive, whatever the cache", () => {
+    beforeEach(() => setCompactDives(KNOWN))
     const manager = [place('9901', '9901'), place('9901 / Section: Sarees', '9901', ['010101001'])]
     const warehouse = [row('9901', '010101001'), row('9901', '010909001')]
     const state = async (options: Options) => {
@@ -293,23 +320,170 @@ describe('the embed_session read', () => {
       expect((await state({ places: manager })).whole_store).toBe(true)
     })
 
-    it('still lists an unplaced subcategory with sales when nothing is cached', async () => {
+    it('sends a whole-store reader no material_groups when the pinned Dive reads the compact state', async () => {
+      expect(await state({ places: manager, settings: V12 })).not.toHaveProperty('material_groups')
+    })
+
+    it('asks the warehouse for nothing live in the compact state', async () => {
+      const { ctx, asked } = context({ payload: { store: '9901' }, places: manager, rows: null, live: warehouse, settings: V12 })
+      upstream(ok)
+      await reads.embed_session(ctx)
+      expect(asked.filter(a => (a as unknown[])[0] === 'live')).toEqual([])
+    })
+
+    // The legacy state (any other pinned Dive): 0.8.0's full list, which a Dive before v12 needs.
+    it('still lists an unplaced subcategory with sales when nothing is cached, in the legacy state', async () => {
       expect((await state({ places: manager, rows: null, live: warehouse })).material_groups).toEqual(['010101001', '010909001'])
     })
 
-    it('still lists an unplaced subcategory with sales when the cache read throws', async () => {
+    it('still lists an unplaced subcategory when the cache read throws, in the legacy state', async () => {
       expect((await state({ places: manager, cacheThrows: true, live: warehouse })).material_groups).toEqual(['010101001', '010909001'])
-    })
-
-    it("still lists an unplaced subcategory when the cache is last month's", async () => {
-      const lastMonth = warehouse.map(r => ({ ...r, period_start: '2026-09-01', data_through: '2026-09-30' }))
-      expect((await state({ places: manager, rows: lastMonth })).material_groups).toEqual(['010101001', '010909001'])
     })
 
     it("never widens a section-scoped reader's Dive", async () => {
       const s = await state({ rows: null, live: warehouse })
       expect([s.whole_store, s.material_groups]).toEqual([false, ['010101001']])
     })
+
+    // #4453: only the reader's places make a whole-store reader, never the request.
+    it('keeps a section reader section-scoped whatever the request says', async () => {
+      const s = await state({ payload: { store: '9901', whole_store: true, material_groups: [], sections: { All: [10101001] } }, settings: V12 })
+      expect([s.whole_store, s.material_groups, s.sections]).toEqual([false, ['010101001'], undefined])
+    })
+
+    describe('a reader who covers one store whole and a section of another', () => {
+      const mixed = [place('9902', '9902'), place('9902 / Section: Belts', '9902', ['010404001']), place('9901 / Section: Sarees', '9901', ['010101001'])]
+
+      it('is section-scoped in the store where they hold a section', async () => {
+        const s = await state({ places: mixed, payload: { store: '9901' }, settings: V12 })
+        expect([s.whole_store, s.material_groups]).toEqual([false, ['010101001']])
+      })
+
+      it('is whole-store in the store they cover whole', async () => {
+        const s = await state({ places: mixed, payload: { store: '9902' }, settings: V12 })
+        expect([s.whole_store, s.material_groups, s.sections]).toEqual([true, undefined, { Belts: [10404001] }])
+      })
+    })
+  })
+})
+
+// The compact whole-store state is sent only to a Dive the app knows reads it, by Dive id AND
+// version; any other pin (or a setting that claims otherwise) gets the legacy state (#4453).
+describe('the state format, from the pinned Dive', () => {
+  // Shipped empty: every pin gets the legacy state until 0.9.1 lists the Dive's published version
+  // (the follow-up in the README and #4453). Listing a number before it is published could name
+  // an older Dive, which reads a missing material_groups as every store.
+  it('ships with no Dive known to read the compact state', () => {
+    expect(COMPACT_DIVES).toEqual({})
+  })
+
+  it('gives the Sales Target Dive at 12 the legacy state with the shipped map', () => {
+    expect(stateFormat(SALES_DIVE, '12')).toBe('legacy')
+  })
+
+  it.each([
+    ['the Sales Target Dive at v12', 'compact', SALES_DIVE, '12'],
+    ['the Sales Target Dive at v11', 'legacy', SALES_DIVE, '11'],
+    ['another Dive at v12', 'legacy', 'dive-made-up', '12'],
+    ['no version', 'legacy', SALES_DIVE, undefined],
+    ['the version "12abc"', 'legacy', SALES_DIVE, '12abc'],
+    ['the version " 12"', 'legacy', SALES_DIVE, ' 12'],
+    ['the version "12.0"', 'legacy', SALES_DIVE, '12.0'],
+    ['no Dive', 'legacy', undefined, '12'],
+  ])('for %s is %s', (_what, format, dive, version) => {
+    expect(stateFormat(dive, version, KNOWN)).toBe(format)
+  })
+
+  const manager = [place('9901', '9901'), place('9901 / Section: Sarees', '9901', ['010101001'])]
+
+  it('gives a whole-store reader the full material_groups with v12 pinned, as shipped', async () => {
+    const s = await stateWith(V12)
+    expect([s.material_groups, s.sections]).toEqual([['010101001'], undefined])
+  })
+
+  describe('with that Dive known at 12', () => {
+    beforeEach(() => setCompactDives(KNOWN))
+
+    it('gives a whole-store reader the compact state with v12 pinned', async () => {
+      const s = await stateWith(V12)
+      expect([s.material_groups, s.sections]).toEqual([undefined, { Sarees: [10101001] }])
+    })
+  })
+
+  const stateWith = async (settings: Record<string, string>, places = manager) => {
+    const calls: { init: RequestInit }[] = []
+    setEmbedFetch(async (_url, init) => { calls.push({ init: init! }); return new Response(JSON.stringify({ session: 's' }), { status: 200 }) })
+    await reads.embed_session(context({ payload: { store: '9901' }, places, settings }).ctx)
+    return JSON.parse(String(calls[0].init.body)).initial_state
+  }
+
+  it("gives v11 the full material_groups, whatever other settings say", async () => {
+    const s = await stateWith({ ...DIVE, dive_id: SALES_DIVE, dive_version: '11', state_format: 'compact', whole_store: 'compact' })
+    expect([s.material_groups, s.sections]).toEqual([['010101001'], undefined])
+  })
+
+  it('gives an unknown Dive at v12 the full material_groups', async () => {
+    expect((await stateWith({ ...DIVE, dive_version: '12' })).material_groups).toEqual(['010101001'])
+  })
+
+  it('gives a section reader the same scope keys whichever Dive is pinned', async () => {
+    const sarees = [place('9901 / Section: Sarees', '9901', ['010101001'])]
+    const keys = (s: Record<string, unknown>) => ({ whole_store: s.whole_store, material_groups: s.material_groups,
+      section_by_material_group: s.section_by_material_group, sections: s.sections })
+    expect(keys(await stateWith(V12, sarees))).toEqual(keys(await stateWith({ ...DIVE, dive_id: SALES_DIVE, dive_version: '11' }, sarees)))
+  })
+})
+
+// #4453: MotherDuck refuses an initial_state past its cap. A state that would pass
+// EMBED_STATE_LIMIT_BYTES is never sent and never trimmed: the page shows the cached table, and
+// the operator log names the store (no person).
+describe("a Dive state too large to embed", () => {
+  const codes = Array.from({ length: 1300 }, (_, i) => String(10100000 + i).padStart(9, '0'))
+  /** A whole-store reader of a large store; one section's name is padded to set the state's size exactly. */
+  const placesWith = (pad: number) => [place('9901', '9901'),
+    place('9901 / Section: Big', '9901', codes.slice(1)), place(`9901 / Section: ${'P'.repeat(1 + pad)}`, '9901', codes.slice(0, 1))]
+  async function embed(pad: number) {
+    const calls: { init: RequestInit }[] = []
+    setEmbedFetch(async (_url, init) => { calls.push({ init: init! }); return new Response(JSON.stringify({ session: 's' }), { status: 200 }) })
+    const answer = await reads.embed_session(context({ payload: { store: '9901' }, places: placesWith(pad), rows: null }).ctx)
+    return { answer, sent: calls[0] && JSON.parse(String(calls[0].init.body)).initial_state }
+  }
+  const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length
+  /** The padding that brings the state to exactly the limit. */
+  const exact = async () => EMBED_STATE_LIMIT_BYTES - bytes((await embed(0)).sent)
+
+  it('stays under MotherDuck\'s 64 KB cap, whether a kilobyte is 1,000 or 1,024 bytes, with room to spare', () => {
+    expect(EMBED_STATE_LIMIT_BYTES).toBeLessThanOrEqual(64_000 - 1_000)
+  })
+
+  it('embeds a state of exactly the limit', async () => {
+    const { answer, sent } = await embed(await exact())
+    expect([answer, bytes(sent)]).toEqual([{ frame: 'https://embed-motherduck.com/sandbox/#session=s' }, EMBED_STATE_LIMIT_BYTES])
+  })
+
+  it('sends the full material_groups at the limit, never a trimmed one', async () => {
+    expect((await embed(await exact())).sent.material_groups).toHaveLength(codes.length)
+  })
+
+  it('answers too_large for a state one byte over, without asking MotherDuck for a session', async () => {
+    expect(await embed((await exact()) + 1)).toEqual({ answer: { too_large: true }, sent: undefined })
+  })
+
+  it("names the store in the operator log, and no person", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await embed((await exact()) + 1)
+    const line = warn.mock.calls.map(args => String(args[0])).find(text => text.includes('too_large'))!
+    expect([JSON.parse(line).store, line.includes('psn_103')]).toEqual(['9901', false])
+  })
+
+  it('embeds the compact state of a store far past the legacy limit', async () => {
+    setCompactDives(KNOWN)
+    const many = Array.from({ length: 6000 }, (_, i) => String(10100000 + i).padStart(9, '0'))
+    const calls: { init: RequestInit }[] = []
+    setEmbedFetch(async (_url, init) => { calls.push({ init: init! }); return new Response(JSON.stringify({ session: 's' }), { status: 200 }) })
+    const places = [place('9901', '9901'), place('9901 / Section: All', '9901', many)]
+    expect(await reads.embed_session(context({ payload: { store: '9901' }, places, rows: null, settings: V12 }).ctx))
+      .toEqual({ frame: 'https://embed-motherduck.com/sandbox/#session=s' })
   })
 })
 

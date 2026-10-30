@@ -21,6 +21,9 @@ export interface SalesRow {
   targets_available: boolean
   /** The days with a target, month to date: only for the refresh guard (#4449), never shown. */
   target_days: number
+  /** Month-to-date quantities, for the Dive's cache only (#4453); the quick view shows values alone. */
+  target_quantity: number | null
+  actual_quantity: number | null
 }
 
 /**
@@ -174,13 +177,15 @@ function totalOf(rows: ReportRow[]): Totals {
 }
 
 const NO_ROW: SalesRow = { store_code: '', store_name: null, short_code: null, subcategory_code: '', subcategory: null, target: null,
-  actual: null, days_with_actual: 0, days: 0, period_start: '', data_through: null, targets_available: true, target_days: 0 }
+  actual: null, days_with_actual: 0, days: 0, period_start: '', data_through: null, targets_available: true, target_days: 0,
+  target_quantity: null, actual_quantity: null }
 
 /** One store's month-to-date row per subcategory: the cached rows, and the reader's listed subcategories the store had no row for. */
 function grouped(rows: SalesRow[], codes: string[]): SalesRow[] {
   const byCode = new Map(rows.map(r => [r.subcategory_code, r]))
   const absent = codes.filter(code => !byCode.has(code)).map((code): SalesRow => ({
-    ...(rows[0] ?? NO_ROW), subcategory_code: code, subcategory: null, target: null, actual: null, days_with_actual: 0, days: 0, target_days: 0 }))
+    ...(rows[0] ?? NO_ROW), subcategory_code: code, subcategory: null, target: null, actual: null, days_with_actual: 0, days: 0, target_days: 0,
+    target_quantity: null, actual_quantity: null }))
   return [...rows, ...absent]
 }
 
@@ -247,51 +252,124 @@ export function buildReport({ store, places, answer, month = null, today }: Buil
 export const CACHE_BUDGET_BYTES = 56 * 1024
 
 /**
- * The Dive's `initial_state`: the keys today's Dive reads (store, subcategories, their
- * sections, the period), plus `cached`, the reader's cached month-to-date rows shaped as
- * the Dive's own live query answers them, with their refresh time. A cache that would
- * take the state past the budget is left out whole, never cut: a partial cache would
- * read as a total.
+ * The largest `initial_state` an embed session is asked for (#4453). MotherDuck refuses one past
+ * 64 KB; whether that kilobyte is 1,000 or 1,024 bytes is not confirmed, so this stays under both
+ * with 1,000 bytes to spare. A larger state is never trimmed (a Dive before v12 reads a shorter
+ * `material_groups` as a smaller scope, and a missing one as every store): the page shows the
+ * cached table instead.
  */
+export const EMBED_STATE_LIMIT_BYTES = 63_000
+
+/**
+ * The cached month to date, one array per field, row i across them (#4453). Codes are numbers
+ * (the nine-digit code without its leading zeros), ascending, each after the first written as the
+ * step from the one before. Money is whole paise and quantities whole thousandths, so no figure
+ * drifts through JSON; a value the warehouse does not have is null. Only subcategories with a day
+ * this month are listed, as the Dive's live query lists them.
+ */
+export interface CachedColumns {
+  /** Subcategory codes: the first, then each step. */
+  c: number[]
+  /** Subcategory names. */
+  n: (string | null)[]
+  /** Month-to-date target and actual, in paise. */
+  t: (number | null)[]
+  a: (number | null)[]
+  /** Month-to-date target and actual quantity, in thousandths; only with `q: true`. */
+  tq?: (number | null)[]
+  aq?: (number | null)[]
+}
+
 /** The Dive's `initial_state`. */
 export interface InitialState {
   plant_code: string
   /**
-   * The reader covers the whole store: the Dive should filter on `plant_code` alone, every
-   * subcategory included (B7). `material_groups` still lists every subcategory known.
+   * The reader covers the whole store, as the reader's places say (never the request): the Dive
+   * filters on `plant_code` alone, and only then may `material_groups` be absent (#4453).
    */
   whole_store: boolean
-  material_groups: string[]
-  section_by_material_group: Record<string, string>
+  /** A section reader's subcategories, which the Dive limits every query to. Absent for a whole-store reader. */
+  material_groups?: string[]
+  /** A section reader's section per subcategory. Absent for a whole-store reader. */
+  section_by_material_group?: Record<string, string>
+  /** A whole-store reader's sections: each one's codes, written as `CachedColumns.c` is. */
+  sections?: Record<string, number[]>
   period_start: string
   period_end: string
-  cached?: {
-    refreshed_at: string | null
-    data_through: string | null
-    rows: { hierarchy_code: string; subcategory: string | null; mtd_target: number | null; mtd_actual: number | null; days_with_actual: number; days: number }[]
-  }
+  /** The Feather Dash page's origin, the target of the Dive's ready message (#4453); only a plain origin. */
+  app_origin?: string
+  /**
+   * Version 1: `cols` (plain) or `z` (the same columns as JSON, gzipped, base64), never both.
+   * `q` says whether the columns carry quantities (else the Dive shows "—" for quantity until live).
+   */
+  cached?: { v: 1; refreshed_at: string | null; data_through: string | null; q: boolean; cols?: CachedColumns; z?: string }
 }
 
+/** Codes as `CachedColumns.c` writes them: numbers, ascending, the first and then each step. */
+export function codeSteps(codes: readonly string[]): number[] {
+  const sorted = codes.map(Number).sort((a, b) => a - b)
+  return sorted.map((code, i) => (i ? code - sorted[i - 1] : code))
+}
+
+const scaled = (value: number | string | null | undefined, by: number) => (value == null ? null : Math.round(Number(value) * by))
+
+/**
+ * The Dive's `initial_state`: the reader's store and period, the reader's scope (a section reader's
+ * subcategories and sections, or a whole-store reader's compact section map), and `cached`, the
+ * month to date. The cache takes the first rung that keeps the WHOLE state within 56 KB: plain with
+ * quantities, compressed with quantities, compressed value-only, else none. It is never cut: a
+ * partial cache would read as a total.
+ */
+/**
+ * `compact` only for a Dive known to read it (the server decides from the pinned Dive, see
+ * `stateFormat`); `legacy` otherwise: 0.8.0's scope keys, which a Dive before v12 needs, because
+ * it reads a missing `material_groups` as "every store".
+ */
+export type StateFormat = 'legacy' | 'compact'
+
 export function initialState(report: Report, answer: CachedAnswer, places: readonly Place[], today: string,
-  storeCodes: readonly string[] = []): InitialState {
+  { appOrigin = null, compress, format = 'legacy', storeCodes = [] }: { appOrigin?: string | null; compress: (json: string) => string;
+    format?: StateFormat; storeCodes?: readonly string[] }): InitialState {
   const scope = scopeIn(places, report.store)
-  // A whole-store reader's subcategories are the store's, as the cache or the warehouse knows
-  // them (`storeCodes`), never only the placed ones; anyone else's are their places' alone.
-  const codes = [...new Set([...scope.codes, ...(scope.wholeStore ? [...report.rows.map(r => r.code), ...storeCodes] : [])])].sort()
+  const bySection: Record<string, string[]> = {}
+  for (const [code, name] of Object.entries(scope.sectionOf)) (bySection[name] ??= []).push(code)
+  // Legacy: a whole-store reader's list is every subcategory of the store the places, the cache or
+  // the warehouse (`storeCodes`) know, never only the placed ones; anyone else's is their places' alone.
+  const listed = scope.wholeStore
+    ? [...new Set([...scope.codes, ...report.rows.map(r => r.code), ...(answer?.rows ?? []).filter(r => r.store_code === report.store)
+        .map(r => r.subcategory_code), ...storeCodes])].sort()
+    : scope.codes
   const state: InitialState = {
     plant_code: report.store,
     whole_store: scope.wholeStore,
-    material_groups: codes,
-    section_by_material_group: Object.fromEntries(codes.filter(c => scope.sectionOf[c]).map(c => [c, scope.sectionOf[c]])),
+    ...(scope.wholeStore && format === 'compact'
+      ? { sections: Object.fromEntries(Object.keys(bySection).sort().map(name => [name, codeSteps(bySection[name])])) }
+      : { material_groups: listed,
+          section_by_material_group: Object.fromEntries(listed.filter(c => scope.sectionOf[c]).map(c => [c, scope.sectionOf[c]])) }),
     ...periodOf(today),
+    ...(appOrigin ? { app_origin: appOrigin } : {}),
   }
   if (report.state !== 'ready') return state
-  const rows = grouped((answer?.rows ?? []).filter(r => r.store_code === report.store), scope.codes)
-    .sort((a, b) => a.subcategory_code.localeCompare(b.subcategory_code))
-    .map(r => ({ hierarchy_code: r.subcategory_code, subcategory: r.subcategory, mtd_target: r.target, mtd_actual: r.actual,
-      days_with_actual: r.days_with_actual, days: r.days }))
-  const withCache = { ...state, cached: { refreshed_at: report.refreshed_at, data_through: report.data_through, rows } }
-  return new TextEncoder().encode(JSON.stringify(withCache)).length <= CACHE_BUDGET_BYTES ? withCache : state
+  const mine = new Set(scope.codes)
+  const rows = (answer?.rows ?? [])
+    .filter(r => r.store_code === report.store && r.days > 0 && /^\d{9}$/.test(r.subcategory_code) && (scope.wholeStore || mine.has(r.subcategory_code)))
+    .sort((a, b) => Number(a.subcategory_code) - Number(b.subcategory_code))
+  const columns = (quantities: boolean): CachedColumns => ({
+    c: codeSteps(rows.map(r => r.subcategory_code)), n: rows.map(r => r.subcategory),
+    t: rows.map(r => scaled(r.target, 100)), a: rows.map(r => scaled(r.actual, 100)),
+    ...(quantities ? { tq: rows.map(r => scaled(r.target_quantity, 1000)), aq: rows.map(r => scaled(r.actual_quantity, 1000)) } : {}),
+  })
+  const head = { v: 1 as const, refreshed_at: report.refreshed_at, data_through: report.data_through }
+  const rungs = [
+    () => ({ ...head, q: true, cols: columns(true) }),
+    () => ({ ...head, q: true, z: compress(JSON.stringify(columns(true))) }),
+    () => ({ ...head, q: false, z: compress(JSON.stringify(columns(false))) }),
+  ]
+  for (const rung of rungs) {
+    const candidate = { ...state, cached: rung() }
+    if (new TextEncoder().encode(JSON.stringify(candidate)).length <= CACHE_BUDGET_BYTES) return candidate
+  }
+  return state
 }
 
 /**

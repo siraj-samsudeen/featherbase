@@ -1,7 +1,7 @@
 // What the report page shows, decided from what its two reads answered, and
 // how it writes figures. Kept apart from the React code so it can be tested.
 export type Answer<T> = { ok: true; value: T } | { ok: false; status?: number }
-type Embed = { frame?: string; not_set_up?: boolean; unreachable?: boolean; ready_signal?: boolean }
+type Embed = { frame?: string; not_set_up?: boolean; unreachable?: boolean; too_large?: boolean; ready_signal?: boolean }
 
 /** Where the Dive is served from (featherbase.json's `frameOrigins`), and the message it posts once it has drawn (B7). */
 export const DIVE_ORIGIN = 'https://embed-motherduck.com'
@@ -11,7 +11,8 @@ type ReportState = { state: string }
 export type View =
   | { kind: 'opening' }
   | { kind: 'dive'; src: string }
-  | { kind: 'quick' }
+  /** `too_large`: the store's Dive state would pass MotherDuck's cap (#4453). */
+  | { kind: 'quick'; why?: 'too_large' }
   | { kind: 'empty'; why: 'no_data_yet' | 'no_sections' | 'not_built' }
   | { kind: 'no_access' }
   | { kind: 'signed_out' }
@@ -39,7 +40,8 @@ export function pageView({ embed, report, frameFailed = false }: {
   // Past the deadline the session request counts as failed, answered or not.
   if ((!embed && !frameFailed) || !report) return { kind: 'opening' }
   if (!report.ok) return { kind: 'failed' }
-  return state === 'not_built' || state === 'unconfirmed' ? { kind: 'empty', why: 'not_built' } : { kind: 'quick' }
+  if (state === 'not_built' || state === 'unconfirmed') return { kind: 'empty', why: 'not_built' }
+  return embed?.ok && embed.value.too_large ? { kind: 'quick', why: 'too_large' } : { kind: 'quick' }
 }
 
 /** How long the page waits for the bar to choose a store before opening without one (a reader the bar offers none). */

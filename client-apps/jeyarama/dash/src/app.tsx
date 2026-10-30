@@ -30,7 +30,9 @@ export function FeatherDash() {
   const frame = useRef<HTMLIFrameElement>(null)
   // One deadline covers the session request and the frame (DIVE_READY_TIMEOUT_MS); past it, the
   // quick view. A late answer, or one for a store no longer on show, is ignored.
-  const loader = useMemo(() => reportLoader<Report>((name, payload) => read(name, payload), setState), [])
+  // The Dive sends its ready message to this page's origin (#4453), which only the page knows.
+  const loader = useMemo(() => reportLoader<Report>((name, payload) =>
+    read(name, name === 'embed_session' ? { ...payload, app_origin: location.origin } : payload), setState), [])
   // Choosing a store: the store on show, repeated, changes nothing (round 9); another store drops
   // the previous store's answers at once (round 8), and its effect below opens it.
   const choose = useMemo(() => storeChooser(loader, value => setStore({ value })), [loader])
@@ -92,7 +94,7 @@ export function FeatherDash() {
           />
         </div>
       )}
-      {view.kind === 'quick' && report?.ok && <QuickView report={report.value} />}
+      {view.kind === 'quick' && report?.ok && <QuickView report={report.value} tooLarge={view.why === 'too_large'} />}
       {view.kind === 'empty' && (
         <Notice testid={`empty-${view.why}`}>
           {view.why === 'no_data_yet' && "This month's figures haven't arrived yet. They usually arrive by early morning."}
@@ -160,7 +162,7 @@ function TotalFigures({ t }: { t: Totals }) {
   )
 }
 
-function QuickView({ report }: { report: Report }) {
+function QuickView({ report, tooLarge = false }: { report: Report; tooLarge?: boolean }) {
   const [showQuiet, setShowQuiet] = useState(false)
   // Whether the table is wider than its box (the swipe cue), and whether more of it lies to the
   // right of what is in view (the edge fade); both re-checked on scroll and resize.
@@ -185,7 +187,9 @@ function QuickView({ report }: { report: Report }) {
     <section className="fd-card fd-quick" data-testid="quick-view">
       <header className="fd-quick-head">
         <h2 className="fd-title">Quick view</h2>
-        <p className="fd-muted" data-testid="quick-label">Cached · the full report couldn't open</p>
+        <p className="fd-muted" data-testid="quick-label">
+          {tooLarge ? 'This store is too large for the interactive report yet. Showing the cached table.' : "Cached · the full report couldn't open"}
+        </p>
         <p className="fd-muted" data-testid="data-line">{dataLine(report)}</p>
         {!report.targets_available && <p className="fd-muted">Targets for this month aren't available yet; sales are shown.</p>}
       </header>
