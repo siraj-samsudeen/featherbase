@@ -155,7 +155,8 @@ async function settingsMatchFile(): Promise<HealthCheck> {
     ...base,
     ok: false,
     message: `${drift.length} ${plural(drift.length, 'setting differs', 'settings differ')} from the file: ${names.join(', ')}.`,
-    fix: 'These were changed outside the file (`cli settings:set` is the break-glass way). Put the same values in the settings file and apply it, or apply the file again to put its values back.',
+    fix: `These were changed outside the file (\`cli settings:set\` is the break-glass way). Put the same values in the settings file and apply it, or apply the file again to put its values back.${
+      drift.some((d) => d.from_variable) ? ' A value the file reads from a variable never goes in the file: change the variable, then apply.' : ''}`,
   }
 }
 

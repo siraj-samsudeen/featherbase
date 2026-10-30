@@ -109,6 +109,16 @@ describe('the checks (5.1)', () => {
     expect(byKey(await runHealthChecks(), 'settings-match-file').ok).toBe(true)
   })
 
+  test('settings match the file: a field set from a variable is fixed through the variable, not the file', async () => {
+    await sql`delete from instance_settings_apply`
+    await applyInstanceSettings({ settings: { 'System Settings': { app_name: { env: 'HEALTH_APP_NAME' } } } } as never,
+      { by: 'Administrator', env: { HEALTH_APP_NAME: 'Named From A Variable' } })
+    await runAsSystemActor(BREAK_GLASS_ACTOR, () => saveDoc('System Settings', { app_name: 'Hand Fixed' }, BREAK_GLASS_ACTOR))
+    const drifted = byKey(await runHealthChecks(), 'settings-match-file')
+    expect(drifted).toMatchObject({ ok: false })
+    expect(drifted.fix).toContain('never goes in the file')
+  })
+
   test('settings match the file: an apply recorded before values were kept asks for one more apply', async () => {
     await apply()
     await sql`update instance_settings_apply set managed_values = null`
