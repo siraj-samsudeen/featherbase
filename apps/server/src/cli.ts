@@ -383,32 +383,24 @@ async function cmdInstallApp(io: CommandIO, positional: string[]) {
   const [name] = positional
   if (!name || positional.length !== 1) throw new Error('usage: cli install-app <name>')
   const { registerApp, installApp, isInstalled, getAvailableApps } = await import('./apps')
-  const { discoverPackages, selectedPackageIdentity } = await import('./runtime-packages')
+  const { discoverPackages, repinToFolder } = await import('./runtime-packages')
   const { default: helpdesk } = await import('./sample-apps/helpdesk')
   const { default: checklists } = await import('./sample-apps/checklists')
   registerApp(helpdesk)
   registerApp(checklists)
   await discoverPackages(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+  if (await isInstalled(name)) {
+    const [stamp] = await sql`select value from internal_metadata where key = 'environment'`
+    const outcome = await repinToFolder(name, stamp?.value === 'development')
+    if (outcome === 'different')
+      throw new Error(`${name} on this database is not the ${name} in its folder. Upgrade it, or on a development database recreate the database`)
+    io.out(outcome === 'repinned' ? `${name} is already installed; re-pinned to its folder as it is now` : `${name} is already installed`)
+    return
+  }
   if (!getAvailableApps().includes(name))
     throw new Error(`no app ${name} on this server (it has: ${getAvailableApps().join(', ')}); add its folder to FEATHERBASE_APP_PATHS`)
-  if (!(await isInstalled(name))) {
-    await installApp(name)
-    io.out(`installed ${name}`)
-    return
-  }
-  const shipped = selectedPackageIdentity(name)
-  const [row] = await sql`select package_version, artifact_digest from installed_app where name = ${name}`
-  if (!shipped || row.artifact_digest === shipped.digest) {
-    io.out(`${name} is already installed`)
-    return
-  }
-  const [stamp] = await sql`select value from internal_metadata where key = 'environment'`
-  const [same] = await sql`select (manifest - 'packageName' - 'packageVersion' - 'migrations') = (${sql.json(shipped.manifest as never)}::jsonb - 'migrations') as same
-    from installed_app where name = ${name}`
-  if (stamp?.value !== 'development' || row.package_version !== shipped.version || same?.same !== true)
-    throw new Error(`${name} on this database is not the ${name} in its folder. Upgrade it, or on a development database recreate the database`)
-  await sql`update installed_app set artifact_digest = ${shipped.digest} where name = ${name}`
-  io.out(`${name} is already installed; re-pinned to its folder as it is now`)
+  await installApp(name)
+  io.out(`installed ${name}`)
 }
 
 async function cmdSettingsApply(io: CommandIO, flags: Record<string, string | string[] | boolean>) {

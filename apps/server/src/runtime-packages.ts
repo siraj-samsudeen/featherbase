@@ -199,11 +199,19 @@ function selectPackage(pkg: RuntimePackage) {
   registerAppDatasets(pkg.name, pkg.manifest.datasets)
 }
 
-/** #703: what this process found on the app path for `name`, for a developer's
- *  re-pin (cli install-app). */
-export function selectedPackageIdentity(name: string): { version: string; digest: string; manifest: unknown } | null {
-  const pkg = packages.get(name)
-  return pkg ? { version: pkg.app.runtime_identity?.version ?? '', digest: pkg.digest, manifest: pkg.manifest } : null
+/** #703: whether an installed app still is the folder on the app path; if only
+ *  its files changed (same version, same manifest), a development database can
+ *  follow them. A code-registered app has no folder, so it always matches. */
+export async function repinToFolder(name: string, development: boolean): Promise<'same' | 'repinned' | 'different'> {
+  const [row] = await sql`select * from installed_app where name = ${name} and runtime_package`
+  if (!row) return 'same'
+  const pkg = artifacts.get(`${name}@${String(row.package_version)}`)
+  if (!pkg) return 'different'
+  if (matchesInstalled(pkg, row)) return 'same'
+  const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
+  if (!development || canonical(stored) !== canonical(pkg.app.runtime_manifest)) return 'different'
+  await sql`update installed_app set artifact_digest = ${pkg.digest} where name = ${name}`
+  return 'repinned'
 }
 
 export async function verifySelectedRuntimePackage(name: string) {
