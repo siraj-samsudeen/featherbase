@@ -13,10 +13,12 @@
 >   change is **archived on `main` after the implementation merges**. This
 >   replaces "archive in the PR that finishes the change".
 >
-> As of this date the repository still runs the stock `spec-driven` schema
-> (`openspec/config.yaml`) and `pnpm check:specs` still fails while a change
-> with every task ticked is unarchived. Both change with the follow-up work of
-> [#703](https://github.com/siraj-samsudeen/featherbase/issues/703).
+> Adopted by [#703](https://github.com/siraj-samsudeen/featherbase/issues/703): build mode
+> (`intent-driven-with-human-control`) is the default schema, the modes are
+> described in the `change-modes` skill, and `pnpm check:specs` reports a
+> finished, unarchived change instead of failing, failing a PR only when that
+> change was already finished on `main`. Changes created earlier keep
+> `spec-driven`.
 
 > **2026-09-26 note:** this revises the 2026-09-21 decision in place rather than
 > superseding it with a new ADR — the owner's explicit choice, since the
@@ -62,8 +64,8 @@ workflow, run with the intent-driven template.
   has merged.
 - **Exact pin, automated bump.** The OpenSpec CLI is exactly pinned in root
   `package.json`. A weekly scheduled workflow checks for a newer published
-  version, and when one exists it bumps the pin, regenerates the core-profile
-  files, and opens a PR — so the pin moves on a schedule instead of by hand.
+  version, and when one exists it bumps the pin, regenerates the
+  OpenSpec-generated skills and commands, and opens a PR — so the pin moves on a schedule instead of by hand.
 - **Plain-language, non-brittle spec style.** Spec and proposal writing rules
   live in `openspec/config.yaml`'s `rules:` block: write for a product person,
   plain words, no code/table/column/endpoint/file/function names, one
