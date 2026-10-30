@@ -3,6 +3,8 @@
 // run each pre-deploy entry as argv rather than through a shell, so the two
 // steps are chained here, not with `&&` in the deploy config — where the
 // second was observed never to run while the deploy still went green.
+// With FEATHERBASE_INSTANCE set, a client instance's apps and settings follow
+// the release (deploy-instance.ts, #703).
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { format } from 'node:util'
@@ -10,12 +12,33 @@ import { sql } from './db'
 import { processIO, type CommandIO } from './command-io'
 import { main as release } from './release'
 import { seedPreview } from './preview-seed'
+import { readVariable } from './env'
+import { deployInstance, instanceFolder, settingsSection } from './deploy-instance'
 
 /** The release, then the preview seed; resolves to the process's exit code,
  *  1 when either stopped. The caller owns the database connection. */
 export async function main(argv: string[] = [], io: CommandIO = processIO): Promise<number> {
-  const code = await release(argv, io)
+  const instance = readVariable('FEATHERBASE_INSTANCE')?.trim()
+  if (instance) {
+    // Refused before the release has changed anything.
+    try {
+      settingsSection()
+      instanceFolder(instance)
+    } catch (err) {
+      io.err(format('deploy failed:', err instanceof Error ? err.message : err))
+      return 1
+    }
+  }
+  const code = await release(argv, io, { instanceDeploy: Boolean(instance) })
   if (code !== 0) return code
+  if (instance) {
+    try {
+      await deployInstance(instance, io)
+    } catch (err) {
+      io.err(format('deploy failed:', err instanceof Error ? err.message : err))
+      return 1
+    }
+  }
   try {
     // The same per-Table controllers the server registers at start, so the
     // preview person is saved through the full Person save chain (#534).

@@ -208,10 +208,15 @@ export async function repinToFolder(name: string, development: boolean): Promise
   const pkg = artifacts.get(`${name}@${String(row.package_version)}`)
   if (!pkg) return 'different'
   if (matchesInstalled(pkg, row)) return 'same'
-  const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
-  if (!development || canonical(stored) !== canonical(pkg.app.runtime_manifest)) return 'different'
+  if (!development || !sameManifest(pkg, row)) return 'different'
   await sql`update installed_app set artifact_digest = ${pkg.digest} where name = ${name}`
   return 'repinned'
+}
+
+/** The manifest this artifact declares is the one the instance installed. */
+function sameManifest(pkg: RuntimePackage, row: Record<string, unknown>) {
+  const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
+  return canonical(stored) === canonical(pkg.app.runtime_manifest)
 }
 
 export async function verifySelectedRuntimePackage(name: string) {
@@ -246,8 +251,7 @@ function matchesInstalled(pkg: RuntimePackage, row: Record<string, unknown>) {
   if (row.artifact_digest) return row.artifact_digest === pkg.digest
   // Legacy installs have no artifact fingerprint. Require their recorded
   // declaration, not just version, before trusting the operator's v1 artifact.
-  const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
-  return canonical(stored) === canonical(pkg.app.runtime_manifest)
+  return sameManifest(pkg, row)
 }
 
 // An app's directory: its npm identity and its parsed manifest.
@@ -378,7 +382,20 @@ async function loadArtifacts(paths: string[]) {
   const loaded = new Map<string, RuntimePackage>()
   const failures: { path: string; error: string }[] = []
   const duplicates = new Set<string>()
-  for (const directory of paths) {
+  // `<folder>/*` is every folder in it: an image can set this variable once
+  // though the apps it holds depend on the instance it was built for (#703).
+  const directories: string[] = []
+  for (const path of paths) {
+    if (!path.endsWith('/*')) { directories.push(path); continue }
+    const folder = path.slice(0, -2)
+    try {
+      const entries = await readdir(folder, { withFileTypes: true })
+      directories.push(...entries.filter(e => e.isDirectory()).map(e => resolve(folder, e.name)).sort())
+    } catch (error) {
+      failures.push({ path, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+  for (const directory of directories) {
     try {
       const pkg = await loadArtifact(directory)
       const key = `${pkg.name}@${pkg.version}`
@@ -404,6 +421,16 @@ async function loadArtifacts(paths: string[]) {
 export async function unshippedApps<Row extends Record<string, unknown>>(installed: Row[], paths: string[]): Promise<Row[]> {
   const shipped = [...(await loadArtifacts(paths)).loaded.values()]
   return installed.filter(row => !shipped.some(pkg => pkg.name === row.name && matchesInstalled(pkg, row)))
+}
+
+/** #703: why an installed row is not on `paths`: its files changed under the
+ *  same version and manifest, its manifest changed under the same version, or
+ *  that version is not there at all. */
+export async function whyUnshipped(row: Record<string, unknown>, paths: string[]): Promise<'files' | 'manifest' | 'absent'> {
+  const shipped = [...(await loadArtifacts(paths)).loaded.values()]
+  const pkg = shipped.find(p => p.name === row.name && p.version === row.package_version)
+  if (!pkg) return 'absent'
+  return sameManifest(pkg, row) ? 'files' : 'manifest'
 }
 
 // Boot discovery indexes versions without upgrading an installed application.

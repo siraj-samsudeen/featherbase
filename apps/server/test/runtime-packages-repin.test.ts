@@ -23,6 +23,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await uninstallApp(name)
   await discoverPackages([])
+  // An uninstall keeps the app's schema; a later file's first-install test wants none.
+  await sql`drop schema if exists other cascade`
   rmSync(folder, { recursive: true, force: true })
 })
 

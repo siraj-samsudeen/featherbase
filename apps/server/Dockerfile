@@ -1,8 +1,17 @@
+# Which image the build ends on (see the last line). A build argument, which
+# Railway fills from the service variable of the same name.
+ARG FEATHERBASE_INSTANCE=""
+ARG FINAL_STAGE=${FEATHERBASE_INSTANCE:+instance-image}
+
 # Generic production image for apps/server (#57). Vendor-neutral: it needs
 # only DATABASE_URL (and optionally PORT, WEB_ORIGINS, JWT_SECRET, see
 # docs/DEPLOY.md). Build from the REPO ROOT so the workspace resolves:
 #
 #   docker build -f apps/server/Dockerfile -t featherbase-server .
+#
+# For a client instance's image, with its apps and its folder (docs/DEPLOY.md):
+#
+#   docker build -f apps/server/Dockerfile --build-arg FEATHERBASE_INSTANCE=<client>/<instance> -t my-instance .
 #
 # Run the release step once per deploy BEFORE new containers serve traffic:
 #
@@ -76,10 +85,27 @@ ENV NODE_ENV=production
 EXPOSE 8000
 CMD ["pnpm", "--filter", "server", "start"]
 
-# ---- Stage 4: this repository's own server image (the default target) ------
+# ---- Stage 4: a client instance's apps and folder ---------------------------
+# Skipped by every build that doesn't name an instance.
+FROM node:22-slim AS instance-build
+ARG FEATHERBASE_INSTANCE
+WORKDIR /build
+COPY client-apps client-apps
+COPY example-apps example-apps
+COPY tools/dev.mjs tools/build-instance-apps.mjs tools/
+RUN node tools/build-instance-apps.mjs "$FEATHERBASE_INSTANCE" /out
+
+# ---- Stage 5: a client instance's image -------------------------------------
+FROM platform AS instance-image
+ARG FEATHERBASE_INSTANCE
+COPY --from=instance-build /out/ ./
+ENV FEATHERBASE_INSTANCE=$FEATHERBASE_INSTANCE
+ENV FEATHERBASE_APP_PATHS='["/app/instance-apps/*"]'
+
+# ---- Stage 6: this repository's own server image (the default target) ------
 # The platform image plus Tasker, for this repository's Railway services until
 # #563 retires Tasker. NODE_ENV, EXPOSE and CMD come from the platform stage.
-FROM platform
+FROM platform AS tasker-image
 COPY --from=tasker-build /app/example-apps/tasker/package.json example-apps/tasker/package.json
 COPY --from=tasker-build /app/example-apps/tasker/featherbase.json example-apps/tasker/featherbase.json
 COPY --from=tasker-build /app/example-apps/tasker/dist example-apps/tasker/dist
@@ -87,3 +113,6 @@ COPY --from=tasker-build /app/example-apps/tasker/dist example-apps/tasker/dist
 # When a later Tasker version ships, the version installed on the instances
 # is built beside it and listed here too, so an upgrade can find it.
 ENV FEATHERBASE_APP_PATHS='["/app/example-apps/tasker"]'
+
+# ---- The image this build produces ------------------------------------------
+FROM ${FINAL_STAGE:-tasker-image}

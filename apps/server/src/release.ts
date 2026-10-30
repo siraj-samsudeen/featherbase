@@ -15,7 +15,7 @@ import { formatHealthReport, runHealthChecks } from './instance-health'
 
 /** The release; resolves to the process's exit code (1 when it stopped). The
  *  caller owns the database connection: the entry point below ends it. */
-export async function main(_argv: string[] = [], io: CommandIO = processIO): Promise<number> {
+export async function main(_argv: string[] = [], io: CommandIO = processIO, preflight: { instanceDeploy?: boolean } = {}): Promise<number> {
   try {
     await sql.begin(async (tx) => {
       // The transaction exists only to hold the lock for the whole run; the
@@ -24,7 +24,7 @@ export async function main(_argv: string[] = [], io: CommandIO = processIO): Pro
       // Every refusal that does not need the data, before the first migration
       // (the server's own boot refusals included): a release that would stop
       // part-way stops before it starts.
-      for (const line of await preflightRelease()) io.out(`preflight: ${line}`)
+      for (const line of await preflightRelease(preflight)) io.out(`preflight: ${line}`)
       await runMigrations((line) => io.out(line))
       await diagnoseAdminBootstrap()
       // Instance health (#465 D8): every check, failing ones as warnings. It

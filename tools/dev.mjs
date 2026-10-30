@@ -179,7 +179,7 @@ function npmEnvironment(env) {
   return Object.fromEntries(Object.entries(env).filter(([key]) => !/^npm_config_/i.test(key)))
 }
 
-function buildApp(app, env) {
+export function buildApp(app, env) {
   const npmEnv = npmEnvironment(env)
   const lock = join(app.root, 'package-lock.json')
   const installed = join(app.root, 'node_modules', '.package-lock.json')

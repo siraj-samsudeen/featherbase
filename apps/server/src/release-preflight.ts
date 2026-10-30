@@ -14,11 +14,16 @@ import { platformRelation } from './platform-schema'
 import { validateInstanceAddresses } from './instance-addresses'
 import { parseDomainList } from './identities'
 import { appSetupState } from './app-settings'
-import { shippedUpgrades, unshippedApps, upgradeLossWarning } from './runtime-packages'
+import { shippedUpgrades, unshippedApps, upgradeLossWarning, whyUnshipped } from './runtime-packages'
+import { followsAppFiles, unshippedRefusal } from './deploy-instance'
 
 interface PreflightOptions {
   /** The environment the new server will run as (default: this process's). */
   environment?: string
+  /** This release is the pre-deploy of a client instance (FEATHERBASE_INSTANCE,
+   *  #703): an app that isn't shipped gets the reason, and on a dev instance
+   *  changed files pass, because the deploy step re-pins them at its end. */
+  instanceDeploy?: boolean
 }
 
 interface BtreeGistStatus { installed: boolean; available: boolean; can_create: boolean }
@@ -90,7 +95,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   passed.push(await assertPublicationsPublishGeneratedColumns())
   passed.push(...(await assertAccessConfiguration(environment)))
   passed.push(await assertOneScopeProvider())
-  passed.push(await assertInstalledAppsShipped())
+  passed.push(await assertInstalledAppsShipped(opts.instanceDeploy ? { followFiles: followsAppFiles(environment, await storedEnvironment()) } : undefined))
   passed.push(await assertNoOpenAppRoleBinding())
   passed.push(...(await appsSetUp()))
   passed.push(...(await appUpgradeLosses()))
@@ -186,10 +191,22 @@ async function assertOneScopeProvider(): Promise<string> {
  *  server's start, outside development), so the running release keeps serving
  *  it. A disabled app serves nobody and never blocks. A row with no recorded
  *  version is mid-recovery, which no image can serve. */
-export async function assertInstalledAppsShipped(): Promise<string> {
+export async function assertInstalledAppsShipped(instanceDeploy?: { followFiles: boolean }): Promise<string> {
   const found = await installedNotShipped()
   if (!found) return 'shipped app check skipped (no app versions recorded yet)'
   const { installed, missing } = found
+  if (missing.length && instanceDeploy) {
+    const paths = JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[]
+    const refusals: string[] = []
+    const followed: string[] = []
+    for (const row of found.missingRows) {
+      const reason = await whyUnshipped(row, paths)
+      if (reason === 'files' && instanceDeploy.followFiles) followed.push(String(row.name))
+      else refusals.push(unshippedRefusal(String(row.name), String(row.package_version), reason))
+    }
+    if (refusals.length) throw new Error(refusals.join('\n'))
+    return `every installed, enabled app ships in this release; the deploy step re-pins ${followed.join(', ')}, whose files changed`
+  }
   if (missing.length)
     throw new Error(missing.map(({ name, version }) =>
       `App ${name} version ${version} is installed and enabled, but this release does not ship it. Ship ${name} ${version} in the image (FEATHERBASE_APP_PATHS), or disable the app, before releasing.`).join('\n'))
@@ -220,7 +237,7 @@ async function installedNotShipped() {
     where runtime_package and enabled and package_version is not null order by name`
   const named = (row: Record<string, unknown>) => ({ name: String(row.name), version: String(row.package_version) })
   const missing = await unshippedApps(rows, JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
-  return { installed: rows.map(named), missing: missing.map(named) }
+  return { installed: rows.map(named), missing: missing.map(named), missingRows: missing }
 }
 
 /** 5e. #651: a warning, never a refusal (the step's destructive: true is the
