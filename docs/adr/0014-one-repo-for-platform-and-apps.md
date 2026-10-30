@@ -46,9 +46,10 @@ client-apps/<client>/<app>/   one folder per client, one per app inside:
 
 - A platform change and the app change that needs it are **one PR**, tested
   together in CI.
-- The platform never imports from `example-apps/` or `client-apps/`. A lint rule
-  enforces this, because one repository no longer enforces ADR 0011's one-way
-  rule physically.
+- The platform never imports from `example-apps/` or `client-apps/` (nor from
+  `test-apps/`, the packages the tests install). A check,
+  `pnpm check:platform-imports`, enforces this, because one repository no
+  longer enforces ADR 0011's one-way rule physically.
 - Client app code may be public. Client **data, secrets and instance details
   never are**. The `check:sensitive` guard covers the client folders too.
 - Each client folder has one `CLAUDE.md` for that client's conventions, such
@@ -166,8 +167,8 @@ sets the target time and lists what leaves the required set.
     stay in the client's private instance repository.
   - The delivery question it left open is answered by section 4.
   - The product app / client app distinction stands.
-- **ADR 0011:** the one-way rule stands. It is now enforced by a lint rule
-  instead of a repository boundary.
+- **ADR 0011:** the one-way rule stands. It is now enforced by a check
+  (`pnpm check:platform-imports`) instead of a repository boundary.
 - **ADR 0010:**
   - The stock `core` profile gives way to the intent-driven template.
   - "Archive in the PR that finishes the change" gives way to the proposal PR
