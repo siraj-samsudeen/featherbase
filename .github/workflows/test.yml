@@ -600,11 +600,12 @@ jobs:
           NODE_ENV: test
         run: pnpm --filter web exec vitest run --config ../../tools/vitest.runtime-components.config.ts
 
+      # Its collector refuses a build without coverage; apps:prove below rebuilds.
       - name: Run Tasker's HTTP tests
         if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
-        run: >-
-          pnpm --filter server exec vitest run
-          --config ../../example-apps/tasker/vitest.integration.config.ts
+        run: |
+          VITE_COVERAGE=true npm run build --prefix example-apps/tasker
+          pnpm --filter server exec vitest run --config ../../example-apps/tasker/vitest.integration.config.ts
 
       - name: Install Playwright Chromium
         if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
