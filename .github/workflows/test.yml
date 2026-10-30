@@ -163,6 +163,9 @@ jobs:
       - name: Platform source imports no app code
         run: pnpm check:platform-imports
 
+      - name: The dev command's rules
+        run: pnpm check:dev
+
       # publish-image.yml labels the platform image with these versions.
       - name: Platform versions read from the code
         run: node --test tools/platform-versions.test.mjs
