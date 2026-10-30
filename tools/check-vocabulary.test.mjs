@@ -36,8 +36,8 @@ test('a line carrying a vocabulary-allow comment passes', () => {
   assert.deepEqual(scan(`// ${D} here vocabulary-allow`), [])
 })
 
-test('scope: app sources, openspec, docs and root markdown, minus the allowlisted files', () => {
-  for (const f of ['apps/web/src/index.css', 'apps/server/src/a/b.ts', 'openspec/changes/x/design.md', 'docs/VISION.md', 'README.md', 'CLAUDE.md']) {
+test('scope: app sources, client apps, openspec, docs and root markdown, minus the allowlisted files', () => {
+  for (const f of ['apps/web/src/index.css', 'apps/server/src/a/b.ts', 'openspec/changes/x/design.md', 'docs/VISION.md', 'README.md', 'CLAUDE.md', 'client-apps/x/y/README.md', 'client-apps/x/CLAUDE.md']) {
     assert.equal(inScope(f), true, f)
   }
   for (const f of ['CONTEXT.md', 'apps/web/e2e/a.spec.ts', 'tools/x.mjs', 'apps/web/README.md', 'sub/README.md']) {
