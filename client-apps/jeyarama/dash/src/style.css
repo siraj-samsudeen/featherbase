@@ -99,3 +99,8 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); o
      end of the scroll the fade goes, so the last figure is never left faded. */
   .fd-table-box.fd-more-right { mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
 }
+
+/* The app shows commands to copy: `--` must read as two hyphens in any font. */
+code {
+  font-variant-ligatures: none;
+}

@@ -94,7 +94,16 @@ test('the closing lines say what is lacking and the exact next command', () => {
   assert.match(seeded, /Made-up data: yes/)
   assert.match(seeded, /Sign in as a@example\.test/)
   assert.doesNotMatch(seeded, /--made-up-data/)
+  assert.match(text, /earlier run stays in the database/)
   const noSeed = localStatus({ instance: { ...instance, madeUpData: undefined }, checks }).join('\n')
   assert.doesNotMatch(noSeed, /--made-up-data/)
   assert.match(noSeed, /\.env\.local/)
+})
+
+test('a refused login says how to create it, by platform', () => {
+  const refused = (platform) => postgresHelp({ code: '28000' }, 'postgres://postgres:postgres@127.0.0.1:5432/x', platform)
+  assert.match(refused('darwin'), /createuser -s postgres/)
+  assert.match(refused('linux'), /ALTER USER postgres/)
+  assert.match(refused('win32'), /PostgreSQL installer/)
+  assert.doesNotMatch(refused('linux'), /postgres:postgres/)
 })

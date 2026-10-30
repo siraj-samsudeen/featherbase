@@ -94,7 +94,7 @@ export function localStatus({ instance, checks, madeUpOutput }) {
   }
   lines.push('  Real data: none. There is no warehouse on this machine.', '')
   if (!lacking.length) return lines
-  if (instance.madeUpData) lines.push(`Next, to see it working with made-up data: press Ctrl-C, then run`, `  pnpm dev ${instance.name} --made-up-data`)
+  if (instance.madeUpData) lines.push(`Next, to see it working with made-up data: press Ctrl-C, then run`, `  pnpm dev ${instance.name} --made-up-data`, 'Made-up data from an earlier run stays in the database, but needs that flag each time to show.')
   else lines.push('Next: set each missing secret in .env.local, and each setting in the instance settings file, then run this again.')
   return lines
 }
@@ -126,12 +126,19 @@ export function assertLocal(env) {
     throw new DevError(`DATABASE_URL points at ${hostname}. pnpm dev migrates and rewrites its database, so it only uses one on this machine.`)
 }
 
+/** How to create the login this command expects, where a default install lacks it. */
+function loginHelp(platform) {
+  if (platform === 'darwin') return 'A Homebrew install has no "postgres" user. Create it with: createuser -s postgres'
+  if (platform === 'win32') return 'Use the password you gave the PostgreSQL installer.'
+  return `Give the "postgres" user that password with: sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres'"`
+}
+
 /** What to tell someone whose Postgres won't answer. Never holds the password. */
 export function postgresHelp(error, url, platform = process.platform) {
   const u = new URL(url)
   const at = `${u.hostname}:${u.port || 5432}`
   if (error.code === '28P01' || error.code === '28000')
-    return `Postgres at ${at} refused user "${decodeURIComponent(u.username)}" and that password. Set DATABASE_URL in .env.local to a login that works, for example postgres://postgres:YOUR_PASSWORD@127.0.0.1:5432/${u.pathname.slice(1)}`
+    return `Postgres at ${at} refused user "${decodeURIComponent(u.username)}" and that password. ${loginHelp(platform)} Or set DATABASE_URL in .env.local to a login that works, for example postgres://YOUR_USER:YOUR_PASSWORD@127.0.0.1:5432/${u.pathname.slice(1)}`
   const start = platform === 'win32'
     ? 'On Windows, open Services and start "postgresql-x64-<version>", or install PostgreSQL from https://www.postgresql.org/download/windows/ (use the password postgres, or put your own in DATABASE_URL in .env.local).'
     : platform === 'darwin'
