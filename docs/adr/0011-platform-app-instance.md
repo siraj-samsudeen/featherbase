@@ -11,7 +11,7 @@
 >   client's values; a **client app**, built for one client, may (ADR 0013).
 > - Apps live in this repository, beside the platform: product apps in
 >   `example-apps/`, client apps in `client-apps/<client>/<app>/`. Each client's
->   instances live in a small private instance repository (ADR 0014). The
+>   instances live in `client-apps/<client>/instances/` (ADR 0014). The
 >   small packages the tests install to prove one feature each live in
 >   `test-apps/` (#703).
 > - The one-way rule is no longer kept by a repository boundary. Two checks
@@ -57,7 +57,7 @@ production deployment, rather than after it:
 |---|---|---|
 | **Platform** | Featherbase itself: sign-in, Tables, forms, roles, the Admin screens, and the rules for installing apps | This public repository. The same for every client |
 | **App** | Something installable on an instance, with its own pages, Tables, roles and code (Tasker, Feather Dash) | Its own folder and version number in this repository: `example-apps/` for product apps, `client-apps/<client>/<app>/` for client apps (ADR 0014) |
-| **Instance** | One running copy for one client: one server, one database, and that client's settings, data, people and choice of apps | The client's private instance repository (ADR 0014), and the database itself |
+| **Instance** | One running copy for one client: one server, one database, and that client's settings, data, people and choice of apps | The client's `client-apps/<client>/instances/<instance>/` (ADR 0014), and the database itself |
 
 In prose, the middle layer is called an **app**. The code's name for it
 (`runtime package`) is used only when pointing at a file.

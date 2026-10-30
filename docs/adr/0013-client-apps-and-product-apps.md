@@ -5,13 +5,11 @@
 > **30-Oct-2026 correction (#705).** [ADR 0014](0014-one-repo-for-platform-and-apps.md)
 > moved where apps live, and its amendment is now written into the text below:
 > client apps live in **this** repository under `client-apps/<client>/<app>/`,
-> product apps under `example-apps/`, and each client's instances in a small
-> private instance repository. Client app code may be public; client data,
-> secrets and instance details never are. The delivery question this ADR left
-> open is answered by ADR 0014 §4: a client app's image is built when the app
-> is released. As of this date the move is in progress, so the first client app
-> still sits in the client's repository. The product app / client app
-> distinction is unchanged.
+> product apps under `example-apps/`, and each client's instances under
+> `client-apps/<client>/instances/`. Client app code and instance settings may be
+> public; client data and secrets never are. The delivery question this ADR left
+> open is answered by ADR 0014 §4. The product app / client app distinction is
+> unchanged.
 
 ## Context
 
@@ -40,7 +38,7 @@ both kinds of app.
 |---|---|---|
 | Built for | Any client | One client |
 | Examples | Feather Tickets, Feather Tasker | Feather Dash (for its first client) |
-| Lives in | This repository, `example-apps/` | This repository, `client-apps/<client>/<app>/` (ADR 0014; first placed in the client's private repository) |
+| Lives in | This repository, `example-apps/` | This repository, `client-apps/<client>/<app>/` (ADR 0014; first placed in the client's `client-apps/<client>/instances/`) |
 | May carry one client's terms, values and examples | No: they reach it as settings or instance setup | **Yes**, directly |
 | A second client gets | The same app, with its own settings | A copy of the code, to adapt |
 | Worth it when | The same app serves many clients | One client needs it now |
@@ -63,12 +61,10 @@ code moves into the platform.
   only through declared extension points, and the platform never reads an app's
   internals. A client app may know its client; it still may not know platform
   internals.
-- **Client data, secrets and instance details never enter this public
-  repository.** *(Corrected 30-Oct-2026, ADR 0014: this first read "nothing from
-  a client's repository enters this public one". A client app's code now lives
-  here and may be public; its data, figures and instance details stay in the
-  client's private instance repository, and `check:sensitive` covers the client
-  folders.)* The platform's extension points are still tested with small
+- **Client data and secrets never enter this public repository.** *(Corrected 30-Oct-2026, ADR 0014: this first read "nothing from
+  a client's repository enters this public one". A client app's code and instance settings
+  now live here and may be public; its data and secrets stay out, and
+  `check:sensitive` covers the client folders.)* The platform's extension points are still tested with small
   generic fixture apps.
 
 ### What a client app may hold
@@ -104,7 +100,7 @@ hard-code its own client's values, under the limits above.
   dataset query. Each such case is decided in its own design, and the extension
   point stays generic.
 - How a client app reaches a server was left open here. *(Answered 30-Oct-2026
-  by ADR 0014 §4: an image is built when the app is released, and each
-  instance's private repository names the release it runs.)*
+  by ADR 0014 §4: the host builds the instance's image on each deploy; dev follows
+  `main`, prod a release branch.)*
 - Tasker is retired after stage B (#563). Feather Tasker, a product app, may
   return later as its own app.

@@ -698,7 +698,7 @@ the default password.
 
 Dev and prod drift silently: a variable set on one and not the other, a
 secret shared where it must differ, or a settings file applied to one
-environment only. The instance repository's workflow compares them on each
+environment only. A workflow can compare them on each
 run. It picks a fresh key, asks every environment for its variable report
 with that key, and puts the reports side by side:
 
