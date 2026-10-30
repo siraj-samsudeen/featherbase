@@ -54,9 +54,9 @@ repository (data-warehouse #4486, #4531, #4453).
 
 ## Build and test
 
-`pnpm apps:prepare` at the repository root installs, builds and tests this app
-along with the others. By hand, from this folder, after `pnpm install` at the
-root:
+`pnpm apps:prepare` at the repository root installs and builds this app along
+with the others; CI runs its tests. By hand, from this folder, after `pnpm
+install` at the root:
 
 ```sh
 npm ci

@@ -10,24 +10,32 @@
 # the RLS suite creates its own login role for the run. The e2e specs seed
 # their own documents.
 #
-# Shape of the PR gate (measured 24-Oct-2026 before this layout: `unit` took
-# ~11 min because the server suite (~6 min) and the web suite (~2.7 min) ran
-# back to back in one job; e2e took ~6.5 min beside it):
+# Shape of the gate. `changes` (tools/ci-scope.mjs) picks the suites a PR needs
+# from its paths; everything runs on main and on whatever it cannot place:
 #
-#   checks ─────────────┐
-#   unit-server 1/3 ────┤
-#   unit-server 2/3 ────┼──> unit   (merges server coverage, enforces the
-#   unit-server 3/3 ────┤            thresholds, fails if anything above did)
-#   unit-web ───────────┘
-#   changes ──> release-preflight-pg18 (+ client apps' platform tests when a
-#                        PR touches client-apps/ or the platform; main: always)
-#   changes ──> e2e     (PRs: only when the web/e2e surface changed, or the
-#                        PR carries the `run-e2e` label; main: always)
+#   changes ──> checks ───────────────────────┐
+#           ──> unit-server 1/3, 2/3, 3/3 ────┤
+#           ──> release-preflight-pg18 ───────┼──> unit
+#           ──> unit-web ─────────────────────┤
+#           ──> app-tests ────────────────────┤
+#           ──> e2e ──> coverage-merged ──────┘
 #
-# The three names `unit`, `e2e` and `release-preflight-pg18` are what merge
-# automation waits on — keep them stable. A skipped `e2e` reports the
-# `skipped` conclusion, which GitHub treats as passing for a required check,
-# so a server-only PR is never left waiting on it.
+#   docs and prose      checks' fast half only
+#   client-apps/**      app-tests: the app's tests and platform tests
+#   example-apps/**     app-tests: Tasker's own layers
+#   apps/server/**      platform checks, server suite, preflight, client platform tests
+#   apps/web/**         platform checks, web suite, e2e, merged coverage
+#   anything else       everything
+#
+# `unit` and `e2e` are required by the ruleset on main, so they must report on
+# every PR: never put a workflow-level `paths` filter here. A job skipped by its
+# own `if` counts as passing. If `changes` fails its outputs are empty, and every
+# `!= 'false'` below then runs its suite: that is how this fails closed.
+#
+# Coverage gates apply only where what they measure ran. The server gate merges
+# the three shards and the preflight, which share one switch, and is skipped with
+# them. coverage-merged needs both unit-web and e2e. Each suite's own floor stays
+# inside its job. Labels: `run-all` for everything, `run-e2e` for e2e alone.
 name: test
 
 on:
@@ -60,20 +68,18 @@ env:
   ALLOW_MOCK_OAUTH: '1'
 
 jobs:
-  # Decides whether e2e runs. On a PR it runs when the change reaches what
-  # the browser suite exercises beyond the server suite: the web app and its
-  # specs (apps/web/**, which holds e2e/ and playwright.config.ts), shared
-  # contracts, runtime apps, dependencies, or this workflow. A server-only
-  # change is covered by the server suite (1,300+ API tests against a real
-  # database) and the web component suite, which runs the server in-process;
-  # the full e2e still runs on the merge to main. Label a PR `run-e2e` to
-  # force it — e.g. a server change to a route the UI depends on.
+  # Decides what runs: tools/ci-scope.mjs holds the rules and their tests.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
+      platform_checks: ${{ steps.decide.outputs.platform_checks }}
+      server: ${{ steps.decide.outputs.server }}
+      web: ${{ steps.decide.outputs.web }}
       e2e: ${{ steps.decide.outputs.e2e }}
       client_apps: ${{ steps.decide.outputs.client_apps }}
+      tasker_tests: ${{ steps.decide.outputs.tasker_tests }}
+      coverage_merged: ${{ steps.decide.outputs.coverage_merged }}
     steps:
       # A PR checks out its merge commit, whose first parent is the base
       # branch tip — so HEAD^1..HEAD is exactly what merging would change.
@@ -81,47 +87,29 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Decide whether e2e runs
+      # --no-renames: a move out of apps/ must count against apps/ as well.
+      - name: Decide what runs
         id: decide
         env:
           EVENT: ${{ github.event_name }}
-          FORCE: ${{ contains(github.event.pull_request.labels.*.name, 'run-e2e') }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
-          if [ "$EVENT" != pull_request ]; then
-            reason="$EVENT runs everything"; e2e=true
-          elif [ "$FORCE" = true ]; then
-            reason="PR carries the run-e2e label"; e2e=true
-          else
-            matched=$(git diff --name-only HEAD^1 HEAD | grep -E \
-              '^(apps/web/|packages/|example-apps/|test-apps/|client-apps/|tools/(prove-runtime-packages|prove-tasker-acceptance|collect-runtime-proof-coverage)\.mjs$|tools/vitest\.runtime-components\.config\.ts$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/test\.yml$)' || true)
-            if [ -n "$matched" ]; then
-              reason="PR touches the e2e surface: $(echo "$matched" | head -5 | tr '\n' ' ')"; e2e=true
-            else
-              reason="PR does not touch the e2e surface; it runs on merge to main"; e2e=false
-            fi
-          fi
-          echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
-          echo "e2e: $e2e — $reason" | tee -a "$GITHUB_STEP_SUMMARY"
-
-          # The client apps' platform tests (ADR 0014): when a PR touches a
-          # client app or the platform they run on.
-          if [ "$EVENT" != pull_request ]; then
-            client_apps=true
-          else
-            matched=$(git diff --name-only HEAD^1 HEAD | grep -E \
-              '^(client-apps/|apps/server/|packages/|tools/prepare-apps\.mjs$|pnpm-lock\.yaml$|package\.json$|\.github/workflows/test\.yml$)' || true)
-            if [ -n "$matched" ]; then client_apps=true; else client_apps=false; fi
-          fi
-          echo "client_apps=$client_apps" >> "$GITHUB_OUTPUT"
-          echo "client apps' platform tests: $client_apps" | tee -a "$GITHUB_STEP_SUMMARY"
+          git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed"
+          node tools/ci-scope.mjs < "$RUNNER_TEMP/changed"
 
   # Everything that needs no database: spec/catalog/guard validations and
-  # both typechecks.
+  # both typechecks. The fast half runs on every PR; building the apps and the
+  # typechecks only when the platform changed.
   checks:
+    needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # The whole history: the version check needs where the PR forked from main.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # No `version` input: pnpm/action-setup reads the `packageManager`
       # field from package.json, so the CI pnpm always matches the repo.
@@ -170,10 +158,25 @@ jobs:
       - name: Platform versions read from the code
         run: node --test tools/platform-versions.test.mjs
 
+      - name: What runs in CI, by path
+        run: node --test tools/ci-scope.test.mjs
+
+      - name: The version check's rules
+        run: node --test tools/check-app-versions.test.mjs
+
+      # ADR 0014 section 4. On main there is nothing to compare with.
+      - name: An app version change goes above main's
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node tools/check-app-versions.mjs --main origin/main --head "$HEAD_SHA"
+
       - name: Build independent runtime test packages
+        if: ${{ needs.changes.outputs.platform_checks != 'false' }}
         run: pnpm apps:prepare
 
       - name: Typecheck server
+        if: ${{ needs.changes.outputs.platform_checks != 'false' }}
         run: pnpm --filter server typecheck
 
       # src/env.ts is the only server module that reads process.env, and the
@@ -186,6 +189,7 @@ jobs:
         run: pnpm --filter server check:env
 
       - name: Typecheck web
+        if: ${{ needs.changes.outputs.platform_checks != 'false' }}
         run: pnpm --filter web typecheck
 
   # The server suite, split by file across three runners. Each shard has its
@@ -197,6 +201,8 @@ jobs:
   # writes a Vitest blob report carrying its raw coverage; the `unit` job
   # merges them and enforces the real thresholds from vitest.config.ts.
   unit-server:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.server != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -321,6 +327,8 @@ jobs:
   # The web component suite (it runs the server in-process against its own
   # database) and the shared package, each against its own coverage floor.
   unit-web:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.web != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -393,39 +401,56 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # The verdict for the unit layer, under the name merge automation waits
-  # on. Merging needs no database: Vitest replays the shards' results and
-  # coverage from their blob reports without running globalSetup.
+  # The verdict for the unit layer, under the name the ruleset requires. A job
+  # may be skipped only if `changes` said so. Merging needs no database: Vitest
+  # replays the shards' results and coverage from their blob reports without
+  # running globalSetup.
   unit:
-    needs: [checks, unit-server, unit-web, release-preflight-pg18, coverage-merged]
+    needs: [changes, checks, unit-server, unit-web, release-preflight-pg18, app-tests, coverage-merged]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Fail if a check or suite failed
-        if: >-
-          needs.checks.result != 'success' ||
-          needs.unit-server.result != 'success' ||
-          needs.unit-web.result != 'success' ||
-          needs.release-preflight-pg18.result != 'success' ||
-          (needs.coverage-merged.result != 'success' && needs.coverage-merged.result != 'skipped')
+      - name: Fail if a check or suite failed, or skipped when it should have run
+        env:
+          CHECKS: ${{ needs.checks.result }}
+          UNIT_SERVER: ${{ needs.unit-server.result }}/${{ needs.changes.outputs.server }}
+          PREFLIGHT: ${{ needs.release-preflight-pg18.result }}/${{ needs.changes.outputs.server }}
+          UNIT_WEB: ${{ needs.unit-web.result }}/${{ needs.changes.outputs.web }}
+          APP_TESTS: ${{ needs.app-tests.result }}/${{ needs.changes.outputs.client_apps == 'false' && needs.changes.outputs.tasker_tests == 'false' && 'false' || 'true' }}
+          COVERAGE_MERGED: ${{ needs.coverage-merged.result }}/${{ needs.changes.outputs.coverage_merged }}
         run: |
-          echo "checks=${{ needs.checks.result }} unit-server=${{ needs.unit-server.result }} unit-web=${{ needs.unit-web.result }} pg18=${{ needs.release-preflight-pg18.result }} coverage=${{ needs.coverage-merged.result }}"
-          exit 1
+          status=0
+          for name in UNIT_SERVER PREFLIGHT UNIT_WEB APP_TESTS COVERAGE_MERGED; do
+            value=${!name}; result=${value%%/*}; wanted=${value#*/}
+            echo "$name: $result (wanted: ${wanted:-unknown, so yes})"
+            if [ "$result" = success ] || { [ "$result" = skipped ] && [ "$wanted" = false ]; }; then continue; fi
+            status=1
+          done
+          echo "CHECKS: $CHECKS"
+          [ "$CHECKS" = success ] || status=1
+          exit $status
 
+      # Only a run of the server suite has shards to merge. The preflight's report
+      # alone would read as far below the floor.
       - uses: actions/checkout@v4
+        if: ${{ needs.unit-server.result == 'success' }}
 
       - uses: pnpm/action-setup@v4
+        if: ${{ needs.unit-server.result == 'success' }}
 
       - uses: actions/setup-node@v4
+        if: ${{ needs.unit-server.result == 'success' }}
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install dependencies
+        if: ${{ needs.unit-server.result == 'success' }}
         run: pnpm install --frozen-lockfile
 
       - uses: actions/download-artifact@v4
+        if: ${{ needs.unit-server.result == 'success' }}
         with:
           pattern: server-blob-*
           path: apps/server/.vitest-reports
@@ -434,6 +459,7 @@ jobs:
       # Fails below the server's coverage.thresholds, exactly as the
       # unsharded `test:coverage` did.
       - name: Merge server shards and enforce coverage thresholds
+        if: ${{ needs.unit-server.result == 'success' }}
         env:
           # Keep the driver in the denominator. Merging never connects.
           MYSQL_TEST_URL: mysql://root@127.0.0.1:3306
@@ -441,14 +467,11 @@ jobs:
 
   # Production runs PostgreSQL 18.6, where the release preflight has checks
   # that only exist there (publish_generated_columns, #399). The full suite
-  # stays on 17 above; this job runs the release preflight on 18.
-  #
-  # The client apps' platform tests run here too, on the database this job
-  # already has, when `changes` says a PR touched a client app or the
-  # platform (and always on main, or if `changes` failed).
+  # stays on 17 above; this job runs the release preflight on 18. Its coverage
+  # joins the server gate, so it shares the server suite's switch.
   release-preflight-pg18:
     needs: changes
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.changes.outputs.server != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -505,10 +528,104 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      # `pnpm apps:prepare` above built and unit-tested each client app.
+  # The apps' own tests, apart from the platform's suites. Client apps: their
+  # tests and platform tests, on the PostgreSQL production runs. Tasker: its unit
+  # tests, the server and web tests that name it, its runtime components and its
+  # packaged journeys; on main and on web PRs the full suites run those instead.
+  app-tests:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.client_apps != 'false' || needs.changes.outputs.tasker_tests == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: featherbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build independent runtime test packages
+        run: pnpm apps:prepare
+
+      - name: Migrate database
+        env:
+          NODE_ENV: test
+        run: pnpm --filter server migrate
+
+      - name: Run Feather Dash's tests (client-apps/jeyarama/dash)
+        if: ${{ needs.changes.outputs.client_apps != 'false' }}
+        run: npm test --prefix client-apps/jeyarama/dash
+
       - name: Run Feather Dash's platform tests (client-apps/jeyarama/dash)
-        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.client_apps != 'false' }}
+        if: ${{ needs.changes.outputs.client_apps != 'false' }}
+        env:
+          NODE_ENV: test
         run: npm run test:platform --prefix client-apps/jeyarama/dash
+
+      - name: Run Tasker's unit tests with coverage
+        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
+        run: npm run test:coverage --prefix example-apps/tasker
+
+      - name: Run the server and web tests that name an example app
+        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
+        env:
+          NODE_ENV: test
+        run: |
+          (cd apps/server && pnpm exec vitest run $(git grep -lE 'example-apps|tasker-client' -- 'test/*.test.ts'))
+          (cd apps/web && pnpm exec vitest run $(git grep -lE 'example-apps' -- 'test/*.test.ts' 'test/*.test.tsx'))
+
+      - name: Run Tasker's runtime components against the real server
+        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
+        env:
+          NODE_ENV: test
+        run: pnpm --filter web exec vitest run --config ../../tools/vitest.runtime-components.config.ts
+
+      # Its collector refuses a build without coverage; apps:prove below rebuilds.
+      - name: Run Tasker's HTTP tests
+        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
+        run: |
+          VITE_COVERAGE=true npm run build --prefix example-apps/tasker
+          pnpm --filter server exec vitest run --config ../../example-apps/tasker/vitest.integration.config.ts
+
+      - name: Install Playwright Chromium
+        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      # As in e2e: the development seed needs a truly loopback PostgreSQL.
+      - name: Start loopback PostgreSQL for the packaged seed proof
+        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql
+          PG_BIN=$(dirname "$(find /usr/lib/postgresql -name initdb | sort -V | tail -1)")
+          "$PG_BIN/initdb" -D "$RUNNER_TEMP/runtime-proof-pg" -U postgres --auth=trust
+          "$PG_BIN/pg_ctl" -D "$RUNNER_TEMP/runtime-proof-pg" -l "$RUNNER_TEMP/runtime-proof-pg.log" -o "-h 127.0.0.1 -p 5433 -k $RUNNER_TEMP" -w start
+
+      - name: Prove packaged runtime journeys
+        if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
+        env:
+          RUNTIME_PROOF_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/featherbase_runtime_proof_e2e
+        run: pnpm apps:prove
 
   # Fails closed: if `changes` itself failed, e2e runs rather than reporting
   # a passing `skipped`.
@@ -628,10 +745,11 @@ jobs:
           retention-days: 7
 
   # One source-level web report, not separate component/browser percentages.
-  # On a server-only PR e2e may be skipped; main always runs both suites.
+  # It reads artifacts from both suites, so `changes` only asks for it when both
+  # run; main always runs both.
   coverage-merged:
-    needs: [unit-web, e2e]
-    if: ${{ !cancelled() && needs.e2e.result != 'skipped' }}
+    needs: [changes, unit-web, e2e]
+    if: ${{ !cancelled() && needs.changes.outputs.coverage_merged != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

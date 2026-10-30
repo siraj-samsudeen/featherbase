@@ -47,7 +47,8 @@ Run `pnpm apps:prepare` after installing dependencies and before the server
 and web suites: it builds the app packages the suites install
 (`example-apps/tasker`, `test-apps/scope-proof`, `client-apps/jeyarama/dash`;
 the apps have their own npm lockfiles and are not pnpm workspace members). CI
-and `./init.sh` do this for you.
+and `./init.sh` do this for you. It installs and builds; it does not run the
+apps' tests. Those are each app's `npm test`, and CI's.
 
 `typecheck` runs `tsc` twice — on `src`, then on `tsconfig.test.json`, which
 adds the test directories (and for web `e2e/` and the Vite/Playwright
@@ -60,13 +61,24 @@ tears them down. `pnpm smoke` does not; it drives whatever is already up on
 `:5173`, which is why `./init.sh` runs it as its boot check.
 
 **CI** (`.github/workflows/test.yml`) runs everything on every push to `main`.
-On a pull request it runs the static checks, both typechecks, the server suite
-(three shards), the web and shared suites and the PostgreSQL 18 release
-preflight, and runs e2e **only** when the PR touches `apps/web/**`,
-`packages/**`, `example-apps/**`, `test-apps/**`, `client-apps/**`, the
-lockfile, the root `package.json`, `pnpm-workspace.yaml` or the workflow. Add
-the `run-e2e` label to force it (say, a server change to a route the UI
-depends on).
+On a pull request `tools/ci-scope.mjs` picks the suites from the changed paths:
+
+| A PR changes | What runs |
+|---|---|
+| `*.md`, `docs/**`, `openspec/**`, agent files | the fast checks: specs, sensitive data, vocabulary, the other guards |
+| `client-apps/**` | fast checks, the app's `npm test` and platform tests |
+| `example-apps/**` | fast checks, Tasker's unit tests, the server and web tests that name an example app, its runtime components and packaged journeys |
+| `apps/server/**`, `docs/DEPLOY.md` | fast checks, typechecks, server suite, release preflight, client platform tests |
+| `apps/web/**` | fast checks, typechecks, web suite, e2e, merged coverage |
+| anything else (`packages/**`, lockfile, `package.json`, `tools/**`, workflows) | everything |
+
+A change across several areas gets the union. Add the `run-all` label to force
+everything, or `run-e2e` for e2e alone (say, a server change to a route the UI
+depends on). `unit` and `e2e` report on every PR, so never add a workflow-level
+`paths` filter to `test.yml`. The checks also fail a PR that changes an app's
+`version` to one not greater than `main`'s (`pnpm check:app-versions`).
+
+A scoped PR can break what it did not run; that shows on `main`, which runs it all.
 
 ## The sandbox model
 
@@ -255,8 +267,8 @@ measured. Thus even a 100% report does not claim to test the hosted service.
 Standalone floors live in each package's `vitest.config.ts`
 `coverage.thresholds`; merged-report scripts enforce the combined-source
 gates. Floors only rise. The server suite's three CI shards run with thresholds
-zeroed and the `unit` job enforces the floor on the merged shard reports;
-locally each suite runs whole against its floor.
+zeroed and the `unit` job enforces the floor on the merged shard reports, only
+when the server suite ran; locally each suite runs whole against its floor.
 
 CI merges the PostgreSQL 18 release-preflight coverage with the server's
 three shards before enforcing the server gate. `src/sources/mysql-driver.ts`
@@ -296,7 +308,7 @@ pnpm --filter web coverage:merged  # → apps/web/coverage-merged/index.html
   It requires both suites and refuses missing executable source files,
   including the SPA and gallery entries.
 - The jsdom run's own thresholds gate CI's `unit-web` job; CI's
-  `coverage-merged` job combines it with the browser run. To run E2E beside
+  `coverage-merged` job combines it with the browser run, when both ran. To run E2E beside
   `./init.sh`, move the ports and give it a private `DATABASE_URL`.
 - Both web suites strip comments before instrumenting, so a coverage hint
   before a statement must be a legal comment —

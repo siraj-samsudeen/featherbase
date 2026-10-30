@@ -635,8 +635,10 @@ export async function endSessionsNoLongerAdmitted(methodKey: string, nextDomains
   await lockWaysIn(db)
   const before = await domainListsJson(db)
   const after = await domainListsJson(db, { key: methodKey, domains: nextDomains })
+  // clock_timestamp(), not now(): now() is when the transaction began, before
+  // the lock wait above, so a session opened since then would outlive this.
   const ended = await db`
-    update sign_in_identity i set sessions_ended_at = now()
+    update sign_in_identity i set sessions_ended_at = clock_timestamp()
     from sign_in_method m
     where m.row_id = i.method and i.method = ${methodKey} and m.kind = 'google'
       and i.subject is not null and i.ended_at is null

@@ -29,6 +29,8 @@ on:
       - .github/workflows/image-check.yml
       - .github/image-check/**
       - test-apps/other/**
+      # No image holds a client app, so its manifest is not a build input.
+      - '!client-apps/**'
 
 permissions:
   contents: read
