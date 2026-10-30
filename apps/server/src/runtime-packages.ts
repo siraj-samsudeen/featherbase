@@ -3,12 +3,13 @@ import { createHash } from 'node:crypto'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
-import { registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, type AppManifest } from './apps'
+import { registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, syncAppJobs, type AppManifest } from './apps'
+import { applyJobPlan, bindAppJobs, jobsDeclaration, planJobChanges, validateAppJobs } from './app-jobs'
 import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
-import { APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
+import { APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
@@ -115,6 +116,9 @@ const manifestSchema = z.object({
   // #629: the app's glossary terms, written under the app at install and
   // upgrade.
   glossary: glossaryDeclaration.optional(),
+  // #700: the app's scheduled jobs, each run as its own system actor holding
+  // only the grants it declares.
+  jobs: jobsDeclaration.optional(),
   migrations: z.array(migrationSchema).default([]),
 }).strict()
 
@@ -274,6 +278,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   let resolvers = new Map<string, AppScopeResolver>()
   let authorizers = new Map<string, AppProductAuthorizer>()
   let providers = new Map<string, AppScopeProvider>()
+  let jobHandlers = new Map<string, RuntimeJobHandler>()
   const provider = manifest.scopeProvider
   if (provider) {
     if (!manifest.server) throw new Error('A scope provider requires a server module')
@@ -302,6 +307,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
       for (const secret of declaration.needs ?? [])
         if (!declaredSecrets.has(secret)) throw new Error(`The ${kind} ${operation} needs the secret ${secret}, which the app does not declare in its secrets`)
   for (const operation of allOperations) validateOperationFacts(operation, manifest.tables)
+  validateAppJobs(manifest.name, manifest, declaredSecrets)
   for (const declaration of [manifest.actions, manifest.reads]) {
     if (!declaration) continue
     if (!manifest.server) throw new Error('Declared operations require a server module')
@@ -321,6 +327,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     resolvers = namedFunctions(module.scopeResolvers, allOperations.flatMap(o => 'scope' in o && o.scope.kind === 'resolver' ? [o.scope.name] : []))
     authorizers = namedFunctions(module.authorizers, allOperations.flatMap(o => o.authorization.kind === 'product' ? [o.authorization.name] : []))
     providers = namedFunctions(module.scopeProviders, provider ? [provider.name] : [])
+    jobHandlers = namedFunctions(module.jobs, (manifest.jobs ?? []).map(job => job.name))
     for (const [table, validator] of Object.entries(module.validators ?? {})) {
       if (!names.has(table) || typeof validator !== 'function')
         throw new Error('Validators must target owned Tables')
@@ -337,6 +344,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   const setup = () => loadAppSetup(manifest.name, manifest)
   const app: AppManifest = { name: manifest.name, tables: manifest.tables,
     roles: manifest.roles, permissions: manifest.permissions, doc_events, runtime_package: true,
+    scheduler_events: bindAppJobs({ app: manifest.name, jobs: manifest.jobs ?? [], handlers: jobHandlers, setup, datasets: manifest.datasets ?? [] }),
     runtime_identity: { version: pkg.version, digest, ledger: migrationLedger(manifest.migrations) },
     runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
   return { name: manifest.name, title: manifest.title,
@@ -458,11 +466,13 @@ async function upgradePlan(name: string, version: string, preview = true) {
   const withdrawn = priorGrants.filter(g => !g.now || !kept.has(canonical(g.now))).map(g => g.prior)
   const granted = target.manifest.permissions.filter(p => added.has(p.table))
   const destructive = operations.some(op => 'destructive' in op && op.destructive === true)
+  // #700: what the upgrade does to the app's scheduled jobs.
+  const jobs = planJobChanges(name, prior.manifest.jobs ?? [], target.manifest.jobs ?? [])
   const plan = { name, currentVersion: prior.version, targetVersion: target.version,
     currentArtifact: prior.digest, targetArtifact: target.digest, enabled: row.enabled,
     migrations: pending.map(m => ({ id: m.id, checksum: checksum(m), operations: m.operations })),
     tables: [...new Set(operations.flatMap(op => op.kind === 'renameTable' ? [op.from, op.to] : [typeof op.table === 'string' ? op.table : op.table.name]))],
-    permissions: [...withdrawn.map((p) => ({ withdraw: p })), ...granted.map((p) => ({ grant: p }))], jobs: [], indexes: [], destructive,
+    permissions: [...withdrawn.map((p) => ({ withdraw: p })), ...granted.map((p) => ({ grant: p }))], jobs, indexes: [], destructive,
     dataEffects: destructive ? 'Destructive: the steps under losses remove data; every other row is unchanged' : 'Existing rows unchanged; added columns are NULL unless backfilled',
     codeOnly: operations.length === 0 }
   // What this instance would lose: the steps run in a rolled-back
@@ -472,7 +482,7 @@ async function upgradePlan(name: string, version: string, preview = true) {
   // apply must not make the review stale. Applying runs the steps for real
   // in its own transaction, so it does not count them first.
   const losses = preview ? await countLosses(name, pending, { ownsClient: typeof target.manifest.client === 'string' }) : []
-  return { row, target, prior, pending, ledger, withdrawn, granted,
+  return { row, target, prior, pending, ledger, withdrawn, granted, jobs,
     plan: { ...plan, planId: checksum(plan), losses: losses.map(describeLoss) } }
 }
 
@@ -544,6 +554,7 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           previous_artifact = ${sql.json({ version: prepared.prior.version, digest: prepared.prior.digest })},
           upgrade_plan = ${planId} where name = ${name}`
         await syncAppGlossary(name, prepared.target.manifest.glossary, actor)
+        await applyJobPlan(name, prepared.jobs, prepared.prior.manifest.jobs ?? [], actor)
       }))
     } catch (error) {
       invalidateMeta()
@@ -552,6 +563,8 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
     }
     suspendRuntimeApp(name)
     selectPackage(prepared.target)
+    // Its jobs wait for activation, like the rest of the app.
+    await syncAppJobs(name)
     return { name, version, activationPending: true }
   }, true)
 }
