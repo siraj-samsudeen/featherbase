@@ -1,10 +1,15 @@
 # ADR 0005: Name — Featherbase
 
-**Status:** Accepted · **Date:** 2026-07-08
+**Status:** Accepted · **Date:** 2026-07-08 · **Corrected:** 30-Oct-2026 (#705)
+
+> **30-Oct-2026 correction.** The `@featherbase/*` npm scope below was the plan
+> at the time; it was never used. The workspace packages are named `server`,
+> `web` and `shared`, and none is published under that scope. The name itself
+> stands.
 
 ## Context
 
-The project needed a name fitting Siraj's existing **feather** ecosystem (feather-testing-core, feather-testing-convex, the feather-skills tooling). Constraint discovered during the check: **FeathersJS** is a long-established Node.js framework (`feathers` on npm), so the bare word "feather" was never safe for a JS framework; bare `feather` is also a taken npm package.
+The project needed a name fitting the owner's existing **feather** ecosystem (feather-testing-core, feather-testing-convex, the feather-skills tooling). Constraint discovered during the check: **FeathersJS** is a long-established Node.js framework (`feathers` on npm), so the bare word "feather" was never safe for a JS framework; bare `feather` is also a taken npm package.
 
 ## Decision
 

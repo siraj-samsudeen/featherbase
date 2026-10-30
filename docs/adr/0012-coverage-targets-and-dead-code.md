@@ -1,6 +1,13 @@
 # ADR 0012: Full server coverage, merged web coverage, and dead code goes
 
-**Status:** Accepted · **Date:** 2026-10-26 · **PR:** [#504](https://github.com/siraj-samsudeen/featherbase/pull/504)
+**Status:** Accepted · **Date:** 2026-10-26 · **Corrected:** 30-Oct-2026 (#705) · **PR:** [#504](https://github.com/siraj-samsudeen/featherbase/pull/504)
+
+> **30-Oct-2026 correction.** The server's line and statement gates sit at
+> **99.5**, not 100; functions are at 100 and branches at 90. The gap is
+> release-preflight's PostgreSQL 18 checks, which run in CI's separate
+> `release-preflight-pg18` job rather than in the shards that enforce the
+> floor. `apps/server/vitest.config.ts` holds the numbers and `docs/TESTING.md`
+> describes how they are enforced; both win over the figures below.
 
 ## Context
 
@@ -49,6 +56,7 @@ passes typecheck, both suites and the smoke test before the next starts.
 ## Consequences
 
 The server thresholds in `apps/server/vitest.config.ts` rise to 100 for
-lines, statements and functions. A refactor of the release path lands in the
+lines, statements and functions *(corrected 30-Oct-2026: lines and statements
+settled at 99.5, see the note above)*. A refactor of the release path lands in the
 same change set as its tests; it touches the deploy path, so it is called out
 in the pull request for review before a release uses it.

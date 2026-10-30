@@ -127,7 +127,7 @@ interface SheetPlan {
   } | null
 }
 
-// ADR 0008: named UI-side thresholds — suggestion bets. (IMPORT_CHUNK
+// Named UI-side import thresholds (packages/shared/src/import.ts) — suggestion bets. (IMPORT_CHUNK
 // lives with the import-run module now.)
 const SUGGEST_MIN_SCORE = 0.3 // weakest near-match worth surfacing as a hint
 // UPS-H1 (owner decision 2026-08-11): beyond this many updates in one run,
@@ -371,7 +371,7 @@ function mappableColumns(meta: TableMeta): MappableColumn[] {
     .map((c) => ({ column_name: c.column_name, label: c.label, column_type: c.column_type }))
 }
 
-// ADR 0008: preview cap — enough to spot trouble, cheap to render. Failed
+// Named import threshold (packages/shared/src/import.ts): preview cap — enough to spot trouble, cheap to render. Failed
 // rows beyond the cap always render.
 const PREVIEW_ROWS = 50
 

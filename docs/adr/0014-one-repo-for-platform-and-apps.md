@@ -155,6 +155,11 @@ sets the target time and lists what leaves the required set.
 
 ## What this amends
 
+> *30-Oct-2026 (#705): these amendments are now written into the text of
+> ADRs 0010, 0011 and 0013, each with a dated correction note, so a reader no
+> longer has to reconcile the chain. The list below is kept as the record of
+> what changed.*
+
 - **ADR 0013:**
   - *"Nothing from a client's repository enters this public one"* becomes:
     client **apps** live here, while client data, secrets and instance details
@@ -175,7 +180,8 @@ sets the target time and lists what leaves the required set.
     note.
   - It is deleted once its content lives somewhere better; git keeps it.
   - `CLAUDE.md` is changed in this ADR's PR.
-  - A one-off pass over the existing ADRs follows as its own issue.
+  - A one-off pass over the existing ADRs follows as its own issue
+    ([#705](https://github.com/siraj-samsudeen/featherbase/issues/705)).
 
 ## Options considered
 
