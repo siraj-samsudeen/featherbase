@@ -51,6 +51,7 @@ pnpm check:specs                 # validate OpenSpec specs and active changes
 | `apps/web` | React Admin UI: one metadata-driven list and form for every Table |
 | `packages/shared` | Types and contracts used by both server and web |
 | `runtime-apps` | Applications packaged for the runtime (e.g. `tasker`) |
+| `client-apps` | Apps built for one client, one folder per client (`jeyarama/dash`); their instances' settings live in each client's private repository ([ADR 0014](docs/adr/0014-one-repo-for-platform-and-apps.md)) |
 | `openspec/specs` | Behaviour specs, the sole authority on what the system does |
 | `docs/adr` | Architecture decisions and why they were made |
 | `tools` | Repository checks run in CI (`pnpm check:*`) |

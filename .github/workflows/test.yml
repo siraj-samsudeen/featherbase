@@ -19,7 +19,8 @@
 #   unit-server 2/3 ────┼──> unit   (merges server coverage, enforces the
 #   unit-server 3/3 ────┤            thresholds, fails if anything above did)
 #   unit-web ───────────┘
-#   release-preflight-pg18
+#   changes ──> release-preflight-pg18 (+ client apps' platform tests when a
+#                        PR touches client-apps/ or the platform; main: always)
 #   changes ──> e2e     (PRs: only when the web/e2e surface changed, or the
 #                        PR carries the `run-e2e` label; main: always)
 #
@@ -72,6 +73,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       e2e: ${{ steps.decide.outputs.e2e }}
+      client_apps: ${{ steps.decide.outputs.client_apps }}
     steps:
       # A PR checks out its merge commit, whose first parent is the base
       # branch tip — so HEAD^1..HEAD is exactly what merging would change.
@@ -91,7 +93,7 @@ jobs:
             reason="PR carries the run-e2e label"; e2e=true
           else
             matched=$(git diff --name-only HEAD^1 HEAD | grep -E \
-              '^(apps/web/|packages/|runtime-apps/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/test\.yml$)' || true)
+              '^(apps/web/|packages/|runtime-apps/|client-apps/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/test\.yml$)' || true)
             if [ -n "$matched" ]; then
               reason="PR touches the e2e surface: $(echo "$matched" | head -5 | tr '\n' ' ')"; e2e=true
             else
@@ -100,6 +102,18 @@ jobs:
           fi
           echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
           echo "e2e: $e2e — $reason" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # The client apps' platform tests (ADR 0014): when a PR touches a
+          # client app or the platform they run on.
+          if [ "$EVENT" != pull_request ]; then
+            client_apps=true
+          else
+            matched=$(git diff --name-only HEAD^1 HEAD | grep -E \
+              '^(client-apps/|apps/server/|packages/|tools/prepare-apps\.mjs$|pnpm-lock\.yaml$|package\.json$|\.github/workflows/test\.yml$)' || true)
+            if [ -n "$matched" ]; then client_apps=true; else client_apps=false; fi
+          fi
+          echo "client_apps=$client_apps" >> "$GITHUB_OUTPUT"
+          echo "client apps' platform tests: $client_apps" | tee -a "$GITHUB_STEP_SUMMARY"
 
   # Everything that needs no database: spec/catalog/guard validations and
   # both typechecks.
@@ -397,7 +411,13 @@ jobs:
   # Production runs PostgreSQL 18.6, where the release preflight has checks
   # that only exist there (publish_generated_columns, #399). The full suite
   # stays on 17 above; this job runs the release preflight on 18.
+  #
+  # The client apps' platform tests run here too, on the database this job
+  # already has, when `changes` says a PR touched a client app or the
+  # platform (and always on main, or if `changes` failed).
   release-preflight-pg18:
+    needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -438,6 +458,11 @@ jobs:
 
       - name: Run the release preflight suite on PostgreSQL 18
         run: pnpm --filter server test test/release-preflight.test.ts
+
+      # `pnpm apps:prepare` above built and unit-tested each client app.
+      - name: Run Feather Dash's platform tests (client-apps/jeyarama/dash)
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.client_apps != 'false' }}
+        run: npm run test:platform --prefix client-apps/jeyarama/dash
 
   # Fails closed: if `changes` itself failed, e2e runs rather than reporting
   # a passing `skipped`.

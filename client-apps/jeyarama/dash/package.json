@@ -1,0 +1,40 @@
+{
+  "name": "@jeyarama/feather-dash",
+  "version": "0.10.0",
+  "private": true,
+  "type": "module",
+  "featherbase": "featherbase.json",
+  "files": [
+    "featherbase.json",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --noEmit && vite build && npm run build:server",
+    "build:server": "esbuild src/server.ts --bundle --format=esm --platform=node --outfile=dist/server.mjs",
+    "dev": "npm run build:server -- --watch=forever & vite build --watch --emptyOutDir=false",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "dev:repin": "scripts/dev-repin.sh",
+    "test:platform": "scripts/platform-test.sh",
+    "compare": "node src/compare-cli.ts"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.1.0",
+    "vitest": "^3.2.7"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

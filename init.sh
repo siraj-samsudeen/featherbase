@@ -17,7 +17,14 @@ command -v pnpm >/dev/null || npm install -g pnpm
 pnpm install
 pnpm apps:prepare
 # Development examples are explicit configured packages, never core imports.
-export FEATHERBASE_APP_PATHS="${FEATHERBASE_APP_PATHS:-$(node -e 'console.log(JSON.stringify(process.argv.slice(1)))' "$PWD/runtime-apps/tasker" "$PWD/runtime-apps/other")}"
+# Client apps are opt-in (ADR 0014): FEATHERBASE_CLIENT_APPS="jeyarama/dash"
+# (space-separated) adds client-apps/<each> to the default app path.
+client_app_paths=()
+for client_app in ${FEATHERBASE_CLIENT_APPS:-}; do
+  [ -f "client-apps/$client_app/featherbase.json" ] || { echo "!! FEATHERBASE_CLIENT_APPS names client-apps/$client_app, which has no featherbase.json"; exit 1; }
+  client_app_paths+=("$PWD/client-apps/$client_app")
+done
+export FEATHERBASE_APP_PATHS="${FEATHERBASE_APP_PATHS:-$(node -e 'console.log(JSON.stringify(process.argv.slice(1)))' "$PWD/runtime-apps/tasker" "$PWD/runtime-apps/other" ${client_app_paths[@]+"${client_app_paths[@]}"})}"
 
 # --- 2. Database -----------------------------------------------------------
 # DATABASE_URL is the single source of truth; the default below must stay in
