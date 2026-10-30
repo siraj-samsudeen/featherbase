@@ -40,8 +40,8 @@ stated terms for future ones.
 ```
 apps/ (server, web)           the platform
 example-apps/                 apps shipped with the platform (Tasker, Tickets)
-client-apps/<client>-<app>/   one folder per client app, flat: jeyarama-dash,
-                              later jeyarama-answers
+client-apps/<client>/<app>/   one folder per client, one per app inside:
+                              jeyarama/dash, later jeyarama/answers
 ```
 
 - A platform change and the app change that needs it are **one PR**, tested
@@ -51,13 +51,13 @@ client-apps/<client>-<app>/   one folder per client app, flat: jeyarama-dash,
   rule physically.
 - Client app code may be public. Client **data, secrets and instance details
   never are**. The `check:sensitive` guard covers the client folders too.
-- A client app keeps its own `CLAUDE.md` for rules only that client needs, such
-  as number and date formats.
+- Each client folder has one `CLAUDE.md` for that client's conventions, such
+  as number and date formats, shared by all of its apps.
 - A client app arrives as a **snapshot of its current files, without its git
   history**. The history stays in the client's repository, and the import
   commit names the source commit. Go-live is a fresh install, so no instance
   upgrades from an earlier version. The first client app enters as
-  `jeyarama-dash` **0.1.0**, with no upgrade history.
+  `jeyarama/dash` **0.1.0**, with no upgrade history.
 - This repository keeps its own history.
 
 ### 2. Each client has a small private instance repository
@@ -86,7 +86,7 @@ in a **private copy** of this repository:
   upstream DISABLED`), so private work cannot be pushed here by mistake.
 - A scheduled workflow merges `upstream/main` into a "Sync from featherbase" PR
   every week, so their CI shows what upstream changed.
-- Their apps live in `client-apps/<client>-<app>/` and their instances in
+- Their apps live in `client-apps/<client>/` and their instances in
   `instances/`. Upstream never edits either, so a sync conflicts only where
   they changed platform files.
 - **A platform change goes back as a small PR soon**, never as a long-lived
@@ -101,7 +101,7 @@ downstream copy gets them, and their improvements, through its first sync.
 
 - Day-to-day work runs from source.
 - **A client app's image is built when the app is released**, for example on a
-  tag such as `jeyarama-dash@1.2.0`, not on every commit.
+  tag such as `jeyarama/dash@1.2.0`, not on every commit.
 - **An app's version changes only in a release PR.** Feature PRs leave it
   alone. An instance records each installed app's version with a fingerprint
   of its files, so changed code under an unchanged version would make the app
@@ -122,7 +122,7 @@ sets the target time and lists what leaves the required set.
 - **Area labels**, applied automatically from file paths: `area:platform`,
   `app:<name>`, `client:<name>`.
 - **Titles and messages.** PR and commit titles start with their scope
-  (`platform: …`, `jeyarama-dash: …`). Messages carry the `[#N]` issue prefix.
+  (`platform: …`, `jeyarama/dash: …`). Messages carry the `[#N]` issue prefix.
 - **OpenSpec.** OpenSpec runs with the intent-driven template's
   `proposal → specs → design → adr → tasks` chain, from the owner's fork
   `intent-driven-with-human-control`.
