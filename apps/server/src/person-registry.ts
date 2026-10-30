@@ -155,7 +155,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   workflow_transition: { '*': code, condition: text },
   sign_in_identity: {
     id: code, person_id: id, method: code, subject: code, sign_in_name: code, email: code, display_name: text,
-    pending_email: code, linked_by: id, ended_reason: code,
+    pending_email: code, linked_by: id, ended_reason: code, hosted_domain: code,
   },
   // person-resolution (0102).
   identifier_system: { '*': code, label: text },

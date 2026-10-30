@@ -12,6 +12,7 @@ import { BASELINE, pendingMigrations } from './migrate'
 import { SECURITY_TABLES } from './security-tables'
 import { platformRelation } from './platform-schema'
 import { validateInstanceAddresses } from './instance-addresses'
+import { parseDomainList } from './identities'
 import { appSetupState } from './app-settings'
 import { shippedUpgrades, unshippedApps, upgradeLossWarning } from './runtime-packages'
 
@@ -349,7 +350,7 @@ async function assertAccessConfiguration(environment: string): Promise<string[]>
       if (String(r.new_person) === 'create' && !SIGN_UP_ENVIRONMENTS.includes(environment))
         problems.push(`the ${String(r.kind)} sign-in method "${String(r.row_id)}" creates a new person for anyone it admits, on a "${environment}" server: set its new_person to refuse${String(r.kind) === 'password' ? '' : ' or create_if_email_domain_allowed with company domains'}`)
       if (!creates) continue
-      const open = String(r.domains ?? '').split(',').map((d) => d.trim().toLowerCase())
+      const open = parseDomainList(r.domains as string | null)
         .filter((d) => d === '*' || CONSUMER_EMAIL_DOMAINS.has(d))
       for (const d of open)
         problems.push(`sign-in method "${String(r.row_id)}" creates new people from "${d}": list company domains only, or set its new_person to refuse`)

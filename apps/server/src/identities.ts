@@ -142,12 +142,110 @@ export async function methodOfKind(kind: MethodKind): Promise<SignInMethod | nul
 }
 
 /** Is `email` on a domain this method admits? Empty admits nobody; `*` all. */
+/** The one reading of a method's allowed_email_domains (#693): comma-separated
+ *  entries, each trimmed and folded, blanks dropped. Sign-in, the way-in
+ *  counts and the lockout guard all use it, so they cannot disagree. */
+export function parseDomainList(value: string | null | undefined): string[] {
+  return String(value ?? '').split(',').map(foldName).filter(Boolean)
+}
+
+const DOMAIN_RE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+
+/** Why a domain list cannot be saved, or null. Blank means no list. Each
+ *  entry must be `*` or a domain such as example.com: no empty entry and no
+ *  space inside one, which sign-in would read differently than intended. */
+export function domainListProblem(value: unknown): string | null {
+  const text = String(value ?? '')
+  if (!text.trim()) return null
+  for (const entry of text.split(',').map(foldName)) {
+    if (!entry) return 'has an empty entry: remove the extra comma'
+    if (entry !== '*' && !DOMAIN_RE.test(entry)) return `"${entry}" is not a domain such as example.com, or *`
+  }
+  return null
+}
+
 export function domainAllowed(method: SignInMethod, email: string): boolean {
   const match = /^[^\s@]+@([^\s@]+)$/.exec(foldName(email))
   if (!match) return false
-  const domains = method.allowed_email_domains.split(',').map(foldName).filter(Boolean)
+  const domains = parseDomainList(method.allowed_email_domains)
   if (!domains.length) return false
   return domains.includes('*') || domains.includes(match[1])
+}
+
+/** Does the method name any allowed domains? An empty list means no domain
+ *  rule at all. */
+export function listsDomains(method: Pick<SignInMethod, 'allowed_email_domains'>): boolean {
+  return parseDomainList(method.allowed_email_domains).length > 0
+}
+
+/** #693: links that rest on the method's domain rule rather than on an
+ *  administrator's decision: a person linking themselves, a person created by
+ *  the rule, and a first sign-in for someone marked as expecting it. While the
+ *  method lists allowed domains, a sign-in through one of these must still be
+ *  admitted by them. An administrator's link or a claimed invite is that
+ *  administrator's decision for that account and is not re-checked. */
+export const DOMAIN_RULED_LINKS = ['self', 'new-person', 'expected-sign-in'] as const
+
+/** Google's consumer (personal) domains: an address on one needs no
+ *  hosted-domain claim. The one list sign-in, the mock provider and the
+ *  way-in counts share (#693). */
+export const GOOGLE_CONSUMER_DOMAINS: readonly string[] = ['gmail.com', 'googlemail.com']
+
+/** #693: the one transaction lock every change that can reduce someone's ways
+ *  in takes BEFORE it reads domain lists or counts credentials, so two such
+ *  changes (narrowing a domain list, removing a password, unlinking) cannot
+ *  each count the other's way in and both commit. Re-entrant within a
+ *  transaction; held until it ends. Rare administrator actions, so short. */
+export const WAYS_IN_LOCK_KEY = 693_0001
+
+export async function lockWaysIn(db: Sql | TxSql): Promise<void> {
+  await db`select pg_advisory_xact_lock(${WAYS_IN_LOCK_KEY}::bigint)`
+}
+
+/** Each method's parsed domain list as JSON, for keepsDomain. `override`
+ *  stands in one method's list after a change (the lockout guard). */
+async function domainListsJson(db: Sql | TxSql, override?: { key: string; domains: string }): Promise<string> {
+  const rows = await db`select row_id, allowed_email_domains from sign_in_method`
+  const lists: Record<string, string[]> = {}
+  for (const r of rows) lists[String(r.row_id)] = parseDomainList(r.allowed_email_domains as string | null)
+  if (override) lists[override.key] = parseDomainList(override.domains)
+  return JSON.stringify(lists)
+}
+
+/** SQL twin of the #693 re-check (domainAdmitted in sign-in.ts), for the
+ *  way-in counts: would link `i` through method `m` still sign in under that
+ *  method's list in `lists` (domainListsJson, so parsed once, in TypeScript)?
+ *  A company domain also needs the hosted-domain claim from the link's last
+ *  sign-in to match: '' records that Google sent none (never counts). NULL
+ *  means never recorded (a link from before migration 0005) and is judged
+ *  asymmetrically, so a doubt always refuses the change:
+ *  - 'possible' (what a change takes away): it may work, so it counts on its
+ *    email domain;
+ *  - 'proven' (what remains, and every last-way-in check): only a recorded
+ *    matching claim proves a company domain works, so it does not count.
+ *  Under `*` or a consumer domain no claim is needed either way. Any
+ *  non-empty list, `*` included, needs the link's verified address. The link
+ *  list is DOMAIN_RULED_LINKS. */
+type WayInProof = 'possible' | 'proven'
+
+function keepsDomain(lists: string, proof: WayInProof) {
+  const list = sql`coalesce(${lists}::text::jsonb -> m.row_id::text, '[]'::jsonb)`
+  const domain = sql`lower(split_part(i.email, '@', 2))`
+  return sql`(
+    m.kind <> 'google'
+    or coalesce(i.linked_by, '') <> all(${[...DOMAIN_RULED_LINKS]}::text[])
+    or jsonb_array_length(${list}) = 0
+    or (
+      -- A non-empty list, even *, admits only a verified address, exactly as
+      -- domainAdmitted does: the last sign-in's verification (email_verified;
+      -- NULL on a row from before 0005, whose address was stored verified).
+      coalesce(i.email, '') like '%_@_%'
+      and coalesce(i.email_verified, true)
+      and (${list} ? '*' or ${list} ? ${domain})
+      and (${list} ? '*' or ${domain} = any(${[...GOOGLE_CONSUMER_DOMAINS]}::text[]) or lower(i.hosted_domain) = ${domain}
+        or (i.hosted_domain is null and ${proof === 'possible'}::boolean))
+    )
+  )`
 }
 
 // ------------------------------------------------------------- identities
@@ -341,6 +439,7 @@ export async function updateIdentity(
   const method = (await getSignInMethod(current.method))!
   return guarded(
     async (t) => {
+      if (change.person_id !== undefined) await lockWaysIn(t)
       const [locked] = await t`select ${identityFields()} from sign_in_identity where id = ${id} for update`
       if (!locked || locked.ended_at) throw new AppError('NotFoundError', `Linked sign-in ${id} not found`)
       const signInName =
@@ -389,8 +488,10 @@ const usableWhere = (mock: boolean) =>
 
 /** How many working ways in a person has right now. Pending invites never
  *  count. `excluding` leaves one identity id (or 'password') out. */
-async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promise<number> {
+async function waysIn(user: string, db: Sql | TxSql, excluding?: string, proof: WayInProof = 'proven'): Promise<number> {
+  await lockWaysIn(db)
   const mock = mockOAuthEnabled()
+  const lists = await domainListsJson(db)
   const [row] = await db`
     with p as (
       select (u.row_id = 'Administrator' or exists (
@@ -402,7 +503,8 @@ async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promis
         where u.row_id = ${user} and u.password_hash is not null and ${excluding ?? ''}::text <> 'password')::int
       + (select count(*) from sign_in_identity i join sign_in_method m on m.row_id = i.method and ${usableWhere(mock)}
         where i.person_id = ${user} and i.subject is not null and i.ended_at is null and i.id <> ${excluding ?? ''}::text
-          and not (m.kind = 'delegated_password' and (select privileged from p)))::int as n`
+          and not (m.kind = 'delegated_password' and (select privileged from p))
+          and ${keepsDomain(lists, proof)})::int as n`
   return Number(row.n)
 }
 
@@ -410,7 +512,7 @@ async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promis
 async function assertUserKeepsWayIn(user: string, db: Sql | TxSql, excluding: string): Promise<void> {
   const c = await candidate(user, db)
   if (!c?.privileged || !c.enabled) return
-  if ((await waysIn(user, db)) > 0 && (await waysIn(user, db, excluding)) === 0)
+  if ((await waysIn(user, db, undefined, 'possible')) > 0 && (await waysIn(user, db, excluding)) === 0)
     throw new AppError('ValidationError', `This would lock out ${user}: it is their only way to sign in.`)
 }
 
@@ -421,6 +523,7 @@ async function assertUserKeepsWayIn(user: string, db: Sql | TxSql, excluding: st
 export async function unlinkIdentity(id: string, actor: string, opts: { self?: string } = {}): Promise<void> {
   await sql.begin(async (tx) => {
     const t = tx as unknown as Sql
+    await lockWaysIn(t)
     const [current] = await t`select person_id, method, subject from sign_in_identity where id = ${id} and ended_at is null`
     if (!current || (opts.self && current.person_id !== opts.self))
       throw new AppError('NotFoundError', `Linked sign-in ${id} not found`)
@@ -443,6 +546,7 @@ export async function unlinkIdentity(id: string, actor: string, opts: { self?: s
 export async function removeOwnPassword(user: string): Promise<void> {
   await sql.begin(async (tx) => {
     const t = tx as unknown as Sql
+    await lockWaysIn(t)
     await t`select 1 from person where row_id = ${user} for update`
     if ((await waysIn(user, t, 'password')) === 0)
       throw new AppError('ConflictError', 'This is your last way to sign in. Add another one first.')
@@ -452,12 +556,20 @@ export async function removeOwnPassword(user: string): Promise<void> {
 }
 
 /** Stamp a successful sign-in through an identity. */
-export async function touchIdentity(id: string, attrs: { email?: string | null; display_name?: string | null } = {}) {
+export async function touchIdentity(
+  id: string,
+  attrs: { email?: string | null; display_name?: string | null; hosted_domain?: string | null; email_verified?: boolean } = {},
+) {
   const [before] = await sql`select email from sign_in_identity where id = ${id}`
+  // #693: a kind that reports a hosted domain passes it on every sign-in, and
+  // its absence is recorded too, as '' (a personal account has none).
+  const hd = attrs.hosted_domain !== undefined
   await sql`
     update sign_in_identity set last_used_at = now(),
       email = coalesce(${attrs.email ?? null}, email),
-      display_name = coalesce(${attrs.display_name ?? null}, display_name)
+      display_name = coalesce(${attrs.display_name ?? null}, display_name),
+      hosted_domain = case when ${hd}::boolean then ${attrs.hosted_domain ?? ''}::text else hosted_domain end,
+      email_verified = coalesce(${attrs.email_verified ?? null}::boolean, email_verified)
     where id = ${id}`
   // person-resolution D5: the address mirror follows the provider's.
   if (attrs.email && before && String(before.email ?? '').toLowerCase() !== attrs.email.toLowerCase()) {
@@ -511,6 +623,31 @@ export async function disableLeaver(user: string, methodKey: string): Promise<vo
   await logActivity(user, `disabled_as_leaver ${methodKey}`)
 }
 
+/** #693 (Siraj, 30-Oct-2026): when a change to a Google method's domain list
+ *  stops admitting a link the domain rule made (DOMAIN_RULED_LINKS), the
+ *  sessions opened through that link end. Called in the method change's
+ *  transaction, after the lockout guard allowed it. Stamps the link (kept,
+ *  so re-admitting the domain lets the person sign in again, while the ended
+ *  sessions stay ended) and logs once per person, never an address. Turning
+ *  the method off or deleting it already ends every session opened through
+ *  it (resolveToken). Returns the people affected. */
+export async function endSessionsNoLongerAdmitted(methodKey: string, nextDomains: string, db: Sql | TxSql = sql): Promise<string[]> {
+  await lockWaysIn(db)
+  const before = await domainListsJson(db)
+  const after = await domainListsJson(db, { key: methodKey, domains: nextDomains })
+  const ended = await db`
+    update sign_in_identity i set sessions_ended_at = now()
+    from sign_in_method m
+    where m.row_id = i.method and i.method = ${methodKey} and m.kind = 'google'
+      and i.subject is not null and i.ended_at is null
+      and i.linked_by = any(${[...DOMAIN_RULED_LINKS]}::text[])
+      and ${keepsDomain(before, 'possible')} and not ${keepsDomain(after, 'possible')}
+    returning i.person_id`
+  const people = [...new Set(ended.map((r) => String(r.person_id)))].sort()
+  for (const person of people) await logActivity(person, `google_sessions_ended_domain_not_allowed ${methodKey}`)
+  return people
+}
+
 // --------------------------------------------------------- lockout guard
 
 /** Refuse a method change that would leave an enabled Administrator or System
@@ -518,12 +655,17 @@ export async function disableLeaver(user: string, methodKey: string): Promise<vo
  *  `next` is the method's state after the change; null = deleted. */
 export async function assertNoAdminLockout(
   methodKey: string,
-  next: { enabled: boolean; client_id: string } | null,
+  next: { enabled: boolean; client_id: string; allowed_email_domains?: string } | null,
   db: Sql | TxSql = sql,
 ) {
+  await lockWaysIn(db)
   const mock = mockOAuthEnabled()
   const nextEnabled = next?.enabled === true
   const nextClient = next?.client_id ?? ''
+  // #693: narrowing the domain list can end a link's sign-ins too.
+  const before = await domainListsJson(db)
+  const after =
+    next?.allowed_email_domains !== undefined ? await domainListsJson(db, { key: methodKey, domains: next.allowed_email_domains }) : before
   const rows = await db`
     with privileged as (
       select u.row_id from person u
@@ -537,19 +679,42 @@ export async function assertNoAdminLockout(
         case when row_id = ${methodKey}::text then ${nextEnabled}::boolean else enabled end as enabled,
         case when row_id = ${methodKey}::text then ${nextClient}::text else client_id end as client_id
       from sign_in_method
+    ), links as (
+      -- Each live link, judged before and after: possible (may work) and
+      -- proven (known to work), per keepsDomain.
+      select i.person_id,
+        exists (select 1 from m0 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+          and ${keepsDomain(before, 'possible')}) as possible_before,
+        exists (select 1 from m0 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+          and ${keepsDomain(before, 'proven')}) as proven_before,
+        exists (select 1 from m1 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+          and ${keepsDomain(after, 'possible')}) as possible_after,
+        exists (select 1 from m1 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+          and ${keepsDomain(after, 'proven')}) as proven_after
+      from sign_in_identity i join privileged p on p.row_id = i.person_id
+      where i.subject is not null and i.ended_at is null
+    ), passwords as (
+      select p.row_id as person_id,
+        exists (select 1 from person u join m0 m on m.kind = 'password' and ${usableWhere(mock)}
+          where u.row_id = p.row_id and u.password_hash is not null) as before_ok,
+        exists (select 1 from person u join m1 m on m.kind = 'password' and ${usableWhere(mock)}
+          where u.row_id = p.row_id and u.password_hash is not null) as after_ok
+      from privileged p
     ), ways as (
+      -- #693 (Codex round 5): refuse only when the change restricts one of
+      -- the person's possible ways in (it stops being possible, or now needs
+      -- a hosted-domain claim it did not need before and has none recorded)
+      -- AND leaves them no proven way in. Widening a list, or changing
+      -- another method, restricts nothing.
       select p.row_id,
-        (select count(*) from person u join m0 m on m.kind = 'password' and ${usableWhere(mock)}
-          where u.row_id = p.row_id and u.password_hash is not null) +
-        (select count(*) from sign_in_identity i join m0 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          where i.person_id = p.row_id and i.subject is not null and i.ended_at is null) as before_n,
-        (select count(*) from person u join m1 m on m.kind = 'password' and ${usableWhere(mock)}
-          where u.row_id = p.row_id and u.password_hash is not null) +
-        (select count(*) from sign_in_identity i join m1 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          where i.person_id = p.row_id and i.subject is not null and i.ended_at is null) as after_n
+        (select count(*) from links l where l.person_id = p.row_id
+          and l.possible_before and (not l.possible_after or (l.proven_before and not l.proven_after)))
+        + (select count(*) from passwords w where w.person_id = p.row_id and w.before_ok and not w.after_ok) as restricted_n,
+        (select count(*) from links l where l.person_id = p.row_id and l.proven_after)
+        + (select count(*) from passwords w where w.person_id = p.row_id and w.after_ok) as proven_after_n
       from privileged p
     )
-    select row_id from ways where before_n > 0 and after_n = 0 order by row_id`
+    select row_id from ways where restricted_n > 0 and proven_after_n = 0 order by row_id`
   if (rows.length)
     throw new AppError(
       'ValidationError',

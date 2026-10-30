@@ -38,6 +38,10 @@ const LINK_OUTCOMES: Record<string, { tone: 'positive' | 'negative' | 'caution';
   expired: { tone: 'caution', text: 'That link attempt expired or was started in another browser. Start it again from here.' },
   sign_in_again: { tone: 'caution', text: 'Sign in again first, then link within a few minutes.' },
   not_allowed: { tone: 'negative', text: 'Linking Google is not available for this sign-in.' },
+  domain_not_allowed: {
+    tone: 'negative',
+    text: 'That Google account is not on a domain this site allows, so it was not linked. Link your work Google account instead.',
+  },
   wrong_session: { tone: 'caution', text: 'That link was started by a different sign-in. Try again.' },
   failed: { tone: 'negative', text: 'Linking did not work. Try again.' },
 }

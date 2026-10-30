@@ -16,8 +16,12 @@ import {
   candidate,
   consumeExpectedSignIn,
   disableLeaver,
+  DOMAIN_RULED_LINKS,
+  GOOGLE_CONSUMER_DOMAINS,
   domainAllowed,
   foldName,
+  listsDomains,
+  parseDomainList,
   methodOfKind,
   newIdentityId,
   normaliseEmail,
@@ -43,13 +47,17 @@ export interface VerifiedIdentity {
 interface Found {
   user: string
   identity: string | null
+  /** Who made the link a sign-in came through (#693). */
+  linkedBy?: string
 }
 
 export const NOT_PROVISIONED = 'Access not provisioned for this account. Contact IT.'
 export const ADDRESS_IN_USE = 'An account already uses this address. Contact your administrator.'
-const CONSUMER_DOMAINS = new Set(['gmail.com', 'googlemail.com'])
+const CONSUMER_DOMAINS = new Set(GOOGLE_CONSUMER_DOMAINS)
 
 export const GOOGLE_OFF = 'Google sign-in is not configured'
+/** #693: a person may link only an account the method's domains admit. */
+export const LINK_DOMAIN_NOT_ALLOWED = 'This account is not on a domain this sign-in method allows. Link your work account instead.'
 
 /** The reasons a browser-navigation sign-in (the Google callback) can be
  *  refused, as the short code the sign-in page explains. Only the code
@@ -98,17 +106,49 @@ function domainAdmitted(method: SignInMethod, v: VerifiedIdentity): { ok: boolea
   if (!domainAllowed(method, v.email)) return { ok: false, reason: 'domain not allowed' }
   if (!KINDS[method.kind].hostedDomain) return { ok: true, reason: 'allowed domain' }
   const domain = v.email.split('@')[1] ?? ''
-  if (CONSUMER_DOMAINS.has(domain) || method.allowed_email_domains.split(',').map(foldName).includes('*'))
+  if (CONSUMER_DOMAINS.has(domain) || parseDomainList(method.allowed_email_domains).includes('*'))
     return { ok: true, reason: 'allowed domain' }
   return v.hosted_domain === domain
     ? { ok: true, reason: 'allowed company domain' }
     : { ok: false, reason: v.hosted_domain ? 'hosted domain differs' : 'no hosted-domain claim for a company domain' }
 }
 
+/** #693: the hosted-domain claim a link records. '' = the kind reports claims
+ *  and this sign-in carried none; NULL = the kind never reports one. */
+function claimOf(method: SignInMethod, v: VerifiedIdentity): string | null {
+  return KINDS[method.kind].hostedDomain ? (v.hosted_domain ?? '') : null
+}
+
+/** #693: whether this sign-in's address was verified, for a kind that vouches
+ *  for addresses; NULL for any other kind. Recorded on every sign-in, so a
+ *  stale address kept for display is not taken as verified. */
+function verifiedOf(method: SignInMethod, v: VerifiedIdentity): boolean | null {
+  return KINDS[method.kind].verifiedEmail ? v.email_verified === true && Boolean(v.email) : null
+}
+
 async function linkedBySubject(method: SignInMethod, subject: string): Promise<Found | null> {
   // person-resolution D5: an ended identity never opens an account.
-  const [row] = await sql`select id, person_id from sign_in_identity where method = ${method.key} and subject = ${subject} and ended_at is null`
-  return row ? { user: String(row.person_id), identity: String(row.id) } : null
+  const [row] = await sql`select id, person_id, linked_by from sign_in_identity where method = ${method.key} and subject = ${subject} and ended_at is null`
+  return row ? { user: String(row.person_id), identity: String(row.id), linkedBy: String(row.linked_by ?? '') } : null
+}
+
+/** #693: does the method's domain rule govern this link? Only while the
+ *  method lists domains and only for a kind that vouches for an email. */
+function domainRuled(method: SignInMethod): boolean {
+  return KINDS[method.kind].verifiedEmail && listsDomains(method)
+}
+
+/** #693: a sign-in through a link the domain rule made (DOMAIN_RULED_LINKS)
+ *  must still be admitted by it: the list may have narrowed since, and a link
+ *  a person made themselves before #693 was never checked. Refused like an
+ *  unknown address from a domain that is not allowed. An administrator's link
+ *  or a claimed invite was that administrator's decision and is kept. */
+function assertLinkStillAdmitted(method: SignInMethod, v: VerifiedIdentity, found: Found): Found {
+  if (!domainRuled(method) || !(DOMAIN_RULED_LINKS as readonly string[]).includes(found.linkedBy ?? '')) return found
+  const { ok, reason } = domainAdmitted(method, v)
+  if (ok) return found
+  console.warn(`[sign-in] ${method.key}: linked account refused (${reason}; hd ${v.hosted_domain ? 'present' : 'absent'})`)
+  throw new AppError('AuthenticationError', NOT_PROVISIONED)
 }
 
 /** Claim a one-time invite for a verified address, onto an eligible owner only
@@ -125,7 +165,8 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
       await assertEligible(method, String(invite.person_id))
       await sql`
         update sign_in_identity set subject = ${v.subject!}, pending_email = null, linked_at = now(),
-          linked_by = 'first-sign-in', email = ${v.email!}, display_name = ${v.display_name ?? null}, last_used_at = now()
+          linked_by = 'first-sign-in', email = ${v.email!}, display_name = ${v.display_name ?? null},
+          hosted_domain = ${claimOf(method, v)}, email_verified = ${verifiedOf(method, v)}, last_used_at = now()
         where id = ${String(invite.id)}`
       await writeThroughIdentity(String(invite.id))
       await consumeExpectedSignIn(String(invite.person_id), method)
@@ -178,6 +219,8 @@ async function claimExpectedSignIn(method: SignInMethod, v: VerifiedIdentity): P
         email: v.email!,
         display_name: v.display_name ?? null,
         linked_by: 'expected-sign-in',
+        hosted_domain: claimOf(method, v),
+        email_verified: verifiedOf(method, v),
         last_used_at: new Date(),
       })}`
       await writeThroughIdentity(id)
@@ -242,6 +285,8 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { test
         email,
         display_name: v.display_name ?? null,
         linked_by: 'new-person',
+        hosted_domain: claimOf(method, v),
+        email_verified: verifiedOf(method, v),
         last_used_at: new Date(),
       })}`
       await writeThroughIdentity(id)
@@ -268,13 +313,14 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { test
 export async function resolveVerified(method: SignInMethod, v: VerifiedIdentity, opts: { testMode?: boolean } = {}): Promise<Found> {
   if (!v.subject) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   const linked = await linkedBySubject(method, v.subject)
-  if (linked) return linked
+  if (linked) return assertLinkStillAdmitted(method, v, linked)
   const claimed = await claimInvite(method, v)
   if (claimed) return claimed
   const expected = await claimExpectedSignIn(method, v)
   if (expected) return expected
   // A concurrent claim may have linked it a moment ago.
-  return (await linkedBySubject(method, v.subject)) ?? newPerson(method, v, opts)
+  const raced = await linkedBySubject(method, v.subject)
+  return raced ? assertLinkStillAdmitted(method, v, raced) : newPerson(method, v, opts)
 }
 
 /** The shared tail of every sign-in. `found` is the person a candidate-first
@@ -300,6 +346,9 @@ export async function completeSignIn(
     await touchIdentity(person.identity, {
       email: v.email_verified ? v.email ?? null : null,
       display_name: v.display_name ?? null,
+      // #693: the way-in counts need the claim the last sign-in carried.
+      ...(KINDS[method.kind].hostedDomain ? { hosted_domain: v.hosted_domain ?? '' } : {}),
+      ...(KINDS[method.kind].verifiedEmail ? { email_verified: v.email_verified === true && Boolean(v.email) } : {}),
     })
   return issueSession(person.user, {
     method: method.key,
@@ -314,6 +363,16 @@ export async function completeSignIn(
 export async function linkVerifiedToSelf(method: SignInMethod, user: string, v: VerifiedIdentity): Promise<string> {
   if (!KINDS[method.kind].trustedSubject || !v.subject)
     throw new AppError('PermissionError', 'This sign-in method cannot be linked by its owner')
+  // #693: the same domain rule as a first sign-in (verified address, allowed
+  // domain, and Google's hosted-domain claim for a company domain), before
+  // anything is read or written.
+  if (domainRuled(method)) {
+    const { ok, reason } = domainAdmitted(method, v)
+    if (!ok) {
+      console.warn(`[link] ${method.key}: self-link refused (${reason}; hd ${v.hosted_domain ? 'present' : 'absent'})`)
+      throw new AppError('PermissionError', LINK_DOMAIN_NOT_ALLOWED)
+    }
+  }
   try {
     return await withTransaction(async () => {
       const linked = await linkedBySubject(method, v.subject!)
@@ -336,6 +395,8 @@ export async function linkVerifiedToSelf(method: SignInMethod, user: string, v: 
         email: v.email_verified ? v.email ?? null : null,
         display_name: v.display_name ?? null,
         linked_by: 'self',
+        hosted_domain: claimOf(method, v),
+        email_verified: verifiedOf(method, v),
       })}`
       await writeThroughIdentity(id)
       await consumeExpectedSignIn(user, method)

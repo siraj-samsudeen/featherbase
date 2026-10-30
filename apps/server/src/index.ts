@@ -16,7 +16,7 @@ import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
-import { GOOGLE_OFF, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
+import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
@@ -620,7 +620,7 @@ async function googleCallback(c: Context) {
     } catch (err) {
       if (!(err instanceof AppError)) return back('failed')
       if (err.type === 'ConflictError') return back(err.message.includes('reserved') ? 'reserved' : 'taken')
-      if (err.type === 'PermissionError') return back('not_allowed')
+      if (err.type === 'PermissionError') return back(err.message === LINK_DOMAIN_NOT_ALLOWED ? 'domain_not_allowed' : 'not_allowed')
       return back(err.message.startsWith('Sign in again') || err.message.includes('session') ? 'sign_in_again' : 'google_failed')
     }
   }

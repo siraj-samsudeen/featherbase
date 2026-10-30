@@ -10,6 +10,7 @@ import { assertNothingRetained, repointRowActivity, retainedActivityCounts, reta
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
+import { holdBeforeRowLock } from './row-lock-order'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
 import { applySla } from './sla'
@@ -875,7 +876,7 @@ async function writeDoc(
   const [saved] = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
-      await holdManagedSet(stx, meta.name)
+      await holdBeforeRowLock(stx, meta, user, { ...values }, true)
       const rowId = await resolveRowId(stx, meta, values)
       const now = new Date()
       const row: RowValues = {
@@ -1138,7 +1139,7 @@ async function updateDoc(
   const saved = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
-      await holdManagedSet(stx, meta.name)
+      await holdBeforeRowLock(stx, meta, user, { ...values, [meta.row_key]: name })
       const [existing] = await tx`
         select * from ${tx(table)} where ${tx(meta.row_key)} = ${name} for update`
       if (!existing)
@@ -1291,6 +1292,7 @@ async function setStatus(
   const tbl = await tableRelation(table)
   const [saved] = await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
+    await runHooks('before_lock', { row: { [meta.row_key]: name }, meta, user, isNew: false, tx: stx })
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
@@ -1423,7 +1425,7 @@ async function deleteDocImpl(
   if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
   await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
-    await holdManagedSet(stx, meta.name)
+    await holdBeforeRowLock(stx, meta, user, { [meta.row_key]: name })
     const [existing] = await tx`
       select * from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
@@ -1611,6 +1613,7 @@ async function renameDocImpl(
   await sql.begin(async (tx) => {
     const tbl = await tableRelation(table)
     await holdManagedSet(tx as unknown as typeof sql, null)
+    await runHooks('before_lock', { row: { [meta.row_key]: oldName }, meta, user, isNew: false, tx: tx as unknown as typeof sql })
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${oldName} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${oldName} not found`)

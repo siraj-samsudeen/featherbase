@@ -3,12 +3,18 @@
 // B-M3). Every row this file writes carries a unique prefix and is removed in
 // finally.
 import { randomUUID } from 'node:crypto'
+import postgres from 'postgres'
 import { expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { methodOfKind, unlinkIdentity } from '../src/identities'
+import { WAYS_IN_LOCK_KEY, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from '../src/identities'
+import { saveDoc } from '../src/document'
+import { loadControllers } from '../src/controllers'
+import { saveImportedRow } from '../src/import-corrections'
+import { getMeta } from '../src/meta'
 import { resolveVerified } from '../src/sign-in'
 
 async function cleanup(prefix: string) {
+  await sql`delete from has_role where parent like ${prefix + '%'}`
   await sql`delete from sign_in_identity where person_id like ${prefix + '%'}`
   await sql`delete from activity_log where "user" like ${prefix + '%'}`
   await sql`delete from person_identifier where person_id like ${prefix + '%'}`
@@ -156,5 +162,131 @@ it('a database failure while creating a first-time person is raised, and no pers
     expect(await sql`select 1 from sign_in_identity where subject = ${'g-nul-' + tag}`).toHaveLength(0)
   } finally {
     await sql`delete from person where email = ${address}`
+  }
+}, 30_000)
+
+// #693, Codex review round 3: narrowing the domain list counts the password,
+// and removing the password counts Google under the old list. Without one
+// shared lock both could pass and commit, leaving no way in.
+it('narrowing the domain list racing a System Manager removing their password: exactly one is refused', async () => {
+  const p = `psn_conc${randomUUID().slice(0, 8)}`
+  const prev = process.env.ALLOW_MOCK_OAUTH
+  process.env.ALLOW_MOCK_OAUTH = '1' // Google counts as a way in
+  // The Sign In Method controller (its lockout guard) runs on saveDoc only once loaded.
+  await loadControllers()
+  const [before] = await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`
+  try {
+    await sql`update sign_in_method set allowed_email_domains = 'example.com,sister.test' where row_id = 'google'`
+    await person(p)
+    await sql`update person set password_hash = 'x' where row_id = ${p}`
+    await sql`insert into has_role ${sql({ row_id: `hr_${p}`, parent: p, parenttype: 'Person', parentfield: 'roles', role: 'System Manager' })}`
+    await sql`insert into sign_in_identity ${sql({ id: `uid_${p}`, person_id: p, method: 'google', subject: `g-${p}`, email: `${p}@sister.test`, linked_by: 'self', hosted_domain: 'sister.test' })}`
+    const [g] = await sql`select updated_at from sign_in_method where row_id = 'google'`
+    // Force the overlap: a third connection holds the tables both changes
+    // write only AFTER their checks, so without the shared lock both checks
+    // run against the state before either commits.
+    const gate = postgres(process.env.DATABASE_URL!, { max: 1, onnotice: () => {} })
+    const held = gate.begin(async (t) => {
+      await t`lock table featherbase.activity_log, featherbase.version in exclusive mode`
+      await new Promise((r) => setTimeout(r, 1500))
+    })
+    await new Promise((r) => setTimeout(r, 200))
+    const racing = Promise.allSettled([
+      saveDoc('Sign In Method', { row_id: 'google', allowed_email_domains: 'example.com', updated_at: g.updated_at }, 'Administrator'),
+      removeOwnPassword(p),
+    ])
+    await held
+    await gate.end()
+    const results = await racing
+    expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected'])
+    const [after] = await sql`select password_hash is not null as has_password from person where row_id = ${p}`
+    const [domains] = await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`
+    // Either the list kept sister.test or the password stayed: never neither.
+    expect(after.has_password || domains.allowed_email_domains === 'example.com,sister.test').toBe(true)
+    expect(after.has_password && domains.allowed_email_domains === 'example.com,sister.test').toBe(false)
+  } finally {
+    await sql`update sign_in_method set allowed_email_domains = ${before.allowed_email_domains} where row_id = 'google'`
+    if (prev === undefined) delete process.env.ALLOW_MOCK_OAUTH
+    else process.env.ALLOW_MOCK_OAUTH = prev
+    await cleanup(p)
+  }
+}, 30_000)
+
+// #693, Codex review round 7: a Sign In Method edit must take the ways-in lock
+// BEFORE it locks its row. An identity move takes that lock and then inserts
+// a link whose foreign key waits on the method row; in the other order the
+// two deadlock. A third connection holds the lock so the move queues for it
+// first and the edit second, the interleaving that deadlocked.
+it('an identity move racing a Sign In Method edit: both complete, neither deadlocks', async () => {
+  const p = `psn_conc${randomUUID().slice(0, 8)}`
+  const q = `${p}b`
+  await loadControllers()
+  const [before] = await sql`select label from sign_in_method where row_id = 'google'`
+  try {
+    await person(p)
+    await person(q)
+    await sql`insert into sign_in_identity ${sql({ id: `uid_${p}`, person_id: p, method: 'google', subject: `g-${p}`, email: `${p}@example.com`, linked_by: 'test' })}`
+    const gate = postgres(process.env.DATABASE_URL!, { max: 1, onnotice: () => {} })
+    let release: () => void = () => {}
+    const holding = new Promise<void>((r) => (release = r))
+    const held = gate.begin(async (t) => {
+      await t`select pg_advisory_xact_lock(${WAYS_IN_LOCK_KEY}::bigint)`
+      await holding
+    })
+    await new Promise((r) => setTimeout(r, 200))
+    const move = updateIdentity(`uid_${p}`, { person_id: q }, 'Administrator')
+    await new Promise((r) => setTimeout(r, 300))
+    const [g] = await sql`select updated_at from sign_in_method where row_id = 'google'`
+    const edit = saveDoc('Sign In Method', { row_id: 'google', label: `Google ${p}`, updated_at: g.updated_at }, 'Administrator')
+    await new Promise((r) => setTimeout(r, 300))
+    release()
+    await held
+    await gate.end()
+    const results = await Promise.allSettled([move, edit])
+    const errors = results.filter((r) => r.status === 'rejected').map((r) => (r as PromiseRejectedResult).reason)
+    expect(errors.map((e) => (e as { code?: string }).code)).not.toContain('40P01')
+    expect(errors).toEqual([])
+    expect(await sql`select person_id from sign_in_identity where subject = ${`g-${p}`} and ended_at is null`).toEqual([{ person_id: q }])
+  } finally {
+    await sql`update sign_in_method set label = ${before.label} where row_id = 'google'`
+    await cleanup(p)
+  }
+}, 30_000)
+
+// #693, Codex review round 9: an import update locks its target row and then
+// saves it, so it must take the pre-row locks (the Sign In Method ways-in
+// lock) first, as saveDoc does. The gate lets a direct edit queue for the
+// ways-in lock first and the import second: in the old order the import held
+// the row while it queued, and the edit then waited on that row.
+it('an import update of a Sign In Method racing a direct edit: neither deadlocks', async () => {
+  const tag = randomUUID().slice(0, 8)
+  await loadControllers()
+  const [before] = await sql`select label, self_link from sign_in_method where row_id = 'google'`
+  try {
+    const meta = await getMeta('Sign In Method')
+    const gate = postgres(process.env.DATABASE_URL!, { max: 1, onnotice: () => {} })
+    let release: () => void = () => {}
+    const holding = new Promise<void>((r) => (release = r))
+    const held = gate.begin(async (t) => {
+      await t`select pg_advisory_xact_lock(${WAYS_IN_LOCK_KEY}::bigint)`
+      await holding
+    })
+    await new Promise((r) => setTimeout(r, 200))
+    const [g] = await sql`select updated_at from sign_in_method where row_id = 'google'`
+    const edit = saveDoc('Sign In Method', { row_id: 'google', self_link: !before.self_link, updated_at: g.updated_at }, 'Administrator')
+    await new Promise((r) => setTimeout(r, 300))
+    const imported = saveImportedRow(meta, { row_id: 'google', label: `Google ${tag}`, updated_at: g.updated_at }, 'Administrator', `run-${tag}`, true)
+    await new Promise((r) => setTimeout(r, 300))
+    release()
+    await held
+    await gate.end()
+    const results = await Promise.allSettled([edit, imported])
+    const codes = results.filter((r) => r.status === 'rejected').map((r) => ((r as PromiseRejectedResult).reason as { code?: string }).code)
+    expect(codes).not.toContain('40P01')
+    // A stale updated_at may refuse one of them; neither dies in a deadlock.
+    expect(results.some((r) => r.status === 'fulfilled')).toBe(true)
+  } finally {
+    await sql`update sign_in_method set label = ${before.label}, self_link = ${before.self_link} where row_id = 'google'`
+    await sql`delete from featherbase.import_source where run_id = ${`run-${tag}`}`
   }
 }, 30_000)

@@ -80,6 +80,15 @@ describe('the managed scope (D2)', () => {
 })
 
 describe('apply (D4)', () => {
+  // #693: the Sign In Method controller refuses a malformed domain list, and
+  // the settings file saves through it, so a typo there lands nothing.
+  test('a domain list with a space inside an entry is refused and nothing changes', async () => {
+    await sql`update sign_in_method set allowed_email_domains = ${DOMAINS} where row_id = 'google'`
+    const file: InstanceSettingsFile = { settings: { 'Sign In Method': [{ row_id: 'google', allowed_email_domains: 'exam ple.com' }] } }
+    await expect(applyInstanceSettings(file, { by: 'Administrator' })).rejects.toThrow('"exam ple.com" is not a domain such as example.com, or *')
+    expect(await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`).toEqual([{ allowed_email_domains: DOMAINS }])
+  })
+
   test('a missing company domain is restored, and the result names that one setting', async () => {
     await sql`update sign_in_method set allowed_email_domains = null where row_id = 'google'`
     const file: InstanceSettingsFile = { settings: { 'Sign In Method': [{ row_id: 'google', allowed_email_domains: DOMAINS }] } }

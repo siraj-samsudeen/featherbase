@@ -1,6 +1,6 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
-import { KINDS, METHOD_TABLE, SIGN_IN_METHOD_KINDS, assertNoAdminLockout, methodUsable, type MethodKind } from '../identities'
+import { KINDS, METHOD_TABLE, SIGN_IN_METHOD_KINDS, assertNoAdminLockout, domainListProblem, endSessionsNoLongerAdmitted, lockWaysIn, methodUsable, type MethodKind } from '../identities'
 import { usableServiceUrl, wireFrom } from '../delegated-login'
 
 // person-identities (D2): a Sign In Method row is configuration. Its policy
@@ -25,12 +25,27 @@ function parseSettings(v: unknown): Record<string, unknown> | null {
 const controller: TableController = {
   table: METHOD_TABLE,
   hooks: {
+    // #693: every Sign In Method write takes the ways-in lock BEFORE its row
+    // is locked. An identity move takes the same lock and then waits on this
+    // row (its foreign key), so the reverse order would deadlock.
+    before_lock: async ({ tx }) => {
+      await lockWaysIn(tx)
+    },
     before_validate: async ({ row, old, isNew, tx }) => {
+      // Already held from before_lock; taken again (re-entrant) in case a
+      // write path reaches the hooks without it.
+      await lockWaysIn(tx)
       const kind = String(row.kind ?? old?.kind ?? '') as MethodKind
       const caps = KINDS[kind]
       if (!caps) throw new AppError('ValidationError', `Unknown kind "${kind}"`, { kind: SIGN_IN_METHOD_KINDS.join(', ') })
       if (!isNew && old && row.kind !== undefined && row.kind !== old.kind)
         throw new AppError('ValidationError', 'A sign-in method cannot change kind', { kind: 'fixed once created' })
+      // #693: one reading of the list everywhere, so a typo is refused here
+      // rather than read one way by the lockout guard and another by sign-in.
+      if (row.allowed_email_domains !== undefined) {
+        const problem = domainListProblem(row.allowed_email_domains)
+        if (problem) throw new AppError('ValidationError', `Allowed email domains ${problem}`, { allowed_email_domains: problem })
+      }
       const newPerson = String(row.new_person ?? old?.new_person ?? 'refuse')
       if (newPerson === 'create' && !caps.trustedSubject)
         throw new AppError('ValidationError', 'This method cannot vouch for a permanent ID, so it cannot create accounts', {
@@ -74,18 +89,27 @@ const controller: TableController = {
       if (isNew || !old) return usableCheck()
       const enabledChanged = row.enabled !== undefined && truthy(old.enabled) !== truthy(row.enabled)
       const clientChanged = row.client_id !== undefined && String(row.client_id ?? '') !== String(old.client_id ?? '')
-      if (!enabledChanged && !clientChanged) return usableCheck()
+      // #693: links ruled by the domain list stop signing in when it narrows.
+      const domainsChanged =
+        row.allowed_email_domains !== undefined && String(row.allowed_email_domains ?? '') !== String(old.allowed_email_domains ?? '')
+      if (!enabledChanged && !clientChanged && !domainsChanged) return usableCheck()
       await assertNoAdminLockout(
         String(old.row_id),
         {
           enabled: row.enabled !== undefined ? truthy(row.enabled) : truthy(old.enabled),
           client_id: String((row.client_id !== undefined ? row.client_id : old.client_id) ?? ''),
+          allowed_email_domains: String((row.allowed_email_domains !== undefined ? row.allowed_email_domains : old.allowed_email_domains) ?? ''),
         },
         tx,
       )
       usableCheck()
+      // #693 (Siraj, 30-Oct-2026): sessions through links the new list no
+      // longer admits end now, in this transaction, after the guard allowed it.
+      if (domainsChanged && String(merged.kind) === 'google')
+        await endSessionsNoLongerAdmitted(String(old.row_id), String(row.allowed_email_domains ?? ''), tx)
     },
     on_trash: async ({ row, tx }) => {
+      await lockWaysIn(tx)
       if (row.kind === 'password')
         throw new AppError('ValidationError', 'The password sign-in method cannot be deleted; turn it off instead')
       await assertNoAdminLockout(String(row.row_id), null, tx)
