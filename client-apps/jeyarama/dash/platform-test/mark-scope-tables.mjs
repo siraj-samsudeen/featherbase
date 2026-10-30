@@ -2,8 +2,8 @@
 // old Store Sections Tables `decides_scope`, so Feather Dash's scope provider
 // may read them for stores not yet live on the new org chart (a read of an
 // unmarked one fails the whole scope closed). The step itself is run on an
-// instance from the client's private instance repository; this is the test
-// copy of its function, without the command-line wrapper.
+// instance by ../../instances/dash/instance-setup/mark-scope-tables.mjs, which
+// wraps this function.
 
 /** The Tables today's derivation reads (Feather Dash's provider declares the same six). */
 export const SCOPE_TABLES = [

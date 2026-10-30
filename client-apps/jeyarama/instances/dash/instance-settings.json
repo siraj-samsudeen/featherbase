@@ -1,0 +1,133 @@
+{
+  "settings": {
+    "System Settings": {
+      "app_name": "Feather Dash",
+      "time_zone": "Asia/Kolkata",
+      "privacy_notice": {
+        "file": "privacy-notice.md"
+      }
+    },
+    "Sign In Method": [
+      {
+        "row_id": "password",
+        "kind": "password",
+        "label": "Password",
+        "enabled": true,
+        "new_person": "refuse",
+        "self_link": true
+      },
+      {
+        "row_id": "google",
+        "kind": "google",
+        "label": "Google",
+        "enabled": true,
+        "new_person": "create_if_email_domain_allowed",
+        "allowed_email_domains": "jeyarama.com",
+        "self_link": false
+      }
+    ],
+    "Scheduled Job": [
+      {
+        "row_id": "auto_email_reports",
+        "enabled": true
+      },
+      {
+        "row_id": "check_instance_health",
+        "enabled": true
+      },
+      {
+        "row_id": "check_sla",
+        "enabled": true
+      },
+      {
+        "row_id": "disable_leavers",
+        "enabled": false
+      },
+      {
+        "row_id": "refresh_datasets",
+        "enabled": true
+      }
+    ],
+    "Data Source": [
+      {
+        "row_id": "motherduck",
+        "engine": "duckdb",
+        "url_env": "MOTHERDUCK_URL",
+        "default_schema": "gold.main",
+        "access": "read_only"
+      }
+    ]
+  },
+  "environments": {
+    "local": {
+      "settings": {
+        "Sign In Method": [
+          {
+            "row_id": "google",
+            "client_id": ""
+          }
+        ]
+      }
+    },
+    "dev": {
+      "settings": {
+        "Sign In Method": [
+          {
+            "row_id": "google",
+            "client_id": "526042382398-1bqqe2ejsbsi3elihqrkv9k1diorc93l.apps.googleusercontent.com"
+          }
+        ],
+        "App Setting": [
+          {
+            "row_id": "feather_dash.dive_id",
+            "value": {
+              "env": "DIVE_ID"
+            }
+          },
+          {
+            "row_id": "feather_dash.dive_version",
+            "value": {
+              "env": "DIVE_VERSION"
+            }
+          },
+          {
+            "row_id": "feather_dash.embed_service_account",
+            "value": {
+              "env": "SERVICE_ACCOUNT"
+            }
+          }
+        ]
+      }
+    },
+    "prod": {
+      "settings": {
+        "Sign In Method": [
+          {
+            "row_id": "google",
+            "client_id": "526042382398-1bqqe2ejsbsi3elihqrkv9k1diorc93l.apps.googleusercontent.com"
+          }
+        ],
+        "App Setting": [
+          {
+            "row_id": "feather_dash.dive_id",
+            "value": {
+              "env": "DIVE_ID"
+            }
+          },
+          {
+            "row_id": "feather_dash.dive_version",
+            "value": {
+              "env": "DIVE_VERSION"
+            }
+          },
+          {
+            "row_id": "feather_dash.embed_service_account",
+            "value": {
+              "env": "SERVICE_ACCOUNT"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
