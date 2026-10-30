@@ -38,7 +38,7 @@ both kinds of app.
 |---|---|---|
 | Built for | Any client | One client |
 | Examples | Feather Tickets, Feather Tasker | Feather Dash (for its first client) |
-| Lives in | This repository, `example-apps/` | This repository, `client-apps/<client>/<app>/` (ADR 0014; first placed in the client's `client-apps/<client>/instances/`) |
+| Lives in | This repository, `example-apps/` | This repository, `client-apps/<client>/<app>/` (ADR 0014; first placed in the client's private repository) |
 | May carry one client's terms, values and examples | No: they reach it as settings or instance setup | **Yes**, directly |
 | A second client gets | The same app, with its own settings | A copy of the code, to adapt |
 | Worth it when | The same app serves many clients | One client needs it now |
