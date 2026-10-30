@@ -82,6 +82,10 @@ const HANDLERS: Record<string, string> = {
       try { await ctx.datasets[read]('exits'); answers.push(read + ': answered') } catch (e) { answers.push(read + ': ' + e.message) }
     ctx.setResult(answers.join('; '))
   }`,
+  read_secret_name: `async read_secret_name(ctx) {
+    try { await ctx.datasets.active(ctx.secrets.FBJOBS_TOKEN) } catch {}
+    await ctx.datasets.live('also ' + ctx.secrets.FBJOBS_TOKEN)
+  }`,
   hold: `async hold(ctx) { calls.push({ job: ctx.job.name }); ctx.refuse('the feed is stale') }`,
 }
 const server = (jobs: Job[]) => `export const platformVersion = '2026-10'
@@ -510,11 +514,29 @@ describe('a dataset the job does not declare', () => {
     await runDue()
     const method = `${APP}.mail_then_read`
     expect(await sql`select attempt, outcome, error from job_execution where method = ${method}`)
-      .toEqual([{ attempt: 1, outcome: 'error', error: `The job ${method} has not declared the dataset exits` }])
+      .toEqual([{ attempt: 1, outcome: 'error', error: `The job ${method} has not declared the dataset it asked for` }])
     expect((await sql`select job_status from background_job where method = ${method} order by created_at`).map((r) => r.job_status)).toEqual(['failed', 'queued'])
     expect(await sql`select recipient from email_queue where subject = 'Before reading'`).toEqual([{ recipient: 'reader@example.test' }])
     expect(await sql`select operation, method from access_log where "user" = ${method}`)
-      .toEqual([{ operation: 'app_access_denied', method: `${method}:dataset:exits` }])
+      .toEqual([{ operation: 'app_access_denied', method: `${method}:dataset` }])
+  })
+})
+
+describe('a refusal never repeats what the app passed', () => {
+  test('a secret given as a dataset name, cached or live, caught or not, reaches no record and no alert', async ({ admin, createUser }) => {
+    await createUser({ email: 'alert@example.test', roles: ['System Manager'] })
+    const job: Job = { name: 'read_secret_name', cadence: 'daily', description: 'Reads a dataset named by its token.' }
+    expect(await discoverPackages([await writeApp({ jobs: [job], extra: SECRETS })])).toEqual([])
+    await withToken(() => admin.post('/api/install_app', { name: APP }))
+    await withToken(runDue)
+    const method = `${APP}.read_secret_name`
+    expect(await sql`select outcome, error from job_execution where method = ${method}`)
+      .toEqual([{ outcome: 'error', error: `The job ${method} has not declared the dataset it asked for` }])
+    // Both reads were refused and recorded; the alert went out.
+    expect(await sql`select method from access_log where "user" = ${method}`).toEqual([{ method: `${method}:dataset` }, { method: `${method}:dataset` }])
+    expect((await sql`select 1 from email_queue where recipient = 'alert@example.test'`).length).toBeGreaterThan(0)
+    expect(await leaksAnywhere()).toBe(false)
+    expect(JSON.stringify(await sql`select * from access_log`)).not.toContain(TOKEN)
   })
 })
 

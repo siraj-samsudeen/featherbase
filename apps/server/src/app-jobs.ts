@@ -124,7 +124,9 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
     // one on its way out (withSecretsKept) and would otherwise be retried,
     // repeating what the job was allowed to do (Codex round 1 on #701).
     let refusedGrant: string | undefined
-    // Recorded, then final; the first refusal is what the run ends with.
+    // Recorded, then final; the first refusal is what the run ends with. Only
+    // platform words go in: a grant's name or a fixed phrase, never anything
+    // the app passed.
     const refuseAccess = async (what: string, recorded: string): Promise<never> => {
       refusedGrant ??= `The job ${actor} has not declared ${what}`
       await logAccess(actor, 'app_access_denied', { method: `${actor}:${recorded}`.slice(0, 140), required: true })
@@ -141,7 +143,10 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
     const readable = appDatasets({ app, operation: job.name, user: actor, title: ready.title, declarations: datasets,
       places: EVERY_PLACE, outbound: true }).datasets
     const dataset = async <T>(name: unknown, fn: () => Promise<T>): Promise<T> => {
-      if (typeof name !== 'string' || !declaredDatasets.has(name)) await refuseAccess(`the dataset ${String(name)}`, `dataset:${String(name)}`)
+      // The name is the app's own argument and may hold anything, a secret
+      // included (Codex round 4 on #701), so the refusal names no dataset:
+      // not in the Access Log, the run record or the alert.
+      if (typeof name !== 'string' || !declaredDatasets.has(name)) await refuseAccess('the dataset it asked for', 'dataset')
       return fn()
     }
     // What the app writes into the run's record, its refusal alert or a

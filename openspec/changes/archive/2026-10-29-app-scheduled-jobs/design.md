@@ -71,7 +71,9 @@ must match the declared names exactly, as for actions and reads.
   that commits while the disable waits is seen (Codex round 2).
 - A dataset the job does not declare is refused like an undeclared grant:
   recorded in the Access Log, final, and the run fails even if the handler
-  catches the error.
+  catches the error. A refusal carries only the platform's words (a grant's
+  name, or "the dataset it asked for"), never what the app passed, which may
+  hold a secret (Codex round 4).
 - `email.systemManagers` reads the subject and body once, at the call, and
   checks and sends only that copy, so the app cannot swap a secret in while
   the recipients are looked up (Codex round 2). It refuses a message holding
