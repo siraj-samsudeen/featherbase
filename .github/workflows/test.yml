@@ -242,7 +242,7 @@ jobs:
       # The server suite renders real PDFs (test/print-pdf.test.ts →
       # src/print.ts), which launches Chromium through the server's own
       # `playwright` dependency. CHROMIUM_PATH stays unset so Playwright
-      # resolves the browser it installed itself (see CLAUDE.md).
+      # resolves the browser it installed itself (docs/DEPLOY.md, `CHROMIUM_PATH`).
       - name: Install Chromium for server-side PDF tests
         run: pnpm --filter server exec playwright install --with-deps chromium
 

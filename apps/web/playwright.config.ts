@@ -3,7 +3,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 // Resolve the Chromium binary the same way `apps/server/src/print.ts` does,
-// and for the same reason: CLAUDE.md's environment rule says Chromium is
+// and for the same reason (docs/DEPLOY.md, `CHROMIUM_PATH`): Chromium is
 // resolved from the environment and never hardcoded.
 //
 // Preferring Playwright's own resolution is not enough on a prebuilt
