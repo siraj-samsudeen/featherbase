@@ -23,7 +23,7 @@ import { tableRelation, quoteRelation } from '../table-engine'
 // the response and the Import Log carry updated / inserted / failed as
 // separate counts. Absent `key_column`, insert-only semantics byte-for-byte.
 const MAX_ROWS = 10_000
-// ADR 0008: failures kept in the Import Log's error summary (Q3 owns 'more').
+// Named import threshold (packages/shared/src/import.ts): failures kept in the Import Log's error summary (Q3 owns 'more').
 const LOG_ERROR_SAMPLE = 20
 
 interface FailedRow {

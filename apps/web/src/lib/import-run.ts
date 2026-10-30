@@ -9,7 +9,7 @@
 import type { CoercedRow } from 'shared'
 import { api } from './api'
 
-// ADR 0008: rows per :import call; log rows are per part. Previously
+// Named import threshold (packages/shared/src/import.ts): rows per :import call; log rows are per part. Previously
 // declared once per caller.
 const IMPORT_CHUNK = 500
 

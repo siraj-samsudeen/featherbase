@@ -41,19 +41,6 @@ _Avoid_: Single, Single DocType
 
 ## Identity
 
-> **Live inconsistency.** [ADR 0009](docs/adr/0009-record-identity-id-and-name.md)
-> ratified the two terms below, but the rename has not landed in the code yet —
-> the primary key column is still literally `name`
-> ([#89](https://github.com/siraj-samsudeen/featherbase/issues/89) is open).
-> Until it lands, `name` in code means identity, while `name` in this glossary
-> means the human-readable name. Prefer the language below when writing prose,
-> specs, and issue titles; expect the old meaning when reading code.
-
-**ID**:
-A Row's primary key — the platform's own identifier for it. Always the bare
-column `id`, never domain-prefixed.
-_Avoid_: name (as identity), pk, row_id, docname
-
 **Name**:
 The human-readable name of a Row — an ordinary user Column that a Table may or
 may not have.

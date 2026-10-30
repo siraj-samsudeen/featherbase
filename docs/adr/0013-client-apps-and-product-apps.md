@@ -1,6 +1,17 @@
 # ADR 0013: Client apps and product apps
 
-**Status:** Accepted; amended by [ADR 0014](0014-one-repo-for-platform-and-apps.md) (30-Oct-2026: client apps live in this repository; instances in a private repository per client) · **Date:** 2026-10-27 · **Amends:** [ADR 0011](0011-platform-app-instance.md) · **Issue:** [#550](https://github.com/siraj-samsudeen/featherbase/issues/550)
+**Status:** Accepted · **Date:** 2026-10-27 · **Corrected:** 30-Oct-2026 (#705) · **Amends:** [ADR 0011](0011-platform-app-instance.md) · **Issue:** [#550](https://github.com/siraj-samsudeen/featherbase/issues/550)
+
+> **30-Oct-2026 correction (#705).** [ADR 0014](0014-one-repo-for-platform-and-apps.md)
+> moved where apps live, and its amendment is now written into the text below:
+> client apps live in **this** repository under `client-apps/<client>/<app>/`,
+> product apps under `example-apps/`, and each client's instances in a small
+> private instance repository. Client app code may be public; client data,
+> secrets and instance details never are. The delivery question this ADR left
+> open is answered by ADR 0014 §4: a client app's image is built when the app
+> is released. As of this date the move is in progress, so the first client app
+> still sits in the client's repository. The product app / client app
+> distinction is unchanged.
 
 ## Context
 
@@ -29,7 +40,7 @@ both kinds of app.
 |---|---|---|
 | Built for | Any client | One client |
 | Examples | Feather Tickets, Feather Tasker | Feather Dash (for its first client) |
-| Lives in | Shipped with Featherbase as a first-party package | The client's own private repository |
+| Lives in | This repository, `example-apps/` | This repository, `client-apps/<client>/<app>/` (ADR 0014; first placed in the client's private repository) |
 | May carry one client's terms, values and examples | No: they reach it as settings or instance setup | **Yes**, directly |
 | A second client gets | The same app, with its own settings | A copy of the code, to adapt |
 | Worth it when | The same app serves many clients | One client needs it now |
@@ -52,9 +63,13 @@ code moves into the platform.
   only through declared extension points, and the platform never reads an app's
   internals. A client app may know its client; it still may not know platform
   internals.
-- **Nothing from a client's repository enters this public one.** A client app's
-  code, data, names and figures stay in the client's repository. The platform's
-  extension points are tested here with small generic fixture apps.
+- **Client data, secrets and instance details never enter this public
+  repository.** *(Corrected 30-Oct-2026, ADR 0014: this first read "nothing from
+  a client's repository enters this public one". A client app's code now lives
+  here and may be public; its data, figures and instance details stay in the
+  client's private instance repository, and `check:sensitive` covers the client
+  folders.)* The platform's extension points are still tested with small
+  generic fixture apps.
 
 ### What a client app may hold
 
@@ -75,7 +90,8 @@ hard-code its own client's values, under the limits above.
 
 ## Consequences
 
-- Feather Dash becomes a client app in the client's repository. The split
+- Feather Dash becomes a client app, first in the client's repository and,
+  under ADR 0014, in `client-apps/` here. The split
   between a generic Feather Dash app and private instance setup (stage B parts
   B6 and B7, #550) collapses into one app there. The re-plan is recorded in the
   `feather-dash-installed-app` OpenSpec change and #550.
@@ -87,8 +103,8 @@ hard-code its own client's values, under the limits above.
   assumed instance setup, for example an app that declares its own cached
   dataset query. Each such case is decided in its own design, and the extension
   point stays generic.
-- How a client app reaches a server is a delivery question this ADR leaves open:
-  for example, a client image built on the platform's image, or an app artifact
-  installed into an instance. The `feather-dash-installed-app` design decides it.
+- How a client app reaches a server was left open here. *(Answered 30-Oct-2026
+  by ADR 0014 §4: an image is built when the app is released, and each
+  instance's private repository names the release it runs.)*
 - Tasker is retired after stage B (#563). Feather Tasker, a product app, may
   return later as its own app.

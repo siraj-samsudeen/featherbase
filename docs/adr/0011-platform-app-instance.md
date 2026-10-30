@@ -1,6 +1,22 @@
 # ADR 0011: Platform, App, Instance
 
-**Status:** Accepted; amended by [ADR 0013](0013-client-apps-and-product-apps.md) (27-Oct-2026: product apps and client apps) and [ADR 0014](0014-one-repo-for-platform-and-apps.md) (30-Oct-2026: the one-way rule enforced by a lint rule in one repository) · **Date:** 2026-10-26 · **Issue:** [#458](https://github.com/siraj-samsudeen/featherbase/issues/458) · **PR:** [#460](https://github.com/siraj-samsudeen/featherbase/pull/460)
+**Status:** Accepted · **Date:** 2026-10-26 · **Corrected:** 30-Oct-2026 (#705) · **Issue:** [#458](https://github.com/siraj-samsudeen/featherbase/issues/458) · **PR:** [#460](https://github.com/siraj-samsudeen/featherbase/pull/460)
+
+> **30-Oct-2026 correction (#705).** The amendments from
+> [ADR 0013](0013-client-apps-and-product-apps.md) and
+> [ADR 0014](0014-one-repo-for-platform-and-apps.md) are now written into the
+> text below, so it reads as one current decision:
+>
+> - There are two kinds of app. A **product app** never hard-codes one
+>   client's values; a **client app**, built for one client, may (ADR 0013).
+> - Apps live in this repository, beside the platform: product apps in
+>   `example-apps/`, client apps in `client-apps/<client>/<app>/`. Each client's
+>   instances live in a small private instance repository (ADR 0014). As of
+>   this date the move is in progress: the apps still sit in `runtime-apps/`
+>   and the first client app is still in the client's repository.
+> - The one-way rule is no longer kept by a repository boundary. Today a test
+>   pins it (`apps/server/test/platform-names-no-app.test.ts`); ADR 0014 adds a
+>   lint rule that stops the platform importing from either app folder.
 
 ## Context
 
@@ -38,8 +54,8 @@ production deployment, rather than after it:
 | Layer | What it is | Where it lives |
 |---|---|---|
 | **Platform** | Featherbase itself: sign-in, Tables, forms, roles, the Admin screens, and the rules for installing apps | This public repository. The same for every client |
-| **App** | Something installable on any instance, with its own pages, Tables, roles and code (Tasker, Feather Dash) | Its own source and its own version number. This repository holds the example apps |
-| **Instance** | One running copy for one client: one server, one database, and that client's settings, data, people and choice of apps | The client's private configuration repository, and the database itself |
+| **App** | Something installable on an instance, with its own pages, Tables, roles and code (Tasker, Feather Dash) | Its own folder and version number in this repository: `example-apps/` for product apps, `client-apps/<client>/<app>/` for client apps (ADR 0014) |
+| **Instance** | One running copy for one client: one server, one database, and that client's settings, data, people and choice of apps | The client's private instance repository (ADR 0014), and the database itself |
 
 In prose, the middle layer is called an **app**. The code's name for it
 (`runtime package`) is used only when pointing at a file.
@@ -47,9 +63,10 @@ In prose, the middle layer is called an **app**. The code's name for it
 ### One-way knowledge
 
 **Each layer knows only the layer below it.** The platform never names a
-client. An app never hard-codes one client's values; they reach it as
-settings or instance setup. The instance chooses apps and fills in their
-settings.
+client or an app. A product app never hard-codes one client's values; they
+reach it as settings or instance setup. A client app, built for one client,
+may hold that client's values, within the limits in ADR 0013. The instance
+chooses apps and fills in their settings.
 
 The test for any file: *if a second client arrived tomorrow, would this file
 have to change?* If yes, it is in the wrong layer. This is the most important
@@ -67,8 +84,9 @@ rule in this ADR, and every design is checked against it.
 
 1. **Instance people change a lot at runtime, in the UI**: new Tables, fields,
    forms, layouts and pages.
-2. **App developers work in code, in their own repository, through pull
-   requests.**
+2. **App developers work in code, through pull requests**, in this repository
+   beside the platform, or, for a client with its own developers, in a private
+   copy of it (ADR 0014).
 3. **A platform release never breaks an app or an instance.** Each app states
    the **platform version** it was built for, a month such as `2026-10`, in its
    manifest. Each platform version is supported on a published calendar, and
@@ -146,6 +164,9 @@ reviewed.
 - The manifest's `apiVersion` is renamed `platformVersion`, dated by month,
   outright and without an alias.
 - The extension-point catalogue is generated from the manifest's own schema and
-  checked in CI, so it cannot drift from the code.
-- Feather Dash is the first app designed against this ADR: a generic app in this
-  repository, with each client's report definition as private instance setup.
+  checked in CI, so it cannot drift from the code. *(Not yet built as of
+  30-Oct-2026.)*
+- Feather Dash is the first app designed against this ADR. *(Corrected
+  30-Oct-2026: it was first planned as a generic app with each client's report
+  definition as private instance setup; ADR 0013 made it a client app, and
+  ADR 0014 brings it into `client-apps/`.)*

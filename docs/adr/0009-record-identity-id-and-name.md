@@ -1,6 +1,21 @@
 # ADR 0009: Record identity — `id` and `name`, and the column naming convention
 
-**Status:** Accepted · **Date:** 2026-07-31
+**Status:** Accepted · **Date:** 2026-07-31 · **Corrected:** 30-Oct-2026 (#705)
+
+> **30-Oct-2026 correction: the key column is `row_id`, not `id`.** The rename
+> shipped in [#132](https://github.com/siraj-samsudeen/featherbase/issues/132)
+> with the physical primary key called `row_id`, shown as **Row ID** in the
+> Admin, and `row_id` is what every API request and response carries. The rest
+> of the decision holds: `name` is no longer reserved and is an ordinary user
+> column; platform columns are bare and never domain-prefixed. One exception:
+> the Table registry (`table_def`) keeps `name` as its natural key, physically
+> only, because Table names are what the whole metadata layer points at
+> (`PHYSICAL_ROW_KEY_OVERRIDES` in `apps/server/src/meta.ts`). The deferred
+> `title_column` question is settled: it survived, and a title column of
+> `row_id` means "show the id". `row_id` rather than `id` was chosen so a user
+> column called `id` stays legal. Where the text below says `id` for the key,
+> read `row_id`;
+> the Context section is the record of how things stood before the rename.
 
 > Renumbered 0007 → 0009 on 2026-08-11: this ADR was filed as 0007 while
 > [ADR 0007](0007-app-and-database-topology.md) already held that number, so
@@ -53,12 +68,12 @@ of Frappe vocabulary that is most load-bearing and most confusing.
 
 ## Decision
 
-### 1. The primary key column is `id`
+### 1. The primary key column is `row_id` *(corrected 30-Oct-2026; first written as `id`)*
 
 `name` is freed to mean what everyone expects: the human-readable name of the
 record, an ordinary user column that a table may or may not have.
 
-`id` replaces `name` in `STANDARD_COLUMNS`, in the generated DDL, in
+`row_id` replaces `name` in `STANDARD_COLUMNS`, in the generated DDL, in
 parent/sub-table linkage, in Reference columns (which store a target record's
 key), in RLS policies, and across the API surface.
 
@@ -138,5 +153,5 @@ present, is left open and should be settled when the rename is implemented.
 | Keep `name` as the primary key | The confusion is permanent and paid by every user and every imported sheet, forever. Phase 2 explicitly sanctions diverging from Frappe vocabulary where it does not serve this platform's users. |
 | Domain-prefixed standard columns (`employee_id`) | Cannot be generated without interpolating the table name; breaks on rename; stutters at call sites; defeats generic list/form code. |
 | Keep `name` as key, add a separate `title` column | Leaves the reserved word `name` meaning identity — the exact source of the confusion — and adds a third identity-ish column rather than removing one. |
-| Rename the key to `pk` or `row_id` | Accurate but not the vocabulary users arrive with. "ID" is the word in every source system and every spreadsheet. |
+| Rename the key to `pk` or `row_id` | Accurate but not the vocabulary users arrive with. "ID" is the word in every source system and every spreadsheet. *(Corrected 30-Oct-2026: #132 chose `row_id` after all, labelled "Row ID", so that a user column called `id` stays legal instead of recreating the reserved-word trap one word over.)* |
 | Silent fallback for blank imported ids | Produces mixed id vocabularies in one table, invisibly. Failing loudly at the Check step is strictly better. |
