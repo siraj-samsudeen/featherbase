@@ -59,3 +59,4 @@ export const config = {
 
 // An invalid INSTANCE_ADDRESSES stops the boot here, naming the rule it breaks.
 void config.instanceAddresses
+// throw-away
