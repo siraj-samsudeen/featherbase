@@ -41,19 +41,6 @@ _Avoid_: Single, Single DocType
 
 ## Identity
 
-> **Live inconsistency (checked 30-Oct-2026, #705).** [ADR 0009](docs/adr/0009-record-identity-id-and-name.md)
-> ratified the two terms below. The rename has landed, but the key column is
-> `row_id` (shown as "Row ID"), not `id`
-> ([#132](https://github.com/siraj-samsudeen/featherbase/issues/132)), while the
-> **ID** entry below still says `id` and lists `row_id` under _Avoid_. `name` is
-> no longer reserved and means the human-readable name, as below. Which wording
-> the entry should carry is the owner's call.
-
-**ID**:
-A Row's primary key — the platform's own identifier for it. Always the bare
-column `id`, never domain-prefixed.
-_Avoid_: name (as identity), pk, row_id, docname
-
 **Name**:
 The human-readable name of a Row — an ordinary user Column that a Table may or
 may not have.
