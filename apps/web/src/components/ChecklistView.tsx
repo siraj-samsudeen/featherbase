@@ -498,6 +498,7 @@ function RunPane({
                   ) : noteDraft?.item === itemName ? (
                     <input
                       autoFocus
+                      disabled={saving}
                       className={inputClasses('w-full max-w-sm text-sm')}
                       defaultValue={note}
                       placeholder="Why not?"
@@ -511,6 +512,7 @@ function RunPane({
                   ) : note ? (
                     <button
                       type="button"
+                      disabled={saving}
                       className="rounded bg-caution-tint px-2 py-1 text-left text-xs text-caution"
                       onClick={() => setNoteDraft({ item: itemName, text: note })}
                       title="Edit note"
@@ -521,6 +523,7 @@ function RunPane({
                     !done && (
                       <button
                         type="button"
+                        disabled={saving}
                         className="text-xs text-ink-muted underline"
                         onClick={() => setNoteDraft({ item: itemName, text: '' })}
                         data-testid="checklist-add-note"

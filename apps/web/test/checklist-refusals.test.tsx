@@ -58,6 +58,53 @@ test('a note is saved when the person leaves the box, without pressing Enter', a
   expect(doc.items.map((i) => i.note)).toContain('Shutter stuck')
 })
 
+test('note controls wait for a pending save, then allow the next note to persist', async ({ admin }) => {
+  const user = userEvent.setup()
+  const run = await seedRun(admin)
+  await openRun(admin, run)
+  const item = (n: number) => within(screen.getAllByTestId('checklist-item')[n])
+  await user.click(item(4).getByTestId('checklist-add-note'))
+  await user.type(item(4).getByTestId('checklist-note-input'), 'Existing note{Enter}')
+  await waitFor(() => expect(item(4).getByTitle('Edit note')).toHaveTextContent('Existing note'))
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  let started!: () => void
+  const pending = new Promise<void>((resolve) => { started = resolve })
+  const real = globalThis.fetch
+  let first = true
+  const delayed = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const response = await real(input, init)
+    if (first && String(input).endsWith('/api/save_row')) {
+      first = false
+      started()
+      await gate
+    }
+    return response
+  })
+  try {
+    await user.click(item(3).getByTestId('checklist-add-note'))
+    await user.type(item(3).getByTestId('checklist-note-input'), 'First note{Enter}')
+    await pending
+    expect(item(4).getByTitle('Edit note')).toBeDisabled()
+    expect(item(6).getByTestId('checklist-add-note')).toBeDisabled()
+    await user.click(item(4).getByTitle('Edit note'))
+    expect(screen.queryByTestId('checklist-note-input')).not.toBeInTheDocument()
+    release()
+    await waitFor(() => expect(item(4).getByTitle('Edit note')).toBeEnabled())
+    await user.click(item(4).getByTitle('Edit note'))
+    await user.clear(item(4).getByTestId('checklist-note-input'))
+    await user.type(item(4).getByTestId('checklist-note-input'), 'Second note{Enter}')
+    await waitFor(async () => {
+      const doc = await admin.get<{ items: { note: string | null }[] }>(`/api/table/Checklist%20Run/${encodeURIComponent(run)}`)
+      expect(doc.items[3].note).toBe('First note')
+      expect(doc.items[4].note).toBe('Second note')
+    })
+  } finally {
+    release()
+    delayed.mockRestore()
+  }
+})
+
 test('the camera button opens the picker; a photo the server refuses offers a retry', async ({ admin }) => {
   const user = userEvent.setup()
   const run = await seedRun(admin)
