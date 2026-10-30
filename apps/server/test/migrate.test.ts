@@ -156,19 +156,19 @@ describe('migrate: an installed database', () => {
     }
   }, 120_000)
 
-  // #693: a database installed from 0001–0003 has no hosted_domain column;
-  // 0004 adds it and keeps the links it already holds.
-  it('installed before 0004: 0004 adds sign_in_identity.hosted_domain and keeps its rows', async () => {
+  // #693: a database installed from 0001–0004 has no hosted_domain column;
+  // 0005 adds it and keeps the links it already holds.
+  it('installed before 0005: 0005 adds sign_in_identity.hosted_domain and keeps its rows', async () => {
     const scratch = await scratchInstalled()
     try {
       await scratch.db`alter table featherbase.sign_in_identity drop column hosted_domain`
-      await scratch.db`delete from featherbase.migration where name = '0004_sign_in_identity_hosted_domain.sql'`
+      await scratch.db`delete from featherbase.migration where name = '0005_sign_in_identity_hosted_domain.sql'`
       await scratch.db`insert into featherbase.sign_in_identity (id, person_id, method, subject, email, linked_by)
-        values ('uid_before_0004', 'Administrator', 'google', 'g-before-0004', 'admin@example.com', 'self')`
-      expect(await scratch.migrate.pendingMigrations()).toEqual(['0004_sign_in_identity_hosted_domain.sql'])
+        values ('uid_before_0005', 'Administrator', 'google', 'g-before-0005', 'admin@example.com', 'self')`
+      expect(await scratch.migrate.pendingMigrations()).toEqual(['0005_sign_in_identity_hosted_domain.sql'])
       expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
-      expect(await scratch.db`select id, subject, email, linked_by, hosted_domain from featherbase.sign_in_identity where id = 'uid_before_0004'`).toEqual([
-        { id: 'uid_before_0004', subject: 'g-before-0004', email: 'admin@example.com', linked_by: 'self', hosted_domain: null },
+      expect(await scratch.db`select id, subject, email, linked_by, hosted_domain from featherbase.sign_in_identity where id = 'uid_before_0005'`).toEqual([
+        { id: 'uid_before_0005', subject: 'g-before-0005', email: 'admin@example.com', linked_by: 'self', hosted_domain: null },
       ])
       expect(await ledger(scratch)).toEqual(allMigrations())
     } finally {

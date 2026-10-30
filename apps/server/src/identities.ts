@@ -217,7 +217,7 @@ async function domainListsJson(db: Sql | TxSql, override?: { key: string; domain
  *  method's list in `lists` (domainListsJson, so parsed once, in TypeScript)?
  *  A company domain also needs the hosted-domain claim from the link's last
  *  sign-in to match: '' records that Google sent none (never counts). NULL
- *  means never recorded (a link from before migration 0004) and is judged
+ *  means never recorded (a link from before migration 0005) and is judged
  *  asymmetrically, so a doubt always refuses the change:
  *  - 'possible' (what a change takes away): it may work, so it counts on its
  *    email domain;
@@ -238,7 +238,7 @@ function keepsDomain(lists: string, proof: WayInProof) {
     or (
       -- A non-empty list, even *, admits only a verified address, exactly as
       -- domainAdmitted does: the last sign-in's verification (email_verified;
-      -- NULL on a row from before 0004, whose address was stored verified).
+      -- NULL on a row from before 0005, whose address was stored verified).
       coalesce(i.email, '') like '%_@_%'
       and coalesce(i.email_verified, true)
       and (${list} ? '*' or ${list} ? ${domain})

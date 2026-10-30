@@ -190,7 +190,7 @@ describe('a malformed domain list is refused when saved', () => {
   })
 })
 
-// Codex review rounds 3-4 on #698: a link from before migration 0004 has no
+// Codex review rounds 3-4 on #698: a link from before migration 0005 has no
 // claim recorded (NULL). It may still work (sign-in checks Google's fresh
 // claim), so a change that would take it away is refused; but it never proves
 // a company-domain way in remains, so nothing may rely on it either.
