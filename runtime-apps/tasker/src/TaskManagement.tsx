@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiError, api, getSessionUser, listResource } from './api'
+import { ApiError, api, getSessionUser, listAllResources } from './api'
 import { listVisiblePeople, PEOPLE_LIMITED_NOTICE, type PersonOption } from './people'
 import { Markdown } from './Markdown'
 import { ProjectDescription } from './ProjectDescription'
@@ -149,7 +149,7 @@ export function TaskManagementPage() {
   const tasks = useQuery({
     queryKey: ['task-management', 'tasks'],
     queryFn: () =>
-      listResource<Task>('tasker.task', {
+      listAllResources<Task>('tasker.task', {
         fields: TASK_FIELDS,
         order_by: 'created_at asc',
         limit_page_length: 500,
@@ -158,7 +158,7 @@ export function TaskManagementPage() {
   const projects = useQuery({
     queryKey: ['task-management', 'projects'],
     queryFn: () =>
-      listResource<Project>('tasker.project', {
+      listAllResources<Project>('tasker.project', {
         fields: ['row_id', 'project_name', 'description', 'updated_at'],
         order_by: 'project_name asc',
         limit_page_length: 200,
@@ -169,7 +169,7 @@ export function TaskManagementPage() {
     queryFn: () =>
       // Person ids are opaque (`psn_…`): list and show names. A user without
       // Person read gets a limited list, not an error (#437).
-      listVisiblePeople(() => listResource<PersonOption>('Person', {
+      listVisiblePeople(() => listAllResources<PersonOption>('Person', {
         fields: ['row_id', 'full_name'],
         order_by: 'full_name asc',
         limit_page_length: 200,
@@ -203,7 +203,7 @@ export function TaskManagementPage() {
   const comments = useQuery({
     queryKey: ['task-management', 'comments'],
     queryFn: () =>
-      listResource<TaskComment>('Comment', {
+      listAllResources<TaskComment>('Comment', {
         filters: [['ref_table', '=', 'tasker.task']],
         fields: ['ref_name', 'content', 'created_by', 'created_at'],
         order_by: 'created_at asc',

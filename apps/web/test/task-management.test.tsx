@@ -1029,10 +1029,8 @@ describe('Choosing people when the team list is hidden', () => {
 })
 
 describe('What the Inbox holds', () => {
-  // SPEC: What the Inbox holds — suspected defect, see report. Tasker loads
-  // only the 500 oldest tasks, so once a team has 500 tasks a newly captured
-  // one never shows in the Inbox (or any list).
-  test.fails('a task captured after the team already has 500 tasks still shows in the Inbox', async ({ admin }) => {
+  // #508: loading the next page must include newly captured work.
+  test('a task captured after the team already has 500 tasks still shows in the Inbox', async ({ admin }) => {
     await install()
     try {
       await sql`insert into tasker.task (row_id, task_title, task_state, is_done, urgent, project, created_at, updated_at)
