@@ -236,5 +236,6 @@ test('a blank and a missing value are one empty group, with all its rows listed'
   expect(within(groupHeader('(empty)')).getByTestId('group-sum-amount')).toHaveTextContent('8')
   // The stored empty string sorts before A; its later NULL group joins it.
   expect(screen.getAllByTestId('group-header').map((h) => h.dataset.group)).toEqual(['(empty)', 'A'])
-  expect(screen.getAllByTestId('report-row')).toHaveLength(500)
+  // Rows and summary totals arrive through independent requests.
+  await waitFor(() => expect(screen.getAllByTestId('report-row')).toHaveLength(500))
 })

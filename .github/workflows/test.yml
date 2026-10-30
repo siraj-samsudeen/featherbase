@@ -533,9 +533,20 @@ jobs:
           pnpm --filter server exec vitest run
           --config ../../runtime-apps/tasker/vitest.integration.config.ts
 
+      # The development seed checks PostgreSQL's actual server address.
+      # Docker port forwarding is not loopback from PostgreSQL's perspective.
+      - name: Start loopback PostgreSQL for the packaged seed proof
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql
+          PG_BIN=$(dirname "$(find /usr/lib/postgresql -name initdb | sort -V | tail -1)")
+          "$PG_BIN/initdb" -D "$RUNNER_TEMP/runtime-proof-pg" -U postgres --auth=trust
+          "$PG_BIN/pg_ctl" -D "$RUNNER_TEMP/runtime-proof-pg" -l "$RUNNER_TEMP/runtime-proof-pg.log" -o "-h 127.0.0.1 -p 5433 -k $RUNNER_TEMP" -w start
+
       - name: Prove packaged runtime journeys with coverage
         env:
           VITE_COVERAGE: 'true'
+          RUNTIME_PROOF_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/featherbase_runtime_proof_e2e
         run: pnpm apps:prove
 
       - name: Upload runtime integration coverage
