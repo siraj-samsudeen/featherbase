@@ -69,6 +69,18 @@ describe('pre-deploy for a client instance', () => {
   })
 })
 
+describe('pre-deploy for a client instance, past the release', () => {
+  it('a problem in the instance step fails the deploy', async () => {
+    vi.stubEnv('FEATHERBASE_INSTANCE', 'jeyarama/dash')
+    vi.stubEnv('FEATHERBASE_ENV', 'staging')
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    const r = await runMain(main, [])
+    expect(r.code).toBe(1)
+    expect(r.stdout).toContain('preflight:')
+    expect(r.stderr).toContain('deploy failed: This image ships no app')
+  })
+})
+
 describe('pre-deploy', () => {
   test('with preview sign-in configured it releases, then creates the preview person and the demo Table', async () => {
     configurePreview()

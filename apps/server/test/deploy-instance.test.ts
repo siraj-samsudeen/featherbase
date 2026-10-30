@@ -135,6 +135,54 @@ describe('a fresh deploy', () => {
   })
 })
 
+describe('what the step leaves alone or finishes', () => {
+  test('a disabled app is left as it is', async () => {
+    await pretendTo('staging')
+    await deploy()
+    await sql`update installed_app set enabled = false where name = ${name}`
+    expect(await deploy()).toContain(`${name} is disabled; left as it is`)
+  })
+
+  test('an install with no recorded fingerprint still matches on its manifest', async () => {
+    await pretendTo('staging')
+    await deploy()
+    await sql`update installed_app set artifact_digest = null where name = ${name}`
+    expect(await deploy()).toContain(`${name} ${version} is already installed`)
+  })
+
+  test('an upgrade waiting for activation is activated', async () => {
+    await pretendTo('staging')
+    await deploy()
+    await sql`update installed_app set activation_pending = true where name = ${name}`
+    expect(await deploy()).toContain(`activated ${name} ${version}`)
+    const [row] = await sql`select activation_pending from installed_app where name = ${name}`
+    expect(row.activation_pending).toBe(false)
+  })
+
+  test('an app folder that is missing, or a version the image lost, fails the step', async () => {
+    await pretendTo('staging')
+    vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([`${root}/no_such_folder/*`]))
+    await expect(deploy()).rejects.toThrow(/no_such_folder.*was rejected/)
+  })
+
+  it('cli repin-apps refuses a database not stamped for it, and says why', async () => {
+    const { main } = await import('../src/cli')
+    const out = captureIO()
+    expect(await main(['repin-apps'], out.io)).toBe(1)
+    expect(out.stderr()).toContain('production needs a new version')
+  })
+
+  test('cli repin-apps re-pins on a dev database', async () => {
+    await pretendTo('staging')
+    await deploy()
+    writeFileSync(join(app, 'NOTES.md'), 'a file changed\n')
+    const { main } = await import('../src/cli')
+    const out = captureIO()
+    expect(await main(['repin-apps'], out.io)).toBe(0)
+    expect(out.stdout()).toContain('re-pinned to them')
+  })
+})
+
 describe('on a dev instance (staging)', () => {
   test('changed files under the same version and manifest: the release passes and the step re-pins', async () => {
     await pretendTo('staging')
