@@ -226,6 +226,8 @@ stopping at the first problem so that the old deployment keeps serving:
 | --- | --- |
 | `FEATHERBASE_INSTANCE` | `<client>/<instance>`; Railway passes it to the build as well, because the Dockerfile declares the `ARG` |
 | `FEATHERBASE_ENV` | `staging` for its dev, `production` for its prod |
+| `PORT` | `8000` on Railway, matching the port of its domain |
+| `RAILWAY_DOCKERFILE_PATH` | `apps/server/Dockerfile`, on Railway (see [Railway](#railway)) |
 | `DATABASE_URL`, `JWT_SECRET`, `INSTANCE_ADDRESSES`, `ADMIN_PASSWORD` | as for any instance, with its own values |
 | every `{ "env": "NAME" }` in the settings section | a missing one fails the deploy, naming it |
 | `GOOGLE_CLIENT_SECRET` | when the section enables Google sign-in with a client id; missing, the deploy fails, naming it |
@@ -350,7 +352,19 @@ still lists the app's `platformVersion`
 
 ### Railway
 
-`railway.json` at the repo root encodes this shape: Dockerfile build, a
+**A new service must carry these settings itself.** Railway has deprecated its
+config file: a new service can't be pointed at `railway.json`, and it builds with
+Railpack and runs no pre-deploy step, so the server starts on an empty database and
+crashes. Set on the service, and check them after the first deploy:
+
+| Setting | Value |
+| --- | --- |
+| Variable `RAILWAY_DOCKERFILE_PATH` | `apps/server/Dockerfile` |
+| Pre-deploy command | `pnpm --filter server pre-deploy` |
+| Healthcheck path, timeout | `/api/ping`, `300` |
+| Restart policy | `ON_FAILURE`, 5 retries |
+
+`railway.json` at the repo root records the same shape for services that still read it: Dockerfile build, a
 pre-deploy step of `pnpm --filter server pre-deploy` (the release, then
 [a client instance's apps and settings](#a-client-instance) when
 `FEATHERBASE_INSTANCE` is set, then the preview seed, which does nothing unless
