@@ -40,8 +40,10 @@ an environment says so. That section is the list of intended differences.
 
 A setting in the file MAY name a variable instead of holding a value. Applying
 the file SHALL read that variable and save its value, and SHALL never show the
-value, in a preview or anywhere else. A variable holding a secret SHALL be
-refused.
+value, in a preview or anywhere else. The setting SHALL be remembered as coming
+from that variable, so later applies, previews, drift reports and exports name
+the variable or withhold the value too, until the value is replaced. A variable
+holding a secret SHALL be refused.
 
 #### Scenario: A dive's id differs by environment
 
@@ -49,6 +51,19 @@ refused.
   variable is set, and the user applies the file to dev
 - **THEN** the setting holds that value and is locked as usual, and the result
   says the setting changed without showing the value
+
+#### Scenario: Exporting a setting that came from a variable
+
+- **WHEN** a setting was applied from a variable and the owner exports the
+  environment's settings
+- **THEN** the export names the variable and does not contain the value
+
+#### Scenario: Replacing a value that came from a variable
+
+- **WHEN** a setting was applied from a variable and a later file gives it a
+  plain value, or stops naming it
+- **THEN** the result, in a preview or an apply, withholds the old value, and a
+  field the file stopped naming stays withheld until its value changes
 
 #### Scenario: The variable is missing
 
