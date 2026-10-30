@@ -145,7 +145,10 @@ export function postgresHelp(error, url, platform = process.platform) {
 // Node refuses to spawn a .cmd without a shell, and npm and pnpm are .cmd files
 // on Windows. Every argument given to these is a plain word or a relative path.
 function runTool(command, args, options) {
-  const result = spawnSync(command, args, { stdio: 'inherit', shell: isWindows, ...options })
+  // One string on Windows: Node warns about separate arguments with a shell.
+  const result = isWindows
+    ? spawnSync([command, ...args].join(' '), { stdio: 'inherit', shell: true, ...options })
+    : spawnSync(command, args, { stdio: 'inherit', ...options })
   if (result.error) throw new DevError(`Could not run ${command}: ${result.error.message}`)
   if (result.status !== 0) throw new DevError(`${command} ${args.join(' ')} failed (exit ${result.status})`)
 }
@@ -254,15 +257,19 @@ async function stopChild(child) {
 /** The instance's own script, against the running server. Its output is shown
  *  last, where the developer is looking: it says who to sign in as. */
 function runMadeUpData(instance, env) {
-  const result = spawnSync(process.execPath, ['--import', 'tsx', instance.madeUpData], {
-    cwd: join(root, 'apps/server'),
-    env: { ...env, FEATHERBASE_API_URL: `http://127.0.0.1:${env.API_PORT}` },
-    stdio: ['ignore', 'pipe', 'inherit'],
-    encoding: 'utf8',
+  // Not spawnSync: blocking here leaves this process's idle connections unread,
+  // and the next fetch can then reuse one the server has already closed.
+  return new Promise((done, fail) => {
+    const child = spawn(process.execPath, ['--import', 'tsx', instance.madeUpData], {
+      cwd: join(root, 'apps/server'),
+      env: { ...env, FEATHERBASE_API_URL: `http://127.0.0.1:${env.API_PORT}` },
+      stdio: ['ignore', 'pipe', 'inherit'],
+    })
+    let output = ''
+    child.stdout.setEncoding('utf8').on('data', (chunk) => (output += chunk))
+    child.once('error', (error) => fail(new DevError(`Could not run the made-up data script: ${error.message}`)))
+    child.once('close', (code) => (code === 0 ? done(output) : fail(new DevError(`The made-up data script failed (exit ${code}); see above`))))
   })
-  if (result.error) throw new DevError(`Could not run the made-up data script: ${result.error.message}`)
-  if (result.status !== 0) throw new DevError(`The made-up data script failed (exit ${result.status}); see above`)
-  return result.stdout
 }
 
 /** Administrator's view of the checks, or nothing if it can't be had: this only
@@ -376,7 +383,7 @@ async function main(argv) {
     await waitForAnswer(`http://localhost:${env.WEB_PORT}/`, 'The web app')
     if (command.madeUpData) {
       step('Filling it with made-up data')
-      madeUpOutput = runMadeUpData(instance, env)
+      madeUpOutput = await runMadeUpData(instance, env)
     }
     if (command.check) {
       await verify(instance, env)
@@ -385,7 +392,7 @@ async function main(argv) {
       return
     }
   } catch (error) {
-    console.error(`!! ${error.message}`)
+    console.error(`!! ${error.message}${error.cause ? ` (${error.cause.code ?? error.cause.message})` : ''}`)
     stop(1)
     return
   }
