@@ -8,3 +8,7 @@ export const accessPolicySchema = z.object({
   inherit_column: z.string().regex(/^[a-z][a-z0-9_]*$/).optional(),
 }).strict()
 export type AccessPolicy = z.infer<typeof accessPolicySchema>
+
+export function policyColumns(policy: AccessPolicy | null | undefined): string[] {
+  return [policy?.shared_column, policy?.inherit_column].filter((column): column is string => !!column)
+}

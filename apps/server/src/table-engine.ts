@@ -3,7 +3,7 @@ import { inAppTransaction, sql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
-import { accessPolicySchema } from './access-policy'
+import { accessPolicySchema, policyColumns } from './access-policy'
 import { logAccess } from './audit'
 import { deleteStored } from './storage'
 import { asNameList } from './installed-app-ledger'
@@ -381,6 +381,18 @@ export async function updateTable(
   const def = parsed.data
   if (existing.access_policy && def.access_policy && JSON.stringify(def.access_policy) !== JSON.stringify(existing.access_policy))
     throw new AppError('PermissionError', 'An existing mandatory access policy cannot be changed through the schema editor')
+  if (existing.access_policy) {
+    def.access_policy = existing.access_policy
+    for (const name of policyColumns(existing.access_policy)) {
+      const before = existing.columns.find(column => column.column_name === name)
+      const after = def.columns.find(column => column.column_name === name)
+      if (!before || !after || before.column_type !== after.column_type ||
+          (before.reference_table ?? null) !== (after.reference_table ?? null) ||
+          (before.default_value ?? null) !== (after.default_value ?? null) ||
+          Boolean(before.reqd) !== Boolean(after.reqd))
+        throw new AppError('PermissionError', 'Columns that define mandatory access cannot be removed or redefined')
+    }
+  }
   // person-identities (D9): a Person email is unique ignoring case through the
   // index user_email_lower_uq. A column-level `unique` would re-add the
   // case-sensitive user_email_uq beside it, so it is refused here.
@@ -863,6 +875,8 @@ export async function renameColumn(
   user = 'Administrator',
 ): Promise<TableMeta> {
   const meta = await getMeta(table)
+  if (policyColumns(meta.access_policy).includes(from))
+    throw new AppError('PermissionError', 'A column that defines mandatory access cannot be renamed')
   assertNotSystemWritten(meta, 'renamed or changed')
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be changed`)
@@ -1034,6 +1048,8 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
 // (SAFE_TYPE_CHANGES); anything else is refused.
 export async function changeColumnType(table: string, column: string, to: string): Promise<TableMeta> {
   const meta = await getMeta(table)
+  if (policyColumns(meta.access_policy).includes(column))
+    throw new AppError('PermissionError', 'A column that defines mandatory access cannot change type')
   assertNotSystemWritten(meta, 'changed')
   if (meta.system || meta.data_source)
     throw new AppError('ValidationError', `${meta.name}'s column types are not changed here`)

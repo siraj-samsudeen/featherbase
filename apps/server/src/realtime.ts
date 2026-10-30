@@ -3,8 +3,7 @@ import { WebSocketServer, type WebSocket } from 'ws'
 import { credentialFromCookieHeader, endedSessionIds, resolveToken, type SessionUser } from './auth'
 import { getRoles, getScopeMap, hasPermission, isPrivileged } from './permissions'
 import { REALTIME_MAX_FRAME_BYTES } from 'shared'
-import { tableAccessPolicy } from './mandatory-access'
-import { ROW_ATTACHED_TABLES } from './row-readers'
+import { needsMandatoryRowRead } from './mandatory-access'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
 // of Supabase Realtime per the architecture invariants).
@@ -45,7 +44,7 @@ interface Client {
  *  serves (getDoc applies every Data Scope rule), so realtime can never show
  *  a row the list would hide. */
 async function rowInScope(principal: string, table: string, rowId: string): Promise<boolean> {
-  const protectedRow = (await tableAccessPolicy(table)) || ROW_ATTACHED_TABLES.has(table)
+  const protectedRow = await needsMandatoryRowRead(table)
   if (!protectedRow && await isPrivileged(principal)) return true
   if (!protectedRow && !(await getScopeMap(principal)).size) return true
   const { getDoc } = await import('./document')
@@ -78,7 +77,7 @@ export async function eventVisibleTo(principal: string, msg: RealtimeEvent): Pro
   // Roles can change after subscribing (a service account's roles endpoint,
   // a person's form): read permission is rechecked too.
   if (!(await hasPermission(principal, payload.table, 'read'))) return false
-  const protectedRow = (await tableAccessPolicy(payload.table)) || ROW_ATTACHED_TABLES.has(payload.table)
+  const protectedRow = await needsMandatoryRowRead(payload.table)
   if (protectedRow) return msg.event !== 'deleted' && rowInScope(principal, payload.table, String(payload.row_id))
   if (await isPrivileged(principal)) return true
   const scope = await getScopeMap(principal)

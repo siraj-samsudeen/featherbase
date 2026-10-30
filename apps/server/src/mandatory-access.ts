@@ -4,10 +4,17 @@ import { AppError } from './errors'
 import { getMeta, type TableMeta } from './meta'
 import { getRoles } from './permissions'
 import { tableRelation } from './table-engine'
+import { ROW_ATTACHED_TABLES } from './row-readers'
 
 const recordedReferences: Record<string, readonly [string, string]> = {
   Share: ['share_table', 'share_name'],
   'Access Log': ['ref_table', 'reference_name'],
+}
+
+export async function needsMandatoryRowRead(table: string): Promise<boolean> {
+  if (ROW_ATTACHED_TABLES.has(table) || Object.hasOwn(recordedReferences, table)) return true
+  const [row] = await sql`select kind, to_jsonb(d)->'access_policy' as policy from table_def d where name = ${table}`
+  return !!row?.policy || row?.kind === 'sub_table'
 }
 
 export async function tableAccessPolicy(table: string): Promise<AccessPolicy | undefined> {
@@ -22,7 +29,12 @@ export async function tableAccessPolicy(table: string): Promise<AccessPolicy | u
 export async function hasMandatoryRowAccess(table: string, rowId: string, depth = 0): Promise<boolean> {
   if (depth > 8) return true
   if (await tableAccessPolicy(table)) return true
-  if (!['Comment', 'Version', 'File'].includes(table)) return false
+  const meta = await getMeta(table).catch(() => null)
+  if (meta?.kind === 'sub_table') {
+    const [row] = await sql`select parenttype, parent from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${rowId}`
+    return !!row?.parenttype && !!row?.parent && hasMandatoryRowAccess(String(row.parenttype), String(row.parent), depth + 1)
+  }
+  if (!ROW_ATTACHED_TABLES.has(table)) return false
   const [row] = await sql`select ref_table, ref_name from ${sql(await tableRelation(table))} where row_id = ${rowId}`
   return !!row?.ref_table && !!row?.ref_name && hasMandatoryRowAccess(String(row.ref_table), String(row.ref_name), depth + 1)
 }
@@ -36,6 +48,11 @@ export async function admittedToTable(user: string, table: string): Promise<bool
 
 export async function assertMandatoryAccess(user: string, meta: TableMeta, row: Record<string, unknown>, depth = 0): Promise<void> {
   if (depth > 8) throw new AppError('PermissionError', 'This work is not available to you')
+  if (meta.kind === 'sub_table' && row.parenttype && row.parent) {
+    const parent = await getMeta(String(row.parenttype))
+    const [value] = await sql`select * from ${sql(await tableRelation(parent.name))} where ${sql(parent.row_key)} = ${String(row.parent)}`
+    if (value) await assertMandatoryAccess(user, parent, value, depth + 1)
+  }
   const reference = Object.hasOwn(recordedReferences, meta.name) ? recordedReferences[meta.name] : undefined
   if (reference && row[reference[0]] && row[reference[1]]) {
     const targetName = String(row[reference[0]])

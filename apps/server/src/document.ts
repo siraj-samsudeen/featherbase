@@ -254,6 +254,7 @@ async function validateLinks(
   tx: typeof sql,
   meta: TableMeta,
   fieldValues: RowValues,
+  user: string,
   prefix = '',
 ) {
   const errors: Record<string, string> = {}
@@ -278,10 +279,15 @@ async function validateLinks(
         errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
       continue
     }
+    const mandatory = !!targetMeta.access_policy || targetMeta.kind === 'sub_table'
     const [row] = await tx`
-      select 1 from ${tx(await tableRelation(target))}
+      select ${mandatory ? tx`*` : tx`1`} from ${tx(await tableRelation(target))}
       where ${tx(physicalRowKey(target))} = ${String(value)}
       ${target.includes('.') ? tx`for key share` : tx``}`
+    if (mandatory) {
+      if (!row) throw new AppError('PermissionError', 'This work is not available to you')
+      await assertMandatoryAccess(user, await getMeta(target), row)
+    }
     if (!row)
       errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
   }
@@ -637,7 +643,7 @@ async function saveChildren(
         errors[`${input.columnName}.${i}.${k}`] = v
       continue
     }
-    await validateLinks(tx, childMeta, fieldValues, `${input.columnName}.${i}.`)
+    await validateLinks(tx, childMeta, fieldValues, user, `${input.columnName}.${i}.`)
     const now = new Date()
     if (isExisting) {
       keep.add(String(rowId))
@@ -838,7 +844,7 @@ async function writeDoc(
   }
   if (!opts.skipPermissions) {
     await assertPermission(user, table, 'create')
-    await assertUserPermissions(user, meta, values)
+    await assertUserPermissions(user, meta, { ...values, created_by: user })
   }
   const writeTiers = opts.skipPermissions
     ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
@@ -911,7 +917,7 @@ async function writeDoc(
         position: row.position,
       }
       await lockCoreDocumentTargets(stx, meta, dbRow, user)
-      await validateLinks(stx, meta, dbRow)
+      await validateLinks(stx, meta, dbRow, user)
       attemptedRow = dbRow
       const inserted = await tx`insert into ${tx(tbl)} ${tx(dbRow as unknown as Record<string, never>)} returning *`
       // #465 D5: a new row under a locked row's id would set its locked fields.
@@ -1188,7 +1194,7 @@ async function updateDoc(
         updated_by: user,
       }
       await lockCoreDocumentTargets(stx, meta, { ...existing, ...dbRow }, user, existing as RowValues)
-      await validateLinks(stx, meta, dbRow)
+      await validateLinks(stx, meta, dbRow, user)
       attemptedRow = dbRow
       const [updated] = await tx`
         update ${tx(table)} set ${tx(dbRow)} where ${tx(meta.row_key)} = ${name} returning *`

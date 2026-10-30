@@ -14,7 +14,7 @@ test('creator privacy hides a row from administrators, other members and their l
   const owner = await createUser({ roles: ['Notebook Member'] })
   const peer = await createUser({ roles: ['Notebook Member'] })
   const manager = await createUser({ roles: ['System Manager', 'Notebook Member'] })
-  const row = await owner.post<Record<string, unknown>>('/api/save_row', { table: table.name, row: { title: 'Private draft' } })
+  const row = await owner.post<Record<string, unknown>>('/api/save_row', { table: table.name, row: { title: 'Private draft', created_by: 'Administrator' } })
   expect(await owner.get(table.rowUrl(String(row.row_id)))).toMatchObject({ title: 'Private draft', created_by: owner.user })
   for (const other of [admin, peer, manager]) {
     await expect(other.get(table.rowUrl(String(row.row_id)))).rejects.toMatchObject({ status: 403 })
@@ -59,6 +59,8 @@ test('dependent rows inherit privacy and become visible when their parent is sha
   expect(await peer.get(child.listUrl({ fields: ['row_id'] }))).toMatchObject({ total: 1, data: [{ row_id: note.row_id }] })
   const peerDraft = await peer.post<Record<string, unknown>>(parent.url, { title: 'Peer private draft' })
   await expect(owner.post('/api/save_row', { table: child.name, row: { row_id: note.row_id, updated_at: note.updated_at, dossier: peerDraft.row_id } })).rejects.toMatchObject({ status: 403 })
+  const publicParent = await makeTable(admin, { name: 'Public Dossier', columns: ['title'] })
+  await expect(admin.put(child.defUrl, { columns: [{ column_name: 'body', column_type: 'Data' }, { column_name: 'dossier', column_type: 'Reference', reference_table: publicParent.name, reqd: true }] })).rejects.toMatchObject({ status: 403 })
 })
 
 test('an individual share neither overrides privacy nor exposes its private target to administrators', async ({ admin, createUser }) => {
@@ -112,4 +114,26 @@ test('a public-bucket attachment on private work still requires its creator sess
     // The SQL sandbox rolls back rows; uploaded bytes live outside Postgres.
     await deleteStored(file.file_url)
   }
+})
+
+test('sub-table lists inherit mandatory privacy even for administrators', async ({ admin, createUser }) => {
+  const lines = await makeTable(admin, { name: 'Private Notebook Line', kind: 'sub_table', columns: ['note'] })
+  const books = await makeTable(admin, { name: 'Private Notebook Parent', access_policy: { version: 1, roles: ['Notebook Parent Member'], shared_column: 'shared' }, columns: ['title', 'shared:Check', { column_name: 'lines', column_type: 'Sub-table', row_table: lines.name }] })
+  await grantRole(admin, { table: [books.name, lines.name], role: 'Notebook Parent Member', can_read: true, can_create: true })
+  const owner = await createUser({ roles: ['Notebook Parent Member'] })
+  const peer = await createUser({ roles: ['Notebook Parent Member'] })
+  await owner.post(books.url, { title: 'Private book', lines: [{ note: 'Private embedded note' }] })
+  for (const viewer of [admin, peer])
+    expect(await viewer.get(lines.listUrl({ fields: ['row_id', 'note'] }))).toMatchObject({ total: 0, data: [] })
+})
+
+test('a reference write cannot probe or link another creator’s private row', async ({ admin, createUser }) => {
+  const target = await makeTable(admin, { name: 'Private Reference Target', access_policy: { version: 1, roles: ['Reference Member'], shared_column: 'shared' }, columns: ['title', 'shared:Check'] })
+  const link = await makeTable(admin, { name: 'Public Reference Holder', columns: [{ column_name: 'target', column_type: 'Reference', reference_table: target.name }] })
+  await grantRole(admin, { table: [target.name, link.name], role: 'Reference Member', can_read: true, can_create: true })
+  const owner = await createUser({ roles: ['Reference Member'] })
+  const peer = await createUser({ roles: ['Reference Member'] })
+  const row = await owner.post<Record<string, unknown>>(target.url, { title: 'Private target' })
+  for (const id of [row.row_id, 'missing-private-row'])
+    await expect(peer.post(link.url, { target: id })).rejects.toMatchObject({ status: 403 })
 })

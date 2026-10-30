@@ -178,7 +178,7 @@ export async function scopedWhere(
   // ones carrying a Sub-table column pointing here), so each becomes a
   // branch scoped to what the caller may see of it — and a parent Table the
   // caller cannot read at all contributes no branch, hiding its children.
-  if (meta.kind === 'sub_table' && !bypass)
+  if (meta.kind === 'sub_table')
     extraConds.push((await parentScopeCond(meta.name, user)).frag)
   // #342: likewise a comment or an edit is only as visible as its row.
   if (ROW_ATTACHED_TABLES.has(meta.name))
@@ -379,10 +379,11 @@ async function parentScopeCond(
     const scope = await permissionScope(user, holder, 'read')
     if (scope === 'none') continue
     branches.push(
-      scope === 'all'
+      scope === 'all' && !holderMeta.access_policy
         ? sql`parenttype = ${holder}`
         : sql`(parenttype = ${holder} and parent in (
-             select ${sql(physicalRowKey(holder))} from ${sql(await tableRelation(holder))} where created_by = ${user}))`,
+             select ${sql(physicalRowKey(holder))} from ${sql(await tableRelation(holder))}
+             where ${(await mandatoryWhere(holderMeta, user)).frag} and ${scope === 'own_rows' ? sql`created_by = ${user}` : sql`true`}))`,
     )
   }
   if (!branches.length) return { frag: sql`false` }
