@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { opaqueId } from './opaque-id'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
-import { assertMandatoryAccess } from './mandatory-access'
+import { assertMandatoryAccess, hasMandatoryRowAccess } from './mandatory-access'
 import { sql } from './db'
 import { AppError } from './errors'
 import { sessionMayAddWayIn } from './session-context'
@@ -364,6 +364,7 @@ async function assertParentReadable(row: RowValues, user: string) {
 // them (a share shows every column). The row's activity is the way in for
 // everyone else. Mandatory privacy also applies to privileged callers.
 async function assertAttachedRowReadable(table: string, row: RowValues, user: string) {
+  if (await isPrivileged(user) && !(await hasMandatoryRowAccess(String(row.ref_table ?? ''), String(row.ref_name ?? '')))) return
   const refTable = row.ref_table ? String(row.ref_table) : ''
   const refName = row.ref_name ? String(row.ref_name) : ''
   if (!refTable || !refName) return

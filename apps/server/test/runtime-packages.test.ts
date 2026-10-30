@@ -387,7 +387,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   for (const predecessor of ['tasker-v2.1', 'tasker-v2.2'])
     test(`changed Tasker package upgrades from its exact shipped predecessor (${predecessor})`, async ({ admin }) => {
       const predecessorTasker = resolve('../..', 'runtime-apps/fixtures', predecessor)
-      const currentTasker = resolve('../..', 'runtime-apps/tasker')
+      const currentTasker = resolve('../..', 'runtime-apps/fixtures/tasker-v2.3')
       expect(await discoverPackages([predecessorTasker])).toEqual([])
       await admin.post('/api/install_app', { name: 'tasker' })
       expect(await discoverPackages([predecessorTasker, currentTasker])).toEqual([])

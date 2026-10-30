@@ -23,7 +23,7 @@ const test = base.extend<{ admin: TestClient }>({
 
 const MIGRATION = '0125_app_platform_version.ts'
 const predecessor = resolve('../..', 'runtime-apps/fixtures/tasker-v2.2')
-const current = resolve('../..', 'runtime-apps/tasker')
+const current = resolve('../..', 'runtime-apps/fixtures/tasker-v2.3')
 
 // A copy of an app directory, edited. Removed after the test body.
 async function copyOf(source: string, edit: (directory: string) => Promise<void>) {
@@ -51,7 +51,7 @@ const repo = resolve('../..')
 // therefore built here, the same way: with `source`'s installed packages, and
 // the app's own build with NODE_ENV stripped.
 async function buildIn(directory: string, source: string) {
-  await symlink(resolve(source, 'node_modules'), resolve(directory, 'node_modules'))
+  await symlink(resolve(repo, 'runtime-apps/tasker/node_modules'), resolve(directory, 'node_modules'))
   const { NODE_ENV: _runner, ...env } = process.env
   execFileSync('npm', ['run', 'build', '--silent'], { cwd: directory, stdio: 'ignore', env })
 }
@@ -60,7 +60,7 @@ async function buildIn(directory: string, source: string) {
 // uses them; `build` runs the app's own build.
 async function realFilesBeforeRename(directory: string, build: boolean) {
   const old = await mkdtemp(resolve('test/.migration-0125-origin-'))
-  const path = relative(repo, directory)
+  const path = directory === current ? 'runtime-apps/tasker' : relative(repo, directory)
   const archive = execFileSync('git', ['archive', BEFORE_RENAME, path], { cwd: repo, maxBuffer: 50 * 1024 * 1024 })
   execFileSync('tar', ['-x', '-C', old, '--strip-components', String(path.split('/').length)], { input: archive })
   if (build) await buildIn(old, directory)

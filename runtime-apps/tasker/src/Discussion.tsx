@@ -1,17 +1,23 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Field, Select, inputClasses, fmtDateTime, StatusPill } from '@featherbase/shop-floor'
 import { api, getSessionUser } from './api'
-import { discussionKey, lastChanged, needsAttention, questionState, repliesTo, useDiscussions, type Message } from './discussions'
+import { discussionKey, lastChanged, needsAttention, questionState, repliesTo, useDiscussions, useMembers, type Message } from './discussions'
 import { Markdown } from './Markdown'
-import type { PersonOption } from './people'
 
 const seenKey = ['task-management', 'discussion-seen']
 export function Discussion({ taskId }: { taskId: string }) {
   const me = getSessionUser()?.row_id ?? ''
+  const [target, setTarget] = useState(() => new URLSearchParams(location.hash.slice(1)).get('question'))
+  const lastScrolled = useRef<string | null>(null)
+  useEffect(() => {
+    const changed = () => setTarget(new URLSearchParams(location.hash.slice(1)).get('question'))
+    window.addEventListener('hashchange', changed)
+    return () => window.removeEventListener('hashchange', changed)
+  }, [])
   const queryClient = useQueryClient()
   const messages = useDiscussions()
-  const people = useQuery({ queryKey: ['task-management', 'members'], queryFn: () => api.get<{ data: PersonOption[] }>('/api/table_members/tasker.discussion') })
+  const people = useMembers()
   const seen = useQuery({ queryKey: seenKey, queryFn: () => api.get<{ settings: Record<string, number> | null }>('/api/user_settings/tasker.discussion-seen') })
   const [kind, setKind] = useState<'Update' | 'Question'>('Update')
   const [body, setBody] = useState('')
@@ -19,9 +25,18 @@ export function Discussion({ taskId }: { taskId: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const all = messages.data?.data ?? []
+  useEffect(() => {
+    if (!target || lastScrolled.current === target) return
+    const element = document.getElementById(`question-${target}`)
+    if (element) {
+      element.scrollIntoView?.({ block: 'start' })
+      element.focus({ preventScroll: true })
+      lastScrolled.current = target
+    }
+  }, [target, messages.dataUpdatedAt, taskId])
   const roots = all.filter(message => message.task === taskId && !message.parent_message).sort((a, b) =>
     Number(needsAttention(b, all, me)) - Number(needsAttention(a, all, me)) || lastChanged(b, all) - lastChanged(a, all))
-  const name = (id: string) => id === me ? 'You' : people.data?.data.find(person => person.row_id === id)?.full_name || 'Former member'
+  const name = (id: string) => people.data?.data.find(person => person.row_id === id)?.full_name || (id === me ? 'You' : 'Former member')
   async function save(row: Record<string, unknown>) {
     setBusy(true); setError('')
     try {
@@ -55,9 +70,9 @@ export function Discussion({ taskId }: { taskId: string }) {
     {roots.map(root => {
       const state = questionState(root, all)
       const unread = lastChanged(root, all) > (seen.data?.settings?.[root.row_id] ?? 0)
-      return <article key={root.row_id} id={`question-${root.row_id}`} className="rounded-card border border-border p-4 space-y-3">
+      return <article key={root.row_id} id={`question-${root.row_id}`} tabIndex={-1} className="rounded-card border border-border p-4 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <strong>{name(root.created_by)}</strong><span className="text-ink-muted">{fmtDateTime(new Date(root.created_at))}</span>
+          <strong>{name(root.created_by)}</strong>{' '}<span className="text-ink-muted">{root.kind === 'Question' ? 'asked' : 'commented'} · {fmtDateTime(new Date(root.created_at))}</span>
           <StatusPill tone={state === 'resolved' ? 'positive' : state === 'update' ? 'neutral' : 'caution'}>{state === 'waiting' ? 'Waiting for reply' : state === 'review' ? 'Needs asker’s review' : state === 'resolved' ? 'Resolved' : 'Update'}</StatusPill>
           {unread && <span className="text-action">Unread</span>}
         </div>

@@ -7,7 +7,7 @@ import { getScopeMap, isPrivileged, permissionScope, permittedTiers } from './pe
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
-import { mandatoryWhere } from './mandatory-access'
+import { mandatoryWhere, needsMandatoryRowRead } from './mandatory-access'
 
 export type Filter = [string, string, unknown]
 
@@ -424,7 +424,12 @@ async function attachedRowScopeCond(
     : (await sql`select distinct ref_table from ${rel} where ref_table is not null`).map((r) => String(r.ref_table))
   const branches: ReturnType<typeof sql>[] = table === 'File' ? [sql`coalesce(${rel}.ref_name, '') = ''`] : []
   const scopes = await getScopeMap(user)
+  const privileged = await isPrivileged(user)
   for (const target of targets) {
+    if (privileged && !(await needsMandatoryRowRead(target))) {
+      branches.push(sql`${rel}.ref_table = ${target}`)
+      continue
+    }
     const targetMeta = ROW_ATTACHED_TABLES.has(target) ? null : await getMeta(target).catch(() => null)
     if (!targetMeta) continue
     if (!targetMeta.access_policy) branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (

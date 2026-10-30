@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { listAllResources } from './api'
+import type { PersonOption } from './people'
+import { api, listAllResources } from './api'
 
 export interface Message {
   row_id: string
@@ -37,4 +38,8 @@ export function needsAttention(root: Message, all: Message[], person: string) {
 }
 export function lastChanged(root: Message, all: Message[]) {
   return Math.max(...[root, ...repliesTo(root, all)].map(message => Date.parse(message.updated_at)))
+}
+
+export function useMembers() {
+  return useQuery({ queryKey: ['task-management', 'members'], queryFn: () => api.get<{ data: PersonOption[] }>('/api/table_members/tasker.discussion') })
 }

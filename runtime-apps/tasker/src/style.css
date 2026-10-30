@@ -27,7 +27,7 @@ button:disabled { cursor: default; opacity: .48; }
 .tasker-nav-views .tasker-nav-icon { color: var(--color-negative); }
 .tasker-nav-item[aria-current] .tasker-nav-icon { color: var(--color-action-ink); }
 .tasker-count { display: inline-flex; min-width: 23px; height: 23px; align-items: center; justify-content: center; border-radius: 8px; background: var(--color-subtle); color: inherit; font-size: 12px; font-variant-numeric: tabular-nums; }
-.tasker-nav-item[aria-current] .tasker-count { background: var(--color-subtle); }
+.tasker-nav-item[aria-current] .tasker-count { background: var(--color-action-tint); color: var(--color-action); }
 
 .tasker-sidebar-projects { margin: 8px 0 0 20px; padding: 3px 0 7px 12px; border-left: 1px solid var(--color-subtle); }
 .tasker-sidebar-project { padding: 7px 5px 6px 8px; border-radius: 9px; color: var(--color-ink-muted); }
@@ -112,7 +112,7 @@ button:disabled { cursor: default; opacity: .48; }
 .tasker-task-list { overflow: hidden; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); box-shadow: 0 8px 28px color-mix(in srgb, var(--color-scrim) 3%, transparent); }
 .tasker-task-guide, .tasker-task-row { display: grid; grid-template-columns: 24px minmax(210px, 1.35fr) minmax(480px, 2.3fr) auto; gap: 12px; align-items: center; }
 .tasker-task-guide { min-height: 34px; padding: 0 14px; border-bottom: 1px solid var(--color-border); color: var(--color-ink-muted); font-size: 12px; }
-.tasker-task-metadata { display: grid; grid-template-columns: 132px minmax(145px, 1fr) minmax(175px, 1.2fr); gap: 9px; align-items: center; min-width: 0; }
+.tasker-task-metadata { display: grid; grid-template-columns: 150px minmax(145px, 1fr) minmax(175px, 1.2fr); gap: 9px; align-items: center; min-width: 0; }
 .tasker-task-row { min-height: 58px; padding: 10px 14px; border-bottom: 1px solid var(--color-border); transition: background-color .15s ease; }
 .tasker-task-row:last-child { border-bottom: 0; }
 .tasker-task-row:hover, .tasker-task-row:focus-within { background: var(--color-action-tint); }
@@ -151,9 +151,9 @@ button:disabled { cursor: default; opacity: .48; }
 .tasker-shell:has(.tasker-inspector) .tasker-task-copy { grid-column: 2; grid-row: 1; }
 .tasker-shell:has(.tasker-inspector) .tasker-task-signals { grid-column: 3; grid-row: 1; }
 .tasker-shell:has(.tasker-inspector) .tasker-task-metadata { grid-column: 2 / -1; grid-row: 2; }
-.tasker-inspector { position: sticky; top: 0; z-index: 10; height: 100vh; overflow: auto; overscroll-behavior: contain; padding: 28px; border-left: 1px solid var(--color-border); background: var(--color-surface); box-shadow: -14px 0 42px color-mix(in srgb, var(--color-scrim) 8%, transparent); }
+.tasker-inspector { position: sticky; top: var(--featherbase-bar-height, 0px); z-index: 10; height: calc(100dvh - var(--featherbase-bar-height, 0px)); overflow: auto; overscroll-behavior: contain; padding: 28px; border-left: 1px solid var(--color-border); background: var(--color-surface); box-shadow: -14px 0 42px color-mix(in srgb, var(--color-scrim) 8%, transparent); }
 .tasker-compact-detail { margin-bottom: 24px; padding: 18px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); box-shadow: 0 8px 28px color-mix(in srgb, var(--color-scrim) 4%, transparent); }
-.tasker-focus-detail { position: fixed; inset: 0; z-index: 30; overflow: auto; background: var(--color-canvas); padding: 48px max(24px, calc((100vw - 860px) / 2)); }
+.tasker-focus-detail { position: fixed; inset: var(--featherbase-bar-height, 0px) 0 0; z-index: 30; overflow: auto; background: var(--color-canvas); padding: 48px max(24px, calc((100vw - 860px) / 2)); }
 .tasker-detail { width: 100%; }
 .tasker-detail-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .tasker-mode-switch { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--color-border); border-radius: 9px; background: var(--color-subtle); }
@@ -210,7 +210,7 @@ html:has(.tasker-focus-detail), html:has(.tasker-focus-detail) body { overflow: 
   .tasker-sidebar { padding: 14px; border: 0; }
   .tasker-brand { font-size: 22px; }
   .tasker-primary-nav { flex-flow: row nowrap; gap: 7px; margin-top: 14px; padding-bottom: 3px; overflow-x: auto; }
-  .tasker-nav-item { order: 1; flex: 0 0 105px; grid-template-columns: 24px minmax(0, 1fr) auto; min-height: 48px; padding: 6px 8px; }
+  .tasker-nav-item { order: 1; flex: 0 0 auto; grid-template-columns: 24px max-content auto; white-space: nowrap; min-height: 48px; padding: 6px 8px; }
   .tasker-sidebar-projects { order: 2; flex: 0 0 100%; width: 100%; gap: 7px; margin: 9px 0 0; padding: 9px 0 1px; border: 0; border-top: 1px solid var(--color-subtle); overflow-x: auto; }
   .tasker-shell:not([data-view='projects']) .tasker-sidebar-projects { display: none; }
   .tasker-shell[data-view='projects'] .tasker-primary-nav { flex-wrap: wrap; }
@@ -238,7 +238,7 @@ html:has(.tasker-focus-detail), html:has(.tasker-focus-detail) body { overflow: 
   .tasker-saved-view-directory article { grid-template-columns: 1fr; }
   .tasker-saved-view-actions { justify-content: flex-start; }
   .tasker-task-row { gap: 8px; padding: 11px 10px; }
-  .tasker-task-metadata { grid-template-columns: minmax(125px, .85fr) minmax(120px, 1.15fr); gap: 6px; }
+  .tasker-task-metadata { grid-template-columns: minmax(150px, .85fr) minmax(120px, 1.15fr); gap: 6px; }
   .tasker-responsibility { grid-column: 1 / -1; }
   .tasker-task-signals { min-width: 0; }
   .tasker-urgent { padding-inline: 6px; }
@@ -247,8 +247,21 @@ html:has(.tasker-focus-detail), html:has(.tasker-focus-detail) body { overflow: 
 }
 
 @media (max-width: 420px) {
-  .tasker-nav-item { flex-basis: 108px; }
   .tasker-project-create > div { flex-direction: column; }
   .tasker-task-copy > a { font-size: 13px; }
   .tasker-task-signals .tasker-urgent:not(.is-urgent) { font-size: 0; width: 12px; min-height: 12px; padding: 0; background: var(--color-border); }
+}
+
+/* App inputs follow the same pointer density as the shared controls. */
+.tasker-shell :is(input:not([type='checkbox']), select, textarea) {
+  min-height: var(--spacing-control);
+  font-size: var(--text-control);
+  border-color: var(--color-border-control);
+}
+@media (pointer: coarse) {
+  .tasker-shell button {
+    min-height: var(--spacing-control);
+    min-width: var(--spacing-control);
+    font-size: var(--text-control);
+  }
 }

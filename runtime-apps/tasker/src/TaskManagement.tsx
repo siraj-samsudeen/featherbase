@@ -124,6 +124,8 @@ export function peopleWithTaskResponsibility(
   return people
 }
 
+function personName(person?: PersonOption) { return person?.full_name || 'Former member' }
+
 export function TaskManagementPage() {
   const queryClient = useQueryClient()
   const me = getSessionUser()?.row_id ?? ''
@@ -173,13 +175,7 @@ export function TaskManagementPage() {
   const users = useQuery({
     queryKey: ['task-management', 'users'],
     queryFn: () =>
-      // Person ids are opaque (`psn_…`): list and show names. A user without
-      // Person read gets a limited list, not an error (#437).
-      listVisiblePeople(() => listAllResources<PersonOption>('Person', {
-        fields: ['row_id', 'full_name'],
-        order_by: 'full_name asc',
-        limit_page_length: 200,
-      })),
+      listVisiblePeople(() => api.get<{ data: PersonOption[] }>('/api/table_members/tasker.discussion')),
   })
   const focus = useQuery({
     queryKey: ['task-management', 'focus'],
@@ -653,11 +649,13 @@ export function TaskManagementPage() {
       {view === 'work' && (
         <section aria-labelledby="work-heading">
           <SectionTitle id="work-heading" title="My Work" hint="Your private focus order, followed by work assigned to you" />
-          <Attention tasks={allTasks} onOpen={id => { void setDetailMode('inspector'); location.hash = `task=${encodeURIComponent(id)}` }} />
+          <Attention tasks={allTasks} onOpen={(id, question) => { void setDetailMode('inspector'); location.hash = `task=${encodeURIComponent(id)}&question=${encodeURIComponent(question)}` }} />
           {toolbarFor(myWork, filteredMyWork, { kind: 'work' }, 'My Work', true)}
-          {filteredMyWork.length
-            ? <TaskList tasks={filteredMyWork} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} onMove={moveFocus} />
-            : <NoTaskMatches total={myWork.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
+          <h3 className="mt-5 mb-3 font-semibold">My Focus</h3>
+          <TaskList tasks={filteredMyWork.filter(task => focusSet.has(task.row_id))} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} onMove={moveFocus} />
+          <h3 className="mt-5 mb-3 font-semibold">Also assigned to me</h3>
+          <TaskList tasks={filteredMyWork.filter(task => !focusSet.has(task.row_id))} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+          {!filteredMyWork.length && <NoTaskMatches total={myWork.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
         </section>
       )}
 
@@ -669,7 +667,7 @@ export function TaskManagementPage() {
             const rows = filteredTogether.filter((task) => task.assigned_to === owner)
             if (!rows.length) return null
             return <div key={owner ?? 'unassigned'} className="mb-7">
-              <h3 className="mb-2 pointer-fine:text-sm font-semibold">{owner ?? 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
+              <h3 className="mb-2 pointer-fine:text-sm font-semibold">{owner ? personName(people.find(person => person.row_id === owner)) : 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
               <TaskList tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
             </div>
           })}
@@ -731,7 +729,7 @@ export function TaskManagementPage() {
           <SectionTitle id="personal-heading" title="Personal tasks" hint="Team-visible individual task lists" />
           <label className="mb-4 flex items-center gap-2 pointer-fine:text-xs text-[var(--color-ink-muted)]">
             Show tasks for
-            <select aria-label="Personal tasks owner" value={personalOwner} onChange={(event) => setPersonalOwner(event.target.value)} className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 pointer-fine:text-sm text-[var(--color-ink)]">{people.map((user) => <option key={user.row_id}>{user.row_id}</option>)}</select>
+            <select aria-label="Personal tasks owner" value={personalOwner} onChange={(event) => setPersonalOwner(event.target.value)} className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 pointer-fine:text-sm text-[var(--color-ink)]">{people.map((user) => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}</select>
           </label>
           <form className={cardClasses("mb-5 flex gap-2 p-3")} onSubmit={async (event) => { event.preventDefault(); const title = capture; try { await createTask(title, { personal_tasks_owner: personalOwner }); setCapture('') } catch { /* shown above */ } }}>
             <label className="sr-only" htmlFor="personal-capture">Add personal task</label>
@@ -766,7 +764,7 @@ export function TaskManagementPage() {
                 const rows = filteredSavedViewTasks.filter((task) => task.assigned_to === owner)
                 if (!rows.length) return null
                 return <div key={owner ?? 'unassigned'} className="mb-7">
-                  <h3 className="mb-2 pointer-fine:text-sm font-semibold">{owner ?? 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
+                  <h3 className="mb-2 pointer-fine:text-sm font-semibold">{owner ? personName(people.find(person => person.row_id === owner)) : 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
                   <TaskList tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
                 </div>
               })}
@@ -815,7 +813,7 @@ function scopeLabel(scope: SavedTaskViewScope, projects: Map<string, Project>): 
 function savedViewUnavailableReason(
   savedView: SavedTaskView,
   projects: Map<string, Project>,
-  people: { row_id: string }[],
+  people: PersonOption[],
 ): string | null {
   if (savedView.scope.kind === 'project' && !projects.has(savedView.scope.projectId)) return 'Project unavailable'
   if (savedView.scope.kind === 'personal') {
@@ -850,7 +848,7 @@ function TaskViewToolbar({
   onSetup: (setup: TaskViewSetup) => void
   total: number
   matched: number
-  people: { row_id: string }[]
+  people: PersonOption[]
   projects: Project[]
   showProjects: boolean
   builtInCriterion?: string
@@ -891,7 +889,7 @@ function TaskViewToolbar({
   for (const state of setup.filters.states)
     chips.push({ key: `state:${state}`, label: state, remove: () => removeFilter('states', state) })
   for (const person of setup.filters.responsiblePeople)
-    chips.push({ key: `person:${person}`, label: person === UNASSIGNED ? 'Unassigned' : person, remove: () => removeFilter('responsiblePeople', person) })
+    chips.push({ key: `person:${person}`, label: person === UNASSIGNED ? 'Unassigned' : personName(people.find(candidate => candidate.row_id === person)), remove: () => removeFilter('responsiblePeople', person) })
   for (const urgency of setup.filters.urgencies)
     chips.push({ key: `urgency:${urgency}`, label: urgency === 'urgent' ? 'Urgent' : 'Not urgent', remove: () => removeFilter('urgencies', urgency) })
   for (const projectId of setup.filters.projects)
@@ -989,7 +987,7 @@ function TaskViewToolbar({
 
 function TaskFilterControls({ filters, people, projects, showProjects, onFilters, onClear, onClose }: {
   filters: TaskViewFilters
-  people: { row_id: string }[]
+  people: PersonOption[]
   projects: Project[]
   showProjects: boolean
   onFilters: (filters: TaskViewFilters) => void
@@ -1019,7 +1017,7 @@ function TaskFilterControls({ filters, people, projects, showProjects, onFilters
     }}>
       <div className="tasker-filter-heading"><strong>Filters</strong><Button type="button" aria-label="Close filters" onClick={onClose}>×</Button></div>
       <FilterGroup label="State" values={STATES} selected={filters.states} onToggle={(value) => toggle('states', value)} firstControl={firstControl} />
-      <FilterGroup label="Responsible person" values={[UNASSIGNED, ...people.map((person) => person.row_id)]} labels={new Map([[UNASSIGNED, 'Unassigned']])} selected={filters.responsiblePeople} onToggle={(value) => toggle('responsiblePeople', value)} />
+      <FilterGroup label="Responsible person" values={[UNASSIGNED, ...people.map((person) => person.row_id)]} labels={new Map([[UNASSIGNED, 'Unassigned'], ...people.map(person => [person.row_id, personName(person)] as [string, string])])} selected={filters.responsiblePeople} onToggle={(value) => toggle('responsiblePeople', value)} />
       <FilterGroup label="Urgency" values={['urgent', 'not_urgent']} labels={new Map([['urgent', 'Urgent'], ['not_urgent', 'Not urgent']])} selected={filters.urgencies} onToggle={(value) => toggle('urgencies', value as TaskViewFilters['urgencies'][number])} />
       {showProjects && <FilterGroup label="Project" values={projects.map((project) => project.row_id)} labels={new Map(projects.map((project) => [project.row_id, project.project_name]))} selected={filters.projects} onToggle={(value) => toggle('projects', value)} />}
       <div className="tasker-filter-actions"><Button type="button" onClick={onClear}>Clear all</Button><Button type="button" variant="primary"  onClick={onClose}>Close</Button></div>
@@ -1059,7 +1057,7 @@ function NoTaskMatches({ total, setup, onSetup }: { total: number; setup: TaskVi
 function SavedViewDirectory({ savedViews, projects, people, onOpen, onRename, onDelete }: {
   savedViews: SavedTaskView[]
   projects: Map<string, Project>
-  people: { row_id: string }[]
+  people: PersonOption[]
   onOpen: (savedView: SavedTaskView) => void
   onRename: (savedView: SavedTaskView, name: string) => Promise<void>
   onDelete: (savedView: SavedTaskView) => Promise<void>
@@ -1139,7 +1137,7 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
   mode: DetailMode
   onMode: (mode: DetailMode) => Promise<void>
   onSaved: () => Promise<void>
-  people: { row_id: string }[]
+  people: PersonOption[]
   projects: Project[]
   onCompleted: (projectId?: string) => Promise<void>
 }) {
@@ -1155,7 +1153,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     ),
   })
   const [draft, setDraft] = useState<{ task_title: string; description: string; updated_at: string } | null>(null)
-  const [comment, setComment] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const editButton = useRef<HTMLButtonElement>(null)
@@ -1176,12 +1173,12 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
   }
   useEffect(() => {
     setDraft(null)
-    setComment('')
     setError('')
   }, [id])
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
-    detail.current?.querySelector<HTMLElement>('a, button')?.focus()
+    if (!new URLSearchParams(location.hash.slice(1)).has('question'))
+      detail.current?.querySelector<HTMLElement>('a, button')?.focus()
     return () => { if (previous?.isConnected) previous.focus() }
   }, [id, mode])
   useEffect(() => {
@@ -1234,13 +1231,13 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
         <legend className="sr-only">Task workflow</legend>
         <label>State<select aria-label="Task state" value={task.data.task_state} onChange={(event) => void patch({ task_state: event.target.value })}>{STATES.map(state => <option key={state}>{state}</option>)}</select></label>
         <label>Responsibility<select aria-label="Task responsibility" value={task.data.assigned_to ?? ''} onChange={(event) => void patch({ assigned_to: event.target.value || null })}>
-          <option value="">Unassigned</option>{people.map(user => <option key={user.row_id}>{user.row_id}</option>)}
+          <option value="">Unassigned</option>{people.map(user => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}
         </select></label>
         <label>Destination<select aria-label="Task destination" value={task.data.personal_tasks_owner ? `personal:${task.data.personal_tasks_owner}` : task.data.project ? `project:${task.data.project}` : ''} onChange={(event) => {
           const [kind, value] = event.target.value.split(':', 2)
           void patch(kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null })
         }}><option value="">Inbox</option>{projects.map(project => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}
-          {people.map(user => <option key={user.row_id} value={`personal:${user.row_id}`}>Personal: {user.row_id}</option>)}
+          {people.map(user => <option key={user.row_id} value={`personal:${user.row_id}`}>Personal: {personName(user)}</option>)}
         </select></label>
         <div className="tasker-detail-signals">
           {!task.data.assigned_to && <Button type="button"  onClick={() => void patch({ assigned_to: me })}>Take it</Button>}
@@ -1293,27 +1290,9 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
 
       <Discussion key={id} taskId={id} />
       <div className="mt-7 border-t border-[var(--color-border)] pt-5">
-        <h3 className="mb-3 pointer-fine:text-sm font-semibold">Discussion and history</h3>
+        <h3 className="mb-3 pointer-fine:text-sm font-semibold">Activity history</h3>
         {taskActivity.error && <p role="alert">Could not load discussion and history: {taskActivity.error.message}</p>}
-        <form className="mb-5 flex gap-2" onSubmit={async (event) => {
-          event.preventDefault()
-          const content = comment.trim()
-          if (!content) return
-          setSaving(true); setError('')
-          try {
-            await api.post('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: id, content } })
-            setComment('')
-            await Promise.all([
-              queryClient.invalidateQueries({ queryKey: ['task-management', 'detail-activity', id] }),
-              queryClient.invalidateQueries({ queryKey: ['task-management', 'comments'] }),
-            ])
-          } catch (error) { setError(error instanceof Error ? error.message : 'Could not add comment') }
-          finally { setSaving(false) }
-        }}>
-          <label className="sr-only" htmlFor={`task-comment-${id}`}>Add comment</label>
-          <input id={`task-comment-${id}`} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Add a comment" className="min-w-0 flex-1 rounded border border-[var(--color-border)] px-3 py-2 pointer-fine:text-sm" />
-          <Button type="submit" variant="primary"  disabled={saving || !comment.trim()}>Comment</Button>
-        </form>
+
         {!activity.length && <p className="pointer-fine:text-xs text-[var(--color-ink-subtle)]">No discussion or changes yet.</p>}
         <ol className="space-y-4" data-testid="task-activity">
           {activity.map((entry, index) => <li key={`${entry.kind}-${entry.at}-${index}`} className="border-l-2 border-[var(--color-border)] pl-3 pointer-fine:text-sm">
@@ -1399,9 +1378,9 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
         </div>
         <div className="tasker-task-metadata">
           <select data-state={task.task_state} aria-label={`State for ${task.task_title}`} value={task.task_state ?? 'Not started'} onChange={(event) => { const taskState = event.target.value; void onPatch(task, { task_state: taskState }); if (['Blocked', 'On hold', 'Cancelled'].includes(taskState)) { setExplaining(task.row_id); setExplanation('') } }}>{STATES.map((state) => <option key={state}>{state}</option>)}</select>
-          <select aria-label={`Destination for ${task.task_title}`} value={task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }}><option value="">Inbox</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{users.map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{user.full_name || user.row_id}</option>)}</optgroup></select>
+          <select aria-label={`Destination for ${task.task_title}`} value={task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }}><option value="">Inbox</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{users.map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{personName(user)}</option>)}</optgroup></select>
           <div className="tasker-responsibility">
-            <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })}><option value="">Unassigned</option>{users.map((user) => <option key={user.row_id} value={user.row_id}>{user.full_name || user.row_id}</option>)}</select>
+            <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })}><option value="">Unassigned</option>{users.map((user) => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}</select>
             {!task.assigned_to && me && <Button type="button" onClick={() => void onPatch(task, { assigned_to: me })} className="tasker-take-button">Take it</Button>}
           </div>
         </div>

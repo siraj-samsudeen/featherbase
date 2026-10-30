@@ -112,7 +112,7 @@ export const columnSchema = z.object({
 })
 
 export const tableDefSchema = z.object({
-  access_policy: accessPolicySchema.optional(),
+  access_policy: accessPolicySchema.nullish().transform(value => value ?? undefined),
   name: z
     .string()
     .regex(/^(?:[A-Za-z][A-Za-z0-9 ]{0,60}|[a-z][a-z0-9_]{0,30}\.[a-z][a-z0-9_]{0,30})$/, 'invalid Table name'),
@@ -756,6 +756,7 @@ export async function createTable(
 export async function deleteTable(name: string, user = 'Administrator', opts: { ownerApp?: string } = {}): Promise<void> {
   const meta = await getMeta(name)
   assertNotSystemWritten(meta, 'deleted')
+  if (meta.access_policy) throw new AppError('PermissionError', 'A protected Table must retain its access policy for private history')
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be deleted`)
 

@@ -22,6 +22,7 @@ test('creator privacy hides a row from administrators, other members and their l
   }
   expect(await peer.get(table.listUrl({ fields: ['row_id', 'title'] }))).toMatchObject({ total: 0, data: [] })
   expect(await manager.get(table.listUrl({ fields: ['row_id', 'title'] }))).toMatchObject({ total: 0, data: [] })
+  await expect(admin.delete(table.defUrl)).rejects.toMatchObject({ status: 403 })
   expect(await eventVisibleTo(manager.user!, { channel: `list:${table.name}`, event: 'updated', payload: { table: table.name, row_id: row.row_id } })).toBe(false)
 })
 
