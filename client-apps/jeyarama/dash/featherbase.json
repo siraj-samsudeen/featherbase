@@ -875,5 +875,5 @@
       }
     }
   },
-  "migrations": []
+  "migrations": [{"id": "compact_sales_target_dive_v13", "fromVersion": "0.10.0", "toVersion": "0.10.1", "operations": []}]
 }
