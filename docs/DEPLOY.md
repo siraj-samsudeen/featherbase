@@ -374,7 +374,9 @@ Keep it until the release is signed off.
   values, roll the service back to its previous deployment, and check a
   sign-in. Anything written between the deploy and the restore is lost.
 
-After a **fresh or restored database**, apply the instance settings file once
+After a **fresh or restored database**, install the instance's apps
+(`pnpm --filter server cli install-app <name>`; an app's settings need the app
+installed), then apply the instance settings file once
 (see [Instance settings](#instance-settings)); until then the environment runs
 on defaults.
 
@@ -547,23 +549,35 @@ header, or unset the variable.
 
 ## Instance settings
 
-An instance's non-secret settings are kept in one reviewed file in the
-instance's own private repository, `featherbase/instance-settings.json`. It
+An instance's non-secret settings are kept in one reviewed file,
+`client-apps/<client>/instances/<instance>/instance-settings.json`, beside the
+`instance.json` that lists which apps it runs. It
 manages `System Settings` (any field, e.g. `app_name`, `time_zone`,
 `privacy_notice`, `invitation_email_intro`), `Sign In Method` rows by `row_id`,
 and `Scheduled Job` rows (`enabled` only), and installed apps' declared
-settings as `App Setting` rows (`row_id` `<app>.<setting>`, `value` only).
+settings as `App Setting` rows (`row_id` `<app>.<setting>`, `value` only), and
+`Data Source` rows by `row_id`, which name the variable holding the connection
+(`url_env`) and never the connection itself. A reflected Table comes back by
+reflecting from the restored source (the source's `reflect` action); the row does
+not create it.
 Values that differ by environment go in that environment's section; when the
 file has sections, every apply must name one. Secrets never go in it: an app's
 declared secrets are deployment variables, set like any other.
 
+A value can come from a variable: `{ "env": "DIVE_ID" }` wherever a value goes.
+It is read when the file is applied (by the `settings:apply` process, or sent in
+the API's `env` field; the server never reads its own environment for a file),
+saved into the Table and locked as usual. A missing or empty variable is a listed
+problem naming it, in a dry run too. Output, logs and the drift report never show
+the value. A variable that holds a secret is refused.
+
 ```bash
-pnpm --filter server cli settings:apply --file featherbase/instance-settings.json --environment dev --dry-run
-pnpm --filter server cli settings:export --dir featherbase/   # start the file from a running environment
+F="$PWD/client-apps/<client>/instances/<instance>"   # absolute: the command runs inside apps/server
+pnpm --filter server cli settings:apply --file "$F/instance-settings.json" --environment dev --dry-run
+pnpm --filter server cli settings:export --dir "$F"   # start the file from a running environment
 ```
 
-The instance repository's workflow applies it on merge with a System Manager
-service account's token (`POST /api/instance-settings/apply`, same body
+A workflow can apply it with a System Manager service account's token (`POST /api/instance-settings/apply`, same body
 fields). An apply is one transaction: any problem lists every problem and
 changes nothing; `--dry-run` / `"dry_run": true` writes nothing.
 `pnpm --filter server cli settings:set <field> --stdin` is the break-glass

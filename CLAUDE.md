@@ -19,7 +19,7 @@ rewrites a live instance's data is rehearsed on a restored snapshot first
 
 | What | Where |
 |---|---|
-| Setup, commands, source map | `README.md` (boot everything with `./init.sh`) |
+| Setup, commands, source map | `README.md` (one instance: `pnpm dev jeyarama/dash`; boot and smoke-test: `./init.sh`) |
 | Behaviour: what the system promises | `openspec/specs/`, the sole authority |
 | Decisions and why | `docs/adr/`. Correct or delete an ADR when it stops matching the code |
 | Words and the words they retire | `CONTEXT.md` |

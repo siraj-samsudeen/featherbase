@@ -8,8 +8,8 @@ chart into each reader's places. Its app id is `feather_dash`, so its Tables are
 
 It lives in featherbase's `client-apps/` (ADR 0014). Platform and app share
 one commit, so a platform change and the app change that needs it are one PR.
-The instances' settings, the privacy notice and the one-off setup steps live in
-the client's private instance repository, never here. JeyaRama's conventions
+The instance's settings, the privacy notice and the one-off setup steps are in
+`../instances/dash/`. JeyaRama's conventions
 shared by its apps are in `../CLAUDE.md`.
 
 **Version 0.10.1.** It arrived here at 0.10.0, the version data-warehouse last
@@ -93,32 +93,18 @@ The repository's own dev server runs this folder as one of its apps, on its own
 ports and database, while `npm run dev` here rebuilds the client and the server
 module on every save. There is no image and no second checkout.
 
-1. **Boot featherbase with this app**, from the repository root, on a database
-   and ports of your own (`./init.sh` stops whatever listens on its ports):
+1. **Boot the instance**, from the repository root. This creates the database,
+   builds and installs the app, applies the settings and starts the servers:
 
    ```sh
-   createdb -h 127.0.0.1 -U postgres feather_dash_dev
-   FEATHERBASE_CLIENT_APPS="jeyarama/dash" \
-   DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/feather_dash_dev \
-   API_PORT=8100 WEB_PORT=5180 ./init.sh
+   pnpm dev:jeyarama
    ```
 
-   `FEATHERBASE_CLIENT_APPS` adds `client-apps/jeyarama/dash` to the example
-   apps on the app path. `pnpm apps:prepare`, which `init.sh` runs, builds it.
-   The API log is `/tmp/featherbase-server-8100.log`.
+   It prints where to go and how to sign in. Set `API_PORT`, `WEB_PORT` or
+   `DATABASE_URL` for ports and a database of your own (`.env.example`).
 
-2. **Install the app, once per database**, as `Administrator` (development
-   password `admin`):
-
-   ```sh
-   TOKEN=$(curl -s -H 'content-type: application/json' \
-     -d '{"usr":"Administrator","pwd":"admin"}' localhost:8100/api/login |
-     node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).token))')
-   curl -s -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
-     -d '{"name":"feather_dash"}' localhost:8100/api/install_app
-   ```
-
-   Then open `http://localhost:5180/feather_dash/`.
+2. **Open** `http://localhost:5173/feather_dash/` and sign in as
+   `Administrator` (development password `admin`).
 
 3. **Start the watchers** here, and leave them running: `npm run dev`.
 
@@ -140,7 +126,7 @@ quick view, built from a made-up cached copy. Start the dev server with
 the secret set), install the app, then from `apps/server`:
 
 ```sh
-FEATHER_DASH_API=http://localhost:8100 DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/feather_dash_dev \
+FEATHER_DASH_API=http://localhost:8000 DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/fb_jeyarama_dash \
   node_modules/.bin/tsx ../../client-apps/jeyarama/dash/scripts/seed-made-up.mts ../.. ../../client-apps/jeyarama/dash
 ```
 
@@ -184,9 +170,8 @@ written in the script.
   jobs that give it (`team_leader`, `acting_section_staff`, …; an old-rule place
   carries its own subcategories' bases, #4486), which the page's header turns
   into its "why" sentence. The old rules read the six old Tables, which must be
-  marked `decides_scope` by instance setup at the cut-over (a step kept in the
-  client's private instance repository; `platform-test/mark-scope-tables.mjs`
-  is the tests' copy of it); a read of an unmarked one fails the whole scope.
+  marked `decides_scope` by instance setup at the cut-over (`../instances/dash/instance-setup/mark-scope-tables.mjs`, which runs
+  `platform-test/mark-scope-tables.mjs`, the function the tests use too); a read of an unmarked one fails the whole scope.
   - **Employee codes come from the platform** (featherbase #660): the manifest
     declares the `stylehr-employee-code` identifier system, and the provider
     gets the person's codes valid today. An instance without that system (or
