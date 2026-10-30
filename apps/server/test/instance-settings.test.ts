@@ -15,6 +15,8 @@ import {
   settingsDrift,
   type InstanceSettingsFile,
 } from '../src/instance-settings'
+import { BREAK_GLASS_ACTOR } from '../src/managed-settings'
+import { runAsSystemActor } from '../src/system-actor'
 import { createServiceAccount } from '../src/service-accounts'
 import { issueAccessToken } from '../src/auth'
 import { makePerson } from './fixtures'
@@ -536,6 +538,78 @@ describe('a decimal setting', () => {
 
 describe('values from variables (#703)', () => {
   const file = (name: unknown) => ({ settings: { 'System Settings': { app_name: { env: name } } } }) as unknown as InstanceSettingsFile
+
+  describe('the value stays private after the apply that read it', () => {
+    const PRIVATE = 'made-up-private-dive-7031'
+    const literal = (value: string) => ({ settings: { 'System Settings': { app_name: value } } })
+    const fromVariable = (value = PRIVATE) => applyInstanceSettings(file('DIVE_ID'), { by: 'Administrator', env: { DIVE_ID: value } })
+    const exported = async () => {
+      const result = await exportInstanceSettings()
+      return { text: JSON.stringify(result), appName: (result.file.settings['System Settings'] as Record<string, unknown>).app_name }
+    }
+
+    test('an export names the variable, and applying it back changes nothing', async () => {
+      await fromVariable()
+      const { text, appName } = await exported()
+      expect(appName).toEqual({ env: 'DIVE_ID' })
+      expect(text).not.toContain(PRIVATE)
+      const { file: again } = await exportInstanceSettings()
+      expect((await applyInstanceSettings(again, { by: 'Administrator', env: { DIVE_ID: PRIVATE } })).changes).toEqual([])
+    })
+
+    test('a row\'s value from a variable exports by name too', async () => {
+      await applyInstanceSettings({ settings: { 'Sign In Method': [{ row_id: 'google', allowed_email_domains: { env: 'DOMAINS' } }] } } as unknown as InstanceSettingsFile,
+        { by: 'Administrator', env: { DOMAINS: 'made-up-private.example.com' } })
+      const result = await exportInstanceSettings()
+      const google = (result.file.settings['Sign In Method'] as Record<string, unknown>[]).find((r) => r.row_id === 'google')
+      expect(google?.allowed_email_domains).toEqual({ env: 'DOMAINS' })
+      expect(JSON.stringify(result)).not.toContain('made-up-private')
+    })
+
+    test('replacing it with a plain value withholds the old one, in a preview and in the apply', async () => {
+      await fromVariable()
+      const preview = await applyInstanceSettings(literal('Plain name'), { by: 'Administrator', dryRun: true })
+      expect(JSON.stringify(preview)).not.toContain(PRIVATE)
+      expect(preview.changes).toEqual([expect.objectContaining({ field: 'app_name', old: '[the value of DIVE_ID]', new: 'Plain name' })])
+      const applied = await applyInstanceSettings(literal('Plain name'), { by: 'Administrator' })
+      expect(JSON.stringify(applied)).not.toContain(PRIVATE)
+      expect(applied.changes).toEqual([expect.objectContaining({ old: '[the value of DIVE_ID]', new: 'Plain name' })])
+      // The plain value is the file's own from now on.
+      expect((await exported()).appName).toBe('Plain name')
+    })
+
+    test('replacing a plain value with a variable shows neither, and exports by name', async () => {
+      await applyInstanceSettings(literal('Plain name'), { by: 'Administrator' })
+      expect((await exported()).appName).toBe('Plain name')
+      const result = await fromVariable()
+      expect(result.changes).toEqual([expect.objectContaining({ from_variable: 'DIVE_ID', old: null, new: null })])
+      expect((await exported()).appName).toEqual({ env: 'DIVE_ID' })
+    })
+
+    test('a change outside the file drifts by name, and the export still does not print a value', async () => {
+      await fromVariable()
+      await runAsSystemActor(BREAK_GLASS_ACTOR, () => saveDoc('System Settings', { app_name: 'Set by hand' }, BREAK_GLASS_ACTOR))
+      const drift = await settingsDrift()
+      expect(drift).toEqual([{ table: 'System Settings', row_id: 'System Settings', field: 'app_name', from_variable: 'DIVE_ID' }])
+      expect(JSON.stringify(drift)).not.toContain(PRIVATE)
+      expect((await exported()).appName).toEqual({ env: 'DIVE_ID' })
+    })
+
+    test('a file that stops naming the field keeps the value private until someone changes it', async () => {
+      await fromVariable()
+      expect((await applyInstanceSettings({ settings: {} }, { by: 'Administrator' })).changes).toEqual([])
+      expect(await settingsDrift()).toEqual([])
+      const { text, appName } = await exported()
+      expect(appName).toEqual({ env: 'DIVE_ID' })
+      expect(text).not.toContain(PRIVATE)
+      // Still private across a second apply that does not name it.
+      await applyInstanceSettings({ settings: {} }, { by: 'Administrator' })
+      expect((await exported()).appName).toEqual({ env: 'DIVE_ID' })
+      // No longer locked; what a person types is an ordinary setting.
+      await saveDoc('System Settings', { app_name: 'Typed in Admin' }, 'Administrator')
+      expect((await exported()).appName).toBe('Typed in Admin')
+    })
+  })
 
   test('refuses a variable an installed app declares as a secret, even when this server has it unset', async () => {
     const name = 'declared_secret_proof'

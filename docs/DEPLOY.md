@@ -569,7 +569,10 @@ It is read when the file is applied (by the `settings:apply` process, or sent in
 the API's `env` field; the server never reads its own environment for a file),
 saved into the Table and locked as usual. A missing or empty variable is a listed
 problem naming it, in a dry run too. Output, logs and the drift report never show
-the value. A variable that holds a secret is refused.
+the value, and the last apply remembers where it came from: `settings:export`
+writes `{ "env": "DIVE_ID" }` back, and replacing it with a plain value shows the
+old one as `[the value of DIVE_ID]`. A file that stops naming the field keeps it
+private until someone changes the value. A variable that holds a secret is refused.
 
 ```bash
 F="$PWD/client-apps/<client>/instances/<instance>"   # absolute: the command runs inside apps/server

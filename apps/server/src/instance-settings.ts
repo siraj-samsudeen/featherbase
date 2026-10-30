@@ -223,6 +223,27 @@ function canonical(v: unknown): string {
 
 const same = (a: unknown, b: unknown) => canonical(a) === canonical(b)
 
+// ---------------------------------------------------------------- values from variables (#703)
+
+const pathKey = (table: string, rowId: string, field: string) => `${table}|${rowId}|${field}`
+const withheldValue = (variable: string) => `[the value of ${variable}]`
+
+/** The fields the last apply recorded as coming from a variable. */
+function variableOrigins(apply: Awaited<ReturnType<typeof lastApply>>): Map<string, ManagedValue> {
+  const origins = (apply?.managed_values ?? []).filter((v) => v.from_variable)
+  return new Map(origins.map((v) => [pathKey(v.table, v.row_id, v.field), v]))
+}
+
+/** The variable a field's stored value came from, if it is still that value:
+ *  a field the file stopped naming is an ordinary setting again once someone
+ *  changes it. A field the file still names stays the variable's, whatever an
+ *  emergency change has put there. */
+function originOf(origins: Map<string, ManagedValue>, table: string, rowId: string, field: string, stored: unknown): string | undefined {
+  const origin = origins.get(pathKey(table, rowId, field))
+  if (!origin) return undefined
+  return !origin.not_in_file || same(origin.value, stored ?? null) ? origin.from_variable : undefined
+}
+
 // ---------------------------------------------------------------- reading
 
 async function storedSettings(meta: TableMeta, fields: string[]): Promise<Record<string, unknown>> {
@@ -250,6 +271,10 @@ async function storedRows(meta: TableMeta, fields: string[], stamps?: Map<string
   return out
 }
 
+async function storedFields(meta: TableMeta, fields: string[]): Promise<Map<string, Record<string, unknown>>> {
+  return meta.kind === 'settings' ? new Map([[meta.name, await storedSettings(meta, fields)]]) : storedRows(meta, fields)
+}
+
 function columnType(meta: TableMeta, field: string): string {
   return meta.columns.find((c) => c.column_name === field)?.column_type ?? 'Data'
 }
@@ -266,7 +291,9 @@ interface SettingChange {
   created?: true
   /** The field had no stored value (its default was in effect). */
   was_default?: true
-  /** #703: the value came from this variable, so old and new are not shown. */
+  /** #703: the new value came from this variable, so old and new are not
+   *  shown. A value that had come from a variable and is being replaced by the
+   *  file's own shows as `[the value of NAME]` in old. */
   from_variable?: string
 }
 
@@ -318,7 +345,7 @@ function refuse(problems: Record<string, string>, hide: ReadonlyMap<string, stri
   // A save's refusal may quote the value it refused.
   for (const [path, why] of Object.entries(problems)) {
     let text = why
-    for (const [value, name] of hide) text = text.split(value).join(`[the value of ${name}]`)
+    for (const [value, name] of hide) text = text.split(value).join(withheldValue(name))
     problems[path] = text
   }
   const lines = Object.entries(problems).map(([path, why]) => `- ${path}: ${why}`)
@@ -413,7 +440,7 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
             if (value === undefined) problems[path] = `${table}.${field} wants ${WANTS[kindOf(column.column_type)]}, and the variable ${name} holds something else`
             else {
               values[field] = value
-              fromVariables.set(`${table}|${row.row_id}|${field}`, name)
+              fromVariables.set(pathKey(table, row.row_id, field), name)
               hiddenValues.set(text, name)
             }
           }
@@ -449,6 +476,9 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
     // D5: no save of a lockable Table runs between this read and the commit
     // that publishes the new locked set (managed-settings.ts).
     await holdManagedSetExclusive(sql)
+    const origins = variableOrigins(await lastApply())
+    for (const { value, from_variable } of origins.values())
+      if (typeof value === 'string' && value && !hiddenValues.has(value)) hiddenValues.set(value, from_variable!)
     const changes: SettingChange[] = []
     const warnings: string[] = []
     // What each managed field holds once the saves are done: the "settings
@@ -488,16 +518,20 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
         const old = before.get(row_id)
         const now = after.get(row_id)
         if (!now) continue
-        for (const field of Object.keys(values)) appliedValues.push({ table: meta.name, row_id, field, value: now[field] ?? null })
+        for (const field of Object.keys(values)) {
+          const variable = fromVariables.get(pathKey(meta.name, row_id, field))
+          appliedValues.push({ table: meta.name, row_id, field, value: now[field] ?? null, ...(variable ? { from_variable: variable } : {}) })
+        }
         for (const field of Object.keys(values)) {
           const was = old ? (old[field] ?? null) : null
           if (old && old[field] !== undefined && same(was, now[field])) continue
           if (now[field] === undefined) continue
           if (!old && now[field] === null) continue
-          const fromVariable = fromVariables.get(`${meta.name}|${row_id}|${field}`)
+          const fromVariable = fromVariables.get(pathKey(meta.name, row_id, field))
+          const replacedVariable = originOf(origins, meta.name, row_id, field, was)
           changes.push({
             table: meta.name, row_id, field,
-            old: fromVariable ? null : was,
+            old: fromVariable ? null : replacedVariable ? withheldValue(replacedVariable) : was,
             new: fromVariable ? null : now[field],
             ...(fromVariable ? { from_variable: fromVariable } : {}),
             ...(old ? {} : { created: true as const }),
@@ -530,6 +564,14 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
     // next successful apply replaces it.
     const managed: ManagedPath[] = plan.flatMap(({ meta, rows }) =>
       rows.flatMap(({ row_id, values }) => Object.keys(values).map((field) => ({ table: meta.name, row_id, field }))))
+    // A field this file stops naming keeps the variable's value, so that value
+    // stays private until someone changes it.
+    const named = new Set(managed.map((p) => pathKey(p.table, p.row_id, p.field)))
+    for (const [key, origin] of origins) {
+      if (named.has(key)) continue
+      const current = (await storedFields(await getMeta(origin.table), [origin.field])).get(origin.row_id)
+      if (current && same(origin.value, current[origin.field] ?? null)) appliedValues.push({ ...origin, not_in_file: true })
+    }
     await recordApply(sql, {
       applied_by: opts.by,
       environment: opts.environment ?? null,
@@ -561,6 +603,8 @@ interface SettingDrift {
   table: string
   row_id: string
   field: string
+  /** #703: the file sets this field from this variable. */
+  from_variable?: string
 }
 
 /** The managed fields that differ from the last apply: [] before any apply
@@ -586,17 +630,17 @@ async function driftFrom(apply: Awaited<ReturnType<typeof lastApply>>): Promise<
   if (!apply) return []
   if (apply.managed_values === null) return null
   const drift: SettingDrift[] = []
-  const tables = [...new Set(apply.managed_values.map((v) => v.table))]
+  const managed = apply.managed_values.filter((v) => !v.not_in_file)
+  const tables = [...new Set(managed.map((v) => v.table))]
   for (const table of tables) {
-    const recorded = apply.managed_values.filter((v) => v.table === table)
+    const recorded = managed.filter((v) => v.table === table)
     const meta = await getMeta(table)
     const fields = [...new Set(recorded.map((v) => v.field))]
-    const current = meta.kind === 'settings'
-      ? new Map([[meta.name, await storedSettings(meta, fields)]])
-      : await storedRows(meta, fields)
+    const current = await storedFields(meta, fields)
     for (const v of recorded) {
       const row = current.get(v.row_id)
-      if (!row || !same(v.value, row[v.field] ?? null)) drift.push({ table: v.table, row_id: v.row_id, field: v.field })
+      if (!row || !same(v.value, row[v.field] ?? null))
+        drift.push({ table: v.table, row_id: v.row_id, field: v.field, ...(v.from_variable ? { from_variable: v.from_variable } : {}) })
     }
   }
   return drift
@@ -664,16 +708,32 @@ function secretIn(value: unknown, appSecrets: readonly { name: string; value: st
 }
 
 /** This environment's managed settings in the file's own shape (D9). Unset
- *  fields are left out (they keep their defaults, unmanaged). */
+ *  fields are left out (they keep their defaults, unmanaged). A field set from
+ *  a variable exports as that variable's name, never its value (#703). */
 export async function exportInstanceSettings(): Promise<ExportResult> {
+  // Under the managed-settings lock: an apply committing between reading the
+  // origins and reading the values would export a variable's value (#703).
+  return withTransaction(async () => {
+    await holdManagedSet(sql, null)
+    return exportUnderLock()
+  })
+}
+
+async function exportUnderLock(): Promise<ExportResult> {
   const settings: Block = {}
   const withheld: string[] = []
   const appSecrets = await declaredAppSecrets()
+  const origins = variableOrigins(await lastApply())
   for (const entry of await managedScope()) {
     const meta = await getMeta(entry.table)
-    const keep = (where: string, values: Record<string, unknown>) => {
+    const keep = (where: string, rowId: string, values: Record<string, unknown>) => {
       const out: Record<string, unknown> = {}
       for (const [field, value] of Object.entries(values)) {
+        const variable = originOf(origins, entry.table, rowId, field, value)
+        if (variable) {
+          out[field] = { env: variable }
+          continue
+        }
         if (value === null || value === undefined) continue
         const why = secretIn(value, appSecrets)
         if (why) withheld.push(`${where}.${field}: ${why}`)
@@ -682,11 +742,11 @@ export async function exportInstanceSettings(): Promise<ExportResult> {
       return out
     }
     if (entry.shape === 'settings') {
-      settings[entry.table] = keep(entry.table, await storedSettings(meta, entry.fields))
+      settings[entry.table] = keep(entry.table, entry.table, await storedSettings(meta, entry.fields))
     } else {
       const rows: Row[] = []
       for (const [rowId, values] of await storedRows(meta, entry.fields))
-        rows.push({ row_id: rowId, ...keep(`${entry.table}.${rowId}`, values) })
+        rows.push({ row_id: rowId, ...keep(`${entry.table}.${rowId}`, rowId, values) })
       settings[entry.table] = rows
     }
   }
