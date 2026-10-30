@@ -69,6 +69,7 @@ jobs:
           $out = node tools/dev.mjs no/such 2>&1 | Out-String
           if ($LASTEXITCODE -eq 0) { throw 'an unknown instance should fail' }
           if ($out -notmatch 'jeyarama/dash') { throw "the failure did not name the instances: $out" }
+          exit 0
 
       - name: Nothing is left listening
         shell: pwsh
