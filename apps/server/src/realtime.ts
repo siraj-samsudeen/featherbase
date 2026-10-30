@@ -3,6 +3,8 @@ import { WebSocketServer, type WebSocket } from 'ws'
 import { credentialFromCookieHeader, endedSessionIds, resolveToken, type SessionUser } from './auth'
 import { getRoles, getScopeMap, hasPermission, isPrivileged } from './permissions'
 import { REALTIME_MAX_FRAME_BYTES } from 'shared'
+import { tableAccessPolicy } from './mandatory-access'
+import { ROW_ATTACHED_TABLES } from './row-readers'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
 // of Supabase Realtime per the architecture invariants).
@@ -43,8 +45,9 @@ interface Client {
  *  serves (getDoc applies every Data Scope rule), so realtime can never show
  *  a row the list would hide. */
 async function rowInScope(principal: string, table: string, rowId: string): Promise<boolean> {
-  if (await isPrivileged(principal)) return true
-  if (!(await getScopeMap(principal)).size) return true
+  const protectedRow = (await tableAccessPolicy(table)) || ROW_ATTACHED_TABLES.has(table)
+  if (!protectedRow && await isPrivileged(principal)) return true
+  if (!protectedRow && !(await getScopeMap(principal)).size) return true
   const { getDoc } = await import('./document')
   try {
     await getDoc(table, rowId, principal)
@@ -72,10 +75,12 @@ async function deletedVisible(scope: Map<string, Set<string>>, table: string, ro
 export async function eventVisibleTo(principal: string, msg: RealtimeEvent): Promise<boolean> {
   const payload = msg.payload as { table?: unknown; row_id?: unknown } | undefined
   if (payload?.row_id == null || typeof payload.table !== 'string') return true
-  if (await isPrivileged(principal)) return true
   // Roles can change after subscribing (a service account's roles endpoint,
   // a person's form): read permission is rechecked too.
   if (!(await hasPermission(principal, payload.table, 'read'))) return false
+  const protectedRow = (await tableAccessPolicy(payload.table)) || ROW_ATTACHED_TABLES.has(payload.table)
+  if (protectedRow) return msg.event !== 'deleted' && rowInScope(principal, payload.table, String(payload.row_id))
+  if (await isPrivileged(principal)) return true
   const scope = await getScopeMap(principal)
   if (!scope.size) return true
   const rowId = String(payload.row_id)

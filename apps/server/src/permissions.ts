@@ -3,6 +3,7 @@ import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
 import { asNameList, declaresOwnPages } from './installed-app-ledger'
+import { admittedToTable } from './mandatory-access'
 
 // PERM-001: role resolution for a principal — a person or a service account
 // (person-rename R2). Every enabled principal implicitly holds 'All';
@@ -90,6 +91,7 @@ export async function permissionScope(
   table: string,
   action: PermAction,
 ): Promise<PermScope> {
+  if (!(await admittedToTable(user, table))) return 'none'
   if (user === 'Administrator') return 'all'
   const roles = await getRoles(user)
   if (roles.includes('System Manager')) return 'all'

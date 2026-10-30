@@ -3,6 +3,7 @@ import { inAppTransaction, sql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
+import { accessPolicySchema } from './access-policy'
 import { logAccess } from './audit'
 import { deleteStored } from './storage'
 import { asNameList } from './installed-app-ledger'
@@ -111,6 +112,7 @@ export const columnSchema = z.object({
 })
 
 export const tableDefSchema = z.object({
+  access_policy: accessPolicySchema.optional(),
   name: z
     .string()
     .regex(/^(?:[A-Za-z][A-Za-z0-9 ]{0,60}|[a-z][a-z0-9_]{0,30}\.[a-z][a-z0-9_]{0,30})$/, 'invalid Table name'),
@@ -193,6 +195,13 @@ function targetOf(f: TableDef['columns'][number]): string | undefined {
 
 function validateDef(def: TableDef) {
   const errs: Record<string, string> = {}
+  if (def.access_policy) {
+    if (def.data_source || (def.kind && def.kind !== 'table')) errs.access_policy = 'Mandatory access requires a local collection'
+    if (def.access_policy.shared_column && !def.columns.some(c => c.column_name === def.access_policy!.shared_column && c.column_type === 'Check'))
+      errs.access_policy = 'The shared column must be a Check column'
+    if (def.access_policy.inherit_column && !def.columns.some(c => c.column_name === def.access_policy!.inherit_column && c.column_type === 'Reference'))
+      errs.access_policy = 'The inherited access column must be a Reference column'
+  }
   // EDS-3/BV4/VDT-4: a source binding is only coherent for plain collection
   // Tables — no sub_tables, no settings, no submit lifecycle (the source has
   // no docstatus), no Sub-table columns (child rows can't live on a source).
@@ -370,6 +379,8 @@ export async function updateTable(
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
   }
   const def = parsed.data
+  if (existing.access_policy && def.access_policy && JSON.stringify(def.access_policy) !== JSON.stringify(existing.access_policy))
+    throw new AppError('PermissionError', 'An existing mandatory access policy cannot be changed through the schema editor')
   // person-identities (D9): a Person email is unique ignoring case through the
   // index user_email_lower_uq. A column-level `unique` would re-add the
   // case-sensitive user_email_uq beside it, so it is refused here.
@@ -461,6 +472,7 @@ export async function updateTable(
       description: def.description ?? null,
       // Only when given: migrations before 0131 update Tables without the column.
       ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
+      ...(def.access_policy !== undefined ? { access_policy: def.access_policy } : {}),
       updated_at: new Date(),
     })} where name = ${name}`
 
@@ -669,6 +681,7 @@ export async function createTable(
     }
     // Only when marked: migrations before 0131 create Tables without the column.
     if (def.decides_scope) tableRow.decides_scope = true
+    if (def.access_policy) tableRow.access_policy = def.access_policy
     if (qualified) {
       tableRow.label = def.label ?? def.name.split('.')[1]
       tableRow.owner_app = ownerApp

@@ -7,6 +7,7 @@ import { getScopeMap, isPrivileged, permissionScope, permittedTiers } from './pe
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
+import { mandatoryWhere } from './mandatory-access'
 
 export type Filter = [string, string, unknown]
 
@@ -163,7 +164,7 @@ export async function scopedWhere(
   const filters = [...callerFilters]
   // Extra WHERE fragments that can't be expressed as plain [field, op, value]
   // filters (they need OR with IS NULL).
-  const extraConds: ReturnType<typeof sql>[] = []
+  const extraConds: ReturnType<typeof sql>[] = [(await mandatoryWhere(meta, user)).frag]
   if (scope === 'own_rows') filters.push(['created_by', '=', user])
   // PERM-005: user permissions narrow by the table itself and by any
   // Reference column pointing at a restricted table. An UNSET reference does
@@ -180,7 +181,7 @@ export async function scopedWhere(
   if (meta.kind === 'sub_table' && !bypass)
     extraConds.push((await parentScopeCond(meta.name, user)).frag)
   // #342: likewise a comment or an edit is only as visible as its row.
-  if (ROW_ATTACHED_TABLES.has(meta.name) && !bypass)
+  if (ROW_ATTACHED_TABLES.has(meta.name))
     extraConds.push((await attachedRowScopeCond(meta.name, user, callerFilters)).frag)
   if (!bypass) {
     const upMap = await getScopeMap(user)
@@ -425,7 +426,7 @@ async function attachedRowScopeCond(
   for (const target of targets) {
     const targetMeta = ROW_ATTACHED_TABLES.has(target) ? null : await getMeta(target).catch(() => null)
     if (!targetMeta) continue
-    branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
+    if (!targetMeta.access_policy) branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
       select share_name from share where share_table = ${target} and read = true
         and (person = ${user} or service_account = ${user})))`)
     const scope = await permissionScope(user, target, 'read')

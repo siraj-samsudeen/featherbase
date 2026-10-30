@@ -16,6 +16,7 @@ Tasker is needed for real team work. The owner chose to revise the existing app,
 
 ### New Capabilities
 
+- `mandatory-work-privacy`: a metadata-defined access ceiling that also applies to administrators and shares.
 - `tasker-subtasks`: assignable child work and parent completion rules.
 - `tasker-discussions`: grouped updates, questions, replies and attention.
 - `tasker-recurring-tasks`: both recurrence modes without overlapping occurrences.

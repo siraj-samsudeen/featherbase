@@ -18,6 +18,16 @@ Private tasks may be created only for oneself. Assigning private work to another
 
 Use declared app contracts. Resolve the required generic policy seam with codebase-design and #617 before coding it; do not rely on own_rows_only, which currently permits administrative bypass. Never copy the old checklist's manager access model.
 
+The mandatory seam is versioned Table metadata (`access_policy`), persisted with
+the definition. It names required roles and, for creator-owned rows, a shared
+flag. Role grants remain necessary but cannot override that ceiling. Direct
+document operations and the common list predicate enforce it; attached activity
+opens through its target, and realtime rechecks current access before delivery.
+Tests exercise the real HTTP document/list interfaces and realtime delivery,
+using generic notebook definitions rather than platform references to Tasker.
+App role bindings already provide the role-mapping portion of #617; its wider
+Apps-page and platform-table capability redesign remain separate work.
+
 ### Daily workspace
 
 My Work opens by default; explicit task/project links retain their destinations. Attention first places questions addressed to the current user and replies to their questions above Focus and other assigned tasks. Anyone questions remain visible as open team questions. Private capture goes to the creator's Inbox; project-local creation is shared. Focus and saved preferences stay private.
