@@ -4,11 +4,11 @@ import { AppError } from './errors'
 import { sql } from './db'
 import { actionTransaction } from './action-transaction'
 import { getMeta, type TableMeta } from './meta'
-import { getDoc, saveDoc, saveSystemRow } from './document'
+import { getDoc, holdBeforeRowLock, saveDoc, saveSystemRow } from './document'
 import { tableRelation } from './table-engine'
 import { assertDocPermission } from './permissions'
 import { permittedTiers, isSharedWith, stripUnwritableFields } from './permissions'
-import { assertManagedUnchanged, holdManagedSet } from './managed-settings'
+import { assertManagedUnchanged } from './managed-settings'
 import { registerCollectionAction } from './actions'
 
 type Row = Record<string, unknown>
@@ -94,7 +94,8 @@ export async function annotateHistory(meta: TableMeta, row: Row, user: string, p
 
 export async function saveImportedRow(meta: TableMeta, input: Row, user: string, runId: string, update: boolean): Promise<{ saved: Row; version?: string }> {
   return actionTransaction(async () => {
-    await holdManagedSet(sql, meta.name)
+    // #693: the same pre-row locks, in the same order, as the saveDoc below.
+    await holdBeforeRowLock(sql, meta, user, { ...input }, !update)
     let plan: ImportPlan | undefined
     if (update) {
       const [current] = await sql`select * from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = ${String(input.row_id)} for update`
@@ -167,6 +168,8 @@ registerCollectionAction('resolve-import-conflict', {
       // Lock parent first, as imports do, so resolution never deadlocks with import.
       const [found] = await sql`select * from featherbase.import_conflict where row_id = ${String(args.conflict_id)} and ref_table = ${table} and created_at >= (select created_at from table_def where name = ${table})`
       if (!found) throw new AppError('NotFoundError', 'Import conflict not found')
+      // #693: the pre-row locks saveDoc takes, before this row lock.
+      await holdBeforeRowLock(sql, meta, user.row_id, { [meta.row_key]: String(found.ref_name) })
       await sql`select 1 from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${String(found.ref_name)} for update`
       const [conflict] = await sql`select * from featherbase.import_conflict where row_id = ${String(args.conflict_id)} and closed is not true for update`
       if (!conflict) throw new AppError('ConflictError', 'This import conflict is already closed')

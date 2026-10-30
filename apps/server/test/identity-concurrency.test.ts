@@ -9,6 +9,8 @@ import { sql } from '../src/db'
 import { WAYS_IN_LOCK_KEY, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from '../src/identities'
 import { saveDoc } from '../src/document'
 import { loadControllers } from '../src/controllers'
+import { saveImportedRow } from '../src/import-corrections'
+import { getMeta } from '../src/meta'
 import { resolveVerified } from '../src/sign-in'
 
 async function cleanup(prefix: string) {
@@ -248,5 +250,43 @@ it('an identity move racing a Sign In Method edit: both complete, neither deadlo
   } finally {
     await sql`update sign_in_method set label = ${before.label} where row_id = 'google'`
     await cleanup(p)
+  }
+}, 30_000)
+
+// #693, Codex review round 9: an import update locks its target row and then
+// saves it, so it must take the pre-row locks (the Sign In Method ways-in
+// lock) first, as saveDoc does. The gate lets a direct edit queue for the
+// ways-in lock first and the import second: in the old order the import held
+// the row while it queued, and the edit then waited on that row.
+it('an import update of a Sign In Method racing a direct edit: neither deadlocks', async () => {
+  const tag = randomUUID().slice(0, 8)
+  await loadControllers()
+  const [before] = await sql`select label, self_link from sign_in_method where row_id = 'google'`
+  try {
+    const meta = await getMeta('Sign In Method')
+    const gate = postgres(process.env.DATABASE_URL!, { max: 1, onnotice: () => {} })
+    let release: () => void = () => {}
+    const holding = new Promise<void>((r) => (release = r))
+    const held = gate.begin(async (t) => {
+      await t`select pg_advisory_xact_lock(${WAYS_IN_LOCK_KEY}::bigint)`
+      await holding
+    })
+    await new Promise((r) => setTimeout(r, 200))
+    const [g] = await sql`select updated_at from sign_in_method where row_id = 'google'`
+    const edit = saveDoc('Sign In Method', { row_id: 'google', self_link: !before.self_link, updated_at: g.updated_at }, 'Administrator')
+    await new Promise((r) => setTimeout(r, 300))
+    const imported = saveImportedRow(meta, { row_id: 'google', label: `Google ${tag}`, updated_at: g.updated_at }, 'Administrator', `run-${tag}`, true)
+    await new Promise((r) => setTimeout(r, 300))
+    release()
+    await held
+    await gate.end()
+    const results = await Promise.allSettled([edit, imported])
+    const codes = results.filter((r) => r.status === 'rejected').map((r) => ((r as PromiseRejectedResult).reason as { code?: string }).code)
+    expect(codes).not.toContain('40P01')
+    // A stale updated_at may refuse one of them; neither dies in a deadlock.
+    expect(results.some((r) => r.status === 'fulfilled')).toBe(true)
+  } finally {
+    await sql`update sign_in_method set label = ${before.label}, self_link = ${before.self_link} where row_id = 'google'`
+    await sql`delete from featherbase.import_source where run_id = ${`run-${tag}`}`
   }
 }, 30_000)

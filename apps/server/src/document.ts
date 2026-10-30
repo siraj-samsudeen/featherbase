@@ -762,6 +762,17 @@ function assertStoredFileUrl(meta: TableMeta, row: RowValues, allowed: unknown) 
     throw new AppError('ValidationError', 'file_url is managed by uploads and cannot be assigned or changed')
 }
 
+/** The locks a write takes BEFORE it locks a row (#693): the managed-settings
+ *  hold, then the Table's before_lock hooks (the Sign In Method controller
+ *  takes the ways-in lock there). saveDoc and deleteDoc take them first; any
+ *  other path that locks a row and then saves or deletes it calls this first
+ *  too, so every path takes them in the same order and cannot deadlock.
+ *  Both are re-entrant within a transaction. */
+export async function holdBeforeRowLock(db: typeof sql, meta: TableMeta, user: string, row: RowValues, isNew = false): Promise<void> {
+  await holdManagedSet(db, meta.name)
+  await runHooks('before_lock', { row, meta, user, isNew, tx: db })
+}
+
 export function saveDoc(...args: Parameters<typeof saveDocImpl>) {
   return appOperation(() => saveDocImpl(...args))
 }
@@ -875,8 +886,7 @@ async function writeDoc(
   const [saved] = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
-      await holdManagedSet(stx, meta.name)
-      await runHooks('before_lock', { row: { ...values }, meta, user, isNew: true, tx: stx })
+      await holdBeforeRowLock(stx, meta, user, { ...values }, true)
       const rowId = await resolveRowId(stx, meta, values)
       const now = new Date()
       const row: RowValues = {
@@ -1139,8 +1149,7 @@ async function updateDoc(
   const saved = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
-      await holdManagedSet(stx, meta.name)
-      await runHooks('before_lock', { row: { ...values, [meta.row_key]: name }, meta, user, isNew: false, tx: stx })
+      await holdBeforeRowLock(stx, meta, user, { ...values, [meta.row_key]: name })
       const [existing] = await tx`
         select * from ${tx(table)} where ${tx(meta.row_key)} = ${name} for update`
       if (!existing)
@@ -1426,8 +1435,7 @@ async function deleteDocImpl(
   if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
   await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
-    await holdManagedSet(stx, meta.name)
-    await runHooks('before_lock', { row: { [meta.row_key]: name }, meta, user, isNew: false, tx: stx })
+    await holdBeforeRowLock(stx, meta, user, { [meta.row_key]: name })
     const [existing] = await tx`
       select * from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
