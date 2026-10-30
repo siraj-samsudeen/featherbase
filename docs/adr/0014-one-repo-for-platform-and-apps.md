@@ -57,7 +57,7 @@ client-apps/<client>/<app>/   one folder per client, one per app inside:
   history**. The history stays in the client's repository, and the import
   commit names the source commit. Go-live is a fresh install, so no instance
   upgrades from an earlier version. The first client app enters as
-  `jeyarama/dash` **0.1.0**, with no upgrade history.
+  `jeyarama/dash` **0.10.0**, keeping its version number but with no upgrade history (owner, 30-Oct-2026: the next change is 0.10.1).
 - This repository keeps its own history.
 
 ### 2. Each client has a small private instance repository

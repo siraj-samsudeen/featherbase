@@ -12,7 +12,7 @@ The instances' settings, the privacy notice and the one-off setup steps live in
 the client's private instance repository, never here. JeyaRama's conventions
 shared by its apps are in `../CLAUDE.md`.
 
-**Version 0.1.0.** It arrived here as a snapshot, without its earlier history
+**Version 0.10.0**, the version data-warehouse last shipped; the next change is 0.10.1. It arrived here as a snapshot, without its earlier git history
 and with no upgrade history (`migrations` is empty): go-live is a fresh
 install, and the platform is fresh-install only. Its version changes only in a
 release PR (ADR 0014, section 4). A client image is built when the app is
@@ -35,7 +35,7 @@ repository (data-warehouse #4486, #4531, #4453).
 | Path | What it is |
 |---|---|
 | `package.json` | the app's identity (`version` is the app version) and its build scripts |
-| `featherbase.json` | the manifest: Tables, the scope provider, roles, grants, datasets and declared reads; `migrations` is the upgrade history (empty at 0.1.0) |
+| `featherbase.json` | the manifest: Tables, the scope provider, roles, grants, datasets and declared reads; `migrations` is the upgrade history (empty: the app was installed fresh at 0.10.0) |
 | `src/server.ts` | the server module, bundled by esbuild to `dist/server.mjs` |
 | `src/validators.ts` | the org chart Tables' save rules |
 | `src/coverage.ts`, `src/provider.ts` | coverage on the new org chart, and the scope provider |
