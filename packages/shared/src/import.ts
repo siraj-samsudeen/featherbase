@@ -88,9 +88,20 @@ export function prettifyLabel(header: string): string {
     .join(' ')
 }
 
-// ADR 0008: every inference threshold is a named, exported bet. Spec, ADR,
-// and tests reference these names, never the literals. Changing one means
-// re-scoring the judgement rules it feeds (see the ADR).
+// Import thresholds are bets, not facts (this rule was ADR 0008, folded here
+// in #705). Every threshold the import feature uses is a named constant, never
+// a bare literal: the ones below, and the UI-side ones beside their use
+// (IMPORT_CHUNK in apps/web/src/lib/import-run.ts; SUGGEST_*, ERRORS_ON_SCREEN
+// and PREVIEW_ROWS in ImportWizard.tsx; MAX_ROWS and LOG_ERROR_SAMPLE in
+// collection-import.ts).
+// - Change = re-score. Altering a judgement threshold (CHOICE_*, AUTO_MATCH_*,
+//   SUGGEST_*) means re-running the labelled examples and reporting the
+//   change in the PR, not a one-reviewer verdict. Until a labelled corpus
+//   exists, re-run the spreadsheet-import spec's example tables and say so.
+// - No new literals. A new inference threshold lands named, in the change
+//   that introduces it.
+// - The zones.csv e2e fixture is built so CHOICE_* and the type order interact
+//   observably (Region promotes to Choice, Is Active must not).
 const COLUMN_NAME_MAX = 63 // Postgres identifier headroom
 const LONG_TEXT_CHARS = 140 // beyond this a cell reads as prose
 const CHOICE_MIN_SAMPLE = 6 // fewer values: repetition proves nothing

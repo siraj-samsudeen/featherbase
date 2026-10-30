@@ -1,0 +1,101 @@
+/* Tailwind reads class names only from the client's own sources, never from whatever else sits
+   beside them (platform-test/, scripts/, fixtures/, the manifest): the CSS, and so the app's
+   artifact digest, is the same wherever the folder is built (#4449, scripts/check-build.sh). */
+@import 'tailwindcss' source(none);
+@source './';
+@source '../index.html';
+
+/* Shop Floor tokens (featherbase apps/web/src/index.css), copied the way
+   featherbase's Tasker does until the platform publishes them as a package
+   (design D7). Light by default; dark follows the device's setting, because the
+   platform paints its theme only on its own top bar, not on an app's page. */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Noto Sans Malayalam', 'Noto Sans Tamil', sans-serif;
+  --color-canvas: #f3f4f6;
+  --color-surface: #ffffff;
+  --color-subtle: #f8fafc;
+  --color-border: #e5e7eb;
+  --color-border-control: #6b7280;
+  --color-ink: #111827;
+  --color-ink-muted: #4b5563;
+  --color-action: #1d4ed8;
+  --color-action-hover: #1e40af;
+  --color-focus: #1d4ed8;
+  --color-negative: #b91c1c;
+  --radius-card: 14px;
+  --radius-control: 10px;
+  --spacing-control: 2.25rem;
+}
+:root { color-scheme: light; }
+@media screen and (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-canvas: #0b1220;
+    --color-surface: #131c2e;
+    --color-subtle: #18233a;
+    --color-border: #24314a;
+    --color-border-control: #66768e;
+    --color-ink: #f1f5f9;
+    --color-ink-muted: #a8b3c4;
+    --color-action: #60a5fa;
+    --color-action-hover: #93c5fd;
+    --color-focus: #93c5fd;
+    --color-negative: #f87171;
+  }
+}
+@media (pointer: coarse) { :root { --spacing-control: 3rem; } }
+
+* { box-sizing: border-box; }
+html, body { max-width: 100%; overflow-x: hidden; }
+body { margin: 0; background: var(--color-canvas); color: var(--color-ink); font: 14px/1.45 var(--font-sans); }
+a { color: var(--color-action); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+.fd-page { width: 100%; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; min-height: calc(100vh - 56px); }
+.fd-card { padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); }
+.fd-notice { max-width: 36rem; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.fd-title { margin: 0; font-size: 20px; line-height: 1.2; font-weight: 700; }
+.fd-muted { margin: 0; color: var(--color-ink-muted); }
+.fd-small { font-size: 12px; margin-top: 8px; }
+/* The page's header (#4486): long lines wrap on a phone, never scroll sideways. */
+.fd-heading { display: flex; flex-direction: column; gap: 2px; margin: 0 auto 12px; max-width: 960px; width: 100%; overflow-wrap: anywhere; }
+.fd-heading-wide { max-width: none; }
+
+.fd-opening { margin: 48px auto; color: var(--color-ink-muted); text-align: center; }
+.fd-frame-box { position: relative; flex: 1; display: flex; }
+.fd-opening-over { position: absolute; inset: 0; margin: 0; padding-top: 48px; background: var(--color-canvas); }
+.fd-frame { flex: 1; width: 100%; min-height: 70vh; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); }
+
+.fd-button { min-height: var(--spacing-control); padding: 0 14px; border: 1px solid var(--color-border-control); border-radius: var(--radius-control);
+  background: var(--color-surface); color: var(--color-ink); font: inherit; cursor: pointer; }
+.fd-button:hover { background: var(--color-subtle); }
+.fd-link { margin-top: 12px; padding: 0; border: 0; background: none; color: var(--color-action); font: inherit; cursor: pointer; text-decoration: underline; }
+
+.fd-quick { max-width: 960px; width: 100%; margin: 0 auto; padding: 16px; }
+.fd-quick-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.fd-table-box { overflow-x: auto; max-width: 100%; position: relative; }
+.fd-unnamed { color: var(--color-ink-muted); }
+/* A section's name stays in view while the table scrolls sideways. */
+.fd-sticky-name { position: sticky; left: 8px; display: inline-block; }
+.fd-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.fd-table th, .fd-table td { padding: 8px; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
+.fd-table thead th { background: var(--color-subtle); font-size: 12px; color: var(--color-ink-muted); font-weight: 600; }
+.fd-table .fd-num { text-align: right; white-space: nowrap; }
+.fd-sub { font-weight: 400; }
+/* The subcategory column stays in view while the figures scroll under it. */
+.fd-table tbody th[scope='row'], .fd-table tfoot th[scope='row'], .fd-table thead th:first-child {
+  position: sticky; left: 0; z-index: 1; background: var(--color-surface); }
+.fd-table thead th:first-child, .fd-section-row th { background: var(--color-subtle); }
+.fd-section-row th { background: var(--color-subtle); font-weight: 600; }
+.fd-subtotal th, .fd-subtotal td { font-weight: 600; }
+.fd-total th, .fd-total td { font-weight: 700; border-bottom: 0; }
+.fd-negative { color: var(--color-negative); }
+@media (max-width: 640px) {
+  .fd-page { padding: 8px; }
+  .fd-table th, .fd-table td { padding: 6px 4px; }
+  .fd-table tbody th[scope='row'], .fd-table tfoot th[scope='row'], .fd-table thead th:first-child {
+    max-width: 10rem; overflow-wrap: normal; word-break: normal; box-shadow: 1px 0 0 var(--color-border); }
+  /* While more of the table lies to the right, its edge fades: the cue that it scrolls. At the
+     end of the scroll the fade goes, so the last figure is never left faded. */
+  .fd-table-box.fd-more-right { mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+}

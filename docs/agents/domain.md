@@ -17,8 +17,10 @@ decisions live in one root-level ADR set.
   names, commit messages.
 - **`docs/adr/`** — read ADRs that touch the area you're about to work in.
   [ADR 0006](../adr/0006-stack-react-hono-postgres.md) records the current
-  stack and supersedes 0001–0004; later ADRs cover topology, record identity,
-  and import inference.
+  stack (the Convex-era ADRs 0001–0004 it superseded were deleted in #705);
+  later ADRs cover topology, record identity, OpenSpec, and the platform /
+  app / instance layers. ADRs are corrected in place or deleted when they stop
+  matching the code (ADR 0014): read any dated correction note first.
 - **`CLAUDE.md`** at the repo root already carries the architecture invariants
   and session protocol. Domain docs supplement it; they don't replace it.
 

@@ -1,6 +1,24 @@
 # ADR 0010: OpenSpec is the behavior contract and change workflow
 
-**Status:** Accepted; amended by [ADR 0014](0014-one-repo-for-platform-and-apps.md) (30-Oct-2026: stock profile and archive-in-PR replaced by the intent-driven template, proposal PR first) · **Date:** 2026-09-21, revised 2026-09-26 · **Issue:** [#296](https://github.com/siraj-samsudeen/featherbase/issues/296)
+**Status:** Accepted · **Date:** 2026-09-21, revised 2026-09-26, corrected 30-Oct-2026 · **Issue:** [#296](https://github.com/siraj-samsudeen/featherbase/issues/296)
+
+> **30-Oct-2026 correction ([ADR 0014](0014-one-repo-for-platform-and-apps.md), folded in by #705).**
+> Two parts of the tooling changed; the text below now says so directly.
+> OpenSpec stays the sole behaviour contract.
+>
+> - The stock `core` profile gives way to the **intent-driven template**
+>   (`proposal → specs → design → adr → tasks`), and each change picks a mode
+>   when it is created (autopilot, build or learning; see ADR 0014 §6).
+> - **The proposal merges first, in its own PR**, before implementation; the
+>   change is **archived on `main` after the implementation merges**. This
+>   replaces "archive in the PR that finishes the change".
+>
+> Adopted by [#703](https://github.com/siraj-samsudeen/featherbase/issues/703): build mode
+> (`intent-driven-with-human-control`) is the default schema, the modes are
+> described in the `change-modes` skill, and `pnpm check:specs` reports a
+> finished, unarchived change instead of failing, failing a PR only when that
+> change was already finished on `main`. Changes created earlier keep
+> `spec-driven`.
 
 > **2026-09-26 note:** this revises the 2026-09-21 decision in place rather than
 > superseding it with a new ADR — the owner's explicit choice, since the
@@ -29,7 +47,7 @@ indistinguishable from an intentional product decision.
 ## Decision
 
 OpenSpec is Featherbase's sole behavior specification and mandatory change
-workflow, run as plain, stock upstream OpenSpec.
+workflow, run with the intent-driven template.
 
 - New behavior begins as an OpenSpec change before implementation.
 - A spec written for existing behavior describes what it does today. Changing
@@ -38,13 +56,16 @@ workflow, run as plain, stock upstream OpenSpec.
   `openspec/config.yaml`), not a tooling-enforced commit ceremony.
 - Design, ADR, and research documents may retain alternatives and rationale,
   but do not form a second behavior contract.
-- **Stock core profile.** The repository runs the CLI's `core` profile
-  (propose, explore, apply, archive, sync, update) with no repository-specific
-  workflows, skills, or commands layered on top.
+- **Intent-driven template** *(corrected 30-Oct-2026; this was the stock
+  `core` profile with nothing layered on top)*. Changes follow
+  `proposal → specs → design → adr → tasks`, from the owner's fork
+  `intent-driven-with-human-control`. The proposal merges in its own PR before
+  implementation; the change is archived on `main` once the implementation
+  has merged.
 - **Exact pin, automated bump.** The OpenSpec CLI is exactly pinned in root
   `package.json`. A weekly scheduled workflow checks for a newer published
-  version, and when one exists it bumps the pin, regenerates the core-profile
-  files, and opens a PR — so the pin moves on a schedule instead of by hand.
+  version, and when one exists it bumps the pin, regenerates the
+  OpenSpec-generated skills and commands, and opens a PR — so the pin moves on a schedule instead of by hand.
 - **Plain-language, non-brittle spec style.** Spec and proposal writing rules
   live in `openspec/config.yaml`'s `rules:` block: write for a product person,
   plain words, no code/table/column/endpoint/file/function names, one
@@ -85,12 +106,11 @@ now checked in ordinary code review, not by a CI-enforced marker convention — 
 ratcheting in exchange for a spec vocabulary that a product person, not only a
 programmer, can read and own.
 
-Contributors get plain upstream OpenSpec: the generated skills and commands
-match what `openspec init --profile core` produces for any project, so
-onboarding and troubleshooting can use OpenSpec's own docs directly rather
-than a repository-specific variant. The exact pin plus the weekly automated
-update PR keep that parity current without requiring a human to remember to
-bump it.
+The exact pin plus the weekly automated update PR keep the CLI current
+without requiring a human to remember to bump it. *(Corrected 30-Oct-2026:
+this paragraph used to promise plain upstream OpenSpec with no
+repository-specific variant; the intent-driven template is such a variant,
+chosen in ADR 0014.)*
 
 The evaluation's useful findings survive as history and in the local review
 skills. Its recommendation against migration is superseded by this decision.

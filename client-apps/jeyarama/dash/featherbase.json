@@ -1,0 +1,879 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "feather_dash",
+  "title": "Feather Dash",
+  "server": "dist/server.mjs",
+  "client": "dist/client",
+  "entryTable": "feather_dash.store_rollout",
+  "roles": [
+    "Feather Dash Reader",
+    "Feather Dash Section Editor",
+    "Feather Dash Section Reviewer"
+  ],
+  "roleDefaults": {},
+  "settings": [
+    {
+      "name": "dive_id",
+      "required": false
+    },
+    {
+      "name": "dive_version",
+      "required": false
+    },
+    {
+      "name": "embed_service_account",
+      "required": false
+    },
+    {
+      "name": "dive_ready_signal",
+      "required": false
+    }
+  ],
+  "secrets": [
+    "MOTHERDUCK_TOKEN"
+  ],
+  "frameOrigins": [
+    "https://embed-motherduck.com"
+  ],
+  "bar": [
+    {
+      "picker": "Store",
+      "options": "stores",
+      "sets": "store"
+    }
+  ],
+  "datasets": [
+    {
+      "name": "sales_to_date",
+      "source": "motherduck",
+      "query": "with period as (\n  select cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) as date) as period_start,\n         cast(timezone('Asia/Kolkata', now()) as date) as period_end\n),\ncutoff as (\n  select p.period_start,\n         least(p.period_end, coalesce((select max(actuals_as_of_date) from \"marts\".\"sales\".\"target_vs_actual_daily\"), p.period_end)) as effective_end,\n         exists (select 1 from \"marts\".\"sales\".\"target_vs_actual_daily\" t\n                 where t.hierarchy_level = 'material_group' and t.business_date between p.period_start and p.period_end) as targets_available\n  from period p\n),\nstores as (\n  select store_code, any_value(store_name) as store_name, any_value(short_code) as short_code\n  from \"gold\".\"masters\".\"store\" group by 1\n),\nnames as (\n  select material_group_code, any_value(subcategory) as subcategory\n  from \"gold\".\"masters\".\"merchandise_hierarchy\" where material_group_code is not null group by 1\n),\ntargets as (\n  select t.plant_code, t.hierarchy_code, t.business_date, t.target_daily_before_tax, t.actual_before_tax,\n         t.target_quantity, t.actual_quantity\n  from \"marts\".\"sales\".\"target_vs_actual_daily\" t cross join cutoff c\n  where t.hierarchy_level = 'material_group' and t.business_date between c.period_start and c.effective_end\n),\nsales as (\n  select s.store_code as plant_code, lpad(s.material_group, 9, '0') as hierarchy_code, s.business_date,\n         sum(s.sales_before_tax_net) as actual_before_tax, sum(s.qty_net) as actual_quantity\n  from \"gold\".\"sales\".\"sales_item_daily\" s cross join cutoff c\n  where s.material_group is not null and s.business_date between c.period_start and c.effective_end\n  group by 1, 2, 3\n),\ndays as (\n  select coalesce(t.plant_code, s.plant_code) as plant_code,\n         coalesce(t.hierarchy_code, s.hierarchy_code) as hierarchy_code,\n         t.target_daily_before_tax as target,\n         case when t.plant_code is not null then t.actual_before_tax else s.actual_before_tax end as actual,\n         t.target_quantity,\n         case when t.plant_code is not null then t.actual_quantity else s.actual_quantity end as actual_quantity\n  from targets t\n  full join sales s on s.plant_code = t.plant_code and s.hierarchy_code = t.hierarchy_code and s.business_date = t.business_date\n)\nselect d.plant_code as store_code, st.store_name, st.short_code,\n       d.hierarchy_code as subcategory_code, n.subcategory,\n       sum(d.target) as target, sum(d.actual) as actual,\n       count(d.actual) as days_with_actual, count(*) as days,\n       c.period_start, c.effective_end as data_through, c.targets_available,\n       count(d.target) as target_days,\n       sum(d.target_quantity) as target_quantity, sum(d.actual_quantity) as actual_quantity\nfrom days d\ncross join cutoff c\nleft join stores st on st.store_code = d.plant_code\nleft join names n on n.material_group_code = d.hierarchy_code\ngroup by d.plant_code, st.store_name, st.short_code, d.hierarchy_code, n.subcategory, c.period_start, c.effective_end, c.targets_available",
+      "columns": [
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_name",
+          "type": "text"
+        },
+        {
+          "name": "short_code",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "subcategory",
+          "type": "text"
+        },
+        {
+          "name": "target",
+          "type": "money"
+        },
+        {
+          "name": "actual",
+          "type": "money"
+        },
+        {
+          "name": "days_with_actual",
+          "type": "integer"
+        },
+        {
+          "name": "days",
+          "type": "integer"
+        },
+        {
+          "name": "period_start",
+          "type": "date"
+        },
+        {
+          "name": "data_through",
+          "type": "date"
+        },
+        {
+          "name": "targets_available",
+          "type": "boolean"
+        },
+        {
+          "name": "target_days",
+          "type": "integer"
+        },
+        {
+          "name": "target_quantity",
+          "type": "number"
+        },
+        {
+          "name": "actual_quantity",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "store_code",
+        "subcategory_code"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "guard": [
+        {
+          "kind": "not_all_zero",
+          "column": "target"
+        },
+        {
+          "kind": "max_drop_pct",
+          "column": "target",
+          "value": 50,
+          "within": "period_start"
+        },
+        {
+          "kind": "max_sum_drop_pct",
+          "column": "target",
+          "value": 50,
+          "within": "period_start"
+        },
+        {
+          "kind": "max_sum_drop_pct",
+          "column": "target_days",
+          "value": 50,
+          "within": "period_start"
+        }
+      ]
+    },
+    {
+      "name": "sales_month",
+      "source": "motherduck",
+      "query": "with period as (\n  select cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) as date) as period_start,\n         cast(timezone('Asia/Kolkata', now()) as date) as period_end\n),\ncutoff as (\n  select p.period_start,\n         least(p.period_end, coalesce((select max(actuals_as_of_date) from \"marts\".\"sales\".\"target_vs_actual_daily\"), p.period_end)) as effective_end,\n         exists (select 1 from \"marts\".\"sales\".\"target_vs_actual_daily\" t\n                 where t.hierarchy_level = 'material_group' and t.business_date between p.period_start and p.period_end) as targets_available\n  from period p\n),\npairs as (\n  select s.store_code, s.store_name, h.material_group_code as subcategory_code\n  from (select store_code, any_value(store_name) as store_name from \"gold\".\"masters\".\"store\" group by 1) s\n  cross join (select distinct material_group_code from \"gold\".\"masters\".\"merchandise_hierarchy\" where material_group_code is not null) h\n)\nselect pr.store_code, pr.store_name, pr.subcategory_code, c.period_start, c.effective_end as data_through, c.targets_available\nfrom pairs pr cross join cutoff c",
+      "columns": [
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "period_start",
+          "type": "date"
+        },
+        {
+          "name": "data_through",
+          "type": "date"
+        },
+        {
+          "name": "targets_available",
+          "type": "boolean"
+        }
+      ],
+      "keys": [
+        "store_code"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      }
+    }
+  ],
+  "tables": [
+    {
+      "name": "feather_dash.store_rollout",
+      "label": "Store rollout",
+      "module": "Feather Dash",
+      "description": "Stores whose people are scoped by the new store org chart, and since when. Only a System Manager writes it.",
+      "id_pattern": "field:store",
+      "title_column": "store",
+      "decides_scope": true,
+      "columns": [
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "unique": true,
+          "in_list_view": true,
+          "description": "The store's plant code, as the scope filters name it."
+        },
+        {
+          "column_name": "live_since",
+          "label": "Live since",
+          "column_type": "Date",
+          "reqd": true,
+          "in_list_view": true
+        }
+      ]
+    },
+    {
+      "name": "feather_dash.store_floor",
+      "label": "Store floor",
+      "module": "Feather Dash",
+      "description": "The floors of a store. A section names its floor; a Floor Manager's job assignment names one.",
+      "title_column": "floor_name",
+      "decides_scope": true,
+      "columns": [
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store's plant code, as the scope filters name it."
+        },
+        {
+          "column_name": "floor_name",
+          "label": "Floor",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "display_order",
+          "label": "Display order",
+          "column_type": "Int"
+        },
+        {
+          "column_name": "floor_key",
+          "label": "Floor key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "Set on save: the store and the floor name. Unique, so a store has each floor once."
+        }
+      ]
+    },
+    {
+      "name": "feather_dash.department",
+      "label": "Department",
+      "module": "Feather Dash",
+      "description": "A named group of sections in one store, which may span floors. A Department Manager's job assignment names one.",
+      "title_column": "display_name",
+      "decides_scope": true,
+      "columns": [
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store's plant code, as the scope filters name it."
+        },
+        {
+          "column_name": "department_key",
+          "label": "Department key",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The department's identity in its store. Loads match on it, and it never changes."
+        },
+        {
+          "column_name": "name",
+          "label": "Name",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "Optional until the store names the department; then unique in the store."
+        },
+        {
+          "column_name": "display_name",
+          "label": "Department",
+          "column_type": "Data",
+          "read_only": true,
+          "in_list_view": true,
+          "description": "Set on save: the name, or the key while the name is blank."
+        },
+        {
+          "column_name": "department_store_key",
+          "label": "Department store key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "Set on save: the store and the department key. Unique per store."
+        },
+        {
+          "column_name": "name_store_key",
+          "label": "Name store key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "Set on save: the store and the name, empty while the name is blank. Unique per store."
+        }
+      ]
+    },
+    {
+      "name": "feather_dash.section",
+      "label": "Section",
+      "module": "Feather Dash",
+      "description": "One area of one store, named uniquely in that store. Its subcategories come from section_subcategory.",
+      "title_column": "section_name",
+      "decides_scope": true,
+      "columns": [
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store's plant code, as the scope filters name it."
+        },
+        {
+          "column_name": "section_name",
+          "label": "Section",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "floor",
+          "label": "Floor",
+          "column_type": "Reference",
+          "reference_table": "feather_dash.store_floor",
+          "in_list_view": true,
+          "description": "One of this store's floors. Optional for a store without floors."
+        },
+        {
+          "column_name": "department",
+          "label": "Department",
+          "column_type": "Reference",
+          "reference_table": "feather_dash.department",
+          "in_list_view": true,
+          "description": "One of this store's departments. Plain and undated."
+        },
+        {
+          "column_name": "section_type",
+          "label": "Section type",
+          "column_type": "Choice",
+          "choices": "selling\nsupport",
+          "in_list_view": true
+        },
+        {
+          "column_name": "team_leaders_allowed",
+          "label": "Team Leaders allowed",
+          "column_type": "Int",
+          "reqd": true,
+          "default_value": "1",
+          "description": "How many non-acting Team Leaders this section may have. More are listed as a conflict."
+        },
+        {
+          "column_name": "section_key",
+          "label": "Section key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "Set on save: the store and the section name. Unique, so a store has each section name once."
+        }
+      ]
+    },
+    {
+      "name": "feather_dash.section_subcategory",
+      "label": "Section subcategory",
+      "module": "Feather Dash",
+      "description": "Which section owns a subcategory in a store, from starts_on up to but not including ends_on. All its credit and coverage go to that section.",
+      "title_column": "subcategory",
+      "decides_scope": true,
+      "columns": [
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store's plant code, as the scope filters name it."
+        },
+        {
+          "column_name": "subcategory",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "SAP's nine-digit subcategory code (`material_group_code`)."
+        },
+        {
+          "column_name": "section",
+          "label": "Section",
+          "column_type": "Reference",
+          "reference_table": "feather_dash.section",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "starts_on",
+          "label": "Starts on",
+          "column_type": "Date",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "ends_on",
+          "label": "Ends on",
+          "column_type": "Date",
+          "in_list_view": true,
+          "description": "Exclusive: the first day it no longer holds. Empty means current."
+        },
+        {
+          "column_name": "placement_key",
+          "label": "Placement key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "Set on save: the store, the subcategory and starts_on. Unique."
+        }
+      ]
+    },
+    {
+      "name": "feather_dash.display_location",
+      "label": "Display location",
+      "module": "Feather Dash",
+      "description": "An extra place a subcategory is shown, for floor audits. It never moves credit or coverage.",
+      "title_column": "location_name",
+      "columns": [
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store's plant code, as the scope filters name it."
+        },
+        {
+          "column_name": "subcategory",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "SAP's nine-digit subcategory code (`material_group_code`)."
+        },
+        {
+          "column_name": "location_name",
+          "label": "Location",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "starts_on",
+          "label": "Starts on",
+          "column_type": "Date",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "ends_on",
+          "label": "Ends on",
+          "column_type": "Date",
+          "in_list_view": true,
+          "description": "Exclusive: the first day it no longer holds. Empty means current."
+        }
+      ]
+    },
+    {
+      "name": "feather_dash.job_assignment",
+      "label": "Job assignment",
+      "module": "Feather Dash",
+      "description": "Who holds which job, where and when. A person's coverage is worked out from their current rows, acting included.",
+      "decides_scope": true,
+      "columns": [
+        {
+          "column_name": "person",
+          "label": "Person",
+          "column_type": "Reference",
+          "reference_table": "Person",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "job",
+          "label": "Job",
+          "column_type": "Choice",
+          "choices": "Store Manager\nFloor Manager\nDepartment Manager\nTeam Leader\nStaff\nCluster Manager",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store's plant code, as the scope filters name it."
+        },
+        {
+          "column_name": "floor",
+          "label": "Floor",
+          "column_type": "Reference",
+          "reference_table": "feather_dash.store_floor",
+          "in_list_view": true,
+          "description": "Floor Manager only."
+        },
+        {
+          "column_name": "department",
+          "label": "Department",
+          "column_type": "Reference",
+          "reference_table": "feather_dash.department",
+          "in_list_view": true,
+          "description": "Department Manager only: one row per department."
+        },
+        {
+          "column_name": "section",
+          "label": "Section",
+          "column_type": "Reference",
+          "reference_table": "feather_dash.section",
+          "in_list_view": true,
+          "description": "Team Leader and Staff only."
+        },
+        {
+          "column_name": "reports_to",
+          "label": "Reports to",
+          "column_type": "Reference",
+          "reference_table": "Person"
+        },
+        {
+          "column_name": "acting",
+          "label": "Acting",
+          "column_type": "Check",
+          "in_list_view": true,
+          "description": "Acting cover; the absent person's row stays open."
+        },
+        {
+          "column_name": "starts_on",
+          "label": "Starts on",
+          "column_type": "Date",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "ends_on",
+          "label": "Ends on",
+          "column_type": "Date",
+          "in_list_view": true,
+          "description": "Exclusive: the first day it no longer holds. Empty means current."
+        }
+      ]
+    },
+    {
+      "name": "feather_dash.section_alias",
+      "label": "Section alias",
+      "module": "Feather Dash",
+      "description": "Another system's name for a section.",
+      "title_column": "alias",
+      "columns": [
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store's plant code, as the scope filters name it."
+        },
+        {
+          "column_name": "source",
+          "label": "Source",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "alias",
+          "label": "Alias",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "section",
+          "label": "Section",
+          "column_type": "Reference",
+          "reference_table": "feather_dash.section",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "alias_key",
+          "label": "Alias key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "Set on save: the store, the source and the alias. Unique."
+        }
+      ]
+    },
+    {
+      "name": "feather_dash.floor_alias",
+      "label": "Floor alias",
+      "module": "Feather Dash",
+      "description": "Another system's name for a floor.",
+      "title_column": "alias",
+      "columns": [
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The store's plant code, as the scope filters name it."
+        },
+        {
+          "column_name": "source",
+          "label": "Source",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "alias",
+          "label": "Alias",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "floor",
+          "label": "Floor",
+          "column_type": "Reference",
+          "reference_table": "feather_dash.store_floor",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "alias_key",
+          "label": "Alias key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "Set on save: the store, the source and the alias. Unique."
+        }
+      ]
+    },
+    {
+      "name": "feather_dash.job_alias",
+      "label": "Job alias",
+      "module": "Feather Dash",
+      "description": "Another system's name for a job, matched as a whole value. Central: the same in every store.",
+      "title_column": "alias",
+      "columns": [
+        {
+          "column_name": "source",
+          "label": "Source",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "alias",
+          "label": "Alias",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "job",
+          "label": "Job",
+          "column_type": "Choice",
+          "choices": "Store Manager\nFloor Manager\nDepartment Manager\nTeam Leader\nStaff\nCluster Manager",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "alias_key",
+          "label": "Alias key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "Set on save: the source and the alias. Unique."
+        }
+      ]
+    }
+  ],
+  "scopeProvider": {
+    "name": "org_chart",
+    "tables": [
+      "feather_dash.store_rollout",
+      "feather_dash.store_floor",
+      "feather_dash.department",
+      "feather_dash.section",
+      "feather_dash.section_subcategory",
+      "feather_dash.job_assignment",
+      "Sales Target Assignment",
+      "Employee Section Map",
+      "Section Ownership",
+      "Store Manager",
+      "Section Merchandise Map",
+      "Section Name Alias"
+    ],
+    "identifiers": [
+      "stylehr-employee-code"
+    ]
+  },
+  "permissions": [
+    {
+      "table": "feather_dash.store_rollout",
+      "role": "Feather Dash Reader",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.store_rollout",
+      "role": "Feather Dash Section Editor",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.store_rollout",
+      "role": "Feather Dash Section Reviewer",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.store_floor",
+      "role": "Feather Dash Section Editor",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.department",
+      "role": "Feather Dash Section Editor",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.section",
+      "role": "Feather Dash Section Editor",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.section_subcategory",
+      "role": "Feather Dash Section Editor",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.display_location",
+      "role": "Feather Dash Section Editor",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.job_assignment",
+      "role": "Feather Dash Section Editor",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.section_alias",
+      "role": "Feather Dash Section Editor",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.floor_alias",
+      "role": "Feather Dash Section Editor",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.job_alias",
+      "role": "Feather Dash Section Editor",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.store_floor",
+      "role": "Feather Dash Section Reviewer",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.department",
+      "role": "Feather Dash Section Reviewer",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.section",
+      "role": "Feather Dash Section Reviewer",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.section_subcategory",
+      "role": "Feather Dash Section Reviewer",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.display_location",
+      "role": "Feather Dash Section Reviewer",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.job_assignment",
+      "role": "Feather Dash Section Reviewer",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.section_alias",
+      "role": "Feather Dash Section Reviewer",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.floor_alias",
+      "role": "Feather Dash Section Reviewer",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.job_alias",
+      "role": "Feather Dash Section Reviewer",
+      "can_read": true
+    }
+  ],
+  "reads": {
+    "version": 1,
+    "tables": [
+      "feather_dash.store_rollout"
+    ],
+    "operations": {
+      "me": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "stores": {
+        "policy": {
+          "kind": "person_scope",
+          "readRoles": [
+            "Feather Dash Reader",
+            "Feather Dash Section Editor",
+            "Feather Dash Section Reviewer"
+          ],
+          "actionRoles": []
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "report": {
+        "policy": {
+          "kind": "person_scope",
+          "readRoles": [
+            "Feather Dash Reader",
+            "Feather Dash Section Editor",
+            "Feather Dash Section Reviewer"
+          ],
+          "actionRoles": []
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "embed_session": {
+        "policy": {
+          "kind": "person_scope",
+          "readRoles": [
+            "Feather Dash Reader",
+            "Feather Dash Section Editor",
+            "Feather Dash Section Reviewer"
+          ],
+          "actionRoles": []
+        },
+        "authorization": {
+          "kind": "generic"
+        },
+        "outbound": true
+      }
+    }
+  },
+  "migrations": []
+}

@@ -1,35 +1,35 @@
 # ADR 0006: React + Hono + Postgres
 
-**Status:** Accepted · **Date:** 2026-07-21 · **Supersedes:** [0001](0001-stack-convex-react-vite.md), [0002](0002-storage-per-doctype-tables-plus-fieldindex-sidecar.md), [0003](0003-definitions-as-json-two-sources.md), [0004](0004-materialization-admin-triggered.md)
+**Status:** Accepted · **Date:** 2026-07-21 · **Corrected:** 30-Oct-2026 (#705) · **Supersedes:** ADRs 0001–0004, the Convex line (deleted 30-Oct-2026; see git history)
+
+> **30-Oct-2026 correction.** This text now folds in the 2026-07-22 update and
+> the terminology addendum (#59/#61) instead of carrying them as notes, and
+> drops the links to ADRs 0001–0004, which were deleted in #705 because
+> nothing current depends on them. Frappe wire-format compatibility, which the
+> original text counted as a gain, is no longer a goal.
 
 ## Context
 
-[ADR 0001](0001-stack-convex-react-vite.md) chose Convex, and ADRs 0002–0004 built
-storage, definition, and materialization decisions on top of it. That line of work
-reached capability 4 (sign-in) before a parallel experiment — a from-scratch
-implementation on React + Hono + Postgres, developed under the working name
-`frappe-clone` — overtook it.
+The first line of work chose Convex (ADR 0001) and built storage, definition
+and index-materialization decisions on top of it (ADRs 0002–0004). It reached
+sign-in before a parallel experiment, a from-scratch implementation on
+React + Hono + Postgres, overtook it.
 
-The parallel implementation is further along on every axis that matters:
+The parallel implementation was further along where it mattered:
 
-- **Frappe wire-format compatibility.** Sessions ride an HttpOnly `sid` cookie
-  alongside a Bearer token, `POST /api/method/login` and `/logout` are
-  Frappe-shaped, error bodies carry Frappe's `exc_type`, and the `frappe.client.*`
-  RPC namespace is implemented. Replicating Frappe means matching its wire
-  format, which is far more natural against a SQL backend.
-- **A real test story.** A 320-test server suite and a component suite run
-  against actual Postgres using per-test transaction rollback, extracted as
+- **A real test story.** The server and component suites run against actual
+  Postgres using per-test transaction rollback, extracted as
   [feather-testing-postgres](https://github.com/siraj-samsudeen/feather-testing-postgres).
-  This delivers the deterministic-testing requirement from ADR 0001 without
-  depending on a vendor-specific in-memory backend.
-- **Metadata-driven storage on SQL.** DocTypes map onto Postgres tables directly,
-  which is what Frappe does and what ADR 0002's per-DocType tables plus a
-  `fieldIndex` sidecar were approximating on a document store.
+  This gives deterministic tests without depending on a vendor-specific
+  in-memory backend.
+- **Metadata-driven storage on SQL.** Each Table maps onto a Postgres table
+  directly, which the Convex design could only approximate with per-table
+  documents plus a separate index table.
 
-The decisive point is that Featherbase's goal is to replicate Frappe's core ideas.
-Frappe is built on a relational database, and its metadata engine, query builder,
-and permission model all assume one. Reimplementing that on a document store meant
-paying translation costs on every feature.
+The project then aimed to replicate Frappe's core ideas, and Frappe is built on
+a relational database: its metadata engine, query builder and permission model
+all assume one. Reimplementing that on a document store meant paying
+translation costs on every feature.
 
 ## Decision
 
@@ -37,46 +37,35 @@ Featherbase is built on **React + Hono + Postgres**, as a pnpm workspace:
 
 | Workspace | Role |
 |---|---|
-| `apps/server` | Hono API — Table engine, REST/RPC API, auth |
-| `apps/web` | React Admin UI — metadata-driven grid, form, and detail views |
+| `apps/server` | Hono API: the Table engine, the action API, auth |
+| `apps/web` | React Admin UI: metadata-driven grid, form and detail views |
 | `packages/shared` | Types and contracts shared across server and web |
-| `packages/feather-testing-postgres` | SQL Sandbox test harness (also published standalone) |
+| `runtime-apps/` | Apps installed on an instance, such as Tasker |
 
-> *Update 2026-07-22:* `packages/feather-testing-postgres` was extracted to
-> [its own repo](https://github.com/siraj-samsudeen/feather-testing-postgres)
-> and is now consumed as a published npm dependency; it is no longer a
-> workspace package.
+The test harness `feather-testing-postgres` lives in
+[its own repository](https://github.com/siraj-samsudeen/feather-testing-postgres)
+and is consumed as a published npm dependency.
 
 The Convex implementation is retired. Its history is preserved on the
-`archive/convex-v1` tag, and its capability specs lived under
-`docs/archive/convex-capabilities/` (removed Oct 2026; see git history).
+`archive/convex-v1` tag.
 
 ## Consequences
 
-**Gained.** Direct Frappe parity on wire format and data model; a test approach
-that exercises the production code path against a real database; no vendor
-lock-in on the backend; SQL as an escape hatch for anything the metadata engine
-does not yet cover.
+**Gained.** A data model close to Frappe's relational one; a test approach that
+exercises the production code path against a real database; no vendor lock-in
+on the backend; SQL as an escape hatch for anything the metadata engine does
+not yet cover.
 
-**Lost.** Convex's built-in reactivity, which ADR 0001 valued for Glide-style
-computed data. Reactive/computed fields must now be designed explicitly rather
-than inherited from the platform, and durable workflow execution — ADR 0001's
-third requirement — is unsolved on this stack and remains open.
+**No longer a goal.** Frappe wire-format compatibility. Frappe's vocabulary
+(DocType, Doc, Field) has been replaced by Featherbase's own (Table, Row,
+Column and more), and the API is built around one action registry rather than
+Frappe's REST/RPC shape. [CONTEXT.md](../../CONTEXT.md) is the source of truth
+for the vocabulary.
 
-**Retained.** [ADR 0005](0005-naming-featherbase.md) (the name) is unaffected,
-as is the vision in [VISION.md](../VISION.md) and the research in
-`docs/research/` (removed Oct 2026; see git history), all of which are stack-independent.
+**Lost.** Convex's built-in reactivity and its durable workflow engine. Live
+updates, background and scheduled jobs, and approval workflows had to be built
+explicitly on Postgres instead of being inherited from the platform; their
+behaviour lives in `openspec/specs/`.
 
-## Addendum (terminology rename, #59/#61)
-
-The decision above — and its reasoning — stands unchanged; this note only
-flags that the vocabulary used to describe it has moved on. Frappe
-wire-format compatibility, which this ADR calls out as a deliberate,
-load-bearing property of the stack, is **no longer a goal**: DocType/Doc/
-Field and the rest of Frappe's naming have been replaced by Featherbase's
-own vocabulary (Table/Row/Column, and more), and the API surface is being
-redesigned around a unified action registry rather than Frappe's REST/RPC
-shape. This ADR is left as the historical record of *why React + Hono +
-Postgres was chosen*, which is unaffected by the rename. For the current
-vocabulary, the glossary is the source of truth, not this document — then
-`docs/GLOSSARY.md`, now [CONTEXT.md](../../CONTEXT.md).
+**Retained.** [ADR 0005](0005-naming-featherbase.md) (the name) and the vision
+in [VISION.md](../VISION.md) are unaffected.

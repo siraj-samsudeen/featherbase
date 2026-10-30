@@ -1,9 +1,22 @@
 # ADR 0007: App and database topology — one control DB, foreign data bound per DocType
 
-- **Status:** Proposed (2026-07-26)
+- **Status:** Accepted, implemented (proposed 2026-07-26) · **Corrected:** 30-Oct-2026 (#705)
 - **Context docs:** `docs/research/frappe-multi-app-and-multi-db.md` (removed Oct 2026; see git history)
-- **Specs that implement this:** `docs/specs/0001-external-data-sources.md`,
-  `docs/specs/0002-virtual-doctypes.md`
+- **Behaviour:** [`openspec/specs/external-data-sources/spec.md`](../../openspec/specs/external-data-sources/spec.md)
+  (the original `docs/specs/0001` and `0002` were converted into it and deleted)
+
+> **30-Oct-2026 correction.** Decisions 1–5 shipped as written; a DocType is
+> now called a Table, and a bound DocType a *connected table*. Two things
+> changed in the building:
+>
+> - **Decision 6.** Non-Postgres sources did not get a Virtual DocType
+>   controller protocol. Every source, Postgres included, goes through one
+>   storage-adapter seam with one driver per engine (Postgres, MySQL, DuckDB
+>   and a folder of CSV files), in `apps/server/src/sources/`.
+> - **Where the routing lives.** The "which client for this Table" resolver is
+>   not in `db.ts`. A Table whose metadata names a `data_source` is dispatched
+>   to its driver by `apps/server/src/sources/dispatch.ts`; the native path in
+>   `query.ts` and `document.ts` is the default and is otherwise untouched.
 
 ## Context
 
@@ -60,9 +73,11 @@ locking) degrade explicitly and are opt-in, not silently broken.
 DB and a foreign source is two transactions, ordered foreign-last, with the
 failure mode documented at the API. We do not implement 2PC.
 
-**6. Non-Postgres sources go through a Virtual DocType controller protocol**,
-mirroring Frappe's, so there is one well-trodden escape hatch instead of a
-family of ad-hoc integrations.
+**6. Every source goes through one storage-adapter seam, one driver per
+engine** (Postgres, MySQL, DuckDB, a folder of CSV files), so there is one
+well-trodden path instead of a family of ad-hoc integrations. *(Corrected
+30-Oct-2026: this originally named a Virtual DocType controller protocol,
+mirroring Frappe's, for non-Postgres sources only.)*
 
 ## Alternatives considered
 
@@ -92,10 +107,11 @@ tracks. Virtual DocTypes remain, but as the fallback for non-SQL sources.
 
 ## Consequences
 
-- `apps/server/src/db.ts` grows a resolver: "give me the client for this
-  DocType", defaulting to the control pool. Every call site that hardcodes the
-  `sql` import for *document data* (`document.ts`, `query.ts`) must route
-  through it; metadata call sites stay on the control pool deliberately.
+- A bound Table's reads and writes are dispatched to its source's driver
+  (`apps/server/src/sources/dispatch.ts`); every other Table takes the native
+  path in `document.ts` and `query.ts`, and metadata stays on the control pool
+  deliberately. *(Corrected 30-Oct-2026: this originally planned the resolver
+  inside `db.ts`.)*
 - `tableName()` stops being the single source of truth for where a DocType's
   rows live; it becomes the default when no binding exists.
 - Postgres RLS (PERM-004) protects control-DB tables only. Bound DocTypes are

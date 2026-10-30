@@ -57,7 +57,7 @@ client-apps/<client>/<app>/   one folder per client, one per app inside:
   history**. The history stays in the client's repository, and the import
   commit names the source commit. Go-live is a fresh install, so no instance
   upgrades from an earlier version. The first client app enters as
-  `jeyarama/dash` **0.1.0**, with no upgrade history.
+  `jeyarama/dash` **0.10.0**, keeping its version number but with no upgrade history (owner, 30-Oct-2026: the next change is 0.10.1).
 - This repository keeps its own history.
 
 ### 2. Each client has a small private instance repository
@@ -155,6 +155,11 @@ sets the target time and lists what leaves the required set.
 
 ## What this amends
 
+> *30-Oct-2026 (#705): these amendments are now written into the text of
+> ADRs 0010, 0011 and 0013, each with a dated correction note, so a reader no
+> longer has to reconcile the chain. The list below is kept as the record of
+> what changed.*
+
 - **ADR 0013:**
   - *"Nothing from a client's repository enters this public one"* becomes:
     client **apps** live here, while client data, secrets and instance details
@@ -175,7 +180,8 @@ sets the target time and lists what leaves the required set.
     note.
   - It is deleted once its content lives somewhere better; git keeps it.
   - `CLAUDE.md` is changed in this ADR's PR.
-  - A one-off pass over the existing ADRs follows as its own issue.
+  - A one-off pass over the existing ADRs follows as its own issue
+    ([#705](https://github.com/siraj-samsudeen/featherbase/issues/705)).
 
 ## Options considered
 
