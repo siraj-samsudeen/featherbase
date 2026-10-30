@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "platformVersion": "2026-10",
   "name": "feather_dash",
-  "title": "Feather Dash",
+  "title": "Feather Dash proof c",
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "feather_dash.store_rollout",
@@ -875,5 +875,12 @@
       }
     }
   },
-  "migrations": [{"id": "compact_sales_target_dive_v13", "fromVersion": "0.10.0", "toVersion": "0.10.1", "operations": []}]
+  "migrations": [
+    {
+      "id": "compact_sales_target_dive_v13",
+      "fromVersion": "0.10.0",
+      "toVersion": "0.10.1",
+      "operations": []
+    }
+  ]
 }
