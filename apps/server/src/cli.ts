@@ -45,6 +45,8 @@
 //                                     put environments' variable reports (one key, one run) side by
 //                                     side; exits 1 while a rule is broken or a required variable is
 //                                     set on some environments only
+//   cli repin-apps                    on a development or dev (staging) database, re-pin each installed app
+//                                     whose files changed under the same version and manifest; never on production
 //   cli install-app <name>            install an app this server ships (a registered app or a package on
 //                                     FEATHERBASE_APP_PATHS). Already installed: says so and succeeds; on a
 //                                     development database its files are re-pinned if they changed but its
@@ -604,6 +606,9 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
     case 'install-app':
       await cmdInstallApp(io, positional)
       break
+    case 'repin-apps':
+      await (await import('./deploy-instance')).repinChangedApps(io)
+      break
     case 'settings:set':
       await cmdSettingsSet(io, positional, flags)
       break
@@ -649,7 +654,7 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       await cmdConsole(io)
       break
     default:
-      io.out('usage: cli <migrate|seed|install-app|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|leavers:check|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
+      io.out('usage: cli <migrate|seed|install-app|repin-apps|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|leavers:check|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
       return cmd ? 1 : 0
   }
   return 0

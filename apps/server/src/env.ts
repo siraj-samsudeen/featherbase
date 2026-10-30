@@ -151,7 +151,8 @@ export const VARIABLES = [
   // ---- Break-glass and tooling
   { name: 'DISABLE_DATABASE_ENVIRONMENT_CHECK', secret: false, required: 'optional',
     purpose: '`1` skips the check that the database was stamped by this environment. Break-glass only' },
-  { name: 'FEATHERBASE_APP_PATHS', secret: false, required: 'optional', default: '`[]`', purpose: 'JSON array of extra app package directories to discover at boot' },
+  { name: 'FEATHERBASE_APP_PATHS', secret: false, required: 'optional', default: '`[]`', purpose: 'JSON array of extra app package directories to discover at boot; `<folder>/*` means every folder in it' },
+  { name: 'FEATHERBASE_INSTANCE', secret: false, required: 'optional', purpose: 'the client instance this image was built for (`<client>/<instance>`), as a build argument and a variable. Set, the pre-deploy step installs or upgrades its apps and applies its settings. See [A client instance](#a-client-instance)' },
   { name: 'JOB_POLL_MS', secret: false, required: 'optional', default: '`500`', purpose: 'background worker poll interval' },
   { name: 'SERVER_URL', secret: false, required: 'optional', default: '`http://localhost:8000`', purpose: 'the server `pnpm smoke` probes' },
   // ---- Sales target (Feather Dash)

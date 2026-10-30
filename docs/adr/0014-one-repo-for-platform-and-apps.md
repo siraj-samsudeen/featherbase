@@ -117,6 +117,12 @@ downstream copy gets them, and their improvements, through its first sync.
   unavailable there. Dev and prod therefore follow app releases, not `main`.
 - A CI check fails a release PR whose app version is not greater than `main`'s.
 
+> *30-Oct-2026 (#703): corrected by the owner. Prod follows a release branch,
+> `release/<client>-<instance>-prod`. Dev follows `main`: when an app's files
+> change under the same version and manifest, its deploy re-pins them
+> automatically. Production never does. See "A client instance" in
+> `docs/DEPLOY.md`.*
+
 ### 5. CI stays lean
 
 Many agents open many small PRs, so the required checks are only the fast ones

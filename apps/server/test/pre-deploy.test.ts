@@ -49,6 +49,26 @@ describe('the deploy config runs one pre-deploy command', () => {
   }, 60_000)
 })
 
+describe('pre-deploy for a client instance', () => {
+  it('refuses a development server before the release changes anything', async () => {
+    vi.stubEnv('FEATHERBASE_INSTANCE', 'jeyarama/dash')
+    vi.stubEnv('FEATHERBASE_ENV', 'development')
+    const r = await runMain(main, [])
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain('use pnpm dev')
+    expect(r.stdout).not.toContain('preflight:')
+  })
+
+  it('refuses an image that holds no such instance before the release changes anything', async () => {
+    vi.stubEnv('FEATHERBASE_INSTANCE', 'acme/not_here')
+    vi.stubEnv('FEATHERBASE_ENV', 'staging')
+    const r = await runMain(main, [])
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain('holds no instance "acme/not_here"')
+    expect(r.stdout).not.toContain('preflight:')
+  })
+})
+
 describe('pre-deploy', () => {
   test('with preview sign-in configured it releases, then creates the preview person and the demo Table', async () => {
     configurePreview()

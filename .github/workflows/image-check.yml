@@ -10,7 +10,9 @@
 #   - the platform image runs the release and passes `cli boot-check`
 #     against a throwaway Postgres;
 #   - a throwaway client image FROM it, adding the `other` fixture app with
-#     FEATHERBASE_APP_PATHS, discovers `other`.
+#     FEATHERBASE_APP_PATHS, discovers `other`;
+#   - the image for a client instance holds its apps and folder, and its
+#     pre-deploy installs them and applies the settings, twice over.
 #
 # Scope is limited by `paths:` to the build inputs: the Dockerfile, the
 # lockfiles and manifests, the image workflows and this check's own files.
@@ -28,6 +30,9 @@ on:
       - .github/workflows/publish-image.yml
       - .github/workflows/image-check.yml
       - .github/image-check/**
+      - tools/build-instance-apps.mjs
+      - tools/dev.mjs
+      - client-apps/*/instances/**
       - test-apps/other/**
 
 permissions:
@@ -135,3 +140,19 @@ jobs:
           docker buildx build --builder default --load --build-arg PLATFORM_IMAGE=featherbase-platform:ci -t featherbase-client:ci "$context"
           docker run --rm --network host -e FEATHERBASE_ENV -e JWT_SECRET -e INSTANCE_ADDRESSES -e DATABASE_URL -e EXPECT_APPS=other \
             featherbase-client:ci pnpm --filter server exec tsx /app/discover-check.mts
+
+      - name: The image for a client instance deploys its apps and settings
+        run: |
+          docker buildx build --builder default --load -f apps/server/Dockerfile --build-arg FEATHERBASE_INSTANCE=jeyarama/dash -t featherbase-instance:ci .
+          docker run --rm featherbase-instance:ci sh -c 'test -e /app/client-apps/jeyarama/instances/dash/instance-settings.json && ls -d /app/instance-apps/feather_dash-* /app/instance-apps/tasker-*'
+          psql_new() { docker run --rm --network host postgres:17 psql "postgres://postgres:postgres@127.0.0.1:5432/postgres" -c "create database instance_check"; }
+          psql_new
+          # Made-up values for a database created and destroyed with this job.
+          run() { docker run --rm --network host -e FEATHERBASE_ENV -e JWT_SECRET -e INSTANCE_ADDRESSES \
+            -e DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/instance_check \
+            -e GOOGLE_CLIENT_SECRET=made-up -e DIVE_ID=made-up -e DIVE_VERSION=1 -e SERVICE_ACCOUNT=made-up \
+            featherbase-instance:ci pnpm --filter server pre-deploy; }
+          run | tee first.log
+          grep -q 'installed feather_dash' first.log
+          run | tee second.log
+          grep -q 'settings:apply: nothing changed' second.log
