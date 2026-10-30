@@ -36,7 +36,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   test('PKG-R1: reserved names fail discovery; failed installation leaves no Tables or activation', async ({ admin }) => {
     const directory = await mkdtemp(resolve('test/.runtime-package-'))
     try {
-      await cp(resolve('../..', 'runtime-apps/other'), directory, { recursive: true })
+      await cp(resolve('../..', 'test-apps/other'), directory, { recursive: true })
       const file = resolve(directory, 'featherbase.json')
       const manifest = JSON.parse(await readFile(file, 'utf8'))
       for (const name of ['featherbase', 'api', 'assets']) {
@@ -58,7 +58,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('PKG-R2: customization cannot change identity, storage, binding or hook dispatch', async ({ admin }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     for (const property of ['name', 'owner_app', 'physical_schema', 'physical_relation', 'data_source', 'row_key', 'columns']) {
       const row = { row_id: `override-${property}`, table_name: 'other.task', column_name: null, property, value: 'tasker' }
@@ -76,7 +76,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('PKG-R3: no database role but the owner can read app relations outside the availability-aware API', async ({ admin }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     for (const enabled of [true, false]) {
       await admin.post('/api/set_app_enabled', { name: 'other', enabled })
@@ -85,7 +85,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('PKG-R3: disable waits for the post-commit tail, including a nested save', async ({ admin }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     let entered!: () => void
     let release!: () => void
@@ -121,7 +121,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('PKG-R2 PKG-H1: two real packages isolate IDs, references, rules and ordinary-user grants', async ({ admin, createUser }) => {
-    expect(await discoverPackages(['tasker', 'other'].map(name => resolve('../..', 'runtime-apps', name)))).toEqual([])
+    expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'tasker' })
     await admin.post('/api/install_app', { name: 'other' })
     const member = await createUser({ email: 'two-packages@example.com', roles: [] })
@@ -158,7 +158,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   test('PKG-R3: equivalent shared-table grants remain independent across packages', async ({ admin, createUser }) => {
     const other = await mkdtemp(resolve('test/.runtime-shared-grant-'))
     try {
-      await cp(resolve('../..', 'runtime-apps/other'), other, { recursive: true })
+      await cp(resolve('../..', 'test-apps/other'), other, { recursive: true })
       const file = resolve(other, 'featherbase.json')
       const manifest = JSON.parse(await readFile(file, 'utf8'))
       manifest.permissions.push(
@@ -167,7 +167,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
         { table: 'Comment', role: 'All', tier: 'restricted', can_read: true },
       )
       await writeFile(file, JSON.stringify(manifest))
-      expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker'), other])).toEqual([])
+      expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), other])).toEqual([])
       await admin.post('/api/install_app', { name: 'tasker' })
       await admin.post('/api/install_app', { name: 'other' })
       // Each package owns its own declaration of the shared grant.
@@ -199,7 +199,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('disable rejects stale writes, preserves rows, and enable wires validation once', async ({ admin }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     const row = await admin.post<Record<string, unknown>>('/api/save_row', {
       table: 'other.task', row: { row_id: 'same', quantity: 37 },
@@ -221,7 +221,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('PKG-R4: ordinary member catalog and client root are separate from management and server files', async ({ api, admin, createUser }) => {
-    expect(await discoverPackages([resolve('../..', 'runtime-apps/other')])).toEqual([])
+    expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
     for (const [request, location] of [
       ['/other', '/other/'],
@@ -291,7 +291,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('PKG-J2: restart without compatible code fails closed, restoring code preserves data', async ({ admin }) => {
-    const source = resolve('../..', 'runtime-apps/other')
+    const source = resolve('../..', 'test-apps/other')
     await discoverPackages([source])
     await admin.post('/api/install_app', { name: 'other' })
     await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'survivor', quantity: 19 } })
@@ -325,7 +325,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   // #650 (design D3): the shared top bar replaced the runtime shell's header
   // and its app switcher; the bar names only the app it stands on.
   test("PKG-R4: an app's entry document carries the shared bar's host, named by the app's title", async ({ admin }) => {
-    expect(await discoverPackages(['tasker', 'other'].map(name => resolve('../..', 'runtime-apps', name)))).toEqual([])
+    expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'tasker' })
     await admin.post('/api/install_app', { name: 'other' })
 
@@ -352,12 +352,12 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   test('PKG-R4: runtime catalog and document omit an unauthorized app', async ({ admin, createUser }) => {
     const restricted = await mkdtemp(resolve('test/.runtime-restricted-shell-'))
     try {
-      await cp(resolve('../..', 'runtime-apps/other'), restricted, { recursive: true })
+      await cp(resolve('../..', 'test-apps/other'), restricted, { recursive: true })
       const file = resolve(restricted, 'featherbase.json')
       const manifest = JSON.parse(await readFile(file, 'utf8'))
       manifest.permissions = manifest.permissions.map((permission: Record<string, unknown>) => ({ ...permission, role: 'System Manager' }))
       await writeFile(file, JSON.stringify(manifest))
-      await discoverPackages([resolve('../..', 'runtime-apps/tasker'), restricted])
+      await discoverPackages([resolve('../..', 'example-apps/tasker'), restricted])
       await admin.post('/api/install_app', { name: 'tasker' })
       await admin.post('/api/install_app', { name: 'other' })
       const member = await createUser({ email: 'runtime-shell-no-manager@example.com', roles: [] })
@@ -374,7 +374,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   // #437: a new version may withdraw a grant its installed version declared.
   // Two synthetic copies of Tasker: the installed one also lets everyone read
   // Person; the next version, one migration on, does not.
-  const currentTasker = resolve('../..', 'runtime-apps/tasker')
+  const currentTasker = resolve('../..', 'example-apps/tasker')
   const everyoneReadsPerson = () => sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`
   async function taskerGrants() {
     const [app] = await sql`select perms from installed_app where name = 'tasker'`
@@ -435,7 +435,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
 describe('An app states the platform version it was built for', () => {
   async function appBuiltFor(manifestFields: Record<string, unknown>, serverVersion: string, serverLine = `export const platformVersion = '${serverVersion}'`) {
     const directory = await mkdtemp(resolve('test/.platform-version-'))
-    await cp(resolve('../..', 'runtime-apps/other'), directory, { recursive: true })
+    await cp(resolve('../..', 'test-apps/other'), directory, { recursive: true })
     const file = resolve(directory, 'featherbase.json')
     const { platformVersion: _builtFor, ...manifest } = JSON.parse(await readFile(file, 'utf8'))
     await writeFile(file, JSON.stringify({ ...manifest, ...manifestFields }))
@@ -483,7 +483,7 @@ describe('An app states the platform version it was built for', () => {
 
 describe('Removing an app isn’t offered yet', () => {
   test('removing an app that has its own code is refused, pointing to disable, and nothing is removed', async ({ admin }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'keep-me', quantity: 43 } })
     await expect(admin.post('/api/uninstall_app', { name: 'other' }))
@@ -496,7 +496,7 @@ describe('Removing an app isn’t offered yet', () => {
 
 describe("Dashboards reach an app's data only while it is on", () => {
   test('while the app is on, a member who can read its table gets a count and a chart, and is refused once that read is taken away', async ({ admin, createUser }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'counted-1', quantity: 5 } })
     await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'counted-2', quantity: 5 } })
@@ -512,7 +512,7 @@ describe("Dashboards reach an app's data only while it is on", () => {
   })
 
   test('a generic dashboard count or chart over a turned-off app’s table is refused, and its rows stay', async ({ admin }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'counted', quantity: 37 } })
     await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
@@ -524,7 +524,7 @@ describe("Dashboards reach an app's data only while it is on", () => {
 
 describe('Only administrators manage apps', () => {
   test('an ordinary member can neither install, turn off, nor preview an upgrade of an app', async ({ admin, createUser }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     const member = await createUser({ email: 'not-a-manager@example.com', roles: ['All'] })
     await expect(member.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({ status: 403 })
     expect(await sql`select name from installed_app where name = 'other'`).toEqual([])
@@ -546,7 +546,7 @@ describe('An app owns its own screen', () => {
   test('a built Tasker staged after core loads opens in the host shell with no core rebuild or Tasker route', async ({ admin, createUser }) => {
     const routesBefore = app.routes.map((r) => `${r.method} ${r.path}`)
     expect(routesBefore.filter((r) => /tasker/i.test(r))).toEqual([])
-    const source = resolve('../..', 'runtime-apps/tasker')
+    const source = resolve('../..', 'example-apps/tasker')
     const staged = join(await mkdtemp(resolve('test/.runtime-delivered-')), 'package')
     try {
       const shipped = JSON.parse(await readFile(resolve(source, 'package.json'), 'utf8')) as { files: string[] }
@@ -582,7 +582,7 @@ describe('An app owns its own screen', () => {
 describe('An app declares its phone tabs', () => {
   async function otherWith(fields: Record<string, unknown>) {
     const directory = await mkdtemp(resolve('test/.app-tabs-'))
-    await cp(resolve('../..', 'runtime-apps/other'), directory, { recursive: true })
+    await cp(resolve('../..', 'test-apps/other'), directory, { recursive: true })
     const file = resolve(directory, 'featherbase.json')
     await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), ...fields }))
     return directory
@@ -635,7 +635,7 @@ describe('An app declares its phone tabs', () => {
   })
 
   test('an app that declares no tabs gets none', async ({ admin }) => {
-    expect(await discoverPackages([resolve('../..', 'runtime-apps/other')])).toEqual([])
+    expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
     expect(await admin.get('/api/app_catalog')).toEqual([{ name: 'other', title: 'Other tasks', href: '/other/' }])
   })

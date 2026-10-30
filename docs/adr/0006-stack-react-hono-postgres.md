@@ -40,7 +40,7 @@ Featherbase is built on **React + Hono + Postgres**, as a pnpm workspace:
 | `apps/server` | Hono API: the Table engine, the action API, auth |
 | `apps/web` | React Admin UI: metadata-driven grid, form and detail views |
 | `packages/shared` | Types and contracts shared across server and web |
-| `runtime-apps/` | Apps installed on an instance, such as Tasker |
+| `example-apps/`, `client-apps/` | Apps installed on an instance, such as Tasker (ADR 0014) |
 
 The test harness `feather-testing-postgres` lives in
 [its own repository](https://github.com/siraj-samsudeen/feather-testing-postgres)

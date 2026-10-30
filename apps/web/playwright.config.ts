@@ -141,10 +141,10 @@ export default defineConfig({
             PORT: String(apiPort),
             DATABASE_URL: e2eDatabaseUrl(),
             FEATHERBASE_APP_PATHS: JSON.stringify([
-              resolve('../../runtime-apps/tasker'), resolve('../../runtime-apps/other'),
+              resolve('../../example-apps/tasker'), resolve('../../test-apps/other'),
               // #642: an app that declares a top-bar picker, and the app that
               // gives its readers their places (top-bar-picker.spec.ts).
-              resolve('../../runtime-apps/fixtures/bar-proof'), resolve('../../runtime-apps/fixtures/place-roster'),
+              resolve('../../test-apps/fixtures/bar-proof'), resolve('../../test-apps/fixtures/place-roster'),
             ]),
             // FEATHERBASE_ENV rather than NODE_ENV: the migrator must stamp this
             // database for the 'test' environment (which is what lets the reset

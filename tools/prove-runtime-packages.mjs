@@ -12,7 +12,7 @@ import { seedTasker, TASKER_SCENARIOS } from './seed-tasker-development.mjs'
 import { proveTaskerAcceptance } from './prove-tasker-acceptance.mjs'
 
 const root = resolve(import.meta.dirname, '..')
-const taskerPackage = JSON.parse(await readFile(resolve(root, 'runtime-apps/tasker/package.json'), 'utf8'))
+const taskerPackage = JSON.parse(await readFile(resolve(root, 'example-apps/tasker/package.json'), 'utf8'))
 const requireWeb = createRequire(resolve(root, 'apps/web/package.json'))
 const { chromium, expect } = requireWeb('@playwright/test')
 const postgres = requireWeb('postgres')
@@ -31,7 +31,7 @@ async function collectContext(context) {
   if (!coverageDirectory) return
   await mkdir(coverageDirectory, { recursive: true })
   await context.exposeBinding('__saveTaskerCoverage', async (_source, json) => {
-    const map = Object.fromEntries(Object.entries(JSON.parse(json)).filter(([file]) => file.includes('/runtime-apps/tasker/')))
+    const map = Object.fromEntries(Object.entries(JSON.parse(json)).filter(([file]) => file.includes('/example-apps/tasker/')))
     if (!Object.keys(map).length) return
     const write = writeFile(resolve(coverageDirectory, `${randomUUID()}.json`), JSON.stringify(map))
     coverageWrites.push(write)
@@ -105,10 +105,10 @@ console.log(`CORE FROZEN ${before}`)
 // tarballs, not source directories or a workspace module import.
 run('pnpm', ['apps:prepare'])
 const paths = []
-for (const name of ['tasker', 'other', 'action-proof']) {
+for (const [name, folder] of [['tasker', 'example-apps/tasker'], ['other', 'test-apps/other'], ['action-proof', 'test-apps/action-proof']]) {
   const destination = resolve(output, name)
   await mkdir(destination)
-  run('npm', ['pack', '--pack-destination', destination], resolve(root, 'runtime-apps', name))
+  run('npm', ['pack', '--pack-destination', destination], resolve(root, folder))
   const archive = (await readdir(destination)).find(file => file.endsWith('.tgz'))
   run('tar', ['-xzf', resolve(destination, archive), '-C', destination])
   paths.push(resolve(destination, 'package'))
@@ -411,7 +411,7 @@ try {
   run('pnpm', ['--filter', 'server', 'e2e:reset'])
   run('pnpm', ['--filter', 'server', 'migrate'])
   const v1 = resolve(output, 'preserved-tasker-v1')
-  await cp(resolve(root, 'runtime-apps/fixtures/tasker-v1'), v1, { recursive: true })
+  await cp(resolve(root, 'test-apps/fixtures/tasker-v1'), v1, { recursive: true })
   const v2 = paths[0]
   const v1Digest = await digest(v1)
   const upgradePaths = [v1, v2, ...paths.slice(1)]

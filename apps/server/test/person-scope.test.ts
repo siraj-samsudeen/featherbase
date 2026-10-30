@@ -1,7 +1,7 @@
 // #559 (design E1): the `person_scope` operation policy. An app declares the
 // provider that fills a person's scope; the platform calls it fresh on every
 // request, validates and freezes the answer, and fails closed. Fixtures:
-// runtime-apps/scope-proof consumes the scope, runtime-apps/fixtures/place-roster
+// test-apps/scope-proof consumes the scope, test-apps/fixtures/place-roster
 // provides it from its own roster Table.
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -15,8 +15,8 @@ import { expectApiError, tableRef } from './fixtures'
 import { newIdentifierId } from '../src/person-identifiers'
 import { runHealthChecks } from '../src/instance-health'
 
-const consumer = resolve('../..', 'runtime-apps/scope-proof')
-const provider = resolve('../..', 'runtime-apps/fixtures/place-roster')
+const consumer = resolve('../..', 'test-apps/scope-proof')
+const provider = resolve('../..', 'test-apps/fixtures/place-roster')
 const read = '/api/app_reads/scopeproof/'
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
   ...init, headers: { 'X-Featherbase-App-Version': 'scopeproof@1.0.0', ...init?.headers },

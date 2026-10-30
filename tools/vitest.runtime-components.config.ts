@@ -10,7 +10,7 @@ export default {
       enabled: true,
       provider: 'istanbul',
       allowExternal: true,
-      include: ['**/runtime-apps/tasker/src/**/*.{ts,tsx}'],
+      include: ['**/example-apps/tasker/src/**/*.{ts,tsx}'],
       exclude: ['**/*.test.ts'],
       reportsDirectory: '../../coverage/tasker/components',
       reporter: ['text', 'json', 'json-summary'],

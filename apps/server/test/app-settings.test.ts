@@ -2,7 +2,7 @@
 // live in the App Setting security Table (set through the instance settings
 // file); secrets stay deployment variables. Handlers get only what was
 // declared, and a missing required value is "not set up yet", never a crash.
-// Fixture: runtime-apps/fixtures/setup-proof-v1.
+// Fixture: test-apps/fixtures/setup-proof-v1.
 import { resolve } from 'node:path'
 import { inspect } from 'node:util'
 import { pathToFileURL } from 'node:url'
@@ -16,7 +16,7 @@ import { expectApiError } from './fixtures'
 import { applyInstanceSettings, exportInstanceSettings } from '../src/instance-settings'
 import { WITHHELD_ANSWER, WITHHELD_MESSAGE, keptSecrets, withSecretsKept } from '../src/app-settings'
 
-const fixture = resolve('../..', 'runtime-apps/fixtures/setup-proof-v1')
+const fixture = resolve('../..', 'test-apps/fixtures/setup-proof-v1')
 const read = '/api/app_reads/setupproof/'
 const TOKEN = 'fixture-token-6f1c2a'
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {

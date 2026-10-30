@@ -1,9 +1,9 @@
 // #642 (design E8): an app's declared bar control. On the app's address the
 // shared top bar draws a picker after the app's name, filled from the app's
 // own read under the reader's scope, and keeps the choice in the address.
-// The fixture `runtime-apps/fixtures/bar-proof` declares
+// The fixture `test-apps/fixtures/bar-proof` declares
 // `{ picker: 'Store', options: 'stores', sets: 'store' }`; its `stores` read
-// answers the reader's places from `runtime-apps/fixtures/place-roster`.
+// answers the reader's places from `test-apps/fixtures/place-roster`.
 // Widths, pixels and real focus rings are in e2e/top-bar-picker.spec.ts.
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -17,8 +17,8 @@ import { discoverPackages } from 'server/src/runtime-packages'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { test, expect, renderApp } from './pg-test'
 
-const BAR_PROOF = resolve('../..', 'runtime-apps/fixtures/bar-proof')
-const ROSTER = resolve('../..', 'runtime-apps/fixtures/place-roster')
+const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
+const ROSTER = resolve('../..', 'test-apps/fixtures/place-roster')
 
 afterEach(() => {
   config.instanceAddresses = null

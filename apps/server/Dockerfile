@@ -34,13 +34,13 @@ RUN pnpm --filter web build
 
 # ---- Stage 2: build independently packaged runtime apps --------------------
 FROM node:22-slim AS tasker-build
-WORKDIR /app/runtime-apps/tasker
-COPY runtime-apps/tasker/package.json runtime-apps/tasker/package-lock.json ./
+WORKDIR /app/example-apps/tasker
+COPY example-apps/tasker/package.json example-apps/tasker/package-lock.json ./
 RUN npm ci --ignore-scripts
-COPY runtime-apps/tasker/featherbase.json runtime-apps/tasker/index.html runtime-apps/tasker/tsconfig.json runtime-apps/tasker/vite.config.ts ./
-COPY runtime-apps/tasker/src src
-COPY runtime-apps/tasker/public public
-COPY runtime-apps/tasker/scripts/build-server.mjs scripts/build-server.mjs
+COPY example-apps/tasker/featherbase.json example-apps/tasker/index.html example-apps/tasker/tsconfig.json example-apps/tasker/vite.config.ts ./
+COPY example-apps/tasker/src src
+COPY example-apps/tasker/public public
+COPY example-apps/tasker/scripts/build-server.mjs scripts/build-server.mjs
 RUN npm run build
 
 # ---- Stage 3: the platform image -------------------------------------------
@@ -80,10 +80,10 @@ CMD ["pnpm", "--filter", "server", "start"]
 # The platform image plus Tasker, for this repository's Railway services until
 # #563 retires Tasker. NODE_ENV, EXPOSE and CMD come from the platform stage.
 FROM platform
-COPY --from=tasker-build /app/runtime-apps/tasker/package.json runtime-apps/tasker/package.json
-COPY --from=tasker-build /app/runtime-apps/tasker/featherbase.json runtime-apps/tasker/featherbase.json
-COPY --from=tasker-build /app/runtime-apps/tasker/dist runtime-apps/tasker/dist
+COPY --from=tasker-build /app/example-apps/tasker/package.json example-apps/tasker/package.json
+COPY --from=tasker-build /app/example-apps/tasker/featherbase.json example-apps/tasker/featherbase.json
+COPY --from=tasker-build /app/example-apps/tasker/dist example-apps/tasker/dist
 
 # When a later Tasker version ships, the version installed on the instances
 # is built beside it and listed here too, so an upgrade can find it.
-ENV FEATHERBASE_APP_PATHS='["/app/runtime-apps/tasker"]'
+ENV FEATHERBASE_APP_PATHS='["/app/example-apps/tasker"]'

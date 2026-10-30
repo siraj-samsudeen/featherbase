@@ -93,7 +93,7 @@ jobs:
             reason="PR carries the run-e2e label"; e2e=true
           else
             matched=$(git diff --name-only HEAD^1 HEAD | grep -E \
-              '^(apps/web/|packages/|runtime-apps/|client-apps/|tools/(prove-runtime-packages|prove-tasker-acceptance|collect-runtime-proof-coverage)\.mjs$|tools/vitest\.runtime-components\.config\.ts$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/test\.yml$)' || true)
+              '^(apps/web/|packages/|example-apps/|test-apps/|client-apps/|tools/(prove-runtime-packages|prove-tasker-acceptance|collect-runtime-proof-coverage)\.mjs$|tools/vitest\.runtime-components\.config\.ts$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/test\.yml$)' || true)
             if [ -n "$matched" ]; then
               reason="PR touches the e2e surface: $(echo "$matched" | head -5 | tr '\n' ' ')"; e2e=true
             else
@@ -156,6 +156,12 @@ jobs:
       # tools/check-vocabulary.mjs.
       - name: Check for retired vocabulary
         run: pnpm check:vocabulary
+
+      # The platform never imports app code (ADR 0011, ADR 0014): source under
+      # apps/server/src, apps/web/src and packages/*/src must not load anything
+      # from example-apps/, client-apps/ or test-apps/. Tests may.
+      - name: Platform source imports no app code
+        run: pnpm check:platform-imports
 
       # publish-image.yml labels the platform image with these versions.
       - name: Platform versions read from the code
@@ -366,7 +372,7 @@ jobs:
         run: |
           pnpm --filter shared test:coverage
           pnpm --filter web test:coverage
-          npm run test:coverage --prefix runtime-apps/tasker
+          npm run test:coverage --prefix example-apps/tasker
 
       - name: Collect runtime component coverage against the real server
         run: pnpm --filter web exec vitest run --config ../../tools/vitest.runtime-components.config.ts
@@ -556,7 +562,7 @@ jobs:
       - name: Collect runtime HTTP coverage
         run: >-
           pnpm --filter server exec vitest run
-          --config ../../runtime-apps/tasker/vitest.integration.config.ts
+          --config ../../example-apps/tasker/vitest.integration.config.ts
 
       # The development seed checks PostgreSQL's actual server address.
       # Docker port forwarding is not loopback from PostgreSQL's perspective.
@@ -656,14 +662,14 @@ jobs:
           path: coverage/tasker
 
       - name: Install runtime coverage reporter
-        run: npm ci --prefix runtime-apps/tasker --no-audit --no-fund
+        run: npm ci --prefix example-apps/tasker --no-audit --no-fund
 
       - name: Merge component and browser coverage
         run: pnpm --filter web coverage:merged
 
       - name: Merge runtime unit, HTTP, browser and packaged coverage
         run: >-
-          npm run coverage:merged --prefix runtime-apps/tasker --
+          npm run coverage:merged --prefix example-apps/tasker --
           --browser-dir "$PWD/apps/web/.nyc_output"
           "$PWD"/coverage/tasker/components/coverage-final.json
           "$PWD"/coverage/tasker/integration/*.json

@@ -11,12 +11,14 @@
 >   client's values; a **client app**, built for one client, may (ADR 0013).
 > - Apps live in this repository, beside the platform: product apps in
 >   `example-apps/`, client apps in `client-apps/<client>/<app>/`. Each client's
->   instances live in a small private instance repository (ADR 0014). As of
->   this date the move is in progress: the apps still sit in `runtime-apps/`
->   and the first client app is still in the client's repository.
-> - The one-way rule is no longer kept by a repository boundary. Today a test
->   pins it (`apps/server/test/platform-names-no-app.test.ts`); ADR 0014 adds a
->   lint rule that stops the platform importing from either app folder.
+>   instances live in a small private instance repository (ADR 0014). The
+>   small packages the tests install to prove one feature each live in
+>   `test-apps/` (#703).
+> - The one-way rule is no longer kept by a repository boundary. Two checks
+>   keep it: `pnpm check:platform-imports` fails when platform source imports
+>   anything from `example-apps/`, `client-apps/` or `test-apps/` (#703), and
+>   `apps/server/test/platform-names-no-app.test.ts` pins that platform code
+>   names no app.
 
 ## Context
 

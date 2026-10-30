@@ -513,7 +513,7 @@ describe('an address that opens an installed app package', () => {
   test('its sign-in page carries the package title, and a person who can open the app lands on its root', async ({ api, admin }) => {
     const { discoverPackages } = await import('../src/runtime-packages')
     const { resolve } = await import('node:path')
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     const OTHER = 'https://other.example.com'
     config.instanceAddresses = parseInstanceAddresses(
@@ -540,7 +540,7 @@ describe('an address whose app is installed under the interim name', () => {
   async function installDashApp(admin: TestClient) {
     const { discoverPackages } = await import('../src/runtime-packages')
     const { resolve } = await import('node:path')
-    expect(await discoverPackages([resolve('../..', 'runtime-apps/fixtures/dash-stand-in')])).toEqual([])
+    expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/dash-stand-in')])).toEqual([])
     await admin.post('/api/install_app', { name: 'feather_dash' })
   }
 

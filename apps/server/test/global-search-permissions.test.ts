@@ -291,7 +291,7 @@ describe('search shows a handful of best matches, not everything', () => {
 // #648: one turned-off app used to fail the whole search with 403, so
 // Records vanished from Admin's search bar for everyone.
 describe('global search while an app is unavailable', () => {
-  const ROSTER = resolve('../..', 'runtime-apps/fixtures/place-roster')
+  const ROSTER = resolve('../..', 'test-apps/fixtures/place-roster')
   const tables = async (client: TestClient) =>
     (await search(client, 'gs-648')).results.map((r) => r.table).sort()
 

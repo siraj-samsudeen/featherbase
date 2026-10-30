@@ -2,8 +2,8 @@
 // Binding row says which of the instance's roles carry one of the app's
 // roles; a System Manager edits them in Admin, and the app's `roleDefaults`
 // suggestions are written once, at install. The role check honours bindings,
-// fresh on every request. Fixtures: runtime-apps/fixtures/setup-proof-v1 and
-// -v2, with runtime-apps/fixtures/place-roster providing scope.
+// fresh on every request. Fixtures: test-apps/fixtures/setup-proof-v1 and
+// -v2, with test-apps/fixtures/place-roster providing scope.
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { makeClient, type CreateUserFn, type TestClient } from 'feather-testing-postgres'
@@ -17,9 +17,9 @@ import { suspendRuntimeApp, uninstallApp } from '../src/apps'
 import { seedRoleBindings } from '../src/app-role-bindings'
 import { expectApiError } from './fixtures'
 
-const v1 = resolve('../..', 'runtime-apps/fixtures/setup-proof-v1')
-const v2 = resolve('../..', 'runtime-apps/fixtures/setup-proof-v2')
-const roster = resolve('../..', 'runtime-apps/fixtures/place-roster')
+const v1 = resolve('../..', 'test-apps/fixtures/setup-proof-v1')
+const v2 = resolve('../..', 'test-apps/fixtures/setup-proof-v2')
+const roster = resolve('../..', 'test-apps/fixtures/place-roster')
 const read = '/api/app_reads/setupproof/'
 const pinned = (client: TestClient, version = '1.0.0') => makeClient({ request: (path, init) => client.fetch(String(path), {
   ...init, headers: { 'X-Featherbase-App-Version': `setupproof@${version}`, ...init?.headers },

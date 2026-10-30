@@ -8,8 +8,8 @@ import { resolve } from 'node:path'
 import { describe, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
-import { peopleWithTaskResponsibility, TaskManagementPage } from '../../../runtime-apps/tasker/src/TaskManagement'
-import { Markdown } from '../../../runtime-apps/tasker/src/Markdown'
+import { peopleWithTaskResponsibility, TaskManagementPage } from '../../../example-apps/tasker/src/TaskManagement'
+import { Markdown } from '../../../example-apps/tasker/src/Markdown'
 import { setSession } from '../src/lib/api'
 import { test as base, expect } from './pg-test'
 import { taskerClient } from '../../server/test/tasker-client'
@@ -29,7 +29,7 @@ function renderTasker(as: TestClient) {
 }
 
 async function install() {
-  expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker')])).toEqual([])
+  expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
   if (await isInstalled(APP)) await uninstallApp(APP)
   await installApp(APP)
 }

@@ -14,7 +14,7 @@ const TABLE_PATH = encodeURIComponent(TABLE)
 beforeEach(clearSession)
 
 async function installActionProof(admin: { post: (path: string, body: unknown) => Promise<unknown> }) {
-  await discoverPackages([resolve('../..', 'runtime-apps/action-proof')])
+  await discoverPackages([resolve('../..', 'test-apps/action-proof')])
   await admin.post('/api/install_app', { name: 'actionproof' })
 }
 

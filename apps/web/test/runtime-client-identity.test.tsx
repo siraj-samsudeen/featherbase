@@ -37,7 +37,7 @@ test('public credential exchanges and logout do not bootstrap with an expired sa
 })
 
 test('generic core form can read and save a versioned runtime row', async ({ admin }) => {
-  await discoverPackages([resolve('../..', 'runtime-apps/tasker')])
+  await discoverPackages([resolve('../..', 'example-apps/tasker')])
   await admin.post('/api/install_app', { name: 'tasker' })
   const row = await saveDoc('tasker.project', { project_name: 'Southern 37 cartons', description: '**Keep** this text' }, 'Administrator', 'insert')
   await renderApp(`/featherbase/admin/tasker.project/${row.row_id}`, admin)
@@ -54,8 +54,8 @@ test('generic core form can read and save a versioned runtime row', async ({ adm
 test('generic client pins v1 across real upgrade and re-resolves only on a new session', async ({ admin }) => {
   const requests = vi.spyOn(globalThis, 'fetch') // Observe the real in-process bridge, not a stub response.
   const bootstraps = () => requests.mock.calls.filter(([path]) => path === '/api/runtime_app_versions').length
-  const prior = resolve('../..', 'runtime-apps/fixtures/tasker-v1')
-  const target = resolve('../..', 'runtime-apps/fixtures/tasker-v2')
+  const prior = resolve('../..', 'test-apps/fixtures/tasker-v1')
+  const target = resolve('../..', 'test-apps/fixtures/tasker-v2')
   await discoverPackages([prior])
   await admin.post('/api/install_app', { name: 'tasker' })
   const row = await saveDoc('tasker.project', { project_name: 'Do not relabel old editor' }, 'Administrator', 'insert')

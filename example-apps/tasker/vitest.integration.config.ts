@@ -10,7 +10,7 @@ export default {
   test: {
     ...server.test,
     include: ['test/task-management-app.test.ts', 'test/tasker-actions.test.ts'],
-    setupFiles: ['../../runtime-apps/tasker/scripts/collect-integration-coverage.ts'],
+    setupFiles: ['../../example-apps/tasker/scripts/collect-integration-coverage.ts'],
     coverage: { enabled: false },
   },
 }

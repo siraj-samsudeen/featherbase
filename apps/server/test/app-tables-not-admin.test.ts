@@ -15,7 +15,7 @@ import { sql } from '../src/db'
 
 type Caps = { manage: boolean; admin: boolean; own_grant: boolean; tables: string[] }
 
-const DASH_STAND_IN = resolve('../..', 'runtime-apps/fixtures/dash-stand-in')
+const DASH_STAND_IN = resolve('../..', 'test-apps/fixtures/dash-stand-in')
 const APP_TABLE = 'feather_dash.note'
 const ROLE = 'Dash Reader'
 
@@ -126,9 +126,9 @@ describe('grants outside installed apps count as before', () => {
 // that would have landed them in the Admin must land them in an app they can
 // open, chosen from the app catalog, never by an app's name in platform code.
 describe('signing in, a person who cannot use Admin lands in an app they can open', () => {
-  const BAR_PROOF = resolve('../..', 'runtime-apps/fixtures/bar-proof')
-  const ROSTER = resolve('../..', 'runtime-apps/fixtures/place-roster')
-  const OTHER = resolve('../..', 'runtime-apps/other')
+  const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
+  const ROSTER = resolve('../..', 'test-apps/fixtures/place-roster')
+  const OTHER = resolve('../..', 'test-apps/other')
   const ADMIN_AT = 'https://admin.example.com'
   const landingOf = (person: string | null, host: string) => landingAfterSignIn({ token: 'unused', user: { row_id: person! } as never }, host)
 
@@ -206,7 +206,7 @@ describe('signing in, a person who cannot use Admin lands in an app they can ope
 // Admin. An app without pages of its own is used through the Admin's generated
 // lists and forms, so its readers keep the Admin.
 describe('an app without pages of its own', () => {
-  const EVOLVE = resolve('../..', 'runtime-apps/fixtures/evolve-v1')
+  const EVOLVE = resolve('../..', 'test-apps/fixtures/evolve-v1')
 
   async function evolveClerk(admin: TestClient, createUser: CreateUserFn) {
     expect(await discoverPackages([EVOLVE])).toEqual([])
@@ -302,7 +302,7 @@ describe("a client app whose artifact is not loaded after a restart", () => {
   })
 
   test("an instance grant on a Table of an app without pages of its own still opens the Admin", async ({ admin, createUser }) => {
-    expect(await discoverPackages([resolve('../..', 'runtime-apps/fixtures/evolve-v1')])).toEqual([])
+    expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/evolve-v1')])).toEqual([])
     await admin.post('/api/install_app', { name: 'evolve' })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Evolve Helper' } })
     await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'evolve.item', role: 'Evolve Helper', can_read: true } })

@@ -78,7 +78,7 @@ describe('booting without an installed app', () => {
 
   // Codex round 1 on #643: boot drops a version shipped twice with different files.
   test('two different artifacts for the installed version refuse the start, though one of them matches', async () => {
-    const other = join(process.cwd(), '../../runtime-apps/other')
+    const other = join(process.cwd(), '../../test-apps/other')
     const conflicting = mkdtempSync(join(process.cwd(), 'test/.b5-642-conflict-'))
     try {
       cpSync(other, conflicting, { recursive: true })
