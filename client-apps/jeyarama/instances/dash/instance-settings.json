@@ -66,6 +66,12 @@
             "row_id": "google",
             "client_id": ""
           }
+        ],
+        "Scheduled Job": [
+          {
+            "row_id": "refresh_datasets",
+            "enabled": false
+          }
         ]
       }
     },

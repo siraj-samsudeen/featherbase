@@ -11,7 +11,8 @@ variables.
 | `privacy-notice.md` | the notice served at `/privacy`. The client approved its wording: change it only with a fresh approval |
 | `instance-setup/` | one-off steps, each run at a named moment |
 
-Run it locally with `pnpm dev jeyarama/dash`.
+Run it locally with `pnpm dev jeyarama/dash`, or `pnpm dev jeyarama/dash --made-up-data`
+to see the report: `instance.json` names the script that fills it with made-up data.
 
 ## Settings
 
@@ -23,6 +24,8 @@ The base applies everywhere. `local`, `dev` and `prod` hold what differs:
 - **The Dive.** `DIVE_ID`, `DIVE_VERSION` and `SERVICE_ACCOUNT` are read when
   dev or prod settings are applied and saved into the App Settings. Local boots
   with none of them.
+- **Refreshing the cached figures.** Off locally: there is no warehouse to
+  refresh from, and a refresh would only fail.
 - **The warehouse.** The `motherduck` Data Source names the variable holding its
   connection, `MOTHERDUCK_URL`.
 

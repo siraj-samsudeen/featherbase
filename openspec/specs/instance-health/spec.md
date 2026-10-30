@@ -22,6 +22,18 @@ built-in Administrator's default password.
 - **THEN** that check is failing, says the settings were never applied, and
   says how to apply them
 
+#### Scenario: A developer's own machine
+
+- **WHEN** an instance running as development has no System Manager email, no
+  connection for a data source, or an app that isn't set up
+- **THEN** those checks pass and say why that is expected, so a clean install
+  shows no banner, and an app's check still names what the app lacks
+
+#### Scenario: A hosted instance lacking the same things
+
+- **WHEN** an instance running as anything other than development lacks them
+- **THEN** those checks are not passing, and each says what is missing
+
 ### Requirement: Health banner
 
 While any health check is failing, every System Manager SHALL see a one-line

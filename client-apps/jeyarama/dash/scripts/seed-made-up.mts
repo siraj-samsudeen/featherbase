@@ -4,27 +4,24 @@
 // dataset, so every state of the report page can be seen without MotherDuck.
 // No real store, person, code or figure.
 //
-// Run with the checkout's own tsx, from its apps/server folder (README,
-// "Seeing the report locally"):
-//
-//   cd apps/server && FEATHER_DASH_API=http://localhost:8000 DATABASE_URL=postgres://…/feather_dash_dev \
-//     node_modules/.bin/tsx ../../client-apps/jeyarama/dash/scripts/seed-made-up.mts ../.. ../../client-apps/jeyarama/dash
-//
-// It refuses a database that is not stamped `development`. It installs the app
-// when it isn't installed. Run it once per database.
+// Normally run for you: `pnpm dev jeyarama/dash --made-up-data` (instance.json's
+// `madeUpData`). It needs the server running with a value for every secret the
+// app declares, which that command gives it. It refuses a database that is not
+// stamped `development`, and is safe to rerun: what exists stays, and the cached
+// copy is replaced with one dated today.
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { randomUUID } from 'node:crypto'
 
-const [checkout, appDir] = process.argv.slice(2)
-if (!checkout || !appDir) throw new Error('usage: seed-made-up.mts <featherbase checkout> <app folder>')
-// Both are required: without DATABASE_URL the checkout's db.ts falls back to the default local
+const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const checkout = resolve(appDir, '../../..')
+// Both are required: without DATABASE_URL the server's db.ts falls back to the default local
 // database while the API calls reach another, and the seed lands in the wrong one (#4453).
-if (!process.env.DATABASE_URL || !process.env.FEATHER_DASH_API)
-  throw new Error('Set DATABASE_URL and FEATHER_DASH_API to the same throwaway instance (README, "Seeing the report locally")')
-const api = process.env.FEATHER_DASH_API
+if (!process.env.DATABASE_URL || !process.env.FEATHERBASE_API_URL)
+  throw new Error('Set DATABASE_URL and FEATHERBASE_API_URL to the same throwaway instance, or run: pnpm dev jeyarama/dash --made-up-data')
+const api = process.env.FEATHERBASE_API_URL
 const server = (path: string) => import(pathToFileURL(resolve(checkout, 'apps/server/src', path)).href)
 const { sql } = await server('db.ts')
 const { setUserPassword } = await server('auth.ts')
@@ -49,6 +46,12 @@ async function call<T = Record<string, unknown>>(path: string, init: RequestInit
 }
 const post = (path: string, body: unknown) => call(path, { method: 'POST', body: JSON.stringify(body) })
 const save = (table: string, row: Record<string, unknown>) => post('/api/save_row', { table, row }) as Promise<{ row_id: string }>
+/** The row these values name, made when it isn't there: what keeps a rerun safe. */
+async function ensure(table: string, row: Record<string, unknown>, create: () => Promise<{ row_id: unknown }> = () => save(table, row)) {
+  const filters = encodeURIComponent(JSON.stringify(Object.entries(row).map(([column, value]) => [column, '=', value])))
+  const found = await call<{ data: { row_id: string }[] }>(`/api/table/${encodeURIComponent(table)}?filters=${filters}`)
+  return found.data[0] ?? { row_id: String((await create()).row_id) }
+}
 
 // The employee-code identifier system the scope provider declares.
 await applySeedPack('jeyarama')
@@ -97,10 +100,10 @@ for (const [key, name] of [['many', 'Asha Many-Stores'], ['one', 'Ravi One-Store
 // Stores: Lakeside 9901 and Hillview 9902 have sections; Riverside 9903 has none; Northgate 9905 has
 // a section but nothing cached (its figures are being prepared). All live. Parkside 9904 is not live:
 // it is on the old rules, where a subcategory can be assigned to a person (#4486).
-for (const store of ['9901', '9902', '9903', '9905', '9906']) await save('feather_dash.store_rollout', { store, live_since: '2026-01-01' }).catch(() => {})
-const section = (store: string, name: string) => save('feather_dash.section', { store, section_name: name })
+for (const store of ['9901', '9902', '9903', '9905', '9906']) await ensure('feather_dash.store_rollout', { store, live_since: '2026-01-01' })
+const section = (store: string, name: string) => ensure('feather_dash.section', { store, section_name: name })
 const place = (store: string, subcategory: string, sectionId: string) =>
-  save('feather_dash.section_subcategory', { store, subcategory, section: sectionId, starts_on: '2026-01-01' })
+  ensure('feather_dash.section_subcategory', { store, subcategory, section: sectionId, starts_on: '2026-01-01' })
 const sarees = await section('9901', 'Sarees')
 const kids = await section('9901', 'Kids Wear')
 const bags = await section('9901', 'Bags')
@@ -119,15 +122,15 @@ await place('9901', '010707001', footwear.row_id)
 await place('9901', '010808001', watches.row_id)
 await place('9901', '011010001', sports.row_id)
 // A department of two sections at Lakeside, for a Department Manager.
-const menswear = await save('feather_dash.department', { store: '9901', department_key: 'menswear', name: 'Menswear' })
-const shirts = await save('feather_dash.section', { store: '9901', section_name: 'Formal Shirts', department: menswear.row_id })
-const trousers = await save('feather_dash.section', { store: '9901', section_name: 'Trousers', department: menswear.row_id })
+const menswear = await ensure('feather_dash.department', { store: '9901', department_key: 'menswear', name: 'Menswear' })
+const shirts = await ensure('feather_dash.section', { store: '9901', section_name: 'Formal Shirts', department: menswear.row_id })
+const trousers = await ensure('feather_dash.section', { store: '9901', section_name: 'Trousers', department: menswear.row_id })
 await place('9901', '011212001', shirts.row_id)
 await place('9901', '011313001', trousers.row_id)
 const toys = await section('9905', 'Toys')
 await place('9905', '011111001', toys.row_id)
 const job = (person: string, job: string, store: string, extra: Record<string, unknown> = {}) =>
-  save('feather_dash.job_assignment', { person, job, store, starts_on: '2026-01-01', ...extra })
+  ensure('feather_dash.job_assignment', { person, job, store, starts_on: '2026-01-01', ...extra })
 await job(people.many, 'Cluster Manager', '9901')
 await job(people.many, 'Cluster Manager', '9902')
 await job(people.one, 'Team Leader', '9901', { section: sarees.row_id })
@@ -154,7 +157,8 @@ for (const code of LARGE.slice(0, 3)) await place('9906', code, baysideHome.row_
 for (const code of LARGE.slice(3, 6)) await place('9906', code, baysideToys.row_id)
 await job(people.smlarge, 'Store Manager', '9906')
 // Parkside, on the old rules: its merchandise map, and one subcategory assigned to a person with no employee code.
-const oldRow = (table: string, row: Record<string, unknown>) => post(`/api/table/${encodeURIComponent(table)}`, row)
+const oldRow = (table: string, row: Record<string, unknown>) =>
+  ensure(table, row, () => post(`/api/table/${encodeURIComponent(table)}`, row) as Promise<{ row_id: unknown }>)
 await oldRow('Section Merchandise Map', { store_code: '9904', material_group: '010101001', mch_subcategory: 'Silk sarees', section_name: 'Ethnic' })
 await oldRow('Section Merchandise Map', { store_code: '9904', material_group: '010202001', mch_subcategory: 'Boys shirts', section_name: 'Kids' })
 await oldRow('Sales Target Assignment', { employee: people.assigned, plant_code: '9904', store_label: 'Parkside', material_group: '010101001' })
@@ -214,7 +218,9 @@ async function seed(name: string, rows: Record<string, unknown>[]) {
   const dataset = declared.find(d => d.name === name)!
   // As the platform keys it (featherbase app-datasets.ts): a guard is not part of the definition.
   const version = createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16)
-  await sql`update dataset_snapshot set state = 'superseded' where dataset = ${`feather_dash.${name}`} and state = 'active'`
+  // A rerun replaces the copy: the earlier ones are made-up too, and nobody can go back to them.
+  await sql`delete from app_dataset_row where snapshot_id in (select row_id from dataset_snapshot where dataset = ${`feather_dash.${name}`})`
+  await sql`delete from dataset_snapshot where dataset = ${`feather_dash.${name}`}`
   const id = randomUUID()
   await sql`insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, activated_at, row_count)
     values (${id}, ${`feather_dash.${name}`}, ${version}, 'active', ${refreshedAt}, ${refreshedAt}, ${rows.length})`
@@ -223,23 +229,34 @@ async function seed(name: string, rows: Record<string, unknown>[]) {
 await seed('sales_to_date', facts)
 await seed('sales_month', month)
 
-console.log(`Seeded. Sign in at /featherbase/login with the password in this script (PASSWORD) as:
-  reader-many@example.test   several stores (Lakeside; Hillview: last month's copy only)
-  reader-one@example.test    one store, one section
-  reader-quiet@example.test  a section with no target and no sales this month (ready, nothing recorded)
-  reader-none@example.test   no access
-  reader-bare@example.test   a store with no sections
-  #4486, the header's "why" sentence:
-  reader-sm@example.test        Store Manager of Lakeside (names the store, not its 8 sections)
+// The proof it worked: a made-up Store Manager opens Lakeside's report and gets figures.
+const signIn = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ usr: 'reader-sm@example.test', pwd: PASSWORD }) })
+if (!signIn.ok) throw new Error(`Signing in as a made-up reader failed: HTTP ${signIn.status}`)
+const version = JSON.parse(await readFile(resolve(appDir, 'package.json'), 'utf8')).version
+const opened = await fetch(`${api}/api/app_reads/feather_dash/report`, { method: 'POST', headers: { 'content-type': 'application/json',
+  authorization: `Bearer ${((await signIn.json()) as { token: string }).token}`, 'X-Featherbase-App-Version': `feather_dash@${version}` },
+  body: JSON.stringify({ payload: { store: '9901' } }) })
+const answer = await opened.json() as { result?: { state?: string; rows?: unknown[] } }
+if (!opened.ok || !answer.result?.rows?.length) throw new Error(`A made-up reader's report has no figures: HTTP ${opened.status} ${JSON.stringify(answer).slice(0, 300)}`)
+
+console.log(`To see figures, sign in at /featherbase/login with:
+  email:    reader-sm@example.test   (Store Manager of a made-up store, Lakeside)
+  password: ${PASSWORD}
+Other made-up people, same password. Each shows one state of the page:
+  reader-many@example.test      Cluster Manager of two stores (Lakeside; Hillview: last month's copy only)
+  reader-one@example.test       one store, one section
+  reader-quiet@example.test     a section with no target and no sales this month (ready, nothing recorded)
+  reader-none@example.test      no access
+  reader-bare@example.test      a store with no sections
   reader-tl2@example.test       Team Leader of 2 sections at Lakeside
+  reader-tl3@example.test       Team Leader of 3 sections at Lakeside (all three named)
   reader-tl4@example.test       Team Leader of 4 sections at Lakeside ("4 sections")
   reader-several@example.test   Team Leader of Sarees and staff in Kids Wear at Lakeside
   reader-assigned@example.test  a subcategory assigned to them at Parkside (old rules)
   reader-preparing@example.test Team Leader at Northgate, whose figures are being prepared (no short name)
-  reader-many@example.test      Cluster Manager of two stores: the sentence follows the bar's store picker
   reader-dm2@example.test       Department Manager of Menswear (2 sections) at Lakeside
   reader-staff1@example.test    section staff in Sarees at Lakeside ("because you work in them")
-  reader-tl3@example.test       Team Leader of 3 sections at Lakeside (all three named)
   reader-smtl@example.test      Store Manager of Lakeside and Team Leader of Sarees there
   reader-smlarge@example.test   Store Manager of Bayside, a large store (1,600 subcategories)`)
 await sql.end()

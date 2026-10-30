@@ -120,19 +120,26 @@ last pin; `dev:repin` fixes that too. It refuses a database not stamped
 
 ### Seeing the report locally
 
-There is no MotherDuck locally, so the Dive can't open; the page shows the
-quick view, built from a made-up cached copy. Start the dev server with
-`MOTHERDUCK_TOKEN=made-up-local-token` in its environment (every read needs
-the secret set), install the app, then from `apps/server`:
+From the repository root:
 
 ```sh
-FEATHER_DASH_API=http://localhost:8000 DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/fb_jeyarama_dash \
-  node_modules/.bin/tsx ../../client-apps/jeyarama/dash/scripts/seed-made-up.mts ../.. ../../client-apps/jeyarama/dash
+pnpm dev jeyarama/dash --made-up-data
 ```
 
-It signs in made-up readers (`reader-many@example.test`, `reader-one@…`,
-`reader-none@…` and more; the script lists them) with the local password
-written in the script.
+There is no MotherDuck locally, so the Dive can't open; the page shows the quick
+view, built from a made-up cached copy. The command gives the app a made-up
+`MOTHERDUCK_TOKEN` (every read needs the secret set, and a real one in `.env.local`
+is ignored for this run), adds the identifier system, and runs
+`scripts/seed-made-up.mts`, which `../instances/dash/instance.json` names. It is
+safe to rerun, and it refuses a database that isn't stamped `development`.
+
+It prints who to sign in as: `reader-sm@example.test` shows figures, and the others
+each show one state of the page. They all use the password it prints.
+
+Without the flag the instance has no secret and no identifier system, so readers
+get "couldn't load" and an administrator is told what is missing. To use another
+database or other ports, set `DATABASE_URL`, `API_PORT` and `WEB_PORT` in `.env.local`
+at the repository root.
 
 ## What the manifest declares
 

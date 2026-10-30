@@ -32,6 +32,9 @@ export interface HealthCheck {
   why: string
   /** How to make it pass; null while it passes. */
   fix: string | null
+  /** An app-setup check: what the app lacks, so the app's own page can say so
+   *  to whoever can manage it. Names only, never a value. */
+  missing?: string[]
 }
 
 interface HealthCheckOptions {
@@ -45,7 +48,12 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 
 // ---------------------------------------------------------------- the checks
 
-async function systemManagerEmail(): Promise<HealthCheck> {
+/** A developer's machine sends no notices and has no warehouse or deployment
+ *  variables, so what it lacks is not a problem to raise. Only `development`:
+ *  a test run and every hosted environment judge these as they always did. */
+const LOCAL = 'development'
+
+async function systemManagerEmail(environment: string): Promise<HealthCheck> {
   const emails = await systemManagerEmails()
   const base = {
     key: 'system-manager-email',
@@ -60,6 +68,8 @@ async function systemManagerEmail(): Promise<HealthCheck> {
       message: `${emails.length} ${plural(emails.length, 'System Manager has an email address', 'System Managers have email addresses')} and ${plural(emails.length, 'receives', 'receive')} system notices.`,
       fix: null,
     }
+  if (environment === LOCAL)
+    return { ...base, ok: true, message: `No System Manager has an email address. That is expected on a ${LOCAL} server, which nobody relies on for notices.`, fix: null }
   return {
     ...base,
     ok: false,
@@ -232,7 +242,7 @@ async function administratorPassword(environment: string): Promise<HealthCheck> 
 
 /** #620 (E2): one check per enabled app that declares settings or secrets.
  *  Names what is missing, never a value. */
-async function appsSetUp(): Promise<HealthCheck[]> {
+async function appsSetUp(environment: string): Promise<HealthCheck[]> {
   return (await appSetupState()).map(({ app, title, missing, optional }) => {
     const base = {
       key: `app-setup:${app}`,
@@ -243,10 +253,19 @@ async function appsSetUp(): Promise<HealthCheck[]> {
     // #666: a missing optional secret holds up only the reads and actions
     // that need it: still a warning, but the app is set up.
     const lacking = optional.length ? `lacks ${optional.join(', ')}. Only those answer "not set up yet".` : ''
-    if (!missing.length && !optional.length) return { ...base, ok: true, message: `${title} has every setting and secret it requires.`, fix: null }
+    if (!missing.length && !optional.length) return { ...base, ok: true, message: `${title} has every setting and secret it requires.`, fix: null, missing }
+    if (environment === LOCAL)
+      return {
+        ...base,
+        ok: true,
+        message: `${title} is not fully set up on this machine: ${[...missing, ...optional].join(', ')}. That is expected on a ${LOCAL} server, so it needs no attention.`,
+        fix: null,
+        missing,
+      }
     return {
       ...base,
       ok: false,
+      missing,
       message: missing.length
         ? `${title} answers "not set up yet": missing ${missing.join(', ')}.${lacking ? ` It also ${lacking}` : ''}`
         : `${title} is set up, but ${lacking}`,
@@ -300,12 +319,12 @@ async function placeDrops(): Promise<HealthCheck[]> {
 export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<HealthCheck[]> {
   const environment = opts.environment ?? config.environment
   return [
-    await systemManagerEmail(),
+    await systemManagerEmail(environment),
     await recommendedVariables(environment),
     await settingsApplied(),
     await settingsMatchFile(),
     ...(await scheduledJobs(opts.now ?? new Date())),
-    ...(await appsSetUp()),
+    ...(await appsSetUp(environment)),
     ...(await placeDrops()),
     await administratorPassword(environment),
   ]
