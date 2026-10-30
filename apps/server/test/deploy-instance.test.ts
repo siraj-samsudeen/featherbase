@@ -127,6 +127,8 @@ describe('a fresh deploy', () => {
       }))
       await expect(deployInstance('acme/board', out.io, { root: bad })).rejects.toThrow(/settings file was not applied/)
       expect(out.stderr()).toContain('NOT_SET_ANYWHERE')
+      // The install rolled back with it: the old deployment knows nothing of this app.
+      expect(await sql`select 1 from installed_app where name = ${name}`).toHaveLength(0)
     } finally {
       rmSync(bad, { recursive: true, force: true })
     }
@@ -178,6 +180,32 @@ describe('on production', () => {
 })
 
 describe('a newer version in the image', () => {
+  test('a settings failure after the upgrade leaves the installed version as it was', async () => {
+    await pretendTo('staging')
+    await deploy()
+    const next = join(apps, 'other-next')
+    cpSync(app, next, { recursive: true })
+    writeFileSync(join(next, 'package.json'), JSON.stringify({ ...readJson(packageFile), version: '99.0.0' }))
+    const manifest = readJson(manifestFile)
+    writeFileSync(join(next, 'featherbase.json'), JSON.stringify({
+      ...manifest, migrations: [...(manifest.migrations ?? []), { id: 'to_next', fromVersion: version, toVersion: '99.0.0', operations: [] }],
+    }))
+    const before = await digest()
+    const bad = mkdtempSync(join(import.meta.dirname, '.deploy-instance-'))
+    try {
+      mkdirSync(join(bad, 'client-apps/acme/instances/board'), { recursive: true })
+      writeFileSync(join(bad, 'client-apps/acme/instances/board/instance-settings.json'), JSON.stringify({
+        settings: {}, environments: { dev: { settings: { 'System Settings': { app_name: { env: 'NOT_SET_ANYWHERE' } } } } },
+      }))
+      await expect(deployInstance('acme/board', captureIO().io, { root: bad })).rejects.toThrow(/settings file was not applied/)
+    } finally {
+      rmSync(bad, { recursive: true, force: true })
+    }
+    const [row] = await sql`select package_version, activation_pending from installed_app where name = ${name}`
+    expect(row).toMatchObject({ package_version: version, activation_pending: false })
+    expect(await digest()).toBe(before)
+  })
+
   test('upgrades and activates it; a version the image lost is refused with what to do', async () => {
     await pretendTo('staging')
     await deploy()

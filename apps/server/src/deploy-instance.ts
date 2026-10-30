@@ -5,10 +5,9 @@
 // `pnpm dev` is the same path on a developer's machine.
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { format } from 'node:util'
 import { compareVersions } from './runtime-migrations'
 import type { CommandIO } from './command-io'
-import { sql } from './db'
+import { sql, withTransaction } from './db'
 import { storedEnvironment } from './db-environment'
 import { currentEnvironment, readVariable } from './env'
 
@@ -106,18 +105,18 @@ async function installOrUpgradeApps(io: CommandIO) {
 }
 
 /** The instance's part of a deploy. Runs after the release, so the platform is
- *  migrated. The re-pin comes last: until then, a failure leaves the database
- *  matching the deployment that is still serving. */
+ *  migrated. All of it is one transaction: a failure anywhere leaves the apps and
+ *  settings as they were, matching the deployment that is still serving. */
 export async function deployInstance(instance: string, io: CommandIO, opts: { root?: string } = {}): Promise<void> {
   const section = settingsSection()
   const { settingsFile } = instanceFolder(instance, opts.root)
-  await sql.begin(async (tx) => {
-    // Held for the whole step, so two overlapping deploys take turns.
-    await tx`select pg_advisory_xact_lock(hashtext('featherbase-instance-deploy'))`
+  await withTransaction(async () => {
+    // Held to the end, so two overlapping deploys take turns.
+    await sql`select pg_advisory_xact_lock(hashtext('featherbase-instance-deploy'))`
     await installOrUpgradeApps(io)
     const cli = await import('./cli')
     const code = await cli.main(['settings:apply', '--file', settingsFile, '--environment', section], io)
-    if (code !== 0) throw new Error(format('the settings file was not applied; see above'))
+    if (code !== 0) throw new Error('the settings file was not applied; see above')
     if (followsAppFiles(currentEnvironment(), await storedEnvironment())) await repinChangedApps(io)
   })
 }
