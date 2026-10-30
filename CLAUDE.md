@@ -1,331 +1,93 @@
 # Featherbase — Agent Instructions
 
-You are building a metadata-driven low-code app platform on a JS/TS stack.
-The project started by replicating [Frappe Framework](https://frappe.io/framework)
-faithfully — that phase is complete, the stack and architecture inspiration
-remain credited to Frappe, and much of the design below still traces back to
-it. The project is now in a deliberate second phase, diverging from Frappe's
-design (vocabulary and API shape included) where it doesn't serve this
-platform's own users. Read `docs/adr/` for the decisions already made. This
-file is your standing protocol — follow it every session.
+Featherbase is a metadata-driven low-code app platform on a JS/TS stack. It
+began as a faithful replication of [Frappe Framework](https://frappe.io/framework)
+and now diverges from Frappe wherever Frappe doesn't serve this platform's own
+users. This file is the standing process; the detail lives in the places it
+points to.
 
-The product is Featherbase (working name `frappe-clone` until July 2026);
-describing its *history* as a replication of Frappe is fine.
+## Project stage
 
-## Project stage — experimental, with one live trial
+Pre-release: every interface is provisional and nothing outside this repo
+depends on a name, route, schema or wire format. When one is wrong, **change it
+outright**. Add no redirects, aliases, shims or compatibility flags. Migrations
+that converge a developer's local database are still expected. A migration that
+rewrites a live instance's data is rehearsed on a restored snapshot first
+(`docs/DEPLOY.md`). Revisit this section after the first real deployment.
 
-**Featherbase is still pre-release: there is no install base outside this
-organisation and every interface is provisional.** Two instances exist (as of
-22-Oct-2026): a **dev** instance carrying a live trial — about forty store
-staff sign in daily — and a **prod** instance that holds the platform only.
-No external consumer depends on any URL, API shape, table name, or wire
-format, so names and contracts are still free to change. What the trial adds
-is a duty to its data and its people: a migration that rewrites the trial's
-data is rehearsed on a restored snapshot first, with the target's real
-environment variables, and its deploy follows docs/DEPLOY.md.
+## Where things live
 
-So: when a name, route, schema, or contract is wrong, **change it outright**.
-Do not add redirects, aliases, deprecation shims, compatibility flags, or
-dual-write paths to preserve the old shape — that is machinery paid for by a
-migration burden this project does not have, and it leaves the retired shape
-in the codebase forever for every future reader to reason about. Migrations
-that converge an existing *local* database are still expected (developer
-checkouts are real); compatibility with anything *outside* the repo is not.
+| What | Where |
+|---|---|
+| Setup, commands, source map | `README.md` (boot everything with `./init.sh`) |
+| Behaviour: what the system promises | `openspec/specs/`, the sole authority |
+| Decisions and why | `docs/adr/`. Correct or delete an ADR when it stops matching the code |
+| Words and the words they retire | `CONTEXT.md` |
+| How tests are built and run | `docs/TESTING.md` |
+| Deploying and environment variables | `docs/DEPLOY.md`, `docs/PREVIEW.md` |
+| Issues and triage labels | `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md` |
 
-Revisit this section when the first real deployment happens — from that point
-the calculus changes.
+Don't add a document when a spec, test, ADR or PR body can carry it. A claim
+about the code that no check can verify drifts; don't write it down as fact.
 
-## The document set
+## Architecture invariants
 
-Judgment lives in `openspec/specs/` (behavior and acceptance criteria),
-mechanics in `docs/TESTING.md`, decisions in `docs/adr/` (append-only), and
-history in pull requests, their issues and the OpenSpec changes. **A document
-that describes another artifact at a distance will drift** — if a claim about
-the codebase cannot be checked mechanically, do not write it down as a fact.
+1. **Everything derives from Table metadata.** Never hand-write a per-model
+   table, endpoint or form.
+2. **All reads and writes go through the server**, and every mutation runs the
+   full trigger chain in one transaction.
+3. **The Admin UI is generic**: one list view and one form view render every
+   Table.
+4. **No Frappe wire shapes.** They were removed on purpose.
+5. **Platform, apps and instances are separate layers.** Where each lives is
+   [ADR 0014](docs/adr/0014-one-repo-for-platform-and-apps.md). Checks enforce
+   the boundaries.
 
-Docs are minimal on purpose: README, VISION, CONTEXT, TESTING, DEPLOY, PREVIEW,
-ADRs and the specs. Don't add a new doc when a spec, test, ADR or PR body can
-carry it.
+## How a piece of work goes
 
-## Architecture invariants (never violate these)
+1. **Orient.** Read the issue and its OpenSpec change, `git log --oneline -20`
+   and the relevant specs. Don't re-derive what an ADR already decided.
+2. **Boot.** Run `./init.sh`. If the app is broken, fixing it is the task.
+3. **One piece of work per session**, done fully: small, complete and working.
+4. **Verify the way a user would**: HTTP against the running server, and the
+   browser for UI. Unit tests alone don't count.
+5. **Record and hand off** in the PR body: what was done, the commands that
+   verify it, and how the owner can try it.
 
-1. **Everything derives from Table metadata.** Models are JSON definitions
-   stored in the `table_def` table. Tables, APIs, forms, list views,
-   validation schemas, and RLS policies are all *generated* from that JSON.
-   Never hand-write a per-model table, endpoint, or form component.
-2. **All reads and writes go through the server** (`apps/server`); clients
-   never talk to Postgres directly. Every mutation calls the server's
-   row-save/submit/cancel/delete operations, which run the full automation-
-   trigger chain (on check → before saving → DB write → after saving) in one
-   transaction, including sub-tables and id patterns.
-3. **The Admin UI is generic.** One `ListView` and one `FormView` render
-   every Table from its metadata. Adding a Table requires zero frontend
-   code.
-4. **Frappe wire-format compatibility is NOT a goal.** This project began as
-   a faithful Frappe replication (an intentional exercise, completed) and
-   has since moved into a deliberate second phase of diverging from Frappe's
-   design — including vocabulary and API shape — where it doesn't serve this
-   platform's own users. Do not reintroduce Frappe-specific wire shapes
-   (`exc_type`, `frappe.client.*`, `/api/method/<dotted.path>` RPC naming,
-   etc.) for compatibility's sake — they were removed on purpose.
-5. **Each layer knows only the layer below it**
-   ([ADR 0011](docs/adr/0011-platform-app-instance.md)). The **platform** is
-   this repo and the same for every client. An **app** (Tasker, Feather
-   Dash) is installable on any instance. An **instance** is one client's
-   server, database and settings. The platform never names a client. An app
-   never hard-codes one client's values; they reach it as settings or
-   instance setup. Client-specific material (seed packs, runbooks, report
-   queries, real hostnames) lives only in that client's private repository.
-   The test for any file: *would a second client have to change it?* If yes,
-   it is in the wrong layer. Apps are trusted and reviewed (no sandbox): they
-   touch the platform only through declared extension points and declare
-   everything they need.
-
-## Stack
-
-- `apps/server` — Node + Hono + TypeScript, the [`postgres`](https://github.com/porsager/postgres)
-  client (not an ORM), Zod for validation, `ws` for realtime, Playwright for
-  server-side PDF printing
-- `apps/web` — React 19 + Vite + TypeScript, TanStack Router + TanStack Query,
-  Tailwind v4. There is **no** shadcn/ui and **no** react-hook-form — UI is
-  built from the shared components of the Shop Floor design system (below)
-- `packages/shared` — types and contracts used by both sides
-- `runtime-apps/` — the apps this repo ships (Tasker; Feather Dash to come),
-  each with its own `featherbase.json` manifest and version. In prose they
-  are **apps**; "runtime package" is only the code's name for them
-- [`feather-testing-postgres`](https://github.com/siraj-samsudeen/feather-testing-postgres)
-  — the SQL Sandbox test harness, consumed as a published npm dependency. It
-  lives in its own repo; fix it there and release, never vendor it back in.
-- Monorepo — pnpm workspaces; boot everything with `./init.sh`
-
-**Visual identity is a standing directive.** Every UI uses the Shop Floor design
-system (#380, OpenSpec change `adopt-shop-floor-design-system`): the colour,
-shape and density tokens in `apps/web/src/index.css` and the shared components.
-`apps/web/test/design-guards.test.ts` enforces it as a hard zero over every
-source file — text contrast in light and dark, and no raw Tailwind colour classes,
-literal colours, text under 12px, browser-locale number/date formatting or retired
-token and `.fc-*` class names. There is one colour palette; the theme is light,
-dark or the device's own setting (#380 stage 3).
-
-## Environment
-
-- **Database:** whatever `DATABASE_URL` points at — by default the local
-  Postgres on **port 5432**, database **`featherbase`**. There is no `.pgdata`
-  directory and nothing runs on 5433.
-- **`./init.sh` never manages a Postgres that already answers.** It probes
-  `DATABASE_URL` first; only if that fails does it try to start a cluster
-  (Debian `pg_ctlcluster`, macOS `brew services`) and then create the role and
-  database over whichever superuser connection the host accepts — the current
-  login user on Homebrew, `su postgres` when running as root in the container.
-  So it works on macOS and Linux alike, and is a no-op once things are up.
-- **Connection strings** default in `apps/server/src/config.ts`; override with
-  `DATABASE_URL`. The RLS suite creates its own short-lived login role for
-  each run, so the connecting user needs permission to create roles.
-- **Servers:** API on `:8000`, web on `:5173`. `./init.sh` kills stale
-  listeners by port and waits for both to answer.
-- **Addresses:** `INSTANCE_ADDRESSES` (a JSON list) says what each web
-  address of an instance opens — the Admin screens or one app — and which one
-  emails use. It replaced `SITE_URL` (#488) and is required outside
-  development and test. Locally, test two addresses with `*.localhost`
-  hostnames (`admin.localhost`, `dash.localhost`), as the e2e config does.
-  `docs/DEPLOY.md` has the details.
-- **Chromium is resolved from the environment, never hardcoded.** Both
-  `apps/web/playwright.config.ts` and `apps/server/src/print.ts` let Playwright
-  resolve its own installed browser unless `CHROMIUM_PATH` names one; `print.ts`
-  additionally scans `PLAYWRIGHT_BROWSERS_PATH` (defaulting to the container's
-  `/opt/pw-browsers`) when that directory exists. Set `CHROMIUM_PATH` if you
-  need a specific binary — do not reintroduce a literal path.
-
-## Testing
-
-`docs/TESTING.md` is the only testing doc — how the suites are built, run and
-extended; don't start another. What follows is only the part you must not get wrong from memory.
-
-Every test runs inside a real Postgres transaction that is rolled back at the
-end — Phoenix's Ecto SQL Sandbox model, via `feather-testing-postgres`. No
-mocks, no fixture files, no cleanup code.
-
-Both suites set `fileParallelism: false` on purpose: all test files share one
-database and one `background_job` queue, so parallel files steal each
-other's jobs and contend on id-pattern row locks. Do not turn it back on.
-
-`background_job` is the one piece of state that outlives a run — a run
-killed partway through leaves `queued` rows behind, and the next run then sees
-a higher `drainJobs()` count than the test expected. A Vitest `globalSetup`
-(`apps/server/test/global-setup.ts`, shared by both suites) empties the queue
-once per run, outside any sandbox transaction. It complements
-`fileParallelism: false` rather than replacing it.
-
-- `pnpm test` — every suite
-- `pnpm smoke` — server + web smoke tests
-- `pnpm --filter server typecheck`
-
-## Session protocol
-
-1. **Orient.** Read the issue you are picking up (and its OpenSpec change, if any), `git log --oneline -20`,
-   the open issues labelled `ready-for-agent` (`gh issue list --label
-   ready-for-agent`), and `openspec/specs/`. Do not re-derive decisions already
-   recorded in `docs/adr/`.
-2. **Boot & smoke-test.** Run `./init.sh` and verify the app actually starts and
-   the core flow passes (login → open a Table list → open a form) BEFORE
-   writing new code. If the app is broken, fixing it IS the session's task.
-3. **Pick ONE piece of work.** Take direction from the `ready-for-agent`
-   issues and active `openspec/changes/`. Do not start a second thread of
-   work in the same session.
-4. **Implement it fully.** Small, complete, working — not broad and half-done.
-5. **Verify end-to-end.** Exercise it the way a user would: HTTP calls against
-   the running server, and the browser via Playwright for UI. Unit tests alone
-   do not count.
-6. **Update state.** Only after verification: record what was done, how it was
-   verified, what to pick up next and any gotchas in the pull request body (and a
-   comment on the issue), and commit. Leave the working tree clean.
-7. **Hand off.** Tell the owner how to try it: the URL and login, which data to
-   look at, a few things worth trying, and any known gaps.
-
-### Accepting delegated work
-
-When you coordinate and someone else — a sub-session, a task chip, another
-agent — hands back finished work, run its stated verification commands
-yourself before you accept it. A report is a claim, not evidence: the agent
-that wrote the code is the worst-placed party to certify it, and a committed
-"done" has twice failed its own typecheck on rerun. Read the report for what
-to check and where; get the verdict from the commands. If the report names no
-command, that is the first finding.
+Behaviour changes go through OpenSpec. `openspec/config.yaml` and its skills
+carry the workflow. Every change starts from an issue.
 
 ## Hard rules
 
-- **Nothing is `done` on an agent's word.** A claim is finished when a
-  command someone else can run says so. Record the command, not the verdict.
-- Never leave the app in a non-booting state at the end of a session. If you run
-  out of time mid-change, revert or stash to the last working state and record
-  where you stopped in the pull request or issue.
-- Commit at every stable point, not just at session end.
-- Keep `./init.sh` working at all times; if setup steps change, update it in the
-  same commit.
-- **No expectation laundering.** An agent must not change an existing
-  expected outcome and its implementation merely to obtain a passing run,
-  unless an approved requirement or decision authorizes the behaviour
-  change. (New tests with new code in one change is normal work; weakening
-  an assertion to make broken code pass is the thing this forbids. Tests
-  marked `it.fails`/`test.fail` pin known defects by issue number, with the
-  SPEC in the assertion: fixing the defect makes the pin fail on purpose —
-  flip it to a plain test in the same change.)
-- **A discovered behaviour is not a requirement.** It has three fates —
-  ratified into the spec, filed as a defect, or raised as an open question —
-  and choosing is the owner's call, never an agent's.
+- **Nothing is done on an agent's word.** It is done when a command someone
+  else can run says so. This includes work handed back by another agent:
+  rerun its verification yourself.
+- Never end a session with the app failing to boot. Keep `./init.sh` working,
+  and change it in the same commit as the setup it reflects.
+- **No expectation laundering.** Never weaken an expected outcome just to get
+  a pass. A known defect is pinned with `it.fails` and its issue number.
+- **A discovered behaviour is not a requirement.** Ratifying it, filing it as a
+  defect or raising it as a question is the owner's call.
+- **Small problems are fixed at once**, inline or by a subagent. Nothing goes on
+  a "later" list.
+- Fix `feather-testing-postgres` in its own repo and release it; never vendor
+  it here.
 
-## Where decisions live
+## Review guidelines
 
-- `docs/adr/` — architecture decisions. [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md)
-  records the move to React + Hono + Postgres and supersedes 0001–0004.
-  [ADR 0011](docs/adr/0011-platform-app-instance.md) records the platform /
-  app / instance layers that every design is checked against.
-- `docs/VISION.md` — what this is for and who it serves.
-- `openspec/specs/` — the sole behavior authority. The OpenSpec section below
-  defines the workflow; ADR 0010 records why. Use plain, descriptive
-  requirement and scenario names.
-- `CONTEXT.md` — the domain vocabulary and the words it retires.
-
-## OpenSpec
-
-Behavior specs live in `openspec/specs/`. New or changed behavior goes through
-an OpenSpec change — start one with `/opsx:propose` (Claude Code) or
-`/openspec-propose` (Codex). Writing style for specs and proposals is set in
-`openspec/config.yaml`. The CLI is pinned to an exact version in root
-`package.json` and bumped by the weekly `openspec-update` workflow.
-
-**Archive in the PR that finishes the change.** When a PR carries a change
-whose tasks are all complete, its last step before merge is to verify the
-change against the code and tests, then archive it with `/opsx:archive` (or
-`pnpm exec openspec archive <name> --yes`): sync the delta into
-`openspec/specs/` and move the folder to `openspec/changes/archive/`, so the
-delta reaches the specs in the same merge. `pnpm check:specs` fails while a
-change with every task ticked is still active (#553). A change that stays open
-(later stages, or a step only the owner can take) keeps that task unticked.
-
-The rationale is [ADR 0010](docs/adr/0010-openspec-change-workflow.md).
-
-## Agent skills
-
-### SDLC skill routing (owner directive, 2026-08-11)
-
-Use Matt Pocock's skills (installed globally with `npx skills add
-mattpocock/skills`, so Claude Code and Codex share them) at the matching
-lifecycle stage — invoke the skill, don't improvise the equivalent:
-
-| Stage | Skill |
-|---|---|
-| Building a feature or fixing a bug test-first | `tdd` |
-| Diagnosing a bug, failure, or perf regression | `diagnosing-bugs` |
-| Reviewing a PR, branch, or "changes since X" — code or tests | `feather-code-review` (this repo's; it runs Matt's `code-review` and `codebase-design` plus this repo's checks) |
-| Answering a design question with throwaway code | `prototype` |
-| Designing or deepening a module interface/seam | `codebase-design` |
-| Pinning domain vocabulary or recording an ADR | `domain-modeling` |
-| Delegating reading/API-fact gathering | `research` |
-| Resolving an in-progress merge/rebase conflict | `resolving-merge-conflicts` |
-| Stress-testing a plan before committing to it | `grilling` |
-
-Behavior changes use the repository-generated OpenSpec skills. When spawning
-sub-sessions or task chips, name the required skills in the prompt — spawned
-agents read this file, but an explicit instruction survives context loss.
-
-### One review skill
-
-Every code and test review goes through **`feather-code-review`** (owner
-decision, 2026-09-26; it replaced `code-review-8-axes` and `test-review-3-axes`).
-It lives in `.claude/skills/` and is linked into `.agents/skills/` for Codex.
-
-When a spec, the code and the tests disagree, that disagreement is not yours to
-settle silently — see "A discovered behaviour is not a requirement" above.
-
-### Review routes (owner decision, 26-Oct-2026)
-
-There are two review routes. Which one a change takes depends on what a person
-can see when they test it.
-
-1. **UI changes: spec, build, independent verifier, owner.**
-   - Agree the design with the owner first, using mockups or options. Then write
-     it into the issue as a numbered spec checklist: labels, icons, order,
-     formats, states, phone width.
-   - The builder builds it, with tests written first (`tdd`).
-   - A **separate verifier agent** checks the result. It is not the builder. It
-     runs the real UI with Playwright at 1280px and 375px, goes through the
-     checklist item by item, and returns a "spec vs built" table with
-     screenshots and any other visual oddities it noticed.
-   - Differences go back to the builder to fix. The owner sees the screenshots
-     first, and only then the code or a merge request. In the owner's words:
-     "launch a subagent to check it against that spec and then come back to us
-     with screenshots … before I look at the code or even being asked to merge
-     the PR."
-2. **Codex review is only for what a person can't see when testing**: security,
-   permissions, data and migrations, server logic, redirects, and anything else
-   complex. "A Codex round should be dedicated to things that I can't easily see
-   as a user when I'm testing and for more complex work." During the Feather
-   Dash rollout, run at most 2 rounds: fix the real blockers and file the rest
-   as issues.
-   - **No Codex review** for docs, cosmetic changes, very minor fixes, or UI the
-     owner verifies through the verifier's screenshots.
-   - A PR that mixes UI with hidden logic (a new endpoint, a sign-in redirect, a
-     permission check) takes both routes: the verifier for the UI, Codex for the
-     hidden part.
-3. **Issue first.** Every build starts from an issue that records the decision.
-   For UI work, that issue holds the spec checklist.
-4. **Small problems are fixed straight away.** A simple problem noticed in
-   passing is fixed at once, inline or by a subagent, and small approved fixes
-   are merged as they come. Nothing is parked on a "later" list.
-
-### Issue tracker
-
-Issues live as GitHub issues in `siraj-samsudeen/featherbase`, driven through
-the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-The five canonical triage roles, each label string equal to its name
-(`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`,
-`wontfix`). See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context — one root `CONTEXT.md` plus `docs/adr/` for the whole
-monorepo. See `docs/agents/domain.md`.
+- **UI changes:** agree the design as a numbered checklist in the issue. Then a
+  separate verifier agent runs the real UI at 1280px and 375px and returns a
+  "spec vs built" table with screenshots, before the owner sees code.
+- **Code review** uses the `feather-code-review` skill. Run a Codex review if
+  Codex is available, otherwise a review by a different Claude model. Review
+  only what a person can't see when testing: security, permissions, data,
+  server logic. No review for docs, cosmetic changes or very minor fixes.
+- **Adversarial review only with the owner's consent.** Propose it for complex
+  work or anything touching security, permissions or data.
+- **At most 3 rounds**, then propose the next step to the owner.
+- **Triage findings before presenting them:**
+  1. breaks core functionality: fix now;
+  2. plausible, limited impact: fix if cheap, otherwise **one** issue;
+  3. rare or theoretical: one line under "deliberately not handled" in the PR
+     body, with no code and no issue.
+- **The product is evolving fast.** Fitting the need beats perfect code.

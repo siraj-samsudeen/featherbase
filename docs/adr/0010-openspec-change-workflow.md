@@ -1,6 +1,6 @@
 # ADR 0010: OpenSpec is the behavior contract and change workflow
 
-**Status:** Accepted · **Date:** 2026-09-21, revised 2026-09-26 · **Issue:** [#296](https://github.com/siraj-samsudeen/featherbase/issues/296)
+**Status:** Accepted; amended by [ADR 0014](0014-one-repo-for-platform-and-apps.md) (30-Oct-2026: stock profile and archive-in-PR replaced by the intent-driven template, proposal PR first) · **Date:** 2026-09-21, revised 2026-09-26 · **Issue:** [#296](https://github.com/siraj-samsudeen/featherbase/issues/296)
 
 > **2026-09-26 note:** this revises the 2026-09-21 decision in place rather than
 > superseding it with a new ADR — the owner's explicit choice, since the

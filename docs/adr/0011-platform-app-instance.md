@@ -1,6 +1,6 @@
 # ADR 0011: Platform, App, Instance
 
-**Status:** Accepted; amended by [ADR 0013](0013-client-apps-and-product-apps.md) (27-Oct-2026: product apps and client apps) · **Date:** 2026-10-26 · **Issue:** [#458](https://github.com/siraj-samsudeen/featherbase/issues/458) · **PR:** [#460](https://github.com/siraj-samsudeen/featherbase/pull/460)
+**Status:** Accepted; amended by [ADR 0013](0013-client-apps-and-product-apps.md) (27-Oct-2026: product apps and client apps) and [ADR 0014](0014-one-repo-for-platform-and-apps.md) (30-Oct-2026: the one-way rule enforced by a lint rule in one repository) · **Date:** 2026-10-26 · **Issue:** [#458](https://github.com/siraj-samsudeen/featherbase/issues/458) · **PR:** [#460](https://github.com/siraj-samsudeen/featherbase/pull/460)
 
 ## Context
 

@@ -31,8 +31,10 @@ const SCOPE = [
   // Every field of a sign-in method is configuration; its secrets (the Google
   // client secret) are deployment variables, never columns.
   { table: 'Sign In Method', shape: 'rows', fields: 'all', createRows: true },
-  // A scheduled job is code; the file only switches it on or off.
-  { table: 'Scheduled Job', shape: 'rows', fields: ['enabled'], createRows: false },
+  // A scheduled job is code; the file switches it on or off and sets how
+  // often it runs (#700). Its cadence is a Choice, so a made-up one is
+  // refused by the save, listed with the file's other problems.
+  { table: 'Scheduled Job', shape: 'rows', fields: ['enabled', 'cadence'], createRows: false },
   // #620 (E2): an installed app's declared settings, one row per
   // `<app>.<setting>`. The App Setting controller refuses a setting the app
   // does not declare. An app's secrets are deployment variables, never rows.

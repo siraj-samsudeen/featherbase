@@ -55,7 +55,7 @@ describe('the managed scope (D2)', () => {
         'kind', 'label', 'enabled', 'new_person', 'allowed_email_domains', 'self_link', 'client_id',
         'service_url', 'settings', 'identifier_system',
       ]],
-      ['Scheduled Job', 'rows', ['enabled']],
+      ['Scheduled Job', 'rows', ['cadence', 'enabled']],
       ['App Setting', 'rows', ['value']],
     ])
     // The privacy notice may be kept in its own file next to the settings file.
@@ -152,7 +152,7 @@ describe('apply (D4)', () => {
         // Valid on its own, so the rollback is what keeps it out.
         'System Settings': { app_name: 'Should Not Land', allowed_login_domains: 'example.com', date_format: 'not-a-format' },
         'Sign In Method': [{ row_id: 'google', allowed_email_domains: 'x.com' }],
-        'Scheduled Job': [{ row_id: 'no_such_job', enabled: true }, { row_id: 'check_sla', cadence: 'hourly' }],
+        'Scheduled Job': [{ row_id: 'no_such_job', enabled: true }, { row_id: 'check_sla', description: 'Not the file\'s to set.' }],
         'Person': [{ row_id: 'Administrator', email: 'x@example.com' }],
       },
     } as unknown as InstanceSettingsFile, { by: 'Administrator' }))
@@ -162,7 +162,7 @@ describe('apply (D4)', () => {
       'System Settings.allowed_login_domains': 'System Settings has no field allowed_login_domains',
       'System Settings.date_format': expect.stringContaining('not-a-format'),
       'Scheduled Job.no_such_job': 'Scheduled Job has no row no_such_job',
-      'Scheduled Job.check_sla.cadence': 'Scheduled Job.cadence is not managed by the settings file (it manages: enabled)',
+      'Scheduled Job.check_sla.description': 'Scheduled Job.description is not managed by the settings file (it manages: cadence, enabled)',
       Person: 'Person is not managed by the settings file (it manages: System Settings, Sign In Method, Scheduled Job, App Setting)',
     })
     expect(await snapshot()).toEqual(before)
