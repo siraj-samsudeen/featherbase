@@ -196,7 +196,7 @@ describe('release preflight: app role bindings', () => {
 // #642 (E7): a release that lacks the exact version of an installed, enabled
 // app refuses, so a deploy never silently takes the app away.
 describe('release preflight: installed apps ship in the release', () => {
-  const OTHER = resolve(dirname(fileURLToPath(import.meta.url)), '../../../runtime-apps/other')
+  const OTHER = resolve(dirname(fileURLToPath(import.meta.url)), '../../../test-apps/other')
   const install = (version: string, digest: string, enabled = true) =>
     sql`insert into installed_app (name, manifest, enabled, runtime_package, package_version, artifact_digest)
       values ('other', ${sql.json({ name: 'other' })}, ${enabled}, true, ${version}, ${digest})`

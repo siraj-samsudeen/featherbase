@@ -14,7 +14,7 @@ const test = base.extend<{ admin: TestClient }>({
 })
 
 test('generic runtime deletion cannot bypass source revision or retained discussion', async ({ admin }) => {
-  await discoverPackages([resolve('../..', 'runtime-apps/other')])
+  await discoverPackages([resolve('../..', 'test-apps/other')])
   await admin.post('/api/install_app', { name: 'other' })
   const source = await admin.post<any>('/api/save_row', { table: 'other.task', row: { row_id: 'discard', quantity: 37 } })
   await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'other.task', ref_name: 'discard', content: 'Keep 17 comments separate from 37 units' } })
@@ -25,7 +25,7 @@ test('generic runtime deletion cannot bypass source revision or retained discuss
 })
 
 test('Admin attachments and shares retain exact targets through raw/action deletion and restart', async ({ admin }) => {
-  const directory = resolve('../..', 'runtime-apps/action-proof')
+  const directory = resolve('../..', 'test-apps/action-proof')
   await discoverPackages([directory])
   await admin.post('/api/install_app', { name: 'actionproof' })
   const save = (table: string, row: Record<string, unknown>) => admin.post<any>('/api/save_row', { table, row })
@@ -76,7 +76,7 @@ test('Admin attachments and shares retain exact targets through raw/action delet
 })
 
 test('a row another Table refers to is retained, and a reference from a Settings Table refuses the delete it cannot prove', async ({ admin }) => {
-  await discoverPackages([resolve('../..', 'runtime-apps/other')])
+  await discoverPackages([resolve('../..', 'test-apps/other')])
   await admin.post('/api/install_app', { name: 'other' })
   const source = await admin.post<any>('/api/save_row', { table: 'other.task', row: { row_id: 'kept', quantity: 23 } })
   await admin.post('/api/table_def', { name: 'Rrd Pointer', columns: [{ column_name: 'task', column_type: 'Reference', reference_table: 'other.task' }] })

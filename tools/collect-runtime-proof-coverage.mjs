@@ -9,7 +9,7 @@ let flushed = false
 function flush() {
   if (flushed) return
   const map = Object.fromEntries(Object.entries(globalThis.__coverage__ ?? {})
-    .filter(([file]) => file.includes('/runtime-apps/tasker/')))
+    .filter(([file]) => file.includes('/example-apps/tasker/')))
   if (Object.keys(map).length) {
     mkdirSync(directory, { recursive: true })
     writeFileSync(join(directory, `server-${randomUUID()}.json`), JSON.stringify(map))

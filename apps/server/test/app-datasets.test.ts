@@ -5,8 +5,8 @@
 // limited to the reader's scope, through the same shaping. A read declared
 // outbound runs after its authorization transaction has closed.
 //
-// Fixtures: runtime-apps/fixtures/dataset-proof reads the dataset;
-// runtime-apps/fixtures/place-roster provides people's places. The "warehouse"
+// Fixtures: test-apps/fixtures/dataset-proof reads the dataset;
+// test-apps/fixtures/place-roster provides people's places. The "warehouse"
 // is a schema of made-up rows in the sibling test database (external-database.ts),
 // reached through an ordinary postgres Data Source. Nothing remote is touched.
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -31,8 +31,8 @@ import { _getRootSql, inAppTransaction, sql } from '../src/db'
 import { assertStillServing, servingIdentity } from '../src/app-lifecycle'
 import { runHealthChecks } from '../src/instance-health'
 
-const fixture = resolve('../..', 'runtime-apps/fixtures/dataset-proof')
-const provider = resolve('../..', 'runtime-apps/fixtures/place-roster')
+const fixture = resolve('../..', 'test-apps/fixtures/dataset-proof')
+const provider = resolve('../..', 'test-apps/fixtures/place-roster')
 const read = '/api/app_reads/datasetproof/'
 const SOURCE_ENV = 'B4_WAREHOUSE_URL'
 process.env[SOURCE_ENV] = EXTERNAL_DATABASE_URL

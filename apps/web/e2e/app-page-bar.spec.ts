@@ -5,7 +5,7 @@ import type { APIRequestContext } from '@playwright/test'
 // same TopBar as every other page, drawn by the platform's bar bundle into a
 // host the server puts first in the app's document. playwright.config.ts lists
 // `barproof.localhost`, which opens the bar-proof fixture app; its page
-// (runtime-apps/fixtures/bar-proof/client/index.html) shows the store it read
+// (test-apps/fixtures/bar-proof/client/index.html) shows the store it read
 // from the address on load and the one the bar's `featherbase:bar-change`
 // event told it, and pins a box below the bar with `--featherbase-bar-height`.
 // Its own styling (a serif face, dark red text on cream) is deliberately unlike

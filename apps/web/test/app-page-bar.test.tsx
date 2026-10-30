@@ -19,8 +19,8 @@ import { mountBar } from '../src/bar/mount'
 import { PHONE_QUERY } from '../src/components/TopBar'
 import { test, expect } from './pg-test'
 
-const BAR_PROOF = resolve('../..', 'runtime-apps/fixtures/bar-proof')
-const ROSTER = resolve('../..', 'runtime-apps/fixtures/place-roster')
+const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
+const ROSTER = resolve('../..', 'test-apps/fixtures/place-roster')
 const STORES: [string, string][] = [['Hill Road', 'S102'], ['Lake View', 'S103'], ['Riverside', 'S101']]
 
 let mounted: { unmount: () => void; host: HTMLElement } | undefined

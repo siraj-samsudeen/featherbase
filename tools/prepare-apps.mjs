@@ -19,10 +19,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^npm_config_/i.test(key)))
 
 const steps = [
-  ['ci', '--prefix', 'runtime-apps/tasker', '--ignore-scripts'],
-  ['test', '--prefix', 'runtime-apps/tasker'],
-  ['run', 'build', '--prefix', 'runtime-apps/tasker'],
-  ['run', 'build', '--prefix', 'runtime-apps/scope-proof'],
+  ['ci', '--prefix', 'example-apps/tasker', '--ignore-scripts'],
+  ['test', '--prefix', 'example-apps/tasker'],
+  ['run', 'build', '--prefix', 'example-apps/tasker'],
+  ['run', 'build', '--prefix', 'test-apps/scope-proof'],
   ['ci', '--prefix', 'client-apps/jeyarama/dash', '--ignore-scripts'],
   ['run', 'build', '--prefix', 'client-apps/jeyarama/dash'],
   ['test', '--prefix', 'client-apps/jeyarama/dash'],

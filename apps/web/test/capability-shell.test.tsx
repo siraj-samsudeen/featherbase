@@ -17,7 +17,7 @@ import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
 
-const DASH_STAND_IN = resolve('../..', 'runtime-apps/fixtures/dash-stand-in')
+const DASH_STAND_IN = resolve('../..', 'test-apps/fixtures/dash-stand-in')
 
 afterEach(() => vi.restoreAllMocks())
 

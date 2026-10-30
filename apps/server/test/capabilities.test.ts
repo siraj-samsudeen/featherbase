@@ -123,7 +123,7 @@ describe('whoami lists the installed apps the person can open', () => {
     const { discoverPackages } = await import('../src/runtime-packages')
     const { resolve } = await import('node:path')
     try {
-      expect(await discoverPackages([resolve('../..', 'runtime-apps/fixtures/dash-stand-in')])).toEqual([])
+      expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/dash-stand-in')])).toEqual([])
       await admin.post('/api/install_app', { name: 'feather_dash' })
       const reader = await createUser({ email: 'dash.whoami@example.com' })
       expect((await reader.get<{ apps: unknown }>('/api/whoami')).apps).toEqual([{ name: 'feather_dash', title: 'Dash stand-in' }])
@@ -139,7 +139,7 @@ describe('whoami lists the installed apps the person can open', () => {
     const { discoverPackages } = await import('../src/runtime-packages')
     const { resolve } = await import('node:path')
     try {
-      expect(await discoverPackages([resolve('../..', 'runtime-apps/fixtures/dash-stand-in')])).toEqual([])
+      expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/dash-stand-in')])).toEqual([])
       await admin.post('/api/install_app', { name: 'feather_dash' })
       await admin.post('/api/set_app_enabled', { name: 'feather_dash', enabled: false })
       const reader = await createUser({ email: 'dash.whoami.disabled@example.com' })

@@ -9,9 +9,9 @@ import { loadInstalledApps } from '../src/apps'
 import { sql, withTransaction } from '../src/db'
 import { actionDeclaration, readDeclaration, validateOperationFacts } from '../src/app-access'
 import { AppError } from '../src/errors'
-import { version as currentTaskerVersion } from '../../../runtime-apps/tasker/package.json'
+import { version as currentTaskerVersion } from '../../../example-apps/tasker/package.json'
 
-const directory = resolve('../..', 'runtime-apps/scope-proof')
+const directory = resolve('../..', 'test-apps/scope-proof')
 const read = '/api/app_reads/scopeproof/'
 const action = '/api/app_actions/scopeproof/'
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
@@ -74,8 +74,8 @@ describe('fresh app roles and store access', () => {
   })
 
   test('historical exact Tasker refuses v1 actions, upgrades explicitly and can replay only table/generic legacy results', async ({ admin }) => {
-    const historical = resolve('../..', 'runtime-apps/fixtures/tasker-v2')
-    const current = resolve('../..', 'runtime-apps/tasker')
+    const historical = resolve('../..', 'test-apps/fixtures/tasker-v2')
+    const current = resolve('../..', 'example-apps/tasker')
     expect(await discoverPackages([historical])).toEqual([])
     await admin.post('/api/install_app', { name: 'tasker' })
     const invoke = (version: string) => admin.fetch('/api/app_actions/tasker/promote', { method: 'POST',

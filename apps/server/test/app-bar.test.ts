@@ -1,8 +1,8 @@
 // #642 (design E8): an app declares controls for the shared top bar. The
 // platform draws them; it fills a picker from the app's own read, under the
 // reader's scope, and the choice goes into the address. Fixtures:
-// runtime-apps/fixtures/bar-proof declares a store picker,
-// runtime-apps/fixtures/place-roster provides people's scope.
+// test-apps/fixtures/bar-proof declares a store picker,
+// test-apps/fixtures/place-roster provides people's scope.
 import { afterEach, describe, expect } from 'vitest'
 import { resolve } from 'node:path'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -12,8 +12,8 @@ import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packa
 import { pathToFileURL } from 'node:url'
 import { sql } from '../src/db'
 
-const BAR_PROOF = resolve('../..', 'runtime-apps/fixtures/bar-proof')
-const ROSTER = resolve('../..', 'runtime-apps/fixtures/place-roster')
+const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
+const ROSTER = resolve('../..', 'test-apps/fixtures/place-roster')
 
 const directories: string[] = []
 afterEach(async () => {
@@ -123,7 +123,7 @@ describe("declared bar controls: the picker's options", () => {
   })
 
   test('an app that declared no bar controls has none', async ({ admin }) => {
-    expect(await discoverPackages([resolve('../..', 'runtime-apps/other')])).toEqual([])
+    expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
     expect(await admin.get('/api/app_bar/other')).toEqual({ controls: [] })
   })

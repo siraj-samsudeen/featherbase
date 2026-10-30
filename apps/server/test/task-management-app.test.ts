@@ -16,7 +16,7 @@ const APP = 'tasker'
 const TASK = 'tasker.task'
 
 async function install() {
-  expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker')])).toEqual([])
+  expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
   if (await isInstalled(APP)) await uninstallApp(APP)
   await installApp(APP)
 }

@@ -44,9 +44,10 @@ pnpm check:e2e-dsl                               # e2e specs use the DSL fixture
 ```
 
 Run `pnpm apps:prepare` after installing dependencies and before the server
-and web suites: it builds the runtime packages under `runtime-apps/` (Tasker
-has its own npm lockfile and is not a pnpm workspace member). CI and
-`./init.sh` do this for you.
+and web suites: it builds the app packages the suites install
+(`example-apps/tasker`, `test-apps/scope-proof`, `client-apps/jeyarama/dash`;
+the apps have their own npm lockfiles and are not pnpm workspace members). CI
+and `./init.sh` do this for you.
 
 `typecheck` runs `tsc` twice — on `src`, then on `tsconfig.test.json`, which
 adds the test directories (and for web `e2e/` and the Vite/Playwright
@@ -62,9 +63,10 @@ tears them down. `pnpm smoke` does not; it drives whatever is already up on
 On a pull request it runs the static checks, both typechecks, the server suite
 (three shards), the web and shared suites and the PostgreSQL 18 release
 preflight, and runs e2e **only** when the PR touches `apps/web/**`,
-`packages/**`, `runtime-apps/**`, the lockfile, the root `package.json`,
-`pnpm-workspace.yaml` or the workflow. Add the `run-e2e` label to force it
-(say, a server change to a route the UI depends on).
+`packages/**`, `example-apps/**`, `test-apps/**`, `client-apps/**`, the
+lockfile, the root `package.json`, `pnpm-workspace.yaml` or the workflow. Add
+the `run-e2e` label to force it (say, a server change to a route the UI
+depends on).
 
 ## The sandbox model
 
@@ -312,13 +314,13 @@ rejected rather than reporting a false percentage.
 
 ```bash
 rm -rf coverage/tasker
-npm run test:coverage --prefix runtime-apps/tasker
-VITE_COVERAGE=true npm run build --prefix runtime-apps/tasker
+npm run test:coverage --prefix example-apps/tasker
+VITE_COVERAGE=true npm run build --prefix example-apps/tasker
 pnpm --filter web exec vitest run --config ../../tools/vitest.runtime-components.config.ts
-pnpm --filter server exec vitest run --config ../../runtime-apps/tasker/vitest.integration.config.ts
+pnpm --filter server exec vitest run --config ../../example-apps/tasker/vitest.integration.config.ts
 VITE_COVERAGE=true pnpm apps:prove
 # Run web coverage:e2e above before merging; it supplies the browser maps.
-npm run coverage:merged --prefix runtime-apps/tasker -- \
+npm run coverage:merged --prefix example-apps/tasker -- \
   --browser-dir "$PWD/apps/web/.nyc_output" \
   "$PWD"/coverage/tasker/components/coverage-final.json \
   "$PWD"/coverage/tasker/integration/*.json \
@@ -372,4 +374,4 @@ a transparent proxy, so never point it through a tunnel, port forward or
 proxy, or at any shared, QA, staging or production database. Rows have
 deterministic `DEV-TASKER-*` IDs; rerunning is safe and never overwrites a row
 a developer changed. Scenarios live in
-`runtime-apps/tasker/development/scenarios.mjs`.
+`example-apps/tasker/development/scenarios.mjs`.

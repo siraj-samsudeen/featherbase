@@ -28,7 +28,7 @@ on:
       - .github/workflows/publish-image.yml
       - .github/workflows/image-check.yml
       - .github/image-check/**
-      - runtime-apps/other/**
+      - test-apps/other/**
 
 permissions:
   contents: read
@@ -97,19 +97,21 @@ jobs:
         run: |
           app_paths=$(docker image inspect featherbase-platform:ci --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^FEATHERBASE_APP_PATHS=//p')
           [ -z "$app_paths" ] || { echo "platform image sets FEATHERBASE_APP_PATHS=$app_paths"; exit 1; }
-          if docker run --rm featherbase-platform:ci test -e /app/runtime-apps; then
-            echo "platform image has /app/runtime-apps"; exit 1
-          fi
-          echo "platform image: no /app/runtime-apps, no FEATHERBASE_APP_PATHS"
+          for folder in example-apps test-apps client-apps; do
+            if docker run --rm featherbase-platform:ci test -e "/app/$folder"; then
+              echo "platform image has /app/$folder"; exit 1
+            fi
+          done
+          echo "platform image: no app folders, no FEATHERBASE_APP_PATHS"
 
       - name: The default image still holds Tasker
         run: |
           app_paths=$(docker image inspect featherbase-default:ci --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^FEATHERBASE_APP_PATHS=//p')
-          expected='["/app/runtime-apps/tasker"]'
+          expected='["/app/example-apps/tasker"]'
           [ "$app_paths" = "$expected" ] || { echo "FEATHERBASE_APP_PATHS=$app_paths, expected $expected"; exit 1; }
           for app in tasker; do
             for file in package.json featherbase.json dist; do
-              docker run --rm featherbase-default:ci test -e "/app/runtime-apps/$app/$file" || { echo "missing /app/runtime-apps/$app/$file"; exit 1; }
+              docker run --rm featherbase-default:ci test -e "/app/example-apps/$app/$file" || { echo "missing /app/example-apps/$app/$file"; exit 1; }
             done
           done
           echo "default image: Tasker present; FEATHERBASE_APP_PATHS=$app_paths"
@@ -126,7 +128,7 @@ jobs:
           context="$RUNNER_TEMP/client-image"
           mkdir -p "$context"
           cp .github/image-check/Dockerfile .github/image-check/discover-check.mts "$context/"
-          cp -R runtime-apps/other "$context/other"
+          cp -R test-apps/other "$context/other"
           # The `default` builder (the Docker engine's own) sees the image
           # loaded above; the container builder setup-buildx made current
           # would look for it in a registry instead.

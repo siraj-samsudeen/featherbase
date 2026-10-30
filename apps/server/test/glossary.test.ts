@@ -2,7 +2,7 @@
 // adds them under the app, an instance may add its own and reword an app's,
 // and an upgrade never overwrites a local wording. Everyone signed in reads
 // it; editing is a write grant on Glossary Term. Fixtures:
-// runtime-apps/fixtures/shelves-v1, -v2 (new wording) and -elsewhere (a term
+// test-apps/fixtures/shelves-v1, -v2 (new wording) and -elsewhere (a term
 // describing another app's Table).
 import { resolve } from 'node:path'
 import type { TestClient } from 'feather-testing-postgres'
@@ -13,10 +13,10 @@ import { uninstallApp } from '../src/apps'
 import { glossaryDeclaration } from '../src/glossary'
 import { expectApiError } from './fixtures'
 
-const v1 = resolve('../..', 'runtime-apps/fixtures/shelves-v1')
-const v2 = resolve('../..', 'runtime-apps/fixtures/shelves-v2')
-const elsewhere = resolve('../..', 'runtime-apps/fixtures/shelves-elsewhere')
-const renamed = resolve('../..', 'runtime-apps/fixtures/shelves-renamed')
+const v1 = resolve('../..', 'test-apps/fixtures/shelves-v1')
+const v2 = resolve('../..', 'test-apps/fixtures/shelves-v2')
+const elsewhere = resolve('../..', 'test-apps/fixtures/shelves-elsewhere')
+const renamed = resolve('../..', 'test-apps/fixtures/shelves-renamed')
 
 interface Term {
   id: string

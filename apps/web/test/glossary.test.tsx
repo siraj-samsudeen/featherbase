@@ -1,6 +1,6 @@
 // #629: the Glossary page and the "?" help where a described word appears.
 // The UI checklist is the first comment on #629; item numbers are cited
-// below. Fixture: runtime-apps/fixtures/shelves-v1, an app shipping "Shelf
+// below. Fixture: test-apps/fixtures/shelves-v1, an app shipping "Shelf
 // Lead" and "Coverage".
 import { resolve } from 'node:path'
 import { screen, waitFor, within } from '@testing-library/react'
@@ -10,7 +10,7 @@ import { sql } from 'server/src/db'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { test, expect, renderApp } from './pg-test'
 
-const shelves = resolve(process.cwd(), '../..', 'runtime-apps/fixtures/shelves-v1')
+const shelves = resolve(process.cwd(), '../..', 'test-apps/fixtures/shelves-v1')
 
 async function installShelves(admin: TestClient) {
   expect(await discoverPackages([shelves])).toEqual([])

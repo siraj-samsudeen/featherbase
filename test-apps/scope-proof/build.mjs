@@ -8,7 +8,7 @@ const object = { policy, scope: { kind: 'resolver', name: 'object', facts: [
 const product = { policy, scope: { kind: 'resolver', name: 'pairs', facts: [] },
   authorization: { kind: 'product', name: 'pairs', facts: [{ table: 'scopeproof.access', columns: ['pairs'] }] } }
 // #559: operations scoped by the places a person covers. Another app provides
-// the scope (runtime-apps/fixtures/place-roster in the tests).
+// the scope (test-apps/fixtures/place-roster in the tests).
 const placed = { policy: { kind: 'person_scope', readRoles: ['Scope Reader', 'Scope Planner'], actionRoles: ['Scope Planner'] },
   authorization: { kind: 'generic' } }
 const tables = [

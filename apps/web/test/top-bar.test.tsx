@@ -177,7 +177,7 @@ test("on an app's address the account page stays named for the app for someone w
 // INTERIM_APPS stands in for Feather Dash only until an app of that name is
 // installed (design D8): from then on the bar leads to the app's own root.
 
-const DASH_STAND_IN = resolve('../..', 'runtime-apps/fixtures/dash-stand-in')
+const DASH_STAND_IN = resolve('../..', 'test-apps/fixtures/dash-stand-in')
 
 /** An app installed under the name feather_dash, open to everyone (its entry
  *  Table is readable by All, which is no Table grant of a person's own). */
@@ -200,7 +200,7 @@ test("on an app's address whose app is installed, the bar's name leads to the ap
 // everyone can open (Tasker grants All) is no one's in particular, so only the
 // app installed under the interim name takes Feather Dash's place (e2e
 // top-bar.spec.ts, items 3).
-const OTHER_APP = resolve('../..', 'runtime-apps/other')
+const OTHER_APP = resolve('../..', 'test-apps/other')
 
 test('on the Admin address the account page is Featherbase for someone who can open only an app open to everyone', async ({ admin, createUser }) => {
   expect(await discoverPackages([OTHER_APP])).toEqual([])

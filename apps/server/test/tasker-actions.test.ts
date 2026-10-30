@@ -14,7 +14,7 @@ const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
 })
 
 async function install() {
-  expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker')])).toEqual([])
+  expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
   if (await isInstalled('tasker')) await uninstallApp('tasker')
   await installApp('tasker')
 }

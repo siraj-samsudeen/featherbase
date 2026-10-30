@@ -10,7 +10,7 @@ import { sql } from '../src/db'
 import { app } from '../src/index'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
 
-const directory = resolve('../..', 'runtime-apps/action-proof')
+const directory = resolve('../..', 'test-apps/action-proof')
 const action = '/api/app_actions/actionproof/'
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
   ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'actionproof@1.1.0,actionproof2@1.1.0' },
