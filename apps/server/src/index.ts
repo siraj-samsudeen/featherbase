@@ -23,7 +23,7 @@ import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, se
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
-import { personByEmail, pickPeople, principalNames } from './people-directory'
+import { personByEmail, pickPeople, principalNames, tableMembers } from './people-directory'
 import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
@@ -1281,6 +1281,8 @@ app.post('/api/people/names', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown }
   return c.json({ names: await principalNames(body.ids, who(c)) })
 })
+
+app.get('/api/table_members/:table', async (c) => c.json({ data: await tableMembers(c.req.param('table'), who(c)) }))
 
 app.get('/api/people/pick', async (c) => {
   return c.json({ people: await pickPeople(c.req.query('q') ?? '', who(c), Number(c.req.query('limit') ?? 10)) })

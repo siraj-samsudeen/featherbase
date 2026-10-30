@@ -25,6 +25,40 @@ async function targetPackage() {
 }
 
 describe('runtime upgrades', () => {
+  test('an upgrade adds mandatory privacy without rewriting existing rows', async ({ admin, createUser }) => {
+    const source = resolve('../..', 'runtime-apps/other')
+    const { directory, manifest } = await targetPackage()
+    const policy = { version: 1, roles: ['System Manager'], shared_column: 'shared' }
+    const shared = { column_name: 'shared', column_type: 'Check', default_value: '0' }
+    manifest.tables[0].columns.push(shared)
+    manifest.migrations[0].operations.push({ kind: 'addColumn', table: 'other.task', column: shared })
+    manifest.tables[0].access_policy = policy
+    manifest.migrations[0].operations.push({ kind: 'addAccessPolicy', table: 'other.task', policy })
+    await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(manifest))
+    try {
+      await discoverPackages([source])
+      await admin.post('/api/install_app', { name: 'other' })
+      const owner = await createUser({ roles: ['System Manager'] })
+      await owner.post('/api/save_row', { table: 'other.task', row: { row_id: 'private-after-upgrade', quantity: 37 } })
+      const [before] = await sql`select * from other.task where row_id = 'private-after-upgrade'`
+      await discoverPackages([source, directory])
+      await loadInstalledApps()
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+      await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId })
+      await discoverPackages([source, directory])
+      await loadInstalledApps()
+      await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
+      const [after] = await sql`select * from other.task where row_id = 'private-after-upgrade'`
+      expect(after).toMatchObject(before)
+      expect((await sql`select access_policy from table_def where name = 'other.task'`)[0].access_policy).toEqual(policy)
+      const headers = { 'X-Featherbase-App-Version': 'other@2.0.0' }
+      const visible = await owner.fetch('/api/table/other.task/private-after-upgrade', { headers })
+      expect(visible.status).toBe(200)
+      expect(await visible.json()).toMatchObject({ quantity: 37 })
+      expect((await admin.fetch('/api/table/other.task/private-after-upgrade', { headers })).status).toBe(403)
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   test('core identity snapshot is host derived; multiple identities never override availability or version', async ({ admin, createUser }) => {
     const { directory } = await targetPackage()
     try {

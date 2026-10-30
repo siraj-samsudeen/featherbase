@@ -9,13 +9,13 @@ import { hasPermission } from './permissions'
 import { AppError } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
-import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
+import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
-import { sql, withTransaction } from './db'
+import { sql, withTransaction, usingTransaction } from './db'
 import { logActivity } from './audit'
 import { invalidateMeta } from './meta'
 import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyMigrations, countLosses, describeLoss, refuse, replayForward, sameDeclaration, type Loss, type Operation } from './runtime-migrations'
@@ -26,6 +26,7 @@ interface PackageHookContext {
   old?: Record<string, unknown>
   user: string
   isNew: boolean
+  documents: Pick<import('shared').RuntimeActionContext['documents'], 'get' | 'list' | 'members'>
   reject(message: string, fields?: Record<string, string>): never
 }
 type Validator = (context: PackageHookContext) => void | Promise<void>
@@ -328,9 +329,15 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     for (const [table, validator] of Object.entries(module.validators ?? {})) {
       if (!names.has(table) || typeof validator !== 'function')
         throw new Error('Validators must target owned Tables')
-      doc_events[table] = { before_validate: (ctx) => (validator as Validator)({
-        row: ctx.row, old: ctx.old, user: ctx.user, isNew: ctx.isNew,
-        reject(message, fields) { throw new AppError('ValidationError', message, fields) },
+      doc_events[table] = { before_validate: (ctx) => usingTransaction(ctx.tx, async () => {
+        const access = callerDocuments(manifest.name, [...names], ctx.user)
+        try {
+          await (validator as Validator)({
+            row: ctx.row, old: ctx.old, user: ctx.user, isNew: ctx.isNew,
+            documents: Object.freeze({ get: access.documents.get, list: access.documents.list, members: access.documents.members }),
+            reject(message, fields) { throw new AppError('ValidationError', message, fields) },
+          })
+        } finally { await access.close() }
       }) }
     }
   }

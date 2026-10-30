@@ -137,3 +137,18 @@ test('a reference write cannot probe or link another creator’s private row', a
   for (const id of [row.row_id, 'missing-private-row'])
     await expect(peer.post(link.url, { target: id })).rejects.toMatchObject({ status: 403 })
 })
+
+test('members can choose teammates by name without broad Person access', async ({ admin, createUser }) => {
+  const table = await makeTable(admin, { name: 'Team Notes', access_policy: { version: 1, roles: ['Notes Member'] }, columns: ['title'] })
+  await grantRole(admin, { table: table.name, role: 'Notes Member', can_read: true })
+  const member = await createUser({ roles: ['Notes Member'], fullName: 'Asha Patel' })
+  const teammate = await createUser({ roles: ['Notes Member'], fullName: 'Ravi Shah' })
+  const outsider = await createUser({ roles: [], fullName: 'Outside Person' })
+  const url = `/api/table_members/${encodeURIComponent(table.name)}`
+  expect(await member.get(url)).toEqual({ data: [
+    { row_id: member.user, full_name: 'Asha Patel' },
+    { row_id: teammate.user, full_name: 'Ravi Shah' },
+  ] })
+  await expect(outsider.get(url)).rejects.toMatchObject({ status: 403 })
+  await expect(admin.get(url)).rejects.toMatchObject({ status: 403 })
+})

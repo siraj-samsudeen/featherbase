@@ -36,7 +36,7 @@ Reuse supported Shop Floor exports, including tokens, controls, formatters and s
 
 ### Subtasks and discussion
 
-Represent subtasks as metadata-defined tasks linked to a parent, not checkbox-only embedded notes. Limit depth to one and inherit the parent's visibility. Each subtask has responsibility, status and discussion. The parent completion check locks and validates current child state in the same transaction; it cannot race a child being added or reopened. Progress shows child completion without automatically finishing the parent. Preserve Done versus Cancelled distinctions.
+Represent subtasks as metadata-defined tasks linked to a parent, not checkbox-only embedded notes. Limit depth to one and inherit the parent's visibility. Each subtask has responsibility, status and discussion. Runtime validators receive read-only document helpers for their owned Tables. These use the caller’s permissions and the save transaction; a referenced parent is locked before validating a child. The parent completion check holds the parent lock and reads current child state in the same transaction; it cannot race a child being added or reopened. Progress shows child completion without automatically finishing the parent. Preserve Done versus Cancelled distinctions.
 
 Conversations belong to a task or subtask. Each root is an update or question; replies belong directly to that root, without deeper nesting. Questions name a respondent or anyone. A response creates an asker-review state; reading is separate from resolution. Only the asker resolves or reopens. A follow-up from the asker on an unresolved question returns it to waiting for a reply. Ordinary updates have unread state but need no resolution. Do not duplicate free-standing chat or conflate task status with question status.
 
@@ -48,7 +48,7 @@ A series has at most one active occurrence. Fixed schedules skip slots that fall
 
 ### Repairs and delivery
 
-Fix silent truncation through real paging, not a larger limit. Resolve activity authors to names. Retain the assertions in existing defect pins and convert them to ordinary tests only when fixed. Publish a new app version with truthful fingerprints and a data-preserving migration ledger. One PR carries every stage and the final spec archive; do not merge partial feature PRs.
+Fix silent truncation through real paging, not a larger limit. Resolve activity authors to names. Retain the assertions in existing defect pins and convert them to ordinary tests only when fixed. Publish a new app version with truthful fingerprints and a data-preserving migration ledger. The generic addAccessPolicy operation adds mandatory access to previously unprotected Tables, participates in forward/backward declaration replay, and cannot replace an existing policy. One PR carries every stage and the final spec archive; do not merge partial feature PRs.
 
 ## Risks / Trade-offs
 

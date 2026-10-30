@@ -1,3 +1,5 @@
+import { Attention } from './Attention'
+import { Discussion } from './Discussion'
 import { Button, cardClasses, buttonClasses } from '@featherbase/shop-floor'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -125,7 +127,7 @@ export function peopleWithTaskResponsibility(
 export function TaskManagementPage() {
   const queryClient = useQueryClient()
   const me = getSessionUser()?.row_id ?? ''
-  const [view, setView] = useState<View>(() => hashSavedViewId() ? 'views' : 'inbox')
+  const [view, setView] = useState<View>(() => hashSavedViewId() ? 'views' : 'work')
   const [capture, setCapture] = useState('')
   const [projectName, setProjectName] = useState('')
   const [projectTask, setProjectTask] = useState('')
@@ -611,9 +613,7 @@ export function TaskManagementPage() {
         </div>
       )}
 
-      {view === 'inbox' && (
-        <section aria-labelledby="inbox-heading">
-          <SectionTitle id="inbox-heading" title="Inbox" hint="Capture first. Decide where it belongs when you are ready." />
+      {(view === 'work' || view === 'inbox') && (
           <form
             className="tasker-composer"
             onSubmit={async (event) => {
@@ -622,6 +622,7 @@ export function TaskManagementPage() {
               try {
                 await createTask(title)
                 setCapture('')
+                setView('inbox')
               } catch { /* message is shown above */ }
             }}
           >
@@ -632,10 +633,16 @@ export function TaskManagementPage() {
               onChange={(event) => setCapture(event.target.value)}
               placeholder="What do you need to remember?"
               className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm outline-none focus:border-[var(--color-action)] focus:ring-2 focus:ring-[var(--color-action)]/15"
-              autoFocus
+              autoFocus={view === 'inbox'}
             />
             <Button type="submit" variant="primary"  disabled={saving || !capture.trim()}>Add</Button>
           </form>
+      )}
+
+      {view === 'inbox' && (
+        <section aria-labelledby="inbox-heading">
+          <SectionTitle id="inbox-heading" title="Inbox" hint="Capture first. Decide where it belongs when you are ready." />
+
           {toolbarFor(inbox, filteredInbox, { kind: 'inbox' }, 'Inbox', true)}
           {filteredInbox.length
             ? <TaskList tasks={filteredInbox} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
@@ -646,6 +653,7 @@ export function TaskManagementPage() {
       {view === 'work' && (
         <section aria-labelledby="work-heading">
           <SectionTitle id="work-heading" title="My Work" hint="Your private focus order, followed by work assigned to you" />
+          <Attention tasks={allTasks} onOpen={id => { void setDetailMode('inspector'); location.hash = `task=${encodeURIComponent(id)}` }} />
           {toolbarFor(myWork, filteredMyWork, { kind: 'work' }, 'My Work', true)}
           {filteredMyWork.length
             ? <TaskList tasks={filteredMyWork} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} onMove={moveFocus} />
@@ -1283,6 +1291,7 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
         <Markdown>{task.data.description || 'No description yet. Add context when it helps.'}</Markdown>
       </div>}
 
+      <Discussion key={id} taskId={id} />
       <div className="mt-7 border-t border-[var(--color-border)] pt-5">
         <h3 className="mb-3 pointer-fine:text-sm font-semibold">Discussion and history</h3>
         {taskActivity.error && <p role="alert">Could not load discussion and history: {taskActivity.error.message}</p>}

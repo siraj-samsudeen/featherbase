@@ -76,6 +76,11 @@ export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
   return endingTransaction(() => (current !== root ? (current as unknown as TxSql).savepoint(run) : root.begin(run)) as Promise<T>)
 }
 
+/** Bind document helpers to the transaction already owned by a lifecycle hook. */
+export function usingTransaction<T>(tx: Sql, fn: () => Promise<T>): Promise<T> {
+  return transactions.run(tx, fn)
+}
+
 /** The current transaction WITHOUT platform-name
  *  qualification: for SQL that must resolve its names by `search_path`, such
  *  as the migrations written before the platform schema existed (0088–0093). */

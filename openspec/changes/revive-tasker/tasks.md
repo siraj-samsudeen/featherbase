@@ -1,7 +1,7 @@
 ## 1. Baseline and implementation design
 
-- [ ] 1.1 Boot with ./init.sh and run pnpm smoke; record reproducible baseline commands before code changes.
-- [ ] 1.2 Use domain-modeling to append an ADR superseding Tasker's retirement; verify #563 is linked and historical ADRs remain intact.
+- [x] 1.1 Boot with ./init.sh and run pnpm smoke; record reproducible baseline commands before code changes.
+- [x] 1.2 Use domain-modeling to append an ADR superseding Tasker's retirement; verify #563 is linked and historical ADRs remain intact.
 - [ ] 1.3 Inspect installed Tasker versions and legacy task ownership; obtain a migration decision if creator and former personal owner differ or work was already shared, recording evidence without exposing private data.
 - [ ] 1.4 Use codebase-design to specify the generic mandatory privacy seam and app-facing UI exports; prove the design covers administrative bypass and every relevant read/write surface, without Tasker-specific platform branches.
 - [ ] 1.5 Resolve the remaining recurrence and parent-reopening decisions in design.md before those tasks; update their scenarios and verify owner decisions are recorded.
@@ -16,8 +16,8 @@
 ## 3. Workspace and readiness fixes
 
 - [ ] 3.1 Implement My Work as default while retaining deep links and private capture; verify component and browser navigation journeys.
-- [ ] 3.2 Fix collection truncation, including supporting lists; turn #508's pin into a normal passing test and verify newly captured tasks beyond 500.
-- [ ] 3.3 Resolve authors to names and adopt shared formatting; turn #547's pin into a normal test and prove an ordinary member's activity display.
+- [x] 3.2 Fix collection truncation, including supporting lists; turn #508's pin into a normal passing test and verify newly captured tasks beyond 500.
+- [x] 3.3 Resolve authors to names and adopt shared formatting; turn #547's pin into a normal test and prove an ordinary member's activity display.
 - [ ] 3.4 Build the Attention first shell and detail layout from #563's checklist with Shop Floor exports; include Tasker in design guards and verify both themes.
 - [ ] 3.5 Fix shared-bar and phone inspector positioning; turn the overlap pin into a passing browser test at 375px.
 

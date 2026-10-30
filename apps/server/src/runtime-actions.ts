@@ -1,3 +1,4 @@
+import { tableMembers } from './people-directory'
 import { z } from 'zod'
 import type { ActionRow, AppAuthorizationContext, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler } from 'shared'
 import { inAppTransaction, sql } from './db'
@@ -34,7 +35,7 @@ function reject(message: string, fields?: Record<string, string>): never {
   throw new AppError('ValidationError', message, fields)
 }
 
-function callerDocuments(app: string, allowed: string[], user: string) {
+export function callerDocuments(app: string, allowed: string[], user: string) {
   let open = true
   let pending: Promise<unknown> | undefined
   let failure: unknown
@@ -100,6 +101,7 @@ function callerDocuments(app: string, allowed: string[], user: string) {
   }
   const documents: RuntimeActionContext['documents'] = Object.freeze({
     get: (table, id) => operation(() => locked(table, id)),
+    members: table => operation(async () => { await metaFor(table); return tableMembers(table, user) }),
     list: (table, args = {}) => operation(async () => {
       await metaFor(table)
       if (args.filters?.some(([, operator]) => operator === 'related')) reject('Action lists do not support cross-table related filters')

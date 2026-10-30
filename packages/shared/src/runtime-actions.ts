@@ -22,6 +22,7 @@ export interface RuntimeActionContext {
   reject(message: string, fields?: Record<string, string>): never
   readonly documents: {
     get(table: string, rowId: string): Promise<ActionRow>
+    members(table: string): Promise<{ row_id: string; full_name: string }[]>
     list(table: string, args?: ActionListArgs): Promise<ActionRow[]>
     create(table: string, values: ActionRow): Promise<ActionRow>
     update(table: string, values: ActionRow): Promise<ActionRow>

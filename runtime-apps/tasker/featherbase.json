@@ -70,7 +70,73 @@
       "id": "revive_tasker",
       "fromVersion": "2.3.0",
       "toVersion": "3.0.0",
-      "operations": []
+      "operations": [
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "tasker.discussion",
+            "label": "Task discussion",
+            "module": "Tasker",
+            "id_pattern": "DISC-.#####",
+            "title_column": "body",
+            "access_policy": {
+              "version": 1,
+              "roles": [
+                "Tasker Member"
+              ],
+              "inherit_column": "task"
+            },
+            "columns": [
+              {
+                "column_name": "task",
+                "label": "Task",
+                "column_type": "Reference",
+                "reference_table": "tasker.task",
+                "reqd": true
+              },
+              {
+                "column_name": "kind",
+                "label": "Kind",
+                "column_type": "Choice",
+                "choices": "Update\nQuestion\nReply",
+                "default_value": "Update",
+                "reqd": true
+              },
+              {
+                "column_name": "body",
+                "label": "Message",
+                "column_type": "Text",
+                "reqd": true
+              },
+              {
+                "column_name": "parent_message",
+                "label": "In reply to",
+                "column_type": "Reference",
+                "reference_table": "tasker.discussion"
+              },
+              {
+                "column_name": "reply_needed_from",
+                "label": "Reply needed from",
+                "column_type": "Reference",
+                "reference_table": "Person"
+              },
+              {
+                "column_name": "resolved",
+                "label": "Resolved",
+                "column_type": "Check",
+                "default_value": "0"
+              },
+              {
+                "column_name": "reply_cycle",
+                "label": "Reply cycle",
+                "column_type": "Int",
+                "default_value": "0",
+                "hidden": true
+              }
+            ]
+          }
+        }
+      ]
     }
   ],
   "tables": [
@@ -163,6 +229,68 @@
           "hidden": true
         }
       ]
+    },
+    {
+      "name": "tasker.discussion",
+      "label": "Task discussion",
+      "module": "Tasker",
+      "id_pattern": "DISC-.#####",
+      "title_column": "body",
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Tasker Member"
+        ],
+        "inherit_column": "task"
+      },
+      "columns": [
+        {
+          "column_name": "task",
+          "label": "Task",
+          "column_type": "Reference",
+          "reference_table": "tasker.task",
+          "reqd": true
+        },
+        {
+          "column_name": "kind",
+          "label": "Kind",
+          "column_type": "Choice",
+          "choices": "Update\nQuestion\nReply",
+          "default_value": "Update",
+          "reqd": true
+        },
+        {
+          "column_name": "body",
+          "label": "Message",
+          "column_type": "Text",
+          "reqd": true
+        },
+        {
+          "column_name": "parent_message",
+          "label": "In reply to",
+          "column_type": "Reference",
+          "reference_table": "tasker.discussion"
+        },
+        {
+          "column_name": "reply_needed_from",
+          "label": "Reply needed from",
+          "column_type": "Reference",
+          "reference_table": "Person"
+        },
+        {
+          "column_name": "resolved",
+          "label": "Resolved",
+          "column_type": "Check",
+          "default_value": "0"
+        },
+        {
+          "column_name": "reply_cycle",
+          "label": "Reply cycle",
+          "column_type": "Int",
+          "default_value": "0",
+          "hidden": true
+        }
+      ]
     }
   ],
   "permissions": [
@@ -188,6 +316,16 @@
       "can_read": true,
       "can_write": true,
       "can_create": true
+    },
+    {
+      "table": "tasker.discussion",
+      "role": "Tasker Member",
+      "can_read": true,
+      "can_create": true,
+      "can_write": true
     }
+  ],
+  "roles": [
+    "Tasker Member"
   ]
 }
