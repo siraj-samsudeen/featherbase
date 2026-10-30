@@ -31,7 +31,9 @@
 //                     [--revision <sha>] [--run <id>]
 //                                     apply an instance settings file (#465): one transaction, actor
 //                                     `instance-settings`; --dry-run previews and writes nothing. A
-//                                     { "file": "x.md" } value is read from next to the settings file
+//                                     { "file": "x.md" } value is read from next to the settings file; a
+//                                     { "env": "NAME" } value is read from this process's environment,
+//                                     saved, and never printed
 //   cli settings:export [--dir <folder>]
 //                                     print this environment's managed settings in the file's shape
 //                                     (never a secret); --dir writes instance-settings.json and
@@ -66,6 +68,7 @@ import { MIN_PASSWORD_LENGTH } from './password-reset'
 import { createServiceAccount } from './service-accounts'
 import { logActivity } from './audit'
 import { runMigrations } from './migrate'
+import { readNamedVariable } from './env'
 
 // --- tiny flag parser: collects --key value, repeatable keys become arrays,
 // bare --flags become boolean true, everything else is a positional. --------
@@ -356,6 +359,20 @@ async function referencedFiles(value: unknown, folder: string, out: Record<strin
   return out
 }
 
+/** Every variable a settings file names with { "env": name } that is set.
+ *  One that is not is left out, and the apply lists it. */
+function referencedVariables(value: unknown, out: Record<string, string> = {}): Record<string, string> {
+  if (Array.isArray(value)) for (const v of value) referencedVariables(v, out)
+  else if (value && typeof value === 'object') {
+    const name = (value as { env?: unknown }).env
+    if (Object.keys(value).length === 1 && typeof name === 'string') {
+      const text = readNamedVariable(name)
+      if (text !== undefined) out[name] = text
+    } else for (const v of Object.values(value)) referencedVariables(v, out)
+  }
+  return out
+}
+
 async function cmdSettingsApply(io: CommandIO, flags: Record<string, string | string[] | boolean>) {
   const file = flags.file
   if (typeof file !== 'string') throw new Error('usage: cli settings:apply --file <instance-settings.json> [--environment <name>] [--dry-run]')
@@ -376,9 +393,10 @@ async function cmdSettingsApply(io: CommandIO, flags: Record<string, string | st
     dryRun: flags['dry-run'] === true,
     source: { revision: flags.revision as string | undefined, run: flags.run as string | undefined },
     files: await referencedFiles(settings, path.dirname(path.resolve(file))),
+    env: referencedVariables(settings),
   })
   for (const c of result.changes)
-    io.out(`${c.table}${c.table === c.row_id ? '' : ` ${c.row_id}`} ${c.field}: ${JSON.stringify(c.old)} -> ${JSON.stringify(c.new)}${c.created ? ' (new row)' : ''}${c.was_default ? ' (was the default)' : ''}`)
+    io.out(`${c.table}${c.table === c.row_id ? '' : ` ${c.row_id}`} ${c.field}: ${c.from_variable ? `from ${c.from_variable} (value not shown)` : `${JSON.stringify(c.old)} -> ${JSON.stringify(c.new)}`}${c.created ? ' (new row)' : ''}${c.was_default ? ' (was the default)' : ''}`)
   for (const w of result.warnings) io.out(w)
   io.out(`settings:apply: ${result.summary}${result.dry_run ? ' (dry run; nothing was written)' : ''}`)
 }

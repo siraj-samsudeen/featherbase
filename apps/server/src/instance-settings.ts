@@ -39,6 +39,11 @@ const SCOPE = [
   // `<app>.<setting>`. The App Setting controller refuses a setting the app
   // does not declare. An app's secrets are deployment variables, never rows.
   { table: 'App Setting', shape: 'rows', fields: ['value'], createRows: true },
+  // #703: where an instance's outside data lives, so it comes back after a
+  // wipe. A row names the variable holding the connection (url_env; the save
+  // refuses a connection string), never the connection itself. The connection
+  // status columns are the server's own, so they stay out.
+  { table: 'Data Source', shape: 'rows', fields: ['engine', 'url_env', 'default_schema', 'access', 'table_allowlist'], createRows: true },
 ] as const
 
 /** Column types that hold no value, a secret, or a file in one instance's own
@@ -95,6 +100,7 @@ export const applyRequestSchema = z
     dry_run: z.boolean().optional(),
     source: z.object({ revision: z.string().optional(), run: z.string().optional() }).strict().optional(),
     files: z.record(z.string()).optional(),
+    env: z.record(z.string()).optional(),
   })
   .strict()
 type Block = z.infer<typeof settingsBlock>
@@ -183,6 +189,30 @@ function fromFile(kind: ValueKind, v: unknown): unknown {
   }
 }
 
+/** A value from a variable, in the field's own type. Undefined when it isn't. */
+function fromVariable(kind: ValueKind, text: string): unknown {
+  const v = text.trim()
+  switch (kind) {
+    case 'check':
+      return v === 'true' ? true : v === 'false' ? false : undefined
+    case 'int':
+    case 'number': {
+      const n = v === '' ? Number.NaN : Number(v)
+      return Number.isFinite(n) && (kind === 'number' || Number.isInteger(n)) ? n : undefined
+    }
+    case 'json':
+      try {
+        return JSON.parse(text)
+      } catch {
+        return text
+      }
+    case 'text':
+      return text
+  }
+}
+
+const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+
 /** Key-order-independent JSON, so `{a,b}` and `{b,a}` are the same value. */
 function canonical(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`
@@ -236,6 +266,8 @@ interface SettingChange {
   created?: true
   /** The field had no stored value (its default was in effect). */
   was_default?: true
+  /** #703: the value came from this variable, so old and new are not shown. */
+  from_variable?: string
 }
 
 interface ApplyResult {
@@ -259,6 +291,10 @@ interface ApplyOptions {
   source?: { revision?: string; run?: string }
   /** Contents of the files the settings name with { file } (D2). */
   files?: Record<string, string>
+  /** Values of the variables the settings name with { env } (#703), read by
+   *  the sender, as { file } contents are: the server never reads its own
+   *  environment for a file, so a file cannot pull a variable out of it. */
+  env?: Record<string, string>
   /** The environment this server runs as, for the feature-secret check (D7).
    *  Defaults to this process's. */
   serverEnvironment?: string
@@ -278,7 +314,13 @@ function summarize(n: number, dryRun: boolean): string {
   return dryRun ? `${n} ${noun} would change` : `${n} ${noun} changed`
 }
 
-function refuse(problems: Record<string, string>): never {
+function refuse(problems: Record<string, string>, hide: ReadonlyMap<string, string> = new Map()): never {
+  // A save's refusal may quote the value it refused.
+  for (const [path, why] of Object.entries(problems)) {
+    let text = why
+    for (const [value, name] of hide) text = text.split(value).join(`[the value of ${name}]`)
+    problems[path] = text
+  }
   const lines = Object.entries(problems).map(([path, why]) => `- ${path}: ${why}`)
   throw new AppError('ValidationError', `The settings file was not applied; nothing changed.\n${lines.join('\n')}`, problems)
 }
@@ -314,6 +356,13 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
   const scope = await managedScope()
   const problems: Record<string, string> = {}
   const plan: { entry: ScopeEntry; meta: TableMeta; rows: { row_id: string; values: Record<string, unknown> }[] }[] = []
+  // #703: which fields came from a variable, and the values never to print.
+  const fromVariables = new Map<string, string>()
+  const hiddenValues = new Map<string, string>()
+  const secretNames = new Set([
+    ...(VARIABLES as readonly Variable[]).filter((v) => v.secret).map((v) => v.name as string),
+    ...(await declaredAppSecrets()).map((s) => s.name),
+  ])
 
   // 1. The shape, the names and the types, before anything is read or saved.
   for (const [table, value] of Object.entries(desired)) {
@@ -350,6 +399,26 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
           continue
         }
         let v = raw
+        if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 1 && 'env' in v) {
+          const name = (v as { env: unknown }).env
+          const text = typeof name === 'string' ? opts.env?.[name] : undefined
+          if (typeof name !== 'string' || !VARIABLE_NAME.test(name)) {
+            problems[path] = `${table}.${field} names a variable with { "env": ... }, which must be a variable name`
+          } else if (secretNames.has(name)) {
+            problems[path] = `${table}.${field} names the variable ${name}, which holds a secret; a secret stays a deployment variable and is never saved in a Table`
+          } else if (!text?.trim()) {
+            problems[path] = `${table}.${field} reads the variable ${name}, which is not set or is empty`
+          } else {
+            const value = fromVariable(kindOf(column.column_type), text)
+            if (value === undefined) problems[path] = `${table}.${field} wants ${WANTS[kindOf(column.column_type)]}, and the variable ${name} holds something else`
+            else {
+              values[field] = value
+              fromVariables.set(`${table}|${row.row_id}|${field}`, name)
+              hiddenValues.set(text, name)
+            }
+          }
+          continue
+        }
         if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 1 && 'file' in v && kindOf(column.column_type) === 'text') {
           const name = (v as { file: unknown }).file
           const text = typeof name === 'string' ? opts.files?.[name] : undefined
@@ -425,8 +494,12 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
           if (old && old[field] !== undefined && same(was, now[field])) continue
           if (now[field] === undefined) continue
           if (!old && now[field] === null) continue
+          const fromVariable = fromVariables.get(`${meta.name}|${row_id}|${field}`)
           changes.push({
-            table: meta.name, row_id, field, old: was, new: now[field],
+            table: meta.name, row_id, field,
+            old: fromVariable ? null : was,
+            new: fromVariable ? null : now[field],
+            ...(fromVariable ? { from_variable: fromVariable } : {}),
             ...(old ? {} : { created: true as const }),
             ...(old && old[field] === undefined ? { was_default: true as const } : {}),
           })
@@ -443,7 +516,7 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
       if (DEV_ENVIRONMENTS.includes(serverEnvironment)) warnings.push(`WARNING: ${why}`)
       else problems[v.name] = `${why} Set the variable first, then apply again.`
     }
-    if (Object.keys(problems).length) refuse(problems)
+    if (Object.keys(problems).length) refuse(problems, hiddenValues)
 
     const result: ApplyResult = {
       dry_run: Boolean(opts.dryRun),
