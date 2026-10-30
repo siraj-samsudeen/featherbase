@@ -38,7 +38,7 @@ the calculus changes.
 ## The document set
 
 Judgment lives in `openspec/specs/` (behavior and acceptance criteria),
-mechanics in `docs/TESTING.md`, decisions in `docs/adr/` (append-only), and
+mechanics in `docs/TESTING.md`, decisions in `docs/adr/` (corrected in place, or deleted once their content lives elsewhere, when they stop matching the code), and
 history in pull requests, their issues and the OpenSpec changes. **A document
 that describes another artifact at a distance will drift** — if a claim about
 the codebase cannot be checked mechanically, do not write it down as a fact.

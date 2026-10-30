@@ -1,6 +1,6 @@
 # ADR 0013: Client apps and product apps
 
-**Status:** Accepted · **Date:** 2026-10-27 · **Amends:** [ADR 0011](0011-platform-app-instance.md) · **Issue:** [#550](https://github.com/siraj-samsudeen/featherbase/issues/550)
+**Status:** Accepted; amended by [ADR 0014](0014-one-repo-for-platform-and-apps.md) (30-Oct-2026: client apps live in this repository; instances in a private repository per client) · **Date:** 2026-10-27 · **Amends:** [ADR 0011](0011-platform-app-instance.md) · **Issue:** [#550](https://github.com/siraj-samsudeen/featherbase/issues/550)
 
 ## Context
 
