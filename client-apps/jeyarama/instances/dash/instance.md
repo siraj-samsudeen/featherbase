@@ -11,8 +11,7 @@ variables.
 | `privacy-notice.md` | the notice served at `/privacy`. The client approved its wording: change it only with a fresh approval |
 | `instance-setup/` | one-off steps, each run at a named moment |
 
-Run it locally with `pnpm dev jeyarama/dash`. Hosted, it is named by
-`FEATHERBASE_INSTANCE=jeyarama/dash`.
+Run it locally with `pnpm dev jeyarama/dash`.
 
 ## Settings
 
