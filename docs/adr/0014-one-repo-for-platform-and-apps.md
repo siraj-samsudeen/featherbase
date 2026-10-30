@@ -1,4 +1,4 @@
-# ADR 0014: One repository for the platform and its apps; a private repository per client for its instances
+# ADR 0014: One repository for the platform, its apps and their instances
 
 **Status:** Accepted · **Date:** 2026-10-30 · **Amends:** [ADR 0010](0010-openspec-change-workflow.md), [ADR 0011](0011-platform-app-instance.md), [ADR 0013](0013-client-apps-and-product-apps.md) · **Issue:** [#703](https://github.com/siraj-samsudeen/featherbase/issues/703) · **Client side:** JeyaramaGroup/data-warehouse#4532
 
@@ -28,7 +28,7 @@ The owner's goals, from the 30-Oct-2026 design interview:
 - an obvious line between what is platform and what is app;
 - example apps and client apps side by side, so newcomers see how different
   kinds of app are built on the same platform;
-- secrets and instance details kept private.
+- secrets kept private.
 
 Client app code being public is acceptable to the first client and will be the
 stated terms for future ones.
@@ -42,6 +42,9 @@ apps/ (server, web)           the platform
 example-apps/                 apps shipped with the platform (Tasker, Tickets)
 client-apps/<client>/<app>/   one folder per client, one per app inside:
                               jeyarama/dash, later jeyarama/answers
+client-apps/<client>/instances/<instance>/
+                              one folder per deployment of that client's apps:
+                              jeyarama/instances/dash
 ```
 
 - A platform change and the app change that needs it are **one PR**, tested
@@ -50,7 +53,7 @@ client-apps/<client>/<app>/   one folder per client, one per app inside:
   `test-apps/`, the packages the tests install). A check,
   `pnpm check:platform-imports`, enforces this, because one repository no
   longer enforces ADR 0011's one-way rule physically.
-- Client app code may be public. Client **data, secrets and instance details
+- Client app code and instance settings may be public. Client **data and secrets
   never are**. The `check:sensitive` guard covers the client folders too.
 - Each client folder has one `CLAUDE.md` for that client's conventions, such
   as number and date formats, shared by all of its apps.
@@ -61,30 +64,28 @@ client-apps/<client>/<app>/   one folder per client, one per app inside:
   `jeyarama/dash` **0.10.0**, keeping its version number but with no upgrade history (owner, 30-Oct-2026: the next change is 0.10.1).
 - This repository keeps its own history.
 
-### 2. Each client has a small private instance repository
+### 2. Instances live in the repository too; where each kind of value goes
 
-> *30-Oct-2026 (#703): corrected by the owner. A client's instance settings and
-> privacy notice now live here, one folder per instance,
-> `client-apps/<client>/instances/<instance>/`, whose `instance.json` lists the
-> apps it runs. Host and service names, mail setup and anything else private stay
-> out of this repository. Values that shouldn't be in it are `{ "env": "NAME" }`
-> references. A private repository remains for the release line below and any
-> host detail.*
+An instance is one deployment of a client's apps. A client may have several, each
+running different apps. Its folder holds no code: `instance.json` (the apps it runs),
+`instance-settings.json` (base values plus `local`, `dev` and `prod` sections), the
+privacy notice and one-off setup steps.
 
-It holds what differs between deployments, and no code:
+Keeping these in a private repository, as first decided here, brought back two
+folders and two PRs for any change touching code and a setting. The files hold no
+secret, so the privacy it bought was small.
 
-- each instance's settings file (`dev/`, `prod/`, and more if the client has
-  more instances);
-- the privacy notice, host and service names, mail setup, and one-off setup
-  steps;
-- **the released image each instance runs.**
+| Kind of value | Where it lives |
+|---|---|
+| **Secrets** | Environment variables on the host; a gitignored `.env.local` on a developer's machine |
+| **Settings that aren't secret** | The instance's settings file, in git |
+| **Private but not secret, per environment** (a Dive id) | A `{ "env": "NAME" }` reference in the settings file: the name is public and reviewed, the value is a host variable, read when settings are applied and kept out of exports and logs. It survives a wipe, because variables live outside the database |
+| **Changed by people at runtime** | Left out of the file and edited in Admin. A field the file sets is locked there |
+| **Business data** (people, the org chart, sales) | The instance's database, never git |
 
-Merging a one-line change to that release line **is the deploy decision**, and
-its history is the deploy log. Whoever may merge in that repository approves a
-production release: the owner's team today, the client's own people later.
-
-One repository per client, not per instance: a new instance is a new folder
-there plus a new host project.
+**Running one:** `pnpm dev <client>/<instance>` from a clone boots everything,
+on Windows too, and `--made-up-data` makes a client app's report work with no real
+data. Hosted, the variable `FEATHERBASE_INSTANCE=<client>/<instance>` picks it.
 
 ### 3. A client with its own developers works downstream, in a private copy
 
@@ -106,29 +107,28 @@ in a **private copy** of this repository:
 The sync workflow and the contribute script ship in this repository, so every
 downstream copy gets them, and their improvements, through its first sync.
 
-### 4. Releases build images; ordinary commits do not
+### 4. Dev follows `main`; prod follows a release branch
 
-- Day-to-day work runs from source.
-- **A client app's image is built when the app is released**, for example on a
-  tag such as `jeyarama/dash@1.2.0`, not on every commit.
-- **An app's version changes only in a release PR.** Feature PRs leave it
-  alone. An instance records each installed app's version with a fingerprint
-  of its files, so changed code under an unchanged version would make the app
-  unavailable there. Dev and prod therefore follow app releases, not `main`.
-- A CI check fails a release PR whose app version is not greater than `main`'s.
+- The host builds an instance's image from this repository on each deploy. Its
+  deploy step migrates, installs or upgrades the instance's apps, and applies its
+  settings. Any failure fails the deploy, and the old one keeps serving.
+- **Dev follows `main`.** An instance records each installed app's version with a
+  fingerprint of its files, so on dev, when an app's files change under the same
+  version and manifest, the deploy re-pins them automatically.
+- **Prod follows `release/<client>-<instance>-prod`.** Merging `main` into it is the
+  deploy decision, and its history is the deploy log. Production never re-pins: a
+  code change there needs a new version.
+- **An app's version changes when its manifest changes or when it goes to prod,**
+  and a CI check fails a PR whose app version isn't greater than `main`'s.
 
-> *30-Oct-2026 (#703): corrected by the owner. Prod follows a release branch,
-> `release/<client>-<instance>-prod`. Dev follows `main`: when an app's files
-> change under the same version and manifest, its deploy re-pins them
-> automatically. Production never does. See "A client instance" in
-> `docs/DEPLOY.md`.*
+Steps for a host are in "A client instance" in `docs/DEPLOY.md`.
 
 ### 5. CI stays lean
 
-Many agents open many small PRs, so the required checks are only the fast ones
-for the area a PR touches (path-filtered). Heavy suites run on demand (the
-`run-e2e` label), on `main`, or at release. The follow-up that implements this
-sets the target time and lists what leaves the required set.
+Many agents open many small PRs, so a PR runs only what its paths need: fast checks
+alone for docs, a client app's own tests for a client app, and everything for shared
+files or on `main`. `main` requires the `unit` and `e2e` verdicts, and merges are
+merge commits only, so a PR's steps stay readable. `docs/TESTING.md` has the detail.
 
 ### 6. One way of working
 
@@ -177,8 +177,7 @@ sets the target time and lists what leaves the required set.
 
 - **ADR 0013:**
   - *"Nothing from a client's repository enters this public one"* becomes:
-    client **apps** live here, while client data, secrets and instance details
-    stay in the client's private instance repository.
+    client **apps and instances** live here, while client data and secrets stay out.
   - The delivery question it left open is answered by section 4.
   - The product app / client app distinction stands.
 - **ADR 0011:** the one-way rule stands. It is now enforced by a check
@@ -188,8 +187,7 @@ sets the target time and lists what leaves the required set.
   - "Archive in the PR that finishes the change" gives way to the proposal PR
     first and archiving on `main` after the implementation merges.
   - OpenSpec stays the behaviour contract.
-- **`CLAUDE.md` invariant 5** ("client-specific material lives only in that
-  client's private repository") is rewritten to match when the move lands.
+- **`CLAUDE.md` invariant 5** is now a pointer to this ADR.
 - **ADRs are no longer append-only.**
   - An ADR that stops matching the code is corrected in place with a dated
     note.
@@ -204,7 +202,7 @@ sets the target time and lists what leaves the required set.
 |---|---|
 | Keep two repositories, add a bot that opens paired PRs and bumps the pin | Treats the symptom: still two checkouts, two reviews and an ordering wait |
 | Embed this repository in the client's as a git submodule | Same pin and two PRs, plus submodule friction in every agent worktree |
-| Put instances in this repository too (`instances/<client>/`) | Host names, mail setup and privacy wording would be public, and a client's operators would need write access here. Splitting a folder out of a public repository later leaves its history public forever |
+| A private repository per client for its instances | Tried first and dropped on 30-Oct-2026: two folders and two PRs again for any change touching code and a setting, to protect files that hold no secret. The cost here: handing prod to a client's own people needs access to this repository |
 | A private copy for every client, the first one included | Each platform feature born from a client app would need a private PR and then a cherry-pick PR here, plus weekly syncs |
 | Restart this repository with clean history: a new repository and the old one made private, or a rewrite in place | Considered on 30-Oct-2026. The owner chose to keep the history. Outdated material is pruned from the files instead (see below) |
 
@@ -212,9 +210,8 @@ sets the target time and lists what leaves the required set.
 
 - One checkout and one PR for platform and app work. Client app tests run in CI
   and every client app PR gets the Codex bot's review.
-- The release pin does not disappear; it changes meaning. It used to mean
-  "which platform this app compiles against". Now it means "which release this
-  instance runs", and it lives where that decision belongs.
+- The version pin goes away. "Which release prod runs" is now a branch, not a
+  value to keep in step with something else.
 - Two models exist side by side: apps upstream for clients the owner's team
   builds, and private copies for clients with their own developers.
 - The move happens before go-live, which is a fresh reinstall of dev and prod,
