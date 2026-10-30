@@ -53,7 +53,7 @@ jobs:
       - name: Start the preinstalled PostgreSQL
         shell: pwsh
         run: |
-          Set-Service -Name postgresql-x64-* -StartupType Manual
+          Get-Service -Name postgresql-x64-* | Set-Service -StartupType Manual
           Get-Service -Name postgresql-x64-* | Start-Service
           Get-Service -Name postgresql-x64-*
 
