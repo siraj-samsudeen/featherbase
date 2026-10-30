@@ -74,6 +74,10 @@ carry the workflow. Every change starts from an issue.
   a "later" list.
 - Fix `feather-testing-postgres` in its own repo and release it; never vendor
   it here.
+- **Browser checks run headless**, including e2e and verifier runs. No visible
+  windows on someone's machine.
+- **Merge PRs with a merge commit** (`gh pr merge --merge`). Squash and rebase are
+  off, so keep each commit meaningful: a test, then its fix.
 
 ## Review guidelines
 
