@@ -584,6 +584,33 @@ describe('values from variables (#703)', () => {
     expect(err.message).not.toContain('made-up-not-a-switch')
   })
 
+  test('a value takes the field\'s own type', async () => {
+    await applyInstanceSettings({
+      settings: {
+        'System Settings': { session_hours: { env: 'HOURS' } },
+        'Scheduled Job': [{ row_id: 'check_sla', enabled: { env: 'ON' } }],
+        'Sign In Method': [{ row_id: 'password', settings: { env: 'JSON_VALUE' } }],
+      },
+    } as unknown as InstanceSettingsFile, { by: 'Administrator', env: { HOURS: '12', ON: 'false', JSON_VALUE: '{"a":1}' } })
+    const [hours] = await sql`select value from single_value where table_name = 'System Settings' and field = 'session_hours'`
+    expect(Number(hours.value)).toBe(12)
+    const [job] = await sql`select enabled from scheduled_job where row_id = 'check_sla'`
+    expect(job.enabled).toBe(false)
+    const [method] = await sql`select settings from sign_in_method where row_id = 'password'`
+    expect(method.settings).toEqual({ a: 1 })
+    const bad = await problemsOf(applyInstanceSettings({
+      settings: {
+        'System Settings': { session_hours: { env: 'HOURS' } },
+        'Sign In Method': [{ row_id: 'password', settings: { env: 'JSON_VALUE' } }],
+      },
+    } as unknown as InstanceSettingsFile, { by: 'Administrator', env: { HOURS: '1.5', JSON_VALUE: '{not json' } }))
+    expect(bad.fields).toMatchObject({
+      'System Settings.session_hours': expect.stringContaining('wants a whole number'),
+      'Sign In Method.password.settings': expect.stringContaining('wants JSON'),
+    })
+    expect(bad.message).not.toContain('{not json')
+  })
+
   test('a save that quotes the refused value has it taken out', async () => {
     const err = await problemsOf(applyInstanceSettings({ settings: { 'Sign In Method': [{ row_id: 'google', allowed_email_domains: { env: 'DOMAINS' } }] } } as unknown as InstanceSettingsFile,
       { by: 'Administrator', env: { DOMAINS: 'exam ple.com' } }))

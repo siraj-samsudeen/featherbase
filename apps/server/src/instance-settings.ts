@@ -204,7 +204,7 @@ function fromVariable(kind: ValueKind, text: string): unknown {
       try {
         return JSON.parse(text)
       } catch {
-        return text
+        return undefined
       }
     case 'text':
       return text
