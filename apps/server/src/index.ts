@@ -1206,11 +1206,11 @@ app.post('/api/instance-settings/apply', async (c) => {
   if (!parsed.success) {
     const fields: Record<string, string> = {}
     for (const issue of parsed.error.issues) fields[issue.path.join('.') || 'body'] = issue.message
-    throw new AppError('ValidationError', `Expected { file, environment?, dry_run?, source?, files? }: ${Object.entries(fields).map(([k, v]) => `${k} ${v}`).join('; ')}`, fields)
+    throw new AppError('ValidationError', `Expected { file, environment?, dry_run?, source?, files?, env? }: ${Object.entries(fields).map(([k, v]) => `${k} ${v}`).join('; ')}`, fields)
   }
   const body = parsed.data
   return c.json(await applyInstanceSettings(body.file, {
-    by: who(c), environment: body.environment, dryRun: body.dry_run === true, source: body.source, files: body.files,
+    by: who(c), environment: body.environment, dryRun: body.dry_run === true, source: body.source, files: body.files, env: body.env,
   }))
 })
 

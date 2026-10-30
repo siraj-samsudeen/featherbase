@@ -12,6 +12,38 @@ the step an operator runs when new code goes live.
 
 ## Requirements
 
+### Requirement: One command starts an instance from nothing
+
+A developer with a checkout, a running database server and the language tools
+SHALL be able to start any instance by naming it, on Windows, macOS or Linux.
+The command SHALL create what is missing, and SHALL be safe to run again.
+
+#### Scenario: A new team member starts an instance
+
+- **WHEN** the user names an instance on a machine that has never run it
+- **THEN** the instance's apps are installed and its settings applied, and the
+  user is told where to go and how to sign in
+
+#### Scenario: A name that doesn't exist
+
+- **WHEN** the user names an instance that doesn't exist
+- **THEN** the command fails and lists the instances that do
+
+#### Scenario: The database server is not running
+
+- **WHEN** the database server can't be reached
+- **THEN** the command says exactly that and how to fix it on the user's system
+
+### Requirement: An app can be installed from the command line
+
+The user SHALL be able to install an app from the command line. Installing one
+that is already installed SHALL succeed and say so.
+
+#### Scenario: Installing twice
+
+- **WHEN** the user installs an app and then installs it again
+- **THEN** the first installs it and the second says it is already installed
+
 ### Requirement: A release brings the database up to date
 
 A release SHALL apply every database change that has not been applied yet,

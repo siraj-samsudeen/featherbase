@@ -21,11 +21,50 @@ Prerequisites:
   `postgres://postgres:postgres@127.0.0.1:5432/featherbase`, or
   `featherbase_test` when tests run (`apps/server/src/config.ts`).
 
+To run an instance, one command does everything from a bare checkout:
+
+```bash
+pnpm dev:jeyarama          # the same as: pnpm dev jeyarama/dash
+```
+
+It needs only Node, pnpm and a running Postgres, on Windows, macOS or Linux. It
+creates the database (`fb_jeyarama_dash`), installs and builds what the
+instance's apps need, migrates, installs the apps, applies the settings, and
+starts the API and the web app with reload. It prints where to go and how to sign
+in. Run it again whenever you like. Ctrl-C stops everything.
+
+An instance is a folder, `client-apps/<client>/instances/<instance>/`, whose
+`instance.json` lists its apps. Optional settings go in `.env.local` at the
+repository root (see `.env.example`), and a real variable wins: `DATABASE_URL`
+(on this machine only), `API_PORT`, `WEB_PORT`. `--check` stops after proving
+the server answers and the apps are installed; `--environment dev` applies that
+section of the settings file instead of `local`, and needs the variables that
+section names.
+
+### Windows
+
+From a bare machine:
+
+1. Install **Node** (the LTS installer) and **Git**.
+2. In a terminal run as Administrator: `corepack enable`. That provides pnpm 10.
+3. Install **PostgreSQL** with the [installer](https://www.postgresql.org/download/windows/).
+   Use `postgres` as the password, or put your own login in `.env.local`:
+   `DATABASE_URL=postgres://postgres:YOUR_PASSWORD@127.0.0.1:5432/fb_jeyarama_dash`.
+   Its service starts by itself; if it is stopped, start it in **Services**.
+4. Clone with long paths on: `git clone -c core.longpaths=true <this repository>`.
+5. Run `pnpm dev:jeyarama`, in PowerShell or Command Prompt.
+
+`AGENTS.md` and `.claude/skills/*` are symbolic links. Without symlink support Git
+checks them out as small text files, which breaks nothing here. `./init.sh` and the
+other `.sh` scripts are bash, for macOS and Linux; `pnpm dev` does not use them.
+
+### The platform on its own
+
 ```bash
 ./init.sh
 ```
 
-One script boots everything. It installs dependencies, provisions Postgres if
+One script boots everything and smoke-tests it. It installs dependencies, provisions Postgres if
 nothing answers at `DATABASE_URL`, runs migrations, starts the API on
 http://localhost:8000 and the web app on http://localhost:5173, then runs the
 smoke tests. Running it again is safe.
@@ -52,7 +91,7 @@ pnpm check:specs                 # validate OpenSpec specs and active changes
 | `packages/shared` | Types and contracts used by both server and web |
 | `example-apps` | Apps shipped with the platform (`tasker`) |
 | `test-apps` | Small app packages the tests install to prove one platform feature each (`other`, `action-proof`, `scope-proof`, `fixtures/`); not examples to copy |
-| `client-apps` | Apps built for one client, one folder per client (`jeyarama/dash`); their instances' settings live in each client's private repository ([ADR 0014](docs/adr/0014-one-repo-for-platform-and-apps.md)) |
+| `client-apps` | Apps built for one client, one folder per client (`jeyarama/dash`), with each instance's settings under `instances/` (`jeyarama/instances/dash`; [ADR 0014](docs/adr/0014-one-repo-for-platform-and-apps.md)) |
 | `openspec/specs` | Behaviour specs, the sole authority on what the system does |
 | `docs/adr` | Architecture decisions and why they were made |
 | `tools` | Repository checks run in CI (`pnpm check:*`) |

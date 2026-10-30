@@ -36,6 +36,37 @@ an environment says so. That section is the list of intended differences.
   it off
 - **THEN** applying the file leaves the job on in prod and off on dev
 
+### Requirement: A setting can take its value from a variable
+
+A setting in the file MAY name a variable instead of holding a value. Applying
+the file SHALL read that variable and save its value, and SHALL never show the
+value, in a preview or anywhere else. A variable holding a secret SHALL be
+refused.
+
+#### Scenario: A dive's id differs by environment
+
+- **WHEN** the file's dev section says a dive's id comes from a variable, the
+  variable is set, and the user applies the file to dev
+- **THEN** the setting holds that value and is locked as usual, and the result
+  says the setting changed without showing the value
+
+#### Scenario: The variable is missing
+
+- **WHEN** the variable is not set or is empty, and the user applies or previews
+  the file
+- **THEN** nothing changes, and the problems name that variable
+
+### Requirement: The file brings back an instance's data sources
+
+The file SHALL be able to name an instance's data sources, by which variable
+holds each connection and never the connection itself.
+
+#### Scenario: After a wipe
+
+- **WHEN** an instance's database was wiped and the user applies the file
+- **THEN** its data sources are back, and a table read from one can be reflected
+  again
+
 ### Requirement: Preview before applying
 
 The owner SHALL be able to see what applying a file would change in an

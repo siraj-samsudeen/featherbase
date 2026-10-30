@@ -1,8 +1,8 @@
 # JeyaRama client apps
 
-Conventions shared by every JeyaRama app in this folder (`dash/` today). The
-instances' settings and setup live in the client's private instance
-repository, never here (ADR 0014).
+Conventions shared by every JeyaRama app in this folder (`dash/` today). Each
+instance's settings and setup are in `instances/<instance>/` (ADR 0014); no
+secret or host detail goes there.
 
 - **Amounts:** Indian digit grouping (`12,34,567`) with the `₹` prefix, never
   million/billion or a "K" tier.

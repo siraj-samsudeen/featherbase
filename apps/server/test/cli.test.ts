@@ -496,7 +496,7 @@ describe('#401: cli settings:set', () => {
   it('refuses a Table the settings file does not manage, and a row Table without --row', async () => {
     const outside = await failure(['settings:set', 'full_name', '--stdin', '--table', 'Person', '--row', 'x'], 'x')
     expect(outside?.status).toBe(1)
-    expect(outside?.stderr).toContain('settings:set writes System Settings, Sign In Method, Scheduled Job or App Setting, not Person')
+    expect(outside?.stderr).toContain('settings:set writes System Settings, Sign In Method, Scheduled Job, App Setting or Data Source, not Person')
     const noRow = await failure(['settings:set', 'label', '--stdin', '--table', 'Sign In Method'], 'x')
     expect(noRow?.status).toBe(1)
     expect(noRow?.stderr).toContain('Sign In Method has rows: name one with --row')
@@ -505,6 +505,36 @@ describe('#401: cli settings:set', () => {
 
 // #465 (D3, D9): the settings file from the command line. Export, then apply
 // the export, must report "nothing changed"; a dry run writes nothing.
+describe('#703: cli install-app', () => {
+  it('installs a shipped app once, says so the second time, and names what it has otherwise', async () => {
+    const { uninstallApp, isInstalled } = await import('../src/apps')
+    if (await isInstalled('checklists')) await uninstallApp('checklists')
+    expect(await cli(['install-app', 'checklists'])).toContain('installed checklists')
+    try {
+      expect(await isInstalled('checklists')).toBe(true)
+      expect(await cli(['install-app', 'checklists'])).toContain('already installed')
+    } finally {
+      await uninstallApp('checklists')
+    }
+    const refused = captureIO()
+    expect(await main(['install-app', 'no_such_app'], refused.io)).toBe(1)
+    expect(refused.stderr()).toMatch(/no app no_such_app on this server \(it has: .*checklists/)
+  })
+
+  it('reads a { env } value from its own environment, and does not print it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'settings-env-'))
+    try {
+      writeFileSync(join(dir, 'f.json'), JSON.stringify({ settings: { 'System Settings': { app_name: { env: 'CLI_TEST_NAME' } } } }))
+      vi.stubEnv('CLI_TEST_NAME', 'made-up-name-3391')
+      const out = await cli(['settings:apply', '--file', join(dir, 'f.json'), '--dry-run'])
+      expect(out).toContain('from CLI_TEST_NAME (value not shown)')
+      expect(out).not.toContain('made-up-name-3391')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('#465: cli settings:export and settings:apply', () => {
   const dir = mkdtempSync(join(tmpdir(), 'featherbase-settings-cli-'))
   afterAll(async () => {
@@ -517,7 +547,7 @@ describe('#465: cli settings:export and settings:apply', () => {
     const out = await cli(['settings:export', '--dir', dir])
     expect(out).toContain('instance-settings.json')
     const file = JSON.parse(readFileSync(join(dir, 'instance-settings.json'), 'utf8'))
-    expect(Object.keys(file.settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting'])
+    expect(Object.keys(file.settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting', 'Data Source'])
     const applied = await cli(['settings:apply', '--file', join(dir, 'instance-settings.json'), '--revision', 'cli-test'])
     expect(applied).toContain('settings:apply: nothing changed')
   }, 60_000)
@@ -741,7 +771,7 @@ describe('the command line, command by command', () => {
     await sql`update sign_in_method set service_url = 'https://bot:hunter2@hr.example.com/login' where row_id = 'google'`
     const r = await runMain(main, ['settings:export'])
     expect(r.code).toBe(0)
-    expect(Object.keys(JSON.parse(r.stdout).settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting'])
+    expect(Object.keys(JSON.parse(r.stdout).settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting', 'Data Source'])
     expect(r.stderr).toBe('settings:export: left out Sign In Method.google.service_url: a web address with credentials in it\n')
     await sql`insert into single_value (table_name, field, value) values ('System Settings', 'privacy_notice', '# Notice\n')
       on conflict (table_name, field) do update set value = excluded.value`

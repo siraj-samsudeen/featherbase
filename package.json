@@ -2,6 +2,8 @@
   "name": "featherbase",
   "private": true,
   "scripts": {
+    "dev": "node tools/dev.mjs",
+    "dev:jeyarama": "node tools/dev.mjs jeyarama/dash",
     "apps:prepare": "node tools/prepare-apps.mjs",
     "apps:prove": "node tools/prove-runtime-packages.mjs",
     "seed:tasker": "node tools/seed-tasker-development.mjs",
@@ -11,6 +13,7 @@
     "check:unarchived-changes": "node --test tools/check-unarchived-changes.test.mjs && node tools/check-unarchived-changes.mjs",
     "check:e2e-dsl": "node --test tools/check-e2e-dsl.test.mjs && node tools/check-e2e-dsl.mjs",
     "check:sensitive": "node --test tools/check-sensitive.test.mjs && node tools/check-sensitive.mjs",
+    "check:dev": "node --test tools/dev.test.mjs",
     "check:vocabulary": "node --test tools/check-vocabulary.test.mjs && node tools/check-vocabulary.mjs",
     "check:platform-imports": "node --test tools/check-platform-imports.test.mjs && node tools/check-platform-imports.mjs",
     "smoke": "pnpm --filter server test:smoke && pnpm --filter web smoke",

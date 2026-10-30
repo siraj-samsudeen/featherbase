@@ -31,7 +31,9 @@
 //                     [--revision <sha>] [--run <id>]
 //                                     apply an instance settings file (#465): one transaction, actor
 //                                     `instance-settings`; --dry-run previews and writes nothing. A
-//                                     { "file": "x.md" } value is read from next to the settings file
+//                                     { "file": "x.md" } value is read from next to the settings file; a
+//                                     { "env": "NAME" } value is read from this process's environment,
+//                                     saved, and never printed
 //   cli settings:export [--dir <folder>]
 //                                     print this environment's managed settings in the file's shape
 //                                     (never a secret); --dir writes instance-settings.json and
@@ -43,6 +45,10 @@
 //                                     put environments' variable reports (one key, one run) side by
 //                                     side; exits 1 while a rule is broken or a required variable is
 //                                     set on some environments only
+//   cli install-app <name>            install an app this server ships (a registered app or a package on
+//                                     FEATHERBASE_APP_PATHS). Already installed: says so and succeeds; on a
+//                                     development database its files are re-pinned if they changed but its
+//                                     version and manifest did not
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
@@ -66,6 +72,7 @@ import { MIN_PASSWORD_LENGTH } from './password-reset'
 import { createServiceAccount } from './service-accounts'
 import { logActivity } from './audit'
 import { runMigrations } from './migrate'
+import { readNamedVariable, readVariable } from './env'
 
 // --- tiny flag parser: collects --key value, repeatable keys become arrays,
 // bare --flags become boolean true, everything else is a positional. --------
@@ -356,6 +363,46 @@ async function referencedFiles(value: unknown, folder: string, out: Record<strin
   return out
 }
 
+/** Every variable a settings file names with { "env": name } that is set.
+ *  One that is not is left out, and the apply lists it. */
+function referencedVariables(value: unknown, out: Record<string, string> = {}): Record<string, string> {
+  if (Array.isArray(value)) for (const v of value) referencedVariables(v, out)
+  else if (value && typeof value === 'object') {
+    const name = (value as { env?: unknown }).env
+    if (Object.keys(value).length === 1 && typeof name === 'string') {
+      const text = readNamedVariable(name)
+      if (text !== undefined) out[name] = text
+    } else for (const v of Object.values(value)) referencedVariables(v, out)
+  }
+  return out
+}
+
+/** #703: the install the API offers, from a shell, so a fresh database can be
+ *  set up with no server running. Safe to repeat. */
+async function cmdInstallApp(io: CommandIO, positional: string[]) {
+  const [name] = positional
+  if (!name || positional.length !== 1) throw new Error('usage: cli install-app <name>')
+  const { registerApp, installApp, isInstalled, getAvailableApps } = await import('./apps')
+  const { discoverPackages, repinToFolder } = await import('./runtime-packages')
+  const { default: helpdesk } = await import('./sample-apps/helpdesk')
+  const { default: checklists } = await import('./sample-apps/checklists')
+  registerApp(helpdesk)
+  registerApp(checklists)
+  await discoverPackages(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+  if (await isInstalled(name)) {
+    const [stamp] = await sql`select value from internal_metadata where key = 'environment'`
+    const outcome = await repinToFolder(name, stamp?.value === 'development')
+    if (outcome === 'different')
+      throw new Error(`${name} on this database is not the ${name} in its folder. Upgrade it, or on a development database recreate the database`)
+    io.out(outcome === 'repinned' ? `${name} is already installed; re-pinned to its folder as it is now` : `${name} is already installed`)
+    return
+  }
+  if (!getAvailableApps().includes(name))
+    throw new Error(`no app ${name} on this server (it has: ${getAvailableApps().join(', ')}); add its folder to FEATHERBASE_APP_PATHS`)
+  await installApp(name)
+  io.out(`installed ${name}`)
+}
+
 async function cmdSettingsApply(io: CommandIO, flags: Record<string, string | string[] | boolean>) {
   const file = flags.file
   if (typeof file !== 'string') throw new Error('usage: cli settings:apply --file <instance-settings.json> [--environment <name>] [--dry-run]')
@@ -376,9 +423,10 @@ async function cmdSettingsApply(io: CommandIO, flags: Record<string, string | st
     dryRun: flags['dry-run'] === true,
     source: { revision: flags.revision as string | undefined, run: flags.run as string | undefined },
     files: await referencedFiles(settings, path.dirname(path.resolve(file))),
+    env: referencedVariables(settings),
   })
   for (const c of result.changes)
-    io.out(`${c.table}${c.table === c.row_id ? '' : ` ${c.row_id}`} ${c.field}: ${JSON.stringify(c.old)} -> ${JSON.stringify(c.new)}${c.created ? ' (new row)' : ''}${c.was_default ? ' (was the default)' : ''}`)
+    io.out(`${c.table}${c.table === c.row_id ? '' : ` ${c.row_id}`} ${c.field}: ${c.from_variable ? `from ${c.from_variable} (value not shown)` : `${JSON.stringify(c.old)} -> ${JSON.stringify(c.new)}`}${c.created ? ' (new row)' : ''}${c.was_default ? ' (was the default)' : ''}`)
   for (const w of result.warnings) io.out(w)
   io.out(`settings:apply: ${result.summary}${result.dry_run ? ' (dry run; nothing was written)' : ''}`)
 }
@@ -553,6 +601,9 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       io.out(smtp ? `mail:test: sent a test message via SMTP ${smtp.host}:${smtp.port}` : 'mail:test: SMTP_HOST is unset; the test message went to the Email Sink')
       break
     }
+    case 'install-app':
+      await cmdInstallApp(io, positional)
+      break
     case 'settings:set':
       await cmdSettingsSet(io, positional, flags)
       break
@@ -598,7 +649,7 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       await cmdConsole(io)
       break
     default:
-      io.out('usage: cli <migrate|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|leavers:check|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
+      io.out('usage: cli <migrate|seed|install-app|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|leavers:check|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
       return cmd ? 1 : 0
   }
   return 0

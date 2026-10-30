@@ -5,12 +5,14 @@
 import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
+import { saveDoc } from '../src/document'
 import { AppError } from '../src/errors'
 import {
   INSTANCE_SETTINGS_ACTOR,
   applyInstanceSettings,
   exportInstanceSettings,
   managedScope,
+  settingsDrift,
   type InstanceSettingsFile,
 } from '../src/instance-settings'
 import { createServiceAccount } from '../src/service-accounts'
@@ -57,6 +59,7 @@ describe('the managed scope (D2)', () => {
       ]],
       ['Scheduled Job', 'rows', ['cadence', 'enabled']],
       ['App Setting', 'rows', ['value']],
+      ['Data Source', 'rows', ['engine', 'url_env', 'default_schema', 'access', 'table_allowlist']],
     ])
     // The privacy notice may be kept in its own file next to the settings file.
     expect(scope[0].fileFields).toContain('privacy_notice')
@@ -172,7 +175,7 @@ describe('apply (D4)', () => {
       'System Settings.date_format': expect.stringContaining('not-a-format'),
       'Scheduled Job.no_such_job': 'Scheduled Job has no row no_such_job',
       'Scheduled Job.check_sla.description': 'Scheduled Job.description is not managed by the settings file (it manages: cadence, enabled)',
-      Person: 'Person is not managed by the settings file (it manages: System Settings, Sign In Method, Scheduled Job, App Setting)',
+      Person: 'Person is not managed by the settings file (it manages: System Settings, Sign In Method, Scheduled Job, App Setting, Data Source)',
     })
     expect(await snapshot()).toEqual(before)
   })
@@ -528,5 +531,133 @@ describe('a decimal setting', () => {
       await sql`delete from column_def where parent = 'System Settings' and column_name = 'rate_test'`
       invalidateMeta('System Settings')
     }
+  })
+})
+
+describe('values from variables (#703)', () => {
+  const file = (name: unknown) => ({ settings: { 'System Settings': { app_name: { env: name } } } }) as unknown as InstanceSettingsFile
+
+  test('refuses a variable an installed app declares as a secret, even when this server has it unset', async () => {
+    const name = 'declared_secret_proof'
+    await sql`insert into installed_app ${sql({ name, manifest: sql.json({ secrets: ['UNSET_APP_SECRET'] }) } as never)}`
+    try {
+      await expect(applyInstanceSettings(file('UNSET_APP_SECRET'), { by: 'Administrator', env: { UNSET_APP_SECRET: 'made-up-credential-71' } }))
+        .rejects.toThrow(/UNSET_APP_SECRET, which holds a secret/)
+    } finally {
+      await sql`delete from installed_app where name = ${name}`
+    }
+  })
+
+  test('a value is read, saved, locked, and never shown', async () => {
+    const secretLooking = 'made-up-value-40417'
+    const result = await applyInstanceSettings(file('SOME_NAME'), { by: 'Administrator', env: { SOME_NAME: secretLooking } })
+    expect(result.changes).toEqual([expect.objectContaining({ field: 'app_name', from_variable: 'SOME_NAME', old: null, new: null })])
+    expect(JSON.stringify(result)).not.toContain(secretLooking)
+    const [stored] = await sql`select value from single_value where table_name = 'System Settings' and field = 'app_name'`
+    expect(stored.value).toBe(secretLooking)
+    await expect(saveDoc('System Settings', { app_name: 'By hand' }, 'Administrator')).rejects.toThrow(/settings file/)
+    expect(JSON.stringify(await settingsDrift())).not.toContain(secretLooking)
+    // Unchanged on a second apply, and a dry run shows nothing either.
+    expect((await applyInstanceSettings(file('SOME_NAME'), { by: 'Administrator', env: { SOME_NAME: secretLooking } })).changes).toEqual([])
+    const preview = await applyInstanceSettings(file('SOME_NAME'), { by: 'Administrator', dryRun: true, env: { SOME_NAME: 'made-up-other-71' } })
+    expect(preview.changes).toHaveLength(1)
+    expect(JSON.stringify(preview)).not.toMatch(/made-up-(other|value)/)
+  })
+
+  test.each([[undefined], [''], ['   ']])('a variable holding %j is a listed problem naming it, in a dry run too', async (value) => {
+    const before = await snapshot()
+    const env: Record<string, string> = value === undefined ? {} : { MISSING_NAME: value }
+    for (const dryRun of [false, true]) {
+      const err = await problemsOf(applyInstanceSettings(file('MISSING_NAME'), { by: 'Administrator', dryRun, env }))
+      expect(err.fields).toMatchObject({ 'System Settings.app_name': expect.stringContaining('MISSING_NAME') })
+    }
+    expect(await snapshot()).toEqual(before)
+  })
+
+  test('the server never reads its own environment for a file', async () => {
+    vi.stubEnv('ONLY_ON_THE_SERVER', 'server-side-value')
+    const err = await problemsOf(applyInstanceSettings(file('ONLY_ON_THE_SERVER'), { by: 'Administrator' }))
+    expect(err.message).toContain('ONLY_ON_THE_SERVER')
+    expect(err.message).not.toContain('server-side-value')
+  })
+
+  test('a secret variable and a malformed name are refused', async () => {
+    const secret = await problemsOf(applyInstanceSettings(file('DATABASE_URL'), { by: 'Administrator', env: { DATABASE_URL: 'x' } }))
+    expect(secret.message).toContain('holds a secret')
+    const bad = await problemsOf(applyInstanceSettings(file(5), { by: 'Administrator' }))
+    expect(bad.message).toContain('must be a variable name')
+  })
+
+  test('a value in the wrong type is refused without being quoted', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'Scheduled Job': [{ row_id: 'check_sla', enabled: { env: 'SWITCH' } }] } } as unknown as InstanceSettingsFile,
+      { by: 'Administrator', env: { SWITCH: 'made-up-not-a-switch' } }))
+    expect(err.message).toContain('SWITCH')
+    expect(err.message).not.toContain('made-up-not-a-switch')
+  })
+
+  test('a value takes the field\'s own type', async () => {
+    await applyInstanceSettings({
+      settings: {
+        'System Settings': { session_hours: { env: 'HOURS' } },
+        'Scheduled Job': [{ row_id: 'check_sla', enabled: { env: 'ON' } }],
+        'Sign In Method': [{ row_id: 'password', settings: { env: 'JSON_VALUE' } }],
+      },
+    } as unknown as InstanceSettingsFile, { by: 'Administrator', env: { HOURS: '12', ON: 'false', JSON_VALUE: '{"a":1}' } })
+    const [hours] = await sql`select value from single_value where table_name = 'System Settings' and field = 'session_hours'`
+    expect(Number(hours.value)).toBe(12)
+    const [job] = await sql`select enabled from scheduled_job where row_id = 'check_sla'`
+    expect(job.enabled).toBe(false)
+    const [method] = await sql`select settings from sign_in_method where row_id = 'password'`
+    expect(method.settings).toEqual({ a: 1 })
+    const bad = await problemsOf(applyInstanceSettings({
+      settings: {
+        'System Settings': { session_hours: { env: 'HOURS' } },
+        'Sign In Method': [{ row_id: 'password', settings: { env: 'JSON_VALUE' } }],
+      },
+    } as unknown as InstanceSettingsFile, { by: 'Administrator', env: { HOURS: '1.5', JSON_VALUE: '{not json' } }))
+    expect(bad.fields).toMatchObject({
+      'System Settings.session_hours': expect.stringContaining('wants a whole number'),
+      'Sign In Method.password.settings': expect.stringContaining('wants JSON'),
+    })
+    expect(bad.message).not.toContain('{not json')
+  })
+
+  test('a save that quotes the refused value has it taken out', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'Sign In Method': [{ row_id: 'google', allowed_email_domains: { env: 'DOMAINS' } }] } } as unknown as InstanceSettingsFile,
+      { by: 'Administrator', env: { DOMAINS: 'exam ple.com' } }))
+    expect(err.message).toContain('[the value of DOMAINS]')
+    expect(err.message).not.toContain('exam ple.com')
+  })
+
+  test('an app setting for an app not yet installed is a listed problem', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'App Setting': [{ row_id: 'not_installed.dive_id', value: { env: 'DIVE' } }] } } as unknown as InstanceSettingsFile,
+      { by: 'Administrator', env: { DIVE: 'made-up-dive-9' } }))
+    expect(err.message).toContain('App not_installed is not installed')
+    expect(err.message).not.toContain('made-up-dive-9')
+  })
+})
+
+describe('Data Source rows (#703)', () => {
+  const source = { row_id: 'made-up-warehouse', engine: 'postgres', url_env: 'MADE_UP_WAREHOUSE_URL', access: 'read_only' }
+
+  test('a row comes back from the file, and is locked', async () => {
+    const result = await applyInstanceSettings({ settings: { 'Data Source': [source] } }, { by: 'Administrator' })
+    expect(result.changes.some((c) => c.table === 'Data Source' && c.field === 'url_env' && c.created)).toBe(true)
+    const [row] = await sql`select engine, url_env, access from data_source where row_id = ${source.row_id}`
+    expect(row).toMatchObject({ engine: 'postgres', url_env: 'MADE_UP_WAREHOUSE_URL', access: 'read_only' })
+    const [current] = await sql`select updated_at from data_source where row_id = ${source.row_id}`
+    await expect(saveDoc('Data Source', { row_id: source.row_id, url_env: 'OTHER', updated_at: current.updated_at }, 'Administrator')).rejects.toThrow(/settings file/)
+    expect((await applyInstanceSettings({ settings: { 'Data Source': [source] } }, { by: 'Administrator' })).changes).toEqual([])
+  })
+
+  test('a connection string is refused, and not repeated', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'Data Source': [{ ...source, url_env: 'postgres://u:made-up-pw@db/x' }] } }, { by: 'Administrator' }))
+    expect(err.message).toContain('url_env must be a variable NAME')
+    expect(err.message).not.toContain('made-up-pw')
+  })
+
+  test('the connection status stays the server\'s', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'Data Source': [{ ...source, conn_status: 'ok' }] } }, { by: 'Administrator' }))
+    expect(err.message).toContain('is not managed by the settings file')
   })
 })

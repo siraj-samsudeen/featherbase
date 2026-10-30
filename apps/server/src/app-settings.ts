@@ -136,12 +136,16 @@ export async function appSetupState(): Promise<{ app: string; title: string; mis
   return gaps
 }
 
+/** Every secret name an installed app declares, whether or not this server has it set. */
+export async function declaredAppSecretNames(): Promise<string[]> {
+  const rows = await sql`select manifest->'secrets' as secrets from installed_app where jsonb_typeof(manifest->'secrets') = 'array'`
+  return [...new Set(rows.flatMap(row => secretEntries(row.secrets).map(entry => entry.name)))].sort()
+}
+
 /** The secrets installed apps declare that are set here, with their values,
  *  so a settings export can withhold a setting that holds one. */
 export async function declaredAppSecrets(): Promise<{ name: string; value: string }[]> {
-  const rows = await sql`select manifest->'secrets' as secrets from installed_app where jsonb_typeof(manifest->'secrets') = 'array'`
-  const names = [...new Set(rows.flatMap(row => secretEntries(row.secrets).map(entry => entry.name)))].sort()
-  return names.flatMap(name => {
+  return (await declaredAppSecretNames()).flatMap(name => {
     const value = readNamedVariable(name)?.trim()
     return value ? [{ name, value }] : []
   })

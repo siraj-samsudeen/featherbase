@@ -63,6 +63,14 @@ client-apps/<client>/<app>/   one folder per client, one per app inside:
 
 ### 2. Each client has a small private instance repository
 
+> *30-Oct-2026 (#703): corrected by the owner. A client's instance settings and
+> privacy notice now live here, one folder per instance,
+> `client-apps/<client>/instances/<instance>/`, whose `instance.json` lists the
+> apps it runs. Host and service names, mail setup and anything else private stay
+> out of this repository. Values that shouldn't be in it are `{ "env": "NAME" }`
+> references. A private repository remains for the release line below and any
+> host detail.*
+
 It holds what differs between deployments, and no code:
 
 - each instance's settings file (`dev/`, `prod/`, and more if the client has

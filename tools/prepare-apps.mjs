@@ -28,7 +28,9 @@ const steps = [
   ['test', '--prefix', 'client-apps/jeyarama/dash'],
 ]
 for (const args of steps) {
-  const result = spawnSync('npm', args, { cwd: root, env, stdio: 'inherit' })
+  // npm is a .cmd file on Windows, which Node runs only through a shell. These
+  // arguments are plain words and relative paths, so a shell changes nothing.
+  const result = spawnSync('npm', args, { cwd: root, env, stdio: 'inherit', shell: process.platform === 'win32' })
   if (result.error) throw result.error
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
