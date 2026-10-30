@@ -6,5 +6,8 @@
 -- email_verified: whether the last sign-in's address was verified (the email
 -- column keeps the last address shown, verified or not); NULL before this step,
 -- when only verified addresses were stored.
+-- sessions_ended_at: sessions opened through this link before then have ended
+-- (a domain change stopped admitting it); the link itself is kept.
 alter table featherbase.sign_in_identity add column if not exists hosted_domain varchar(255);
 alter table featherbase.sign_in_identity add column if not exists email_verified boolean;
+alter table featherbase.sign_in_identity add column if not exists sessions_ended_at timestamptz;

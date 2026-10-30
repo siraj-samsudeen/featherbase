@@ -364,3 +364,51 @@ describe('a listed consumer domain is read the same by sign-in and the guard', (
     expect((await setDomains(admin, `gmail.com,${COMPANY},sister.test`)).status).toBe(200)
   })
 })
+
+// #693 (Siraj, 30-Oct-2026): when a change to Google's domain list stops
+// admitting a link the domain rule made, the sessions opened through that
+// link end. Administrator links and sessions opened another way are untouched.
+describe('narrowing the list ends sessions through links it no longer admits', () => {
+  const whoami = (api: TestClient, token: string) => api.fetch('/api/whoami', { headers: { authorization: `Bearer ${token}` } })
+
+  test('a self-linked gmail.com session ends; an administrator-linked and a password session survive; re-widening does not revive it', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: `${COMPANY},gmail.com` })
+    const selfLinked = await makePerson({})
+    const adminLinked = await makePerson({})
+    await rawLink(selfLinked, 'uid_693_end_self', 'g-693-end-self', 'end.self@gmail.com', 'self', '')
+    await rawLink(adminLinked, 'uid_693_end_admin', 'g-693-end-admin', 'end.admin@gmail.com', 'Administrator', '')
+    const selfSession = await redeemSession(api, await googleSignIn(api, 'end.self@gmail.com', { subject: 'g-693-end-self' }))
+    const adminSession = await redeemSession(api, await googleSignIn(api, 'end.admin@gmail.com', { subject: 'g-693-end-admin' }))
+    const password = await passwordSession(api, admin, 'pw.693.end')
+    for (const token of [selfSession.token, adminSession.token, password.token]) expect((await whoami(api, token)).status).toBe(200)
+
+    expect((await setDomains(admin, COMPANY)).status).toBe(200)
+    expect((await whoami(api, selfSession.token)).status).toBe(401)
+    expect((await whoami(api, adminSession.token)).status).toBe(200)
+    expect((await whoami(api, password.token)).status).toBe(200)
+    // The link is kept; one log entry for that person, with no address in it.
+    expect(await sql`select ended_at from sign_in_identity where id = 'uid_693_end_self'`).toEqual([{ ended_at: null }])
+    const logged = await sql`select "user", operation from activity_log where "user" = ${selfLinked} and operation like 'google_sessions_ended%'`
+    expect(logged).toEqual([{ user: selfLinked, operation: 'google_sessions_ended_domain_not_allowed google' }])
+    expect(JSON.stringify(logged)).not.toContain('@')
+    expect(await sql`select 1 from activity_log where "user" = ${adminLinked} and operation like 'google_sessions_ended%'`).toHaveLength(0)
+
+    // Re-widening lets them sign in again, but the ended session stays ended.
+    expect((await setDomains(admin, `${COMPANY},gmail.com`)).status).toBe(200)
+    expect((await whoami(api, selfSession.token)).status).toBe(401)
+    await new Promise((r) => setTimeout(r, 1100)) // sessions carry whole seconds
+    const fresh = await redeemSession(api, await googleSignIn(api, 'end.self@gmail.com', { subject: 'g-693-end-self' }))
+    expect(fresh.user.row_id).toBe(selfLinked)
+    expect((await whoami(api, fresh.token)).status).toBe(200)
+  })
+
+  test('a change that keeps the link admitted ends nothing', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: 'gmail.com' })
+    const p = await makePerson({})
+    await rawLink(p, 'uid_693_keep', 'g-693-keep', 'keep@gmail.com', 'self', '')
+    const session = await redeemSession(api, await googleSignIn(api, 'keep@gmail.com', { subject: 'g-693-keep' }))
+    expect((await setDomains(admin, `gmail.com,${COMPANY}`)).status).toBe(200)
+    expect((await whoami(api, session.token)).status).toBe(200)
+    expect(await sql`select sessions_ended_at from sign_in_identity where id = 'uid_693_keep'`).toEqual([{ sessions_ended_at: null }])
+  })
+})

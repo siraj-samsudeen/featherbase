@@ -623,6 +623,31 @@ export async function disableLeaver(user: string, methodKey: string): Promise<vo
   await logActivity(user, `disabled_as_leaver ${methodKey}`)
 }
 
+/** #693 (Siraj, 30-Oct-2026): when a change to a Google method's domain list
+ *  stops admitting a link the domain rule made (DOMAIN_RULED_LINKS), the
+ *  sessions opened through that link end. Called in the method change's
+ *  transaction, after the lockout guard allowed it. Stamps the link (kept,
+ *  so re-admitting the domain lets the person sign in again, while the ended
+ *  sessions stay ended) and logs once per person, never an address. Turning
+ *  the method off or deleting it already ends every session opened through
+ *  it (resolveToken). Returns the people affected. */
+export async function endSessionsNoLongerAdmitted(methodKey: string, nextDomains: string, db: Sql | TxSql = sql): Promise<string[]> {
+  await lockWaysIn(db)
+  const before = await domainListsJson(db)
+  const after = await domainListsJson(db, { key: methodKey, domains: nextDomains })
+  const ended = await db`
+    update sign_in_identity i set sessions_ended_at = now()
+    from sign_in_method m
+    where m.row_id = i.method and i.method = ${methodKey} and m.kind = 'google'
+      and i.subject is not null and i.ended_at is null
+      and i.linked_by = any(${[...DOMAIN_RULED_LINKS]}::text[])
+      and ${keepsDomain(before, 'possible')} and not ${keepsDomain(after, 'possible')}
+    returning i.person_id`
+  const people = [...new Set(ended.map((r) => String(r.person_id)))].sort()
+  for (const person of people) await logActivity(person, `google_sessions_ended_domain_not_allowed ${methodKey}`)
+  return people
+}
+
 // --------------------------------------------------------- lockout guard
 
 /** Refuse a method change that would leave an enabled Administrator or System

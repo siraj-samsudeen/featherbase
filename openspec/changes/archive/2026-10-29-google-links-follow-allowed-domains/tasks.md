@@ -10,3 +10,8 @@
 - [x] 2.1 Re-check sign-ins through links the domain rule made; keep administrator links and claimed invites.
 - [x] 2.2 Count only links that still pass the domains as a way in, and guard a domain-list change against locking out an Administrator or System Manager.
 - [x] 2.3 Test: a pre-fix self link is refused and restored when the list is cleared; an administrator's link still signs in; dropping a domain ends its rule-made links; narrowing that would lock out a System Manager is refused until they have another way in.
+
+## 3. Sessions through a link no longer admitted (Siraj, 30-Oct-2026)
+
+- [x] 3.1 When a Google domain-list change stops admitting a self, new-person or expected-sign-in link, end the sessions opened through it in the same transaction, after the lockout guard; log once per person, with no address.
+- [x] 3.2 Test: a self-linked session ends, an administrator-linked and a password session survive, re-widening does not revive it, and a change that keeps the link admitted ends nothing.

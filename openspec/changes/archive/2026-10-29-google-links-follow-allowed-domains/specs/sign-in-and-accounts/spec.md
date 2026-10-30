@@ -9,6 +9,9 @@ Google does not recognise. While Google sign-in lists allowed domains, a
 link that person made themselves, or that the domain rule made, SHALL open
 the account only while that rule still admits the account; a link an
 administrator made, or an invite the person claimed, SHALL keep opening it.
+When a change to the allowed domains stops admitting such a link, the
+sessions opened through that link SHALL end; sessions opened another way
+SHALL NOT.
 
 #### Scenario: First-time sign-in from an allowed domain
 
@@ -28,6 +31,14 @@ administrator made, or an invite the person claimed, SHALL keep opening it.
   after an administrator removed that domain from the allowed list
 - **THEN** they are refused and told to contact IT, and the link is kept, so
   adding the domain back lets them in again
+
+#### Scenario: Removing a domain ends sessions through it
+
+- **WHEN** an administrator removes a domain while a person is signed in
+  through a Google account they linked on that domain
+- **THEN** that session ends on its next request, a session the same person
+  opened with their password stays open, and adding the domain back does not
+  reopen the ended session
 
 #### Scenario: An administrator's link outside the list
 

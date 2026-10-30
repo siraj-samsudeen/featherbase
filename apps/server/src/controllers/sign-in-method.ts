@@ -1,6 +1,6 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
-import { KINDS, METHOD_TABLE, SIGN_IN_METHOD_KINDS, assertNoAdminLockout, domainListProblem, lockWaysIn, methodUsable, type MethodKind } from '../identities'
+import { KINDS, METHOD_TABLE, SIGN_IN_METHOD_KINDS, assertNoAdminLockout, domainListProblem, endSessionsNoLongerAdmitted, lockWaysIn, methodUsable, type MethodKind } from '../identities'
 import { usableServiceUrl, wireFrom } from '../delegated-login'
 
 // person-identities (D2): a Sign In Method row is configuration. Its policy
@@ -103,6 +103,10 @@ const controller: TableController = {
         tx,
       )
       usableCheck()
+      // #693 (Siraj, 30-Oct-2026): sessions through links the new list no
+      // longer admits end now, in this transaction, after the guard allowed it.
+      if (domainsChanged && String(merged.kind) === 'google')
+        await endSessionsNoLongerAdmitted(String(old.row_id), String(row.allowed_email_domains ?? ''), tx)
     },
     on_trash: async ({ row, tx }) => {
       await lockWaysIn(tx)
