@@ -1,0 +1,78 @@
+# Proves `pnpm dev <instance>` on Windows: from a bare checkout to a ready server
+# with its apps installed. It runs only when something the path depends on
+# changes, and is not part of the `unit` verdict until it has proved stable.
+name: dev-windows
+
+on:
+  pull_request:
+    paths:
+      - tools/dev.mjs
+      - tools/prepare-apps.mjs
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - client-apps/*/instances/**
+      - client-apps/*/*/package.json
+      - client-apps/*/*/featherbase.json
+      - example-apps/*/package.json
+      - apps/server/package.json
+      - apps/web/package.json
+      - apps/web/vite.config.ts
+      - apps/server/src/cli.ts
+      - apps/server/src/instance-settings.ts
+      - apps/server/src/runtime-packages.ts
+      - .github/workflows/dev-windows.yml
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dev-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      # The runner's preinstalled PostgreSQL has this login.
+      DATABASE_URL: postgres://postgres:root@127.0.0.1:5432/fb_windows_check
+    steps:
+      - name: Long paths, and no symlinks, as on a plain team machine
+        run: |
+          git config --global core.longpaths true
+          git config --global core.symlinks false
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Start the preinstalled PostgreSQL
+        shell: pwsh
+        run: |
+          Set-Service -Name postgresql-x64-* -StartupType Manual
+          Get-Service -Name postgresql-x64-* | Start-Service
+          Get-Service -Name postgresql-x64-*
+
+      - name: From nothing to a ready server with its apps installed
+        run: pnpm dev:jeyarama --check
+
+      - name: Running it again is safe
+        run: pnpm dev:jeyarama --check
+
+      - name: An unknown instance names those that exist
+        shell: pwsh
+        run: |
+          $out = node tools/dev.mjs no/such 2>&1 | Out-String
+          if ($LASTEXITCODE -eq 0) { throw 'an unknown instance should fail' }
+          if ($out -notmatch 'jeyarama/dash') { throw "the failure did not name the instances: $out" }
+
+      - name: Nothing is left listening
+        shell: pwsh
+        run: |
+          foreach ($port in 8000, 5173) {
+            if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { throw "port $port is still held" }
+          }
