@@ -79,3 +79,17 @@ export function switchColumn(
   if (!on && inList) hidden.push(name)
   return { shownCols: shown, hiddenCols: hidden }
 }
+
+/** The Table's columns with each data column's in_list_view set to whether
+ *  it shows in this person's view — "Make this the default for everyone"
+ *  (#738, Decision 3). A column no list can show keeps its flag. */
+export function listFlagsFromView(meta: TableMeta, arrangement: ColumnArrangement): TableMeta {
+  const defaults = defaultColumnNames(meta)
+  const listable = new Set(dataColumns(meta).map((c) => c.column_name))
+  return {
+    ...meta,
+    columns: meta.columns.map((c) =>
+      listable.has(c.column_name) ? { ...c, in_list_view: isShown(c.column_name, defaults, arrangement) } : c,
+    ),
+  }
+}

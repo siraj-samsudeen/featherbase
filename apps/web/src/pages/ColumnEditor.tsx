@@ -21,7 +21,7 @@ import { useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
-import { COLUMN_TYPES, type TableMeta } from '../lib/meta'
+import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { RESERVED, SNAKE, TARGET_REQUIRED_TYPES, slugify } from '../lib/column-rules'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '../components/ui'
 
@@ -198,6 +198,19 @@ export function ColumnEditor() {
     )
   }
 
+  // #738 (point 9): the Table's list for everyone, saved at once. The server
+  // clears the column's in_list_view override with it, so the tick always
+  // does what it says.
+  function saveInList(columnName: string, inList: boolean) {
+    put.mutate(
+      def.columns.map((c) => (c.column_name === columnName ? { ...c, in_list_view: inList } : c)),
+      {
+        onSuccess: () =>
+          setSaved(inList ? `Put ${columnName} in the list` : `Took ${columnName} out of the list`),
+      },
+    )
+  }
+
   return (
     <div data-testid="column-editor" className="max-w-4xl">
       <h1 className="mb-1 text-xl font-semibold text-ink">
@@ -246,6 +259,7 @@ export function ColumnEditor() {
                 <th className="py-1">Label</th>
                 <th>Column name</th>
                 <th>Type</th>
+                <th className="px-2">In list</th>
                 <th />
               </tr>
             </thead>
@@ -282,6 +296,19 @@ export function ColumnEditor() {
                   </td>
                   <td className="pr-2 font-mono text-xs text-ink-muted">{column.column_name}</td>
                   <td className="pr-2 text-xs text-ink-muted">{column.column_type}</td>
+                  <td className="px-2 text-center">
+                    {/* Only a column a list can show gets a tick. */}
+                    {!NO_COLUMN_TYPES.has(column.column_type) && !column.hidden && (
+                      <input
+                        type="checkbox"
+                        aria-label={`In list: ${column.label ?? column.column_name}`}
+                        data-testid={`ce-in-list-${column.column_name}`}
+                        checked={Boolean(column.in_list_view)}
+                        disabled={def.system || put.isPending}
+                        onChange={(e) => saveInList(column.column_name, e.target.checked)}
+                      />
+                    )}
+                  </td>
                   <td className="text-xs">
                     {!def.system && <RenameRow table={def.name} column={column} />}
                   </td>

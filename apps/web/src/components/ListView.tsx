@@ -6,7 +6,7 @@ import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
-import { dataColumns, defaultColumnNames, isShown, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
+import { dataColumns, defaultColumnNames, isShown, listFlagsFromView, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
@@ -120,6 +120,7 @@ export function ListView({
   useEffect(() => setConflictsOpen(false), [table])
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsUnsaved, setSettingsUnsaved] = useState(false)
+  const [makingDefault, setMakingDefault] = useState<'saving' | 'failed' | null>(null)
   // UI-012: bulk selection state.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkField, setBulkField] = useState('')
@@ -231,6 +232,13 @@ export function ListView({
   }
 
   const columns = meta.data ? viewColumns(meta.data, arrangement) : []
+  // #209 / #738: who may shape this Table's columns for everyone — "Edit
+  // columns" and "Make this the default for everyone" show exactly here.
+  // Not on system Tables (their columns are the platform's) nor bound ones
+  // (their storage is the source's).
+  const canShapeColumns = Boolean(
+    caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source,
+  )
   // The menu (#738): the Table's list columns first, then every other column
   // the person may read; Row ID is always on.
   const listDefaults = meta.data ? defaultColumnNames(meta.data) : new Set<string>()
@@ -336,6 +344,25 @@ export function ListView({
         : { field, dir: 'asc' }
     setSort(next)
     persist({ sort: next })
+  }
+
+  // #738 (Decision 3): this person's view becomes the Table's list for
+  // everyone, in one definition save; their own two sets are then empty,
+  // since their view is now the default. The new meta lands before the sets
+  // empty, so the list never flashes the old default.
+  async function makeDefaultForEveryone() {
+    if (!meta.data) return
+    setMakingDefault('saving')
+    try {
+      await api.put(`/api/table_def/${encodeURIComponent(table)}`, listFlagsFromView(meta.data, arrangement))
+      await queryClient.invalidateQueries({ queryKey: ['meta', table] })
+      const cleared = { shownCols: [], hiddenCols: [] }
+      setArrangement(cleared)
+      persist({ arrangement: cleared })
+      setMakingDefault(null)
+    } catch {
+      setMakingDefault('failed')
+    }
   }
 
   // UI-013 / #738: switch a column on or off in this person's view (saved
@@ -512,6 +539,24 @@ export function ListView({
                   </div>
                 )}
                 {otherChoices.map(columnChoice)}
+                {canShapeColumns && (
+                  <div className="mt-1 border-t border-border pt-1">
+                    <button
+                      type="button"
+                      className="w-full rounded px-2 py-1 text-left text-sm text-action hover:bg-subtle disabled:opacity-50"
+                      disabled={makingDefault === 'saving'}
+                      onClick={() => void makeDefaultForEveryone()}
+                      data-testid="list-make-default"
+                    >
+                      Make this the default for everyone
+                    </button>
+                    {makingDefault === 'failed' && (
+                      <p className="px-2 pb-1 text-xs text-negative" data-testid="list-make-default-error">
+                        Couldn't make this the default. Everyone's list is as it was.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -575,7 +620,7 @@ export function ListView({
           {/* #209: add a column, or fix a misspelled one, without rebuilding
               the Table. Absent on system Tables (their columns are the
               platform's) and on bound ones (their storage is the source's). */}
-          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && (
+          {canShapeColumns && (
             <Link
               to="/featherbase/admin/$table/columns"
               params={{ table }}
