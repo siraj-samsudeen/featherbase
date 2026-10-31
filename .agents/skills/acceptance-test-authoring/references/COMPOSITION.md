@@ -34,7 +34,7 @@ Superseded rules (MODIFIED/REMOVED by an active delta) must **not reach the runn
    - **Pruning the extracted tree**, where line selection would merely runtime-skip — behave reports every unselected scenario as skipped, and no flag suppresses that count, so the superseded `Rule:` blocks are blanked out of `.extracted/` and whole files are passed instead.
 
    Pruning is not a spec edit: `.extracted/` is a generated artifact, gitignored and rebuilt every run, so the source of truth stays pristine — which is what this protects. Blank the lines rather than deleting them, so line fidelity survives. Omit a file entirely if no scenario survives; include untouched files whole.
-5. **Add every delta file whole.**
+5. **Add every delta file whole, in journey order, before the source of truth.** Active changes run alphabetically by id. Within a change, its delta files follow the order its `proposal.md` lists capabilities under `## Capabilities` (backticked names at the start of a list item: New, then Modified, in file order); a capability the proposal doesn't list follows, alphabetically. The source-of-truth files run after all deltas, alphabetically. Sorting is by code point. A change's scenarios therefore run, and any review videos record, in the order a person meets the feature.
 6. **Print the composition report** to stderr — each superseded rule, the change that superseded it, and every left-out scenario with its **source `spec.md`** `file:line` (identical line numbers, by line fidelity), plus a summary count, so an excluded scenario is never silently absent from results or reports. **This format is identical across stacks:**
 
    ```

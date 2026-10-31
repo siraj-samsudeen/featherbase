@@ -15,7 +15,6 @@ Copy into `acceptance-tests/` at the repo root. Destination filenames are load-b
 | `python/run_acceptance.py` | `run_acceptance.py` | documented single entry point |
 | `python/behave.ini` | `behave.ini` | behave discovers its config by this name |
 | `python/environment.py` | `environment.py` | behave loads hooks from this name at the base dir |
-| `../gherkin-lintrc.json` | `.gherkin-lintrc` | gherkin-lint auto-discovers this name and has no built-in defaults |
 
 Dependencies: `behave>=1.2.7`, `behave-html-formatter`, plus an HTTP client and HTML parser for page objects. `requests` and `beautifulsoup4` are the cheerio analogue.
 
@@ -25,7 +24,6 @@ Dependencies: `behave>=1.2.7`, `behave-html-formatter`, plus an HTTP client and 
 acceptance-tests/
   run_acceptance.py      environment.py     behave.ini
   extract_gherkin.py     openspec_effective_spec.py
-  .gherkin-lintrc
   steps/                 # step definitions
   pages/                 # page objects
   .extracted/  reports/  # generated, gitignored
@@ -38,7 +36,6 @@ acceptance-tests/
 ```sh
 python run_acceptance.py                    # effective spec
 python run_acceptance.py --specs            # source of truth only
-python run_acceptance.py --lint             # extract, then gherkin-lint
 python run_acceptance.py --print-locations  # show resolved composition
 python run_acceptance.py --dry-run          # passthrough to behave
 ```
