@@ -126,6 +126,9 @@ export function ColumnEditor() {
   const [adding, setAdding] = useState<NewColumn>(blank())
   const [labels, setLabels] = useState<Record<string, string>>({})
   const [saved, setSaved] = useState<string | null>(null)
+  // The tick being saved shows its new state at once; it settles to the
+  // Table's flag when the save returns (or back, if the save fails).
+  const [inListSaving, setInListSaving] = useState<{ column: string; inList: boolean } | null>(null)
 
   const meta = useQuery({
     queryKey: ['meta', table],
@@ -202,11 +205,13 @@ export function ColumnEditor() {
   // clears the column's in_list_view override with it, so the tick always
   // does what it says.
   function saveInList(columnName: string, inList: boolean) {
+    setInListSaving({ column: columnName, inList })
     put.mutate(
       def.columns.map((c) => (c.column_name === columnName ? { ...c, in_list_view: inList } : c)),
       {
         onSuccess: () =>
           setSaved(inList ? `Put ${columnName} in the list` : `Took ${columnName} out of the list`),
+        onSettled: () => setInListSaving(null),
       },
     )
   }
@@ -303,7 +308,11 @@ export function ColumnEditor() {
                         type="checkbox"
                         aria-label={`In list: ${column.label ?? column.column_name}`}
                         data-testid={`ce-in-list-${column.column_name}`}
-                        checked={Boolean(column.in_list_view)}
+                        checked={
+                          inListSaving?.column === column.column_name
+                            ? inListSaving.inList
+                            : Boolean(column.in_list_view)
+                        }
                         disabled={def.system || put.isPending}
                         onChange={(e) => saveInList(column.column_name, e.target.checked)}
                       />
