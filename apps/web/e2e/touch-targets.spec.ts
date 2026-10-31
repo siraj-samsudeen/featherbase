@@ -32,7 +32,7 @@ test.beforeAll(async ({ request }) => {
     name: WIDE_DT,
     columns: WIDE_COLUMNS.map((c, i) => ({ column_name: c, column_type: 'Data', in_list_view: i < 6 })),
   })
-  await fillRows(request, auth, WIDE_DT, 2, (i) => Object.fromEntries(WIDE_COLUMNS.map((c) => [c, `${c}-${i}`])))
+  await fillRows(request, auth, WIDE_DT, 6, (i) => Object.fromEntries(WIDE_COLUMNS.map((c) => [c, `${c}-${i}`])))
 })
 
 /** Every visible control whose tap area is too small, described for the failure message. */
@@ -140,6 +140,17 @@ test('the Show columns menu of a ten-column Table stays on a phone screen', asyn
     expect(popup.y + popup.height, 'the menu ends on screen').toBeLessThanOrEqual(812)
     const last = (await page.getByTestId('list-make-default').boundingBox())!
     expect(last.y + last.height, '"Make this the default for everyone" is on screen').toBeLessThanOrEqual(812)
+  })
+})
+
+// #738: only <main> scrolls. Something in a card that escapes it (an
+// absolutely placed screen-reader label with no positioned box around it)
+// would make the whole page scroll, carrying the top bar away.
+test('a list of cards with "N more" scrolls inside main, never the page', async ({ session }) => {
+  await session.visit(`/admin/${encodeURIComponent(WIDE_DT)}`).assertHas('[data-testid="card-more"]')
+  await session.step('compare the page height with the screen', async ({ page }) => {
+    await expect(page.getByTestId('card-more')).toHaveCount(6)
+    expect(await page.evaluate(() => document.scrollingElement!.scrollHeight)).toBe(812)
   })
 })
 
