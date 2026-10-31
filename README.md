@@ -275,9 +275,9 @@ pnpm check:specs                 # validate OpenSpec specs and active changes
 | `packages/shared` | Types and contracts used by both server and web |
 | `example-apps` | Apps shipped with the platform (`tasker`) |
 | `test-apps` | Small app packages the tests install to prove one platform feature each (`other`, `action-proof`, `scope-proof`, `fixtures/`); not examples to copy |
-| `client-apps` | Apps built for one client, one folder per client (`jeyarama/dash`), with each instance's settings under `instances/` (`jeyarama/instances/dash`; [ADR 0014](docs/adr/0014-one-repo-for-platform-and-apps.md)) |
+| `client-apps` | Apps built for one client, one folder per client (`jeyarama/dash`), with each instance's settings under `instances/` (`jeyarama/instances/dash`; [ADR 0014](adr/0014-one-repo-for-platform-and-apps.md)) |
 | `openspec/specs` | Behaviour specs, the sole authority on what the system does |
-| `docs/adr` | Architecture decisions and why they were made |
+| `adr` | Architecture decisions and why they were made |
 | `tools` | Repository checks run in CI (`pnpm check:*`) |
 
 Tests run inside real Postgres transactions that are rolled back, using
@@ -290,7 +290,7 @@ Tests run inside real Postgres transactions that are rolled back, using
 - [docs/TESTING.md](docs/TESTING.md): how the test suites are built and run
 - [docs/DEPLOY.md](docs/DEPLOY.md): deploying an instance
 - [docs/PREVIEW.md](docs/PREVIEW.md): preview deployments
-- [docs/adr/](docs/adr/): architecture decisions
+- [adr/](adr/): architecture decisions
 - [openspec/specs/](openspec/specs/): behaviour specs
 - [CLAUDE.md](CLAUDE.md): the standing protocol for coding agents
 

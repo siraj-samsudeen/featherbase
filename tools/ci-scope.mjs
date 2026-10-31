@@ -7,6 +7,7 @@ import { appendFileSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
 const EVERYTHING = new Set(['server', 'web', 'e2e', 'client', 'example'])
+const TEMPLATE_FILES = new Set(['.copier-answers.yml', 'opencode.json', 'skills-lock.json', 'scripts/create-labels.sh'])
 
 /** The suites one changed path needs. An empty set is docs: the fast checks only. */
 export function suitesFor(path) {
@@ -18,6 +19,8 @@ export function suitesFor(path) {
   if (path.startsWith('acceptance-tests/') && !path.endsWith('.md')) return new Set(['e2e'])
   const prose = path.endsWith('.md') && !path.includes('/fixtures/') && !/^client-apps\/[^/]+\/instances\//.test(path)
   if (prose || /^(docs|openspec|\.claude|\.agents|\.amp)\//.test(path) || path === 'LICENSE') return new Set()
+  // The shared process template's files, which `copier update` brings (#753).
+  if (path.startsWith('.opencode/') || TEMPLATE_FILES.has(path)) return new Set()
   if (path.startsWith('client-apps/')) return new Set(['client'])
   if (path.startsWith('example-apps/')) return new Set(['example'])
   if (path.startsWith('apps/server/')) return new Set(['server', 'client'])

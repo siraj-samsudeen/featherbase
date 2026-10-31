@@ -1,0 +1,26 @@
+# The project's answers to the template's questions (copier.yml in the template). Skills read
+# these values. Change one with: copier update --trust --defaults --data <question>=<value>
+_commit: v1.1.0
+_src_path: gh:siraj-samsudeen/intent-driven-with-human-control
+acceptance_stack: javascript
+adr_dir: adr
+desktop_first: true
+extra_labels:
+-   color: 0e8a16
+    description: Force the Playwright e2e job on this PR
+    name: run-e2e
+-   color: fbca04
+    description: Force every CI suite on this PR
+    name: run-all
+-   color: 0e8a16
+    description: Applied from file paths
+    name: area:platform
+-   color: 1d76db
+    description: Applied from file paths
+    name: area:example-apps
+-   color: 5319e7
+    description: Applied from file paths
+    name: client:jeyarama
+repo: siraj-samsudeen/featherbase
+screenshots_in_prs: false
+ui_verifier_width: 1280

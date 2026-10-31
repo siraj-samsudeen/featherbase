@@ -2,7 +2,6 @@
 """Acceptance suite entry point for the Python stack."""
 
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -17,8 +16,7 @@ def main(argv):
 
     specs_only = "--specs" in argv
     print_only = "--print-locations" in argv
-    lint = "--lint" in argv
-    passthrough = [a for a in argv if a not in ("--specs", "--print-locations", "--lint")]
+    passthrough = [a for a in argv if a not in ("--specs", "--print-locations")]
 
     try:
         out_dir, written = extract_all()
@@ -26,9 +24,6 @@ def main(argv):
         sys.stderr.write("[extract-gherkin] %s\n" % err)
         return 1
     sys.stderr.write("[extract-gherkin] %d spec.md file(s) extracted to %s\n" % (len(written), out_dir))
-
-    if lint:
-        return subprocess.call(["npx", "gherkin-lint", ".extracted"])
 
     try:
         locations = source_of_truth_locations() if specs_only else effective_locations()
