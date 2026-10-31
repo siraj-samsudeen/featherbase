@@ -30,11 +30,11 @@
 
 ## 5. Section Mapping shows its seven list columns (@spec A list shows the table's list columns)
 
-- [ ] 5.1 outer: the scenario (expected to pass on its first run: today's behaviour)
+- [x] 5.1 outer: the scenario (expected to pass on its first run: today's behaviour)
 
 ## 6. A table with no list columns shows its first two (@spec A list shows the table's list columns)
 
-- [ ] 6.1 outer: the scenario (expected to pass on its first run: today's fallback)
+- [x] 6.1 outer: the scenario (expected to pass on its first run: today's fallback)
 
 ## 7. Remarks shows only for me (@spec Show or hide any column for yourself)
 
@@ -51,7 +51,7 @@
 
 ## 9. Return after hiding a column (@spec The list remembers how it's arranged)
 
-- [ ] 9.1 outer: the scenario (expected to pass on its first run: today's behaviour)
+- [x] 9.1 outer: the scenario (expected to pass on its first run: today's behaviour)
 - [ ] 9.2 inner: an arrangement saved before this change, `{ hiddenCols: ["floor"] }` with no shown set, still hides Floor and shows every other list column
 
 ## 10. Remarks is still there next time (@spec The list remembers how it's arranged)
