@@ -43,22 +43,22 @@ function proposalCapabilities(changeId) {
   return names;
 }
 
-// Each change's delta paths in its proposal's capability order; a capability
-// the proposal doesn't list follows, alphabetically. Changes alphabetically.
+// Plain code-point order, as Python's sorted() uses, so both stacks agree.
+const byCodePoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+// Changes alphabetically; each change's delta paths in its proposal's
+// capability order; a capability the proposal doesn't list follows,
+// alphabetically.
 function inJourneyOrder(deltaPaths) {
   const order = new Map();
   const position = (p) => {
     const changeId = changeIdOf(p);
     if (!order.has(changeId)) order.set(changeId, proposalCapabilities(changeId));
     const at = order.get(changeId).indexOf(capabilityOf(p));
-    return at < 0 ? Infinity : at;
+    return at < 0 ? Number.MAX_SAFE_INTEGER : at;
   };
   return [...deltaPaths].sort(
-    (a, b) =>
-      changeIdOf(a).localeCompare(changeIdOf(b)) ||
-      // Two unlisted capabilities give Infinity - Infinity = NaN: alphabetical.
-      position(a) - position(b) ||
-      a.localeCompare(b),
+    (a, b) => byCodePoint(changeIdOf(a), changeIdOf(b)) || position(a) - position(b) || byCodePoint(a, b),
   );
 }
 
@@ -145,7 +145,7 @@ function effectivePaths() {
       (p) => !p.includes('changes/archive/'),
     ),
   );
-  const sotPaths = globSync('.extracted/specs/**/*.feature', { cwd: __dirname, posix: true }).sort();
+  const sotPaths = globSync('.extracted/specs/**/*.feature', { cwd: __dirname, posix: true }).sort(byCodePoint);
 
   const superseded = collectSupersededRules(deltaPaths);
   const paths = [];

@@ -31,11 +31,11 @@ const SCENARIO_RE = /^####\s+(Scenario(?:\s+Outline)?):\s*(.+?)\s*$/i;
 // deliberately absent: both legitimately live in a fence.
 const STRUCTURE_IN_FENCE_RE = /^\s*(Feature|Rule|Scenario\s+Outline|Scenario|Example):/;
 
-// FEATHERBASE LOCAL CHANGE: a spec that mixes Gherkin with older prose
-// scenarios (a delta archived into a prose main spec) runs its fenced
-// scenarios; a "#### Scenario:" with no fence is not executable yet, so its
-// synthesized Scenario: line is blanked (line numbers are kept) and counted.
-let proseScenarios = 0;
+// Prose scenarios: a "#### Scenario:" with no gherkin fence (a spec written
+// before spec-as-source, or a delta archived into one) is not executable yet.
+// Its Scenario: line is blanked, keeping line fidelity, and it is counted
+// here so extractAll() can name it. Reset by extractAll().
+let proseScenarios = [];
 
 function extractFile(mdPath) {
   const lines = fs.readFileSync(mdPath, 'utf8').split(/\r?\n/);
@@ -74,10 +74,10 @@ function extractFile(mdPath) {
         return;
       }
       // A heading ends any scenario still waiting for its steps: a prose
-      // scenario, left out (see proseScenarios above).
+      // scenario, left out.
       if (pendingScenario) {
         out[pendingScenario.line - 1] = '';
-        proseScenarios += 1;
+        proseScenarios.push(`${mdPath}:${pendingScenario.line}`);
         pendingScenario = null;
       }
       if ((m = H1_RE.exec(line))) {
@@ -132,7 +132,7 @@ function extractFile(mdPath) {
   }
   if (pendingScenario) {
     out[pendingScenario.line - 1] = '';
-    proseScenarios += 1;
+    proseScenarios.push(`${mdPath}:${pendingScenario.line}`);
   }
   if (h1Count === 0) {
     throw new Error(`${mdPath}: no H1 title — a spec.md must start with "# <capability>"`);
@@ -183,24 +183,7 @@ function extractAll(openspecDir, outDir) {
 
   fs.rmSync(outDir, { recursive: true, force: true });
 
-  // FEATHERBASE LOCAL CHANGE (not in the skill's reference binding, nor in
-  // EXTRACTION.md yet): most specs here are still prose, written before the
-  // repo adopted spec-as-source, and their "#### Scenario:" headings have no
-  // gherkin fence, which extractFile() rightly treats as a hard error. A
-  // spec.md with no ```gherkin fence at all is therefore not executable yet
-  // and is left out, named in one notice so it never drops out silently. A
-  // spec with at least one fence gets every check in full. Remove this once
-  // every spec is fenced.
-  const allSources = collectSpecSources(openspecDir, 'spec.md');
-  const isFenced = (rel) =>
-    fs.readFileSync(path.join(openspecDir, rel), 'utf8').split(/\r?\n/).some((l) => GHERKIN_OPEN_RE.test(l));
-  const sources = allSources.filter(isFenced);
-  const prose = allSources.filter((rel) => !sources.includes(rel));
-  if (prose.length > 0) {
-    console.error(
-      `[extract-gherkin] ${prose.length} prose spec.md file(s) with no gherkin fence are not executable yet and were not extracted`
-    );
-  }
+  const sources = collectSpecSources(openspecDir, 'spec.md');
 
   // Legacy-format tripwire: raw .feature files under openspec/ no longer run
   // anywhere — flag them instead of letting them silently drop out.
@@ -212,7 +195,7 @@ function extractAll(openspecDir, outDir) {
     );
   }
 
-  proseScenarios = 0;
+  proseScenarios = [];
   const written = [];
   for (const rel of sources) {
     const dest = path.join(outDir, rel.replace(/spec\.md$/, 'spec.feature'));
@@ -220,9 +203,10 @@ function extractAll(openspecDir, outDir) {
     fs.writeFileSync(dest, extractFile(path.join(openspecDir, rel)));
     written.push(dest);
   }
-  if (proseScenarios > 0) {
+  if (proseScenarios.length > 0) {
     console.error(
-      `[extract-gherkin] ${proseScenarios} prose scenario(s) in fenced spec.md files have no gherkin fence; not executable yet, left out`
+      `[extract-gherkin] ${proseScenarios.length} prose scenario(s) with no gherkin fence are not executable yet ` +
+        `and were left out: ${proseScenarios.map((p) => path.relative(process.cwd(), p)).join(', ')}`
     );
   }
   return { outDir, written };
