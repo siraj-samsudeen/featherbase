@@ -143,7 +143,8 @@ class ListCards {
     await this.card(n).getByTestId('row-expand').click();
     const nested = this.card(n).getByTestId('expanded-row');
     await nested.waitFor();
-    await nested.getByText(/\S/).first().waitFor();
+    // The nested rows load after the area opens: wait until they are no longer loading.
+    await nested.getByText(/^\s*Loading/).first().waitFor({ state: 'detached' });
     return ((await nested.textContent()) ?? '').trim();
   }
 
@@ -151,11 +152,14 @@ class ListCards {
     return ((await this.page.getByTestId('page-info').textContent()) ?? '').trim();
   }
 
+  /** Moves to the next page, waiting until the pager and the cards both show it. */
   async nextPage() {
-    const before = await this.pageInfo();
+    const before = { info: await this.pageInfo(), first: (await this.titles())[0] };
     await this.page.getByTestId('next-page').click();
     await this.page.waitForFunction(
-      (b) => document.querySelector('[data-testid="page-info"]')?.textContent?.trim() !== b,
+      (b) =>
+        document.querySelector('[data-testid="page-info"]')?.textContent?.trim() !== b.info &&
+        document.querySelector('[data-testid="list-rows"] li a')?.textContent?.trim() !== b.first,
       before,
     );
   }
