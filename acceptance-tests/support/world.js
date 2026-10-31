@@ -12,7 +12,11 @@ const { Api, SYSTEM_MANAGER } = require('./api');
 const { LoginPage } = require('./pages/login-page');
 const { AccountMenu } = require('./pages/account-menu');
 
-setDefaultTimeout(60_000);
+// HEADED=1 is for a person watching on their own screen: a visible browser,
+// slowed down so each action can be followed. Agents and CI never set it;
+// browser checks run headless (CLAUDE.md).
+const HEADED = process.env.HEADED === '1';
+setDefaultTimeout(HEADED ? 300_000 : 60_000);
 
 // Test-only password for the people a scenario creates on the throwaway
 // acceptance database.
@@ -22,7 +26,7 @@ let browser = null;
 let systemManagerState = null; // signed-in storage state, captured once per run
 
 async function launch() {
-  browser ??= await chromium.launch({ headless: true });
+  browser ??= await chromium.launch(HEADED ? { headless: false, slowMo: 400 } : { headless: true });
   return browser;
 }
 
