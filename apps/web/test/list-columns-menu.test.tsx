@@ -68,6 +68,19 @@ test('the menu lists Row ID, the list columns, then the rest under "Not in the l
   ])
 })
 
+test('"Show columns" carries a chevron and reports its menu open and closed', async ({ admin }) => {
+  await seedTable(admin)
+  await openList(admin)
+  const button = screen.getByTestId('list-columns')
+  expect(button.querySelector('[data-chevron]')).not.toBeNull()
+  expect(button).toHaveAttribute('aria-expanded', 'false')
+  await openMenu()
+  expect(button).toHaveAttribute('aria-expanded', 'true')
+  button.click()
+  await waitFor(() => expect(screen.queryByTestId('list-columns-popup')).toBeNull())
+  expect(button).toHaveAttribute('aria-expanded', 'false')
+})
+
 test('the list columns start ticked and the rest unticked', async ({ admin }) => {
   await seedTable(admin)
   await openList(admin)
