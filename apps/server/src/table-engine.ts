@@ -453,6 +453,7 @@ export async function updateTable(
   if (Object.keys(errors).length)
     throw new AppError('ValidationError', 'Columns left out must be removed by name', errors)
   await sql.begin(async (tx) => {
+    await clearChangedListOverrides(tx, name, def.columns, before)
     await tx`update table_def set ${tx({
       module: def.module ?? existing.module,
       is_submittable: def.is_submittable ?? existing.is_submittable,
@@ -537,6 +538,40 @@ export async function updateTable(
   })
   invalidateMeta(name)
   return getMeta(name)
+}
+
+// #738 (Decision 3): the list a Table shows for everyone is its columns'
+// in_list_view flags, so a save that changes a column's flag deletes that
+// column's in_list_view Metadata Override — otherwise the override would make
+// the "In list" tick do nothing. A flag "changes" when the one sent differs
+// from the stored definition's, or from what the column showed (definition
+// plus override, `shown`): the Edit columns page sends back the merged meta,
+// so an untouched column arrives with its override's value, and unticking a
+// column only an override put in the list arrives equal to the stored value.
+// Other properties' overrides, and the overrides of columns whose flag
+// matches both, stay.
+async function clearChangedListOverrides(
+  tx: TxSql,
+  name: string,
+  columns: { column_name: string; in_list_view?: boolean }[],
+  shown: Map<string, { in_list_view?: boolean | null }>,
+): Promise<void> {
+  const stored = new Map(
+    (
+      await tx<{ column_name: string; in_list_view: boolean }[]>`
+        select column_name, in_list_view from column_def where parent = ${name}`
+    ).map((r) => [r.column_name, Boolean(r.in_list_view)]),
+  )
+  const changed = columns
+    .filter((f) => stored.has(f.column_name))
+    .filter((f) => {
+      const sent = Boolean(f.in_list_view)
+      return sent !== stored.get(f.column_name) || sent !== Boolean(shown.get(f.column_name)?.in_list_view)
+    })
+    .map((f) => f.column_name)
+  if (!changed.length) return
+  await tx`delete from metadata_override
+    where table_name = ${name} and property = 'in_list_view' and column_name in ${tx(changed)}`
 }
 
 export async function createTable(
