@@ -1,3 +1,5 @@
+# List View
+
 ## ADDED Requirements
 
 ### Requirement: A list shows the table's list columns
