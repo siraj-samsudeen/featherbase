@@ -248,7 +248,8 @@ export function DataCards<Row>({
                   <Button
                     variant="quiet"
                     // Cards are the phone shape, so the toggle is thumb-sized under a mouse too (#738).
-                    className="-mb-1 mt-1 -ml-2 min-h-touch"
+                    // relative: it contains its sr-only label, which would otherwise escape <main>'s scroll and stretch the page.
+                    className="relative -mb-1 mt-1 -ml-2 min-h-touch"
                     aria-expanded={all}
                     data-testid="card-more"
                     onClick={() => toggleAll(key)}
