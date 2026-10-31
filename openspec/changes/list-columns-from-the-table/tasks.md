@@ -106,12 +106,12 @@
 
 - [x] 19.1 inner: a dropdown button whose menu is open looks pressed (accent tint, chevron up), from the shared button style; "Show columns" reports open and closed
 - [x] 19.2 inner: the menu's divider reads "Not in the list by default"
-- [ ] 19.3 An independent verifier runs the real UI at 1280px and 375px against #738's 11-point checklist and returns a "spec vs built" table with screenshots; differences are fixed before the owner sees the code
+- [x] 19.3 An independent verifier runs the real UI at 1280px and 375px against #738's 11-point checklist and returns a "spec vs built" table with screenshots; differences are fixed before the owner sees the code
 
 ## 20. Reconcile
 
 - [x] 20.1 The full acceptance suite passes with zero pending or undefined steps, and writes its HTML report
-- [ ] 20.2 Coverage meets ADR 0012's floors in CI's `coverage-merged` job (locally the full coverage run trips on 13 Mac-only server failures that pass in CI)
+- [x] 20.2 Coverage meets ADR 0012's floors in CI's `coverage-merged` job (locally the full coverage run trips on 13 Mac-only server failures that pass in CI)
 - [x] 20.3 The repo's static checks pass (`checks` job, `pnpm check:platform-imports`). (Adjusted: the repo has no unused-code tool such as knip.)
 - [x] 20.4 Types check clean
 - [x] 20.5 Two independent code reviews (a different Claude model with `feather-code-review`, and Codex) find no blockers; rare cases listed in the PR. (Adjusted: the repo has no mutation-testing tool such as Stryker.)
