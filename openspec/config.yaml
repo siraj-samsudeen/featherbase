@@ -1,8 +1,6 @@
-# Default schema for new changes = build mode. Each change picks its mode when it is created
-# (the change-modes skill); its own .openspec.yaml records the schema it was created with:
-#   autopilot:        pnpm exec openspec new change <name> --schema intent-driven
-#   build / learning: pnpm exec openspec new change <name>     (intent-driven-with-human-control)
-# Changes created before this template keep their spec-driven schema.
+# The one schema for new changes, whatever mode they are built in: pnpm exec openspec new change <name>.
+# The mode (autopilot, build, learning) is session state, never recorded in the change (the
+# change-modes skill). Changes created before this template keep their spec-driven schema.
 schema: intent-driven-with-human-control
 stack: javascript
 
@@ -12,33 +10,37 @@ context: |
   apps/server, apps/web, runtime apps such as Tasker). Specs are read by
   product people and new contributors, not just programmers.
 
-  Every change runs in one of three modes, chosen when it is created and
-  written on the first line of proposal.md (`**Mode:** autopilot | build |
-  learning`): autopilot (schema intent-driven: subagents build, acceptance
-  tests first), build (the default: one stop per test for the human's
+  Every change is built in one of three modes, chosen in the session and
+  switchable at any time; the mode is never written into the change. In every
+  mode a spec's scenarios are fenced Gherkin that
+  cucumber-js runs as the acceptance tests (spec-as-source skill); the mode
+  decides only who builds and where the human stops. Autopilot (subagents
+  build), build (the default: one stop per test for the human's
   prediction, red/green/refactor as separate commits, outside-in-tdd skill)
   and learning (build, plus every command shown and explained before it
-  runs). Load the change-modes skill for how to choose, record and switch a
+  runs). Load the change-modes skill for how to choose and switch a
   mode, the defaults that are never asked (Mermaid diagrams, MADR-minimal
-  ADRs in docs/adr/, the javascript acceptance stack), and the git flow: the
-  proposal merges to main in its own PR before apply, the implementation
-  follows in a second PR, and the change is archived on main after that
-  merges. Do not stop just to ask whether to continue to the next artifact.
+  ADRs in docs/adr/, the javascript acceptance stack), and the git flow: a
+  change is one branch and one PR from proposal to archive - the PR opens once
+  the planning artifacts are approved, the build continues on the same branch,
+  and the change is archived as the branch's last step before it merges. Do not stop just to ask whether to continue to the next artifact.
 
   Where a schema template or a generic skill conflicts with the rules below
-  (for example GIVEN steps in scenarios, or ADRs being immutable), the rules
+  (for example ADRs being immutable), the rules
   below win.
 
 # Per-artifact rules. They apply to every change, whatever its schema. A line that applies to
-# one mode only says so first ("Autopilot only - ...") and is keyed on the change's schema,
-# which `pnpm exec openspec status --change <name>` prints.
+# one mode only says so first ("Autopilot only - ...") and applies when the session is in that
+# mode.
 rules:
   proposal:
-    - Make the first line of proposal.md the mode - `**Mode:** autopilot`, `**Mode:** build` or `**Mode:** learning` - as chosen when the change was created (the change-modes skill). Autopilot changes use the intent-driven schema; build and learning use intent-driven-with-human-control
     - Keep it short and say why in terms of what users get.
+    - List the capabilities (New, then Modified) in the order a person meets them in the user journey. The acceptance suite runs the change's scenarios, and records review videos, in that order.
     - Must use grill-me skill - one decision per question, showing the text it will write into the artifact (paraphrased is fine), with the alternatives
     # - Must use adversarial-authoring skill - only with the owner's consent (CLAUDE.md § Review guidelines)
   design:
+    - Holds only design decisions. A decision has a real alternative a good engineer might pick, and picking wrong is costly (data shape, an API contract, security, or hard to undo once shipped). The spec restated goes nowhere; plain implementation goes in tasks; agreed UI details go in the UI checklist. Each decision names the alternative rejected and why.
+    - Present each decision to the owner on its own, for approval, before committing the design.
     - Must use grill-me skill - one decision per question, showing the text it will write into the artifact (paraphrased is fine), with the alternatives
     - Must use c4-diagrams skill - Mermaid, lightweight C4-inspired; do not ask
   adr:
@@ -58,24 +60,29 @@ rules:
     - No layout detail, such as where a panel opens or a pixel width. Product-wide promises (works on a phone, works by keyboard, nothing shown by colour alone, controls clearly named) live in the usable-on-any-device spec; don't repeat them in feature specs.
     - Explain a term the first time it is used.
     - Name requirements and scenarios in plain words, for example "Capture a task", not identifiers. A capability with one requirement names it after the capability.
-    - Use only OpenSpec's own structure (Purpose, Requirements, WHEN/THEN scenarios). Fold any precondition into WHEN; no GIVEN. No status, evidence, ID or legacy labels.
+    - Use only OpenSpec's own structure (Purpose, Requirements, Scenarios). Each scenario's steps go in a fenced gherkin block (Given/When/Then); the requirement text stays outside it. No status, evidence, ID or legacy labels.
+    - Order requirements as a person meets them. Within a requirement, the common case comes first, then the edge cases.
+    - Run one example (one table, one person) through every scenario of a change, so each scenario differs from the last by one fact.
+    - Name a scenario by what the user sees, for example "Remarks shows only for me", not by the action taken.
+    - Before the specs are approved, an independent reviewer (a subagent given the specs and the issue, not the author's view) checks they are MECE - no promise made twice, within the change or against the main specs, and none missing.
     - A spec written for existing behavior describes what it does today. Changing that behavior is a separate change.
     - Main specs describe what is built. A promise that isn't built yet belongs in an OpenSpec change.
     - Must use grill-me skill - one decision per question, showing the text it will write into the artifact (paraphrased is fine), with the alternatives
-    - Autopilot only (schema intent-driven) - Must use spec-as-source skill
+    - Must use spec-as-source skill
   tasks:
     - Must use grill-me skill - one decision per question, showing the text it will write into the artifact (paraphrased is fine), with the alternatives
-    - Autopilot only (schema intent-driven) - Must use spec-as-source skill
+    - Must use spec-as-source skill - each scenario's outer test is its fenced Gherkin, run by cucumber-js
+    - Every mode - keep the schema's test-list format; autopilot runs the same list. The acceptance-tests/ setup and each step definition arrive in the red/green of the first outer test that needs them, not as setup tasks
 
 # Per-operation guidance for apply and archive.
 operations:
   apply:
     guidance:
       - Must use test-driven-development skill
-      - Autopilot only (schema intent-driven) - use the senior-qa sub-agent for acceptance tests and the senior-dev sub-agent for all src work, acceptance tests first. Do not batch the tasks to save calls; call them as many times as needed in small batches, as dev and qa work may interleave. Several changes may run in parallel worktrees with the openspec-bulk-apply-change skill
-      - Build and learning (schema intent-driven-with-human-control) - follow the schema's apply instruction (outside-in-tdd skill); do the work in the main session, never hand it to sub-agents
-      - Apply only a change whose proposal is already on main (openspec-git-discipline skill)
+      - Autopilot only - use the senior-qa sub-agent for the outer (acceptance) tests and the senior-dev sub-agent for inner tests and all src work, working down the test list. Do not batch the tasks to save calls; call them as many times as needed in small batches, as dev and qa work may interleave. Several changes may run in parallel worktrees with the openspec-bulk-apply-change skill
+      - Build and learning only - follow the schema's apply instruction (outside-in-tdd skill); do the work in the main session, never hand it to sub-agents
+      - Apply on the change's own branch, in the same PR as its planning artifacts (one PR per change, the change-modes skill)
   archive:
     guidance:
       - Must run OpenSpec Sync before archiving
-      - Archive on main, after the implementation PR has merged
+      - Archive on the change's branch, as its last step before the PR merges

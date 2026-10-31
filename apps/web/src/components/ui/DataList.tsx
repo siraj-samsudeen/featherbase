@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ChevronDown } from './icons'
 import { Button } from './Button'
 import { cx } from './cx'
@@ -134,11 +134,15 @@ export function DataList<Row>({
   )
 }
 
+/** A phone card shows at most this many `value` columns; the rest wait behind "N more". */
+export const CARD_FIGURES = 3
+
 /**
  * The phone shape of a list on its own: one card per row. A list that can
  * select or expand its rows passes `select` and `expand`, and each card then
  * carries a checkbox before its title and a show/hide toggle under its
- * figures, both thumb-sized.
+ * figures, both thumb-sized. A card shows at most three `value` columns; one
+ * with more says "N more", which opens the rest on that card in place.
  */
 export function DataCards<Row>({
   caption,
@@ -163,15 +167,27 @@ export function DataCards<Row>({
 }) {
   const role = (r: PhoneRole) => columns.filter((c) => (c.phone ?? 'value') === r)
   const [titles, statuses, metas, values] = [role('title'), role('status'), role('meta'), role('value')]
+  // The cards whose other columns the user opened with "N more".
+  const [showingAll, setShowingAll] = useState<ReadonlySet<string>>(() => new Set())
+  const toggleAll = (key: string) =>
+    setShowingAll((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
+  const more = Math.max(0, values.length - CARD_FIGURES)
   return (
     <ul aria-label={caption} data-testid={testId} className={cx('flex flex-col gap-2 text-control', className)}>
       {rows.map((row) => {
         const open = expand?.isExpanded(row) ?? false
+        const key = rowKey(row)
+        const all = showingAll.has(key)
+        const shown = all ? values : values.slice(0, CARD_FIGURES)
         return (
           // Everything inside a card wraps rather than widening it: overflow-wrap is
           // inherited, and the descendant rule beats any nowrap a cell brings.
           <li
-            key={rowKey(row)}
+            key={key}
             data-testid={rowTestId?.(row)}
             className="min-w-0 wrap-anywhere rounded-card border border-border bg-surface p-3.5 [&_*]:whitespace-normal"
           >
@@ -220,7 +236,7 @@ export function DataCards<Row>({
                 {values.length > 0 && (
                   // A label takes at most half the card and a value the rest, both able to wrap, so neither widens the card.
                   <dl className="mt-2 grid grid-cols-[fit-content(50%)_minmax(0,1fr)] gap-x-4 gap-y-1">
-                    {values.map((c) => (
+                    {shown.map((c) => (
                       <div key={c.key} className="contents">
                         <dt className="min-w-0 text-ink-muted">{c.header}</dt>
                         <dd className={cx('min-w-0 wrap-anywhere text-right text-ink', c.align === 'end' && 'tabular-nums')}>{c.cell(row)}</dd>
@@ -228,17 +244,37 @@ export function DataCards<Row>({
                     ))}
                   </dl>
                 )}
+                {more > 0 && (
+                  <Button
+                    variant="quiet"
+                    // Cards are the phone shape, so the toggle is thumb-sized under a mouse too (#738).
+                    // relative: it contains its sr-only label, which would otherwise escape <main>'s scroll and stretch the page.
+                    className="relative -mb-1 mt-1 -ml-2 min-h-touch"
+                    aria-expanded={all}
+                    data-testid="card-more"
+                    onClick={() => toggleAll(key)}
+                    icon={<ChevronDown aria-hidden data-chevron size={18} />}
+                  >
+                    {all ? (
+                      'Show fewer'
+                    ) : (
+                      <>
+                        {more} more<span className="sr-only"> columns</span>
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
             {expand && (
               <>
                 <Button
                   variant="quiet"
-                  className="-mb-1 mt-2 -ml-2"
+                  className="-mb-1 mt-2 -ml-2 min-h-touch"
                   aria-expanded={open}
                   data-testid="row-expand"
                   onClick={() => expand.onToggle(row)}
-                  icon={<ChevronDown aria-hidden size={18} className={cx('transition-transform motion-reduce:transition-none', open && 'rotate-180')} />}
+                  icon={<ChevronDown aria-hidden data-chevron size={18} />}
                 >
                   {open ? 'Hide nested rows' : 'Show nested rows'}
                 </Button>

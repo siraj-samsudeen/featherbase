@@ -54,6 +54,35 @@ describe('Build a table by describing its columns', () => {
   })
 })
 
+describe("A new table's list starts with its first seven columns", () => {
+  const inList = () => gridRows().map((r) => (cell(r, 'in_list_view') as HTMLInputElement).checked)
+  const FIRST_SEVEN = [true, true, true, true, true, true, true, false, false, false]
+
+  test('typing ten columns ticks the first seven for the list', async ({ admin }) => {
+    const user = userEvent.setup()
+    await renderApp('/featherbase/admin/new-table', admin)
+    await screen.findByTestId('table-builder')
+
+    for (let n = 1; n < 10; n++) await user.click(screen.getByTestId('dt-add-field'))
+
+    expect(inList()).toEqual(FIRST_SEVEN)
+  })
+
+  test('pasting ten columns ticks the first seven for the list', async ({ admin }) => {
+    const user = userEvent.setup()
+    await renderApp('/featherbase/admin/new-table', admin)
+    await screen.findByTestId('table-builder')
+
+    await user.click(screen.getByTestId('dt-paste-open'))
+    await user.click(screen.getByTestId('dt-paste-text'))
+    await user.paste('Section, MCH, Floor, Zone, Rack, Owner, Category, Remarks, Updated On, Notes')
+    await user.click(screen.getByTestId('dt-paste-build'))
+
+    await waitFor(() => expect(gridRows()).toHaveLength(10))
+    expect(inList()).toEqual(FIRST_SEVEN)
+  })
+})
+
 describe('Choose how each new row gets its id', () => {
   test('a series prefix shows the first ids before anything is saved', async ({ admin }) => {
     const user = userEvent.setup()

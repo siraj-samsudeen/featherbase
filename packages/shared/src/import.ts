@@ -331,6 +331,23 @@ export function idPatternFor(tableName: string, digits = 3): string {
   return prefix ? `${prefix}.${'#'.repeat(digits)}` : 'hash'
 }
 
+// #738: how many columns a new table's list starts with, whether the table
+// is typed in the Table Builder or imported. Whoever creates it can change
+// which columns are in before creating it.
+export const LIST_COLUMNS_ON_CREATE = 7
+
+// The default list ticks for a new table: the first LIST_COLUMNS_ON_CREATE
+// columns in use. A column left out (include false) is never in the list and
+// makes room for the next one.
+export function listColumnsInUse(include: boolean[]): boolean[] {
+  let taken = 0
+  return include.map((inUse) => {
+    if (!inUse || taken >= LIST_COLUMNS_ON_CREATE) return false
+    taken += 1
+    return true
+  })
+}
+
 // IMP-003: headers + parsed rows -> a ready POST /api/table payload.
 // Original headers survive as labels; the first columns are flagged for the
 // list view so the imported Table is immediately browsable.
@@ -359,7 +376,7 @@ export function inferTableDef(
       column_type,
       ...(choices ? { choices } : {}),
       reqd: false,
-      in_list_view: i < 4,
+      in_list_view: i < LIST_COLUMNS_ON_CREATE,
     }
   })
   // Imported Tables get a readable series (ZONE-001) rather than the engine's

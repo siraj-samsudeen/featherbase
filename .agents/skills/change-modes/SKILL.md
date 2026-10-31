@@ -1,44 +1,32 @@
 ---
 name: change-modes
-description: The three ways an OpenSpec change can run here (autopilot, build, learning), how one is chosen and recorded, the defaults that are never asked, and the git flow (proposal PR first). Use when creating, resuming or applying an OpenSpec change, when the human names a mode ("autopilot", "learning mode"), or when an openspec-* skill ends a step by asking whether to continue.
+description: The three ways an OpenSpec change can be built here (autopilot, build, learning), how the mode is chosen and switched in the session, the defaults that are never asked, and the git flow (one PR per change). Use when creating, resuming or applying an OpenSpec change, when the human names a mode ("autopilot", "learning mode"), or when an openspec-* skill ends a step by asking whether to continue.
 ---
 
 # Change modes
 
-## The three modes, chosen per change when it is created
+## The three modes, chosen in the session
 
-| Mode | Who it is for | Create it with | Schema |
-|---|---|---|---|
-| **Autopilot** | Work the human wants done, not followed step by step | `pnpm exec openspec new change <name> --schema intent-driven` | `intent-driven` |
-| **Build** (default) | A maintainer who wants control with few stops | `pnpm exec openspec new change <name>` | `intent-driven-with-human-control` |
-| **Learning** | A student or newcomer who learns from every command | `pnpm exec openspec new change <name>` | `intent-driven-with-human-control` |
+Every change uses the one schema, `intent-driven-with-human-control`
+(`pnpm exec openspec new change <name>`). Its planning artifacts are the same in every mode:
+specs carry fenced Gherkin that cucumber-js runs (`spec-as-source`), and `tasks.md` is the test
+list. The mode decides only who builds and where the human stops:
 
-- **Autopilot** is the upstream flow. The human reviews the planning artifacts (grill-me still
-  applies); specs carry fenced Gherkin and tasks are acceptance-test first (`spec-as-source`);
-  apply hands acceptance tests to the `senior-qa` subagent and source work to `senior-dev`, and
-  several changes may run in parallel worktrees (`openspec-bulk-apply-change`).
-- **Build** follows the `outside-in-tdd` skill: one commit per planning artifact, then one stop
-  per test for the human's prediction, with red, green and refactor as separate commits. The
-  work stays in the main session.
-- **Learning** is build mode plus a stop before every command: show it, explain it, wait for
-  "run", interpret the result (`outside-in-tdd` § Learning mode).
+| Mode | Who it is for | How apply runs |
+|---|---|---|
+| **Autopilot** | Work the human wants done, not followed step by step | `senior-qa` writes the acceptance tests, `senior-dev` the code, through the same test list; no per-test stops |
+| **Build** (default) | A maintainer who wants control with few stops | `outside-in-tdd`: one stop per test for the human's prediction; red, green and refactor as separate commits, in the main session |
+| **Learning** | A student or newcomer who learns from every command | Build, plus a stop before every command: show it, explain it, wait for "run", interpret the result (`outside-in-tdd` § Learning mode) |
 
-The human names the mode when asking for the change ("new change add-login, learning mode").
-If they do not, use build and say so in the same message as the first draft, so they can switch.
-For the `openspec-new-change` and `openspec-propose` skills, "autopilot" counts as the human
-naming the `intent-driven` schema, so pass `--schema intent-driven`.
+**The mode is session state, never written into the change.** No `**Mode:**` line, no
+per-mode schema: the human switches mode whenever they like ("go autopilot from here"), and a
+switch changes no file. A session that resumes a change without being told the mode uses build
+and says so, so the human can switch.
 
-The mode is recorded twice, so any agent resuming the change knows it: the schema in the
-change's `.openspec.yaml` (`pnpm exec openspec status --change <name>` prints it) and the first
-line of `proposal.md` (`**Mode:** autopilot | build | learning`). Mode-specific lines in
-`openspec/config.yaml` say which mode they apply to.
+In every mode the human reviews the planning artifacts (grill-me still applies).
 
-To change a change's mode later: between build and learning, edit the `**Mode:**` line; to or
-from autopilot, also change `schema:` in its `.openspec.yaml` and redo `tasks.md`, since the two
-schemas plan tasks differently.
-
-Changes created before this template (schema `spec-driven`) keep their schema and carry no
-`**Mode:**` line; finish them as they are.
+Changes created before this template (schema `spec-driven`, or `intent-driven` with a
+`**Mode:**` line) keep their files; finish them in whatever mode the session uses.
 
 ## Defaults — never ask
 
@@ -58,15 +46,19 @@ OpenSpec CLI, so this override lives here rather than in them.
 
 ## Git — `openspec-git-discipline`, in every mode
 
-Every change reaches `main` in two PRs, so a proposal in progress is visible on `main` before
-anyone builds it:
+Every change is **one branch and one PR**, from proposal to archive. The owner works one change
+at a time in the main checkout, so nothing needs the proposal on `main` early:
 
-1. **Proposal PR**: the planning artifacts (proposal, specs, design, adr, tasks) on a branch,
-   merged to `main` before apply starts.
-2. **Implementation PR**: the code, tests and `tasks.md` ticks, on a new branch from `main`.
-3. **Archive**: on `main`, after the implementation PR merges (sync the specs, then archive).
+1. **Planning**: the planning artifacts (proposal, specs, design, adr, tasks), one commit each.
+   When the last is approved, push the branch and open the PR; it stays open.
+2. **Build**: the code, tests and `tasks.md` ticks, on the same branch.
+3. **Archive**: the branch's last step (sync the specs, then archive), before the PR merges.
    `pnpm check:specs` reports a finished, unarchived change; it fails a PR only when that change
    was already finished on `main`, i.e. its archive was forgotten.
+
+In another repo that uses this template, ask its owner once whether they want one PR per change
+or a proposal PR followed by an implementation PR (the upstream `openspec-git-discipline` flow,
+built for parallel worktrees that all read `origin/main`).
 
 Differences from the `openspec-git-discipline` skill, which asks before every commit, branch
 and PR:

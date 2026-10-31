@@ -24,12 +24,13 @@ test('a table built from cards stores what the cards said', async ({ admin }) =>
   expect(within(first).getByText('“status” is a built-in column every table gets')).toBeInTheDocument()
   await user.click(within(first).getByRole('button', { name: 'Use “cc_depot_status”' }))
   expect(within(first).getByText('stored as cc_depot_status')).toBeInTheDocument()
-  // A list of options, required, shown in the list.
+  // A list of options, required, shown in the list (#738: the first seven
+  // columns of a new table start in the list, so this card already is).
   await user.click(within(first).getByRole('button', { name: 'Pick from a list' }))
   expect(within(first).getByRole('button', { name: 'Pick from a list' })).toHaveAttribute('aria-pressed', 'true')
   await user.type(within(first).getByPlaceholderText('Small, Medium, Large'), 'Open, Closed')
   await user.click(within(first).getByRole('checkbox', { name: 'Required' }))
-  await user.click(within(first).getByRole('checkbox', { name: 'Show in the list' }))
+  expect(within(first).getByRole('checkbox', { name: 'Show in the list' })).toBeChecked()
 
   // Card 2: a link to another table, chosen from the tables that exist.
   await user.click(screen.getByTestId('dt-card-add'))

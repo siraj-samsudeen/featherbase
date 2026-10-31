@@ -19,6 +19,8 @@ export {
   inferChoices,
   inferColumnType,
   inferTableDef,
+  LIST_COLUMNS_ON_CREATE,
+  listColumnsInUse,
   applyColumnCombines,
   combineOverlap,
   COMBINE_JOIN_SEPARATOR,

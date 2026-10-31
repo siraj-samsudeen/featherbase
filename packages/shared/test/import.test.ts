@@ -11,6 +11,8 @@ import {
   inferChoices,
   inferColumnType,
   inferTableDef,
+  LIST_COLUMNS_ON_CREATE,
+  listColumnsInUse,
   mergeSheetHeaders,
   mergeSheetRows,
   namesShareToken,
@@ -166,8 +168,26 @@ describe('IMP-003: inferTableDef', () => {
       { column_name: 'qty', label: 'Qty', column_type: 'Int', reqd: false, in_list_view: true },
       { column_name: 'unit_price', label: 'Unit Price', column_type: 'Float', reqd: false, in_list_view: true },
       { column_name: 'ship_date', label: 'Ship Date', column_type: 'Date', reqd: false, in_list_view: true },
-      { column_name: 'notes', label: 'Notes', column_type: 'Data', reqd: false, in_list_view: false },
+      { column_name: 'notes', label: 'Notes', column_type: 'Data', reqd: false, in_list_view: true },
     ])
+  })
+})
+
+describe("A new table's list starts with its first seven columns", () => {
+  const SECTION_MAPPING = ['Section', 'MCH', 'Floor', 'Zone', 'Rack', 'Owner', 'Category', 'Remarks', 'Updated By', 'Notes']
+
+  test('the number of list columns a new table starts with is seven', () => {
+    expect(LIST_COLUMNS_ON_CREATE).toBe(7)
+  })
+
+  test('inferTableDef flags the first seven columns for the list', () => {
+    const def = inferTableDef('Section Mapping', SECTION_MAPPING, [])
+    expect(def.columns.filter((c) => c.in_list_view).map((c) => c.label)).toEqual(SECTION_MAPPING.slice(0, 7))
+  })
+
+  test('the list takes the first seven columns in use, skipping one left out', () => {
+    const include = SECTION_MAPPING.map((label) => label !== 'MCH')
+    expect(listColumnsInUse(include)).toEqual([true, false, true, true, true, true, true, true, false, false])
   })
 })
 

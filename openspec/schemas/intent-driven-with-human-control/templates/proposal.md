@@ -1,5 +1,3 @@
-**Mode:** build <!-- build or learning, as chosen when the change was created (the change-modes skill) -->
-
 ## Why
 
 <!-- Explain the motivation for this change. What problem does this solve? Why now? -->

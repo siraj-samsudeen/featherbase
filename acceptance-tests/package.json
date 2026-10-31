@@ -1,0 +1,15 @@
+{
+  "name": "featherbase-acceptance-tests",
+  "private": true,
+  "description": "Runs the fenced Gherkin in openspec/ spec.md files against the real app (spec-as-source).",
+  "scripts": {
+    "test": "cucumber-js",
+    "test:specs": "cucumber-js -p specs"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "^13.3.0",
+    "cheerio": "^1.0.0",
+    "glob": "^14.0.3",
+    "playwright": "1.61.1"
+  }
+}

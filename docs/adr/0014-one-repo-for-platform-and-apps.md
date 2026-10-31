@@ -141,12 +141,17 @@ merge commits only, so a PR's steps stay readable. `docs/TESTING.md` has the det
 - **OpenSpec.** OpenSpec runs with the intent-driven template's
   `proposal → specs → design → adr → tasks` chain, from the owner's fork
   `intent-driven-with-human-control`.
-  - Each change picks a mode when it is created:
-    - **autopilot**: subagents build, acceptance tests first;
+  - A change is built in a mode chosen in the session, switchable at any time
+    and never recorded in the change (corrected 31-Oct-2026, #738):
+    - **autopilot**: subagents build;
     - **build**: one test at a time, the human predicting each failure;
     - **learning**: build, plus every command shown and explained first.
-  - The proposal merges to `main` in its own PR before implementation. The
-    change is archived on `main` after the implementation merges.
+  - In every mode a spec's scenarios are fenced Gherkin that cucumber-js runs
+    as the acceptance tests, written first. (Corrected 31-Oct-2026, #738:
+    this was autopilot-only; the mode now decides only who builds and where
+    the human stops.)
+  - A change is one branch and one PR, from proposal to archive; the archive
+    is the branch's last step (corrected 31-Oct-2026, #738).
 - **Review.**
   - Locally, a Codex review when Codex is available, otherwise a review by a
     different Claude model. The Codex bot also reviews every PR.
@@ -184,8 +189,9 @@ merge commits only, so a PR's steps stay readable. `docs/TESTING.md` has the det
   (`pnpm check:platform-imports`) instead of a repository boundary.
 - **ADR 0010:**
   - The stock `core` profile gives way to the intent-driven template.
-  - "Archive in the PR that finishes the change" gives way to the proposal PR
-    first and archiving on `main` after the implementation merges.
+  - "Archive in the PR that finishes the change" stands: one PR per change,
+    archived on its branch (corrected 31-Oct-2026, #738; this briefly read
+    "proposal PR first, archive on `main` after the implementation merges").
   - OpenSpec stays the behaviour contract.
 - **`CLAUDE.md` invariant 5** is now a pointer to this ADR.
 - **ADRs are no longer append-only.**
