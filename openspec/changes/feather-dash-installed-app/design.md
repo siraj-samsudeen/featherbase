@@ -3,7 +3,7 @@
 The decision in #458 is fixed. Featherbase is the master-data system. Feather Dash
 is a reporting app installed on top of it, the way Tasker is. This design sets out
 how to get there without the live report ever breaking. It is the first design
-checked against [ADR 0011](../../../docs/adr/0011-platform-app-instance.md)
+checked against [ADR 0011](../../../adr/0011-platform-app-instance.md)
 ("Platform, App, Instance"): **each layer knows only the layer below it**, and the
 test for any file is whether a second client would have to change it.
 
@@ -74,7 +74,7 @@ test for any file is whether a second client would have to change it.
 
 ## Goals / Non-Goals
 
-> **Revised 27-Oct-2026 ([ADR 0013](../../../docs/adr/0013-client-apps-and-product-apps.md)).**
+> **Revised 27-Oct-2026 ([ADR 0013](../../../adr/0013-client-apps-and-product-apps.md)).**
 > Feather Dash is a **client app** for one client, kept in that client's private
 > repository, not a generic app in this one. Its report query, Dive settings, roster
 > derivation and retail terms live in the app. The platform work of stage B (B1–B5)
@@ -985,7 +985,7 @@ Owner decisions, 27-Oct-2026 (relayed through the rollout session):
     (#449's section and mapping Tables, with the provider swap); the #462 build;
     B6/B7; D; the cut-over (D8).
 15. **Feather Dash is a client app** for one client, in the client's private
-    repository ([ADR 0013](../../../docs/adr/0013-client-apps-and-product-apps.md)).
+    repository ([ADR 0013](../../../adr/0013-client-apps-and-product-apps.md)).
     B6 and B7 merge into B6′ there. Product apps (Feather Tickets, Feather Tasker)
     stay generic.
 16. **The scope provider is declared by an app** (Q1 = (a)). The platform holds the

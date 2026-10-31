@@ -59,7 +59,7 @@ not yet cover.
 **No longer a goal.** Frappe wire-format compatibility. Frappe's vocabulary
 (DocType, Doc, Field) has been replaced by Featherbase's own (Table, Row,
 Column and more), and the API is built around one action registry rather than
-Frappe's REST/RPC shape. [CONTEXT.md](../../CONTEXT.md) is the source of truth
+Frappe's REST/RPC shape. [CONTEXT.md](../CONTEXT.md) is the source of truth
 for the vocabulary.
 
 **Lost.** Convex's built-in reactivity and its durable workflow engine. Live
@@ -68,4 +68,4 @@ explicitly on Postgres instead of being inherited from the platform; their
 behaviour lives in `openspec/specs/`.
 
 **Retained.** [ADR 0005](0005-naming-featherbase.md) (the name) and the vision
-in [VISION.md](../VISION.md) are unaffected.
+in [VISION.md](../docs/VISION.md) are unaffected.

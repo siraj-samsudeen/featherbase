@@ -45,7 +45,7 @@ source system carries `zone_id` and `zone_name` as ordinary data columns, while
 the actual primary key sits in a third column called `name` holding
 `a0373bac75`. Three columns, two of which are about identity, and the one
 called "name" is the one that is not the name. The list view compounds it:
-`listColumns` ([apps/web/src/lib/meta.ts](../../apps/web/src/lib/meta.ts))
+`listColumns` ([apps/web/src/lib/meta.ts](../apps/web/src/lib/meta.ts))
 hardcodes `label: 'Name'` for the key column, so the grid header reads "Name"
 above a column of hashes.
 
@@ -111,7 +111,7 @@ the record's `id` or be auto-suffixed (`id_2`), never rejected outright.
 patched silently
 
 The existing `field:<column>` id pattern names a record from another column's
-value (`resolveName` in [apps/server/src/document.ts](../../apps/server/src/document.ts)).
+value (`resolveName` in [apps/server/src/document.ts](../apps/server/src/document.ts)).
 Applied to an import, two failure modes appear: blank values and duplicates.
 
 There is **no silent fallback**. Mixing `40003` and `a0373bac75` in one table

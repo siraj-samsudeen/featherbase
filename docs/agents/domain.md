@@ -4,7 +4,7 @@ How the engineering skills should consume this repo's domain documentation when
 exploring the codebase.
 
 **Layout: single-context.** One `CONTEXT.md` at the repo root (when it exists)
-plus `docs/adr/` for decisions. Featherbase is a pnpm monorepo
+plus `adr/` for decisions. Featherbase is a pnpm monorepo
 (`apps/server`, `apps/web`, `packages/shared`), but it is one coherent system
 with one shared domain vocabulary — not several independent products — so the
 decisions live in one root-level ADR set.
@@ -15,8 +15,8 @@ decisions live in one root-level ADR set.
   project uses and, under each, the words it has retired (`_Avoid_`). Treat the
   `_Avoid_` lists as binding on prose you write — issue titles, spec text, test
   names, commit messages.
-- **`docs/adr/`** — read ADRs that touch the area you're about to work in.
-  [ADR 0006](../adr/0006-stack-react-hono-postgres.md) records the current
+- **`adr/`** — read ADRs that touch the area you're about to work in.
+  [ADR 0006](../../adr/0006-stack-react-hono-postgres.md) records the current
   stack (the Convex-era ADRs 0001–0004 it superseded were deleted in #705);
   later ADRs cover topology, record identity, OpenSpec, and the platform /
   app / instance layers. ADRs are corrected in place or deleted when they stop
@@ -33,14 +33,12 @@ them lazily when terms or decisions actually get resolved.
 
 ```
 /
-├── CLAUDE.md                          ← invariants + session protocol
+├── AGENTS.md                          ← shared process + featherbase's invariants
 ├── CONTEXT.md                         ← ubiquitous language + _Avoid_ lists
-├── docs/
-│   ├── adr/                           ← all architecture decisions
-│   │   ├── 0006-stack-react-hono-postgres.md
-│   │   ├── 0007-app-and-database-topology.md
-│   │   └── 0009-record-identity-id-and-name.md
-│   └── …                              ← TESTING, DEPLOY, PREVIEW, VISION
+├── adr/                               ← all architecture decisions, never edited
+│   ├── 0006-stack-react-hono-postgres.md
+│   └── …
+├── docs/                              ← TESTING, DEPLOY, PREVIEW, VISION
 ├── openspec/specs/                    ← behaviour specs (sole authority)
 ├── apps/{server,web}
 └── packages/shared
@@ -48,7 +46,7 @@ them lazily when terms or decisions actually get resolved.
 
 If this ever splits into genuinely independent contexts, switch to a root
 `CONTEXT-MAP.md` pointing at one `CONTEXT.md` per context, with
-context-scoped `docs/adr/` directories alongside them.
+context-scoped `adr/` directories alongside them.
 
 ## Use the glossary's vocabulary
 
