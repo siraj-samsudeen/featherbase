@@ -31,6 +31,12 @@ const SCENARIO_RE = /^####\s+(Scenario(?:\s+Outline)?):\s*(.+?)\s*$/i;
 // deliberately absent: both legitimately live in a fence.
 const STRUCTURE_IN_FENCE_RE = /^\s*(Feature|Rule|Scenario\s+Outline|Scenario|Example):/;
 
+// FEATHERBASE LOCAL CHANGE: a spec that mixes Gherkin with older prose
+// scenarios (a delta archived into a prose main spec) runs its fenced
+// scenarios; a "#### Scenario:" with no fence is not executable yet, so its
+// synthesized Scenario: line is blanked (line numbers are kept) and counted.
+let proseScenarios = 0;
+
 function extractFile(mdPath) {
   const lines = fs.readFileSync(mdPath, 'utf8').split(/\r?\n/);
   const out = [];
@@ -67,12 +73,12 @@ function extractFile(mdPath) {
         out.push('');
         return;
       }
-      // A heading ends any scenario still waiting for its steps.
+      // A heading ends any scenario still waiting for its steps: a prose
+      // scenario, left out (see proseScenarios above).
       if (pendingScenario) {
-        throw new Error(
-          `${mdPath}:${pendingScenario.line}: "#### ${pendingScenario.keyword}: ${pendingScenario.name}" ` +
-            `has no \`\`\`gherkin fence before the next heading`
-        );
+        out[pendingScenario.line - 1] = '';
+        proseScenarios += 1;
+        pendingScenario = null;
       }
       if ((m = H1_RE.exec(line))) {
         h1Count += 1;
@@ -125,10 +131,8 @@ function extractFile(mdPath) {
     throw new Error(`${mdPath}:${openLine}: unclosed fence`);
   }
   if (pendingScenario) {
-    throw new Error(
-      `${mdPath}:${pendingScenario.line}: "#### ${pendingScenario.keyword}: ${pendingScenario.name}" ` +
-        `has no \`\`\`gherkin fence before the end of the file`
-    );
+    out[pendingScenario.line - 1] = '';
+    proseScenarios += 1;
   }
   if (h1Count === 0) {
     throw new Error(`${mdPath}: no H1 title — a spec.md must start with "# <capability>"`);
@@ -208,12 +212,18 @@ function extractAll(openspecDir, outDir) {
     );
   }
 
+  proseScenarios = 0;
   const written = [];
   for (const rel of sources) {
     const dest = path.join(outDir, rel.replace(/spec\.md$/, 'spec.feature'));
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, extractFile(path.join(openspecDir, rel)));
     written.push(dest);
+  }
+  if (proseScenarios > 0) {
+    console.error(
+      `[extract-gherkin] ${proseScenarios} prose scenario(s) in fenced spec.md files have no gherkin fence; not executable yet, left out`
+    );
   }
   return { outDir, written };
 }
