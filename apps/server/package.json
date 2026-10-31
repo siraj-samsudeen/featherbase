@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@duckdb/node-api": "1.5.4-r.1",
-    "@hono/node-server": "^1.14.0",
+    "@hono/node-server": "^2.1.5",
     "hono": "^4.13.14",
     "markdown-it": "14.3.2",
     "mysql2": "^3.24.6",
