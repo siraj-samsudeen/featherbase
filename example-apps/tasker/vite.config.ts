@@ -7,6 +7,13 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { transform } from 'esbuild'
 
+// A coverage build compiles JSX as the component tests do (development jsxDEV
+// calls, with React's development build to run them): its Istanbul maps must
+// match theirs location for location, and a production jsx() call ends a
+// ternary's arm at a different column. Vite reads NODE_ENV once this file has
+// loaded; a normal build is untouched.
+if (process.env.VITE_COVERAGE === 'true') process.env.NODE_ENV = 'development'
+
 export default defineConfig({
   base: './',
   plugins: [react(), tailwindcss(),
