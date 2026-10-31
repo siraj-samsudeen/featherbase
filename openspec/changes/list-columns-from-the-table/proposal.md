@@ -39,11 +39,11 @@ None.
 
 ### Modified Capabilities
 
-- `list-view`: says which columns a list shows; each user can switch any readable column on or
-  off for themselves, and it is remembered; a System Manager can make their view the default.
 - `tables-and-fields`: a new Table, built or imported, starts with its first 7 columns in the
   list, chosen before creating it; a System Manager can change the list columns later; that
   choice joins the builder authority.
+- `list-view`: says which columns a list shows; each user can switch any readable column on or
+  off for themselves, and it is remembered; a System Manager can make their view the default.
 - `usable-on-any-device`: phone cards show at most 3 listed columns, then "N more".
 
 (A new Table from a file is already Tables and Fields' ground, per Spreadsheet Import's
