@@ -33,7 +33,8 @@ And the user can sort by any listed column, show a row's nested rows in place, a
 Given the user is on a phone
 And the table "Section Mapping" has seven list columns
 When the user opens its list
-Then each card shows three of those columns and says there are 4 more
+Then each card is titled by its Section and shows three of the other six columns
+And it says there are 3 more
 When the user asks to see them
 Then the card shows all seven without leaving the list
 ```
