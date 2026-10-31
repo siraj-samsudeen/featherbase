@@ -27,7 +27,7 @@
     "seed:sales-target": "tsx scripts/seed-sales-target.ts"
   },
   "dependencies": {
-    "@duckdb/node-api": "1.5.4-r.1",
+    "@duckdb/node-api": "1.5.6-r.2",
     "@hono/node-server": "^2.1.5",
     "hono": "^4.13.14",
     "markdown-it": "15.0.3",
