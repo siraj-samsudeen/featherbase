@@ -1,8 +1,10 @@
 'use strict';
 
-// A table's list, with its "Show columns" menu.
+// A table's list, with its "Show columns" menu and what changes the list
+// for everyone.
 
 const SORT_ARROWS = { '↑': 'asc', '↓': 'desc' };
+const MAKE_DEFAULT = 'Make this the default for everyone';
 
 class ListPage {
   constructor(page) {
@@ -151,6 +153,35 @@ class ListPage {
       const choice = choices.nth(i);
       if ((await choice.isChecked()) && (await choice.isEnabled())) await this.saving(() => choice.uncheck());
     }
+  }
+
+  // ---- Changing the list for everyone ----
+
+  /** Whether the list offers the "Edit columns" page. */
+  async offersEditColumns() {
+    return (await this.page.getByTestId('open-columns').count()) > 0;
+  }
+
+  makeDefaultControl(menu) {
+    return menu.getByRole('button', { name: MAKE_DEFAULT, exact: true });
+  }
+
+  /** Whether the "Show columns" menu offers "Make this the default for everyone". */
+  async offersMakeDefault() {
+    return (await this.makeDefaultControl(await this.openColumnsMenu()).count()) > 0;
+  }
+
+  /** Makes this person's current view the table's list for everyone, waiting for the save. */
+  async makeDefaultForEveryone() {
+    const control = this.makeDefaultControl(await this.openColumnsMenu());
+    if ((await control.count()) === 0)
+      throw new Error(`the "Show columns" menu has no "${MAKE_DEFAULT}"`);
+    const saved = this.page.waitForResponse(
+      (r) => r.url().includes('/api/table_def/') && r.request().method() === 'PUT',
+    );
+    await control.click();
+    const res = await saved;
+    if (!res.ok()) throw new Error(`the default was not saved: ${res.status()} ${await res.text()}`);
   }
 
   /** Does an action that saves this person's arrangement of the list, and waits for the save. */

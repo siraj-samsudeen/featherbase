@@ -6,43 +6,10 @@
 
 const assert = require('node:assert/strict');
 const { Given, When, Then } = require('@cucumber/cucumber');
-const { SECTION_MAPPING_COLUMNS, sectionMappingTable } = require('../support/fixtures/section-mapping');
+const { sectionMappingTable } = require('../support/fixtures/section-mapping');
 const { shelfCheckTable } = require('../support/fixtures/shelf-check');
 const { ListPage } = require('../support/pages/list-page');
-
-// The list columns a new Section Mapping starts with: its first seven.
-const DEFAULT_LIST = SECTION_MAPPING_COLUMNS.slice(0, 7);
-
-/** Creates the table, lets a reader role read it, and names its readers. */
-async function givenTable(world, { def, rows, rowIds }) {
-  world.readerRole = await world.withApi(async (api) => {
-    await api.createTable(def, rows);
-    return api.readerRoleFor(def.name);
-  });
-  world.table = def.name;
-  world.tableColumns = def.columns.map((c) => c.label);
-  world.listColumns = def.columns.filter((c) => c.in_list_view).map((c) => c.label);
-  world.rowIds = rowIds;
-  await world.person('the user', [world.readerRole]);
-  await world.person('a colleague', [world.readerRole]);
-}
-
-/** That person's list of the scenario's table, opened if it is not already. */
-async function listOf(world, who, table = world.table) {
-  const list = new ListPage(await world.signedIn(who));
-  if (world.openList?.[who] !== table) {
-    await list.open(table);
-    world.openList = { ...world.openList, [who]: table };
-  }
-  return list;
-}
-
-async function freshListOf(world, who, table = world.table) {
-  const list = new ListPage(await world.signedIn(who));
-  await list.open(table);
-  world.openList = { ...world.openList, [who]: table };
-  return list;
-}
+const { DEFAULT_LIST, givenTable, listOf, freshListOf, systemManagersList } = require('../support/lists');
 
 // ---- Given ----
 
@@ -79,7 +46,44 @@ Given('the user has switched on {columns} in the list of {string}', async functi
   for (const column of columns) await list.switchOn(column);
 });
 
+Given('a System Manager has switched on {columns} in the list of {string}', async function (columns, table) {
+  await givenTable(this, sectionMappingTable(DEFAULT_LIST, table));
+  const list = await systemManagersList(this);
+  for (const column of columns) await list.switchOn(column);
+  this.systemManagersList = list;
+});
+
+Given('a colleague has never changed their own view of it', async function () {
+  // givenTable names a colleague created fresh for this scenario: they have
+  // no saved arrangement of any list.
+  assert.ok(this.people.has('a colleague'));
+});
+
+Given(
+  'a colleague has switched off {columns} and switched on {columns} in the list of {string}',
+  async function (off, on, table) {
+    await givenTable(this, sectionMappingTable(DEFAULT_LIST, table));
+    const list = await listOf(this, 'a colleague');
+    for (const column of off) await list.switchOff(column);
+    for (const column of on) await list.switchOn(column);
+  },
+);
+
 // ---- When ----
+
+When('the System Manager makes their view the default for everyone', async function () {
+  await this.systemManagersList.makeDefaultForEveryone();
+});
+
+When(
+  'a System Manager makes a default that includes {columns} and leaves out {columns}',
+  async function (included, left) {
+    const list = await systemManagersList(this);
+    for (const column of included) await list.switchOn(column);
+    for (const column of left) await list.switchOff(column);
+    await list.makeDefaultForEveryone();
+  },
+);
 
 When('the user opens its list', async function () {
   await freshListOf(this, 'the user');
@@ -154,4 +158,14 @@ Then('the list is still sorted the way they left it', async function () {
 Then('{columns} still shows', async function (columns) {
   const shown = await (await listOf(this, 'the user')).columnLabels();
   for (const column of columns) assert.ok(shown.includes(column), `${column} is not in the list: ${shown.join(', ')}`);
+});
+
+Then("the colleague's list (still )shows {columns}", async function (columns) {
+  const shown = await (await freshListOf(this, 'a colleague')).columnLabels();
+  for (const column of columns) assert.ok(shown.includes(column), `${column} is not in the list: ${shown.join(', ')}`);
+});
+
+Then("the colleague's list still does not show {columns}", async function (columns) {
+  const shown = await (await freshListOf(this, 'a colleague')).columnLabels();
+  for (const column of columns) assert.ok(!shown.includes(column), `${column} is in the list: ${shown.join(', ')}`);
 });

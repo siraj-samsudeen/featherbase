@@ -54,6 +54,18 @@ class Api {
       await this.call('POST', `/api/table/${encodeURIComponent(def.name)}`, row, [201], `add a row to ${def.name}`);
   }
 
+  /** One row of a table, as stored. */
+  async row(table, rowId) {
+    const res = await this.call(
+      'GET',
+      `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(rowId)}`,
+      undefined,
+      [200],
+      `read ${rowId} of ${table}`,
+    );
+    return res.json();
+  }
+
   /** A role that may read this table (its basic columns). */
   async readerRoleFor(table) {
     const role = `${table} Reader`;
