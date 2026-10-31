@@ -76,3 +76,11 @@ test('merged coverage is only ever wanted when both its inputs run', () => {
 test('suitesFor returns no suites for prose', () => {
   assert.equal(suitesFor('docs/x.md').size, 0)
 })
+
+test('a spec or the acceptance suite runs e2e, where the acceptance suite runs (#738)', () => {
+  assert.deepEqual([...suitesFor('openspec/changes/x/specs/list-view/spec.md')], ['e2e'])
+  assert.deepEqual([...suitesFor('openspec/specs/list-view/spec.md')], ['e2e'])
+  assert.deepEqual([...suitesFor('acceptance-tests/step-definitions/list-view.steps.js')], ['e2e'])
+  assert.equal(suitesFor('openspec/changes/x/design.md').size, 0)
+  assert.equal(suitesFor('acceptance-tests/README.md').size, 0)
+})
