@@ -236,3 +236,13 @@ test('a system Table\'s "In list" ticks cannot be changed', async ({ admin }) =>
   await screen.findByTestId('ce-row-file_name')
   expect(inListTick('file_name')).toBeDisabled()
 })
+
+test('an "In list" tick moves the moment it is clicked, before the save returns', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await openEditor(admin)
+  await screen.findByTestId('ce-row-pop')
+  await user.click(inListTick('pop'))
+  expect(inListTick('pop')).not.toBeChecked()
+  await waitFor(() => expect(screen.getByTestId('ce-saved')).toHaveTextContent('Took pop out of the list'))
+})
