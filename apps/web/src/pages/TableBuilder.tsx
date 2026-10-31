@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { coerceRows, idPatternFor, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
+import { LIST_COLUMNS_ON_CREATE, coerceRows, idPatternFor, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
 import { ApiError, api } from '../lib/api'
 import { NamingControl } from '../components/NamingControl'
 import { ColumnCards } from '../components/ColumnCards'
@@ -24,6 +24,13 @@ import {
 import { sendImportRun } from '../lib/import-run'
 import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, touchRowClasses, touchTargetClasses } from '../components/ui'
 import { fmtCount, fmtDate, fmtDay } from '../lib/inr'
+
+// #738: a new table's first LIST_COLUMNS_ON_CREATE columns start in its
+// list, however they arrive; the user can untick any before creating.
+const columnAt = (position: number): BuilderColumn => ({
+  ...blankColumn(),
+  in_list_view: position < LIST_COLUMNS_ON_CREATE,
+})
 
 // A column as SENT: its grid row travels with it. The payload drops
 // blank-named rows, so the server's `columns.<n>` counts a different list
@@ -130,7 +137,7 @@ export function TableBuilder() {
   // to let the server default the table into 'Core', mis-filing it among the
   // platform tables in the sidebar.
   const [module, setModule] = useState('Custom')
-  const [columns, setColumns] = useState<BuilderColumn[]>([blankColumn()])
+  const [columns, setColumns] = useState<BuilderColumn[]>([columnAt(0)])
   const [view, setView] = useState<BuilderView>(initialView)
   const [imported, setImported] = useState<ImportedFile | null>(null)
   const [sheetNames, setSheetNames] = useState<string[]>([])
@@ -206,7 +213,7 @@ export function TableBuilder() {
   }
 
   function addColumn() {
-    setColumns((cs) => [...cs, blankColumn()])
+    setColumns((cs) => [...cs, columnAt(cs.length)])
     clearAllColumnErrors()
   }
 
@@ -219,11 +226,10 @@ export function TableBuilder() {
     setColumns((cs) => [
       ...cs.filter((c) => c.column_name.trim() || c.label.trim()),
       ...pasted.map((p, i) => ({
-        ...blankColumn(),
+        ...columnAt(cs.filter((c) => c.column_name.trim()).length + i),
         label: p.label,
         column_name: p.column_name,
         column_type: p.column_type,
-        in_list_view: cs.filter((c) => c.column_name.trim()).length + i < 4,
         name_touched: true,
       })),
     ])
@@ -274,7 +280,7 @@ export function TableBuilder() {
   function clearImport() {
     setImported(null)
     setSheetNames([])
-    setColumns([blankColumn()])
+    setColumns([columnAt(0)])
     setColumnErrors({})
     setTouchedRows(new Set())
     setProgress(null)
