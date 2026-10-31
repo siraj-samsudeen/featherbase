@@ -61,17 +61,17 @@
 
 ## 11. Remarks shows for everyone (@spec Change which columns a table's list shows)
 
-- [ ] 11.1 outer: the scenario, ticking "In list" on the Edit columns page
-- [ ] 11.2 inner: the Edit columns page has an "In list" tick per column that saves at once
-- [ ] 11.3 inner: the save deletes the `in_list_view` Metadata Override of each column whose flag it changes, inside the same transaction
-- [ ] 11.4 inner: it decides "changed" against the stored definition, not the merged meta it was sent
-- [ ] 11.5 inner: other overrides, and other columns' `in_list_view` overrides, are untouched
+- [x] 11.1 outer: the scenario, ticking "In list" on the Edit columns page
+- [x] 11.2 inner: the Edit columns page has an "In list" tick per column that saves at once
+- [x] 11.3 inner: the save deletes the `in_list_view` Metadata Override of each column whose flag it changes, inside the same transaction
+- [x] 11.4 inner: it decides "changed" against the stored definition, not the merged meta it was sent
+- [x] 11.5 inner: other overrides, and other columns' `in_list_view` overrides, are untouched
 
 ## 12. Only a System Manager changes the list for everyone (@spec Shaping a table requires the builder authority)
 
 - [x] 12.1 outer: the scenario
-- [ ] 12.2 inner: "Make this the default for everyone" shows exactly where "Edit columns" shows
-- [ ] 12.3 inner: the definition save refuses a user who isn't a System Manager (expected to pass on its first run: today's check)
+- [x] 12.2 inner: "Make this the default for everyone" shows exactly where "Edit columns" shows
+- [x] 12.3 inner: the definition save refuses a user who isn't a System Manager (expected to pass on its first run: today's check)
 
 ## 13. A platform table's columns are closed to editing (@spec Shaping a table requires the builder authority)
 
@@ -79,14 +79,14 @@
 
 ## 14. My view becomes the default (@spec A System Manager can make their view everyone's default)
 
-- [ ] 14.1 outer: the scenario
-- [ ] 14.2 inner: making the default sends every data column's flag as "in the System Manager's current view", in one save
-- [ ] 14.3 inner: after it succeeds, the System Manager's own shown and hidden sets are empty
+- [x] 14.1 outer: the scenario
+- [x] 14.2 inner: making the default sends every data column's flag as "in the System Manager's current view", in one save
+- [x] 14.3 inner: after it succeeds, the System Manager's own shown and hidden sets are empty
 
 ## 15. A colleague's own choices hold (@spec A System Manager can make their view everyone's default)
 
-- [ ] 15.1 outer: the scenario
-- [ ] 15.2 inner: a colleague's shown and hidden sets apply on top of a changed default, both ways
+- [x] 15.1 outer: the scenario
+- [x] 15.2 inner: a colleague's shown and hidden sets apply on top of a changed default, both ways
 
 ## 16. Read a list of checklist runs on a phone (@spec Lists fit a phone)
 
