@@ -165,9 +165,10 @@ class FeatherbaseWorld {
 setWorldConstructor(FeatherbaseWorld);
 
 BeforeAll(function () {
-  // Only this run's traces and videos are in reports/.
+  // Only this run's traces are in reports/. Videos are replaced only by a run
+  // that records new ones, so a later run doesn't delete the ones to review.
   fs.rmSync(TRACES, { recursive: true, force: true });
-  fs.rmSync(VIDEOS, { recursive: true, force: true });
+  if (VIDEO) fs.rmSync(VIDEOS, { recursive: true, force: true });
 });
 
 Before(function ({ pickle }) {
