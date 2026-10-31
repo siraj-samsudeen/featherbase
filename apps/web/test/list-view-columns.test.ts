@@ -3,7 +3,7 @@
 //   Row ID + (list columns ∪ shownCols) − hiddenCols, in the Table's column order.
 import { describe, expect, it } from 'vitest'
 import type { ColumnDef, TableMeta } from '../src/lib/meta'
-import { switchColumn, viewColumns } from '../src/lib/list-view-columns'
+import { dataColumns, switchColumn, viewColumns } from '../src/lib/list-view-columns'
 
 function column(column_name: string, extra: Partial<ColumnDef> = {}): ColumnDef {
   return {
@@ -82,5 +82,22 @@ describe('switchColumn', () => {
   it('switching off a column switched on only takes it out of shown', () => {
     expect(switchColumn(sectionMapping(), { shownCols: ['remarks'], hiddenCols: [] }, 'remarks', false))
       .toEqual({ shownCols: [], hiddenCols: [] })
+  })
+})
+
+describe('a caller who may read only basic columns', () => {
+  const withRestrictedNotes = () =>
+    sectionMapping({
+      readable_tiers: ['basic'],
+      columns: [...sectionMapping().columns.slice(0, 4), column('notes', { tier: 'restricted' })],
+    })
+
+  it('never sees a restricted column, even one switched on', () => {
+    const view = viewColumns(withRestrictedNotes(), { shownCols: ['notes'], hiddenCols: [] })
+    expect(names(view)).not.toContain('notes')
+  })
+
+  it('is not offered a restricted column', () => {
+    expect(names(dataColumns(withRestrictedNotes()))).toEqual(['section', 'mch', 'floor', 'remarks'])
   })
 })
