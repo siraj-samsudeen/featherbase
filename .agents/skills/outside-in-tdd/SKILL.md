@@ -199,8 +199,8 @@ fates — **ratify** (a `specs:` commit adds the scenario, then a test pins it),
 - `bunx tsc --noEmit` — types.
 - Stryker — every surviving mutant is a missing test or code nobody needs.
 
-Then `openspec verify`, and open the implementation PR. Archive runs on `main` after that PR
-merges (`openspec-git-discipline`).
+Then `openspec verify`, sync the specs and archive the change on its branch, as the last step of
+its one PR (the `change-modes` skill).
 
 ## Tooling gotchas (Bun 1.4.2, verified 21-Oct-2026)
 

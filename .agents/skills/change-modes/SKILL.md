@@ -61,15 +61,19 @@ OpenSpec CLI, so this override lives here rather than in them.
 
 ## Git — `openspec-git-discipline`, in every mode
 
-Every change reaches `main` in two PRs, so a proposal in progress is visible on `main` before
-anyone builds it:
+Every change is **one branch and one PR**, from proposal to archive. The owner works one change
+at a time in the main checkout, so nothing needs the proposal on `main` early:
 
-1. **Proposal PR**: the planning artifacts (proposal, specs, design, adr, tasks) on a branch,
-   merged to `main` before apply starts.
-2. **Implementation PR**: the code, tests and `tasks.md` ticks, on a new branch from `main`.
-3. **Archive**: on `main`, after the implementation PR merges (sync the specs, then archive).
+1. **Planning**: the planning artifacts (proposal, specs, design, adr, tasks), one commit each.
+   When the last is approved, push the branch and open the PR; it stays open.
+2. **Build**: the code, tests and `tasks.md` ticks, on the same branch.
+3. **Archive**: the branch's last step (sync the specs, then archive), before the PR merges.
    `pnpm check:specs` reports a finished, unarchived change; it fails a PR only when that change
    was already finished on `main`, i.e. its archive was forgotten.
+
+In another repo that uses this template, ask its owner once whether they want one PR per change
+or a proposal PR followed by an implementation PR (the upstream `openspec-git-discipline` flow,
+built for parallel worktrees that all read `origin/main`).
 
 Differences from the `openspec-git-discipline` skill, which asks before every commit, branch
 and PR:

@@ -9,9 +9,11 @@
 > - The stock `core` profile gives way to the **intent-driven template**
 >   (`proposal → specs → design → adr → tasks`), and each change picks a mode
 >   when it is created (autopilot, build or learning; see ADR 0014 §6).
-> - **The proposal merges first, in its own PR**, before implementation; the
->   change is **archived on `main` after the implementation merges**. This
->   replaces "archive in the PR that finishes the change".
+> - **One change, one PR**: planning, build and archive on one branch; the
+>   change is archived as the branch's last step. (Corrected 31-Oct-2026, #738:
+>   this was "the proposal merges first in its own PR, archive on `main` after
+>   the implementation merges", made for parallel worktrees; the owner works one
+>   change at a time.)
 >
 > Adopted by [#703](https://github.com/siraj-samsudeen/featherbase/issues/703): build mode
 > (`intent-driven-with-human-control`) is the default schema, the modes are
@@ -59,9 +61,8 @@ workflow, run with the intent-driven template.
 - **Intent-driven template** *(corrected 30-Oct-2026; this was the stock
   `core` profile with nothing layered on top)*. Changes follow
   `proposal → specs → design → adr → tasks`, from the owner's fork
-  `intent-driven-with-human-control`. The proposal merges in its own PR before
-  implementation; the change is archived on `main` once the implementation
-  has merged.
+  `intent-driven-with-human-control`. A change is one branch and one PR from
+  proposal to archive (corrected 31-Oct-2026, #738).
 - **Exact pin, automated bump.** The OpenSpec CLI is exactly pinned in root
   `package.json`. A weekly scheduled workflow checks for a newer published
   version, and when one exists it bumps the pin, regenerates the
