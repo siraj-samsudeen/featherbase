@@ -41,13 +41,15 @@ None.
 
 ### Modified Capabilities
 
-- `list-view`: says which columns a list shows; the "Show columns" menu offers every readable
-  column and remembers additions as well as hidings; managers can make their view the default;
-  phone cards cap at 3 lines with "N more".
-- `spreadsheet-import`: a new Table's import lets the user choose which columns are in the
-  list, defaulting to the first 7 in use.
-- `tables-and-fields`: a column's place in the list can be changed after the Table exists; the
-  Table Builder's default matches import.
+- `list-view`: says which columns a list shows; each user can switch any readable column on or
+  off for themselves, and it is remembered; a System Manager can make their view the default.
+- `tables-and-fields`: a new Table, built or imported, starts with its first 7 columns in the
+  list, chosen before creating it; a System Manager can change the list columns later; that
+  choice joins the builder authority.
+- `usable-on-any-device`: phone cards show at most 3 listed columns, then "N more".
+
+(A new Table from a file is already Tables and Fields' ground, per Spreadsheet Import's
+Purpose, so the import's "In list" choice is specified there.)
 
 ## Impact
 
