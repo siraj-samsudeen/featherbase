@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
+import { viewColumns } from './list-view-columns'
 
 export interface ColumnDef {
   row_id: string
@@ -63,6 +64,9 @@ export interface TableMeta {
   status: string
   position: number
   columns: ColumnDef[]
+  /** #738: the levels of column the caller may read; served per request
+   *  beside the cached meta. */
+  readable_tiers?: ('basic' | 'restricted')[]
 }
 
 export const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
@@ -110,23 +114,9 @@ export function useMeta(table: string, enabled = true) {
   return useQuery({ ...metaQuery(table), enabled: enabled && Boolean(table) })
 }
 
-// Columns for a list view: name first, then flagged columns (or the first
-// two data columns when nothing is flagged).
-export function listColumns(
-  meta: TableMeta,
-): { column_name: string; label: string; column_type: string; reference_table?: string | null }[] {
-  const dataColumns = meta.columns.filter(
-    (c) => !NO_COLUMN_TYPES.has(c.column_type) && !c.hidden,
-  )
-  let flagged = dataColumns.filter((c) => c.in_list_view)
-  if (!flagged.length) flagged = dataColumns.slice(0, 2)
-  return [
-    { column_name: 'row_id', label: 'Row ID', column_type: 'Data' },
-    ...flagged.map((c) => ({
-      column_name: c.column_name,
-      label: c.label ?? c.column_name,
-      column_type: c.column_type,
-      reference_table: c.reference_table ?? null,
-    })),
-  ]
+// Columns for a list view: Row ID first, then the Table's list columns (or
+// the first two data columns when none is flagged) — a list with nobody's
+// arrangement applied. #738: one definition, in list-view-columns.
+export function listColumns(meta: TableMeta) {
+  return viewColumns(meta, {})
 }

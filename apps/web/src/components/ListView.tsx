@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
-import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, listColumns, useMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
+import { dataColumns, defaultColumnNames, isShown, listFlagsFromView, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
@@ -13,7 +14,7 @@ import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName, usePrincipalLabels } from '../lib/people'
 import { Button, DataCards, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from './ui'
-import { ArrowDown, ArrowUp } from './ui/icons'
+import { ArrowDown, ArrowUp, ChevronDown } from './ui/icons'
 import { GlossaryHelp } from './GlossaryHelp'
 import { fmtCount } from '../lib/inr'
 import { failureMessage } from '../lib/import-run'
@@ -28,6 +29,9 @@ export type Filter = [string, string, unknown]
 const OPS = ['=', '!=', 'like', '>', '<', '>=', '<='] as const
 
 const PAGE = 20
+// #738: a Show columns row is thumb-sized at phone width even under a mouse
+// (a narrowed window still draws the phone layout), as on any touch screen.
+const PHONE_ROW = 'max-sm:min-h-touch'
 
 // SET-004: cells render through the global display settings (date format,
 // currency/float precision). Non-typed columns fall back to a plain string.
@@ -111,13 +115,27 @@ export function ListView({
   const narrow = useMediaQuery(NARROW_QUERY)
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
-  // UI-013: per-user saved settings (sort, hidden columns, filters).
-  const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set())
+  // UI-013 / #738: per-user saved settings — sort, and which columns show,
+  // kept as columns switched on and off on top of the Table's list columns.
+  const [arrangement, setArrangement] = useState<Required<ColumnArrangement>>({ shownCols: [], hiddenCols: [] })
   const [colPickerOpen, setColPickerOpen] = useState(false)
+  // #738: the Show columns menu grows into the space below its button and no
+  // further, so it ends on screen; it scrolls inside only when that is short.
+  const colPickerRef = useRef<HTMLDivElement>(null)
+  const [colPickerMax, setColPickerMax] = useState<number | undefined>(undefined)
+  useLayoutEffect(() => {
+    const el = colPickerRef.current
+    if (!colPickerOpen || !el) return
+    const fit = () => setColPickerMax(Math.max(160, window.innerHeight - el.getBoundingClientRect().top - 12))
+    fit()
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [colPickerOpen])
   const [conflictsOpen, setConflictsOpen] = useState(false)
   useEffect(() => setConflictsOpen(false), [table])
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsUnsaved, setSettingsUnsaved] = useState(false)
+  const [makingDefault, setMakingDefault] = useState<'saving' | 'failed' | null>(null)
   // UI-012: bulk selection state.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkField, setBulkField] = useState('')
@@ -189,7 +207,7 @@ export function ListView({
     setSettingsLoaded(false)
     setSettingsUnsaved(false)
     api
-      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[] } | null }>(
+      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[]; shownCols?: string[] } | null }>(
         `/api/user_settings/${encodeURIComponent(table)}`,
       )
       .then((res) => {
@@ -197,7 +215,10 @@ export function ListView({
         const s = res.settings
         if (s) {
           if (s.sort) setSort(s.sort)
-          if (Array.isArray(s.hiddenCols)) setHiddenCols(new Set(s.hiddenCols))
+          setArrangement({
+            shownCols: Array.isArray(s.shownCols) ? s.shownCols : [],
+            hiddenCols: Array.isArray(s.hiddenCols) ? s.hiddenCols : [],
+          })
         }
         setSettingsLoaded(true)
       })
@@ -214,19 +235,31 @@ export function ListView({
   // Persist settings whenever the user changes them (after the initial load).
   // A save that fails is said, not swallowed (#546): the change still shows
   // now, but the list would open the old way next time.
-  function persist(next: { sort?: typeof sort; hiddenCols?: Set<string> }) {
+  function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement> }) {
     if (!settingsLoaded) return
     api
       .put(`/api/user_settings/${encodeURIComponent(table)}`, {
         sort: next.sort !== undefined ? next.sort : sort,
-        hiddenCols: [...(next.hiddenCols ?? hiddenCols)],
+        ...(next.arrangement ?? arrangement),
       })
       .then(() => setSettingsUnsaved(false))
       .catch(() => setSettingsUnsaved(true))
   }
 
-  const allColumns = meta.data ? listColumns(meta.data) : []
-  const columns = allColumns.filter((c) => !hiddenCols.has(c.column_name))
+  const columns = meta.data ? viewColumns(meta.data, arrangement) : []
+  // #209 / #738: who may shape this Table's columns for everyone — "Edit
+  // columns" and "Make this the default for everyone" show exactly here.
+  // Not on system Tables (their columns are the platform's) nor bound ones
+  // (their storage is the source's).
+  const canShapeColumns = Boolean(
+    caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source,
+  )
+  // The menu (#738): the Table's list columns first, then every other column
+  // the person may read; Row ID is always on.
+  const listDefaults = meta.data ? defaultColumnNames(meta.data) : new Set<string>()
+  const readableColumns = meta.data ? dataColumns(meta.data) : []
+  const inListChoices = readableColumns.filter((c) => listDefaults.has(c.column_name))
+  const otherChoices = readableColumns.filter((c) => !listDefaults.has(c.column_name))
   // A bound table only has updated_at when the source table has a modified
   // column to map (external_modified) — sending it as the explicit order
   // makes the server refuse EVERY list load (a caller-supplied order_by must
@@ -328,15 +361,49 @@ export function ListView({
     persist({ sort: next })
   }
 
-  // UI-013: hide/show a column (persisted per user).
-  function toggleColumn(columnName: string) {
-    setHiddenCols((prev) => {
-      const nextSet = new Set(prev)
-      if (nextSet.has(columnName)) nextSet.delete(columnName)
-      else nextSet.add(columnName)
-      persist({ hiddenCols: nextSet })
-      return nextSet
-    })
+  // #738 (Decision 3): this person's view becomes the Table's list for
+  // everyone, in one definition save; their own two sets are then empty,
+  // since their view is now the default. The new meta lands before the sets
+  // empty, so the list never flashes the old default.
+  async function makeDefaultForEveryone() {
+    if (!meta.data) return
+    setMakingDefault('saving')
+    try {
+      await api.put(`/api/table_def/${encodeURIComponent(table)}`, listFlagsFromView(meta.data, arrangement))
+      await queryClient.invalidateQueries({ queryKey: ['meta', table] })
+      const cleared = { shownCols: [], hiddenCols: [] }
+      setArrangement(cleared)
+      persist({ arrangement: cleared })
+      setMakingDefault(null)
+    } catch {
+      setMakingDefault('failed')
+    }
+  }
+
+  // UI-013 / #738: switch a column on or off in this person's view (saved
+  // per user).
+  function toggleColumn(columnName: string, on: boolean) {
+    if (!meta.data) return
+    const next = switchColumn(meta.data, arrangement, columnName, on)
+    setArrangement(next)
+    persist({ arrangement: next })
+  }
+  const columnChoice = (col: { column_name: string; label: string | null }) => {
+    const on = isShown(col.column_name, listDefaults, arrangement)
+    return (
+      <label
+        key={col.column_name}
+        className={touchRowClasses(`flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-subtle ${PHONE_ROW}`)}
+      >
+        <input
+          type="checkbox"
+          checked={on}
+          data-testid={`list-col-toggle-${col.column_name}`}
+          onChange={() => toggleColumn(col.column_name, !on)}
+        />
+        {col.label ?? col.column_name}
+      </label>
+    )
   }
 
   // UI-012: bulk actions over the selected rows. The server puts each row
@@ -463,29 +530,52 @@ export function ListView({
               data-testid="list-columns"
             >
               Show columns
+              <ChevronDown aria-hidden data-chevron size={18} />
             </button>
             {colPickerOpen && (
               <div
                 // #581: on a phone the button starts the wrapped toolbar,
                 // so the pop-up opens from its left edge; from sm up it
                 // lines up with the button's right edge as before.
-                className={cardClasses('absolute left-0 z-10 mt-1 max-h-72 w-52 max-w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:left-auto sm:right-0')}
+                ref={colPickerRef}
+                className={cardClasses('absolute left-0 z-10 mt-1 max-h-[calc(100dvh-12rem)] w-52 max-w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:left-auto sm:right-0')}
+                style={colPickerMax ? { maxHeight: colPickerMax } : undefined}
                 data-testid="list-columns-popup"
               >
-                {allColumns.map((col) => (
-                  <label
-                    key={col.column_name}
-                    className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-subtle"
+                {/* Row ID names each row, so it is always on. */}
+                <label className={touchRowClasses(`flex items-center gap-2 rounded px-2 py-1 text-sm text-ink-muted ${PHONE_ROW}`)}>
+                  <input type="checkbox" checked disabled data-testid="list-col-toggle-row_id" />
+                  Row ID
+                </label>
+                {inListChoices.map(columnChoice)}
+                {otherChoices.length > 0 && (
+                  <div
+                    className="mt-1 border-t border-border px-2 pb-1 pt-2 text-xs text-ink-subtle"
+                    data-testid="list-columns-divider"
                   >
-                    <input
-                      type="checkbox"
-                      checked={!hiddenCols.has(col.column_name)}
-                      data-testid={`list-col-toggle-${col.column_name}`}
-                      onChange={() => toggleColumn(col.column_name)}
-                    />
-                    {col.label}
-                  </label>
-                ))}
+                    Not in the list by default
+                  </div>
+                )}
+                {otherChoices.map(columnChoice)}
+                {canShapeColumns && (
+                  // Pinned to the menu's foot, so it shows even when the rows scroll.
+                  <div className="sticky -bottom-2 -mx-2 -mb-2 mt-1 border-t border-border bg-surface px-2 pb-2 pt-1">
+                    <button
+                      type="button"
+                      className={touchRowClasses(`flex w-full items-center rounded px-2 py-1 text-left text-sm text-action hover:bg-subtle disabled:opacity-50 ${PHONE_ROW}`)}
+                      disabled={makingDefault === 'saving'}
+                      onClick={() => void makeDefaultForEveryone()}
+                      data-testid="list-make-default"
+                    >
+                      Make this the default for everyone
+                    </button>
+                    {makingDefault === 'failed' && (
+                      <p className="px-2 pb-1 text-xs text-negative" data-testid="list-make-default-error">
+                        Couldn't make this the default. Everyone's list is as it was.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -549,7 +639,7 @@ export function ListView({
           {/* #209: add a column, or fix a misspelled one, without rebuilding
               the Table. Absent on system Tables (their columns are the
               platform's) and on bound ones (their storage is the source's). */}
-          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && (
+          {canShapeColumns && (
             <Link
               to="/featherbase/admin/$table/columns"
               params={{ table }}
@@ -1895,7 +1985,7 @@ function ExploreSplitButton({ table }: { table: string }) {
           className={buttonClasses({ className: 'rounded-l-none border-l-0 pointer-fine:px-1.5 pointer-coarse:min-w-control' })}
           data-testid="explore-split-toggle"
         >
-          ▾
+          <span aria-hidden data-chevron className="inline-block">▾</span>
         </button>
       </div>
       {open && (

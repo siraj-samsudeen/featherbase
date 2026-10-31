@@ -7,7 +7,7 @@ const on = (decision) => Object.keys(decision).filter(key => decision[key]).sort
 const ALL = ['client_apps', 'coverage_merged', 'e2e', 'platform_checks', 'server', 'web']
 
 test('prose runs only the fast checks', () => {
-  assert.deepEqual(on(pr('README.md', 'docs/adr/0014-x.md', 'openspec/specs/a/spec.md', '.github/PULL_REQUEST_TEMPLATE.md',
+  assert.deepEqual(on(pr('README.md', 'docs/adr/0014-x.md', 'openspec/changes/a/design.md', '.github/PULL_REQUEST_TEMPLATE.md',
     'apps/web/README.md', 'client-apps/c/a/README.md', '.claude/settings.json', 'docs/images/a.png', 'LICENSE')), [])
 })
 
@@ -75,4 +75,12 @@ test('merged coverage is only ever wanted when both its inputs run', () => {
 
 test('suitesFor returns no suites for prose', () => {
   assert.equal(suitesFor('docs/x.md').size, 0)
+})
+
+test('a spec or the acceptance suite runs e2e, where the acceptance suite runs (#738)', () => {
+  assert.deepEqual([...suitesFor('openspec/changes/x/specs/list-view/spec.md')], ['e2e'])
+  assert.deepEqual([...suitesFor('openspec/specs/list-view/spec.md')], ['e2e'])
+  assert.deepEqual([...suitesFor('acceptance-tests/step-definitions/list-view.steps.js')], ['e2e'])
+  assert.equal(suitesFor('openspec/changes/x/design.md').size, 0)
+  assert.equal(suitesFor('acceptance-tests/README.md').size, 0)
 })

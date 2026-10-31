@@ -1,0 +1,53 @@
+# Acceptance tests
+
+Runs the fenced Gherkin in `openspec/**/spec.md` against the real app, with
+cucumber-js (the spec-as-source workflow; `.agents/skills/acceptance-test-authoring`).
+
+```bash
+npm --prefix acceptance-tests ci              # once: its own npm project, not a pnpm workspace member
+npm --prefix acceptance-tests test            # the effective spec: main specs plus active change deltas
+npm --prefix acceptance-tests run test:specs  # main specs only, as they are
+```
+
+One command does it all. The hooks (`support/stack.js`) start the API and the
+web app on their own database, `featherbase_acceptance_e2e`, dropped and
+migrated fresh on every run through the e2e suite's own reset
+(`pnpm --filter server e2e:serve`), and on their own ports, 8030 and 5203
+(`ACCEPTANCE_API_PORT` / `ACCEPTANCE_WEB_PORT`). The browser is Playwright,
+headless. Each run writes `reports/cucumber-report.html`, with a screenshot of
+every failed scenario.
+
+- `extract-gherkin.cjs`, `cucumber.cjs` and `openspec-effective-paths.cjs`
+  are copied from the skill's references. The skill's spec lint (gherkin-lint)
+  is left out: it is unmaintained and its dependencies fail `npm audit`, and
+  cucumber-js already refuses malformed Gherkin on every run. One local change in
+  `extract-gherkin.cjs`: a `spec.md` with no gherkin fence (most main specs
+  today are still prose) is not extracted, and the run says how many.
+  While those prose specs are left out, a delta that modifies one of their
+  requirements prints an `[effective-spec] WARNING ... no such rule` line; it is
+  expected until the main spec is fenced.
+- `.extracted/` and `reports/` are generated; never edit or commit them.
+- Steps say what the user does and sees; screens, selectors and URLs live in
+  the page objects under `support/pages/`.
+
+## Watching and debugging
+
+For a person at their own screen; agents and CI set none of these.
+
+| Setting | What it does |
+|---|---|
+| `HEADED=1` | A visible browser, slowed down so each action can be followed. |
+| `PWDEBUG=1` | Playwright's Inspector (headed), pausing before each action; no step timeout. |
+| `VIDEO=1` | A slowed-down, headless video of every scenario, one per browser (System Manager, the user, a colleague): `reports/videos/<NN>-<scenario>[-<who>].webm`, numbered in run order. A change's scenarios run in journey order, the order its `proposal.md` lists its capabilities, so the videos follow it too. |
+
+In CI (or with `TRACE=1`) every scenario's browsers are traced; a failed scenario keeps its traces as
+`reports/traces/<scenario>[-<who>].zip` (CI uploads them with the report).
+Open one with:
+
+```bash
+npx --prefix acceptance-tests playwright show-trace acceptance-tests/reports/traces/<scenario>.zip
+```
+
+```bash
+VIDEO=1 npm --prefix acceptance-tests test
+```

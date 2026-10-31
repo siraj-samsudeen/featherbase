@@ -6,13 +6,11 @@
  * every task and never archived, so by 26-Oct-2026 thirty-six built changes
  * had never reached the main specs (#553).
  *
- * The flow is proposal PR → implementation PR → archive on main after the
- * implementation merges (ADR 0014, the change-modes skill). So a finished,
- * unarchived change (every task in tasks.md ticked, still under
- * openspec/changes/ and not archive/) is expected in two places, and only
- * reported there:
- *   - the implementation PR that ticks its last task;
- *   - main, between that merge and the archive commit.
+ * A change is one PR from proposal to archive, archived as its branch's last
+ * step (ADR 0014, the change-modes skill). So a finished, unarchived change
+ * (every task in tasks.md ticked, still under openspec/changes/ and not
+ * archive/) is expected only on its own branch, between the commit that ticks
+ * its last task and the archive commit, and is only reported there.
  * It fails a PR only when the change was already finished on the PR's base:
  * it reached main finished and nobody archived it. Failing the next PR,
  * rather than main itself, keeps main green, since every main commit is a
@@ -110,13 +108,13 @@ function main() {
   const base = baseRef(process.env)
   const { stale, fresh } = classify(finishedHere, base ? finishedOn(base, finishedHere.map((c) => c.name)) : null)
   if (fresh.length > 0) {
-    console.log('check:unarchived-changes: finished, to be archived on main once this work merges:')
+    console.log('check:unarchived-changes: finished, to be archived on this branch before it merges:')
     for (const f of fresh) console.log(`  ${f.name} (${f.done}/${f.total})  →  pnpm exec openspec archive ${f.name} --yes`)
   }
   if (stale.length === 0) return
   console.error(`Finished OpenSpec changes that reached ${base === 'HEAD^1' ? 'the base branch' : base} and were never archived:`)
   for (const f of stale) console.error(`  ${f.name} (${f.done}/${f.total})`)
-  console.error('\nArchive each on main (sync the specs, then archive), then update this branch:')
+  console.error('\nArchive each on a branch (sync the specs, then archive) and merge it, then update this branch:')
   for (const f of stale) console.error(`  pnpm exec openspec archive ${f.name} --yes`)
   console.error('If the change is not finished, untick its remaining task on main.')
   process.exit(1)

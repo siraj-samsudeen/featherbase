@@ -79,14 +79,16 @@ carry the workflow. Every change starts from an issue.
   it here.
 - **Browser checks run headless**, including e2e and verifier runs. No visible
   windows on someone's machine.
+- **Desktop first.** UI is built and checked for desktop. Phone work happens
+  only when the owner asks for it in that piece of work.
 - **Merge PRs with a merge commit** (`gh pr merge --merge`). Squash and rebase are
   off, so keep each commit meaningful: a test, then its fix.
 
 ## Review guidelines
 
 - **UI changes:** agree the design as a numbered checklist in the issue. Then a
-  separate verifier agent runs the real UI at 1280px and 375px and returns a
-  "spec vs built" table with screenshots, before the owner sees code.
+  separate verifier agent runs the real UI at 1280px and returns a "spec vs
+  built" table, before the owner sees code.
 - **Code review** uses the `feather-code-review` skill. Run a Codex review if
   Codex is available, otherwise a review by a different Claude model. Review
   only what a person can't see when testing: security, permissions, data,

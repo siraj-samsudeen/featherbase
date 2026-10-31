@@ -173,4 +173,28 @@ test.describe('phone layout', () => {
       .clickButton('Rename glor')
       .assertHas('[data-testid="ce-rename-input-glor"]')
   })
+
+  // #738: the In list tick is the reason to open this page on a phone, so it
+  // shows without scrolling the table sideways.
+  test('shows every In list tick without scrolling sideways', async ({ session, request }) => {
+    // A long column name, as real Tables have, is what widens the table.
+    const headers = { Authorization: `Bearer ${await adminToken(request)}` }
+    const meta = await (await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers })).json()
+    const put = await request.put(`/api/table_def/${encodeURIComponent(DT)}`, {
+      headers,
+      data: {
+        ...meta,
+        columns: [...meta.columns, { column_name: 'responsible_delivery_region', label: 'Region', column_type: 'Data' }],
+      },
+    })
+    expect(put.ok()).toBe(true)
+    await session.visit(`/admin/${encodeURIComponent(DT)}/columns`).assertHas('[data-testid="ce-in-list-glor"]')
+    await session.step('measure each In list tick against the screen', async ({ page }) => {
+      for (const id of ['ce-in-list-glor', 'ce-in-list-pop', 'ce-in-list-responsible_delivery_region']) {
+        const box = (await page.getByTestId(id).boundingBox())!
+        expect(box.x, `${id} starts on screen`).toBeGreaterThanOrEqual(0)
+        expect(box.x + box.width, `${id} ends on screen`).toBeLessThanOrEqual(375)
+      }
+    })
+  })
 })

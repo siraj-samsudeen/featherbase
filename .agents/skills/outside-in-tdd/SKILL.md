@@ -1,6 +1,6 @@
 ---
 name: outside-in-tdd
-description: The human-controlled build loop for an OpenSpec change — one planning artifact per commit, then one stop per test (the human's prediction) with red, green and refactor as separate commits that record the human's prediction and the real output. Use for every change in build or learning mode (schema intent-driven-with-human-control): planning artifacts, code, tests, dependencies and config. Not for autopilot changes.
+description: The human-controlled build loop for an OpenSpec change — one planning artifact per commit, then one stop per test (the human's prediction) with red, green and refactor as separate commits that record the human's prediction and the real output. Use whenever the session builds a change in build or learning mode (the mode is session state, the change-modes skill): planning artifacts, code, tests, dependencies and config. Not while the session is in autopilot.
 ---
 
 # Outside-in TDD with the human in control
@@ -39,8 +39,7 @@ instead. (A third mode, **autopilot**, does not use this skill — see the `chan
 ## Learning mode
 
 For students and newcomers, who learn from every command, not just from the decisions. It is
-chosen per change, when the change is created, and recorded as `**Mode:** learning` on the first
-line of its `proposal.md`. It starts with the very first command of that change.
+chosen in the session (never recorded in the change) and applies from the next command on.
 
 In learning mode, every command is a stop — including read-only ones (listing files, checking a
 branch, querying GitHub) and small ones (creating a directory):
@@ -99,8 +98,11 @@ of each test; this skill adds the stops and the record.
 Tests the task list already expects to pass on their first run are run together, one `test:`
 commit each, and reported in one message.
 
-The outer test of a scenario stays `test.todo` while its inner tests run; it is promoted in its
-own green step. `bun test --todo` fails with "Remove `.todo`" once it passes — that is the cue.
+The outer test of a scenario is its fenced Gherkin in the change's `spec.md`, run by cucumber-js
+from `acceptance-tests/` (`spec-as-source`). Its first red is usually an undefined step: the
+step definition arrives in that red/green pair, and so does the `acceptance-tests/` setup on the
+very first one. The scenario stays failing while its inner tests run, and passing it is its own
+green step.
 
 **Step size.** If the human's predictions keep matching, the steps are too small — take bigger
 ones. If they keep missing, slow down.
@@ -196,8 +198,8 @@ fates — **ratify** (a `specs:` commit adds the scenario, then a test pins it),
 - `bunx tsc --noEmit` — types.
 - Stryker — every surviving mutant is a missing test or code nobody needs.
 
-Then `openspec verify`, and open the implementation PR. Archive runs on `main` after that PR
-merges (`openspec-git-discipline`).
+Then `openspec verify`, sync the specs and archive the change on its branch, as the last step of
+its one PR (the `change-modes` skill).
 
 ## Tooling gotchas (Bun 1.4.2, verified 21-Oct-2026)
 
