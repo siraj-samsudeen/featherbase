@@ -27,7 +27,7 @@ import {
   shapeOf,
   type ImportDecisions,
 } from '../lib/import-session'
-import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '../components/ui'
+import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '../components/ui'
 import { fmtCount } from '../lib/inr'
 
 /**
@@ -139,6 +139,9 @@ const SUGGEST_MIN_SCORE = 0.3 // weakest near-match worth surfacing as a hint
 const CONFIRM_UPDATES_OVER = 20
 const SUGGEST_MAX = 3 // hints shown per sheet
 const ERRORS_ON_SCREEN = 5 // failures listed inline; the log keeps more
+// #738: a text-sized link in the grid header is thumb-tall at phone width
+// even under a mouse, as touchLinkClasses makes it on any touch screen.
+const PHONE_LINK = 'max-sm:inline-flex max-sm:min-h-touch max-sm:items-center'
 
 // #738: which columns a new Table's list starts with. A column left out of
 // the import (Use unticked) is never in the list.
@@ -1996,20 +1999,17 @@ export function ImportWizard() {
                         </th>
                       )}
                       <th className="px-2 py-1">Use</th>
-                      <th className="px-2 py-1">File column</th>
-                      <th className="px-2 py-1">Label</th>
-                      <th className="px-2 py-1">Column name</th>
-                      <th className="px-2 py-1">Type</th>
                       <th className="px-2 py-1 align-bottom">
                         {/* #738: "Tick all" and "Clear" sit above the In
-                            list column they act on. */}
+                            list column they act on, which follows Use so a
+                            phone shows it without scrolling the grid. */}
                         <div className="flex gap-2 whitespace-nowrap font-normal">
                           <button
                             type="button"
                             onClick={() => setPlan(i, { list_ticks: [...plan.include] })}
                             data-testid={`iw-list-all-${i}`}
                             aria-label="Tick all in the list"
-                            className="text-action underline"
+                            className={touchLinkClasses(`text-action underline ${PHONE_LINK}`)}
                           >
                             Tick all
                           </button>
@@ -2018,13 +2018,17 @@ export function ImportWizard() {
                             onClick={() => setPlan(i, { list_ticks: plan.include.map(() => false) })}
                             data-testid={`iw-list-clear-${i}`}
                             aria-label="Clear the list ticks"
-                            className="text-action underline"
+                            className={touchLinkClasses(`text-action underline ${PHONE_LINK}`)}
                           >
                             Clear
                           </button>
                         </div>
                         <span className="whitespace-nowrap">In list</span>
                       </th>
+                      <th className="px-2 py-1">File column</th>
+                      <th className="px-2 py-1">Label</th>
+                      <th className="px-2 py-1">Column name</th>
+                      <th className="px-2 py-1">Type</th>
                       <th className="px-2 py-1">Choices</th>
                     </tr>
                   </thead>
@@ -2103,6 +2107,22 @@ export function ImportWizard() {
                             />
                           </label>
                         </td>
+                        <td className="px-2 py-1 text-center">
+                          <label className="cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={inList[ci]}
+                              disabled={!plan.include[ci]}
+                              onChange={(e) =>
+                                setPlan(i, {
+                                  list_ticks: inList.map((v, j) => (j === ci ? e.target.checked : v)),
+                                })
+                              }
+                              data-rowfield="in_list_view"
+                              aria-label={`Show ${c.label || c.column_name} in the list`}
+                            />
+                          </label>
+                        </td>
                         <td className="px-2 py-1 text-ink-muted">{sheet.headers[ci]}</td>
                         <td className="px-1 py-1">
                           {/* The display name (normalized from the header);
@@ -2164,22 +2184,6 @@ export function ImportWizard() {
                               </option>
                             ))}
                           </select>
-                        </td>
-                        <td className="px-2 py-1 text-center">
-                          <label className="cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={inList[ci]}
-                              disabled={!plan.include[ci]}
-                              onChange={(e) =>
-                                setPlan(i, {
-                                  list_ticks: inList.map((v, j) => (j === ci ? e.target.checked : v)),
-                                })
-                              }
-                              data-rowfield="in_list_view"
-                              aria-label={`Show ${c.label || c.column_name} in the list`}
-                            />
-                          </label>
                         </td>
                         <td className="px-2 py-1 text-xs text-ink-muted">
                           {c.column_type === 'Choice' ? c.choices?.split('\n').join(', ') : ''}

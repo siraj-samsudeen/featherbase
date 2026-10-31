@@ -29,6 +29,9 @@ export type Filter = [string, string, unknown]
 const OPS = ['=', '!=', 'like', '>', '<', '>=', '<='] as const
 
 const PAGE = 20
+// #738: a Show columns row is thumb-sized at phone width even under a mouse
+// (a narrowed window still draws the phone layout), as on any touch screen.
+const PHONE_ROW = 'max-sm:min-h-touch'
 
 // SET-004: cells render through the global display settings (date format,
 // currency/float precision). Non-typed columns fall back to a plain string.
@@ -378,7 +381,7 @@ export function ListView({
     return (
       <label
         key={col.column_name}
-        className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-subtle"
+        className={touchRowClasses(`flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-subtle ${PHONE_ROW}`)}
       >
         <input
           type="checkbox"
@@ -522,11 +525,11 @@ export function ListView({
                 // #581: on a phone the button starts the wrapped toolbar,
                 // so the pop-up opens from its left edge; from sm up it
                 // lines up with the button's right edge as before.
-                className={cardClasses('absolute left-0 z-10 mt-1 max-h-72 w-52 max-w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:left-auto sm:right-0')}
+                className={cardClasses('absolute left-0 z-10 mt-1 max-h-[calc(100dvh-12rem)] w-52 max-w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:left-auto sm:right-0')}
                 data-testid="list-columns-popup"
               >
                 {/* Row ID names each row, so it is always on. */}
-                <label className="flex items-center gap-2 rounded px-2 py-1 text-sm text-ink-muted">
+                <label className={touchRowClasses(`flex items-center gap-2 rounded px-2 py-1 text-sm text-ink-muted ${PHONE_ROW}`)}>
                   <input type="checkbox" checked disabled data-testid="list-col-toggle-row_id" />
                   Row ID
                 </label>
@@ -544,7 +547,7 @@ export function ListView({
                   <div className="mt-1 border-t border-border pt-1">
                     <button
                       type="button"
-                      className="w-full rounded px-2 py-1 text-left text-sm text-action hover:bg-subtle disabled:opacity-50"
+                      className={touchRowClasses(`flex w-full items-center rounded px-2 py-1 text-left text-sm text-action hover:bg-subtle disabled:opacity-50 ${PHONE_ROW}`)}
                       disabled={makingDefault === 'saving'}
                       onClick={() => void makeDefaultForEveryone()}
                       data-testid="list-make-default"

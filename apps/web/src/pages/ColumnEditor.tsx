@@ -261,10 +261,12 @@ export function ColumnEditor() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-ink-subtle">
+                {/* #738: In list comes first, so a phone shows it without
+                    scrolling the table sideways. */}
+                <th className="whitespace-nowrap py-1 pr-2 text-center">In list</th>
                 <th className="py-1">Label</th>
                 <th>Column name</th>
                 <th>Type</th>
-                <th className="px-2">In list</th>
                 <th />
               </tr>
             </thead>
@@ -275,6 +277,26 @@ export function ColumnEditor() {
                   className="border-t border-border"
                   data-testid={`ce-row-${column.column_name}`}
                 >
+                  <td className="pr-2 text-center">
+                    {/* Only a column a list can show gets a tick. */}
+                    {!NO_COLUMN_TYPES.has(column.column_type) && !column.hidden && (
+                      // The box is small; the label around it is the thumb-sized target.
+                      <label className="inline-flex size-control cursor-pointer items-center justify-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`In list: ${column.label ?? column.column_name}`}
+                          data-testid={`ce-in-list-${column.column_name}`}
+                          checked={
+                            inListSaving?.column === column.column_name
+                              ? inListSaving.inList
+                              : Boolean(column.in_list_view)
+                          }
+                          disabled={def.system || put.isPending}
+                          onChange={(e) => saveInList(column.column_name, e.target.checked)}
+                        />
+                      </label>
+                    )}
+                  </td>
                   <td className="py-1 pr-2">
                     <input
                       className={inputClasses('w-48 py-0.5')}
@@ -301,26 +323,6 @@ export function ColumnEditor() {
                   </td>
                   <td className="pr-2 font-mono text-xs text-ink-muted">{column.column_name}</td>
                   <td className="pr-2 text-xs text-ink-muted">{column.column_type}</td>
-                  <td className="px-2 text-center">
-                    {/* Only a column a list can show gets a tick. */}
-                    {!NO_COLUMN_TYPES.has(column.column_type) && !column.hidden && (
-                      // The box is small; the label around it is the thumb-sized target.
-                      <label className="inline-flex size-control cursor-pointer items-center justify-center">
-                        <input
-                          type="checkbox"
-                          aria-label={`In list: ${column.label ?? column.column_name}`}
-                          data-testid={`ce-in-list-${column.column_name}`}
-                          checked={
-                            inListSaving?.column === column.column_name
-                              ? inListSaving.inList
-                              : Boolean(column.in_list_view)
-                          }
-                          disabled={def.system || put.isPending}
-                          onChange={(e) => saveInList(column.column_name, e.target.checked)}
-                        />
-                      </label>
-                    )}
-                  </td>
                   <td className="text-xs">
                     {!def.system && <RenameRow table={def.name} column={column} />}
                   </td>

@@ -188,4 +188,22 @@ test.describe('at phone width with a mouse', () => {
       for (const h of rows) expect(h).toBeGreaterThanOrEqual(MIN)
     })
   })
+
+  test('"Tick all" and "Clear" above the Import Wizard\'s In list column are thumb-tall', async ({ session }) => {
+    const sheet = XLSX.utils.aoa_to_sheet([['Mouse Ref', 'Mouse Note'], ['M-1', 'a']])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, sheet, 'Mouse Sheet')
+    await session.visit('/admin/import').assertHas('[data-testid="import-wizard"]')
+    await session.step('drop a one-sheet workbook, then measure the two links', async ({ page }) => {
+      await page.getByTestId('iw-file-input').setInputFiles({
+        name: 'mouse.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        buffer: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+      })
+      await expect(page.getByTestId('iw-list-all-0')).toBeVisible()
+      for (const h of await heights(page, '[data-testid="iw-list-all-0"], [data-testid="iw-list-clear-0"]')) {
+        expect(h).toBeGreaterThanOrEqual(MIN)
+      }
+    })
+  })
 })

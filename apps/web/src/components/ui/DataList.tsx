@@ -247,7 +247,8 @@ export function DataCards<Row>({
                 {more > 0 && (
                   <Button
                     variant="quiet"
-                    className="-mb-1 mt-1 -ml-2"
+                    // Cards are the phone shape, so the toggle is thumb-sized under a mouse too (#738).
+                    className="-mb-1 mt-1 -ml-2 min-h-touch"
                     aria-expanded={all}
                     data-testid="card-more"
                     onClick={() => toggleAll(key)}
@@ -268,7 +269,7 @@ export function DataCards<Row>({
               <>
                 <Button
                   variant="quiet"
-                  className="-mb-1 mt-2 -ml-2"
+                  className="-mb-1 mt-2 -ml-2 min-h-touch"
                   aria-expanded={open}
                   data-testid="row-expand"
                   onClick={() => expand.onToggle(row)}
