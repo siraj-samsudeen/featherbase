@@ -41,6 +41,8 @@ rules:
     - Must use grill-me skill - one decision per question, showing the text it will write into the artifact (paraphrased is fine), with the alternatives
     # - Must use adversarial-authoring skill - only with the owner's consent (CLAUDE.md § Review guidelines)
   design:
+    - Holds only design decisions. A decision has a real alternative a good engineer might pick, and picking wrong is costly (data shape, an API contract, security, or hard to undo once shipped). The spec restated goes nowhere; plain implementation goes in tasks; agreed UI details go in the UI checklist. Each decision names the alternative rejected and why.
+    - Present each decision to the owner on its own, for approval, before committing the design.
     - Must use grill-me skill - one decision per question, showing the text it will write into the artifact (paraphrased is fine), with the alternatives
     - Must use c4-diagrams skill - Mermaid, lightweight C4-inspired; do not ask
   adr:
