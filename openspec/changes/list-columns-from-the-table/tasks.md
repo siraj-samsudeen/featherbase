@@ -38,26 +38,26 @@
 
 ## 7. Remarks shows only for me (@spec Show or hide any column for yourself)
 
-- [ ] 7.1 outer: the scenario
-- [ ] 7.2 inner: the menu lists the Table's list columns first, then a divider, then every other readable column
-- [ ] 7.3 inner: what the user sees is Row ID + (list columns ∪ shown) − hidden, in the Table's column order
-- [ ] 7.4 inner: switching a column on removes it from hidden and, if it isn't a list column, adds it to shown; switching off does the reverse
-- [ ] 7.5 inner: the `:meta` response carries the caller's readable levels
-- [ ] 7.6 inner: a `restricted` column is not offered to a caller who may read only `basic`
+- [x] 7.1 outer: the scenario
+- [x] 7.2 inner: the menu lists the Table's list columns first, then a divider, then every other readable column
+- [x] 7.3 inner: what the user sees is Row ID + (list columns ∪ shown) − hidden, in the Table's column order
+- [x] 7.4 inner: switching a column on removes it from hidden and, if it isn't a list column, adds it to shown; switching off does the reverse
+- [x] 7.5 inner: the `:meta` response carries the caller's readable levels
+- [x] 7.6 inner: a `restricted` column is not offered to a caller who may read only `basic`
 
 ## 8. Every column off leaves the row ID (@spec Show or hide any column for yourself)
 
-- [ ] 8.1 outer: the scenario
+- [x] 8.1 outer: the scenario
 
 ## 9. Return after hiding a column (@spec The list remembers how it's arranged)
 
 - [x] 9.1 outer: the scenario (expected to pass on its first run: today's behaviour)
-- [ ] 9.2 inner: an arrangement saved before this change, `{ hiddenCols: ["floor"] }` with no shown set, still hides Floor and shows every other list column
+- [x] 9.2 inner: an arrangement saved before this change, `{ hiddenCols: ["floor"] }` with no shown set, still hides Floor and shows every other list column
 
 ## 10. Remarks is still there next time (@spec The list remembers how it's arranged)
 
-- [ ] 10.1 outer: the scenario
-- [ ] 10.2 inner: the saved arrangement carries the shown set, and reading it back restores it
+- [x] 10.1 outer: the scenario
+- [x] 10.2 inner: the saved arrangement carries the shown set, and reading it back restores it
 
 ## 11. Remarks shows for everyone (@spec Change which columns a table's list shows)
 
