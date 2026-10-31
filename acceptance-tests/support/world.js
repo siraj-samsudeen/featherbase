@@ -5,18 +5,31 @@
 // or a URL.
 
 const { randomUUID } = require('node:crypto');
-const { setWorldConstructor, setDefaultTimeout, After, AfterAll } = require('@cucumber/cucumber');
+const fs = require('node:fs');
+const path = require('node:path');
+const { setWorldConstructor, setDefaultTimeout, Before, BeforeAll, After, AfterAll } = require('@cucumber/cucumber');
 const { chromium } = require('playwright');
 const { BASE_URL } = require('./stack');
 const { Api, SYSTEM_MANAGER, signedInState } = require('./api');
 const { LoginPage } = require('./pages/login-page');
 const { AccountMenu } = require('./pages/account-menu');
 
-// HEADED=1 is for a person watching on their own screen: a visible browser,
-// slowed down so each action can be followed. Agents and CI never set it;
+// For a person watching or debugging; agents and CI set none of these, and
 // browser checks run headless (CLAUDE.md).
+// HEADED=1: a visible browser, slowed down so each action can be followed.
+// PWDEBUG=1: Playwright's Inspector, pausing before each action (headed).
+// VIDEO=1: a slowed-down video of every scenario in reports/videos/, headless.
 const HEADED = process.env.HEADED === '1';
-setDefaultTimeout(HEADED ? 300_000 : 60_000);
+const PWDEBUG = Boolean(process.env.PWDEBUG) && process.env.PWDEBUG !== '0';
+const VIDEO = process.env.VIDEO === '1';
+setDefaultTimeout(PWDEBUG ? -1 : HEADED || VIDEO ? 300_000 : 60_000);
+
+// Every context is traced; a failed scenario's traces are kept here, the
+// rest discarded. Open one with `npx playwright show-trace <zip>`.
+const REPORTS = path.resolve(__dirname, '../reports');
+const TRACES = path.join(REPORTS, 'traces');
+const VIDEOS = path.join(REPORTS, 'videos');
+const VIDEO_SCRATCH = path.join(VIDEOS, '.recording');
 
 // Test-only password for the people a scenario creates on the throwaway
 // acceptance database.
@@ -25,19 +38,29 @@ const PERSON_PASSWORD = 'acceptance-person-pw';
 let browser = null;
 let systemManagerState = null; // signed-in storage state, captured once per run
 
+function launchOptions() {
+  if (PWDEBUG) return { headless: false }; // the Inspector does the pausing
+  if (HEADED) return { headless: false, slowMo: 400 };
+  if (VIDEO) return { headless: true, slowMo: 400 };
+  return { headless: true };
+}
+
 async function launch() {
-  browser ??= await chromium.launch(HEADED ? { headless: false, slowMo: 400 } : { headless: true });
+  browser ??= await chromium.launch(launchOptions());
   return browser;
 }
+
+/** "Section Mapping's cards show …" -> "section-mapping-s-cards-show-…" */
+function slug(text) {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
+}
+
+let scenarioCount = 0; // run order, for the videos' names
 
 // A desktop screen, and a phone: 375px wide, as the e2e suite's phone tests use.
 const DESKTOP = { width: 1280, height: 900 };
 const PHONE = { width: 375, height: 812 };
 
-async function newPage(storageState, viewport = DESKTOP) {
-  const context = await (await launch()).newContext({ baseURL: BASE_URL, storageState, viewport });
-  return { context, page: await context.newPage() };
-}
 
 class FeatherbaseWorld {
   constructor({ attach }) {
@@ -48,6 +71,22 @@ class FeatherbaseWorld {
     this.table = null; // the table the scenario is about
     this.people = new Map(); // 'the user' / 'a colleague' -> { email, roles, context, page }
     this.viewport = DESKTOP;
+    this.scenario = null; // { order, slug }, set before each scenario
+    this.contexts = []; // { who, context, page } for every browser context opened, in order
+  }
+
+  /** A traced browser context for one of the scenario's people (and its video, with VIDEO=1). */
+  async newPage(who, storageState) {
+    const context = await (await launch()).newContext({
+      baseURL: BASE_URL,
+      storageState,
+      viewport: this.viewport,
+      ...(VIDEO ? { recordVideo: { dir: VIDEO_SCRATCH, size: this.viewport } } : {}),
+    });
+    await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+    const page = await context.newPage();
+    this.contexts.push({ who, context, page });
+    return { context, page };
   }
 
   /** Every page of this scenario, open now or later, is on a phone-sized screen. */
@@ -60,11 +99,11 @@ class FeatherbaseWorld {
     return [this.page, ...[...this.people.values()].map((p) => p.page)].filter(Boolean);
   }
 
-  /** A browser page signed in as a System Manager (headless, always). */
+  /** A browser page signed in as a System Manager. */
   async asSystemManager() {
     if (this.page) return this.page;
     systemManagerState ??= await signedInState(SYSTEM_MANAGER.user, SYSTEM_MANAGER.password);
-    ({ context: this.context, page: this.page } = await newPage(systemManagerState, this.viewport));
+    ({ context: this.context, page: this.page } = await this.newPage('system-manager', systemManagerState));
     return this.page;
   }
 
@@ -91,7 +130,7 @@ class FeatherbaseWorld {
     if (!person) throw new Error(`no one called "${who}" in this scenario`);
     if (person.page) return person.page;
     const state = await signedInState(person.email, PERSON_PASSWORD);
-    ({ context: person.context, page: person.page } = await newPage(state, this.viewport));
+    ({ context: person.context, page: person.page } = await this.newPage(slug(who), state));
     return person.page;
   }
 
@@ -125,19 +164,45 @@ class FeatherbaseWorld {
 
 setWorldConstructor(FeatherbaseWorld);
 
+BeforeAll(function () {
+  // Only this run's traces and videos are in reports/.
+  fs.rmSync(TRACES, { recursive: true, force: true });
+  fs.rmSync(VIDEOS, { recursive: true, force: true });
+});
+
+Before(function ({ pickle }) {
+  scenarioCount += 1;
+  this.scenario = { order: String(scenarioCount).padStart(2, '0'), slug: slug(pickle.name) };
+});
+
 After(async function ({ result }) {
-  const pages = this.openPages();
-  if (result?.status === 'FAILED') {
-    for (const page of pages) {
+  const failed = result?.status === 'FAILED';
+  if (failed) {
+    for (const page of this.openPages()) {
       const shot = await page.screenshot({ fullPage: true }).catch(() => null);
       if (shot) this.attach(shot, 'image/png');
     }
   }
-  await this.context?.close();
-  for (const person of this.people.values()) await person.context?.close();
+  // "<slug>" when the scenario opened one browser, "<slug>-<who>" for each when more.
+  const name = (who) => (this.contexts.length > 1 ? `${this.scenario.slug}-${who}` : this.scenario.slug);
+  for (const { who, context, page } of this.contexts) {
+    if (failed) {
+      fs.mkdirSync(TRACES, { recursive: true });
+      await context.tracing.stop({ path: path.join(TRACES, `${name(who)}.zip`) });
+    } else {
+      await context.tracing.stop();
+    }
+    const video = VIDEO ? page.video() : null;
+    await context.close();
+    if (video) {
+      await video.saveAs(path.join(VIDEOS, `${this.scenario.order}-${name(who)}.webm`));
+      await video.delete();
+    }
+  }
 });
 
 AfterAll(async function () {
   await Api.disposeAll();
   await browser?.close();
+  fs.rmSync(VIDEO_SCRATCH, { recursive: true, force: true });
 });

@@ -29,3 +29,25 @@ every failed scenario.
 - `.extracted/` and `reports/` are generated; never edit or commit them.
 - Steps say what the user does and sees; screens, selectors and URLs live in
   the page objects under `support/pages/`.
+
+## Watching and debugging
+
+For a person at their own screen; agents and CI set none of these.
+
+| Setting | What it does |
+|---|---|
+| `HEADED=1` | A visible browser, slowed down so each action can be followed. |
+| `PWDEBUG=1` | Playwright's Inspector (headed), pausing before each action; no step timeout. |
+| `VIDEO=1` | A slowed-down, headless video of every scenario, one per browser (System Manager, the user, a colleague): `reports/videos/<NN>-<scenario>[-<who>].webm`, numbered in run order. |
+
+Every scenario's browsers are traced; a failed scenario keeps its traces as
+`reports/traces/<scenario>[-<who>].zip` (CI uploads them with the report).
+Open one with:
+
+```bash
+npx --prefix acceptance-tests playwright show-trace acceptance-tests/reports/traces/<scenario>.zip
+```
+
+```bash
+VIDEO=1 npm --prefix acceptance-tests test
+```
