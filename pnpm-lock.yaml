@@ -140,8 +140,8 @@ importers:
         specifier: 5.0.5
         version: 5.0.5(vitest@5.0.5)
       feather-testing-core:
-        specifier: 0.5.0
-        version: 0.5.0(@playwright/test@1.64.1)(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2))
+        specifier: 0.6.0
+        version: 0.6.0(@playwright/test@1.64.1)(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2))
       feather-testing-postgres:
         specifier: 0.2.0
         version: 0.2.0(@playwright/test@1.64.1)(@tanstack/react-query@5.105.0(@types/react@19.3.0)(react@19.3.1))(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/dom@10.4.2)(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@5.0.5)
@@ -1529,8 +1529,8 @@ packages:
       '@testing-library/user-event':
         optional: true
 
-  feather-testing-core@0.5.0:
-    resolution: {integrity: sha512-PX2q1oByTf9nkhH5EZhCvitzR8hiNVZQv44VrctUTM93alocK2lJcfsnY5MmjVBBIPeVdPz0iluCcvSV4KYXFg==}
+  feather-testing-core@0.6.0:
+    resolution: {integrity: sha512-8+TbmPhHJBIRJFIoqbBayYz4Spw0wUA5MSaU7KCWoNNDhZXSAQn8NVbB/WlguzgfZBYIhHOQcfmEd5SLtWyqFQ==}
     peerDependencies:
       '@playwright/test': '>=1.40.0'
       '@testing-library/react': '>=14.0.0'
@@ -3718,7 +3718,7 @@ snapshots:
       '@testing-library/react': 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@testing-library/user-event': 14.6.8(@testing-library/dom@10.4.2)
 
-  feather-testing-core@0.5.0(@playwright/test@1.64.1)(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2)):
+  feather-testing-core@0.6.0(@playwright/test@1.64.1)(@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2)):
     optionalDependencies:
       '@playwright/test': 1.64.1
       '@testing-library/react': 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

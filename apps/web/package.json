@@ -36,7 +36,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-istanbul": "5.0.5",
-    "feather-testing-core": "0.5.0",
+    "feather-testing-core": "0.6.0",
     "feather-testing-postgres": "0.2.0",
     "istanbul-lib-coverage": "3.2.2",
     "istanbul-lib-source-maps": "5.0.6",
