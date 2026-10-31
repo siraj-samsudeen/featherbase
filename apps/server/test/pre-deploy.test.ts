@@ -26,11 +26,16 @@ function configurePreview(user = PREVIEW_USER) {
 }
 
 describe('the deploy config runs one pre-deploy command', () => {
-  it('railway.json names the pre-deploy command alone, with nothing a shell would have to read', () => {
-    const railway = JSON.parse(readFileSync(join(repo, 'railway.json'), 'utf8'))
+  it('.railway/railway.ts names the pre-deploy command alone in every environment, with nothing a shell would have to read', async () => {
+    const { createRailwayContext, project } = await import('railway/iac')
+    const { default: program } = await import('../../../.railway/railway')
     // The host may run each entry as argv, not through a shell: an `&&` there
     // is an argument, and whatever follows it silently never runs.
-    expect(railway.deploy.preDeployCommand).toEqual(['pnpm --filter server pre-deploy'])
+    for (const environment of ['production', 'staging']) {
+      const { resources = [] } = await program(createRailwayContext({ environment }), project)
+      const server = resources.flat().find(resource => resource.type === 'service')
+      expect(server?.type === 'service' && server.deploy?.preDeployCommand, environment).toEqual(['pnpm --filter server pre-deploy'])
+    }
     const server = JSON.parse(readFileSync(join(repo, 'apps', 'server', 'package.json'), 'utf8'))
     expect(server.scripts['pre-deploy']).toBe('tsx src/pre-deploy.ts')
   })

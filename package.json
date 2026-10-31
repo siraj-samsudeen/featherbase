@@ -25,6 +25,7 @@
   },
   "packageManager": "pnpm@10.33.0",
   "devDependencies": {
-    "@fission-ai/openspec": "1.13.2"
+    "@fission-ai/openspec": "1.13.2",
+    "railway": "3.16.0"
   }
 }

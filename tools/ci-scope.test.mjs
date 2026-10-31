@@ -35,7 +35,7 @@ test('web runs web and e2e, and so the merged coverage, not the server suite', (
 
 test('a change that can reach anything runs everything', () => {
   for (const file of ['packages/shared/src/x.ts', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', '.github/workflows/test.yml',
-    '.github/labeler.yml', 'tools/prepare-apps.mjs', 'test-apps/other/package.json', 'init.sh', 'railway.json', 'apps/new/x.ts', 'something-new', '"docs/\\303\\251.txt"'])
+    '.github/labeler.yml', 'tools/prepare-apps.mjs', 'test-apps/other/package.json', 'init.sh', '.railway/railway.ts', 'apps/new/x.ts', 'something-new', '"docs/\\303\\251.txt"'])
     assert.deepEqual(on(pr(file)), ALL, file)
 })
 
