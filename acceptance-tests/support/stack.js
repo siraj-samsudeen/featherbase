@@ -13,6 +13,7 @@
 // variable below is set.
 
 const { spawn } = require('node:child_process');
+const net = require('node:net');
 const path = require('node:path');
 const { BeforeAll, AfterAll } = require('@cucumber/cucumber');
 
@@ -76,7 +77,28 @@ function stopAll() {
   }
 }
 
+/** Whether something already answers on this localhost port. */
+function portTaken(port) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ port, host: 'localhost' });
+    socket.setTimeout(1_000);
+    socket.once('connect', () => (socket.destroy(), resolve(true)));
+    socket.once('timeout', () => (socket.destroy(), resolve(false)));
+    socket.once('error', () => resolve(false));
+  });
+}
+
 BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
+  // A second run started while one is going would answer its boot checks from
+  // the first run's servers, reset the database under them, and then lose
+  // them when the first run ends: both fail with lists that never show.
+  for (const [port, name] of [[API_PORT, 'ACCEPTANCE_API_PORT'], [WEB_PORT, 'ACCEPTANCE_WEB_PORT']]) {
+    if (await portTaken(port))
+      throw new Error(
+        `port ${port} is already in use, most likely by another acceptance run. ` +
+          `Wait for it to finish, or run on other ports (${name}).`,
+      );
+  }
   const api = start('api', ['--filter', 'server', 'e2e:serve'], {
     PORT: String(API_PORT),
     DATABASE_URL: acceptanceDatabaseUrl(),

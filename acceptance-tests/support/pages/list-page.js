@@ -12,9 +12,25 @@ class ListPage {
   }
 
   async open(table) {
-    await this.page.goto(`/featherbase/admin/${encodeURIComponent(table)}`);
-    // A wide screen shows the column headers; a phone shows the rows as cards.
-    await this.headers().first().or(this.page.getByTestId('list-rows').getByRole('listitem').first()).waitFor();
+    // What the server refused while the list opened, to say why if it never shows.
+    const refused = [];
+    const onResponse = (r) => {
+      if (r.url().includes('/api/') && r.status() >= 400) refused.push(`${r.status()} ${r.request().method()} ${r.url()}`);
+    };
+    this.page.on('response', onResponse);
+    try {
+      await this.page.goto(`/featherbase/admin/${encodeURIComponent(table)}`);
+      // A wide screen shows the column headers; a phone shows the rows as cards.
+      await this.headers().first().or(this.page.getByTestId('list-rows').getByRole('listitem').first()).waitFor();
+    } catch (err) {
+      const shown = (await this.page.locator('main').first().innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 300);
+      throw new Error(
+        `the list of ${table} did not show: ${err.message.split('\n')[0]}\n` +
+          `  at ${this.page.url()}\n  showing: ${shown || '(no main)'}\n  refused: ${refused.join('; ') || 'nothing'}`,
+      );
+    } finally {
+      this.page.off('response', onResponse);
+    }
   }
 
   /** Leaves the list for the Admin's home page. */
