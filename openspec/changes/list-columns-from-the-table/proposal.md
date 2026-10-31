@@ -1,4 +1,4 @@
-**Mode:** build
+**Mode:** autopilot
 
 ## Why
 
