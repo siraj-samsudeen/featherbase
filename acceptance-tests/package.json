@@ -4,18 +4,12 @@
   "description": "Runs the fenced Gherkin in openspec/ spec.md files against the real app (spec-as-source).",
   "scripts": {
     "test": "cucumber-js",
-    "test:specs": "cucumber-js -p specs",
-    "lint:specs": "node extract-gherkin.cjs && tsx node_modules/gherklin/bin/gherklin"
+    "test:specs": "cucumber-js -p specs"
   },
   "devDependencies": {
     "@cucumber/cucumber": "^13.3.0",
     "cheerio": "^1.0.0",
-    "gherklin": "1.1.0",
     "glob": "^14.0.3",
-    "playwright": "1.61.1",
-    "tsx": "^4.23.15"
-  },
-  "overrides": {
-    "zod": "^4.6.6"
+    "playwright": "1.61.1"
   }
 }
