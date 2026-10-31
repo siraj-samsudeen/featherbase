@@ -91,8 +91,13 @@ flowchart LR
 ## Risks / Trade-offs
 
 - **The Edit columns save sends the merged meta back**, so the stored value can't be read from
-  the request alone → `updateTable` compares each incoming flag with the stored definition's to
-  decide which overrides to clear.
+  the request alone → `updateTable` counts a column's flag as changed when it differs from the
+  stored definition's **or** from what the column showed (definition plus override).
+  *(Refined during the build, 31-Oct-2026: comparing with the stored value alone missed
+  unticking a column only an override put in the list.)* A consequence: any Edit columns save,
+  even a relabel, writes an `in_list_view` override's value into the definition and deletes the
+  override. What everyone sees doesn't change; Section Mapping's 3 stopgap rows go at the first
+  Edit columns save on that Table.
 - **Stale entries in `shownCols` / `hiddenCols`** (a column later removed, or now equal to the
   default) → harmless: the formula ignores unknown columns, and a redundant entry still means
   what the user chose.
