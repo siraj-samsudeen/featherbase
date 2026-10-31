@@ -35,9 +35,10 @@ function baseSchema(f: ColumnDef): z.ZodTypeAny {
       return z.string()
     case 'Int':
       // The bounds come before .int(): zod 4's .int() also refuses an unsafe
-      // integer, and the first issue is the one reported.
+      // integer, and the first issue is the one reported. Every check names its
+      // own message, so the schema's `error` is only ever the not-a-number one.
       return z.coerce
-        .number({ error: (issue) => (issue.code === 'invalid_type' ? 'must be a whole number' : undefined) })
+        .number({ error: 'must be a whole number' })
         .gte(Number.MIN_SAFE_INTEGER, 'integer out of range')
         .lte(Number.MAX_SAFE_INTEGER, 'integer out of range')
         .int('Expected integer, received float')
