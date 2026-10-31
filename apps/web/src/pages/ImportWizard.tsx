@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
 // imports this file — a strict useSearch would need the route object back)
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { applyColumnCombines, autoMapImportColumns, retiredColumnNotice, coerceRows, combineOverlap, idPatternFor, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
+import { applyColumnCombines, autoMapImportColumns, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, idPatternFor, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
@@ -74,6 +74,10 @@ interface SheetPlan {
   // Per file column, new-Table mode: import this column at all? (Existing
   // mode has the same control via the mapping's "— skip —".)
   include: boolean[]
+  // #738, new-Table mode: the user's own "In list" ticks, per file column.
+  // Absent until the user changes one; until then the ticks follow
+  // listTicks' default, the first seven columns in use.
+  list_ticks?: boolean[]
   // True when the existing target was picked by column-overlap scoring, not
   // by the user — surfaced as a notice so an unnoticed auto-match can't
   // quietly route rows into a lookalike Table.
@@ -135,6 +139,13 @@ const SUGGEST_MIN_SCORE = 0.3 // weakest near-match worth surfacing as a hint
 const CONFIRM_UPDATES_OVER = 20
 const SUGGEST_MAX = 3 // hints shown per sheet
 const ERRORS_ON_SCREEN = 5 // failures listed inline; the log keeps more
+
+// #738: which columns a new Table's list starts with. A column left out of
+// the import (Use unticked) is never in the list.
+function listTicks(plan: Pick<SheetPlan, 'include' | 'list_ticks'>): boolean[] {
+  const own = plan.list_ticks?.length === plan.include.length ? plan.list_ticks : null
+  return own ? own.map((on, i) => on && plan.include[i]) : listColumnsInUse(plan.include)
+}
 
 interface ImportTarget {
   name: string
@@ -1083,7 +1094,7 @@ export function ImportWizard() {
         const cols = mergedColumnsFor(next)
         const rows = mergeSheetRows(cols, next.members.map((m) => sheets[m].rows))
         const inferred = inferTableDef(next.table, cols.map((c) => c.label), rows)
-        return { ...next, inferred, include: inferred.columns.map(() => true), check: null, result: null }
+        return { ...next, inferred, include: inferred.columns.map(() => true), list_ticks: undefined, check: null, result: null }
       }),
     )
   }
@@ -1115,6 +1126,7 @@ export function ImportWizard() {
                 failure: null,
                 inferred,
                 include: inferred.columns.map(() => true),
+                list_ticks: undefined,
                 auto_matched: false,
                 similar: null,
                 mapping: [],
@@ -1150,6 +1162,7 @@ export function ImportWizard() {
         key: null,
         suggested: null,
         include: sheet.headers.map(() => true),
+        list_ticks: undefined,
       })
       return
     }
@@ -1357,17 +1370,19 @@ export function ImportWizard() {
         if (only === undefined && plan.result) continue
         try {
         if (plan.mode === 'new') {
+          const inList = listTicks(plan)
           await api.post('/api/table_def', {
             name: plan.table,
             id_pattern: planIdPattern(plan),
             columns: plan.inferred.columns
-              .filter((c, idx) => c.column_name.trim() && plan.include[idx])
-              .map((c) => ({
+              .map((c, idx) => ({ c, idx }))
+              .filter(({ c, idx }) => c.column_name.trim() && plan.include[idx])
+              .map(({ c, idx }) => ({
                 column_name: c.column_name.trim(),
                 label: c.label.trim() || undefined,
                 column_type: c.column_type,
                 choices: c.column_type === 'Choice' ? c.choices : undefined,
-                in_list_view: c.in_list_view,
+                in_list_view: inList[idx],
               })),
           })
         }
@@ -1850,6 +1865,7 @@ export function ImportWizard() {
         // Index-aligned with plan.inferred.columns: the grid's row N is this
         // merged column, and combines are expressed in its key.
         const groupColumns = merged ? mergedColumnsFor(plan) : []
+        const inList = listTicks(plan)
         const pickedKeys = groupColumns
           .map((c) => c.key)
           .filter((k) => combinePick[`${i}:${k}`])
@@ -1968,6 +1984,9 @@ export function ImportWizard() {
                     className={inputClasses('w-64 py-1')}
                   />
                 </div>
+                {/* #738: the In list column makes the grid wider than a
+                    phone; it scrolls on its own rather than the page. */}
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm" data-testid={`iw-new-grid-${i}`}>
                   <thead className="bg-subtle text-left text-xs text-ink-muted">
                     <tr>
@@ -1981,6 +2000,31 @@ export function ImportWizard() {
                       <th className="px-2 py-1">Label</th>
                       <th className="px-2 py-1">Column name</th>
                       <th className="px-2 py-1">Type</th>
+                      <th className="px-2 py-1 align-bottom">
+                        {/* #738: "Tick all" and "Clear" sit above the In
+                            list column they act on. */}
+                        <div className="flex gap-2 whitespace-nowrap font-normal">
+                          <button
+                            type="button"
+                            onClick={() => setPlan(i, { list_ticks: [...plan.include] })}
+                            data-testid={`iw-list-all-${i}`}
+                            aria-label="Tick all in the list"
+                            className="text-action underline"
+                          >
+                            Tick all
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPlan(i, { list_ticks: plan.include.map(() => false) })}
+                            data-testid={`iw-list-clear-${i}`}
+                            aria-label="Clear the list ticks"
+                            className="text-action underline"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <span className="whitespace-nowrap">In list</span>
+                      </th>
                       <th className="px-2 py-1">Choices</th>
                     </tr>
                   </thead>
@@ -1997,7 +2041,7 @@ export function ImportWizard() {
                       <td className="px-2 py-1 text-center text-ink-subtle" title="always present">
                         🔒
                       </td>
-                      <td className="px-2 py-1" colSpan={5}>
+                      <td className="px-2 py-1" colSpan={6}>
                         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                           <span className={labelClasses('m-0 shrink-0')}>Row ID</span>
                           <div className="min-w-0">
@@ -2121,6 +2165,22 @@ export function ImportWizard() {
                             ))}
                           </select>
                         </td>
+                        <td className="px-2 py-1 text-center">
+                          <label className="cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={inList[ci]}
+                              disabled={!plan.include[ci]}
+                              onChange={(e) =>
+                                setPlan(i, {
+                                  list_ticks: inList.map((v, j) => (j === ci ? e.target.checked : v)),
+                                })
+                              }
+                              data-rowfield="in_list_view"
+                              aria-label={`Show ${c.label || c.column_name} in the list`}
+                            />
+                          </label>
+                        </td>
                         <td className="px-2 py-1 text-xs text-ink-muted">
                           {c.column_type === 'Choice' ? c.choices?.split('\n').join(', ') : ''}
                         </td>
@@ -2128,6 +2188,7 @@ export function ImportWizard() {
                     ))}
                   </tbody>
                 </table>
+                </div>
 
                 {/* #211: the user's own column knowledge, which folding could
                     never supply. Two ticks and a name; the sample values are

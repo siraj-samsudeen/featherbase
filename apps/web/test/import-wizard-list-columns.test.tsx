@@ -71,7 +71,7 @@ test('Tick all ticks every column in use', async ({ admin }) => {
   await openColumnStep(admin, 'iwl all.csv')
   await user.click(field(rowFor('Owner'), 'include'))
 
-  await user.click(screen.getByRole('button', { name: 'Tick all' }))
+  await user.click(screen.getByRole('button', { name: 'Tick all in the list' }))
 
   expect(inList()).toEqual(COLUMNS.map((c) => c !== 'Owner'))
   clearSession()
@@ -81,7 +81,7 @@ test('Clear unticks every column', async ({ admin }) => {
   const user = userEvent.setup()
   await openColumnStep(admin, 'iwl clear.csv')
 
-  await user.click(screen.getByRole('button', { name: 'Clear' }))
+  await user.click(screen.getByRole('button', { name: 'Clear the list ticks' }))
 
   expect(inList()).toEqual(COLUMNS.map(() => false))
   clearSession()
@@ -92,7 +92,7 @@ test('the created table lists exactly the ticked columns in use', async ({ admin
   await openColumnStep(admin, 'iwl created.csv')
   await user.clear(screen.getByTestId('iw-new-name-0'))
   await user.type(screen.getByTestId('iw-new-name-0'), 'Iwl Section Mapping')
-  await user.click(screen.getByRole('button', { name: 'Tick all' }))
+  await user.click(screen.getByRole('button', { name: 'Tick all in the list' }))
   await user.click(field(rowFor('MCH'), 'include'))
 
   await user.click(screen.getByTestId('iw-import'))
