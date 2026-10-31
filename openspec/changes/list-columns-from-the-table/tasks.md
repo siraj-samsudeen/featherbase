@@ -69,13 +69,13 @@
 
 ## 12. Only a System Manager changes the list for everyone (@spec Shaping a table requires the builder authority)
 
-- [ ] 12.1 outer: the scenario
+- [x] 12.1 outer: the scenario
 - [ ] 12.2 inner: "Make this the default for everyone" shows exactly where "Edit columns" shows
 - [ ] 12.3 inner: the definition save refuses a user who isn't a System Manager (expected to pass on its first run: today's check)
 
 ## 13. A platform table's columns are closed to editing (@spec Shaping a table requires the builder authority)
 
-- [ ] 13.1 outer: the scenario (expected to pass on its first run: today's behaviour)
+- [x] 13.1 outer: the scenario (expected to pass on its first run: today's behaviour)
 
 ## 14. My view becomes the default (@spec A System Manager can make their view everyone's default)
 
