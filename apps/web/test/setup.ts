@@ -37,7 +37,7 @@ class SilentWebSocket {
 // test spies on, so tests that spot a page load through console.error saw
 // nothing. Send each report to whatever console.error is at that moment.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const jsdomConsole = (window as any)._virtualConsole as { removeAllListeners(e: string): void; on(e: string, f: (err: Error) => void): void }
+const jsdomConsole = (window as any)._settings.virtualConsole as { removeAllListeners(e: string): void; on(e: string, f: (err: Error) => void): void }
 jsdomConsole.removeAllListeners('jsdomError')
 jsdomConsole.on('jsdomError', (err) => console.error(err))
 
