@@ -5,7 +5,8 @@ import { rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
-import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, listColumns, useMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
+import { dataColumns, defaultColumnNames, isShown, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
@@ -111,8 +112,9 @@ export function ListView({
   const narrow = useMediaQuery(NARROW_QUERY)
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
-  // UI-013: per-user saved settings (sort, hidden columns, filters).
-  const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set())
+  // UI-013 / #738: per-user saved settings — sort, and which columns show,
+  // kept as columns switched on and off on top of the Table's list columns.
+  const [arrangement, setArrangement] = useState<Required<ColumnArrangement>>({ shownCols: [], hiddenCols: [] })
   const [colPickerOpen, setColPickerOpen] = useState(false)
   const [conflictsOpen, setConflictsOpen] = useState(false)
   useEffect(() => setConflictsOpen(false), [table])
@@ -189,7 +191,7 @@ export function ListView({
     setSettingsLoaded(false)
     setSettingsUnsaved(false)
     api
-      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[] } | null }>(
+      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[]; shownCols?: string[] } | null }>(
         `/api/user_settings/${encodeURIComponent(table)}`,
       )
       .then((res) => {
@@ -197,7 +199,10 @@ export function ListView({
         const s = res.settings
         if (s) {
           if (s.sort) setSort(s.sort)
-          if (Array.isArray(s.hiddenCols)) setHiddenCols(new Set(s.hiddenCols))
+          setArrangement({
+            shownCols: Array.isArray(s.shownCols) ? s.shownCols : [],
+            hiddenCols: Array.isArray(s.hiddenCols) ? s.hiddenCols : [],
+          })
         }
         setSettingsLoaded(true)
       })
@@ -214,19 +219,24 @@ export function ListView({
   // Persist settings whenever the user changes them (after the initial load).
   // A save that fails is said, not swallowed (#546): the change still shows
   // now, but the list would open the old way next time.
-  function persist(next: { sort?: typeof sort; hiddenCols?: Set<string> }) {
+  function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement> }) {
     if (!settingsLoaded) return
     api
       .put(`/api/user_settings/${encodeURIComponent(table)}`, {
         sort: next.sort !== undefined ? next.sort : sort,
-        hiddenCols: [...(next.hiddenCols ?? hiddenCols)],
+        ...(next.arrangement ?? arrangement),
       })
       .then(() => setSettingsUnsaved(false))
       .catch(() => setSettingsUnsaved(true))
   }
 
-  const allColumns = meta.data ? listColumns(meta.data) : []
-  const columns = allColumns.filter((c) => !hiddenCols.has(c.column_name))
+  const columns = meta.data ? viewColumns(meta.data, arrangement) : []
+  // The menu (#738): the Table's list columns first, then every other column
+  // the person may read; Row ID is always on.
+  const listDefaults = meta.data ? defaultColumnNames(meta.data) : new Set<string>()
+  const readableColumns = meta.data ? dataColumns(meta.data) : []
+  const inListChoices = readableColumns.filter((c) => listDefaults.has(c.column_name))
+  const otherChoices = readableColumns.filter((c) => !listDefaults.has(c.column_name))
   // A bound table only has updated_at when the source table has a modified
   // column to map (external_modified) — sending it as the explicit order
   // makes the server refuse EVERY list load (a caller-supplied order_by must
@@ -328,15 +338,30 @@ export function ListView({
     persist({ sort: next })
   }
 
-  // UI-013: hide/show a column (persisted per user).
-  function toggleColumn(columnName: string) {
-    setHiddenCols((prev) => {
-      const nextSet = new Set(prev)
-      if (nextSet.has(columnName)) nextSet.delete(columnName)
-      else nextSet.add(columnName)
-      persist({ hiddenCols: nextSet })
-      return nextSet
-    })
+  // UI-013 / #738: switch a column on or off in this person's view (saved
+  // per user).
+  function toggleColumn(columnName: string, on: boolean) {
+    if (!meta.data) return
+    const next = switchColumn(meta.data, arrangement, columnName, on)
+    setArrangement(next)
+    persist({ arrangement: next })
+  }
+  const columnChoice = (col: { column_name: string; label: string | null }) => {
+    const on = isShown(col.column_name, listDefaults, arrangement)
+    return (
+      <label
+        key={col.column_name}
+        className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-subtle"
+      >
+        <input
+          type="checkbox"
+          checked={on}
+          data-testid={`list-col-toggle-${col.column_name}`}
+          onChange={() => toggleColumn(col.column_name, !on)}
+        />
+        {col.label ?? col.column_name}
+      </label>
+    )
   }
 
   // UI-012: bulk actions over the selected rows. The server puts each row
@@ -472,20 +497,21 @@ export function ListView({
                 className={cardClasses('absolute left-0 z-10 mt-1 max-h-72 w-52 max-w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:left-auto sm:right-0')}
                 data-testid="list-columns-popup"
               >
-                {allColumns.map((col) => (
-                  <label
-                    key={col.column_name}
-                    className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-subtle"
+                {/* Row ID names each row, so it is always on. */}
+                <label className="flex items-center gap-2 rounded px-2 py-1 text-sm text-ink-muted">
+                  <input type="checkbox" checked disabled data-testid="list-col-toggle-row_id" />
+                  Row ID
+                </label>
+                {inListChoices.map(columnChoice)}
+                {otherChoices.length > 0 && (
+                  <div
+                    className="mt-1 border-t border-border px-2 pb-1 pt-2 text-xs text-ink-subtle"
+                    data-testid="list-columns-divider"
                   >
-                    <input
-                      type="checkbox"
-                      checked={!hiddenCols.has(col.column_name)}
-                      data-testid={`list-col-toggle-${col.column_name}`}
-                      onChange={() => toggleColumn(col.column_name)}
-                    />
-                    {col.label}
-                  </label>
-                ))}
+                    Not in the list by default
+                  </div>
+                )}
+                {otherChoices.map(columnChoice)}
               </div>
             )}
           </div>
