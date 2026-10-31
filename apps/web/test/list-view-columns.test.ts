@@ -3,7 +3,7 @@
 //   Row ID + (list columns ∪ shownCols) − hiddenCols, in the Table's column order.
 import { describe, expect, it } from 'vitest'
 import type { ColumnDef, TableMeta } from '../src/lib/meta'
-import { viewColumns } from '../src/lib/list-view-columns'
+import { switchColumn, viewColumns } from '../src/lib/list-view-columns'
 
 function column(column_name: string, extra: Partial<ColumnDef> = {}): ColumnDef {
   return {
@@ -60,5 +60,27 @@ describe('viewColumns', () => {
   it('reads an arrangement saved before shown columns existed as it read then', () => {
     const view = viewColumns(sectionMapping(), { hiddenCols: ['floor'] })
     expect(names(view)).toEqual(['row_id', 'section', 'mch'])
+  })
+})
+
+describe('switchColumn', () => {
+  it('switching on a column not in the list adds it to shown', () => {
+    expect(switchColumn(sectionMapping(), { shownCols: [], hiddenCols: [] }, 'remarks', true))
+      .toEqual({ shownCols: ['remarks'], hiddenCols: [] })
+  })
+
+  it('switching on a hidden list column only takes it out of hidden', () => {
+    expect(switchColumn(sectionMapping(), { shownCols: [], hiddenCols: ['floor'] }, 'floor', true))
+      .toEqual({ shownCols: [], hiddenCols: [] })
+  })
+
+  it('switching off a list column adds it to hidden', () => {
+    expect(switchColumn(sectionMapping(), { hiddenCols: [] }, 'floor', false))
+      .toEqual({ shownCols: [], hiddenCols: ['floor'] })
+  })
+
+  it('switching off a column switched on only takes it out of shown', () => {
+    expect(switchColumn(sectionMapping(), { shownCols: ['remarks'], hiddenCols: [] }, 'remarks', false))
+      .toEqual({ shownCols: [], hiddenCols: [] })
   })
 })

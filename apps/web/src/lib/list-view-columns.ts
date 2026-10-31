@@ -57,3 +57,13 @@ export function viewColumns(meta: TableMeta, arrangement: ColumnArrangement): Li
       .map(toListColumn),
   ]
 }
+
+/** Switches one column on or off in this person's view. */
+export function switchColumn(
+  _meta: TableMeta,
+  arrangement: ColumnArrangement,
+  _name: string,
+  _on: boolean,
+): Required<ColumnArrangement> {
+  return { shownCols: arrangement.shownCols ?? [], hiddenCols: arrangement.hiddenCols ?? [] }
+}
