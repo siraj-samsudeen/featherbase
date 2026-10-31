@@ -19,9 +19,10 @@ decisions live in one root-level ADR set.
   [ADR 0006](../../adr/0006-stack-react-hono-postgres.md) records the current
   stack (the Convex-era ADRs 0001–0004 it superseded were deleted in #705);
   later ADRs cover topology, record identity, OpenSpec, and the platform /
-  app / instance layers. ADRs are corrected in place or deleted when they stop
-  matching the code (ADR 0014): read any dated correction note first.
-- **`CLAUDE.md`** at the repo root already carries the architecture invariants
+  app / instance layers. An accepted ADR is never edited; a newer ADR
+  supersedes it (ADR 0015), so follow an ADR's `Supersedes:` chain to what is
+  in force. ADRs before 0015 may carry dated correction notes.
+- **`AGENTS.md`** at the repo root already carries the architecture invariants
   and session protocol. Domain docs supplement it; they don't replace it.
 
 If any of these files don't exist, **proceed silently**. Don't flag their
