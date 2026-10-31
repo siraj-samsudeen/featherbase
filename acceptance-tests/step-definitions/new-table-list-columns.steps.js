@@ -101,12 +101,13 @@ Then('{columns} is in the list as the {ordinal} column', async function (columns
   assert.equal(shown[position - 1], columns[0], `the list shows ${shown.join(', ')}`);
 });
 
-Then("{columns} show(s) only on each row's form", async function (columns) {
-  const list = new ListPage(await this.asSystemManager());
+Then("{columns} show(s) only on each/a row's form", async function (columns) {
+  const page = await this.actor();
+  const list = new ListPage(page);
   await list.open(this.table);
   const shown = await list.columnLabels();
   for (const column of columns) assert.ok(!shown.includes(column), `${column} is in the list: ${shown.join(', ')}`);
   await list.openFirstRow();
-  const form = new FormPage(await this.asSystemManager());
+  const form = new FormPage(page);
   for (const column of columns) assert.ok(await form.showsField(column), `the row's form has no ${column}`);
 });
