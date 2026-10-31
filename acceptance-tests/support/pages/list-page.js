@@ -13,7 +13,8 @@ class ListPage {
 
   async open(table) {
     await this.page.goto(`/featherbase/admin/${encodeURIComponent(table)}`);
-    await this.headers().first().waitFor();
+    // A wide screen shows the column headers; a phone shows the rows as cards.
+    await this.headers().first().or(this.page.getByTestId('list-rows').getByRole('listitem').first()).waitFor();
   }
 
   /** Leaves the list for the Admin's home page. */

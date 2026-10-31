@@ -26,12 +26,12 @@ async function launch() {
   return browser;
 }
 
-async function newPage(storageState) {
-  const context = await (await launch()).newContext({
-    baseURL: BASE_URL,
-    storageState,
-    viewport: { width: 1280, height: 900 },
-  });
+// A desktop screen, and a phone: 375px wide, as the e2e suite's phone tests use.
+const DESKTOP = { width: 1280, height: 900 };
+const PHONE = { width: 375, height: 812 };
+
+async function newPage(storageState, viewport = DESKTOP) {
+  const context = await (await launch()).newContext({ baseURL: BASE_URL, storageState, viewport });
   return { context, page: await context.newPage() };
 }
 
@@ -43,6 +43,17 @@ class FeatherbaseWorld {
     this.sheet = null; // { tableName, fileName, columns, rows } given by a step
     this.table = null; // the table the scenario is about
     this.people = new Map(); // 'the user' / 'a colleague' -> { email, roles, context, page }
+    this.viewport = DESKTOP;
+  }
+
+  /** Every page of this scenario, open now or later, is on a phone-sized screen. */
+  async usePhone() {
+    this.viewport = PHONE;
+    for (const page of this.openPages()) await page.setViewportSize(PHONE);
+  }
+
+  openPages() {
+    return [this.page, ...[...this.people.values()].map((p) => p.page)].filter(Boolean);
   }
 
   /** A browser page signed in as a System Manager (headless, always). */
@@ -54,7 +65,7 @@ class FeatherbaseWorld {
       systemManagerState = await context.storageState();
       await context.close();
     }
-    ({ context: this.context, page: this.page } = await newPage(systemManagerState));
+    ({ context: this.context, page: this.page } = await newPage(systemManagerState, this.viewport));
     return this.page;
   }
 
@@ -77,7 +88,7 @@ class FeatherbaseWorld {
     const person = this.people.get(who);
     if (!person) throw new Error(`no one called "${who}" in this scenario`);
     if (person.page) return person.page;
-    ({ context: person.context, page: person.page } = await newPage());
+    ({ context: person.context, page: person.page } = await newPage(undefined, this.viewport));
     await new LoginPage(person.page).signIn(person.email, PERSON_PASSWORD);
     return person.page;
   }
@@ -118,7 +129,7 @@ class FeatherbaseWorld {
 setWorldConstructor(FeatherbaseWorld);
 
 After(async function ({ result }) {
-  const pages = [this.page, ...[...this.people.values()].map((p) => p.page)].filter(Boolean);
+  const pages = this.openPages();
   if (result?.status === 'FAILED') {
     for (const page of pages) {
       const shot = await page.screenshot({ fullPage: true }).catch(() => null);

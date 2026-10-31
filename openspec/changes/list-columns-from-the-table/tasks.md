@@ -90,7 +90,7 @@
 
 ## 16. Read a list of checklist runs on a phone (@spec Lists fit a phone)
 
-- [ ] 16.1 outer: the scenario (expected to pass on its first run: today's behaviour)
+- [x] 16.1 outer: the scenario (expected to pass on its first run: today's behaviour)
 
 ## 17. Work with a Table's rows on a phone (@spec Lists fit a phone)
 

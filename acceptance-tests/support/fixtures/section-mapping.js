@@ -60,4 +60,4 @@ function sectionMappingTable(listColumns, tableName = 'Section Mapping') {
   return { def, rows, rowIds: ROW_IDS };
 }
 
-module.exports = { SECTION_MAPPING_COLUMNS, ROW_IDS, sheet, toCsv, sectionMappingTable };
+module.exports = { SECTION_MAPPING_COLUMNS, COLUMN_NAMES, ROW_IDS, sheet, toCsv, sectionMappingTable };

@@ -54,6 +54,33 @@ class Api {
       await this.call('POST', `/api/table/${encodeURIComponent(def.name)}`, row, [201], `add a row to ${def.name}`);
   }
 
+  /** Installs one of the platform's sample apps, unless its entry table is already there. */
+  async installSampleApp(name, entryTable) {
+    const has = await this.call('GET', `/api/table/${encodeURIComponent(entryTable)}:meta`);
+    if (has.status() === 200) return;
+    await this.call('POST', '/api/install_app', { name }, [201], `install the ${name} app`);
+  }
+
+  /** Saves a new row through the full trigger chain and returns it as stored. */
+  async saveRow(table, row) {
+    const res = await this.call('POST', '/api/save_row', { table, row }, [201], `add a row to ${table}`);
+    const { row_id } = await res.json();
+    return this.row(table, row_id);
+  }
+
+  /** The row IDs of a table, up to `limit`. */
+  async rowIds(table, limit = 1) {
+    const fields = encodeURIComponent(JSON.stringify(['row_id']));
+    const res = await this.call(
+      'GET',
+      `/api/table/${encodeURIComponent(table)}?fields=${fields}&limit_page_length=${limit}`,
+      undefined,
+      [200],
+      `list ${table}`,
+    );
+    return (await res.json()).data.map((r) => r.row_id);
+  }
+
   /** One row of a table, as stored. */
   async row(table, rowId) {
     const res = await this.call(
