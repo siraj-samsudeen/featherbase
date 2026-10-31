@@ -20,9 +20,10 @@ test.use({ viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true
 anonymousTest.use({ viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true })
 
 // #738: a Table with more list columns than a phone card shows, so its cards
-// carry "N more", and its Show columns menu has rows on both sides of the divider.
+// carry "N more", and its Show columns menu has rows on both sides of the
+// divider — ten of them, as many as a real Table's menu must fit on a phone.
 const WIDE_DT = 'UI Touch Wide'
-const WIDE_COLUMNS = ['title', 'stage', 'owner', 'region', 'amount', 'notes', 'source']
+const WIDE_COLUMNS = ['title', 'stage', 'owner', 'region', 'amount', 'notes', 'source', 'due', 'updated_by_name', 'remarks']
 
 test.beforeAll(async ({ request }) => {
   const auth = await adminAuth(request)
@@ -131,6 +132,17 @@ test('every row of the Show columns menu is big enough for a thumb', async ({ se
   })
 })
 
+test('the Show columns menu of a ten-column Table stays on a phone screen', async ({ session }) => {
+  await session.visit(`/admin/${encodeURIComponent(WIDE_DT)}`).assertHas('[data-testid="list-view"]')
+  await session.step('open Show columns, then measure it against the screen', async ({ page }) => {
+    await page.getByTestId('list-columns').click()
+    const popup = (await page.getByTestId('list-columns-popup').boundingBox())!
+    expect(popup.y + popup.height, 'the menu ends on screen').toBeLessThanOrEqual(812)
+    const last = (await page.getByTestId('list-make-default').boundingBox())!
+    expect(last.y + last.height, '"Make this the default for everyone" is on screen').toBeLessThanOrEqual(812)
+  })
+})
+
 test('the "N more" toggle on a phone card is big enough for a thumb', async ({ session }) => {
   await session.visit(`/admin/${encodeURIComponent(WIDE_DT)}`).assertHas('[data-testid="card-more"]')
   await session.step('measure the cards, then open one card\'s other columns and measure again', async ({ page }) => {
@@ -205,5 +217,32 @@ test.describe('at phone width with a mouse', () => {
         expect(h).toBeGreaterThanOrEqual(MIN)
       }
     })
+  })
+
+  test('the Table Builder\'s list tick is thumb-sized', async ({ session }) => {
+    await session.visit('/admin/new-table').assertHas('[data-testid="dt-fields"] [data-rowfield="in_list_view"]')
+    await session.step('measure the tick\'s label', async ({ page }) => {
+      for (const h of await heights(page, '[data-testid="dt-fields"] label:has([data-rowfield="in_list_view"])')) {
+        expect(h).toBeGreaterThanOrEqual(MIN)
+      }
+    })
+  })
+
+  test('the Edit columns In list tick is thumb-sized', async ({ session }) => {
+    await session.visit(`/admin/${encodeURIComponent(WIDE_DT)}/columns`).assertHas('[data-testid="ce-in-list-title"]')
+    await session.step('measure each tick\'s label', async ({ page }) => {
+      for (const h of await heights(page, 'label:has([data-testid^="ce-in-list-"])')) expect(h).toBeGreaterThanOrEqual(MIN)
+    })
+  })
+})
+
+// #738: on a phone the Table Builder's list tick shows without scrolling the
+// grid sideways, as in the Import Wizard and Edit columns.
+test('the Table Builder\'s list tick shows on a phone without scrolling sideways', async ({ session }) => {
+  await session.visit('/admin/new-table').assertHas('[data-testid="dt-fields"] [data-rowfield="in_list_view"]')
+  await session.step('measure the tick against the screen', async ({ page }) => {
+    const box = (await page.locator('[data-testid="dt-fields"] [data-rowfield="in_list_view"]').first().boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(375)
   })
 })
