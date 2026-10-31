@@ -108,8 +108,8 @@ flowchart LR
 
 No data migration. `user_settings` rows without `shownCols` stay valid (Decision 1); a test pins
 that an old `{ hiddenCols: ["floor"] }` row still hides Floor. The 3 stopgap overrides on
-Section Mapping are not deleted by any migration; each goes when someone changes that column's
-list choice (Decision 3).
+Section Mapping are not deleted by any migration; they go at the first Edit columns save on that
+Table, folded into its definition (Decision 3, Risks).
 
 ## Open Questions
 
