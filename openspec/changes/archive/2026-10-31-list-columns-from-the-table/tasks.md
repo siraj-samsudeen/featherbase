@@ -115,4 +115,4 @@
 - [x] 20.3 The repo's static checks pass (`checks` job, `pnpm check:platform-imports`). (Adjusted: the repo has no unused-code tool such as knip.)
 - [x] 20.4 Types check clean
 - [x] 20.5 Two independent code reviews (a different Claude model with `feather-code-review`, and Codex) find no blockers; rare cases listed in the PR. (Adjusted: the repo has no mutation-testing tool such as Stryker.)
-- [ ] 20.6 `pnpm exec openspec validate list-columns-from-the-table --type change --strict` passes, then sync the specs and archive the change on this branch before the PR merges
+- [x] 20.6 `pnpm exec openspec validate list-columns-from-the-table --type change --strict` passes, then sync the specs and archive the change on this branch before the PR merges
