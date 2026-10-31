@@ -54,6 +54,11 @@ about the code that no check can verify drifts; don't write it down as fact.
    Work goes one issue at a time, on a plain branch in the main checkout: merge
    it before starting the next. No worktrees unless sessions really run in
    parallel.
+   The session where an issue starts is the **manager**: design decisions,
+   reviews and testing happen there with the owner. One **worker** at a time,
+   a task session or a subagent, does the work and reports back to the
+   manager. A worker never takes a question or an approval to the owner
+   directly, and the manager doesn't edit the checkout while a worker runs.
 4. **Verify the way a user would**: HTTP against the running server, and the
    browser for UI. Unit tests alone don't count.
 5. **Record and hand off** in the PR body: what was done, the commands that
