@@ -155,14 +155,28 @@ function columnsOnCard(world, card) {
   return [...new Set([...title, ...figures])];
 }
 
-Then('each card shows three of those columns and says there are {int} more', async function (more) {
+Then('each card is titled by its {word} and shows three of the other six columns', async function (titleColumn) {
   // The list the user just opened, read as cards.
   const cards = (this.cards ??= new ListCards(await this.actor()));
+  const others = this.listColumns.filter((c) => c !== titleColumn);
+  assert.equal(others.length, 6);
   const count = await cards.count();
   for (let n = 0; n < count; n++) {
     const card = await cards.read(n);
-    const shown = columnsOnCard(this, card);
-    assert.equal(shown.length, 3, `card ${n + 1} shows ${shown.length} of the columns: ${shown.join(', ')}`);
+    const row = this.givenRows.find((r) => r.row_id === card.rowId);
+    assert.ok(row, `card ${n + 1} links to ${card.href}, not to one of the rows`);
+    assert.equal(card.title, row[COLUMN_NAMES[titleColumn]], `card ${n + 1} is not titled by its ${titleColumn}`);
+    const figures = card.figures.map((f) => f.label);
+    assert.equal(figures.length, 3, `card ${n + 1} shows ${figures.length} other columns: ${figures.join(', ')}`);
+    for (const label of figures) assert.ok(others.includes(label), `card ${n + 1} shows ${label}`);
+  }
+});
+
+Then('it says there are {int} more', async function (more) {
+  const cards = this.cards;
+  const count = await cards.count();
+  for (let n = 0; n < count; n++) {
+    const card = await cards.read(n);
     assert.match(card.more ?? '', new RegExp(`^${more} more\\b`), `card ${n + 1} says "${card.more}"`);
   }
 });
