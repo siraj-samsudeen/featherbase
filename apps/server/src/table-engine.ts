@@ -979,7 +979,7 @@ async function renameInGlossary(tx: TxSql, table: string, from: { table: string;
 // beyond the link columns declared Reference -> Table (swept by metadata).
 const TABLE_NAME_COLUMNS: readonly [string, string][] = [
   ['custom_field', 'reference_table'], ['custom_field', 'row_table'], ['access_log', 'ref_table'],
-  ['saved_view', 'ref_table'], ['user_settings', 'table_name'], ['tag_link', 'ref_table'], ['import_log', 'table_created'],
+  ['saved_view', 'ref_table'], ['user_settings', 'table_name'], ['tag_link', 'ref_table'],
 ]
 
 // #651: rename one of an app's Tables, keeping its rows, its history, the

@@ -34,7 +34,7 @@
     "mysql2": "^3.24.6",
     "nodemailer": "10.3.1",
     "playwright": "^1.64.1",
-    "postgres": "^3.4.5",
+    "postgres": "^4.0.0",
     "shared": "workspace:*",
     "tsx": "^4.23.15",
     "ws": "^8.22.1",
