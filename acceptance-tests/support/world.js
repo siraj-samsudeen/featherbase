@@ -22,6 +22,10 @@ const { AccountMenu } = require('./pages/account-menu');
 const HEADED = process.env.HEADED === '1';
 const PWDEBUG = Boolean(process.env.PWDEBUG) && process.env.PWDEBUG !== '0';
 const VIDEO = process.env.VIDEO === '1';
+// How slow a VIDEO=1 run is, in ms per browser action.
+const VIDEO_SLOWMO = Number(process.env.VIDEO_SLOWMO ?? 400);
+// Step captions over the pages, only when recording review videos.
+const { showCaption } = VIDEO ? require('./captions') : { showCaption: null };
 setDefaultTimeout(PWDEBUG ? -1 : HEADED || VIDEO ? 300_000 : 60_000);
 
 // In CI (or with TRACE=1) every context is traced; a failed scenario's traces
@@ -43,7 +47,7 @@ let systemManagerState = null; // signed-in storage state, captured once per run
 function launchOptions() {
   if (PWDEBUG) return { headless: false }; // the Inspector does the pausing
   if (HEADED) return { headless: false, slowMo: 400 };
-  if (VIDEO) return { headless: true, slowMo: 400 };
+  if (VIDEO) return { headless: true, slowMo: VIDEO_SLOWMO };
   return { headless: true };
 }
 
@@ -73,12 +77,13 @@ class FeatherbaseWorld {
     this.table = null; // the table the scenario is about
     this.people = new Map(); // 'the user' / 'a colleague' -> { email, roles, context, page }
     this.viewport = DESKTOP;
-    this.scenario = null; // { order, slug }, set before each scenario
-    this.contexts = []; // { who, context, page } for every browser context opened, in order
+    this.scenario = null; // { order, slug, name }, set before each scenario
+    this.contexts = []; // { who, label, context, page } for every browser context opened, in order
+    this.caption = null; // VIDEO=1: the step being run, as written
   }
 
   /** A traced browser context for one of the scenario's people (and its video, with VIDEO=1). */
-  async newPage(who, storageState) {
+  async newPage(who, label, storageState) {
     const context = await (await launch()).newContext({
       baseURL: BASE_URL,
       storageState,
@@ -87,7 +92,11 @@ class FeatherbaseWorld {
     });
     if (TRACE) await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
     const page = await context.newPage();
-    this.contexts.push({ who, context, page });
+    if (showCaption) {
+      // A page opened mid-scenario, or one that navigates, shows the current step too.
+      page.on('domcontentloaded', () => showCaption(page, this.caption));
+    }
+    this.contexts.push({ who, label, context, page });
     return { context, page };
   }
 
@@ -105,7 +114,7 @@ class FeatherbaseWorld {
   async asSystemManager() {
     if (this.page) return this.page;
     systemManagerState ??= await signedInState(SYSTEM_MANAGER.user, SYSTEM_MANAGER.password);
-    ({ context: this.context, page: this.page } = await this.newPage('system-manager', systemManagerState));
+    ({ context: this.context, page: this.page } = await this.newPage('system-manager', 'System Manager', systemManagerState));
     return this.page;
   }
 
@@ -132,7 +141,7 @@ class FeatherbaseWorld {
     if (!person) throw new Error(`no one called "${who}" in this scenario`);
     if (person.page) return person.page;
     const state = await signedInState(person.email, PERSON_PASSWORD);
-    ({ context: person.context, page: person.page } = await this.newPage(slug(who), state));
+    ({ context: person.context, page: person.page } = await this.newPage(slug(who), who, state));
     return person.page;
   }
 
@@ -175,7 +184,7 @@ BeforeAll(function () {
 
 Before(function ({ pickle }) {
   scenarioCount += 1;
-  this.scenario = { order: String(scenarioCount).padStart(2, '0'), slug: slug(pickle.name) };
+  this.scenario = { order: String(scenarioCount).padStart(2, '0'), slug: slug(pickle.name), name: pickle.name };
 });
 
 After(async function ({ result }) {
@@ -188,7 +197,7 @@ After(async function ({ result }) {
   }
   // "<slug>" when the scenario opened one browser, "<slug>-<who>" for each when more.
   const name = (who) => (this.contexts.length > 1 ? `${this.scenario.slug}-${who}` : this.scenario.slug);
-  for (const { who, context, page } of this.contexts) {
+  for (const { who, label, context, page } of this.contexts) {
     if (TRACE && failed) {
       fs.mkdirSync(TRACES, { recursive: true });
       await context.tracing.stop({ path: path.join(TRACES, `${name(who)}.zip`) });
@@ -198,8 +207,12 @@ After(async function ({ result }) {
     const video = VIDEO ? page.video() : null;
     await context.close();
     if (video) {
-      await video.saveAs(path.join(VIDEOS, `${this.scenario.order}-${name(who)}.webm`));
+      const file = `${this.scenario.order}-${name(who)}.webm`;
+      await video.saveAs(path.join(VIDEOS, file));
       await video.delete();
+      // What `npm run video:journey` puts on each clip's title card.
+      const entry = { file, order: this.scenario.order, scenario: this.scenario.name, who: label };
+      fs.appendFileSync(path.join(VIDEOS, 'clips.jsonl'), `${JSON.stringify(entry)}\n`);
     }
   }
 });
