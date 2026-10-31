@@ -25,6 +25,10 @@ import { sendImportRun } from '../lib/import-run'
 import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, touchRowClasses, touchTargetClasses } from '../components/ui'
 import { fmtCount, fmtDate, fmtDay } from '../lib/inr'
 
+// #738: a grid tick's label is its thumb-sized target at phone width, under a
+// mouse too (a touch screen gets that from the base stylesheet).
+const PHONE_TICK = 'max-sm:inline-flex max-sm:size-touch max-sm:items-center max-sm:justify-center'
+
 // #738: a new table's first LIST_COLUMNS_ON_CREATE columns start in its
 // list, however they arrive; the user can untick any before creating.
 const columnAt = (position: number): BuilderColumn => ({
@@ -532,13 +536,15 @@ export function TableBuilder() {
             <thead className="bg-subtle text-left">
               <tr>
                 <th className={`min-w-40 px-3 py-2 ${KICKER}`}>Field label</th>
+                {/* #738: List follows the label, so a phone shows it without
+                    scrolling the grid sideways. */}
+                <th className={`px-2 py-2 ${KICKER}`} title="Shown in the list view">List</th>
                 <th className={`min-w-32 px-2 py-2 ${KICKER}`}>
                   Database name <span className="font-normal normal-case tracking-normal">(auto)</span>
                 </th>
                 <th className={`min-w-36 px-2 py-2 ${KICKER}`}>Type</th>
                 <th className={`min-w-40 px-2 py-2 ${KICKER}`}>Details</th>
                 <th className={`px-2 py-2 ${KICKER}`} title="Must be filled in every row">Reqd</th>
-                <th className={`px-2 py-2 ${KICKER}`} title="Shown in the list view">List</th>
                 <th />
               </tr>
             </thead>
@@ -579,6 +585,17 @@ export function TableBuilder() {
                         placeholder="e.g. Date of Birth"
                         className={CELL_INPUT}
                       />
+                    </td>
+                    <td className="px-2 py-2 text-center align-middle">
+                      <label className={`cursor-pointer ${PHONE_TICK}`}>
+                        <input
+                          type="checkbox"
+                          checked={c.in_list_view}
+                          onChange={(e) => setColumn(i, { in_list_view: e.target.checked })}
+                          data-rowfield="in_list_view"
+                          className="accent-action"
+                        />
+                      </label>
                     </td>
                     <td className="px-2 py-2">
                       <input
@@ -651,23 +668,12 @@ export function TableBuilder() {
                       />
                     </td>
                     <td className="px-2 py-2 text-center align-middle">
-                      <label className="cursor-pointer">
+                      <label className={`cursor-pointer ${PHONE_TICK}`}>
                         <input
                           type="checkbox"
                           checked={c.reqd}
                           onChange={(e) => setColumn(i, { reqd: e.target.checked })}
                           data-rowfield="reqd"
-                          className="accent-action"
-                        />
-                      </label>
-                    </td>
-                    <td className="px-2 py-2 text-center align-middle">
-                      <label className="cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={c.in_list_view}
-                          onChange={(e) => setColumn(i, { in_list_view: e.target.checked })}
-                          data-rowfield="in_list_view"
                           className="accent-action"
                         />
                       </label>

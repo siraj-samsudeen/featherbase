@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { rowDisplayTitle } from 'shared'
@@ -119,6 +119,18 @@ export function ListView({
   // kept as columns switched on and off on top of the Table's list columns.
   const [arrangement, setArrangement] = useState<Required<ColumnArrangement>>({ shownCols: [], hiddenCols: [] })
   const [colPickerOpen, setColPickerOpen] = useState(false)
+  // #738: the Show columns menu grows into the space below its button and no
+  // further, so it ends on screen; it scrolls inside only when that is short.
+  const colPickerRef = useRef<HTMLDivElement>(null)
+  const [colPickerMax, setColPickerMax] = useState<number | undefined>(undefined)
+  useLayoutEffect(() => {
+    const el = colPickerRef.current
+    if (!colPickerOpen || !el) return
+    const fit = () => setColPickerMax(Math.max(160, window.innerHeight - el.getBoundingClientRect().top - 12))
+    fit()
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [colPickerOpen])
   const [conflictsOpen, setConflictsOpen] = useState(false)
   useEffect(() => setConflictsOpen(false), [table])
   const [settingsLoaded, setSettingsLoaded] = useState(false)
@@ -525,7 +537,9 @@ export function ListView({
                 // #581: on a phone the button starts the wrapped toolbar,
                 // so the pop-up opens from its left edge; from sm up it
                 // lines up with the button's right edge as before.
+                ref={colPickerRef}
                 className={cardClasses('absolute left-0 z-10 mt-1 max-h-[calc(100dvh-12rem)] w-52 max-w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:left-auto sm:right-0')}
+                style={colPickerMax ? { maxHeight: colPickerMax } : undefined}
                 data-testid="list-columns-popup"
               >
                 {/* Row ID names each row, so it is always on. */}
@@ -544,7 +558,8 @@ export function ListView({
                 )}
                 {otherChoices.map(columnChoice)}
                 {canShapeColumns && (
-                  <div className="mt-1 border-t border-border pt-1">
+                  // Pinned to the menu's foot, so it shows even when the rows scroll.
+                  <div className="sticky -bottom-2 -mx-2 -mb-2 mt-1 border-t border-border bg-surface px-2 pb-2 pt-1">
                     <button
                       type="button"
                       className={touchRowClasses(`flex w-full items-center rounded px-2 py-1 text-left text-sm text-action hover:bg-subtle disabled:opacity-50 ${PHONE_ROW}`)}

@@ -281,7 +281,7 @@ export function ColumnEditor() {
                     {/* Only a column a list can show gets a tick. */}
                     {!NO_COLUMN_TYPES.has(column.column_type) && !column.hidden && (
                       // The box is small; the label around it is the thumb-sized target.
-                      <label className="inline-flex size-control cursor-pointer items-center justify-center">
+                      <label className="inline-flex size-control cursor-pointer items-center justify-center max-sm:size-touch">
                         <input
                           type="checkbox"
                           aria-label={`In list: ${column.label ?? column.column_name}`}
