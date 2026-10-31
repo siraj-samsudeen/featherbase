@@ -3,7 +3,7 @@
 //   Row ID + (list columns ∪ shownCols) − hiddenCols, in the Table's column order.
 import { describe, expect, it } from 'vitest'
 import type { ColumnDef, TableMeta } from '../src/lib/meta'
-import { dataColumns, switchColumn, viewColumns } from '../src/lib/list-view-columns'
+import { dataColumns, listFlagsFromView, switchColumn, viewColumns } from '../src/lib/list-view-columns'
 
 function column(column_name: string, extra: Partial<ColumnDef> = {}): ColumnDef {
   return {
@@ -99,5 +99,41 @@ describe('a caller who may read only basic columns', () => {
 
   it('is not offered a restricted column', () => {
     expect(names(dataColumns(withRestrictedNotes()))).toEqual(['section', 'mch', 'floor', 'remarks'])
+  })
+})
+
+// #738 (Decision 3): "Make this the default for everyone" sets each data
+// column's in_list_view to whether it shows in the System Manager's view.
+describe('listFlagsFromView', () => {
+  const flags = (meta: TableMeta) =>
+    Object.fromEntries(meta.columns.map((c) => [c.column_name, Boolean(c.in_list_view)]))
+
+  it("flags each data column by whether it shows in this person's view", () => {
+    const next = listFlagsFromView(sectionMapping(), { shownCols: ['remarks'], hiddenCols: ['mch'] })
+    expect(flags(next)).toEqual({ section: true, mch: false, floor: true, remarks: true, notes: false })
+  })
+
+  it('leaves a column no list can show as it was', () => {
+    const meta = sectionMapping({ columns: [...sectionMapping().columns, column('secret', { hidden: true, in_list_view: true })] })
+    expect(flags(listFlagsFromView(meta, {})).secret).toBe(true)
+  })
+})
+
+// #738 (Decision 1): a colleague's own sets apply on top of a changed default.
+describe("a colleague's choices on a changed default", () => {
+  const colleague = { shownCols: ['notes'], hiddenCols: ['floor'] }
+  const newDefault = () =>
+    sectionMapping({
+      columns: sectionMapping().columns.map((c) =>
+        c.column_name === 'notes' ? { ...c, in_list_view: false } : c.column_name === 'floor' ? { ...c, in_list_view: true } : c,
+      ),
+    })
+
+  it('still shows a column they switched on that the default leaves out', () => {
+    expect(names(viewColumns(newDefault(), colleague))).toContain('notes')
+  })
+
+  it('still hides a column they switched off that the default includes', () => {
+    expect(names(viewColumns(newDefault(), colleague))).not.toContain('floor')
   })
 })

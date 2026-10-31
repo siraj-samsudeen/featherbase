@@ -61,7 +61,11 @@ test('the menu lists Row ID, the list columns, then the rest under "Not in the l
   await openList(admin)
   const menu = await openMenu()
   const lines = [...menu.children].map((el) => (el.textContent ?? '').trim())
-  expect(lines).toEqual(['Row ID', 'Section', 'Floor', 'Not in the list by default', 'Remarks', 'Notes'])
+  expect(lines).toEqual([
+    'Row ID', 'Section', 'Floor', 'Not in the list by default', 'Remarks', 'Notes',
+    // A System Manager's menu ends with the way to make this view everyone's.
+    'Make this the default for everyone',
+  ])
 })
 
 test('the list columns start ticked and the rest unticked', async ({ admin }) => {
@@ -145,4 +149,65 @@ test('switching off every column leaves one row per row, each showing its ID', a
     const rows = within(screen.getByTestId('list-rows')).getAllByRole('row')
     expect(rows.map((r) => r.textContent).sort()).toEqual([...ids].sort())
   })
+})
+
+// #738 (Decision 3): "Make this the default for everyone", at the foot of the
+// menu, offered exactly where "Edit columns" is.
+const MAKE_DEFAULT = 'Make this the default for everyone'
+const metaUrl = `/api/table/${encodeURIComponent(DT)}:meta`
+type Meta = { columns: { column_name: string; in_list_view?: boolean }[] }
+
+test('a System Manager is offered "Make this the default for everyone" at the foot of the menu', async ({ admin }) => {
+  await seedTable(admin)
+  await openList(admin)
+  const menu = await openMenu()
+  expect(menu.lastElementChild).toHaveTextContent(MAKE_DEFAULT)
+  expect(screen.getByTestId('open-columns')).toBeInTheDocument()
+})
+
+test('a reader who is not a System Manager is not offered it, nor "Edit columns"', async ({ admin, createUser }) => {
+  await seedTable(admin)
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Lc Reader' } })
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: 'Lc Reader', tier: 'basic', can_read: true } })
+  const reader = await createUser({ email: 'lc.reader@example.com', roles: ['Lc Reader'] })
+  await openList(reader)
+  const menu = await openMenu()
+  expect(within(menu).queryByRole('button', { name: MAKE_DEFAULT })).not.toBeInTheDocument()
+  expect(screen.queryByTestId('open-columns')).not.toBeInTheDocument()
+})
+
+test('a Table whose columns belong to the platform offers neither', async ({ admin }) => {
+  await renderApp('/featherbase/admin/Import%20Log', admin)
+  await screen.findByTestId('list-view')
+  const menu = await openMenu()
+  expect(within(menu).queryByRole('button', { name: MAKE_DEFAULT })).not.toBeInTheDocument()
+  expect(screen.queryByTestId('open-columns')).not.toBeInTheDocument()
+})
+
+async function makeDefaultFromView(admin: Admin) {
+  await seedTable(admin)
+  await openList(admin)
+  await openMenu()
+  screen.getByTestId('list-col-toggle-remarks').click()
+  await settledSettings(admin, { shownCols: ['remarks'] })
+  screen.getByTestId('list-col-toggle-floor').click()
+  await settledSettings(admin, { hiddenCols: ['floor'] })
+  within(screen.getByTestId('list-columns-popup')).getByRole('button', { name: MAKE_DEFAULT }).click()
+}
+
+test("making the default puts the System Manager's view in the Table's list", async ({ admin }) => {
+  await makeDefaultFromView(admin)
+  await waitFor(async () => {
+    const meta = (await admin.get(metaUrl)) as Meta
+    expect(Object.fromEntries(meta.columns.map((c) => [c.column_name, Boolean(c.in_list_view)]))).toEqual({
+      section: true, floor: false, remarks: true, notes: false,
+    })
+  })
+  await settledSettings(admin, { shownCols: [], hiddenCols: [] })
+})
+
+test("after making the default, the System Manager's own shown and hidden sets are empty", async ({ admin }) => {
+  await makeDefaultFromView(admin)
+  await settledSettings(admin, { shownCols: [], hiddenCols: [] })
+  await waitFor(() => expect(headers()).toEqual(['Row ID', 'Section', 'Remarks']))
 })
