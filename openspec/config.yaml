@@ -35,6 +35,7 @@ context: |
 rules:
   proposal:
     - Keep it short and say why in terms of what users get.
+    - List the capabilities (New, then Modified) in the order a person meets them in the user journey. The acceptance suite runs the change's scenarios, and records review videos, in that order.
     - Must use grill-me skill - one decision per question, showing the text it will write into the artifact (paraphrased is fine), with the alternatives
     # - Must use adversarial-authoring skill - only with the owner's consent (CLAUDE.md § Review guidelines)
   design:
