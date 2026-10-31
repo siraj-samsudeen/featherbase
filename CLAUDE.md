@@ -51,6 +51,9 @@ about the code that no check can verify drifts; don't write it down as fact.
    and the relevant specs. Don't re-derive what an ADR already decided.
 2. **Boot.** Run `./init.sh`. If the app is broken, fixing it is the task.
 3. **One piece of work per session**, done fully: small, complete and working.
+   Work goes one issue at a time, on a plain branch in the main checkout: merge
+   it before starting the next. No worktrees unless sessions really run in
+   parallel.
 4. **Verify the way a user would**: HTTP against the running server, and the
    browser for UI. Unit tests alone don't count.
 5. **Record and hand off** in the PR body: what was done, the commands that
