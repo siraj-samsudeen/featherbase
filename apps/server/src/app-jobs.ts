@@ -27,9 +27,9 @@ const CADENCES = Object.keys(CADENCE_SECONDS) as [string, ...string[]]
 
 const jobSchema = z.object({
   name: identifier,
-  cadence: z.enum(CADENCES, { errorMap: () => ({ message: `A job's cadence must be one of ${CADENCES.join(', ')}` }) }),
+  cadence: z.enum(CADENCES, { error: `A job's cadence must be one of ${CADENCES.join(', ')}` }),
   description: z.string().trim().min(1),
-  grants: z.array(z.enum(APP_JOB_GRANTS, { errorMap: () => ({ message: `A job grant must be one of ${APP_JOB_GRANTS.join(', ')}` }) }))
+  grants: z.array(z.enum(APP_JOB_GRANTS, { error: `A job grant must be one of ${APP_JOB_GRANTS.join(', ')}` }))
     .refine(distinct, 'A job names each grant once').optional(),
   // The identifier systems, by key, whose values `read_people` hands it.
   identifiers: z.array(z.string().regex(IDENTIFIER_SYSTEM_KEY)).refine(distinct).optional(),

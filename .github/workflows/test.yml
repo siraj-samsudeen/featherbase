@@ -289,6 +289,7 @@ jobs:
           --coverage.thresholds.functions=0 --coverage.thresholds.branches=0
           --shard=${{ matrix.shard }}/3
           --reporter=default --reporter=blob
+          --outputFile.blob=.vitest-reports/blob-${{ matrix.shard }}.json
 
       # upload-artifact skips dot-directories unless told otherwise.
       - name: Upload shard report
@@ -463,7 +464,7 @@ jobs:
         env:
           # Keep the driver in the denominator. Merging never connects.
           MYSQL_TEST_URL: mysql://root@127.0.0.1:3306
-        run: pnpm --filter server exec vitest run --merge-reports --coverage
+        run: pnpm --filter server exec vitest run --merge-reports=.vitest-reports --coverage
 
   # Production runs PostgreSQL 18.6, where the release preflight has checks
   # that only exist there (publish_generated_columns, #399). The full suite

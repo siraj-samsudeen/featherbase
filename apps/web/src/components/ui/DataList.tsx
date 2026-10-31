@@ -259,7 +259,8 @@ export function DataCards<Row>({
                       'Show fewer'
                     ) : (
                       <>
-                        {more} more<span className="sr-only"> columns</span>
+                        {/* The space sits outside the sr-only span: an accessible-name calculator that sees the span as inline trims the space inside it ("2 morecolumns"). */}
+                        {more} more <span className="sr-only">columns</span>
                       </>
                     )}
                   </Button>

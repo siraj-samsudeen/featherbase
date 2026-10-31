@@ -5,8 +5,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import libCoverage from 'istanbul-lib-coverage'
-import libSourceMaps from 'istanbul-lib-source-maps'
+// Vitest's own forks of the coverage map and remapper, the ones
+// @vitest/coverage-istanbul uses: browser maps must remap exactly as the
+// component and unit maps were, or a branch arm with no end mapping is kept on
+// one side and dropped on the other.
+import * as libCoverage from '@vitest/istanbul-lib-coverage'
+import * as libSourceMaps from '@vitest/istanbul-lib-source-maps'
 import libReport from 'istanbul-lib-report'
 import reports from 'istanbul-reports'
 
