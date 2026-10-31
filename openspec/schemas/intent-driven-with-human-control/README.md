@@ -9,10 +9,11 @@ A fork of the `intent-driven` schema below. Two differences, both in the build p
 
 Everything else — proposal, specs, design, adr — is the upstream schema unchanged.
 
-This schema serves two of the fork's three modes, **build** and **learning**; the proposal's
-`**Mode:**` line says which. The third mode, **autopilot**, uses the upstream `intent-driven`
-schema. A change picks its schema when it is created (`openspec new change <name> --schema
-<schema>`); this one is the default in `openspec/config.yaml`. See the `change-modes` skill.
+This schema serves all three of the fork's modes, **autopilot**, **build** and **learning**. The
+mode is chosen in the session and never recorded in the change, so switching it changes no file
+(corrected 31-Oct-2026, #738: autopilot used to mean the upstream `intent-driven` schema, and a
+`**Mode:**` line recorded the mode). It is the default schema in `openspec/config.yaml`. See the
+`change-modes` skill.
 
 ---
 

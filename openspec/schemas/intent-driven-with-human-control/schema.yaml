@@ -319,6 +319,7 @@ apply:
     commit red; write the minimal code, run the suite, commit green; stop for a refactor only
     when there is a named smell. Mark the task done after its green commit, add newly
     discovered inner tests as `(added)`, and continue to the next task without asking.
-    Read the `**Mode:**` line in proposal.md: `build` uses the skill's build mode; `learning`
-    uses its learning mode, which also stops before every command to show it, explain it, wait
-    for "run", then interpret the result.
+    The session's mode (never recorded in the change; the change-modes skill) decides the stops:
+    build uses the skill's build mode; learning also stops before every command to show it,
+    explain it, wait for "run", then interpret the result; autopilot runs the same list through
+    the senior-qa and senior-dev sub-agents without per-test stops.

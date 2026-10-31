@@ -1,6 +1,6 @@
 ---
 name: outside-in-tdd
-description: The human-controlled build loop for an OpenSpec change — one planning artifact per commit, then one stop per test (the human's prediction) with red, green and refactor as separate commits that record the human's prediction and the real output. Use for every change in build or learning mode (schema intent-driven-with-human-control): planning artifacts, code, tests, dependencies and config. Not for autopilot changes.
+description: The human-controlled build loop for an OpenSpec change — one planning artifact per commit, then one stop per test (the human's prediction) with red, green and refactor as separate commits that record the human's prediction and the real output. Use whenever the session builds a change in build or learning mode (the mode is session state, the change-modes skill): planning artifacts, code, tests, dependencies and config. Not while the session is in autopilot.
 ---
 
 # Outside-in TDD with the human in control
@@ -39,8 +39,7 @@ instead. (A third mode, **autopilot**, does not use this skill — see the `chan
 ## Learning mode
 
 For students and newcomers, who learn from every command, not just from the decisions. It is
-chosen per change, when the change is created, and recorded as `**Mode:** learning` on the first
-line of its `proposal.md`. It starts with the very first command of that change.
+chosen in the session (never recorded in the change) and applies from the next command on.
 
 In learning mode, every command is a stop — including read-only ones (listing files, checking a
 branch, querying GitHub) and small ones (creating a directory):

@@ -1,47 +1,32 @@
 ---
 name: change-modes
-description: The three ways an OpenSpec change can run here (autopilot, build, learning), how one is chosen and recorded, the defaults that are never asked, and the git flow (proposal PR first). Use when creating, resuming or applying an OpenSpec change, when the human names a mode ("autopilot", "learning mode"), or when an openspec-* skill ends a step by asking whether to continue.
+description: The three ways an OpenSpec change can be built here (autopilot, build, learning), how the mode is chosen and switched in the session, the defaults that are never asked, and the git flow (one PR per change). Use when creating, resuming or applying an OpenSpec change, when the human names a mode ("autopilot", "learning mode"), or when an openspec-* skill ends a step by asking whether to continue.
 ---
 
 # Change modes
 
-## The three modes, chosen per change when it is created
+## The three modes, chosen in the session
 
-| Mode | Who it is for | Create it with | Schema |
-|---|---|---|---|
-| **Autopilot** | Work the human wants done, not followed step by step | `pnpm exec openspec new change <name> --schema intent-driven` | `intent-driven` |
-| **Build** (default) | A maintainer who wants control with few stops | `pnpm exec openspec new change <name>` | `intent-driven-with-human-control` |
-| **Learning** | A student or newcomer who learns from every command | `pnpm exec openspec new change <name>` | `intent-driven-with-human-control` |
+Every change uses the one schema, `intent-driven-with-human-control`
+(`pnpm exec openspec new change <name>`). Its planning artifacts are the same in every mode:
+specs carry fenced Gherkin that cucumber-js runs (`spec-as-source`), and `tasks.md` is the test
+list. The mode decides only who builds and where the human stops:
 
-In every mode, a spec's scenarios are fenced Gherkin and cucumber-js runs them as the acceptance
-tests (`spec-as-source`). The mode decides who builds and where the human stops, not how specs
-are written.
+| Mode | Who it is for | How apply runs |
+|---|---|---|
+| **Autopilot** | Work the human wants done, not followed step by step | `senior-qa` writes the acceptance tests, `senior-dev` the code, through the same test list; no per-test stops |
+| **Build** (default) | A maintainer who wants control with few stops | `outside-in-tdd`: one stop per test for the human's prediction; red, green and refactor as separate commits, in the main session |
+| **Learning** | A student or newcomer who learns from every command | Build, plus a stop before every command: show it, explain it, wait for "run", interpret the result (`outside-in-tdd` § Learning mode) |
 
-- **Autopilot** is the upstream flow. The human reviews the planning artifacts (grill-me still
-  applies); tasks are acceptance-test first (`spec-as-source`); apply hands acceptance tests to the `senior-qa` subagent and source work to `senior-dev`, and
-  several changes may run in parallel worktrees (`openspec-bulk-apply-change`).
-- **Build** follows the `outside-in-tdd` skill: one commit per planning artifact, then one stop
-  per test for the human's prediction, with red, green and refactor as separate commits. The
-  work stays in the main session.
-- **Learning** is build mode plus a stop before every command: show it, explain it, wait for
-  "run", interpret the result (`outside-in-tdd` § Learning mode).
+**The mode is session state, never written into the change.** No `**Mode:**` line, no
+per-mode schema: the human switches mode whenever they like ("go autopilot from here"), and a
+switch changes no file. A session that resumes a change without being told the mode uses build
+and says so, so the human can switch.
 
-The human names the mode when asking for the change ("new change add-login, learning mode").
-If they do not, use build and say so in the same message as the first draft, so they can switch.
-For the `openspec-new-change` and `openspec-propose` skills, "autopilot" counts as the human
-naming the `intent-driven` schema, so pass `--schema intent-driven`.
+In every mode the human reviews the planning artifacts (grill-me still applies).
 
-The mode is recorded twice, so any agent resuming the change knows it: the schema in the
-change's `.openspec.yaml` (`pnpm exec openspec status --change <name>` prints it) and the first
-line of `proposal.md` (`**Mode:** autopilot | build | learning`). Mode-specific lines in
-`openspec/config.yaml` say which mode they apply to.
-
-To change a change's mode later: between build and learning, edit the `**Mode:**` line; to or
-from autopilot, also change `schema:` in its `.openspec.yaml` and redo `tasks.md`, since the two
-schemas plan tasks differently.
-
-Changes created before this template (schema `spec-driven`) keep their schema and carry no
-`**Mode:**` line; finish them as they are.
+Changes created before this template (schema `spec-driven`, or `intent-driven` with a
+`**Mode:**` line) keep their files; finish them in whatever mode the session uses.
 
 ## Defaults — never ask
 

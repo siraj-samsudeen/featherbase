@@ -7,16 +7,18 @@
 > OpenSpec stays the sole behaviour contract.
 >
 > - The stock `core` profile gives way to the **intent-driven template**
->   (`proposal → specs → design → adr → tasks`), and each change picks a mode
->   when it is created (autopilot, build or learning; see ADR 0014 §6).
+>   (`proposal → specs → design → adr → tasks`), and a change is built in a
+>   mode (autopilot, build or learning) chosen in the session, never recorded in
+>   the change (corrected 31-Oct-2026, #738; see ADR 0014 §6).
 > - **One change, one PR**: planning, build and archive on one branch; the
 >   change is archived as the branch's last step. (Corrected 31-Oct-2026, #738:
 >   this was "the proposal merges first in its own PR, archive on `main` after
 >   the implementation merges", made for parallel worktrees; the owner works one
 >   change at a time.)
 >
-> Adopted by [#703](https://github.com/siraj-samsudeen/featherbase/issues/703): build mode
-> (`intent-driven-with-human-control`) is the default schema, the modes are
+> Adopted by [#703](https://github.com/siraj-samsudeen/featherbase/issues/703):
+> `intent-driven-with-human-control` is the schema for every change (since
+> 31-Oct-2026, whatever the mode), the modes are
 > described in the `change-modes` skill, and `pnpm check:specs` reports a
 > finished, unarchived change instead of failing, failing a PR only when that
 > change was already finished on `main`. Changes created earlier keep

@@ -141,7 +141,8 @@ merge commits only, so a PR's steps stay readable. `docs/TESTING.md` has the det
 - **OpenSpec.** OpenSpec runs with the intent-driven template's
   `proposal → specs → design → adr → tasks` chain, from the owner's fork
   `intent-driven-with-human-control`.
-  - Each change picks a mode when it is created:
+  - A change is built in a mode chosen in the session, switchable at any time
+    and never recorded in the change (corrected 31-Oct-2026, #738):
     - **autopilot**: subagents build;
     - **build**: one test at a time, the human predicting each failure;
     - **learning**: build, plus every command shown and explained first.
