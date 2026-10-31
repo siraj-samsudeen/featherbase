@@ -121,3 +121,28 @@ test('a reader of basic columns only is not offered a restricted column', async 
   const menu = await openMenu()
   expect(within(menu).queryByRole('checkbox', { name: 'Notes' })).not.toBeInTheDocument()
 })
+
+// QA saw 3 rows for 2 once every column was off. Switching Row ID off used to
+// drop row_id from the fetched fields, so rows came back without it, shared
+// the React key "undefined", and a stale row survived the next fetch.
+test('switching off every column leaves one row per row, each showing its ID', async ({ admin }) => {
+  await seedTable(admin)
+  await admin.post('/api/save_row', { table: DT, row: { section: 'Kids Wear', floor: 'First' } })
+  await openList(admin)
+  await openMenu()
+  for (const name of ['row_id', 'section', 'floor']) {
+    const box = screen.getByTestId(`list-col-toggle-${name}`) as HTMLInputElement
+    if (box.checked && !box.disabled) {
+      box.click()
+      await waitFor(() => expect(screen.queryByTestId(`col-${name}`)).not.toBeInTheDocument())
+    }
+  }
+  await settledSettings(admin, { hiddenCols: ['section', 'floor'] })
+  const ids = (await admin.get<{ data: { row_id: string }[] }>(
+    `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id"]')}`,
+  )).data.map((r) => r.row_id)
+  await waitFor(() => {
+    const rows = within(screen.getByTestId('list-rows')).getAllByRole('row')
+    expect(rows.map((r) => r.textContent).sort()).toEqual([...ids].sort())
+  })
+})
