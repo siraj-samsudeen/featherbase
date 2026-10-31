@@ -58,12 +58,19 @@ export function viewColumns(meta: TableMeta, arrangement: ColumnArrangement): Li
   ]
 }
 
-/** Switches one column on or off in this person's view. */
+/** Switches one column on or off in this person's view. Switching on takes
+ *  it out of hidden and, when it isn't a list column, adds it to shown;
+ *  switching off does the reverse — so neither set holds a redundant entry. */
 export function switchColumn(
-  _meta: TableMeta,
+  meta: TableMeta,
   arrangement: ColumnArrangement,
-  _name: string,
-  _on: boolean,
+  name: string,
+  on: boolean,
 ): Required<ColumnArrangement> {
-  return { shownCols: arrangement.shownCols ?? [], hiddenCols: arrangement.hiddenCols ?? [] }
+  const inList = defaultColumnNames(meta).has(name)
+  const shown = (arrangement.shownCols ?? []).filter((c) => c !== name)
+  const hidden = (arrangement.hiddenCols ?? []).filter((c) => c !== name)
+  if (on && !inList) shown.push(name)
+  if (!on && inList) hidden.push(name)
+  return { shownCols: shown, hiddenCols: hidden }
 }
