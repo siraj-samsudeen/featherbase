@@ -29,7 +29,7 @@ import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirec
 import { sendInvitation } from './invitation-email'
 import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
-import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
+import { assertPermission, assertSystemManager, getRoles, permissionScope, permittedTiers, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
 import { landingAfterSignIn, openAdminFor } from './landing'
@@ -2164,7 +2164,10 @@ app.get('/api/table/:table', async (c) => {
   if (suffix === 'meta') {
     const meta = await getMeta(table)
     await assertPermission(user.row_id, meta.name, 'read')
-    return c.json(meta)
+    // #738: the caller's readable levels ride beside the cached meta, never
+    // inside it — the meta object is shared by every caller.
+    const readable = await permittedTiers(user.row_id, meta.name, 'read')
+    return c.json({ ...meta, readable_tiers: [...readable] })
   }
   if (suffix === 'count') {
     const filters = c.req.query('filters')
