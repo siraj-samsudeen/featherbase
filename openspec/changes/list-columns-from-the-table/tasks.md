@@ -8,25 +8,25 @@
 
 ## 1. An imported Section Mapping lists its first seven columns (@spec A new table's list starts with its first seven columns)
 
-- [ ] 1.1 outer: the scenario, importing the ten-column sheet as a new table
-- [ ] 1.2 inner: `inferTableDef` flags the first 7 columns, using one shared constant of 7
-- [ ] 1.3 inner: the Import Wizard's column step shows an "In list" tick per column, the first 7 ticked
+- [x] 1.1 outer: the scenario, importing the ten-column sheet as a new table
+- [x] 1.2 inner: `inferTableDef` flags the first 7 columns, using one shared constant of 7
+- [x] 1.3 inner: the Import Wizard's column step shows an "In list" tick per column, the first 7 ticked
 
 ## 2. A typed table starts the same way (@spec A new table's list starts with its first seven columns)
 
-- [ ] 2.1 outer: the scenario, typing the same ten columns in the Table Builder
-- [ ] 2.2 inner: the Table Builder ticks the first 7 columns, from the same constant
+- [x] 2.1 outer: the scenario, typing the same ten columns in the Table Builder
+- [x] 2.2 inner: the Table Builder ticks the first 7 columns, from the same constant
 
 ## 3. A column left out of the import makes room for the next (@spec A new table's list starts with its first seven columns)
 
-- [ ] 3.1 outer: the scenario, leaving MCH out
-- [ ] 3.2 inner: until the user changes an "In list" tick, the ticks follow "first 7 columns in use"; after that the user's ticks stand
-- [ ] 3.3 inner: a column whose "Use" is unticked is never sent as in the list
+- [x] 3.1 outer: the scenario, leaving MCH out
+- [x] 3.2 inner: until the user changes an "In list" tick, the ticks follow "first 7 columns in use"; after that the user's ticks stand
+- [x] 3.3 inner: a column whose "Use" is unticked is never sent as in the list
 
 ## 4. All ten in one go (@spec A new table's list starts with its first seven columns)
 
-- [ ] 4.1 outer: the scenario
-- [ ] 4.2 inner: "Tick all" ticks every column in use; "Clear" unticks them all
+- [x] 4.1 outer: the scenario
+- [x] 4.2 inner: "Tick all" ticks every column in use; "Clear" unticks them all
 
 ## 5. Section Mapping shows its seven list columns (@spec A list shows the table's list columns)
 
