@@ -32,4 +32,4 @@ otherwise a different Claude model than the author, and runs only when the human
 
 ## Project
 
-Featherbase's own rules are in `AGENTS.md` § Project, so Codex reads them too.
+The project's own rules are in `AGENTS.md` § Project, so Codex reads them too.
