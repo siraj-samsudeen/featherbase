@@ -80,12 +80,12 @@ export async function managedScope(): Promise<ScopeEntry[]> {
 // ---------------------------------------------------------------- the file (D1)
 
 const rowSchema = z.object({ row_id: z.string().min(1) }).catchall(z.unknown())
-const settingsBlock = z.record(z.union([z.array(rowSchema), z.record(z.unknown())]))
+const settingsBlock = z.record(z.string(), z.union([z.array(rowSchema), z.record(z.string(), z.unknown())]))
 
 const instanceSettingsFileSchema = z
   .object({
     settings: settingsBlock,
-    environments: z.record(z.object({ settings: settingsBlock.optional() }).strict()).optional(),
+    environments: z.record(z.string(), z.object({ settings: settingsBlock.optional() }).strict()).optional(),
   })
   .strict()
 
@@ -99,8 +99,8 @@ export const applyRequestSchema = z
     environment: z.string().min(1).optional(),
     dry_run: z.boolean().optional(),
     source: z.object({ revision: z.string().optional(), run: z.string().optional() }).strict().optional(),
-    files: z.record(z.string()).optional(),
-    env: z.record(z.string()).optional(),
+    files: z.record(z.string(), z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
   })
   .strict()
 type Block = z.infer<typeof settingsBlock>

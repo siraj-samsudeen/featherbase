@@ -38,7 +38,7 @@
     "shared": "workspace:*",
     "tsx": "^4.23.15",
     "ws": "^8.22.1",
-    "zod": "^3.24.0"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

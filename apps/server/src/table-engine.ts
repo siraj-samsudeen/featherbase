@@ -83,6 +83,7 @@ const optionalString = z
   .string()
   .nullish()
   .transform((v) => v ?? undefined)
+  .optional()
 
 export const columnSchema = z.object({
   column_name: z
@@ -96,13 +97,13 @@ export const columnSchema = z.object({
   reference_table: optionalString,
   choices: optionalString,
   row_table: optionalString,
-  reqd: z.boolean().nullish().transform((v) => v ?? undefined),
-  unique: z.boolean().nullish().transform((v) => v ?? undefined),
+  reqd: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
+  unique: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   default_value: optionalString,
-  read_only: z.boolean().nullish().transform((v) => v ?? undefined),
-  hidden: z.boolean().nullish().transform((v) => v ?? undefined),
-  in_list_view: z.boolean().nullish().transform((v) => v ?? undefined),
-  tier: z.enum(['basic', 'restricted']).nullish().transform((v) => v ?? undefined),
+  read_only: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
+  hidden: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
+  in_list_view: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
+  tier: z.enum(['basic', 'restricted']).nullish().transform((v) => v ?? undefined).optional(),
   // #473: one plain line every form shows under the control.
   description: optionalString,
   // EDS-3: true column name on a bound Table's source when the legal
@@ -119,19 +120,19 @@ export const tableDefSchema = z.object({
   // Replaces the old istable/issingle booleans: 'table' = normal collection,
   // 'sub_table' = rows only ever nested inside a parent row, 'settings' = a
   // single-row Settings Table (no list, no collection table).
-  kind: z.enum(['table', 'sub_table', 'settings']).nullish().transform((v) => v ?? undefined),
-  is_submittable: z.boolean().nullish().transform((v) => v ?? undefined),
+  kind: z.enum(['table', 'sub_table', 'settings']).nullish().transform((v) => v ?? undefined).optional(),
+  is_submittable: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   id_pattern: optionalString,
   title_column: optionalString,
   description: optionalString,
   // #74: platform-table flag. Accepted here so migrations and seeds can set
   // it through createTable; the public /api/table_def routes REJECT it — a
   // user-created table can never claim system: true.
-  system: z.boolean().nullish().transform((v) => v ?? undefined),
+  system: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   // #559: the Table's rows decide which places people cover. Writing them is
   // System Manager work (security-tables.ts), and only a marked Table can be
   // read by an app's scope provider. Kept when an update leaves it out.
-  decides_scope: z.boolean().nullish().transform((v) => v ?? undefined),
+  decides_scope: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   // EDS-3: binding to an external Data Source. Set only at creation (BV3) —
   // updateTable never touches these. A bound Table gets no DDL and no RLS
   // (BV1): its rows live on the source.

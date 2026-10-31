@@ -1,5 +1,6 @@
 import { calendarDay, isCalendarDay } from './dates'
 import { z } from 'zod'
+import './zod-messages'
 
 // META-013: one zod schema generated from Table metadata, used by the
 // server's row engine and the Admin form views.
@@ -33,11 +34,13 @@ function baseSchema(f: ColumnDef): z.ZodTypeAny {
     case 'Attach Image':
       return z.string()
     case 'Int':
+      // The bounds come before .int(): zod 4's .int() also refuses an unsafe
+      // integer, and the first issue is the one reported.
       return z.coerce
-        .number({ invalid_type_error: 'must be a whole number' })
-        .int()
+        .number({ error: (issue) => (issue.code === 'invalid_type' ? 'must be a whole number' : undefined) })
         .gte(Number.MIN_SAFE_INTEGER, 'integer out of range')
         .lte(Number.MAX_SAFE_INTEGER, 'integer out of range')
+        .int('Expected integer, received float')
     case 'Float':
     case 'Currency':
       return z.coerce.number()
