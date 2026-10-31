@@ -304,18 +304,21 @@ export function ColumnEditor() {
                   <td className="px-2 text-center">
                     {/* Only a column a list can show gets a tick. */}
                     {!NO_COLUMN_TYPES.has(column.column_type) && !column.hidden && (
-                      <input
-                        type="checkbox"
-                        aria-label={`In list: ${column.label ?? column.column_name}`}
-                        data-testid={`ce-in-list-${column.column_name}`}
-                        checked={
-                          inListSaving?.column === column.column_name
-                            ? inListSaving.inList
-                            : Boolean(column.in_list_view)
-                        }
-                        disabled={def.system || put.isPending}
-                        onChange={(e) => saveInList(column.column_name, e.target.checked)}
-                      />
+                      // The box is small; the label around it is the thumb-sized target.
+                      <label className="inline-flex size-control cursor-pointer items-center justify-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`In list: ${column.label ?? column.column_name}`}
+                          data-testid={`ce-in-list-${column.column_name}`}
+                          checked={
+                            inListSaving?.column === column.column_name
+                              ? inListSaving.inList
+                              : Boolean(column.in_list_view)
+                          }
+                          disabled={def.system || put.isPending}
+                          onChange={(e) => saveInList(column.column_name, e.target.checked)}
+                        />
+                      </label>
                     )}
                   </td>
                   <td className="text-xs">
