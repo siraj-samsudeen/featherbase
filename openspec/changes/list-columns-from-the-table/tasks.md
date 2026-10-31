@@ -94,18 +94,18 @@
 
 ## 17. Work with a Table's rows on a phone (@spec Lists fit a phone)
 
-- [ ] 17.1 outer: the scenario
+- [x] 17.1 outer: the scenario
 
 ## 18. Section Mapping's cards show three columns and the rest on request (@spec Lists fit a phone)
 
-- [ ] 18.1 outer: the scenario
-- [ ] 18.2 inner: a card shows at most 3 listed columns besides title, status and row ID, then "N more"
-- [ ] 18.3 inner: "N more" opens that card's other columns in place
+- [x] 18.1 outer: the scenario
+- [x] 18.2 inner: a card shows at most 3 listed columns besides title, status and row ID, then "N more"
+- [x] 18.3 inner: "N more" opens that card's other columns in place
 
 ## 19. UI checklist items no spec carries (#738 agreed design)
 
-- [ ] 19.1 inner: a dropdown button whose menu is open looks pressed (accent tint, chevron up), from the shared button style; "Show columns" reports open and closed
-- [ ] 19.2 inner: the menu's divider reads "Not in the list by default"
+- [x] 19.1 inner: a dropdown button whose menu is open looks pressed (accent tint, chevron up), from the shared button style; "Show columns" reports open and closed
+- [x] 19.2 inner: the menu's divider reads "Not in the list by default"
 - [ ] 19.3 An independent verifier runs the real UI at 1280px and 375px against #738's 11-point checklist and returns a "spec vs built" table with screenshots; differences are fixed before the owner sees the code
 
 ## 20. Reconcile
