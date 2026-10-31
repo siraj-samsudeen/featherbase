@@ -1,0 +1,42 @@
+# gherklin config for the EXTRACTED .feature files under .extracted/ (run by
+# `npm run lint:specs`, which extracts first). Line numbers it reports are
+# valid in the source spec.md files.
+#
+# Ported from the old .gherkin-lintrc. Rules gherklin 1.1.0 lacks, or runs
+# only on top-level scenarios (ours all sit inside a `Rule:`), are local
+# ports in gherklin-rules/, prefixed `fb-` and named after the gherkin-lint
+# rule they replace. Every rule is `error`: gherklin passes a run that only
+# warns.
+#
+# gherklin ships TypeScript source, so `lint:specs` runs it through tsx.
+# package.json overrides its zod 3 with zod 4 (zod <4.6.6 fails `npm audit`;
+# gherklin's few zod calls work unchanged on 4).
+#
+# Deliberately OFF, for the same reasons as before: enabling them makes
+# "fix all lint issues" unsatisfiable with this toolchain.
+#   new-line-at-eof / indentation (and gherkin-lint's no-multiple-empty-lines,
+#   which gherklin has no rule for): extraction pads prose to blank lines to
+#   preserve line numbers.
+#   no-dupe-features: a delta spec and its source-of-truth spec share the
+#   Feature name.
+#   no-dupe-scenarios: a MODIFIED delta copies the whole Rule, scenario
+#   names included.
+featureDirectory: ./.extracted
+customRulesDirectory: ./gherklin-rules
+rules:
+  no-empty-file: error
+  no-trailing-spaces: error
+  fb-no-files-without-scenarios: error
+  fb-no-unnamed-features: error
+  fb-no-unnamed-scenarios: error
+  fb-no-duplicate-tags: error
+  fb-no-partially-commented-tag-lines: error
+  fb-one-space-between-tags: error
+  fb-no-empty-background: error
+  fb-no-background-only-scenario: error
+  fb-no-scenario-outlines-without-examples: error
+  fb-no-examples-in-scenarios: error
+  no-dupe-features: off
+  no-dupe-scenarios: off
+  new-line-at-eof: off
+  indentation: off

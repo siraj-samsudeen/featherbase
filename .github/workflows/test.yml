@@ -685,6 +685,7 @@ jobs:
       - name: Run acceptance suite
         run: |
           npm --prefix acceptance-tests ci
+          npm --prefix acceptance-tests run lint:specs
           npm --prefix acceptance-tests test
 
       - name: Upload acceptance report
