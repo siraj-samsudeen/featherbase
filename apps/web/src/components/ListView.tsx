@@ -14,7 +14,7 @@ import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName, usePrincipalLabels } from '../lib/people'
 import { Button, DataCards, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from './ui'
-import { ArrowDown, ArrowUp } from './ui/icons'
+import { ArrowDown, ArrowUp, ChevronDown } from './ui/icons'
 import { GlossaryHelp } from './GlossaryHelp'
 import { fmtCount } from '../lib/inr'
 import { failureMessage } from '../lib/import-run'
@@ -515,6 +515,7 @@ export function ListView({
               data-testid="list-columns"
             >
               Show columns
+              <ChevronDown aria-hidden data-chevron size={18} />
             </button>
             {colPickerOpen && (
               <div
@@ -1966,7 +1967,7 @@ function ExploreSplitButton({ table }: { table: string }) {
           className={buttonClasses({ className: 'rounded-l-none border-l-0 pointer-fine:px-1.5 pointer-coarse:min-w-control' })}
           data-testid="explore-split-toggle"
         >
-          ▾
+          <span aria-hidden data-chevron className="inline-block">▾</span>
         </button>
       </div>
       {open && (

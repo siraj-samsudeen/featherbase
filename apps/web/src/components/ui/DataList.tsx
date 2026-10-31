@@ -251,7 +251,7 @@ export function DataCards<Row>({
                     aria-expanded={all}
                     data-testid="card-more"
                     onClick={() => toggleAll(key)}
-                    icon={<ChevronDown aria-hidden size={18} />}
+                    icon={<ChevronDown aria-hidden data-chevron size={18} />}
                   >
                     {all ? (
                       'Show fewer'
@@ -272,7 +272,7 @@ export function DataCards<Row>({
                   aria-expanded={open}
                   data-testid="row-expand"
                   onClick={() => expand.onToggle(row)}
-                  icon={<ChevronDown aria-hidden size={18} className={cx('transition-transform motion-reduce:transition-none', open && 'rotate-180')} />}
+                  icon={<ChevronDown aria-hidden data-chevron size={18} />}
                 >
                   {open ? 'Hide nested rows' : 'Show nested rows'}
                 </Button>
