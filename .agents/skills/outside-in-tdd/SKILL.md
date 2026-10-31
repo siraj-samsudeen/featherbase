@@ -99,8 +99,11 @@ of each test; this skill adds the stops and the record.
 Tests the task list already expects to pass on their first run are run together, one `test:`
 commit each, and reported in one message.
 
-The outer test of a scenario stays `test.todo` while its inner tests run; it is promoted in its
-own green step. `bun test --todo` fails with "Remove `.todo`" once it passes — that is the cue.
+The outer test of a scenario is its fenced Gherkin in the change's `spec.md`, run by cucumber-js
+from `acceptance-tests/` (`spec-as-source`). Its first red is usually an undefined step: the
+step definition arrives in that red/green pair, and so does the `acceptance-tests/` setup on the
+very first one. The scenario stays failing while its inner tests run, and passing it is its own
+green step.
 
 **Step size.** If the human's predictions keep matching, the steps are too small — take bigger
 ones. If they keep missing, slow down.

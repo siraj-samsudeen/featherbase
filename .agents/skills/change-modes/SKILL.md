@@ -13,9 +13,12 @@ description: The three ways an OpenSpec change can run here (autopilot, build, l
 | **Build** (default) | A maintainer who wants control with few stops | `pnpm exec openspec new change <name>` | `intent-driven-with-human-control` |
 | **Learning** | A student or newcomer who learns from every command | `pnpm exec openspec new change <name>` | `intent-driven-with-human-control` |
 
+In every mode, a spec's scenarios are fenced Gherkin and cucumber-js runs them as the acceptance
+tests (`spec-as-source`). The mode decides who builds and where the human stops, not how specs
+are written.
+
 - **Autopilot** is the upstream flow. The human reviews the planning artifacts (grill-me still
-  applies); specs carry fenced Gherkin and tasks are acceptance-test first (`spec-as-source`);
-  apply hands acceptance tests to the `senior-qa` subagent and source work to `senior-dev`, and
+  applies); tasks are acceptance-test first (`spec-as-source`); apply hands acceptance tests to the `senior-qa` subagent and source work to `senior-dev`, and
   several changes may run in parallel worktrees (`openspec-bulk-apply-change`).
 - **Build** follows the `outside-in-tdd` skill: one commit per planning artifact, then one stop
   per test for the human's prediction, with red, green and refactor as separate commits. The

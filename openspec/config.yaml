@@ -14,8 +14,10 @@ context: |
 
   Every change runs in one of three modes, chosen when it is created and
   written on the first line of proposal.md (`**Mode:** autopilot | build |
-  learning`): autopilot (schema intent-driven: subagents build, acceptance
-  tests first), build (the default: one stop per test for the human's
+  learning`). In every mode a spec's scenarios are fenced Gherkin that
+  cucumber-js runs as the acceptance tests (spec-as-source skill); the mode
+  decides only who builds and where the human stops. Autopilot (schema
+  intent-driven: subagents build), build (the default: one stop per test for the human's
   prediction, red/green/refactor as separate commits, outside-in-tdd skill)
   and learning (build, plus every command shown and explained before it
   runs). Load the change-modes skill for how to choose, record and switch a
@@ -26,7 +28,7 @@ context: |
   merges. Do not stop just to ask whether to continue to the next artifact.
 
   Where a schema template or a generic skill conflicts with the rules below
-  (for example GIVEN steps in scenarios, or ADRs being immutable), the rules
+  (for example ADRs being immutable), the rules
   below win.
 
 # Per-artifact rules. They apply to every change, whatever its schema. A line that applies to
@@ -58,14 +60,19 @@ rules:
     - No layout detail, such as where a panel opens or a pixel width. Product-wide promises (works on a phone, works by keyboard, nothing shown by colour alone, controls clearly named) live in the usable-on-any-device spec; don't repeat them in feature specs.
     - Explain a term the first time it is used.
     - Name requirements and scenarios in plain words, for example "Capture a task", not identifiers. A capability with one requirement names it after the capability.
-    - Use only OpenSpec's own structure (Purpose, Requirements, WHEN/THEN scenarios). Fold any precondition into WHEN; no GIVEN. No status, evidence, ID or legacy labels.
+    - Use only OpenSpec's own structure (Purpose, Requirements, Scenarios). Each scenario's steps go in a fenced gherkin block (Given/When/Then); the requirement text stays outside it. No status, evidence, ID or legacy labels.
+    - Order requirements as a person meets them. Within a requirement, the common case comes first, then the edge cases.
+    - Run one example (one table, one person) through every scenario of a change, so each scenario differs from the last by one fact.
+    - Name a scenario by what the user sees, for example "Remarks shows only for me", not by the action taken.
+    - Before the specs are approved, an independent reviewer (a subagent given the specs and the issue, not the author's view) checks they are MECE - no promise made twice, within the change or against the main specs, and none missing.
     - A spec written for existing behavior describes what it does today. Changing that behavior is a separate change.
     - Main specs describe what is built. A promise that isn't built yet belongs in an OpenSpec change.
     - Must use grill-me skill - one decision per question, showing the text it will write into the artifact (paraphrased is fine), with the alternatives
-    - Autopilot only (schema intent-driven) - Must use spec-as-source skill
+    - Must use spec-as-source skill
   tasks:
     - Must use grill-me skill - one decision per question, showing the text it will write into the artifact (paraphrased is fine), with the alternatives
-    - Autopilot only (schema intent-driven) - Must use spec-as-source skill
+    - Must use spec-as-source skill - each scenario's outer test is its fenced Gherkin, run by cucumber-js
+    - Build and learning only (schema intent-driven-with-human-control) - keep the schema's test-list format; the acceptance-tests/ setup and each step definition arrive in the red/green of the first outer test that needs them, not as setup tasks
 
 # Per-operation guidance for apply and archive.
 operations:
