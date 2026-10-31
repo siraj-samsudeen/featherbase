@@ -24,8 +24,10 @@ const PWDEBUG = Boolean(process.env.PWDEBUG) && process.env.PWDEBUG !== '0';
 const VIDEO = process.env.VIDEO === '1';
 setDefaultTimeout(PWDEBUG ? -1 : HEADED || VIDEO ? 300_000 : 60_000);
 
-// Every context is traced; a failed scenario's traces are kept here, the
-// rest discarded. Open one with `npx playwright show-trace <zip>`.
+// In CI (or with TRACE=1) every context is traced; a failed scenario's traces
+// are kept here, the rest discarded. Open one with `npx playwright show-trace
+// <zip>`. Locally a failure is simply rerun, so tracing's cost isn't paid.
+const TRACE = Boolean(process.env.CI) || process.env.TRACE === '1';
 const REPORTS = path.resolve(__dirname, '../reports');
 const TRACES = path.join(REPORTS, 'traces');
 const VIDEOS = path.join(REPORTS, 'videos');
@@ -83,7 +85,7 @@ class FeatherbaseWorld {
       viewport: this.viewport,
       ...(VIDEO ? { recordVideo: { dir: VIDEO_SCRATCH, size: this.viewport } } : {}),
     });
-    await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+    if (TRACE) await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
     const page = await context.newPage();
     this.contexts.push({ who, context, page });
     return { context, page };
@@ -187,10 +189,10 @@ After(async function ({ result }) {
   // "<slug>" when the scenario opened one browser, "<slug>-<who>" for each when more.
   const name = (who) => (this.contexts.length > 1 ? `${this.scenario.slug}-${who}` : this.scenario.slug);
   for (const { who, context, page } of this.contexts) {
-    if (failed) {
+    if (TRACE && failed) {
       fs.mkdirSync(TRACES, { recursive: true });
       await context.tracing.stop({ path: path.join(TRACES, `${name(who)}.zip`) });
-    } else {
+    } else if (TRACE) {
       await context.tracing.stop();
     }
     const video = VIDEO ? page.video() : null;

@@ -40,7 +40,7 @@ For a person at their own screen; agents and CI set none of these.
 | `PWDEBUG=1` | Playwright's Inspector (headed), pausing before each action; no step timeout. |
 | `VIDEO=1` | A slowed-down, headless video of every scenario, one per browser (System Manager, the user, a colleague): `reports/videos/<NN>-<scenario>[-<who>].webm`, numbered in run order. |
 
-Every scenario's browsers are traced; a failed scenario keeps its traces as
+In CI (or with `TRACE=1`) every scenario's browsers are traced; a failed scenario keeps its traces as
 `reports/traces/<scenario>[-<who>].zip` (CI uploads them with the report).
 Open one with:
 
