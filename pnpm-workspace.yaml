@@ -9,3 +9,13 @@ packages:
 # ignoredBuiltDependencies does not silence the notice in pnpm 10.33.
 onlyBuiltDependencies:
   - esbuild
+
+# Audit findings in the coverage tooling that no release of its parents fixes
+# yet (#747): glob 13 (GHSA-3g3m-2fjr-6pw4) and minimatch 10
+# (GHSA-g3hv-75wg-m249). Every copy comes from nyc and the test-exclude that
+# nyc and vite-plugin-istanbul use, and their latest releases (nyc 18.0.0,
+# test-exclude 8.0.0) still ask for glob ^13 and minimatch ^10. Drop each line
+# once those parents allow the fixed major.
+overrides:
+  glob@<14.0.2: ^14.0.2
+  minimatch@<11.0.1: ^11.0.1
