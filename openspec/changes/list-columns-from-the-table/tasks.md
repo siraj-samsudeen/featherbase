@@ -1,60 +1,118 @@
-<!-- Autopilot (schema intent-driven, spec-as-source): acceptance tests first. The fenced Gherkin
-     scenarios in this change's specs are the acceptance tests, run by cucumber-js from
-     acceptance-tests/. senior-qa owns groups 1-2, senior-dev owns groups 3-5.
+<!-- The test list, the same in every mode. Outer tests are the fenced Gherkin scenarios in this
+     change's specs, run by cucumber-js from acceptance-tests/; the acceptance-tests/ setup
+     arrives with 1.1, the first outer test, and each step definition with the first scenario
+     that needs it. In autopilot, senior-qa writes the outer tests and senior-dev the inner
+     tests and code, down this same list.
      Running example: Section Mapping's ten columns (Section, MCH, Floor, Zone, Rack, Owner,
      Category, Remarks, Updated By, Notes). -->
 
-## 1. First-time setup — skip this whole section if `acceptance-tests/` already exists
+## 1. An imported Section Mapping lists its first seven columns (@spec A new table's list starts with its first seven columns)
 
-- [ ] 1.1 Confirm the acceptance stack: `stack: javascript` in `openspec/config.yaml`
-- [ ] 1.2 Create `acceptance-tests/` at the repo root as an independent Node project that boots the app (the same stack `./init.sh` starts, on its own database) before the suite and shuts it down after
-- [ ] 1.3 Copy the acceptance-test-authoring skill's `javascript` reference files verbatim into `acceptance-tests/` (see `references/javascript/SETUP.md` "Files To Copy"), so the runner extracts the Gherkin from every `spec.md` under `openspec/` into `acceptance-tests/.extracted/`, excluding `openspec/changes/archive/`
-- [ ] 1.4 Make the single test command always write an HTML report under `acceptance-tests/reports/`
-- [ ] 1.5 Add the spec-lint command (extract, then `gherkin-lint .extracted`); gitignore `acceptance-tests/.extracted/` and `acceptance-tests/reports/`
-- [ ] 1.6 Write `acceptance-tests/README.md`: how to run the suite and where the report is written
-- [ ] 1.7 Wire the acceptance suite into CI beside the e2e job, so a PR runs it
+- [ ] 1.1 outer: the scenario, importing the ten-column sheet as a new table
+- [ ] 1.2 inner: `inferTableDef` flags the first 7 columns, using one shared constant of 7
+- [ ] 1.3 inner: the Import Wizard's column step shows an "In list" tick per column, the first 7 ticked
 
-## 2. Step definitions — one task per scenario; each = fails for the right reason → implemented → passes → commit
+## 2. A typed table starts the same way (@spec A new table's list starts with its first seven columns)
 
-- [ ] 2.1 tables-and-fields: An imported Section Mapping lists its first seven columns
-- [ ] 2.2 tables-and-fields: A typed table starts the same way
-- [ ] 2.3 tables-and-fields: A column left out of the import makes room for the next
-- [ ] 2.4 tables-and-fields: All ten in one go
-- [ ] 2.5 list-view: Section Mapping shows its seven list columns (passes on today's code)
-- [ ] 2.6 list-view: A table with no list columns shows its first two (passes on today's code)
-- [ ] 2.7 list-view: Remarks shows only for me
-- [ ] 2.8 list-view: Every column off leaves the row ID
-- [ ] 2.9 list-view: Return after hiding a column (passes on today's code)
-- [ ] 2.10 list-view: Remarks is still there next time
-- [ ] 2.11 tables-and-fields: Remarks shows for everyone
-- [ ] 2.12 tables-and-fields: Only a System Manager changes the list for everyone
-- [ ] 2.13 tables-and-fields: A platform table's columns are closed to editing (passes on today's code)
-- [ ] 2.14 list-view: My view becomes the default
-- [ ] 2.15 list-view: A colleague's own choices hold
-- [ ] 2.16 usable-on-any-device: Read a list of checklist runs on a phone (passes on today's code)
-- [ ] 2.17 usable-on-any-device: Work with a Table's rows on a phone
-- [ ] 2.18 usable-on-any-device: Section Mapping's cards show three columns and the rest on request
+- [ ] 2.1 outer: the scenario, typing the same ten columns in the Table Builder
+- [ ] 2.2 inner: the Table Builder ticks the first 7 columns, from the same constant
 
-## 3. Implementation — each item test-first (unit or e2e), driven by the failing scenarios above
+## 3. A column left out of the import makes room for the next (@spec A new table's list starts with its first seven columns)
 
-- [ ] 3.1 One shared constant of 7 in `packages/shared`; `inferTableDef` and the Table Builder flag the first 7 columns from it
-- [ ] 3.2 Import Wizard column step: an "In list" tick per column; ticks follow "first 7 columns in use" until the user changes one; "Tick all" and "Clear"; a column whose "Use" is unticked is never sent as in the list
-- [ ] 3.3 `:meta` response carries the caller's readable levels (`permittedTiers`)
-- [ ] 3.4 Saved arrangement gains a shown set: what the user sees is Row ID + (list columns ∪ shown) − hidden, in the Table's column order; switching on/off keeps both sets minimal
-- [ ] 3.5 Hidden-logic pin: an arrangement saved before this change, `{ hiddenCols: ["floor"] }` with no shown set, still hides Floor and shows every other list column
-- [ ] 3.6 "Show columns" menu: list columns first, the divider "Not in the list by default", then every other readable column; a `restricted` column is never offered to a `basic`-only reader
-- [ ] 3.7 Edit columns page: an "In list" tick per column, saved at once through `PUT /api/table_def/:name`
-- [ ] 3.8 `updateTable` deletes the `in_list_view` Metadata Override of each column whose flag the request changes, judged against the stored definition, inside the same transaction; other overrides untouched
-- [ ] 3.9 "Make this the default for everyone", shown exactly where "Edit columns" is: one save setting every data column's flag to the current view, then the System Manager's own sets emptied
-- [ ] 3.10 Phone cards (`DataCards`): at most 3 listed columns besides title, status and row ID, then "N more", which opens the rest in place
-- [ ] 3.11 Shared button style: an open dropdown (`aria-expanded="true"`) looks pressed, accent tint and chevron up; "Show columns" reports open and closed
+- [ ] 3.1 outer: the scenario, leaving MCH out
+- [ ] 3.2 inner: until the user changes an "In list" tick, the ticks follow "first 7 columns in use"; after that the user's ticks stand
+- [ ] 3.3 inner: a column whose "Use" is unticked is never sent as in the list
 
-## 4. UI verification
+## 4. All ten in one go (@spec A new table's list starts with its first seven columns)
 
-- [ ] 4.1 An independent verifier runs the real UI at 1280px and 375px against #738's 11-point checklist and returns a "spec vs built" table with screenshots; differences are fixed before the owner sees the code
+- [ ] 4.1 outer: the scenario
+- [ ] 4.2 inner: "Tick all" ticks every column in use; "Clear" unticks them all
 
-## 5. Completion
+## 5. Section Mapping shows its seven list columns (@spec A list shows the table's list columns)
 
-- [ ] 5.1 Run the full acceptance suite: every scenario passes, zero pending or undefined steps, HTML report generated
-- [ ] 5.2 Unit, e2e and coverage (ADR 0012 targets) pass; types check clean
-- [ ] 5.3 `pnpm exec openspec validate list-columns-from-the-table --type change --strict` passes before archive
+- [ ] 5.1 outer: the scenario (expected to pass on its first run: today's behaviour)
+
+## 6. A table with no list columns shows its first two (@spec A list shows the table's list columns)
+
+- [ ] 6.1 outer: the scenario (expected to pass on its first run: today's fallback)
+
+## 7. Remarks shows only for me (@spec Show or hide any column for yourself)
+
+- [ ] 7.1 outer: the scenario
+- [ ] 7.2 inner: the menu lists the Table's list columns first, then a divider, then every other readable column
+- [ ] 7.3 inner: what the user sees is Row ID + (list columns ∪ shown) − hidden, in the Table's column order
+- [ ] 7.4 inner: switching a column on removes it from hidden and, if it isn't a list column, adds it to shown; switching off does the reverse
+- [ ] 7.5 inner: the `:meta` response carries the caller's readable levels
+- [ ] 7.6 inner: a `restricted` column is not offered to a caller who may read only `basic`
+
+## 8. Every column off leaves the row ID (@spec Show or hide any column for yourself)
+
+- [ ] 8.1 outer: the scenario
+
+## 9. Return after hiding a column (@spec The list remembers how it's arranged)
+
+- [ ] 9.1 outer: the scenario (expected to pass on its first run: today's behaviour)
+- [ ] 9.2 inner: an arrangement saved before this change, `{ hiddenCols: ["floor"] }` with no shown set, still hides Floor and shows every other list column
+
+## 10. Remarks is still there next time (@spec The list remembers how it's arranged)
+
+- [ ] 10.1 outer: the scenario
+- [ ] 10.2 inner: the saved arrangement carries the shown set, and reading it back restores it
+
+## 11. Remarks shows for everyone (@spec Change which columns a table's list shows)
+
+- [ ] 11.1 outer: the scenario, ticking "In list" on the Edit columns page
+- [ ] 11.2 inner: the Edit columns page has an "In list" tick per column that saves at once
+- [ ] 11.3 inner: the save deletes the `in_list_view` Metadata Override of each column whose flag it changes, inside the same transaction
+- [ ] 11.4 inner: it decides "changed" against the stored definition, not the merged meta it was sent
+- [ ] 11.5 inner: other overrides, and other columns' `in_list_view` overrides, are untouched
+
+## 12. Only a System Manager changes the list for everyone (@spec Shaping a table requires the builder authority)
+
+- [ ] 12.1 outer: the scenario
+- [ ] 12.2 inner: "Make this the default for everyone" shows exactly where "Edit columns" shows
+- [ ] 12.3 inner: the definition save refuses a user who isn't a System Manager (expected to pass on its first run: today's check)
+
+## 13. A platform table's columns are closed to editing (@spec Shaping a table requires the builder authority)
+
+- [ ] 13.1 outer: the scenario (expected to pass on its first run: today's behaviour)
+
+## 14. My view becomes the default (@spec A System Manager can make their view everyone's default)
+
+- [ ] 14.1 outer: the scenario
+- [ ] 14.2 inner: making the default sends every data column's flag as "in the System Manager's current view", in one save
+- [ ] 14.3 inner: after it succeeds, the System Manager's own shown and hidden sets are empty
+
+## 15. A colleague's own choices hold (@spec A System Manager can make their view everyone's default)
+
+- [ ] 15.1 outer: the scenario
+- [ ] 15.2 inner: a colleague's shown and hidden sets apply on top of a changed default, both ways
+
+## 16. Read a list of checklist runs on a phone (@spec Lists fit a phone)
+
+- [ ] 16.1 outer: the scenario (expected to pass on its first run: today's behaviour)
+
+## 17. Work with a Table's rows on a phone (@spec Lists fit a phone)
+
+- [ ] 17.1 outer: the scenario
+
+## 18. Section Mapping's cards show three columns and the rest on request (@spec Lists fit a phone)
+
+- [ ] 18.1 outer: the scenario
+- [ ] 18.2 inner: a card shows at most 3 listed columns besides title, status and row ID, then "N more"
+- [ ] 18.3 inner: "N more" opens that card's other columns in place
+
+## 19. UI checklist items no spec carries (#738 agreed design)
+
+- [ ] 19.1 inner: a dropdown button whose menu is open looks pressed (accent tint, chevron up), from the shared button style; "Show columns" reports open and closed
+- [ ] 19.2 inner: the menu's divider reads "Not in the list by default"
+- [ ] 19.3 An independent verifier runs the real UI at 1280px and 375px against #738's 11-point checklist and returns a "spec vs built" table with screenshots; differences are fixed before the owner sees the code
+
+## 20. Reconcile
+
+- [ ] 20.1 The full acceptance suite passes with zero pending or undefined steps, and writes its HTML report
+- [ ] 20.2 Coverage meets ADR 0012's targets; every uncovered line ratified, deleted or asked
+- [ ] 20.3 No unused files, exports or dependencies
+- [ ] 20.4 Types check clean
+- [ ] 20.5 Mutation testing: every surviving mutant ratified, deleted or asked
+- [ ] 20.6 `pnpm exec openspec validate list-columns-from-the-table --type change --strict` passes, then sync the specs and archive the change on this branch before the PR merges

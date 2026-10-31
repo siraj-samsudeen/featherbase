@@ -1,5 +1,3 @@
-**Mode:** autopilot
-
 ## Why
 
 Importing a 7-column sheet into a new Table gave a list showing Row ID and only the first 4
