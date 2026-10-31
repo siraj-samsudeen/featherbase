@@ -679,6 +679,22 @@ jobs:
       - name: Run e2e suite with coverage
         run: pnpm --filter web coverage:e2e --trace retain-on-failure
 
+      # The specs' fenced Gherkin, run by cucumber-js (#738). It boots its own
+      # stack on its own database and ports (acceptance-tests/support/stack.js),
+      # so it runs after the e2e suite rather than beside it.
+      - name: Run acceptance suite
+        run: |
+          npm --prefix acceptance-tests ci
+          npm --prefix acceptance-tests test
+
+      - name: Upload acceptance report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-report
+          path: acceptance-tests/reports/
+          if-no-files-found: ignore
+
       - name: Collect runtime HTTP coverage
         run: >-
           pnpm --filter server exec vitest run

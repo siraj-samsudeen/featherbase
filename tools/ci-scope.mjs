@@ -12,6 +12,10 @@ const EVERYTHING = new Set(['server', 'web', 'e2e', 'client', 'example'])
 export function suitesFor(path) {
   // Read by the server suite and by check:env, so not prose.
   if (path === 'docs/DEPLOY.md') return new Set(['server', 'client'])
+  // A spec's fenced Gherkin is the acceptance suite's source, and that suite
+  // runs in the e2e job (#738), so neither is prose.
+  if (/^openspec\/.*\/spec\.md$/.test(path)) return new Set(['e2e'])
+  if (path.startsWith('acceptance-tests/') && !path.endsWith('.md')) return new Set(['e2e'])
   const prose = path.endsWith('.md') && !path.includes('/fixtures/') && !/^client-apps\/[^/]+\/instances\//.test(path)
   if (prose || /^(docs|openspec|\.claude|\.agents|\.amp)\//.test(path) || path === 'LICENSE') return new Set()
   if (path.startsWith('client-apps/')) return new Set(['client'])

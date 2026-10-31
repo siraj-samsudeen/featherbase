@@ -7,7 +7,7 @@ const on = (decision) => Object.keys(decision).filter(key => decision[key]).sort
 const ALL = ['client_apps', 'coverage_merged', 'e2e', 'platform_checks', 'server', 'web']
 
 test('prose runs only the fast checks', () => {
-  assert.deepEqual(on(pr('README.md', 'docs/adr/0014-x.md', 'openspec/specs/a/spec.md', '.github/PULL_REQUEST_TEMPLATE.md',
+  assert.deepEqual(on(pr('README.md', 'docs/adr/0014-x.md', 'openspec/changes/a/design.md', '.github/PULL_REQUEST_TEMPLATE.md',
     'apps/web/README.md', 'client-apps/c/a/README.md', '.claude/settings.json', 'docs/images/a.png', 'LICENSE')), [])
 })
 
