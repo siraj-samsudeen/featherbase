@@ -5,20 +5,64 @@
 // checks goes through the browser (support/pages/).
 
 const { request } = require('playwright');
-const { API_URL } = require('./stack');
+const { API_URL, BASE_URL } = require('./stack');
 
 // The seeded System Manager of a fresh database (apps/web/e2e/fixtures.ts).
 const SYSTEM_MANAGER = { user: 'Administrator', password: process.env.ADMIN_PASSWORD ?? 'admin' };
 
+/**
+ * A browser session for this person, signed in without the form: the same
+ * POST /api/login the sign-in form makes, through the web app's address so
+ * its sid cookie lands there, plus what the web app writes down after a
+ * sign-in (fc_token and fc_user in localStorage, apps/web/src/lib/api.ts).
+ * Returned as a Playwright storageState for a new browser context.
+ */
+async function signedInState(user, password) {
+  const ctx = await request.newContext({ baseURL: BASE_URL });
+  try {
+    const login = await ctx.post('/api/login', { data: { usr: user, pwd: password } });
+    if (!login.ok()) throw new Error(`sign-in as ${user} failed: ${login.status()} ${await login.text()}`);
+    const { token, user: sessionUser } = await login.json();
+    const { cookies } = await ctx.storageState();
+    return {
+      cookies,
+      origins: [
+        {
+          origin: BASE_URL,
+          localStorage: [
+            { name: 'fc_token', value: token },
+            { name: 'fc_user', value: JSON.stringify(sessionUser) },
+          ],
+        },
+      ],
+    };
+  } finally {
+    await ctx.dispose();
+  }
+}
+
+let systemManagerApi = null; // one API session per run
+
 class Api {
-  static async asSystemManager() {
-    const ctx = await request.newContext({ baseURL: API_URL });
-    const login = await ctx.post('/api/login', {
-      data: { usr: SYSTEM_MANAGER.user, pwd: SYSTEM_MANAGER.password },
-    });
-    if (!login.ok()) throw new Error(`API sign-in failed: ${login.status()} ${await login.text()}`);
-    const { token } = await login.json();
-    return new Api(ctx, { Authorization: `Bearer ${token}` });
+  /** The run's API session as the System Manager, signed in on first use. */
+  static asSystemManager() {
+    systemManagerApi ??= (async () => {
+      const ctx = await request.newContext({ baseURL: API_URL });
+      const login = await ctx.post('/api/login', {
+        data: { usr: SYSTEM_MANAGER.user, pwd: SYSTEM_MANAGER.password },
+      });
+      if (!login.ok()) throw new Error(`API sign-in failed: ${login.status()} ${await login.text()}`);
+      const { token } = await login.json();
+      return new Api(ctx, { Authorization: `Bearer ${token}` });
+    })();
+    return systemManagerApi;
+  }
+
+  /** Ends the run's API session, if one was opened. */
+  static async disposeAll() {
+    const api = await systemManagerApi?.catch(() => null);
+    systemManagerApi = null;
+    await api?.dispose();
   }
 
   constructor(ctx, headers) {
@@ -123,4 +167,4 @@ class Api {
   }
 }
 
-module.exports = { Api, SYSTEM_MANAGER };
+module.exports = { Api, SYSTEM_MANAGER, signedInState };

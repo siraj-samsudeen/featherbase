@@ -8,7 +8,7 @@ const { randomUUID } = require('node:crypto');
 const { setWorldConstructor, setDefaultTimeout, After, AfterAll } = require('@cucumber/cucumber');
 const { chromium } = require('playwright');
 const { BASE_URL } = require('./stack');
-const { Api, SYSTEM_MANAGER } = require('./api');
+const { Api, SYSTEM_MANAGER, signedInState } = require('./api');
 const { LoginPage } = require('./pages/login-page');
 const { AccountMenu } = require('./pages/account-menu');
 
@@ -63,12 +63,7 @@ class FeatherbaseWorld {
   /** A browser page signed in as a System Manager (headless, always). */
   async asSystemManager() {
     if (this.page) return this.page;
-    if (!systemManagerState) {
-      const { context, page } = await newPage();
-      await new LoginPage(page).signIn(SYSTEM_MANAGER.user, SYSTEM_MANAGER.password);
-      systemManagerState = await context.storageState();
-      await context.close();
-    }
+    systemManagerState ??= await signedInState(SYSTEM_MANAGER.user, SYSTEM_MANAGER.password);
     ({ context: this.context, page: this.page } = await newPage(systemManagerState, this.viewport));
     return this.page;
   }
@@ -87,13 +82,16 @@ class FeatherbaseWorld {
     return person;
   }
 
-  /** That person's browser page, signing them in through the form if needed. */
+  /**
+   * That person's browser page, already signed in: their session comes from
+   * the API, so no sign-in form is typed for setup.
+   */
   async signedIn(who) {
     const person = this.people.get(who);
     if (!person) throw new Error(`no one called "${who}" in this scenario`);
     if (person.page) return person.page;
-    ({ context: person.context, page: person.page } = await newPage(undefined, this.viewport));
-    await new LoginPage(person.page).signIn(person.email, PERSON_PASSWORD);
+    const state = await signedInState(person.email, PERSON_PASSWORD);
+    ({ context: person.context, page: person.page } = await newPage(state, this.viewport));
     return person.page;
   }
 
@@ -114,14 +112,9 @@ class FeatherbaseWorld {
     return page;
   }
 
-  /** Runs setup through the API as a System Manager. */
+  /** Runs setup through the run's API session as a System Manager. */
   async withApi(fn) {
-    const api = await Api.asSystemManager();
-    try {
-      return await fn(api);
-    } finally {
-      await api.dispose();
-    }
+    return fn(await Api.asSystemManager());
   }
 
   /** Deletes a table left by an earlier scenario, so a create starts fresh. */
@@ -145,5 +138,6 @@ After(async function ({ result }) {
 });
 
 AfterAll(async function () {
+  await Api.disposeAll();
   await browser?.close();
 });
