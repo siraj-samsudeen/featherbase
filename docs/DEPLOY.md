@@ -258,13 +258,14 @@ there (`tools/build-instance-apps.mjs`):
 ```
 
 **Watch paths**, so that a service rebuilds only for what is in its image. On
-Railway they are set per service:
+Railway they are set per service, and `.railway/railway.ts` records them for
+the environments it manages. `.railway/**` is not one of them: Railway doesn't
+read it during a deploy.
 
 ```text
 apps/**
 packages/**
 pnpm-lock.yaml
-railway.json
 tools/dev.mjs
 tools/build-instance-apps.mjs
 client-apps/<client>/instances/<instance>/**
@@ -352,24 +353,46 @@ still lists the app's `platformVersion`
 
 ### Railway
 
-**A new service must carry these settings itself.** Railway has deprecated its
-config file: a new service can't be pointed at `railway.json`, and it builds with
-Railpack and runs no pre-deploy step, so the server starts on an empty database and
-crashes. Set on the service, and check them after the first deploy:
+**The settings live on the service.** Railway reads no file from the
+repository when it deploys. A service left at Railway's defaults builds with
+Railpack and runs no pre-deploy step, so the server starts on an empty database
+and crashes. Each service needs:
 
 | Setting | Value |
 | --- | --- |
-| Variable `RAILWAY_DOCKERFILE_PATH` | `apps/server/Dockerfile` |
+| Builder, Dockerfile path | `DOCKERFILE`, `apps/server/Dockerfile` |
 | Pre-deploy command | `pnpm --filter server pre-deploy` |
 | Healthcheck path, timeout | `/api/ping`, `300` |
 | Restart policy | `ON_FAILURE`, 5 retries |
+| Volume | mounted at `/data` |
 
-`railway.json` at the repo root records the same shape for services that still read it: Dockerfile build, a
-pre-deploy step of `pnpm --filter server pre-deploy` (the release, then
+`.railway/railway.ts` (Railway's Infrastructure as Code, which replaced
+`railway.json`) holds them for each environment, beside what differs between
+environments: the service's name, its volume and its watch paths. To bring an
+environment into line, or to check it, run from the repo root with the
+[Railway CLI](https://docs.railway.com/cli) (5.49.1 or newer) signed in:
+
+```sh
+railway link --project jeyarama-featherbase --environment <environment>
+railway config plan     # reads only; lists what an apply would change
+railway config apply    # asks for confirmation of that same list
+```
+
+A plan that lists nothing means the environment already matches. Apply only
+when the plan lists only the changes you meant. The file is a named partial
+(`featherbase-server`), so it manages only the server service and its volume.
+Without the partial name, an apply would delete every resource the file leaves
+out, the database included. Inside the service, a setting the file leaves out
+is one an apply clears, which is why the source and volume are declared.
+Variables are never managed by the file: secrets stay on Railway. An
+environment the file doesn't name is refused. Add it to `ENVIRONMENTS` first.
+A new environment's service gets these settings from that apply, or by hand.
+
+The pre-deploy command, `pnpm --filter server pre-deploy`, runs the release, then
 [a client instance's apps and settings](#a-client-instance) when
 `FEATHERBASE_INSTANCE` is set, then the preview seed, which does nothing unless
-the preview variables are set; any of them failing fails the deploy), and `/api/ping` as the healthcheck. Keep the
-pre-deploy step one command: Railway may run each entry as argv rather than
+the preview variables are set. Any of them failing fails the deploy. Keep the
+pre-deploy step one command (a test pins it): Railway may run each entry as argv rather than
 through a shell, and a second command chained with `&&` was observed never to
 run while the deploy still went green (#307). Other platforms map the same
 settings onto their own vocabulary. Turn on the host's **deploy-failure

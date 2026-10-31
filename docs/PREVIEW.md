@@ -68,7 +68,8 @@ next deploy.
 
 A PR environment's database is empty, and there is no convenient moment to
 `railway ssh` into a short-lived environment. So the preview seed runs in the
-pre-deploy step of every deploy (`railway.json`):
+pre-deploy step of every deploy, the command the base environment's service
+carries (`.railway/railway.ts`; a PR environment copies it from there):
 
 ```
 pnpm --filter server pre-deploy
@@ -101,12 +102,13 @@ service's **Settings**:
 | --- | --- |
 | **Branch** | `dev-preview` |
 | **Root directory** | *(leave empty — the build runs from the repo root)* |
-| **Config-as-code path** | `railway.json` |
 | **Public networking** | Generate a domain |
 
-`railway.json` encodes the rest: a Dockerfile build from
+Then give the service the build and deploy settings in
+[DEPLOY.md, "Railway"](DEPLOY.md#railway): a Dockerfile build from
 `apps/server/Dockerfile`, the release + seed pre-deploy step, and `/api/ping`
-as the healthcheck. The Dockerfile builds the SPA *into* the server image, so
+as the healthcheck. Railway reads no file from the repository for them; set
+them by hand, or add the environment to `.railway/railway.ts` and apply it. The Dockerfile builds the SPA *into* the server image, so
 one container serves both the UI and the API on one origin — no CORS, no
 second service.
 
