@@ -17,6 +17,101 @@ afterEach(() => _setInvitationHooksForTests(null))
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` })
 
 describe('invalid route arguments leave stored state alone', () => {
+  test('an absent password cannot replace a person’s current password', async ({ admin }) => {
+    const person = await makePerson({ full_name: 'Password shape' })
+    await admin.post('/api/set_password', { user: person, password: 'shape-original-password' })
+    const before = await sql`select password_hash from person where row_id = ${person}`
+    await expectApiError(admin.post('/api/set_password', { user: person }), {
+      status: 417, type: 'ValidationError', message: expect.stringContaining('Expected { password }'),
+    })
+    expect(await sql`select password_hash from person where row_id = ${person}`).toEqual(before)
+  })
+
+  test('missing identifier search terms are reported without revealing people', async ({ admin }) => {
+    for (const query of ['', '?system=phone', '?value=9847012345']) {
+      await expectApiError(admin.get(`/api/identifiers${query}`), {
+        status: 417, type: 'ValidationError', fields: { system: 'required', value: 'required' },
+        message: expect.stringContaining('Expected ?system=&value='),
+      })
+    }
+  })
+
+  test('truncated identifier edits retain the complete stored history', async ({ admin }) => {
+    const person = await makePerson({ full_name: 'History shape' })
+    const { identifier } = await admin.post<{ identifier: { id: string } }>(`/api/people/${person}/identifiers`, {
+      system: 'phone', value: '9847012345', note: 'keep this note',
+    })
+    const before = await sql`select * from person_identifier where id = ${identifier.id}`
+    const audit = await sql`select operation from activity_log where operation like ${`%${identifier.id}%`} order by row_id`
+    const edit = await admin.fetch(`/api/identifiers/${identifier.id}`, { method: 'PATCH', body: '{"valid_to":' })
+    expect(edit.status).toBe(200)
+    expect(await edit.json()).toMatchObject({ result: 'unchanged', identifier: { id: identifier.id } })
+    const add = await admin.fetch(`/api/people/${person}/identifiers`, { method: 'POST', body: '{"system":' })
+    expect(add.status).toBe(404)
+    expect(await add.json()).toMatchObject({ error: { type: 'NotFoundError', message: 'Identifier system  not found' } })
+    expect(await sql`select * from person_identifier where person_id = ${person}`).toEqual(before)
+    expect(await sql`select operation from activity_log where operation like ${`%${identifier.id}%`} order by row_id`).toEqual(audit)
+  })
+
+  test('truncated identity edits retain the existing linked sign-in', async ({ admin }) => {
+    await configureDelegated()
+    const person = await makePerson({ full_name: 'Identity shape' })
+    const identity = await linkDelegated(person, 'shape-link')
+    const before = await sql`select * from sign_in_identity where id = ${identity}`
+    const response = await admin.fetch(`/api/identities/${identity}`, { method: 'PATCH', body: '{"person_id":' })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ id: identity, person_id: person, sign_in_name: 'shape-link' })
+    expect(await sql`select * from sign_in_identity where id = ${identity}`).toEqual(before)
+  })
+
+  test('a variable report refuses an unreadable key without returning fingerprints', async ({ admin }) => {
+    const response = await admin.fetch('/api/instance-settings/variables', { method: 'POST', body: '{"key":' })
+    expect(response.status).toBe(417)
+    const result = await response.json()
+    expect(result).toMatchObject({ error: { type: 'ValidationError', fields: { key: 'at least 32 characters' } } })
+    expect(result).not.toHaveProperty('variables')
+    expect(result).not.toHaveProperty('key_id')
+  })
+
+  test('a report chart refuses truncated JSON before running any report', async ({ admin }) => {
+    const response = await admin.fetch('/api/report_chart', { method: 'POST', body: '{"report":' })
+    expect(response.status).toBe(417)
+    expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message: 'Expected { report }' } })
+  })
+
+  test('missing file references cannot mint a signed URL', async ({ admin }) => {
+    await expectApiError(admin.get('/api/signed_url'), {
+      status: 417, type: 'ValidationError', message: expect.stringContaining('Expected file_url'),
+    })
+    await expectApiError(admin.get('/api/signed_url?file_url=%2Fprivate%2Ffiles%2Fabsent'), {
+      status: 404, type: 'NotFoundError', message: expect.stringContaining('File not found: /private/files/absent'),
+    })
+  })
+
+  test('a missing person has no sign-in panel', async ({ admin }) => {
+    await expectApiError(admin.get('/api/people/no-such-person/identities'), {
+      status: 404, type: 'NotFoundError', message: expect.stringContaining('Person no-such-person not found'),
+    })
+  })
+
+  test('Google linking cannot begin when the method disallows self-linking', async ({ createUser }) => {
+    const person = await createUser({ email: 'link-disabled@x.test' })
+    const before = await sql`select id from sign_in_identity where person_id = ${person.user}`
+    for (const enabled of [true, false]) {
+      await configureGoogle({ enabled, self_link: false })
+      const response = await person.fetch('/api/oauth/google/link')
+      expect(response.status).toBe(403)
+      expect(await response.json()).toMatchObject({ error: { type: 'PermissionError', message: 'Linking Google is not available' } })
+      expect(response.headers.getSetCookie()).toEqual([])
+      expect(await sql`select id from sign_in_identity where person_id = ${person.user}`).toEqual(before)
+    }
+  })
+
+  test('a Table without a configured workflow offers no transitions', async ({ admin }) => {
+    const person = await makePerson({ full_name: 'No workflow' })
+    expect(await admin.get(`/api/workflow/Person/${person}`)).toEqual({ workflow: null })
+  })
+
   test('open signup still refuses truncated JSON without creating a person or session', async ({ api }) => {
     await setPasswordMethod({ new_person: 'create' })
     const [before] = await sql`select (select count(*)::int from person) as people, (select count(*)::int from activity_log where operation = 'login') as logins`

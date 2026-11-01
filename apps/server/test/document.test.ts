@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import { createUserWithRole, expectApiError, makeTable, tableRef } from './fixtures'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
-import { duplicateValueFields } from '../src/document'
+import { duplicateValueFields, saveSingle, saveSystemRow } from '../src/document'
 import type { TestClient } from 'feather-testing-postgres'
 
 const DT = 'Doc Test Note'
@@ -69,6 +69,25 @@ describe('DOC-001: save_row inserts through the Document engine', () => {
 })
 
 describe('DOC: what a save refuses, and the field it names', () => {
+  test('specialized server writers refuse the wrong Table kind without writing a row', async ({ admin }) => {
+    const dt = await makeDT(admin)
+    await expect(saveSystemRow(DT, { title: 'not a system row' }, 'Administrator')).rejects.toMatchObject({
+      type: 'ValidationError', message: `${DT} is not system-written; use saveDoc`,
+    })
+    await expect(saveSingle(DT, { title: 'not settings' })).rejects.toMatchObject({
+      type: 'ValidationError', message: `${DT} is not a Settings Table`,
+    })
+    expect(await admin.get(`${dt.url}?fields=["title"]`)).toMatchObject({ total: 0, data: [] })
+    expect(await sql`select field, value from single_value where table_name = ${DT}`).toEqual([])
+  })
+
+  test('the trusted system writer refuses unknown columns before inserting history', async ({ admin: _admin }) => {
+    const before = await sql`select row_id, data from version order by row_id`
+    await expect(saveSystemRow('Version', { ref_table: DT, ref_name: 'missing', surprise: 'not a column' }, 'Administrator'))
+      .rejects.toMatchObject({ type: 'ValidationError', message: 'Unknown Version columns: surprise' })
+    expect(await sql`select row_id, data from version order by row_id`).toEqual(before)
+  })
+
   test('a Table whose stored id pattern the engine does not know refuses new rows rather than guessing an id', async ({ admin }) => {
     await makeDT(admin)
     await sql`update table_def set id_pattern = 'weird' where name = ${DT}`

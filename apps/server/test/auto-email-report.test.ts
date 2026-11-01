@@ -86,6 +86,9 @@ describe('EML-007: Auto Email Report', () => {
   test('toCsv quotes fields containing commas and renders header+rows', () => {
     const csv = toCsv(['title', 'qty'], [{ title: 'Bolt, hex', qty: 10 }])
     expect(csv).toBe('title,qty\n"Bolt, hex",10')
+    expect(toCsv(['title', 'active', 'qty', 'missing'], [
+      { title: 'Ready', active: true, qty: null }, { title: '"Quoted"\rline', active: false, qty: 0 },
+    ])).toBe('title,active,qty,missing\nReady,Yes,,\n"""Quoted""\rline",No,0,')
   })
 
   test('delivering runs the report and queues an email with the CSV attached', async ({
@@ -195,7 +198,7 @@ describe('EML-007: Auto Email Report', () => {
     await setup(admin)
     const row = await admin.get<{ updated_at: string }>(`/api/table/${encodeURIComponent(DT)}/aer-2`)
     const changed = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/aer-2`, {
-      method: 'PATCH', body: JSON.stringify({ updated_at: row.updated_at, title: 'Washer <tag>&"quoted"' }),
+      method: 'PATCH', body: JSON.stringify({ updated_at: row.updated_at, title: 'Washer <tag>&"quoted"', qty: null }),
     })
     expect(changed.status).toBe(200)
     await sql`update auto_email_report set file_format = 'HTML' where row_id = ${AER}`
@@ -204,7 +207,7 @@ describe('EML-007: Auto Email Report', () => {
     const files = (q.attachments as { files?: { filename: string; content_b64: string }[] }).files ?? []
     expect(files[0].filename).toBe(`${REPORT}.html`)
     const html = Buffer.from(files[0].content_b64, 'base64').toString('utf8')
-    expect(html).toContain('<td>Washer &lt;tag&gt;&amp;"quoted"</td>')
+    expect(html).toContain('<td>Washer &lt;tag&gt;&amp;"quoted"</td><td></td>')
     expect(html).not.toContain('<tag>')
   })
 })

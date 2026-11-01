@@ -165,6 +165,15 @@ describe('NAV-002: related filters', () => {
       expect(list(admin, ORDER, filters)).rejects.toMatchObject({ status: 417 })
     await bad([['supplier', 'related', 'S-A']]) // not an object
     await bad([['supplier', 'related', {}]]) // no table
+    for (const [spec, message] of [
+      [{ table: PART, via: '' }, "'related' via must be a sub-table name"],
+      [{ table: PART, via: LINE, column: 42 }, "'related' column must be a column name"],
+      [{ table: PART, via: LINE, column: 'part', parentfield: [] }, "'related' parentfield must be a Sub-table column name"],
+      [{ table: SUP, filters: { city: 'Chennai' } }, "'related' filters must be an array of [field, operator, value]"],
+    ] as const)
+      await expect(list(admin, ORDER, [['row_id', 'related', spec]])).rejects.toMatchObject({
+        status: 417, type: 'ValidationError', message: expect.stringContaining(message),
+      })
     await bad([['total', 'related', { table: SUP }]]) // not a Reference column
     await bad([['supplier', 'related', { table: PART }]]) // wrong target
     await bad([['row_id', 'related', { via: LINE, column: 'qty', table: PART }]]) // via col not a Reference

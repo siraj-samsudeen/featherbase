@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { getCollectionAction, getRowAction, listActions, registerCollectionAction, registerRowAction } from '../src/actions'
 
 const DT = 'Rest Project'
 
@@ -15,6 +16,18 @@ async function setup(admin: TestClient) {
 }
 
 describe('API-001/API-002: generic REST resource', () => {
+  test('extensions cannot replace generated endpoints with row or collection actions', async ({ admin }) => {
+    await setup(admin)
+    const before = listActions()
+    for (const name of ['meta', 'count', 'distinct', 'actions']) {
+      expect(() => registerRowAction(name, getRowAction('submit')!)).toThrow(`":${name}" is reserved for the generated Table layer`)
+      expect(() => registerCollectionAction(name, getCollectionAction('import')!)).toThrow(`":${name}" is reserved for the generated Table layer`)
+    }
+    expect(listActions()).toEqual(before)
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}:meta`)).toMatchObject({ name: DT })
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}:count`)).toEqual({ count: 0 })
+  })
+
   test('runs the full CRUD cycle through /api/resource with zero per-Table code', async ({
     admin,
   }) => {

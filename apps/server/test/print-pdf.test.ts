@@ -37,6 +37,27 @@ async function setup() {
 }
 
 describe('PRN-003: server-side PDF', () => {
+  test('auto layout and templates distinguish false, true, blank and escaped text', async () => {
+    await createTable({ name: 'Pdf Values', id_pattern: 'prompt', columns: [
+      { column_name: 'accepted', column_type: 'Check', label: 'Accepted' },
+      { column_name: 'declined', column_type: 'Check', label: 'Declined' },
+      { column_name: 'blank', column_type: 'Data', label: 'Blank' },
+      { column_name: 'wording', column_type: 'Data', label: 'Wording' },
+    ] })
+    await saveDoc('Pdf Values', { row_id: 'values-1', accepted: true, declined: false, wording: '"<&\'>' }, 'Administrator')
+    const standard = await renderPrintHtml('Pdf Values', 'values-1', 'Administrator', 'standard', 'none')
+    expect(standard).toContain('<dt>Accepted</dt><dd>Yes</dd>')
+    expect(standard).toContain('<dt>Declined</dt><dd>No</dd>')
+    expect(standard).toContain('<dt>Blank</dt><dd>—</dd>')
+    expect(standard).toContain('<dt>Wording</dt><dd>&quot;&lt;&amp;&#39;&gt;</dd>')
+    await saveDoc('Print Format', { row_id: 'Pdf Values Format', ref_table: 'Pdf Values',
+      template: '<p>{{ accepted }}|{{ declined }}|{{ blank }}|{{ absent }}</p><b>{{ wording }}</b>',
+    }, 'Administrator')
+    const formatted = await renderPrintHtml('Pdf Values', 'values-1', 'Administrator', 'Pdf Values Format', 'none')
+    expect(formatted).toContain('<p>Yes|No||</p><b>&quot;&lt;&amp;&#39;&gt;</b>')
+    expect(formatted).not.toContain('{{')
+  })
+
   test('auto-layout PDF contains the field values', async () => {
     await setup()
     const html = await renderPrintHtml(DT, 'srv-1', 'Administrator', 'standard')
