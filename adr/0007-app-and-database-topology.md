@@ -2,7 +2,7 @@
 
 - **Status:** Accepted, implemented (proposed 2026-07-26) · **Corrected:** 30-Oct-2026 (#705)
 - **Context docs:** `docs/research/frappe-multi-app-and-multi-db.md` (removed Oct 2026; see git history)
-- **Behaviour:** [`openspec/specs/external-data-sources/spec.md`](../../openspec/specs/external-data-sources/spec.md)
+- **Behaviour:** [`openspec/specs/external-data-sources/spec.md`](../openspec/specs/external-data-sources/spec.md)
   (the original `docs/specs/0001` and `0002` were converted into it and deleted)
 
 > **30-Oct-2026 correction.** Decisions 1–5 shipped as written; a DocType is

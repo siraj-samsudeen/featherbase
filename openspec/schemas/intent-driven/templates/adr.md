@@ -11,7 +11,7 @@ ADR review completed for this change.
 
 <!-- Replace with every currently in-force repository-level ADR reviewed for this change. -->
 
-- None - `docs/adr/` has no in-force ADRs.
+- None - `<repo>/adr/` has no in-force ADRs.
 
 ## New Durable ADRs Created
 

@@ -18,7 +18,7 @@ Discovery covers `openspec/specs/` and each active `openspec/changes/<id>/specs/
 
 Every input line maps to **exactly one** output line, so the extracted file has the IDENTICAL line count and **line N of the `.feature` is line N of the `.md`**.
 
-gherkin-lint messages, runner failure locations and effective-spec line targeting (`spec.feature:27:33`) therefore all point at valid `spec.md` lines with zero translation. Read `.extracted/X/spec.feature:N` as `openspec/X/spec.md:N`, always.
+Runner parse errors, runner failure locations and effective-spec line targeting (`spec.feature:27:33`) therefore all point at valid `spec.md` lines with zero translation. Read `.extracted/X/spec.feature:N` as `openspec/X/spec.md:N`, always.
 
 **Never "improve" the extractor to collapse blank lines.** The whole toolchain leans on this.
 
@@ -40,7 +40,7 @@ Heading matching is case-insensitive on the keywords (`Requirement:`, `Scenario:
 
 Three consequences worth stating explicitly, because each is a decision rather than an accident:
 
-- **Steps are not re-indented.** They keep the column the author wrote. Gherkin ignores indentation, verbatim copying keeps runner error columns pointing at real `spec.md` text, and this is why `indentation` is off in the pinned lint config.
+- **Steps are not re-indented.** They keep the column the author wrote. Gherkin ignores indentation, verbatim copying keeps runner error columns pointing at real `spec.md` text
 - **Requirement description prose is blanked, not emitted as a `Rule:` description.** Free text that could accidentally parse as a Gherkin keyword is exactly the failure this format exists to avoid. The SHALL/MUST sentence stays visible in the rendered Markdown.
 - **The delta operation is emitted once, at the section heading.** It is not repeated per requirement, so consumers must treat it as applying to every `Rule:` until the next marker. See [COMPOSITION.md](COMPOSITION.md).
 
@@ -64,7 +64,7 @@ All deliberate — silent drops are the failure mode to fear. **Both stacks clas
 | Unclosed fence | Error with `file:line` of the opener |
 | No H1 title | **Hard error** — there would be no `Feature:` |
 | More than one H1 | **Hard error** — a spec.md is exactly one capability |
-| `#### Scenario:` with no fence before the next heading (or before EOF) | **Hard error** — a scenario with no steps would silently pass |
+| `#### Scenario:` with no fence before the next heading (or before EOF) | **A prose scenario, left out**: its `Scenario:` line is blanked (line fidelity kept), so it never runs as an empty scenario that would silently pass. Extraction prints one notice with the count and each `file:line`, so it never drops out silently. A spec written before spec-as-source runs its fenced scenarios and lists its prose ones; a spec with no fence at all is still extracted, so its delta markers and `Rule:` lines reach composition |
 | `Feature:` / `Rule:` / `Scenario:` / `Scenario Outline:` / `Example:` inside a gherkin fence | **Hard error** — structure comes from headings. This is what an old-format spec hits, so the migration failure is loud |
 | Zero gherkin fences in a `spec.md` | Fine — a REMOVED-only delta legitimately has no steps |
 | `Examples:` and `Background:` inside a fence | Allowed — both legitimately belong there |

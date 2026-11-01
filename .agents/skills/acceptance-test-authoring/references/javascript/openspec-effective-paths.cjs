@@ -26,6 +26,42 @@ function changeIdOf(deltaPath) {
   return parts[parts.indexOf('changes') + 1];
 }
 
+// Journey order: the capabilities a change's proposal.md lists under
+// "## Capabilities" (New, then Modified, in file order), as backticked names
+// at the start of a list item.
+function proposalCapabilities(changeId) {
+  const proposal = path.resolve(__dirname, '../openspec/changes', changeId, 'proposal.md');
+  if (!fs.existsSync(proposal)) return [];
+  const names = [];
+  let inSection = false;
+  for (const line of fs.readFileSync(proposal, 'utf8').split(/\r?\n/)) {
+    if (/^##\s/.test(line)) inSection = /^##\s+Capabilities\s*$/.test(line);
+    if (!inSection) continue;
+    const item = /^\s*[-*]\s+`([^`]+)`/.exec(line);
+    if (item && !names.includes(item[1])) names.push(item[1]);
+  }
+  return names;
+}
+
+// Plain code-point order, as Python's sorted() uses, so both stacks agree.
+const byCodePoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+// Changes alphabetically; each change's delta paths in its proposal's
+// capability order; a capability the proposal doesn't list follows,
+// alphabetically.
+function inJourneyOrder(deltaPaths) {
+  const order = new Map();
+  const position = (p) => {
+    const changeId = changeIdOf(p);
+    if (!order.has(changeId)) order.set(changeId, proposalCapabilities(changeId));
+    const at = order.get(changeId).indexOf(capabilityOf(p));
+    return at < 0 ? Number.MAX_SAFE_INTEGER : at;
+  };
+  return [...deltaPaths].sort(
+    (a, b) => byCodePoint(changeIdOf(a), changeIdOf(b)) || position(a) - position(b) || byCodePoint(a, b),
+  );
+}
+
 function collectSupersededRules(deltaPaths) {
   const superseded = new Map();
   for (const deltaPath of deltaPaths) {
@@ -104,14 +140,12 @@ function printCompositionReport(exclusions) {
 }
 
 function effectivePaths() {
-  const deltaPaths = globSync('.extracted/changes/*/specs/**/*.feature', {
-    cwd: __dirname,
-    posix: true,
-  }).filter((p) => !p.includes('changes/archive/'));
-  const sotPaths = globSync('.extracted/specs/**/*.feature', {
-    cwd: __dirname,
-    posix: true,
-  });
+  const deltaPaths = inJourneyOrder(
+    globSync('.extracted/changes/*/specs/**/*.feature', { cwd: __dirname, posix: true }).filter(
+      (p) => !p.includes('changes/archive/'),
+    ),
+  );
+  const sotPaths = globSync('.extracted/specs/**/*.feature', { cwd: __dirname, posix: true }).sort(byCodePoint);
 
   const superseded = collectSupersededRules(deltaPaths);
   const paths = [];
@@ -141,8 +175,8 @@ function effectivePaths() {
     }
   }
 
-  paths.push(...deltaPaths);
-  return paths;
+  // The changes' scenarios run first, in journey order; the main specs follow.
+  return [...deltaPaths, ...paths];
 }
 
 module.exports = { effectivePaths };

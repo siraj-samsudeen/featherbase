@@ -1,0 +1,8 @@
+acceptance-test-authoring
+architectural-decision-records
+c4-diagrams
+gherkin-authoring
+glossary
+grill-me
+openspec-git-discipline
+spec-as-source

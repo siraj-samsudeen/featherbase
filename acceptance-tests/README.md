@@ -18,14 +18,12 @@ headless. Each run writes `reports/cucumber-report.html`, with a screenshot of
 every failed scenario.
 
 - `extract-gherkin.cjs`, `cucumber.cjs` and `openspec-effective-paths.cjs`
-  are copied from the skill's references. The skill's spec lint (gherkin-lint)
-  is left out: it is unmaintained and its dependencies fail `npm audit`, and
-  cucumber-js already refuses malformed Gherkin on every run. One local change in
-  `extract-gherkin.cjs`: a `spec.md` with no gherkin fence (most main specs
-  today are still prose) is not extracted, and the run says how many.
-  While those prose specs are left out, a delta that modifies one of their
-  requirements prints an `[effective-spec] WARNING ... no such rule` line; it is
-  expected until the main spec is fenced.
+  are copied from the skill's references, unchanged. There is no separate spec
+  lint: cucumber-js refuses malformed Gherkin on every run. A `#### Scenario:`
+  with no gherkin fence (most main specs today are still prose) is left out,
+  and the run names each one. While those prose specs are left out, a delta
+  that modifies one of their requirements prints an `[effective-spec] WARNING
+  ... no such rule` line; it is expected until the main spec is fenced.
 - `.extracted/` and `reports/` are generated; never edit or commit them.
 - Steps say what the user does and sees; screens, selectors and URLs live in
   the page objects under `support/pages/`.
@@ -38,7 +36,8 @@ For a person at their own screen; agents and CI set none of these.
 |---|---|
 | `HEADED=1` | A visible browser, slowed down so each action can be followed. |
 | `PWDEBUG=1` | Playwright's Inspector (headed), pausing before each action; no step timeout. |
-| `VIDEO=1` | A slowed-down, headless video of every scenario, one per browser (System Manager, the user, a colleague): `reports/videos/<NN>-<scenario>[-<who>].webm`, numbered in run order. A change's scenarios run in journey order, the order its `proposal.md` lists its capabilities, so the videos follow it too. |
+| `VIDEO=1` | A slowed-down, headless video of every scenario, one per browser (System Manager, the user, a colleague): `reports/videos/<NN>-<scenario>[-<who>].webm`, numbered in run order. A change's scenarios run in journey order, the order its `proposal.md` lists its capabilities, so the videos follow it too. Each step's text shows as a caption at the top of every page, and each Then holds for 1.5s so its result can be seen. |
+| `VIDEO_SLOWMO=<ms>` | How slow a `VIDEO=1` run is, per browser action (default 400). |
 
 In CI (or with `TRACE=1`) every scenario's browsers are traced; a failed scenario keeps its traces as
 `reports/traces/<scenario>[-<who>].zip` (CI uploads them with the report).
@@ -50,4 +49,11 @@ npx --prefix acceptance-tests playwright show-trace acceptance-tests/reports/tra
 
 ```bash
 VIDEO=1 npm --prefix acceptance-tests test
+npm --prefix acceptance-tests run video:journey   # then join them into one video
 ```
+
+`video:journey` joins the last `VIDEO=1` run's videos, in run order, into
+`reports/videos/journey.mp4`, each after a 2-second title card
+"NN · scenario — who"; phone clips are padded onto the same 1280×900 canvas.
+It needs a working ffmpeg (`FFMPEG=<path>`, else `ffmpeg` on `PATH`, else
+`/opt/homebrew/bin/ffmpeg`) and says so when there is none.

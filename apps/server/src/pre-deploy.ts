@@ -1,5 +1,5 @@
 // #307: the deploy's one pre-deploy command (`pnpm --filter server
-// pre-deploy`, railway.json): the release, then the preview seed. A host may
+// pre-deploy`, .railway/railway.ts): the release, then the preview seed. A host may
 // run each pre-deploy entry as argv rather than through a shell, so the two
 // steps are chained here, not with `&&` in the deploy config — where the
 // second was observed never to run while the deploy still went green.

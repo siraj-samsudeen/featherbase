@@ -15,6 +15,7 @@ must run from the skill's references/python/ directory, where no virtualenv
 exists.
 """
 
+import os
 import re
 import shutil
 import sys
@@ -36,6 +37,13 @@ SCENARIO_RE = re.compile(r"^####\s+(Scenario(?:\s+Outline)?):\s*(.+?)\s*$", re.I
 # `Examples:` (the Scenario Outline table) and `Background:` are deliberately
 # absent: both legitimately live in a fence.
 STRUCTURE_IN_FENCE_RE = re.compile(r"^\s*(Feature|Rule|Scenario\s+Outline|Scenario|Example):")
+
+
+# Prose scenarios: a "#### Scenario:" with no gherkin fence (a spec written
+# before spec-as-source, or a delta archived into one) is not executable yet.
+# Its Scenario: line is blanked, keeping line fidelity, and it is recorded
+# here so extract_all() can name it. Reset by extract_all().
+prose_scenarios = []
 
 
 class ExtractionError(Exception):
@@ -81,12 +89,12 @@ def extract_file(md_path):
             if not HEADING_RE.match(line):
                 out.append("")
                 continue
-            # A heading ends any scenario still waiting for its steps.
+            # A heading ends any scenario still waiting for its steps: a prose
+            # scenario, left out.
             if pending_scenario:
-                raise ExtractionError(
-                    '%s:%d: "#### %s: %s" has no ```gherkin fence before the next heading'
-                    % (md_path, pending_scenario[0], pending_scenario[1], pending_scenario[2])
-                )
+                out[pending_scenario[0] - 1] = ""
+                prose_scenarios.append("%s:%d" % (md_path, pending_scenario[0]))
+                pending_scenario = None
             m = H1_RE.match(line)
             if m:
                 h1_count += 1
@@ -133,10 +141,8 @@ def extract_file(md_path):
     if state != "prose":
         raise ExtractionError("%s:%d: unclosed fence" % (md_path, open_line))
     if pending_scenario:
-        raise ExtractionError(
-            '%s:%d: "#### %s: %s" has no ```gherkin fence before the end of the file'
-            % (md_path, pending_scenario[0], pending_scenario[1], pending_scenario[2])
-        )
+        out[pending_scenario[0] - 1] = ""
+        prose_scenarios.append("%s:%d" % (md_path, pending_scenario[0]))
     if h1_count == 0:
         raise ExtractionError(
             '%s: no H1 title — a spec.md must start with "# <capability>"' % md_path
@@ -199,12 +205,19 @@ def extract_all(openspec_dir=None, out_dir=None):
             "are ignored (specs are spec.md now): %s\n" % ", ".join(legacy)
         )
 
+    del prose_scenarios[:]
     written = []
     for rel in sources:
         dest = out_dir / re.sub(r"spec\.md$", "spec.feature", rel)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(extract_file(openspec_dir / rel), encoding="utf-8")
         written.append(dest)
+    if prose_scenarios:
+        sys.stderr.write(
+            "[extract-gherkin] %d prose scenario(s) with no gherkin fence are not executable yet "
+            "and were left out: %s\n"
+            % (len(prose_scenarios), ", ".join(os.path.relpath(p) for p in prose_scenarios))
+        )
     return out_dir, written
 
 

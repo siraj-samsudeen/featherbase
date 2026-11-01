@@ -4,7 +4,8 @@
   "description": "Runs the fenced Gherkin in openspec/ spec.md files against the real app (spec-as-source).",
   "scripts": {
     "test": "cucumber-js",
-    "test:specs": "cucumber-js -p specs"
+    "test:specs": "cucumber-js -p specs",
+    "video:journey": "node scripts/video-journey.cjs"
   },
   "devDependencies": {
     "@cucumber/cucumber": "^13.3.0",
