@@ -4,7 +4,7 @@
 // finally.
 import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
-import { expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it } from 'vitest'
 import { sql } from '../src/db'
 import { WAYS_IN_LOCK_KEY, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from '../src/identities'
 import { saveDoc } from '../src/document'
@@ -12,6 +12,18 @@ import { loadControllers } from '../src/controllers'
 import { saveImportedRow } from '../src/import-corrections'
 import { getMeta } from '../src/meta'
 import { resolveVerified } from '../src/sign-in'
+
+// These committed races also edit the seeded method. Restore their generated
+// history, not just its fields, without removing any history present on entry.
+let methodVersions: Set<string>
+beforeEach(async () => {
+  methodVersions = new Set((await sql`select row_id from version where ref_table = 'Sign In Method' and ref_name = 'google'`).map((r) => r.row_id))
+})
+afterEach(async () => {
+  const generated = (await sql`select row_id from version where ref_table = 'Sign In Method' and ref_name = 'google'`)
+    .map((r) => r.row_id).filter((id) => !methodVersions.has(id))
+  if (generated.length) await sql`delete from version where row_id in ${sql(generated)}`
+})
 
 async function cleanup(prefix: string) {
   await sql`delete from has_role where parent like ${prefix + '%'}`

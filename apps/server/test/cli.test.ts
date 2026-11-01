@@ -475,7 +475,7 @@ describe('#401: cli settings:set', () => {
     }
   }, 60_000)
 
-  it('sets a sign-in method text field with --table and --row, even when locked', async () => {
+  test('sets a sign-in method text field with --table and --row, even when locked', async () => {
     const [before] = await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`
     await sql`delete from instance_settings_apply`
     await sql`insert into instance_settings_apply ${sql({ applied_by: 'cli-test', managed_paths: sql.json([{ table: 'Sign In Method', row_id: 'google', field: 'allowed_email_domains' }]) })}`
@@ -506,6 +506,15 @@ describe('#401: cli settings:set', () => {
 // #465 (D3, D9): the settings file from the command line. Export, then apply
 // the export, must report "nothing changed"; a dry run writes nothing.
 describe('#703: cli install-app', () => {
+  test('install-app requires exactly one app and leaves the installed registry unchanged on bad arguments', async () => {
+    const before = await sql`select name, package_version from installed_app order by name`
+    for (const args of [[], ['checklists', 'helpdesk']]) {
+      const result = await runMain(main, ['install-app', ...args])
+      expect(result).toMatchObject({ code: 1, stdout: '', stderr: 'error: usage: cli install-app <name>\n' })
+      expect(await sql`select name, package_version from installed_app order by name`).toEqual(before)
+    }
+  })
+
   it('installs a shipped app once, says so the second time, and names what it has otherwise', async () => {
     const { uninstallApp, isInstalled } = await import('../src/apps')
     if (await isInstalled('checklists')) await uninstallApp('checklists')
@@ -713,6 +722,9 @@ describe('the command line, command by command', () => {
 
   test('seed-pack applies a named pack, and needs `apply <name>`', async () => {
     expect((await failure(['seed-pack', 'jeyarama']))?.stderr).toBe('error: usage: cli seed-pack apply <name>\n')
+    expect((await failure(['seed-pack', 'apply', '../jeyarama']))?.stderr).toBe('error: Unknown seed pack "../jeyarama"\n')
+    expect((await failure(['seed-pack', 'apply', 'missing-backend-coverage-pack']))?.stderr)
+      .toBe(`error: Seed pack missing-backend-coverage-pack not found (${join(serverDir, 'seeds/missing-backend-coverage-pack/identifier-systems.json')})\n`)
     expect(await cli(['seed-pack', 'apply', 'jeyarama'])).toMatch(/^seed pack jeyarama: added .*; kept .*; sign-in methods linked .*; people_review \w+\n$/)
   })
 
