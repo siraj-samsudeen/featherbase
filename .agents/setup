@@ -73,9 +73,8 @@ fi
 echo '==> Checking database connectivity'
 PGCONNECT_TIMEOUT=5 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc 'select 1' >/dev/null
 
-echo '==> Applying migrations and patches'
+echo '==> Applying migrations'
 pnpm --filter server migrate
-pnpm --filter server patches
 
 echo '==> Installing Playwright Chromium and its system dependencies'
 pnpm --filter web exec playwright install --with-deps chromium
