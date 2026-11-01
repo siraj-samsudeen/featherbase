@@ -11,6 +11,7 @@ import { availableRuntimeVersions } from '../../src/runtime-packages'
 import { NoPersonScope, resolvePersonScope } from '../../src/person-scope'
 import { applySeedPack } from '../../src/seed-packs'
 import { sql } from '../../src/db'
+import { tableRelation } from '../../src/table-engine'
 import { statusOf } from '../../src/errors'
 import { APP_DIR, OLD_TABLES, VERSION, installApp, pinned, saveRow } from './helpers'
 // @ts-expect-error a plain .mjs module, copied in beside this file by the runner
@@ -83,6 +84,31 @@ describe('the org_chart scope provider on the platform', () => {
     }])
   })
 
+  test('invalid and missing-section placements never widen a valid section scope', async ({ admin, createUser }) => {
+    const { people } = await setup(admin, createUser)
+    await saveRow(admin, 'store_rollout', { store: '9902', live_since: '2026-01-01' })
+    const foreign = await saveRow(admin, 'section', { store: '9902', section_name: 'Belts' })
+    await saveRow(admin, 'job_assignment', {
+      person: people['p-103'], job: 'Team Leader', store: '9902', section: foreign.row_id, starts_on: '2026-01-01',
+    })
+    // A cross-store link is saved for the conflict list, but grants no scope.
+    // Both stores' sections are loaded for this person's two live jobs.
+    const invalid = await saveRow(admin, 'section_subcategory', {
+      store: '9901', subcategory: '010909001', section: foreign.row_id, starts_on: '2026-01-01',
+    })
+    const expected = [{
+      label: '9901 / Section: Sarees', filters: { store: ['9901'], subcategory: ['010101001'] },
+      basis: 'team_leader', confirmation: { store: { '9901': 'confirmed' }, subcategory: { '010101001': 'confirmed' } },
+    }]
+    expect(await resolvePersonScope(people['p-103'], await binding())).toEqual(expected)
+
+    // Model a stale imported link on the real database: even without a target
+    // section, it cannot grant a place named after an opaque row id.
+    await sql.unsafe(`update ${await tableRelation('feather_dash.section_subcategory')}
+      set section = $1 where row_id = $2`, ['missing-section', invalid.row_id as string])
+    expect(await resolvePersonScope(people['p-103'], await binding())).toEqual(expected)
+  })
+
   test('gives both Team Leaders of one section the whole section', async ({ admin, createUser }) => {
     const { people } = await setup(admin, createUser)
     const scopes = [await resolvePersonScope(people['p-103'], await binding()), await resolvePersonScope(people['p-104'], await binding())]
@@ -110,9 +136,15 @@ describe('the org_chart scope provider on the platform', () => {
 
   test('gives a person who alone holds their employee code what it derives plus their explicit rows', async ({ admin, createUser }) => {
     const { people } = await setup(admin, createUser)
-    expect(await resolvePersonScope(people['p-131'], await binding())).toMatchObject([{
+    await saveRow(admin, 'Section Merchandise Map', {
+      store_code: '9902', material_group: '010505001', mch_subcategory: 'Footwear', section_name: 'Footwear',
+    })
+    expect(await resolvePersonScope(people['p-131'], await binding())).toEqual([{
       label: '9902 / Section: Accessories', filters: { store: ['9902'], subcategory: ['010404001', '010404002'] }, basis: 'assignment, store_manager',
-      confirmation: { store: { '9902': 'assumed' } },
+      confirmation: { store: { '9902': 'assumed' }, subcategory: { '010404001': 'assumed', '010404002': 'assumed' } },
+    }, {
+      label: '9902 / Section: Footwear', filters: { store: ['9902'], subcategory: ['010505001'] }, basis: 'store_manager',
+      confirmation: { store: { '9902': 'assumed' }, subcategory: { '010505001': 'assumed' } },
     }])
   })
 
