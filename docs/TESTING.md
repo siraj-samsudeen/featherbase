@@ -270,6 +270,12 @@ gates. Floors only rise. The server suite's three CI shards run with thresholds
 zeroed and the `unit` job enforces the floor on the merged shard reports, only
 when the server suite ran; locally each suite runs whole against its floor.
 
+[ADR 0016](../adr/0016-backend-coverage-includes-branches.md) requires the
+backend gates to be 100% for statements, functions, lines **and branches now**,
+even while coverage work is unfinished; a failing gate must not be lowered to
+the current result. Frontend coverage strives for 100%, with genuine exceptions
+requiring an owner proposal and approval. No new exclusions are authorized.
+
 CI merges the PostgreSQL 18 release-preflight coverage with the server's
 three shards before enforcing the server gate. `src/sources/mysql-driver.ts`
 is measured only when `MYSQL_TEST_URL` is set (CI sets it for both the shards
@@ -349,8 +355,11 @@ Do not rebuild or edit an app while a server using its artifact is running:
 installed versions require their exact fingerprint. CI collects the HTTP and
 packaged layers after E2E, then publishes the merged runtime report alongside
 the web report. The runtime merger requires every line, statement and function
-to be covered, comparing exact counts rather than rounded percentages. Each
-collector clears only its own previous output before a run; fresh browser
+to be covered, comparing exact counts rather than rounded percentages. It also
+requires every branch arm in Tasker's owned esbuild server-entry import closure
+to be covered; missing source coverage fails rather than shrinking that scope.
+This does not gate frontend branches or count platform backend code as Tasker.
+Each collector clears only its own previous output before a run; fresh browser
 collection preserves the independent component report.
 
 ### Dash frontend coverage
@@ -375,6 +384,9 @@ HTML beside it. This is frontend coverage only, not backend coverage or
 evidence of hosted warehouse or embedded-frame integration. There is no
 100% frontend gate yet: add it only when the actual report reaches 100%,
 without excluding executable source or weakening existing gates.
+Dash backend profiles currently have incompatible remapping and cannot be
+merged honestly; their separate measurements are not a combined backend total
+or evidence of meeting the backend policy.
 
 ### Mutation testing
 
