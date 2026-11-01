@@ -189,6 +189,35 @@ describe('declared transactional runtime actions', () => {
     await expect(module.escapedDocuments.create('actionproof.destination', { title: 'Too late' })).rejects.toMatchObject({ type: 'ValidationError' })
     expect(await sql`select row_id from actionproof.destination`).toHaveLength(0)
   })
+
+  test('document helpers refuse invalid row values, targets and missing revisions without partial results', async ({ admin }) => {
+    await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
+    const source = await admin.post<{ row_id: string; updated_at: string }>('/api/save_row', {
+      table: 'actionproof.work', row: { row_id: 'guarded', title: 'preserve 37 units' },
+    })
+    const cases = [
+      { operation: 'get', table: 'actionproof.work', source: '', message: 'A row ID is required' },
+      { operation: 'get', table: 'actionproof.work', source: 17, message: 'A row ID is required' },
+      { operation: 'create', table: 'actionproof.destination', values: [], message: 'Expected row values' },
+      { operation: 'create', table: 'actionproof.destination', values: 41, message: 'Expected row values' },
+      { operation: 'update', table: 'actionproof.work', values: { title: 'no identity' }, message: 'Update requires row_id and updated_at' },
+      { operation: 'update', table: 'actionproof.work', values: { row_id: source.row_id, title: 'no revision' }, message: 'Update requires row_id and updated_at' },
+      { operation: 'create', table: 'Comment', values: { content: 'no target' }, message: 'Comment requires its document target' },
+      { operation: 'create', table: 'Comment', values: { ref_table: 'actionproof.work', content: 'no row' }, message: 'Comment requires its document target' },
+      { operation: 'delete', table: 'actionproof.work', source: source.row_id, message: 'Delete requires updatedAt' },
+    ]
+    for (const [index, { message, ...payload }] of cases.entries()) {
+      await expect(admin.post(action + 'probe', { idempotencyKey: `invalid-helper-${index}`, payload }))
+        .rejects.toMatchObject({ status: 417, type: 'ValidationError', message: expect.stringContaining(message) })
+    }
+    expect(await admin.get(`/api/table/actionproof.work/${source.row_id}`)).toMatchObject({
+      title: 'preserve 37 units', updated_at: source.updated_at, destination: null,
+    })
+    expect(await sql`select row_id from actionproof.destination`).toEqual([])
+    expect(await sql`select content from comment where ref_table = 'actionproof.work'`).toEqual([])
+    expect(await sql`select row_id from version where ref_table = 'actionproof.work'`).toEqual([])
+    expect(await sql`select * from runtime_action_result`).toEqual([])
+  })
 })
 
 describe('action_helpers_preserve_caller_authority', () => {

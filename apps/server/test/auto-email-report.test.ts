@@ -193,11 +193,18 @@ describe('EML-007: Auto Email Report', () => {
 
   test('the attachment can be a web page table instead of a CSV file', async ({ admin }) => {
     await setup(admin)
+    const row = await admin.get<{ updated_at: string }>(`/api/table/${encodeURIComponent(DT)}/aer-2`)
+    const changed = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/aer-2`, {
+      method: 'PATCH', body: JSON.stringify({ updated_at: row.updated_at, title: 'Washer <tag>&"quoted"' }),
+    })
+    expect(changed.status).toBe(200)
     await sql`update auto_email_report set file_format = 'HTML' where row_id = ${AER}`
     await deliverAutoEmailReport(AER)
     const [q] = await sql`select attachments from email_queue where ref_table = 'Report' and reference_name = ${REPORT}`
     const files = (q.attachments as { files?: { filename: string; content_b64: string }[] }).files ?? []
     expect(files[0].filename).toBe(`${REPORT}.html`)
-    expect(Buffer.from(files[0].content_b64, 'base64').toString('utf8')).toContain('<td>Washer</td>')
+    const html = Buffer.from(files[0].content_b64, 'base64').toString('utf8')
+    expect(html).toContain('<td>Washer &lt;tag&gt;&amp;"quoted"</td>')
+    expect(html).not.toContain('<tag>')
   })
 })
