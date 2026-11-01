@@ -276,6 +276,58 @@ describe('EDS-5: reading bound rows', () => {
 })
 
 describe('EDS-6/EDS-8: writing bound rows', () => {
+  test('an explicit source primary key is created once; a duplicate create cannot overwrite it', async ({ admin }) => {
+    await makeSource(admin)
+    const reflected = await admin.post<{ created: { name: string }[] }>(
+      '/api/table/Data%20Source/ext-fixture:reflect',
+      { schema: 'ext_fixture', tables: ['business'] },
+    )
+    const path = `/api/table/${encodeURIComponent(reflected.created[0].name)}`
+    try {
+      const created = await admin.post<Record<string, unknown>>(path, {
+        row_id: '747', name: 'Explicit source key',
+      })
+      expect(created).toMatchObject({ row_id: '747', name: 'Explicit source key' })
+      expect(await cli`select code, name from ext_fixture.business where code = 747`).toEqual([
+        { code: 747, name: 'Explicit source key' },
+      ])
+
+      const duplicate = await admin.fetch(path, {
+        method: 'POST',
+        body: JSON.stringify({ row_id: '747', name: 'Must not overwrite' }),
+      })
+      expect(duplicate.status).toBe(409)
+      expect(await duplicate.json()).toMatchObject({ error: { type: 'ConflictError' } })
+      expect(await admin.get(`${path}/747`)).toMatchObject({ row_id: '747', name: 'Explicit source key' })
+      expect(await cli`select code, name from ext_fixture.business where code = 747`).toEqual([
+        { code: 747, name: 'Explicit source key' },
+      ])
+    } finally {
+      await cli`delete from ext_fixture.business where code = 747`
+    }
+  })
+
+  test('deleting a row already removed at the source returns not found and preserves other rows', async ({ admin }) => {
+    await makeSource(admin)
+    const reflected = await admin.post<{ created: { name: string }[] }>(
+      '/api/table/Data%20Source/ext-fixture:reflect',
+      { schema: 'ext_fixture', tables: ['business'] },
+    )
+    const path = `/api/table/${encodeURIComponent(reflected.created[0].name)}`
+    const original = await cli`select code, name from ext_fixture.business order by code`
+    await cli`insert into ext_fixture.business (code, name) values (748, 'Removed externally')`
+    try {
+      expect(await admin.get(`${path}/748`)).toMatchObject({ row_id: '748', name: 'Removed externally' })
+      await cli`delete from ext_fixture.business where code = 748`
+      const missing = await admin.fetch(`${path}/748`, { method: 'DELETE' })
+      expect(missing.status).toBe(404)
+      expect(await missing.json()).toMatchObject({ error: { type: 'NotFoundError' } })
+      expect(await cli`select code, name from ext_fixture.business order by code`).toEqual(original)
+    } finally {
+      await cli`delete from ext_fixture.business where code = 748`
+    }
+  })
+
   test('create takes the name from the source default (RETURNING)', async ({ admin }) => {
     await makeSource(admin)
     await reflectTenant(admin)

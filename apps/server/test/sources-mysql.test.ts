@@ -1358,6 +1358,17 @@ describe.skipIf(!MYSQL_URL)('mysql: transaction transport failures', () => {
 })
 
 describe.skipIf(!MYSQL_URL)('mysql: connection settings and failures', () => {
+  test('the driver preserves a missing configuration error on writes rather than disguising it as a connection failure', async () => {
+    const bind = bindFor('tenant', 'id')
+    bind.source = { ...bind.source, name: 'missing-mysql-configuration', url_env: null }
+    const [before] = await cli.query('select id, slug from ext_mysql.tenant order by slug')
+    await expect(mysqlDriver.insert(bind, { slug: 'must-not-write' }, null)).rejects.toMatchObject({
+      type: 'ValidationError', message: 'Data source missing-mysql-configuration has no url_env configured',
+    })
+    const [after] = await cli.query('select id, slug from ext_mysql.tenant order by slug')
+    expect(after).toEqual(before)
+  })
+
   test('a connected table says the source cannot be reached while other tables keep working', async ({ admin }) => {
     await makeSource(admin)
     await reflectTenant(admin)

@@ -37,6 +37,15 @@ beforeAll(async () => {
   await cli.unsafe(`create table ext_extra.gadget (id serial primary key, note text)`)
   await cli.unsafe(`create table ext_extra.plain (id serial primary key, note text, qty int)`)
   await cli.unsafe(`insert into ext_extra.plain (note, qty) values ('alpha', 1), ('beta', 2), ('gamma', 3)`)
+  // Both constraints are legal: the column must satisfy both parents.
+  // Catalog order (constraint OID) must retain the first edge, not the last.
+  await cli.unsafe(`create table ext_extra.dual_owner (
+    id serial primary key,
+    owner_id int,
+    constraint first_owner foreign key (owner_id) references ext_extra.plain(id)
+  )`)
+  await cli.unsafe(`alter table ext_extra.dual_owner add constraint second_owner
+    foreign key (owner_id) references ext_extra.gadget(id)`)
 })
 
 afterAll(async () => {
@@ -72,6 +81,26 @@ async function reflect(admin: Admin, table: string): Promise<string> {
 }
 
 describe('Connecting Postgres tables: names and column types', () => {
+  test('a real source column with two foreign keys keeps the first catalog edge', async ({ admin }) => {
+    await makeSource(admin)
+    const parent = await reflect(admin, 'plain')
+    await reflect(admin, 'gadget')
+    const intro = await admin.get('/api/table/Data%20Source/ext-extra:introspect?schema=ext_extra') as {
+      tables: { table: string; columns: { name: string; references: unknown; reference_table: string | null }[] }[]
+    }
+    expect(intro.tables.find((t) => t.table === 'dual_owner')!.columns.find((c) => c.name === 'owner_id')).toMatchObject({
+      references: { schema: 'ext_extra', table: 'plain', column: 'id' },
+      reference_table: parent,
+    })
+    const name = await reflect(admin, 'dual_owner')
+    const meta = await admin.get(`/api/table/${encodeURIComponent(name)}:meta`) as {
+      columns: { column_name: string; column_type: string; reference_table: string | null }[]
+    }
+    expect(meta.columns.find((c) => c.column_name === 'owner_id')).toMatchObject({
+      column_type: 'Reference', reference_table: parent,
+    })
+  })
+
   test('database column types map to the closest Featherbase type', async ({ admin }) => {
     await makeSource(admin)
     const res = (await admin.get(
@@ -211,6 +240,15 @@ describe('Connection variables and the table allowlist', () => {
     expect(() => resolveUrl(cfg({ url_env: 'EXT_EXTRA_NEVER_SET' }))).toThrow(
       'Environment variable EXT_EXTRA_NEVER_SET is not set (required by data source probe)',
     )
+  })
+
+  test('the public Postgres driver rejects a configuration without a connection variable', async () => {
+    // SourceConfig permits null for folder engines; the Postgres driver
+    // must reject it itself, even without the Data Source HTTP validator.
+    await expect(postgresDriver.test(cfg({ name: 'pg-missing-url', url_env: null }))).rejects.toMatchObject({
+      type: 'ValidationError',
+      message: 'Data source pg-missing-url has no url_env configured',
+    })
   })
 
   test('only allowlisted tables pass; a source with no allowlist allows all', () => {

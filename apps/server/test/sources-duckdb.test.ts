@@ -134,6 +134,30 @@ describe('An app dataset query on a warehouse', () => {
   })
   const KKL_ON_SECOND = [{ store: 'KKL', business_date: '2026-07-02', amount: '1200.00' }]
 
+  test('a missing URL declaration is a configuration error, not a warehouse outage', async () => {
+    await expect(duckdbDriver.query!({ ...cfg, name: 'duck-missing-configuration', url_env: null }, 'select 1 as store', [{ name: 'store', type: 'integer' }]))
+      .rejects.toMatchObject({ type: 'ValidationError', message: 'Data source duck-missing-configuration has no url_env configured' })
+  })
+
+  test('a failed file open does not poison later reads after its configured path is corrected', async () => {
+    const recovering = { ...cfg, name: 'duck-file-recovery', url_env: 'DUCK_FILE_RECOVERY_URL' }
+    process.env.DUCK_FILE_RECOVERY_URL = path.join(dir, 'not-created.duckdb')
+    try {
+      await expect(duckdbDriver.query!(recovering, 'select store, business_date, amount from daily_sales', columns))
+        .rejects.toMatchObject({ type: 'DataSourceError', message: expect.stringContaining('duck-file-recovery') })
+      process.env.DUCK_FILE_RECOVERY_URL = process.env[DUCK_URL_ENV]
+      const rows = await duckdbDriver.query!(recovering, 'select store, business_date, amount from daily_sales order by business_date, store', columns)
+      expect(rows).toEqual([
+        { store: 'KKL', business_date: '2026-07-01', amount: '1000.50' },
+        { store: 'TVM', business_date: '2026-07-01', amount: '700.25' },
+        ...KKL_ON_SECOND,
+      ])
+    } finally {
+      duckdbDriver.dispose(recovering.name)
+      delete process.env.DUCK_FILE_RECOVERY_URL
+    }
+  })
+
   test('runs the declared query limited to the given places and filters', async () => {
     invalidateSources()
     expect(await kklOnSecond()).toEqual(KKL_ON_SECOND)
