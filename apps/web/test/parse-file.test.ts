@@ -62,6 +62,16 @@ describe('text identifiers survive the parser and storage (#111/#112)', () => {
 })
 
 describe('#115: parseWorkbook keeps sheet geometry', () => {
+  it('retains an unnamed header between named columns without shifting its data', async () => {
+    const [sheet] = await parseWorkbook(fileFrom([
+      ['First', null, 'Third'],
+      ['left', 17, 'right'],
+    ]))
+    expect(sheet.headers).toEqual(['First', '', 'Third'])
+    expect(sheet.rows).toEqual([['left', 17, 'right']])
+    expect(sheet.headerExcelRow).toBe(1)
+  })
+
   it('a blank data row survives as a row, and counts as no data', async () => {
     const [sheet] = await parseWorkbook(
       fileFrom([

@@ -118,6 +118,13 @@ test('clicking a column header sorts the rows by it, ascending first', async ({ 
   await waitFor(() => expect(firstRowText()).toContain('bravo'))
 
   await settledSettings(admin, { sort: { field: 'rank', dir: 'asc' }, hiddenCols: [] })
+  screen.getByTestId('col-rank').click()
+  await waitFor(() => expect(firstRowText()).toContain('alpha'))
+  await settledSettings(admin, { sort: { field: 'rank', dir: 'desc' }, hiddenCols: [] })
+  screen.getByTestId('col-rank').click()
+  await waitFor(() => expect(firstRowText()).toContain('bravo'))
+  expect(screen.getByTestId('col-rank')).toHaveTextContent('↑')
+  await settledSettings(admin, { sort: { field: 'rank', dir: 'asc' }, hiddenCols: [] })
 })
 
 test('a fresh mount restores the hidden column and the sort from the server', async ({

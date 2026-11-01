@@ -99,8 +99,9 @@ function formatSectionFor(format: string, value: number): string {
   const holds = (c: RegExpMatchArray | null) => {
     if (!c) return false
     const n = Number(c[2])
+    // CONDITION emits exactly these six operators.
     const tests: Record<string, boolean> = { '=': value === n, '>': value > n, '>=': value >= n, '<': value < n, '<=': value <= n, '<>': value !== n }
-    return tests[c[1]] ?? false
+    return tests[c[1]]
   }
   const c1 = pos.match(CONDITION)
   const c2 = neg.match(CONDITION)

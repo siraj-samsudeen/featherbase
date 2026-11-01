@@ -39,6 +39,8 @@ test('a table built from cards stores what the cards said', async ({ admin }) =>
   await user.click(within(second).getByRole('button', { name: 'Link to another table' }))
   await within(second).findByRole('option', { name: 'Cc Region' })
   await user.selectOptions(within(second).getByRole('combobox'), 'Cc Region')
+  await user.click(within(second).getByRole('checkbox', { name: 'Show in the list' }))
+  expect(within(second).getByRole('checkbox', { name: 'Show in the list' })).not.toBeChecked()
 
   // Card 3 is added and taken away again.
   await user.click(screen.getByTestId('dt-card-add'))
@@ -53,7 +55,7 @@ test('a table built from cards stores what the cards said', async ({ admin }) =>
   const [status, region] = meta.columns
   expect(status).toMatchObject({ column_type: 'Choice', reqd: true, in_list_view: true })
   expect(status.choices?.split('\n')).toEqual(['Open', 'Closed'])
-  expect(region).toMatchObject({ column_type: 'Reference', reference_table: 'Cc Region' })
+  expect(region).toMatchObject({ column_type: 'Reference', reference_table: 'Cc Region', in_list_view: false })
 })
 
 test('a type the cards do not offer still shows on its card, and its missing target is called out until the type changes', async ({ admin }) => {

@@ -14,7 +14,10 @@
     "dev": "npm run build:server -- --watch=forever & vite build --watch --emptyOutDir=false",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "typecheck:frontend": "tsc -p tsconfig.frontend-test.json --noEmit",
     "dev:repin": "scripts/dev-repin.sh",
+    "test:frontend": "../../../apps/server/node_modules/.bin/vitest run --config vitest.frontend.config.ts",
+    "test:coverage:frontend": "npm run test:frontend -- --coverage",
     "test:platform": "scripts/platform-test.sh",
     "compare": "node src/compare-cli.ts"
   },

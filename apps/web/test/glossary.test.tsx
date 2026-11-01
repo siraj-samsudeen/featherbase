@@ -29,7 +29,7 @@ async function stockCount(admin: TestClient) {
     ],
   })
   await addTerm(admin, { term: 'Stock count', definition: 'One walk along an aisle, counting what is on the shelves.', describes: [{ link_table: 'Stock Count' }] })
-  await addTerm(admin, { term: 'Counter', definition: 'The person who walked the aisle.', examples: 'Ravi counted aisle 4.', avoid: [{ word: 'auditor', reason: 'sounds like finance' }],
+  await addTerm(admin, { term: 'Counter', definition: 'The person who walked the aisle.', examples: 'Ravi counted aisle 4.', avoid: [{ word: 'auditor', reason: 'sounds like finance' }, { word: 'census taker' }],
     describes: [{ link_table: 'Stock Count', link_column: 'counted_by' }] })
 }
 
@@ -150,6 +150,8 @@ test('a described field opens its term in place, and Escape closes it back to th
   expect(panel).toHaveTextContent('The person who walked the aisle.')
   expect(panel).toHaveTextContent('Ravi counted aisle 4.')
   expect(panel).toHaveTextContent('Avoid: auditor (sounds like finance)')
+  expect(panel).toHaveTextContent('census taker')
+  expect(panel).not.toHaveTextContent(/census taker\s*\(/)
   expect(within(panel).getByRole('link', { name: 'Open in the glossary' }).getAttribute('href')).toMatch(/^\/featherbase\/admin\/glossary#term-/)
   expect(counted).not.toHaveFocus()
   await user.keyboard('{ArrowRight}')

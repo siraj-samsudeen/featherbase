@@ -19,11 +19,38 @@ beforeAll(async () => {
   await cli.unsafe('create schema web_sb')
   await cli.unsafe(`create table web_sb.depot (code integer primary key, city text);
     create table web_sb.depot_tag (depot integer not null, tag text not null, primary key (depot, tag));`)
+  await cli.unsafe(`create table web_sb.schedule (id text primary key, starts text, ends text);
+    insert into web_sb.schedule values
+      ('good', '2026-11-01', '2026-11-02'),
+      ('bad-start', 'not-a-date', '2026-11-02'),
+      ('bad-month', '2026-00-01', '2026-11-02'),
+      ('bad-end', '2026-11-01', '2026-11-00');`)
 })
 afterAll(async () => {
   invalidateSources()
   await cli.unsafe('drop schema if exists web_sb cascade')
   await cli.end({ timeout: 2 })
+})
+
+test('the Gantt view skips malformed external dates without hiding valid neighboring records', async ({ admin }) => {
+  invalidateSources()
+  await admin.post('/api/table/Data%20Source', { row_id: 'web-gantt', engine: 'postgres', url_env: ENV, default_schema: 'web_sb', access: 'read_only' })
+  // The external driver returns the real source's text. No native Date
+  // write, fabricated metadata or callback can supply this malformed value.
+  await admin.post('/api/table_def', {
+    name: 'External Schedule', data_source: 'web-gantt', external_schema: 'web_sb', external_table: 'schedule', external_pk: 'id',
+    columns: [
+      { column_name: 'start', column_type: 'Date', source_column: 'starts' },
+      { column_name: 'end', column_type: 'Date', source_column: 'ends' },
+    ],
+  })
+  const rows = await admin.get<{ data: { row_id: string; start: string; end: string }[] }>(`/api/table/External%20Schedule?fields=${encodeURIComponent(JSON.stringify(['row_id', 'start', 'end']))}`)
+  expect(rows.data).toContainEqual(expect.objectContaining({ row_id: 'bad-start', start: 'not-a-date' }))
+  await renderApp('/featherbase/admin/External%20Schedule/view/gantt', admin)
+  expect(await screen.findByTestId('gantt-bar-good')).toHaveAttribute('data-start', '2026-11-01')
+  expect(screen.getByTestId('gantt-bar-good')).toHaveAttribute('data-end', '2026-11-02')
+  for (const id of ['bad-start', 'bad-month', 'bad-end'])
+    expect(screen.queryByTestId(`gantt-bar-${id}`)).not.toBeInTheDocument()
 })
 
 test('the source browser lists a source\'s tables, marks one with no single identifying column as unusable, and turns the others on', async ({ admin }) => {

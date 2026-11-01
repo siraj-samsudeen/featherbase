@@ -44,13 +44,16 @@ describe('Build a table by describing its columns', () => {
     await user.click(screen.getByTestId('dt-paste-text'))
     await user.paste('Aisle, Shelf')
     await user.click(screen.getByTestId('dt-paste-build'))
+    await user.click(cell(gridRows()[1], 'in_list_view'))
+    expect(cell(gridRows()[1], 'in_list_view')).not.toBeChecked()
     await user.click(screen.getByTestId('dt-create'))
 
     await screen.findByTestId('list-view', undefined, { timeout: 10_000 })
     const meta = (await admin.get(`/api/table/${encodeURIComponent('Tb Shelf Label')}:meta`)) as {
-      columns: { column_name: string }[]
+      columns: { column_name: string; in_list_view: boolean }[]
     }
     expect(meta.columns.map((c) => c.column_name)).toEqual(['aisle', 'shelf'])
+    expect(meta.columns.map((c) => c.in_list_view)).toEqual([true, false])
   })
 })
 
