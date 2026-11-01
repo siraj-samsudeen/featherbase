@@ -10,6 +10,7 @@ import { EXTERNAL_DATABASE_URL } from './external-database'
 import { invalidateSources, assertAllowed, resolveUrl } from '../src/sources/registry'
 import { postgresDriver } from '../src/sources/postgres-driver'
 import { fkKey, singleColumnFks } from '../src/sources/fk'
+import { sql } from '../src/db'
 import type { Binding, SourceConfig } from '../src/sources/types'
 
 const URL_ENV = 'EXT_EXTRA_URL'
@@ -31,7 +32,12 @@ beforeAll(async () => {
       meta jsonb,
       code varchar(20),
       story varchar(300),
-      initial char(1)
+      initial char(1),
+      small smallint,
+      single real,
+      local_time timestamp without time zone,
+      raw_json json,
+      unlimited varchar
     )`)
   await cli.unsafe(`create table ext_extra."2024" (id serial primary key, note text)`)
   await cli.unsafe(`create table ext_extra.gadget (id serial primary key, note text)`)
@@ -117,6 +123,11 @@ describe('Connecting Postgres tables: names and column types', () => {
       code: 'Data',
       story: 'Text',
       initial: 'Data',
+      small: 'Int',
+      single: 'Float',
+      local_time: 'Datetime',
+      raw_json: 'JSON',
+      unlimited: 'Text',
     })
   })
 
@@ -126,6 +137,19 @@ describe('Connecting Postgres tables: names and column types', () => {
       '/api/table/Data%20Source/ext-extra:introspect?schema=ext_extra',
     )) as { tables: { table: string; proposed_name: string }[] }
     expect(res.tables.find((t) => t.table === '2024')!.proposed_name).toBe('Ext 2024')
+  })
+
+  test('a numeric reflection prefix is made into a legal Table name and binds the original relation', async ({ admin }) => {
+    await makeSource(admin)
+    const result = await admin.post<{ created: { table: string; name: string }[]; skipped: unknown[] }>(
+      '/api/table/Data%20Source/ext-extra:reflect',
+      { schema: 'ext_extra', tables: ['2024'], prefix: '2024' },
+    )
+    expect(result).toEqual({ created: [{ table: '2024', name: 'T 2024 2024' }], skipped: [] })
+    const meta = await admin.get('/api/table/T%202024%202024:meta')
+    expect(meta).toMatchObject({ external_schema: 'ext_extra', external_table: '2024', external_pk: 'id' })
+    const rows = await admin.get('/api/table/T%202024%202024')
+    expect(rows).toMatchObject({ data: [], total: 0 })
   })
 
   test('a table whose proposed name is taken by another Table is skipped, naming the clash', async ({ admin }) => {
@@ -164,6 +188,51 @@ describe('Filtering rows read from Postgres', () => {
     // An empty list: nothing is "in" it, everything is "not in" it.
     expect(await notes(admin, name, [['qty', 'in', []]])).toEqual([])
     expect(await notes(admin, name, [['qty', 'not in', []]])).toHaveLength(3)
+  })
+
+  test('malformed filters and sort expressions return validation errors without changing source rows', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflect(admin, 'plain')
+    const path = `/api/table/${encodeURIComponent(name)}`
+    const before = await cli`select * from ext_extra.plain order by id`
+    for (const [filters, message] of [
+      [[['qty', '=']], 'Each filter must be [field, operator, value]'],
+      [[['qty', 'between', [1, 3]]], 'Unknown filter operator between'],
+    ] as const) {
+      const res = await admin.fetch(`${path}?filters=${encodeURIComponent(JSON.stringify(filters))}`)
+      expect(res.status).toBe(417)
+      expect(await res.json()).toEqual({ error: { type: 'ValidationError', message } })
+    }
+    const invalid = await admin.fetch(`${path}?order_by=${encodeURIComponent('qty desc, id')}`)
+    expect(invalid.status).toBe(417)
+    expect(await invalid.json()).toEqual({ error: { type: 'ValidationError', message: 'Invalid order_by qty desc, id' } })
+    const unknown = await admin.fetch(`${path}?order_by=missing`)
+    expect(unknown.status).toBe(417)
+    expect(await unknown.json()).toEqual({ error: {
+      type: 'ValidationError', message: 'Unknown order_by field', fields: { missing: 'Unknown field missing' },
+    } })
+    // A directionless order is ascending, not the Table's default descending order.
+    const ordered = await admin.get(`${path}?fields=${encodeURIComponent('["note"]')}&order_by=qty`) as { data: { note: string }[] }
+    expect(ordered.data.map((row) => row.note)).toEqual(['alpha', 'beta', 'gamma'])
+    expect(await cli`select * from ext_extra.plain order by id`).toEqual(before)
+  })
+
+  test('non-list membership values follow empty-list semantics on the exported driver', async () => {
+    const bind: Binding = {
+      source: {
+        name: 'ext-extra-membership', engine: 'postgres', url_env: URL_ENV, root_path: null,
+        default_schema: 'ext_extra', access: 'read_only', pool_max: 2,
+        statement_timeout_ms: 10000, allowlist: null,
+      },
+      schema: 'ext_extra', table: 'plain', pk: 'id', modified: null, columns: [],
+    }
+    try {
+      expect(await postgresDriver.count(bind, [{ column: 'qty', op: 'in', value: null }])).toBe(0)
+      expect(await postgresDriver.count(bind, [{ column: 'qty', op: 'not in', value: null }])).toBe(3)
+      expect(await postgresDriver.count(bind, [{ column: 'qty', op: 'in_or_null', value: null }])).toBe(0)
+    } finally {
+      postgresDriver.dispose(bind.source.name)
+    }
   })
 
   test('a Data Scope filter lets unset values through as well as the allowed ones', async () => {
@@ -218,6 +287,33 @@ describe('Writing to a Postgres table that has only defaults', () => {
     const missing = await admin.fetch(`/api/table/${enc}/999999`, { method: 'PATCH', body: JSON.stringify({}) })
     expect(missing.status).toBe(404)
   })
+
+  test('the driver distinguishes a stale delete from a missing row and permits a delete without a revision', async () => {
+    const bind: Binding = {
+      source: {
+        name: 'ext-extra-delete', engine: 'postgres', url_env: URL_ENV, root_path: null,
+        default_schema: null, access: 'read_write', pool_max: 2,
+        statement_timeout_ms: 10000, allowlist: null,
+      },
+      schema: 'ext_extra', table: 'revision_delete', pk: 'id', modified: 'changed_at',
+      columns: [{ column_name: 'note', source_column: 'note', column_type: 'Text' }],
+    }
+    await cli.unsafe(`create table ext_extra.revision_delete (id int primary key, note text, changed_at timestamptz)`)
+    try {
+      await cli.unsafe(`insert into ext_extra.revision_delete values (1, 'kept', '2000-01-02T00:00:00Z')`)
+      const before = await cli`select * from ext_extra.revision_delete`
+      expect(await postgresDriver.remove(bind, '1', '2000-01-01T00:00:00Z')).toBe('conflict')
+      expect(await cli`select * from ext_extra.revision_delete`).toEqual(before)
+      expect(await postgresDriver.remove(bind, '999', '2000-01-01T00:00:00Z')).toBe('missing')
+      expect(await cli`select * from ext_extra.revision_delete`).toEqual(before)
+      expect(await postgresDriver.remove(bind, '1', null)).toBeUndefined()
+      expect(await cli`select * from ext_extra.revision_delete`).toEqual([])
+      expect(await postgresDriver.remove(bind, '1', null)).toBe('missing')
+    } finally {
+      postgresDriver.dispose(bind.source.name)
+      await cli.unsafe(`drop table ext_extra.revision_delete`)
+    }
+  })
 })
 
 describe('Connection variables and the table allowlist', () => {
@@ -249,6 +345,27 @@ describe('Connection variables and the table allowlist', () => {
       type: 'ValidationError',
       message: 'Data source pg-missing-url has no url_env configured',
     })
+  })
+
+  test('unscoped driver introspection discovers real tables and their default, nullable and length metadata', async () => {
+    const source = cfg({ name: 'pg-unscoped-introspection' })
+    try {
+      const tables = await postgresDriver.introspect(source)
+      const kitchen = tables.find((table) => table.schema === 'ext_extra' && table.table === 'kitchen')!
+      expect(kitchen.pk).toBe('id')
+      expect(kitchen.columns.find((column) => column.name === 'id')).toMatchObject({
+        data_type: 'integer', nullable: false, has_default: true, is_pk: true, max_length: null,
+      })
+      expect(kitchen.columns.find((column) => column.name === 'code')).toMatchObject({
+        data_type: 'character varying', nullable: true, has_default: false, is_pk: false, max_length: 20,
+      })
+      expect(kitchen.columns.find((column) => column.name === 'unlimited')).toMatchObject({
+        data_type: 'character varying', column_type: 'Text', max_length: null,
+      })
+      expect(tables.some((table) => ['pg_catalog', 'information_schema'].includes(table.schema))).toBe(false)
+    } finally {
+      postgresDriver.dispose(source.name)
+    }
   })
 
   test('only allowlisted tables pass; a source with no allowlist allows all', () => {
@@ -303,6 +420,44 @@ describe('Foreign keys read from information_schema', () => {
 })
 
 describe('Saving a Data Source', () => {
+  test('invalid binding requests report each missing source column and persist no Table', async ({ admin }) => {
+    await makeSource(admin)
+    const res = await admin.fetch('/api/table_def', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'Missing Source Columns', data_source: 'ext-extra', external_schema: 'ext_extra',
+        external_table: 'plain', external_pk: 'missing_id', external_modified: 'missing_revision',
+        columns: [{ column_name: 'note', column_type: 'Data', source_column: 'missing_note' }],
+      }),
+    })
+    expect(res.status).toBe(417)
+    expect(await res.json()).toEqual({ error: {
+      type: 'ValidationError', message: 'Invalid binding for Missing Source Columns', fields: {
+        external_pk: 'Column missing_id does not exist on the source relation',
+        external_modified: 'Column missing_revision does not exist on the source relation',
+        note: 'Source column missing_note does not exist on the source relation',
+      },
+    } })
+    expect(await sql`select name from table_def where name = 'Missing Source Columns'`).toEqual([])
+    expect(await cli`select note, qty from ext_extra.plain order by qty`).toEqual([
+      { note: 'alpha', qty: 1 }, { note: 'beta', qty: 2 }, { note: 'gamma', qty: 3 },
+    ])
+  })
+
+  test('reflection without requested tables is rejected without creating bindings', async ({ admin }) => {
+    await makeSource(admin)
+    for (const tables of [undefined, []]) {
+      const res = await admin.fetch('/api/table/Data%20Source/ext-extra:reflect', {
+        method: 'POST', body: JSON.stringify({ schema: 'ext_extra', tables }),
+      })
+      expect(res.status).toBe(417)
+      expect(await res.json()).toEqual({ error: {
+        type: 'ValidationError', message: 'Pass tables: the source table names to reflect',
+      } })
+    }
+    expect(await sql`select name from table_def where data_source = 'ext-extra'`).toEqual([])
+  })
+
   test('a folder source must name its folder', async ({ admin }) => {
     await expect(
       admin.post('/api/table/Data%20Source', { row_id: 'no-folder', engine: 'csv-folder' }),

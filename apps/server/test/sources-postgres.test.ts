@@ -89,6 +89,21 @@ beforeAll(async () => {
       status text,
       business_code int references ext_fixture.business(code)
     )`)
+  await cli.unsafe(`
+    create table ext_fixture.refusal_parent (
+      id serial primary key,
+      label text unique,
+      qty smallint constraint nonnegative_quantity check (qty >= 0),
+      code varchar(3),
+      hidden_required text not null
+    );
+    create table ext_fixture.refusal_child (
+      id serial primary key,
+      parent_label text references ext_fixture.refusal_parent(label)
+    );
+    insert into ext_fixture.refusal_parent (label, qty, code, hidden_required)
+      values ('kept', 1, 'abc', 'source-only');
+    insert into ext_fixture.refusal_child (parent_label) values ('kept')`)
 })
 
 afterAll(async () => {
@@ -384,6 +399,61 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     await expect(
       admin.post('/api/table/Ext%20Tenant', { slug: 'acme' }),
     ).rejects.toMatchObject({ status: 417, fields: { slug: expect.stringContaining('unique') } })
+  })
+
+  test('real source constraints refuse updates and deletion without changing either side of a foreign key', async ({ admin }) => {
+    await makeSource(admin)
+    const reflected = await admin.post<{ created: { name: string }[] }>('/api/table/Data%20Source/ext-fixture:reflect', {
+      schema: 'ext_fixture', tables: ['refusal_parent'],
+    })
+    const name = reflected.created[0].name
+    const before = await cli`select * from ext_fixture.refusal_parent order by id`
+    const children = await cli`select * from ext_fixture.refusal_child order by id`
+    const path = `/api/table/${encodeURIComponent(name)}/${before[0].id}`
+    for (const [payload, error] of [
+      [{ code: 'wide' }, { type: 'ValidationError', message: 'Value too long for a field' }],
+      [{ qty: 40000 }, { type: 'ValidationError', message: 'Value out of range for a field' }],
+      [{ qty: -1 }, { type: 'ValidationError', message: "These values break the data source's rule nonnegative_quantity" }],
+      [{ label: 'changed' }, {
+        type: 'ValidationError',
+        message: "Other rows at the data source still point at this row's Label, so it cannot change",
+        fields: { label: 'Other rows at the data source still point at this value' },
+      }],
+    ] as const) {
+      const res = await admin.fetch(path, { method: 'PATCH', body: JSON.stringify(payload) })
+      expect(res.status).toBe(417)
+      expect(await res.json()).toEqual({ error })
+      expect(await cli`select * from ext_fixture.refusal_parent order by id`).toEqual(before)
+      expect(await cli`select * from ext_fixture.refusal_child order by id`).toEqual(children)
+    }
+    const deletion = await admin.fetch(path, { method: 'DELETE' })
+    expect(deletion.status).toBe(417)
+    expect(await deletion.json()).toEqual({ error: {
+      type: 'ValidationError',
+      message: `Cannot delete ${name} ${before[0].id}: other rows at the data source still point at it`,
+    } })
+    expect(await cli`select * from ext_fixture.refusal_parent order by id`).toEqual(before)
+    expect(await cli`select * from ext_fixture.refusal_child order by id`).toEqual(children)
+  })
+
+  test('a required source column omitted from a valid binding produces a source validation error and no insert', async ({ admin }) => {
+    await makeSource(admin)
+    // A binding may intentionally expose only some columns of a relation.
+    await admin.post('/api/table_def', {
+      name: 'Partial Refusal Parent', data_source: 'ext-fixture', external_schema: 'ext_fixture',
+      external_table: 'refusal_parent', external_pk: 'id',
+      columns: [{ column_name: 'label', column_type: 'Text' }],
+    })
+    const before = await cli`select * from ext_fixture.refusal_parent order by id`
+    const res = await admin.fetch('/api/table/Partial%20Refusal%20Parent', {
+      method: 'POST', body: JSON.stringify({ label: 'cannot-insert' }),
+    })
+    expect(res.status).toBe(417)
+    expect(await res.json()).toEqual({ error: {
+      type: 'ValidationError',
+      message: 'The data source needs a value for hidden_required, which this table does not show',
+    } })
+    expect(await cli`select * from ext_fixture.refusal_parent order by id`).toEqual(before)
   })
 
   test('a missing required value or a broken link comes back on its field, without the database text (#154)', async ({ admin }) => {
