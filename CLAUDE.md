@@ -5,7 +5,8 @@
 The shared process comes from the template
 [siraj-samsudeen/intent-driven-with-human-control](https://github.com/siraj-samsudeen/intent-driven-with-human-control),
 through Copier. Change it in the template and pull it with `copier update`, not here; the
-project's own values are in `.copier-answers.yml`. Add project facts under `## Project` below.
+project's own values are in `.copier-answers.yml`. Add the project's own rules under `## Project`
+at the end of `AGENTS.md`, which every agent reads, Codex included.
 
 ## Where the process lives
 

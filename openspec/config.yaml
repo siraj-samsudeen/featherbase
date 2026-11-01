@@ -58,6 +58,7 @@ rules:
     - No layout detail, such as where a panel opens or a pixel width. Product-wide promises (works on a phone, works by keyboard, nothing shown by colour alone) live in one product-wide spec; don't repeat them in feature specs.
     - Explain a term the first time it is used.
     - Name requirements and scenarios in plain words, for example "Capture a task", not identifiers. A capability with one requirement names it after the capability.
+    - Start every spec.md, delta specs included, with its capability title as the one H1 (`# List View`); the acceptance extractor turns it into the Feature and refuses a spec without it. Upstream's spec template leaves it out.
     - Use only OpenSpec's own structure (Purpose, Requirements, Scenarios). Each scenario's steps go in a fenced gherkin block (Given/When/Then); the requirement text stays outside it. No status, evidence, ID or legacy labels.
     - Order requirements as a person meets them. Within a requirement, the common case comes first, then the edge cases.
     - Run one example (one record, one person) through every scenario of a change, so each scenario differs from the last by one fact.
