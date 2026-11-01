@@ -30,6 +30,11 @@ z.config({
     if (issue.code === 'invalid_value') {
       const literal = (issue.inst as { _zod?: { def?: { type?: string } } } | undefined)?._zod?.def?.type === 'literal'
       if (literal) return `Invalid literal value, expected ${JSON.stringify(issue.values[0])}`
+      if (issue.input === undefined) return 'Required'
+      // zod 3 string enums rejected a wrong type before checking membership.
+      if (issue.values.every((value) => typeof value === 'string') && typeof issue.input !== 'string') {
+        return `Expected ${issue.values.map(quoted).join(' | ')}, received ${typeName(issue.input)}`
+      }
       return `Invalid enum value. Expected ${issue.values.map(quoted).join(' | ')}, received ${quoted(issue.input)}`
     }
     return undefined

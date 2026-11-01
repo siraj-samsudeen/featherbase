@@ -43,6 +43,13 @@ describe('zod 3 wording, kept under zod 4', () => {
     expect(message(z.literal('addTable'), 'dropTable')).toBe('Invalid literal value, expected "addTable"')
   })
 
+  it('explicit schema messages take precedence over the compatibility formatter', () => {
+    const schema = z.enum(['Open', 'Closed'], { error: 'Choose a stage' })
+    for (const value of [undefined, 7, 'pending']) {
+      expect(message(schema, value)).toBe('Choose a stage')
+    }
+  })
+
   it('every other issue keeps zod 4\'s message', () => {
     expect(message(z.string().min(3), 'ab')).toBe('Too small: expected string to have >=3 characters')
   })
