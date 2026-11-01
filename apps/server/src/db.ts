@@ -128,7 +128,7 @@ function qualifiedClient(client: Sql): Sql {
   })
 }
 
-export const sql: Sql = new Proxy((() => {}) as unknown as Sql, {
+export const sql: Sql = new Proxy(root, {
   apply(_target, _thisArg, args) {
     const current = qualifiedClient(transactions.getStore() ?? delegate)
     return (current as unknown as (...a: unknown[]) => unknown)(...args)
