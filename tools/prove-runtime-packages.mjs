@@ -224,12 +224,11 @@ try {
   } finally { await flushContext(slashlessContext); await slashlessContext.close() }
   await page.goto(`${origin}/admin/Person?proof=compatibility#deep-link`)
   await expect(page).toHaveURL(`${origin}/featherbase/admin/Person?proof=compatibility#deep-link`)
-  // Runtime host-shell E2E covers navigation. The retired switcher is not
-  // part of the current shared bar; packaged acceptance enters its app URL.
+  // The app name is the same native dropdown as on platform pages.
   await page.goto(`${origin}/tasker/`)
   await expect(page).toHaveURL(`${origin}/tasker/`)
-  await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveCount(0)
-  await page.getByTestId('open-admin').click()
+  await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveValue('/tasker/')
+  await page.getByRole('combobox', { name: 'Switch application' }).selectOption('/featherbase/admin')
   await expect(page).toHaveURL(/\/featherbase\/admin(?:\/|$)/)
   await page.goto(`${origin}/tasker/`)
   await proveTaskerAcceptance({ page, api, expect, output, origin })
@@ -248,7 +247,7 @@ try {
   await page.screenshot({ path: resolve(output, 'seeded-my-work.png'), fullPage: true })
 
   await page.getByRole('button', { name: 'Projects' }).click()
-  await page.getByLabel('Projects', { exact: true }).getByRole('button', { name: 'September stock review', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Task views' }).getByRole('button', { name: 'September stock review', exact: true }).click()
   await expect(page.getByText('Reconcile the first stock variance')).toBeVisible()
   await expect(page.getByLabel('Starred projects').getByRole('button', { name: 'September stock review' })).toBeVisible()
   await page.getByRole('button', { name: 'Rename' }).click()

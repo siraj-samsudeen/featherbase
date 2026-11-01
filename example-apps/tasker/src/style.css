@@ -26,31 +26,10 @@ button:disabled { cursor: default; opacity: .48; }
 .fc-btn { background: var(--color-surface); }
 .fc-btn-primary { border-color: var(--color-brand); background: var(--color-brand); color: white; }
 
-.tasker-shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
-.tasker-sidebar { min-width: 0; padding: 26px 16px; background: #14263d; color: white; }
-.tasker-brand { margin: 0; font-size: 25px; font-weight: 700; letter-spacing: -.03em; }
-.tasker-brand-subtitle { margin: 1px 0 0; color: #b9c8d8; font-size: 12px; }
-.tasker-primary-nav { display: flex; flex-direction: column; gap: 5px; margin-top: 28px; }
-.tasker-nav-item { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; min-height: 44px; padding: 7px 10px; border: 0; border-radius: 11px; background: transparent; color: #e7eef5; text-align: left; font-size: 13px; font-weight: 600; }
-.tasker-nav-item:hover { background: #ffffff0d; }
-.tasker-nav-item[aria-current] { background: var(--color-brand); color: white; box-shadow: 0 8px 22px #06172c38; }
-.tasker-nav-icon { width: 21px; height: 21px; }
-.tasker-nav-inbox .tasker-nav-icon { color: #69a4ff; }
-.tasker-nav-work .tasker-nav-icon { color: #ffbd3e; }
-.tasker-nav-together .tasker-nav-icon { color: #38c99d; }
-.tasker-nav-projects .tasker-nav-icon { color: #a584ff; }
-.tasker-nav-personal .tasker-nav-icon { color: #35c9cf; }
-.tasker-nav-views .tasker-nav-icon { color: #ff8fc4; }
-.tasker-nav-item[aria-current] .tasker-nav-icon { color: white; }
-.tasker-count { display: inline-flex; min-width: 23px; height: 23px; align-items: center; justify-content: center; border-radius: 8px; background: #ffffff18; color: inherit; font-size: 11px; font-variant-numeric: tabular-nums; }
-.tasker-nav-item[aria-current] .tasker-count { background: #ffffff26; }
-
-.tasker-sidebar-projects { margin: 8px 0 0 20px; padding: 3px 0 7px 12px; border-left: 1px solid #ffffff1f; }
-.tasker-sidebar-project { padding: 7px 5px 6px 8px; border-radius: 9px; color: #cbd7e3; }
-.tasker-sidebar-project:hover { background: #ffffff0b; }
-.tasker-sidebar-project.is-selected { background: #6e5ad426; color: white; }
-.tasker-sidebar-project-name { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: start; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; font-size: 12px; line-height: 1.35; }
-.tasker-sidebar-project-name > span:first-child { overflow-wrap: anywhere; }
+.tasker-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
+.tasker-nav-icon { width: 18px; height: 18px; flex-shrink: 0; }
+.tasker-nav-item > span:not(.tasker-count), .tasker-sidebar-project-name > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tasker-count { display: inline-flex; min-width: 23px; height: 23px; align-items: center; justify-content: center; color: inherit; font-size: 11px; font-variant-numeric: tabular-nums; }
 
 .tasker-main { align-self: start; width: 100%; max-width: 1240px; margin: 0 auto; padding: 38px 40px 64px; }
 .tasker-project-tabs { display: flex; gap: 8px; margin: 0 0 26px; overflow-x: auto; scrollbar-width: thin; }
@@ -159,7 +138,7 @@ button:disabled { cursor: default; opacity: .48; }
 .tasker-focus-order button { width: 26px; height: 30px; border: 0; border-radius: 7px; background: transparent; color: var(--color-ink-muted); }
 .tasker-focus-order button:hover { background: var(--color-subtle); }
 
-.tasker-shell:has(.tasker-inspector) { grid-template-columns: 232px minmax(0, 1fr) minmax(360px, 420px); }
+.tasker-shell:has(.tasker-inspector) { grid-template-columns: 240px minmax(0, 1fr) minmax(360px, 420px); }
 .tasker-shell:has(.tasker-inspector) .tasker-main { padding-inline: 28px; }
 .tasker-shell:has(.tasker-inspector) .tasker-task-guide { display: none; }
 .tasker-shell:has(.tasker-inspector) .tasker-task-row { grid-template-columns: 24px minmax(0, 1fr) auto; }
@@ -211,7 +190,7 @@ html:has(.tasker-focus-detail), html:has(.tasker-focus-detail) body { overflow: 
 @media (max-width: 1100px) {
   html.tasker-compact-inspector-open, html.tasker-compact-inspector-open body { overflow: hidden; }
   html.tasker-compact-inspector-open .tasker-sidebar, html.tasker-compact-inspector-open .tasker-main { display: none; }
-  .tasker-shell:has(.tasker-inspector) { grid-template-columns: 232px minmax(0, 1fr); }
+  .tasker-shell:has(.tasker-inspector) { grid-template-columns: 240px minmax(0, 1fr); }
   .tasker-inspector { position: fixed; inset: var(--featherbase-bar-height, 0px) 0 0; box-sizing: border-box; width: 100%; height: calc(100dvh - var(--featherbase-bar-height, 0px)); }
   .tasker-task-guide { display: none; }
   .tasker-task-row { grid-template-columns: 24px minmax(0, 1fr) auto; }
@@ -223,17 +202,6 @@ html:has(.tasker-focus-detail), html:has(.tasker-focus-detail) body { overflow: 
 
 @media (max-width: 700px) {
   .tasker-shell, .tasker-shell:has(.tasker-inspector) { display: block; }
-  .tasker-sidebar { padding: 14px; border: 0; }
-  .tasker-brand { font-size: 22px; }
-  .tasker-primary-nav { flex-flow: row nowrap; gap: 7px; margin-top: 14px; padding-bottom: 3px; overflow-x: auto; }
-  .tasker-nav-item { order: 1; flex: 0 0 105px; grid-template-columns: 24px minmax(0, 1fr) auto; min-height: 48px; padding: 6px 8px; }
-  .tasker-sidebar-projects { order: 2; flex: 0 0 100%; width: 100%; gap: 7px; margin: 9px 0 0; padding: 9px 0 1px; border: 0; border-top: 1px solid #ffffff1f; overflow-x: auto; }
-  .tasker-shell:not([data-view='projects']) .tasker-sidebar-projects { display: none; }
-  .tasker-shell[data-view='projects'] .tasker-primary-nav { flex-wrap: wrap; }
-  .tasker-shell[data-view='projects'] .tasker-sidebar-projects { display: flex; }
-  .tasker-primary-nav, .tasker-sidebar-projects, .tasker-project-tabs { contain: inline-size; scrollbar-width: none; }
-  .tasker-primary-nav::-webkit-scrollbar, .tasker-sidebar-projects::-webkit-scrollbar, .tasker-project-tabs::-webkit-scrollbar { display: none; }
-  .tasker-sidebar-project { flex: 0 0 225px; background: #ffffff08; }
   .tasker-main { padding: 22px 14px 44px; }
   .tasker-project-tabs { margin-bottom: 20px; }
   .tasker-section-title h2 { font-size: 25px; }

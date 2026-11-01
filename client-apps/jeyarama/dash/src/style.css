@@ -51,6 +51,7 @@ body { margin: 0; background: var(--color-canvas); color: var(--color-ink); font
 a { color: var(--color-action); }
 a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
+.fd-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); }
 .fd-page { width: 100%; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; min-height: calc(100vh - 56px); }
 .fd-card { padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); }
 .fd-notice { max-width: 36rem; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
@@ -91,6 +92,7 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); o
 .fd-total th, .fd-total td { font-weight: 700; border-bottom: 0; }
 .fd-negative { color: var(--color-negative); }
 @media (max-width: 640px) {
+  .fd-shell { display: block; }
   .fd-page { padding: 8px; }
   .fd-table th, .fd-table td { padding: 6px 4px; }
   .fd-table tbody th[scope='row'], .fd-table tfoot th[scope='row'], .fd-table thead th:first-child {

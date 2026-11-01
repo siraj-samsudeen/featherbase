@@ -22,8 +22,8 @@ import { useCapabilities, useShellKind, useShellTables } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
-import { Logo } from '../components/Logo'
-import { ADMIN_NAME, PHONE_QUERY, TopBar } from '../components/TopBar'
+import { AppSwitcher } from '../components/AppSwitcher'
+import { PHONE_QUERY, TopBar } from '../components/TopBar'
 import { PeekProvider } from '../components/Peek'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel } from '../lib/row-titles'
@@ -34,7 +34,7 @@ import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
-import { Select, StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '../components/ui'
+import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '../components/ui'
 import { Bell, BookOpen, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
 import { fmtCount } from '../lib/inr'
 
@@ -275,10 +275,6 @@ function AdminShell() {
   // dedicated endpoint is its only source (role visibility and link
   // permission-filtering are computed server-side).
   const homePages = useHomePages()
-  const appCatalog = useQuery({
-    queryKey: ['app-catalog'],
-    queryFn: () => api.get<{ name: string; title: string; href: string }[]>('/api/app_catalog'),
-  })
 
 
   // UI-014: row hits from the server, debounced.
@@ -567,28 +563,7 @@ function AdminShell() {
           column below; the command bar then fills what is left up to the bell. */}
       <TopBar
         home="admin"
-        left={
-          <>
-            <Link to={FEATHERBASE_ADMIN_DESTINATION.href} aria-label={FEATHERBASE_ADMIN_DESTINATION.label} title={FEATHERBASE_ADMIN_DESTINATION.label}className={iconButtonClasses('shrink-0 max-sm:min-h-11 max-sm:min-w-11')}>
-              <Logo className="h-7 w-7" />
-            </Link>
-            <label className="sr-only" htmlFor="admin-app-switcher">Switch application</label>
-            {/* The switcher's current entry is the bar's name, "Featherbase Admin"
-                (#489 item 2); on a phone it is cut with an ellipsis (item 9). */}
-            <Select
-              id="admin-app-switcher"
-              aria-label="Switch application"
-              value={FEATHERBASE_ADMIN_DESTINATION.href}
-              onChange={(event) => { window.location.assign(event.target.value) }}
-              wrapperClassName="min-w-0 flex-1 sm:w-52 sm:flex-none md:w-auto md:flex-1"
-              className="truncate pl-2.5 pr-8 font-semibold max-sm:min-h-11"
-              data-testid="top-bar-name"
-            >
-              <option value={FEATHERBASE_ADMIN_DESTINATION.href}>{ADMIN_NAME}</option>
-              {(appCatalog.data ?? []).map((entry) => <option key={entry.name} value={entry.href}>{entry.title}</option>)}
-            </Select>
-          </>
-        }
+        left={<AppSwitcher />}
         beforeRight={
           <div className="relative" title="Notifications">
             {/* An indicator, not a control, so it needs no thumb-sized hit area. */}
