@@ -8,6 +8,7 @@
 // Needs a running MySQL and MYSQL_TEST_URL (e.g. mysql://root@127.0.0.1:3306
 // — no database path; the suite creates/drops ext_mysql itself). Without the
 // variable the whole file skips: CI and checkouts without MySQL stay green.
+import { createServer, connect, type Socket } from 'node:net'
 import { afterAll, beforeAll, describe, expect, vi } from 'vitest'
 import mysql from 'mysql2/promise'
 import { test, patchDoc } from './pg-test'
@@ -93,6 +94,8 @@ beforeAll(async () => {
       id int auto_increment primary key,
       flag tinyint(1),
       small tinyint,
+      small_integer smallint,
+      medium_integer mediumint,
       big bigint,
       price decimal(8,2),
       ratio float,
@@ -605,6 +608,8 @@ describe.skipIf(!MYSQL_URL)('mysql: column types and browsing', () => {
       id: 'Int',
       flag: 'Check',
       small: 'Int',
+      small_integer: 'Int',
+      medium_integer: 'Int',
       big: 'Int',
       price: 'Float',
       ratio: 'Float',
@@ -1186,6 +1191,170 @@ describe.skipIf(!MYSQL_URL)('mysql: refused saves (#154)', () => {
       await mysqlDriver.dispose('ext-mysql-direct')
     }
   })
+})
+
+// Forward real MySQL packets, including authentication and all responses.
+// Only the armed transaction command is withheld: losing the connection
+// BEFORE COMMIT reaches MySQL has an unambiguous rollback outcome (unlike
+// dropping its reply, which cannot tell the caller whether it committed).
+async function transactionFaultProxy() {
+  const upstream = new URL(MYSQL_URL!)
+  const host = upstream.hostname
+  const port = Number(upstream.port || 3306)
+  const sockets = new Set<Socket>()
+  let armed: string | null = null
+  let interrupted: string | null = null
+  const server = createServer((client) => {
+    const source = connect(port, host)
+    for (const socket of [client, source]) {
+      socket.setNoDelay(true)
+      sockets.add(socket)
+      socket.on('close', () => sockets.delete(socket))
+    }
+    const disconnect = () => { client.destroy(); source.destroy() }
+    client.on('error', disconnect)
+    source.on('error', disconnect)
+    client.on('end', () => source.end())
+    source.on('end', () => client.end())
+    source.pipe(client)
+    let pending = Buffer.alloc(0)
+    client.on('data', (chunk: Buffer) => {
+      // TCP may split a header/payload or coalesce several packets. Frame
+      // before inspecting; never treat arbitrary TCP chunks as SQL.
+      pending = Buffer.concat([pending, chunk])
+      while (pending.length >= 4) {
+        const size = pending.readUIntLE(0, 3) + 4
+        if (pending.length < size) return
+        const packet = pending.subarray(0, size)
+        pending = pending.subarray(size)
+        // COM_QUERY (0x03), sequence 0; handshake/auth packets are not SQL.
+        // mysql2 negotiates CLIENT_QUERY_ATTRIBUTES with MySQL 8: its
+        // attribute-free queries prefix SQL with parameter_count=0 and
+        // parameter_set_count=1. Older servers send SQL immediately.
+        const sqlOffset = packet[5] === 0 && packet[6] === 1 ? 7 : 5
+        const sql = packet[3] === 0 && packet[4] === 3
+          ? packet.subarray(sqlOffset).toString('utf8').trim().toUpperCase()
+          : null
+        if (armed !== null && sql === armed) {
+          interrupted = sql
+          armed = null
+          disconnect()
+          return
+        }
+        source.write(packet)
+      }
+    })
+  })
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  const address = server.address() as { port: number }
+  upstream.hostname = '127.0.0.1'
+  upstream.port = String(address.port)
+  upstream.pathname = '/ext_mysql'
+  // This packet inspector is deliberately plaintext, not a TLS interceptor.
+  upstream.search = ''
+  return {
+    url: upstream.toString(),
+    arm(command: string) { armed = command },
+    get interrupted() { return interrupted },
+    async close() {
+      for (const socket of sockets) socket.destroy()
+      await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()))
+    },
+  }
+}
+
+describe.skipIf(!MYSQL_URL)('mysql: transaction transport failures', () => {
+  test('disposing a pool with a blocked read survives connection loss and the next read opens a new pool', async ({ admin }) => {
+    await makeSource(admin, { pool_max: 1 })
+    await reflectTenant(admin)
+    const path = '/api/table/Ext%20Tenant/1'
+    const before = await admin.get(path)
+    const [persisted] = await cli.query('select * from ext_mysql.tenant order by id')
+    let pending: Promise<Response> | undefined
+    await cli.query('LOCK TABLES ext_mysql.tenant WRITE')
+    try {
+      pending = admin.fetch(path)
+      let blockedId: number | undefined
+      // Observe the real source query waiting on our table lock, rather than
+      // guessing how long HTTP/auth/query dispatch takes on this machine.
+      await expect.poll(async () => {
+        const [processes] = await cli.query('SHOW FULL PROCESSLIST')
+        const blocked = (processes as { Id: number; db: string; State: string; Info: string | null }[])
+          .find((row) => row.db === 'ext_mysql'
+            && /^select \* from `ext_mysql`\.`tenant` where /i.test(row.Info ?? '')
+            && /waiting for .*lock/i.test(row.State))
+        blockedId = blocked?.Id
+        return blockedId ?? 0
+      }, { timeout: 2000 }).toBeGreaterThan(0)
+      // QUIT is now queued behind the blocked SELECT. Killing that exact
+      // session fails both the SELECT and pending QUIT, unlike disposing an
+      // idle pool whose Quit.start acknowledges completion before writing.
+      mysqlDriver.dispose('ext-mysql')
+      await cli.query(`KILL CONNECTION ${Number(blockedId)}`)
+      const response = await pending
+      expect(response.status).toBe(502)
+      expect(await response.json()).toMatchObject({
+        error: { type: 'DataSourceError', message: expect.stringContaining('ext-mysql') },
+      })
+    } finally {
+      await cli.query('UNLOCK TABLES')
+      // Even a failed assertion must not leave an HTTP request in flight
+      // when the SQL Sandbox rolls back the control-side metadata.
+      await pending
+    }
+    expect(await admin.get(path)).toEqual(before)
+    const [after] = await cli.query('select * from ext_mysql.tenant order by id')
+    expect(after).toEqual(persisted)
+  })
+
+  for (const command of ['START TRANSACTION', 'COMMIT', 'ROLLBACK']) {
+    test(`disconnecting before ${command} leaves no write and the next request recovers`, async ({ admin }) => {
+      const proxy = await transactionFaultProxy()
+      const env = 'EXT_MYSQL_TRANSACTION_FAULT_URL'
+      process.env[env] = proxy.url
+      const slug = `transport-${command.toLowerCase().replaceAll(' ', '-')}`
+      try {
+        await makeSource(admin, { url_env: env, pool_max: 1 })
+        await reflectTenant(admin)
+        const [before] = await cli.query("select plan from ext_mysql.tenant where slug = 'acme'")
+        proxy.arm(command)
+        const response = await admin.fetch('/api/table/Ext%20Tenant', {
+          method: 'POST',
+          // A real unique violation makes the driver issue ROLLBACK. Its
+          // original field error must survive even when rollback loses TCP.
+          body: JSON.stringify({ slug: command === 'ROLLBACK' ? 'acme' : slug }),
+        })
+        expect(proxy.interrupted).toBe(command)
+        expect(response.status).toBe(command === 'ROLLBACK' ? 417 : 502)
+        const body = await response.json()
+        if (command === 'ROLLBACK') {
+          expect(body).toMatchObject({ error: { type: 'ValidationError', fields: { slug: expect.stringContaining('unique') } } })
+        } else {
+          expect(body).toMatchObject({ error: { type: 'DataSourceError', message: expect.stringContaining('ext-mysql') } })
+        }
+        // Direct SQL is outside the proxy and the control-side sandbox.
+        const [absent] = await cli.query('select slug from ext_mysql.tenant where slug = ?', [slug])
+        expect(absent).toEqual([])
+        const [original] = await cli.query("select plan from ext_mysql.tenant where slug = 'acme'")
+        expect(original).toEqual(before)
+        // With one pooled connection, a subsequent successful write proves
+        // the failed connection was not left wedged in a transaction.
+        const recovered = await admin.post<{ slug: string }>('/api/table/Ext%20Tenant', { slug })
+        expect(recovered.slug).toBe(slug)
+        const [persisted] = await cli.query('select slug from ext_mysql.tenant where slug = ?', [slug])
+        expect(persisted).toEqual([{ slug }])
+      } finally {
+        await mysqlDriver.dispose('ext-mysql')
+        invalidateSources('ext-mysql')
+        await proxy.close()
+        delete process.env[env]
+        await cli.query('delete from ext_mysql.tenant where slug = ?', [slug])
+      }
+    })
+  }
 })
 
 describe.skipIf(!MYSQL_URL)('mysql: connection settings and failures', () => {
