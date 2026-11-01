@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { test as base } from './pg-test'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
 import { taskerClient } from './tasker-client'
-import { discoverPackages, findScopeProvider } from '../src/runtime-packages'
+import { discoverPackages, findScopeProvider, shippedUpgrades } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
@@ -217,6 +217,35 @@ describe('Rejected runtime artifacts never become applications', () => {
 })
 
 describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
+  test('shipped upgrades choose 1.10 over 1.9 regardless of artifact discovery order', async ({ admin }) => {
+    const directory = await mkdtemp(resolve('test/.runtime-newest-'))
+    try {
+      const installed = resolve(directory, 'installed')
+      await cp(resolve('../..', 'test-apps/other'), installed, { recursive: true })
+      expect(await discoverPackages([installed])).toEqual([])
+      await admin.post('/api/install_app', { name: 'other' })
+      const versions = ['1.9.0', '1.10.0']
+      const roots = versions.map(version => resolve(directory, version))
+      const migrations = versions.map((version, index) => ({
+        id: `release_${index + 1}`, fromVersion: index === 0 ? '0.0.1' : versions[index - 1],
+        toVersion: version, operations: [],
+      }))
+      for (const [index, root] of roots.entries()) {
+        await cp(installed, root, { recursive: true })
+        const npm = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
+        const manifest = JSON.parse(await readFile(resolve(root, 'featherbase.json'), 'utf8'))
+        await writeFile(resolve(root, 'package.json'), JSON.stringify({ ...npm, version: versions[index] }))
+        await writeFile(resolve(root, 'featherbase.json'), JSON.stringify({ ...manifest, migrations: migrations.slice(0, index + 1) }))
+      }
+      const rows = await sql`select name, package_version, migration_ledger from installed_app where name = 'other'`
+      const expected = [{ name: 'other', from: '0.0.1', to: '1.10.0', ownsClient: true, migrations }]
+      expect(await shippedUpgrades(rows, roots)).toEqual(expected)
+      expect(await shippedUpgrades(rows, [...roots].reverse())).toEqual(expected)
+      expect(await sql`select package_version, migration_ledger from installed_app where name = 'other'`)
+        .toEqual([{ package_version: '0.0.1', migration_ledger: [] }])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   test('PKG-R6: legacy human deep links redirect to Featherbase while technical roots remain reserved', async ({ api }) => {
     const old = await api.fetch('/admin/Tasker%20Task/one?view=board')
     expect(old.status).toBe(308)

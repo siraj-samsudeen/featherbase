@@ -114,6 +114,25 @@ describe('the snapshot of an app dataset', () => {
     expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
   })
 
+  test('a real CSV source cannot run a dataset SQL query and leaves the last snapshot active', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const good = await buildSnapshot('datasetproof.sales')
+    const folder = await mkdtemp(resolve('test/.dataset-seeds-'))
+    try {
+      await writeFile(resolve(folder, 'sales.csv'), 'plant_code,section_code,business_day,amount,units,note\nN1,kids,2026-10-01,5,1,CSV\n')
+      const source = await admin.get<{ updated_at: string }>('/api/table/Data%20Source/datasetproof-warehouse')
+      await admin.post('/api/save_row', { table: 'Data Source', row: {
+        row_id: 'datasetproof-warehouse', updated_at: source.updated_at, engine: 'csv-folder', root_path: folder, url_env: null,
+      } })
+      invalidateSources()
+      expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
+        status: 'failed', reason: 'Data source datasetproof-warehouse (csv-folder) cannot run a dataset query',
+      })
+      expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+      expect(await warehouse`select count(*)::int as count from b4_dataset.sales`).toEqual([{ count: 4 }])
+    } finally { await rm(folder, { recursive: true, force: true }) }
+  })
+
   test('an empty candidate is refused, so the last good copy keeps serving', async ({ admin, createUser }) => {
     await setup(admin, createUser)
     const good = await buildSnapshot('datasetproof.sales')
@@ -196,6 +215,16 @@ describe('the guard on an app dataset', () => {
     await fillWarehouse(withUnits(0, null, 0, null))
     expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
       status: 'refused', reason: 'sales: every units value is empty or zero (4 rows)' })
+  })
+
+  test('a row-only guard accepts its boundary and refuses a smaller nonempty refresh', async ({ admin }) => {
+    await setupGuarded(admin, [{ kind: 'min_rows', value: 4 }])
+    const good = await buildSnapshot('datasetproof.sales')
+    expect(good).toMatchObject({ status: 'activated', rowCount: 4 })
+    await fillWarehouse(SALES.slice(0, 2))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
+      status: 'refused', reason: 'sales: 2 rows, at least 4 required' })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
   })
 
   test('a refusal is a failed refresh run that names the guard and its numbers', async ({ admin }) => {
@@ -501,6 +530,54 @@ describe('a cached dataset read', () => {
 })
 
 describe('a live dataset read', () => {
+  test('unions whole places without cross-pairing their filters or duplicating overlapping rows', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await fillWarehouse([...SALES, ['S1', 'mens', '2026-10-02', '7.50', 9, 'south mens']])
+    await position(admin, reader.user!, 'North kids', 'N1', 'kids')
+    await position(admin, reader.user!, 'North kids overlap', 'N1', 'kids')
+    await position(admin, reader.user!, 'South mens', 'S1', 'mens')
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'activated', rowCount: 5 })
+    app.hooks.run = async (context: Context) => ({
+      cached: await context.datasets.active('sales'),
+      live: await context.datasets.live('sales'),
+      narrowedCached: await context.datasets.active('sales', { business_day: ['2026-10-02'], plant_code: 'S1' }),
+      narrowedLive: await context.datasets.live('sales', { business_day: ['2026-10-02'], plant_code: 'S1' }),
+    })
+    const { result } = await reader.post<{ result: Record<'cached' | 'live' | 'narrowedCached' | 'narrowedLive', { rows: unknown[] }> }>(read + 'outside', { payload: {} })
+    const south = row('S1', 'mens', '2026-10-02', 7.5, 9, 'south mens')
+    const expected = [row('N1', 'kids', '2026-10-01', 100.5, 3, 'north kids'),
+      row('N1', 'kids', '2026-10-02', 20.25, 1, 'north kids'), south]
+    expect(result.cached.rows).toEqual(expected)
+    expect(result.live.rows).toEqual(expected)
+    expect(result.narrowedCached.rows).toEqual([south])
+    expect(result.narrowedLive.rows).toEqual([south])
+  })
+
+  test('orders null figures first and numeric figures numerically, then breaks ties by later columns', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    // Every leading key is equal: neither lexical ordering of figures nor
+    // source insertion order can produce the declared-column order.
+    const figures = [
+      ['10', 1, 'ten'], [null, 4, 'missing four'], ['2', 10, 'two ten'],
+      [null, 2, 'missing two'], ['-1', 3, 'negative'], ['2', 2, 'two two'],
+    ] as const
+    await fillWarehouse(figures.map(([amount, units, note]) => ['N1', 'kids', '2026-10-01', amount, units, note]))
+    await position(admin, reader.user!, 'North kids', 'N1', 'kids')
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'activated', rowCount: 6 })
+    app.hooks.run = async (context: Context) => ({ cached: await context.datasets.active('sales'), live: await context.datasets.live('sales') })
+    const { result } = await reader.post<{ result: Record<'cached' | 'live', { rows: unknown[] }> }>(read + 'outside', { payload: {} })
+    const expected = [
+      { ...row('N1', 'kids', '2026-10-01', 0, 2, 'missing two'), amount: null },
+      { ...row('N1', 'kids', '2026-10-01', 0, 4, 'missing four'), amount: null },
+      row('N1', 'kids', '2026-10-01', -1, 3, 'negative'),
+      row('N1', 'kids', '2026-10-01', 2, 2, 'two two'),
+      row('N1', 'kids', '2026-10-01', 2, 10, 'two ten'),
+      row('N1', 'kids', '2026-10-01', 10, 1, 'ten'),
+    ]
+    expect(result.cached.rows).toEqual(expected)
+    expect(result.live.rows).toEqual(expected)
+  })
+
   test('identical source rows keep their multiplicity in live and cached answers', async ({ admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
     await fillWarehouse([SALES[0], SALES[0], SALES[1]])
@@ -751,6 +828,15 @@ describe('the shaping function', () => {
   const dataset = (columns: DatasetDeclaration['columns']): DatasetDeclaration =>
     ({ name: 'probe', source: 's', query: 'select 1', columns, keys: [], filters: { store: columns[0].name } })
 
+  test('integer scope keys keep exact digits and reject numbers already outside the safe range', () => {
+    const probe = dataset([{ name: 'account', type: 'integer' }])
+    expect(shapeRows(probe, [{ account: -7 }, { account: 0 }, { account: '9007199254740993' }])).toEqual([
+      { account: '-7' }, { account: '0' }, { account: '9007199254740993' },
+    ])
+    for (const account of [9007199254740992, 1.5, '1.5'])
+      expect(() => shapeRows(probe, [{ account }])).toThrow('column account holds a value that is not integer')
+  })
+
   // A count or amount is answered as a number, so it must be one a number holds exactly.
   test('refuses an integer value column holding a number above 2^53', () => {
     expect(() => shapeRows(dataset([{ name: 'store', type: 'text' }, { name: 'units', type: 'integer' }]),
@@ -909,6 +995,7 @@ describe('what a read may ask of a dataset', () => {
     ['a dataset the app has not declared', (c: Context) => c.datasets.active('elsewhere'), /has not declared the dataset elsewhere/],
     ['filters that are not an object', (c: Context) => c.datasets.active('sales', ['N1'] as never), /filters must be an object/],
     ['an empty list of filter values', (c: Context) => c.datasets.active('sales', { plant_code: [] }), /must be a value or a list of values/],
+    ['a boolean among otherwise valid filter values', (c: Context) => c.datasets.active('sales', { plant_code: ['N1', false] } as never), /Dataset filter plant_code must be a value or a list of values/],
     ['a view of a dataset the app has not declared', (c: Context) => c.recordView({ dataset: 'elsewhere' }), /recordView takes \{ dataset \}/],
   ] as const)('refuses %s', async ([, ask, message], { admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
@@ -922,8 +1009,12 @@ describe('what a read may ask of a dataset', () => {
     await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
     app.hooks.run = async (context: Context) => { await context.recordView(); return null }
     await reader.post(read + 'inside', { payload: {} })
-    const rows = await sql`select ref_table, method from access_log where "user" = ${reader.user} and operation = 'view_report'`
-    expect(rows.map(r => ({ ...r }))).toEqual([{ ref_table: 'datasetproof.inside', method: null }])
+    await reader.post(read + 'unscoped', { payload: {} })
+    const rows = await sql`select ref_table, method, scope from access_log where "user" = ${reader.user} and operation = 'view_report' order by ref_table`
+    expect(rows.map(r => ({ ...r }))).toEqual([
+      { ref_table: 'datasetproof.inside', method: null, scope: 'North / Kids' },
+      { ref_table: 'datasetproof.unscoped', method: null, scope: null },
+    ])
   })
 })
 
