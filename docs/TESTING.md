@@ -353,6 +353,29 @@ to be covered, comparing exact counts rather than rounded percentages. Each
 collector clears only its own previous output before a run; fresh browser
 collection preserves the independent component report.
 
+### Dash frontend coverage
+
+Dash's frontend profile is separate from its backend collector. It derives
+the executable source inventory from the browser entry's esbuild import
+closure and rejects missing or extra files. An unexecuted entry remains in
+the denominator. The profile includes public formatting contracts and page
+tests that use the real platform server and SQLSandbox; the older tests
+that inject API responses are not inputs to this report.
+
+After `pnpm apps:prepare`, use the explicitly named disposable local database:
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/featherbase_dash_frontend_test \
+  npm run test:coverage:frontend --prefix client-apps/jeyarama/dash
+npm run typecheck:frontend --prefix client-apps/jeyarama/dash
+```
+
+The report is `coverage/dash-frontend/coverage-final.json` with a summary and
+HTML beside it. This is frontend coverage only, not backend coverage or
+evidence of hosted warehouse or embedded-frame integration. There is no
+100% frontend gate yet: add it only when the actual report reaches 100%,
+without excluding executable source or weakening existing gates.
+
 ### Mutation testing
 
 ```bash
