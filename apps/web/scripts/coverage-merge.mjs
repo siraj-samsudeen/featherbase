@@ -16,7 +16,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import libCoverage from 'istanbul-lib-coverage'
 import libSourceMaps from 'istanbul-lib-source-maps'
-import ts from 'typescript'
+// TypeScript 7 ships no JavaScript API; Vite's own parser (oxc) reads the source.
+import { parseAst } from 'vite'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const input = path.join(root, '.nyc_output')
@@ -64,10 +65,13 @@ const missing = fs.readdirSync(src, { recursive: true })
   .map((file) => path.join(src, file))
   .filter((file) => !merged.files().includes(file))
   .filter((file) => {
-    const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest)
-    return source.statements.some((statement) => !(
-      ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement) ||
-      ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement) || ts.isEmptyStatement(statement)
+    const types = new Set(['TSInterfaceDeclaration', 'TSTypeAliasDeclaration'])
+    const ast = parseAst(fs.readFileSync(file, 'utf8'), { lang: file.endsWith('.tsx') ? 'tsx' : 'ts' })
+    return ast.body.some((statement) => !(
+      statement.type === 'ImportDeclaration' || statement.type === 'ExportAllDeclaration' ||
+      statement.type === 'EmptyStatement' || types.has(statement.type) ||
+      // `export { … }` re-exports; `export type`/`export interface` declare only types.
+      (statement.type === 'ExportNamedDeclaration' && (!statement.declaration || types.has(statement.declaration.type)))
     ))
   })
 if (missing.length) throw new Error(`coverage is missing executable source:\n${missing.join('\n')}`)

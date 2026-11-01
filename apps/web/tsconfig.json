@@ -14,7 +14,8 @@
       "DOM.Iterable"
     ],
     "types": [
-      "node"
+      "node",
+      "vite/client"
     ]
   },
   "include": [
