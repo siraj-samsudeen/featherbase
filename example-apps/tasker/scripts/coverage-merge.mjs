@@ -5,6 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { build } from 'esbuild'
 // Vitest's own forks of the coverage map and remapper, the ones
 // @vitest/coverage-istanbul uses: browser maps must remap exactly as the
 // component and unit maps were, or a branch arm with no end mapping is kept on
@@ -78,3 +79,19 @@ for (const metric of ['lines', 'statements', 'functions']) {
   if (summary[metric].covered !== summary[metric].total)
     throw new Error(`Tasker ${metric} coverage must be 100%: ${summary[metric].covered}/${summary[metric].total}`)
 }
+// Match the server build's import closure, not a hand-maintained file list.
+// Only Tasker-owned source belongs here; frontend branches remain separate.
+const { metafile } = await build({
+  absWorkingDir: root, entryPoints: ['src/server.ts'],
+  bundle: true, format: 'esm', platform: 'node',
+  write: false, metafile: true,
+})
+const backend = libCoverage.createCoverageSummary()
+for (const input of Object.keys(metafile.inputs)) {
+  const file = path.resolve(root, input)
+  if (sources.some(prefix => file.startsWith(prefix)))
+    backend.merge(merged.fileCoverageFor(file).toSummary())
+}
+console.log(`Tasker backend branches: ${backend.branches.covered}/${backend.branches.total}`)
+if (backend.branches.covered !== backend.branches.total)
+  throw new Error(`Tasker backend branches coverage must be 100%: ${backend.branches.covered}/${backend.branches.total}`)
