@@ -15,7 +15,7 @@ const root = resolve(import.meta.dirname, '..')
 const taskerPackage = JSON.parse(await readFile(resolve(root, 'example-apps/tasker/package.json'), 'utf8'))
 const requireWeb = createRequire(resolve(root, 'apps/web/package.json'))
 const { chromium, expect } = requireWeb('@playwright/test')
-const postgres = requireWeb('postgres')
+const { default: postgres } = requireWeb('postgres')
 const database = process.env.RUNTIME_PROOF_DATABASE_URL ?? 'postgres://postgres:postgres@127.0.0.1:5432/featherbase_runtime_proof_e2e'
 assert(new URL(database).pathname.endsWith('_e2e'), 'Proof database must end in _e2e')
 const port = process.env.RUNTIME_PROOF_PORT ?? '8496'
@@ -76,8 +76,8 @@ async function digest(directory) {
 
 // Freeze core FIRST. tsc preserves boot-discovered controller/job modules.
 run('pnpm', ['--filter', 'web', 'build'])
-run('pnpm', ['--filter', 'server', 'exec', 'tsc', '--noEmit', 'false', '--outDir', resolve(core, 'apps/server/src')])
-run('pnpm', ['--filter', 'shared', 'exec', 'tsc', '--noEmit', 'false', '--outDir', resolve(core, 'packages/shared')])
+run('pnpm', ['--filter', 'server', 'exec', 'tsc', '--noEmit', 'false', '--rootDir', 'src', '--outDir', resolve(core, 'apps/server/src')])
+run('pnpm', ['--filter', 'shared', 'exec', 'tsc', '--noEmit', 'false', '--rootDir', '.', '--outDir', resolve(core, 'packages/shared')])
 // tsc keeps extensionless imports. Make emitted JS resolve files rather than
 // same-named controller/job directories; the source tree is never rewritten.
 for (const entry of await readdir(core, { recursive: true })) {
