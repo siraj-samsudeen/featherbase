@@ -2,13 +2,17 @@ packages:
   - apps/*
   - packages/*
 
-# pnpm 10 runs no dependency's install script unless it is listed, and says
-# so on every install. esbuild's is allowed: it checks that its platform binary
-# matches (fetching it only if the optional dependency carrying it is missing),
-# a step esbuild's own install expects (#692). Declining it with
-# ignoredBuiltDependencies does not silence the notice in pnpm 10.33.
-onlyBuiltDependencies:
-  - esbuild
+# esbuild checks its platform binary, fetching it if the optional dependency
+# carrying it is missing (#692). pnpm 12 uses allowBuilds for this permission.
+allowBuilds:
+  esbuild: true
+
+# Exact patches approved in #747 item 3, published within pnpm 12's default
+# 24-hour release-age window. Keep that default for every other release.
+minimumReleaseAgeExclude:
+  - '@tanstack/query-core@5.105.1'
+  - '@tanstack/react-query@5.105.1'
+  - hono@4.13.16
 
 # Audit findings in the coverage tooling that no release of its parents fixes
 # yet (#747): glob 13 (GHSA-3g3m-2fjr-6pw4) and minimatch 10
