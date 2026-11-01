@@ -1,6 +1,6 @@
 ---
 name: acceptance-test-authoring
-description: Use when creating or modifying acceptance tests, configuring cucumber-js or behave runners, writing or refactoring step definitions, linting executable Gherkin specs, choosing an acceptance stack, or implementing OpenSpec tasks that involve acceptance tests.
+description: Use when creating or modifying acceptance tests, configuring cucumber-js or behave runners, writing or refactoring step definitions, choosing an acceptance stack, or implementing OpenSpec tasks that involve acceptance tests.
 ---
 
 # Acceptance Test Authoring
@@ -37,13 +37,12 @@ When `spec-as-source` is active, adding `stack:` is a specs-zone edit under `ope
 
 Each pack has a **Files to copy** table naming every destination filename and why it is load-bearing. Copy those files verbatim; they are the canonical runner.
 
-Three files sit at the `references/` root because they are shared by both stacks:
+Two files sit at the `references/` root because they are shared by both stacks:
 
 | File | Role |
 | --- | --- |
 | [EXTRACTION.md](references/EXTRACTION.md) | Normative contract for `spec.md` to `.feature` extraction |
 | [COMPOSITION.md](references/COMPOSITION.md) | Normative contract for which scenarios run |
-| [gherkin-lintrc.json](references/gherkin-lintrc.json) | Shared lint configuration copied to `acceptance-tests/.gherkin-lintrc` |
 
 The Markdown contracts are the definitions; the JavaScript and Python files are bindings. Change the relevant contract first, then both implementations.
 
@@ -54,7 +53,7 @@ When `spec-as-source` is active, draft specs from that skill's `references/spec.
 - `# <capability>` is the single H1 title and becomes `Feature:`.
 - `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` is a delta section. The extractor emits one `# @openspec: <OP>` marker for the section.
 - `### Requirement: <name>` becomes `Rule:`. Its SHALL/MUST description remains plain prose.
-- `#### Scenario: <name>` or `#### Scenario Outline: <name>` becomes the corresponding Gherkin scenario. Each scenario must have a following gherkin fence before the next heading.
+- `#### Scenario: <name>` or `#### Scenario Outline: <name>` becomes the corresponding Gherkin scenario. A scenario with no gherkin fence before the next heading is a prose scenario: left out of the run and named in a notice, never an error.
 - Fences open with ` ```gherkin ` at column 0 and close with at least as many backticks at column 0.
 - Fences contain only steps, `Examples:` tables, and docstrings. Gherkin structure keywords inside a fence are a hard error.
 
@@ -83,19 +82,16 @@ The JavaScript binding excludes superseded scenarios through cucumber-js line-ta
 
 [references/EXTRACTION.md](references/EXTRACTION.md) and [references/COMPOSITION.md](references/COMPOSITION.md) are the contracts between stacks. A change to one implementation must be mirrored in the other and reflected in the relevant contract first. The strongest check is a cross-stack dry run on the same `openspec/` tree: the same scenario count and names.
 
-## Linting Specs
+## No Separate Spec Lint
 
-Spec linting is shared across stacks: gherkin-lint over the extracted output with the pinned `.gherkin-lintrc`.
-
-- Extract first, then lint; pass `.extracted` as a directory argument.
-- gherkin-lint has no default rules; it requires `.gherkin-lintrc`.
-- Reported line numbers are valid in source `spec.md` files.
-
-Before an `acceptance-tests/` project exists, run the extractor from this skill:
+There is no spec linter. gherkin-lint is unmaintained and its dependencies fail `npm audit`
+(intent-driven-dev/intent-driven-template#9), and the runner already refuses malformed Gherkin on
+every run: cucumber-js and behave parse each extracted file, and parse errors name `spec.md` lines
+by line fidelity. To check specs before an `acceptance-tests/` project exists, extract them; the
+extractor's hard errors are the format check:
 
 ```sh
-node .agents/skills/acceptance-test-authoring/references/javascript/extract-gherkin.cjs openspec acceptance-tests/.extracted \
-  && npx gherkin-lint --config .agents/skills/acceptance-test-authoring/references/gherkin-lintrc.json acceptance-tests/.extracted
+node .agents/skills/acceptance-test-authoring/references/javascript/extract-gherkin.cjs openspec acceptance-tests/.extracted
 ```
 
 The Python extractor is a drop-in substitute:

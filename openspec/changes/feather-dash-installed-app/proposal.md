@@ -9,13 +9,13 @@ same instance, nothing routes by address, and the product calls itself
 
 The instance owner decided on 24-Oct-2026 (#458) that Featherbase is the
 master-data system and Feather Dash is an app installed on top of it, as Tasker is.
-On 26-Oct-2026 the owner recorded [ADR 0011](../../../docs/adr/0011-platform-app-instance.md):
+On 26-Oct-2026 the owner recorded [ADR 0011](../../../adr/0011-platform-app-instance.md):
 platform, app and instance are separate layers, and each knows only the layer below
 it. Feather Dash is the first app designed against it.
 
 ## What Changes
 
-- **Feather Dash becomes a client app** (`feather_dash`, [ADR 0013](../../../docs/adr/0013-client-apps-and-product-apps.md),
+- **Feather Dash becomes a client app** (`feather_dash`, [ADR 0013](../../../adr/0013-client-apps-and-product-apps.md),
   revised 27-Oct-2026), kept in the client's private repository with its report
   query, roster derivation and retail terms. It is installed and upgraded like any
   app. Per-instance values (secrets, the Dive used on each instance, job bindings)

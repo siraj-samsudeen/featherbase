@@ -35,6 +35,43 @@ def _change_id_of(delta_path):
     return parts[parts.index("changes") + 1]
 
 
+def _proposal_capabilities(change_id):
+    """Journey order: the capabilities a change's proposal.md lists under
+    "## Capabilities" (New, then Modified, in file order), as backticked names
+    at the start of a list item."""
+    proposal = HERE / ".." / "openspec" / "changes" / change_id / "proposal.md"
+    if not proposal.is_file():
+        return []
+    names = []
+    in_section = False
+    for line in re.split(r"\r?\n", proposal.read_text(encoding="utf-8")):
+        if re.match(r"^##\s", line):
+            in_section = bool(re.match(r"^##\s+Capabilities\s*$", line))
+        if not in_section:
+            continue
+        item = re.match(r"^\s*[-*]\s+`([^`]+)`", line)
+        if item and item.group(1) not in names:
+            names.append(item.group(1))
+    return names
+
+
+def _in_journey_order(delta_paths):
+    """Changes alphabetically; each change's delta paths in its proposal's
+    capability order; a capability the proposal doesn't list follows,
+    alphabetically."""
+    order = {}
+
+    def key(p):
+        change_id = _change_id_of(p)
+        if change_id not in order:
+            order[change_id] = _proposal_capabilities(change_id)
+        names = order[change_id]
+        capability = _capability_of(p)
+        return (change_id, names.index(capability) if capability in names else sys.maxsize, p)
+
+    return sorted(delta_paths, key=key)
+
+
 def collect_superseded_rules(delta_paths):
     superseded = {}
     for delta_path in delta_paths:
@@ -125,7 +162,7 @@ def _rel(path):
 
 
 def effective_locations():
-    delta_paths = sorted(
+    delta_paths = _in_journey_order(
         _rel(p) for p in (HERE / ".extracted" / "changes").glob("*/specs/**/*.feature") if "changes/archive/" not in _rel(p)
     )
     sot_paths = sorted(_rel(p) for p in (HERE / ".extracted" / "specs").glob("**/*.feature"))
@@ -160,7 +197,8 @@ def effective_locations():
                     % (change_id, name, capability)
                 )
 
-    return locations + delta_paths
+    # The changes' scenarios run first, in journey order; the main specs follow.
+    return delta_paths + locations
 
 
 def source_of_truth_locations():

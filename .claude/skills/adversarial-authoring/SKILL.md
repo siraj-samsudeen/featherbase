@@ -6,7 +6,7 @@ license: MIT
 
 # Adversarial Authoring — Claude Code
 
-Follow the upstream OpenCode skill, copied beside this file as [`upstream.md`](upstream.md) — its workflow,
+Follow the OpenCode skill, `.opencode/skills/adversarial-authoring/SKILL.md` — its workflow,
 council notes and guardrails — with the three differences below. They exist because a Claude
 Code subagent can only run Claude models, so the OpenCode "council" of different model families
 would collapse to one family.

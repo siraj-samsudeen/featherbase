@@ -1,3 +1,5 @@
+# Connection Console
+
 ## ADDED Requirements
 
 ### Requirement: Connect a database by typing its details

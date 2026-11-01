@@ -66,13 +66,21 @@ Then the agent drafts the next one without asking.
 <artifact>: <change-name> — <one line on what it settles>
 ```
 
-`tasks.md` is the test list (see the schema). `design.md` is a hypothesis: when the build leads
+`tasks.md` is upstream's list, written by `spec-as-source` the same way in every mode, so a
+switch to or from autopilot changes no task. `design.md` is a hypothesis: when the build leads
 somewhere else, a later `design:` commit records what changed and why.
 
 ## Building — one stop per test
 
-Take the next unticked task in order. Follow the `test-driven-development` skill for the shape
-of each test; this skill adds the stops and the record.
+Work down `tasks.md` in order. Follow the `test-driven-development` skill for the shape of each
+test; this skill adds the stops and the record.
+
+**Reading upstream's task list as a test list.** Each step-definition task is an outer test: a
+scenario's step, run by the acceptance runner. The first-time setup tasks are not done on their
+own: the `acceptance-tests/` setup arrives in the red/green of the first outer test that needs
+it, and each setup task is ticked when that pair delivers it. The inner tests the design needs
+are not in the list up front. Add each one, when it is discovered, right under the outer task it
+serves, as `- [ ] X.Y.Z (added) inner: <behaviour>`, and tick it after its green.
 
 1. **Show the test** and why it is next, **and ask for the prediction in the same message** —
    answering it also approves the test (or the human edits the test instead).
@@ -92,17 +100,17 @@ of each test; this skill adds the stops and the record.
    code, ask the human to predict the suite result first.
 7. **Refactor** only when there is a smell: name it and let the human decide. No smell, no stop. A refactor is its own
    `refactor:` commit: structure only, no assertion changes, same pass count.
-8. Tick the task. Add any newly discovered inner test to `tasks.md` as `(added)`. Move to the
-   next task.
+8. Tick the task. Add any newly discovered inner test under its outer task as `(added)`. Move
+   to the next task.
 
 Tests the task list already expects to pass on their first run are run together, one `test:`
 commit each, and reported in one message.
 
-The outer test of a scenario is its fenced Gherkin in the change's `spec.md`, run by cucumber-js
-from `acceptance-tests/` (`spec-as-source`). Its first red is usually an undefined step: the
-step definition arrives in that red/green pair, and so does the `acceptance-tests/` setup on the
-very first one. The scenario stays failing while its inner tests run, and passing it is its own
-green step.
+The outer test of a scenario is its fenced Gherkin in the change's `spec.md`, run from
+`acceptance-tests/` (`spec-as-source`). Its first red is usually an undefined step: the step
+definition arrives in that red/green pair, and so does the `acceptance-tests/` setup on the very
+first one. The scenario stays failing while its inner tests run, and passing it is its own green
+step.
 
 **Step size.** If the human's predictions keep matching, the steps are too small — take bigger
 ones. If they keep missing, slow down.
@@ -189,19 +197,20 @@ Ran: <exact generator or install commands>
 
 ## Reconcile — end of every change
 
-Run the checks the `## Reconcile` group in `tasks.md` lists. Every finding gets one of three
-fates — **ratify** (a `specs:` commit adds the scenario, then a test pins it), **delete**
-(`refactor:`), or **ask** (the human decides):
+When the last task is ticked, run the project's own checks for each of these. Upstream's task
+list has no group for them, so they are this skill's last step, not tasks. Every finding gets
+one of three fates — **ratify** (a `specs:` commit adds the scenario, then a test pins it),
+**delete** (`refactor:`), or **ask** (the human decides):
 
-- `bun test --coverage` — 100% of lines and functions.
-- `knip` — unused files, exports and dependencies.
-- `bunx tsc --noEmit` — types.
-- Stryker — every surviving mutant is a missing test or code nobody needs.
+- Coverage — 100% of lines and functions (Bun: `bun test --coverage`).
+- Unused files, exports and dependencies (`knip`).
+- Types (`tsc --noEmit`).
+- Mutation testing (Stryker) — every surviving mutant is a missing test or code nobody needs.
 
-Then `openspec verify`, sync the specs and archive the change on its branch, as the last step of
-its one PR (the `change-modes` skill).
+Then `openspec verify`, record the review videos for the owner, and archive on the change's
+branch once the owner has watched them; the owner merges (the `change-modes` skill).
 
-## Tooling gotchas (Bun 1.4.2, verified 21-Oct-2026)
+## Tooling gotchas when the project uses Bun (Bun 1.4.2, verified 21-Oct-2026)
 
 - A `coverageThreshold` failure exits 1 **with no message**, under "0 fail".
 - knip needs `"entry": ["**/*.test.ts"]` when tests are the only entry points (otherwise it
