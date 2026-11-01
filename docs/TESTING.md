@@ -305,6 +305,9 @@ pnpm --filter web coverage:merged  # → apps/web/coverage-merged/index.html
   prevent counting the same execution twice.
 - `scripts/coverage-merge.mjs` remaps each input to source lines *before*
   merging (`nyc merge` would add served-code counters to source-level ones).
+  It uses Vitest's Istanbul remapper to retain implicit branch arms, and
+  refuses incompatible statement, function or branch inventories. The merge
+  command first runs a regression test using genuine instrumented executions.
   It requires both suites and refuses missing executable source files,
   including the SPA and gallery entries.
 - The jsdom run's own thresholds gate CI's `unit-web` job; CI's
