@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
 import { installApp } from 'server/src/apps'
 import { sql } from 'server/src/db'
+import { deleteStored } from 'server/src/storage'
 import { test, expect, renderApp } from './pg-test'
 import { pickedFile, useNodeMultipart } from './node-multipart'
 
@@ -124,4 +125,57 @@ test('the camera button opens the picker; a photo the server refuses offers a re
   await waitFor(() => expect(screen.getAllByTestId('checklist-photo-add')[0]).toHaveTextContent('📷 Retry'))
   const [stored] = await sql`select count(*)::int as n from file where file_name = 'shelf.jpg'`
   expect(stored.n).toBe(0)
+})
+
+test('multiple photos remain attached to their own checklist item', async ({ admin }) => {
+  const run = await seedRun(admin)
+  const doc = await admin.get<{ items: { row_id: string; photo_proof: boolean }[] }>(
+    `/api/table/Checklist%20Run/${encodeURIComponent(run)}`,
+  )
+  const photoItems = doc.items.filter((item) => item.photo_proof)
+  expect(photoItems.length).toBeGreaterThanOrEqual(2)
+  await useNodeMultipart()
+  const uploaded: string[] = []
+  try {
+    for (const [filename, item] of [
+      ['left-shelf.svg', photoItems[0]],
+      ['right-shelf.svg', photoItems[0]],
+      ['entrance.svg', photoItems[1]],
+    ] as const) {
+      // SVG is a valid picked image without a raster thumbnail. Its attachment
+      // must still be offered by name instead of disappearing from the item.
+      const form = new FormData()
+      form.append('file', pickedFile(filename, '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="red"/></svg>', 'image/svg+xml'))
+      form.append('ref_table', 'Checklist Run Item')
+      form.append('ref_name', item.row_id)
+      form.append('is_private', '1')
+      const response = await admin.fetch('/api/upload_file', { method: 'POST', body: form })
+      expect(response.status).toBe(201)
+      const file = await response.json() as { file_url: string; thumbnail_url: string | null }
+      uploaded.push(file.file_url)
+      expect(file.thumbnail_url).toBeNull()
+    }
+    await openRun(admin, run)
+    await waitFor(() => expect(screen.getAllByTestId('checklist-photo-thumb')).toHaveLength(3))
+    const items = screen.getAllByTestId('checklist-item')
+    const first = within(items[doc.items.indexOf(photoItems[0])])
+    const second = within(items[doc.items.indexOf(photoItems[1])])
+    expect(first.getAllByTestId('checklist-photo-thumb').map((button) => button.getAttribute('aria-label'))).toEqual([
+      'View left-shelf.svg', 'View right-shelf.svg',
+    ])
+    expect(second.getAllByTestId('checklist-photo-thumb').map((button) => button.getAttribute('aria-label'))).toEqual([
+      'View entrance.svg',
+    ])
+    expect(first.getByRole('button', { name: 'View right-shelf.svg' })).toHaveTextContent('📎')
+    await userEvent.click(first.getByRole('button', { name: 'View right-shelf.svg' }))
+    const viewer = await screen.findByRole('dialog', { name: 'Photo viewer' })
+    expect(await within(viewer).findByRole('img', { name: 'Checklist photo' })).toHaveAttribute(
+      'src', expect.stringContaining(`${uploaded[1]}?expires=`),
+    )
+    await userEvent.click(within(viewer).getByRole('button', { name: 'Close photo' }))
+    expect(screen.queryByRole('dialog', { name: 'Photo viewer' })).not.toBeInTheDocument()
+  } finally {
+    // Database rows roll back; uploaded disk objects do not.
+    for (const url of uploaded) await deleteStored(url)
+  }
 })

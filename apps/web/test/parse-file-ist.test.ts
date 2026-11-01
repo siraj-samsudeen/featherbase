@@ -161,6 +161,21 @@ describe('Excel dates in IST (+05:30)', () => {
     expect(sheet.rows.map((r) => r[0])).toEqual(['2024-10-20T12:00:00', '2024-10-22'])
   })
 
+  test.each([
+    ['=', ['2024-10-20', '2024-10-21T12:00:00', '2024-10-22']],
+    ['>', ['2024-10-20', '2024-10-21', '2024-10-22T12:00:00']],
+    ['>=', ['2024-10-20', '2024-10-21T12:00:00', '2024-10-22T12:00:00']],
+    ['<', ['2024-10-20T12:00:00', '2024-10-21', '2024-10-22']],
+    ['<=', ['2024-10-20T12:00:00', '2024-10-21T12:00:00', '2024-10-22']],
+    ['<>', ['2024-10-20T12:00:00', '2024-10-21', '2024-10-22T12:00:00']],
+  ])('the %s condition preserves dates below, at, and above its boundary', async (operator, expected) => {
+    const fmt = `[${operator}45586.5]yyyy-mm-dd hh:mm;yyyy-mm-dd`
+    const [sheet] = await parseWorkbook(workbookFile([
+      [45585.5, fmt], [45586.5, fmt], [45587.5, fmt],
+    ]))
+    expect(sheet.rows.map((row) => row[0])).toEqual(expected)
+  })
+
   test('two conditions choose the first matching section, or the third when neither matches', async () => {
     const fmt = '[<45586]yyyy-mm-dd;[>=45587]yyyy-mm-dd hh:mm;yyyy-mm-dd hh:mm:ss.000'
     const [sheet] = await parseWorkbook(workbookFile([
