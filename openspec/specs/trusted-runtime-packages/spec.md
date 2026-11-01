@@ -143,7 +143,11 @@ While an installed app is on, a dashboard number card or chart SHALL be able to 
 ### Requirement: An app owns its own screen
 
 An app that brings its own screen SHALL fully control its address, document,
-inner navigation and styling. Featherbase SHALL serve only that app's declared
+inner navigation and styling.
+
+#### Normative details for the whole requirement
+
+Featherbase SHALL serve only that app's declared
 client files, SHALL NOT show one app's screen or its own in place of a missing
 piece, and SHALL preserve an app-owned deep path, query and fragment across
 sign-in and refresh while loading the app's entry document.
@@ -225,7 +229,11 @@ current address and keeping the rest of what was being looked at intact.
 An app SHALL only gain a new access rule — such as who may read or act on
 one of its tables — by shipping a new, reviewed version; Featherbase SHALL
 NOT let an already-installed version quietly pick up a rule it didn't
-originally declare. A new version MAY withdraw a rule its predecessor
+originally declare.
+
+#### Normative details for the whole requirement
+
+A new version MAY withdraw a rule its predecessor
 declared; applying it SHALL remove only the grant that app created, and
 record the withdrawal in the activity log. The image SHALL ship the installed
 predecessor beside the new version so the upgrade can find it.
@@ -266,7 +274,11 @@ delete was made against an out-of-date view of it.
 ### Requirement: explicit_runtime_policy_upgrade
 
 Package discovery SHALL validate read/action policy and required callback
-declarations as immutable artifact contents. Missing policies SHALL NOT become
+declarations as immutable artifact contents.
+
+#### Normative details for the whole requirement
+
+Missing policies SHALL NOT become
 implicit unscoped grants. The host SHALL recognize exact historical version-1
 artifacts for predecessor verification and reviewed upgrade planning without
 executing undeclared actions. Install/restart SHALL expose their policy-upgrade
@@ -435,7 +447,11 @@ app.
 A new version of an app SHALL be able to add and remove its tables, add a
 column of any kind, change a column's label, description (the line a form
 shows under it), choices, default, whether it is required, unique or hidden,
-rename a column or a table, and remove a column. Changing a label or a
+rename a column or a table, and remove a column.
+
+#### Normative details for the whole requirement
+
+Changing a label or a
 description SHALL change only what people read. A rename SHALL keep the rows,
 their history, the links to them and who may see them. An upgrade SHALL change
 only the app's own tables, never Featherbase's or the instance's.
@@ -525,7 +541,11 @@ had SHALL never widen through an upgrade.
 
 ### Requirement: Platform storage is explicit
 Featherbase-owned relations and functions SHALL live in PostgreSQL schema
-`featherbase`. A fresh install SHALL create them there. Core logical identities
+`featherbase`.
+
+#### Normative details for the whole requirement
+
+A fresh install SHALL create them there. Core logical identities
 SHALL remain compatible and unqualified; application logical and physical
 identities SHALL remain scoped. Runtime and migration paths SHALL resolve physical
 relations deterministically without pooled mutable `search_path` routing.

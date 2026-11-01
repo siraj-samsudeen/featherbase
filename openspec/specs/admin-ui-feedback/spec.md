@@ -152,6 +152,9 @@ warning.
 
 Before a data source's table is turned on, its preview SHALL show each
 column's name, its type in the source and the type Featherbase would give it.
+
+#### Normative details for the whole requirement
+
 A column the source declares as a foreign key shows the schema and table it
 points to. It is proposed as a link to another Table only when its target is
 turned on with a matching key, or is selected to be turned on in the same

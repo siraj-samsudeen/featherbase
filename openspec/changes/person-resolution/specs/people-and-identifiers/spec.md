@@ -52,7 +52,11 @@ knows by giving it a name, a kind, where its values come from and whether a
 shared value should point out possible duplicates; the kind fills in every
 other setting — how values are tidied, whether a value belongs to one person
 at a time, how much of it is shown and who may see or edit it — and each can
-be changed under advanced settings and reverted to its default. Generic kinds
+be changed under advanced settings and reverted to its default.
+
+#### Normative details for the whole requirement
+
+Generic kinds
 ship with Featherbase; the organisation's own systems arrive as a ready-made
 set, so the usual case needs no set-up.
 
@@ -111,6 +115,9 @@ for example on two companies' payrolls.
 ### Requirement: Sensitive identifiers are never shown in full
 
 A national ID such as Aadhaar SHALL never be stored or shown in full.
+
+#### Normative details for the whole requirement
+
 Featherbase keeps only a keyed fingerprint, used to detect that two records
 carry the same number, and the last four digits, which is all anyone sees.
 When the fingerprint key is missing or wrong, such identifiers are refused one
@@ -141,7 +148,11 @@ exact value.
 
 When a value that counts as a clue — a fingerprinted national ID, a phone, an
 email — is held by two or more records, Featherbase SHALL raise one group in a
-review list rather than merge anything. A group is strong only for a national
+review list rather than merge anything.
+
+#### Normative details for the whole requirement
+
+A group is strong only for a national
 ID: when two records share one, or when several records share one and every
 one of them has known employment dates that never overlapped; any other group
 — a shared phone or email, several records on one value at the same time, or a
@@ -197,6 +208,9 @@ Confirming that two records are one person SHALL merge them into one
 surviving record: roles, data access, sign-in methods, access tokens,
 identifiers and every place the other record was referred to move to the
 survivor; anything that would be duplicated is recorded before it is removed.
+
+#### Normative details for the whole requirement
+
 The merged-away record is kept, inactive, pointing at the survivor; nothing is
 deleted. A record can also be merged by hand when the two share no identifier.
 After confirming, the reviewer sees what moved, a link to the survivor and a
@@ -253,7 +267,11 @@ refused while a later merge still builds on this one, and says which.
 
 Before a merge is confirmed, Featherbase SHALL show the reviewer, table by
 table, every role, data access and way in the surviving person would gain
-and lose, and require them to acknowledge it. Where one record could see
+and lose, and require them to acknowledge it.
+
+#### Normative details for the whole requirement
+
+Where one record could see
 everything in a table and the other only part, the reviewer chooses, and the
 narrower access is the default. A merge is refused when the two records carry
 different national IDs (an erased one counts as unknown, not different), when
@@ -301,7 +319,11 @@ first with a recorded note and may carry a privileged role across.
 
 Each identifier system SHALL say who may add, end or correct its values: the
 system that feeds it (then people can only read it), System Managers,
-reviewers, or the person themselves for their own contact details. A value fed
+reviewers, or the person themselves for their own contact details.
+
+#### Normative details for the whole requirement
+
+A value fed
 by another system is corrected there, not in Featherbase. Every real change
 records who made it and when; saving a value unchanged records nothing.
 

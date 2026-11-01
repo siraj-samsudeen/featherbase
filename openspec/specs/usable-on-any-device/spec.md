@@ -128,6 +128,10 @@ on request.
 
 #### Scenario: Read a list of checklist runs on a phone
 
+- **GIVEN** the user is on a phone
+- **WHEN** the user opens a list
+- **THEN** each row shows its title, its status in words and its key figures, without sideways scrolling
+
 ```gherkin
 Given the user is on a phone
 When the user opens a list
@@ -135,6 +139,13 @@ Then each row shows its title, its status in words and its key figures, without 
 ```
 
 #### Scenario: Work with a Table's rows on a phone
+
+- **GIVEN** the user is on a phone
+- **WHEN** the user opens any Table's list
+- **THEN** each row is a card led by the row's title, which opens the row, never by an opaque id
+- **AND** the card shows its status in words and up to three other listed columns as labelled figures
+- **AND** the user can still select rows one at a time or all on the page, and act on them in bulk
+- **AND** the user can sort by any listed column, show a row's nested rows in place, and page through the rows
 
 ```gherkin
 Given the user is on a phone
@@ -146,6 +157,14 @@ And the user can sort by any listed column, show a row's nested rows in place, a
 ```
 
 #### Scenario: Section Mapping's cards show three columns and the rest on request
+
+- **GIVEN** the user is on a phone
+- **AND** the table "Section Mapping" has seven list columns
+- **WHEN** the user opens its list
+- **THEN** each card is titled by its Section and shows three of the other six columns
+- **AND** it says there are 3 more
+- **WHEN** the user asks to see them
+- **THEN** the card shows all seven without leaving the list
 
 ```gherkin
 Given the user is on a phone
