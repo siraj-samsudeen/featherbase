@@ -5,7 +5,7 @@ import { registryLabel, type SearchHit } from '../src/search'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { discoverPackages } from '../src/runtime-packages'
-import { createUserWithRole, grantRole, makeTable, type TableRef } from './fixtures'
+import { createUserWithRole, grantRole, makePerson, makeTable, type TableRef } from './fixtures'
 
 const search = (client: TestClient, query: string) =>
   client.get<{ results: SearchHit[] }>(`/api/search?q=${encodeURIComponent(query)}`)
@@ -46,6 +46,26 @@ async function setupSensitiveTitle(
 }
 
 describe('global search permissions', () => {
+  test('search and the person picker treat SQL wildcard characters as literal text', async ({ admin }) => {
+    const table = await makeTable(admin, {
+      name: 'Gs Literal Search', id_pattern: 'prompt', title_column: 'title', columns: ['title'],
+    })
+    await admin.post(table.url, { row_id: 'literal', title: 'wild%_\\unit' })
+    await admin.post(table.url, { row_id: 'distractor', title: 'wildABunit' })
+    const person = await makePerson({ full_name: 'wild%_\\unit' })
+    await makePerson({ full_name: 'wildABunit' })
+    for (const query of ['wild%', 'wild%_', 'wild%_\\']) {
+      expect((await search(admin, query)).results.filter((hit) => hit.table === table.name))
+        .toEqual([{ table: table.name, row_id: 'literal', title: 'wild%_\\unit' }])
+      expect(await admin.get(`/api/people/pick?q=${encodeURIComponent(query)}`))
+        .toEqual({ people: [{ row_id: person, label: 'wild%_\\unit' }] })
+    }
+    // Neither name contains "wild_". Without underscore escaping, both
+    // would match even if percent and backslash escaping still worked.
+    expect((await search(admin, 'wild_')).results.filter((hit) => hit.table === table.name)).toEqual([])
+    expect(await admin.get('/api/people/pick?q=wild_')).toEqual({ people: [] })
+  })
+
   test('a scope storage failure is not disguised as an empty search result', async ({ admin, createUser }) => {
     const table = await makeTable(admin, { name: 'Gs Broken Scope', columns: ['title'] })
     const reader = await createUserWithRole(admin, createUser, { role: 'Gs Broken Scope Reader', table: table.name, can_read: true })

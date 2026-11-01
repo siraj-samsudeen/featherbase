@@ -111,6 +111,14 @@ describe('WEB-002: web forms', () => {
     await setup(admin)
     const cfg = await api.fetch('/api/web_form/wf-srv')
     expect(cfg.status).toBe(200)
+    const malformed = await api.fetch('/api/web_form/wf-srv', {
+      method: 'POST', body: '{"values":',
+    })
+    expect(malformed.status).toBe(417)
+    expect(await malformed.json()).toMatchObject({
+      error: { type: 'ValidationError', fields: { full_name: expect.any(String), message: expect.any(String) } },
+    })
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}`)).toMatchObject({ total: 0, data: [] })
     const submit = await api.fetch('/api/web_form/wf-srv', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

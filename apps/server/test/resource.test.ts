@@ -97,4 +97,62 @@ describe('API-001/API-002: generic REST resource', () => {
       },
     })
   })
+
+  test('POST never treats a row URL or a read action as a write action', async ({ admin }) => {
+    await setup(admin)
+    const row = await admin.post<{ row_id: string; title: string }>(`/api/table/${encodeURIComponent(DT)}`, { title: 'unchanged' })
+    for (const [path, message] of [
+      [`/api/table/${encodeURIComponent(DT)}/${row.row_id}`, 'Expected a row action, e.g. :submit'],
+      [`/api/table/${encodeURIComponent(DT)}/${row.row_id}:connections`, 'No writable row action ":connections"'],
+      [`/api/table/${encodeURIComponent(DT)}:count`, 'No writable collection action ":count"'],
+    ]) {
+      const response = await admin.fetch(path, { method: 'POST', body: JSON.stringify({ title: 'must not write' }) })
+      expect(response.status).toBe(404)
+      expect(await response.json()).toMatchObject({ error: { type: 'NotFoundError', message } })
+    }
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/${row.row_id}`)).toMatchObject({ title: 'unchanged' })
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}`)).toMatchObject({ total: 1 })
+  })
+})
+
+describe('JSON command validation at the HTTP boundary', () => {
+  // Truncated JSON must receive the same useful validation as an empty object,
+  // not an internal parser error or a successful command with absent arguments.
+  for (const [method, path, message] of [
+    ['POST', '/api/events', 'Expected { events: [{ kind, key, … }] } (max 50)'],
+    ['POST', '/api/saved_views', 'Expected { table, label, filters: [[col, op, value], …] }'],
+    ['POST', '/api/saved_views/view-missing/share', 'Expected { shared: boolean }'],
+    ['POST', '/api/row_titles', 'Expected { rows: [{ table, row_id }] } (max 100)'],
+    ['POST', '/api/people/names', 'Expected { ids: [...] }'],
+    ['POST', '/api/setup/system-managers', 'Name at least one person, each with an email address'],
+    ['POST', '/api/set_theme', 'theme must be one of light, dark, device'],
+    ['POST', '/api/set_language', 'Expected a language code like "en" or "fr"'],
+    ['POST', '/api/people/Administrator/identities', 'Expected { method }'],
+    ['POST', '/api/access_tokens', 'Expected { label }'],
+    ['POST', '/api/service_accounts', 'Expected { label }'],
+    ['PATCH', '/api/service_accounts/missing', 'Expected { enabled }'],
+    ['POST', '/api/service_accounts/missing/roles', 'Expected { roles: [...] }'],
+    ['POST', '/api/access_log', 'Expected { table }'],
+    ['POST', '/api/dashboard/count', 'Expected { table }'],
+    ['POST', '/api/dashboard/chart', 'Expected { table, group_by }'],
+    ['POST', '/api/pin_chart_to_dashboard', 'Expected { dashboard, chart }'],
+    ['POST', '/api/permissions/Person', 'Expected { role }'],
+    ['POST', '/api/glossary/take_app_wording', 'Expected { id }'],
+    ['POST', '/api/preview_app_upgrade', 'Expected application name, target version and reviewed planId for upgrade'],
+    ['POST', '/api/upgrade_app', 'Expected application name, target version and reviewed planId for upgrade'],
+    ['POST', '/api/activate_app_upgrade', 'Expected application name, target version and reviewed planId for upgrade'],
+    ['POST', '/api/install_app', 'Expected { name } or { manifest }'],
+    ['POST', '/api/uninstall_app', 'Expected { name }'],
+    ['POST', '/api/run_auto_email_report', 'Expected { row_id }'],
+    ['POST', '/api/run_script_report', 'Expected { report }'],
+    ['POST', '/api/retry_job', 'Expected { row_id }'],
+  ]) {
+    test(`${method} ${path} refuses malformed and missing arguments`, async ({ admin }) => {
+      for (const body of ['{"unfinished":', '{}']) {
+        const response = await admin.fetch(path, { method, body, headers: { 'content-type': 'application/json' } })
+        expect(response.status).toBe(417)
+        expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message } })
+      }
+    })
+  }
 })

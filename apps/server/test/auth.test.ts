@@ -11,6 +11,45 @@ const json = (body: unknown) => ({
 })
 
 describe('API-004: authentication', () => {
+  test('login requires nonempty string credentials and never issues a cookie for a malformed credential shape', async ({ api }) => {
+    for (const body of [{}, { usr: 'Administrator' }, { usr: '', pwd: 'admin' }, { usr: 'Administrator', pwd: '' }, { usr: 17, pwd: 'admin' }, { usr: 'Administrator', pwd: 41 }]) {
+      const response = await api.fetch('/api/login', json(body))
+      expect(response.status).toBe(417)
+      expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message: 'Expected { usr, pwd }' } })
+      expect(response.headers.get('set-cookie')).toBeNull()
+    }
+  })
+
+  test('password recovery rejects truncated JSON before recording a reset or changing credentials', async ({ api }) => {
+    const before = await sql`select row_id, password_hash from person order by row_id`
+    const resets = await sql`select * from password_reset order by token`
+    for (const [path, message] of [
+      ['/api/reset_password_request', 'Expected { usr }'],
+      ['/api/reset_password', 'Expected { key, new_password }'],
+    ]) {
+      const response = await api.fetch(path, { method: 'POST', body: '{"unfinished":' })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message } })
+      expect(response.headers.get('set-cookie')).toBeNull()
+    }
+    expect(await sql`select row_id, password_hash from person order by row_id`).toEqual(before)
+    expect(await sql`select * from password_reset order by token`).toEqual(resets)
+  })
+
+  test('an enabled delegated method still requires a valid request and never defaults an unknown method', async ({ api, admin }) => {
+    await admin.post('/api/save_row', { table: 'Sign In Method', row: {
+      row_id: 'request-shape', kind: 'delegated_password', label: 'Request shape', enabled: true,
+      new_person: 'refuse', self_link: false, service_url: 'https://provider.example.test/login',
+    } })
+    const malformed = await api.fetch('/api/login/delegated', { method: 'POST', body: '{"unfinished":' })
+    expect(malformed.status).toBe(417)
+    expect(await malformed.json()).toMatchObject({ error: { type: 'ValidationError', message: 'Expected { usr, pwd, method }' } })
+    expect(malformed.headers.get('set-cookie')).toBeNull()
+    const unknown = await api.fetch('/api/login/delegated', json({ method: 'not-configured', usr: 'someone', pwd: 'never-forwarded' }))
+    expect(unknown.status).toBe(404)
+    expect(unknown.headers.get('set-cookie')).toBeNull()
+  })
+
   test('password sign-in gives the sid cookie the configured session lifetime', async ({ api }) => {
     for (const hours of [1, 720]) {
       await setSessionHours(hours)

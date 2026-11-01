@@ -10,11 +10,51 @@ import { deleteStored } from '../src/storage'
 import { requestPasswordReset } from '../src/password-reset'
 import { _setInvitationHooksForTests } from '../src/invitation-email'
 import { expectApiError, makePerson } from './fixtures'
-import { configureDelegated, configureGoogle, linkDelegated } from './identity-fixtures'
+import { configureDelegated, configureGoogle, linkDelegated, setPasswordMethod } from './identity-fixtures'
 
 afterEach(() => _setInvitationHooksForTests(null))
 
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` })
+
+describe('invalid route arguments leave stored state alone', () => {
+  test('open signup still refuses truncated JSON without creating a person or session', async ({ api }) => {
+    await setPasswordMethod({ new_person: 'create' })
+    const [before] = await sql`select (select count(*)::int from person) as people, (select count(*)::int from activity_log where operation = 'login') as logins`
+    const response = await api.fetch('/api/signup', { method: 'POST', body: '{"username":' })
+    expect(response.status).toBe(417)
+    expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', fields: { username: 'invalid' } } })
+    expect(response.headers.getSetCookie()).toEqual([])
+    expect(await sql`select (select count(*)::int from person) as people, (select count(*)::int from activity_log where operation = 'login') as logins`).toEqual([before])
+  })
+
+  test('truncated handoff JSON cannot issue a session or cookie', async ({ api }) => {
+    const [before] = await sql`select count(*)::int as n from activity_log where operation = 'login'`
+    const response = await api.fetch('/api/oauth/session', { method: 'POST', body: '{"code":' })
+    expect(response.status).toBe(401)
+    expect(await response.json()).toMatchObject({ error: { type: 'AuthenticationError', message: 'Invalid or expired sign-in code' } })
+    expect(response.headers.getSetCookie()).toEqual([])
+    expect(await sql`select count(*)::int as n from activity_log where operation = 'login'`).toEqual([before])
+  })
+
+  test('metadata route shape checks preserve the existing definition and values', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Route Shape', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    const row = await admin.post<{ row_id: string }>('/api/table/Route%20Shape', { title: 'kept' })
+    for (const [method, path, body, message] of [
+      ['POST', '/api/table_def/Route%20Shape/rename_column', { from: 'title', to: 7 }, 'Expected { from, to }'],
+      ['PUT', '/api/table_def/Route%20Shape', { remove_columns: ['title', 7] }, 'remove_columns must be a list of column names'],
+      ['POST', '/api/set_app_enabled', { name: 'other', enabled: 'false' }, 'Expected { name, enabled: boolean }'],
+      ['POST', '/api/enqueue_job', {}, 'Expected { method }'],
+      ['POST', '/api/access_tokens', { label: 'not issued', expires_at: 'not a date' }, 'expires_at must be an ISO date-time'],
+    ] as const) {
+      const response = await admin.fetch(path, { method, body: JSON.stringify(body) })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message } })
+    }
+    expect(await admin.get(`/api/table/Route%20Shape/${row.row_id}`)).toMatchObject({ title: 'kept' })
+    expect(await sql`select column_name from column_def where parent = 'Route Shape'`).toEqual([{ column_name: 'title' }])
+    expect(await sql`select 1 from access_token where label = 'not issued'`).toHaveLength(0)
+  })
+})
 
 describe('password reset through HTTP', () => {
   test('a reset link sets the new password, and a request without a key or password is refused', async ({ api, admin }) => {
