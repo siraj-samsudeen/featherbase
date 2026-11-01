@@ -60,6 +60,23 @@ describe('checkColumn', () => {
     const v = checkColumn(col('row_id'), [taken, col('row_id')], 'Employee')
     expect(v?.fix).toBeUndefined()
   })
+  it('offers a fix only when the resulting database name is legal', () => {
+    expect(checkColumn(col('status'), [])).toEqual({
+      error: '“status” is a built-in column every table gets', fix: undefined,
+    })
+    expect(checkColumn(col('status'), [], 'x'.repeat(64))).toEqual({
+      error: '“status” is a built-in column every table gets', fix: undefined,
+    })
+    for (const name of ['!!!', ' Status ', '2'.repeat(64)]) {
+      const verdict = checkColumn(col(name), [])
+      // Spaces around a reserved name are ignored; a slug that is empty,
+      // reserved or too long is not a safe one-click repair.
+      expect(verdict?.fix).toBeUndefined()
+      expect(verdict?.error).toMatch(/built-in|database name/)
+    }
+    const self = col('status')
+    expect(checkColumn(self, [self, col('other')], 'Employee')?.fix).toBe('employee_status')
+  })
   it('flags duplicates', () => {
     const a = col('x')
     const b = col('x')

@@ -80,6 +80,17 @@ test('choosing dark marks the document root dark, then light again', async ({ ad
   expect(document.documentElement.dataset.theme).toBe('light')
 })
 
+test('without media-query support the Admin remains usable and device theme falls back to light', async ({ admin }) => {
+  vi.stubGlobal('matchMedia', undefined)
+  await mountAdmin(admin)
+  expect(screen.getByTestId('theme-toggle')).toBeInTheDocument()
+  expect(document.documentElement.dataset.theme).toBe('light')
+  await choose(admin, 'dark')
+  expect(document.documentElement.dataset.theme).toBe('dark')
+  await choose(admin, 'device')
+  expect(document.documentElement.dataset.theme).toBe('light')
+})
+
 test('same as device paints what the device says, and repaints when the device changes', async ({ admin }) => {
   const device = deviceSetTo(true)
   await mountAdmin(admin)

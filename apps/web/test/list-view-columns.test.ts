@@ -61,6 +61,16 @@ describe('viewColumns', () => {
     const view = viewColumns(sectionMapping(), { hiddenCols: ['floor'] })
     expect(names(view)).toEqual(['row_id', 'section', 'mch'])
   })
+
+  it('uses the database name for an unlabelled column and keeps its reference target', () => {
+    const view = viewColumns(sectionMapping({ columns: [
+      column('supplier', { label: null, column_type: 'Reference', reference_table: 'Supplier', in_list_view: true }),
+    ] }), {})
+    expect(view).toEqual([
+      { column_name: 'row_id', label: 'Row ID', column_type: 'Data' },
+      { column_name: 'supplier', label: 'supplier', column_type: 'Reference', reference_table: 'Supplier' },
+    ])
+  })
 })
 
 describe('switchColumn', () => {
