@@ -96,6 +96,123 @@ describe('one_task_destination: one destination', () => {
 })
 
 describe('completion_restores_state: completion shortcut', () => {
+  test('completing a task with an unset optional state reopens it as Not started', async ({ admin }) => {
+    await install()
+    try {
+      const task = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { task_title: 'Resume a stock check with no state', task_state: 'Blocked' },
+      })
+      const unset = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { row_id: task.row_id, updated_at: task.updated_at, task_state: null },
+      })
+      expect(unset).toMatchObject({ task_state: null, is_done: false })
+
+      const done = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { row_id: unset.row_id, updated_at: unset.updated_at, is_done: true },
+      })
+      expect(done).toMatchObject({ task_state: 'Done', is_done: true, state_before_done: 'Not started' })
+
+      await admin.post('/api/save_row', {
+        table: TASK,
+        row: { row_id: done.row_id, updated_at: done.updated_at, is_done: false },
+      })
+      expect(await admin.get(`/api/table/${TASK}/${task.row_id}`)).toMatchObject({
+        task_state: 'Not started', is_done: false, state_before_done: null,
+      })
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
+  test('choosing Done while ticking the checkbox preserves the preceding state for reopening', async ({ admin }) => {
+    await install()
+    try {
+      const task = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { task_title: 'Resolve the blocked stock review', task_state: 'Blocked' },
+      })
+      const done = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { row_id: task.row_id, updated_at: task.updated_at, is_done: true, task_state: 'Done' },
+      })
+      expect(done).toMatchObject({ task_state: 'Done', is_done: true, state_before_done: 'Blocked' })
+
+      const reopened = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { row_id: done.row_id, updated_at: done.updated_at, is_done: false },
+      })
+      expect(await admin.get(`/api/table/${TASK}/${task.row_id}`)).toMatchObject({
+        updated_at: reopened.updated_at,
+        task_state: 'Blocked', is_done: false, state_before_done: null,
+      })
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
+  test('choosing a state while reopening overrides the remembered state', async ({ admin }) => {
+    await install()
+    try {
+      const task = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { task_title: 'Stop the completed stock probe', task_state: 'In progress' },
+      })
+      const done = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { row_id: task.row_id, updated_at: task.updated_at, is_done: true },
+      })
+      expect(done).toMatchObject({ task_state: 'Done', is_done: true, state_before_done: 'In progress' })
+
+      const reopened = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { row_id: done.row_id, updated_at: done.updated_at, is_done: false, task_state: 'Cancelled' },
+      })
+      expect(await admin.get(`/api/table/${TASK}/${task.row_id}`)).toMatchObject({
+        updated_at: reopened.updated_at,
+        task_state: 'Cancelled', is_done: false, state_before_done: null,
+      })
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
+  test('reopening without remembered history falls back to Not started', async ({ admin }) => {
+    await install()
+    try {
+      const task = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { task_title: 'Revisit a completed warehouse check', task_state: 'Blocked' },
+      })
+      const done = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { row_id: task.row_id, updated_at: task.updated_at, is_done: true },
+      })
+      expect(done).toMatchObject({ task_state: 'Done', is_done: true, state_before_done: 'Blocked' })
+
+      // The installed metadata hides this Data column but does not make it
+      // read-only: a real API client can clear history on a completed task.
+      const withoutHistory = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { row_id: done.row_id, updated_at: done.updated_at, state_before_done: null },
+      })
+      expect(withoutHistory).toMatchObject({ task_state: 'Done', is_done: true, state_before_done: null })
+
+      const reopened = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { row_id: withoutHistory.row_id, updated_at: withoutHistory.updated_at, is_done: false },
+      })
+      expect(await admin.get(`/api/table/${TASK}/${task.row_id}`)).toMatchObject({
+        updated_at: reopened.updated_at,
+        task_state: 'Not started', is_done: false, state_before_done: null,
+      })
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
   test('unticking Done restores the state that preceded completion', async ({ admin }) => {
     await install()
     try {
