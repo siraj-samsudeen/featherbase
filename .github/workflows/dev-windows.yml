@@ -48,10 +48,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: '26.13.0'
 
       - name: pnpm through Corepack, as the README says
         run: |
+          npm install --global corepack@0.36.0
           corepack enable
           pnpm --version
 

@@ -324,7 +324,7 @@ Per store it lists each person's old and new subcategories, every difference
 with its reason, the store's conflicts, and what needs matching (employee codes
 in the old Tables that match no one; old section names that match no section or
 section alias). `--json` answers JSON. A store goes live only when both lists
-are empty and the comparison is accepted. Needs Node 22.18 or later.
+are empty and the comparison is accepted. Use the repository's Node 26.13.0 LTS runtime.
 
 **Known interim on an app address.** Until featherbase's cut-over retires
 today's Sales Target page (design D8, B9), the platform routes an address that

@@ -87,6 +87,10 @@ jobs:
         with:
           fetch-depth: 2
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+
       # --no-renames: a move out of apps/ must count against apps/ as well.
       - name: Decide what runs
         id: decide
@@ -117,7 +121,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '26.13.0'
           cache: pnpm
 
       - name: Install dependencies
@@ -259,7 +263,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '26.13.0'
           cache: pnpm
 
       - name: Install dependencies
@@ -360,7 +364,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '26.13.0'
           cache: pnpm
 
       - name: Install dependencies
@@ -443,7 +447,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: ${{ needs.unit-server.result == 'success' }}
         with:
-          node-version: 22
+          node-version: '26.13.0'
           cache: pnpm
 
       - name: Install dependencies
@@ -498,7 +502,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '26.13.0'
           cache: pnpm
 
       - name: Install dependencies
@@ -559,7 +563,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '26.13.0'
           cache: pnpm
 
       - name: Install dependencies
@@ -656,7 +660,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '26.13.0'
           cache: pnpm
 
       - name: Install dependencies
@@ -778,7 +782,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '26.13.0'
           cache: pnpm
 
       - name: Install dependencies
