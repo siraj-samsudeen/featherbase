@@ -729,6 +729,13 @@ jobs:
       - name: Run e2e suite with coverage
         run: pnpm --filter web coverage:e2e --trace retain-on-failure
 
+      # Reuse the instrumented Tasker build before acceptance's packaged proof
+      # replaces it with a normal build.
+      - name: Collect runtime HTTP coverage
+        run: >-
+          pnpm --filter server exec vitest run
+          --config ../../example-apps/tasker/vitest.integration.config.ts
+
       # Acceptance also runs the packaged delivery proof. Its development seed
       # checks PostgreSQL's actual server address; Docker forwarding is not local.
       - name: Start loopback PostgreSQL for the packaged seed proof
@@ -756,11 +763,6 @@ jobs:
           name: acceptance-report
           path: acceptance-tests/reports/
           if-no-files-found: ignore
-
-      - name: Collect runtime HTTP coverage
-        run: >-
-          pnpm --filter server exec vitest run
-          --config ../../example-apps/tasker/vitest.integration.config.ts
 
       - name: Prove packaged runtime journeys with coverage
         env:
