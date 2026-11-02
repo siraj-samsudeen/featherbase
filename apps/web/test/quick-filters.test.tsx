@@ -227,6 +227,42 @@ test("The report's filter bar also offers the dropdowns", async ({ admin }) => {
   expect(options('filter-value')).toEqual(['', 'Ground', 'First'])
 })
 
+const EIGHT = ['store', 'lob', 'main_category', 'category', 'sub_category', 'section', 'floor_name', 'owner_name']
+
+async function seedEight(admin: Admin) {
+  await admin.post('/api/table_def', {
+    name: T,
+    columns: EIGHT.map((c) => ({ column_name: c, column_type: 'Data', label: c, in_list_view: true })),
+  })
+  await admin.post('/api/save_row', { table: T, row: Object.fromEntries(EIGHT.map((c) => [c, `${c}-1`])) })
+}
+
+test('Eight possible boxes show six and say 2 more, and asking shows all eight without leaving the list', async ({ admin }) => {
+  await seedEight(admin)
+  await openList(admin)
+  expect(boxes()).toEqual(EIGHT.slice(0, 6))
+  const more = screen.getByTestId('std-filter-more')
+  expect(more).toHaveTextContent('+2 more')
+  fireEvent.click(more)
+  expect(boxes()).toEqual(EIGHT)
+  expect(screen.queryByTestId('std-filter-more')).not.toBeInTheDocument()
+})
+
+test('A link with a value in the eighth box shows six plus the eighth, and says 1 more', async ({ admin }) => {
+  await seedEight(admin)
+  await openList(admin, `?filters=${enc(JSON.stringify([['owner_name', 'like', '%owner%']]))}`)
+  expect(boxes()).toEqual([...EIGHT.slice(0, 6), 'owner_name'])
+  expect(screen.getByTestId('std-filter-owner_name')).toHaveValue('owner')
+  expect(screen.getByTestId('std-filter-more')).toHaveTextContent('+1 more')
+})
+
+test('Six or fewer possible boxes show no "more" control', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  expect(boxes()).toHaveLength(3)
+  expect(screen.queryByTestId('std-filter-more')).not.toBeInTheDocument()
+})
+
 test('Row ID gets no box and takes none of the six places, and can still get an added filter', async ({ admin }) => {
   await seed(admin)
   await openList(admin)
