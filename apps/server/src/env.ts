@@ -90,6 +90,8 @@ export const VARIABLES = [
   { name: 'JWT_SECRET', secret: true, required: 'outside-dev', crossEnvironment: 'must-differ', default: '`dev-secret-change-me`',
     purpose: 'session and token signing. Must differ between environments, or one environment\'s sessions are valid on another',
     fix: 'Set a long random value, different in every environment (docs/DEPLOY.md, "Rotating credentials").' },
+  { name: 'SECRET_STORE_KEY', secret: true, required: 'optional', crossEnvironment: 'must-differ', default: 'a fixed development key (development and test only)',
+    purpose: 'the master key that encrypts tokens pasted in the app, such as a MotherDuck source\'s (ADR 0018). Unset outside development and test, a pasted token cannot be saved. Changing it means pasting each token again' },
   { name: 'FILE_URL_SECRET', secret: true, required: 'optional', crossEnvironment: 'must-differ', default: '`JWT_SECRET`',
     purpose: 'signs the short-lived URLs of private files' },
   { name: 'ADMIN_PASSWORD', secret: true, required: 'optional',

@@ -20,8 +20,9 @@ warehouse entirely in the app, pasting its token (owner, 02-Nov-2026).
 ## Decision Outcome
 
 Chosen: **encrypted in the database.** A pasted MotherDuck token is encrypted with AES-256-GCM
-under `SECRET_STORE_KEY`, a deployment variable that is required outside development, has a fixed
-development default, and must differ across environments (the same rules as `JWT_SECRET`). The
+under `SECRET_STORE_KEY`, a deployment variable that must differ across environments and has a
+fixed default in development and test. It is not required at boot, so existing deployments keep
+starting; outside development and test, saving a pasted token is refused until it is set. The
 server decrypts a token only to open a connection; it never returns, logs or echoes one, and shows
 only its last four characters. Deployment variables remain the place for every other secret.
 
