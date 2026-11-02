@@ -32,15 +32,23 @@ describe('POST /api/row_titles', () => {
       { column_name: 'owner', column_type: 'Reference', reference_table: principalTable }, 'description',
     ] })
     await admin.post('/api/save_row', { table: name, row: { row_id: 'owned-1', owner: principal, description: 'Public description' } })
-    const rows = [{ table: name, row_id: 'owned-1' }]
+    await admin.post('/api/save_row', { table: name, row: { row_id: 'unassigned-1', description: 'Waiting for an owner' } })
+    const rows = [{ table: name, row_id: 'owned-1' }, { table: name, row_id: 'unassigned-1' }]
     const res = await admin.post<Titles>('/api/row_titles', { rows })
-    expect(res.titles[0]?.title).toBe(principalTable === 'Person' ? 'Title Owner' : 'title-importer')
+    expect(res.titles.sort((a, b) => a.row_id.localeCompare(b.row_id))).toEqual([
+      { table: name, row_id: 'owned-1', title: principalTable === 'Person' ? 'Title Owner' : 'title-importer' },
+      { table: name, row_id: 'unassigned-1', title: 'Waiting for an owner' },
+    ])
     const outsider = await createUser({ roles: [] })
     expect((await outsider.post<Titles>('/api/row_titles', { rows })).titles).toEqual([])
     if (principalTable === 'Person') {
       await grantRole(admin, { role: 'Title Only Reader', table: name, can_read: true })
       const reader = await createUser({ roles: ['Title Only Reader'] })
-      expect((await reader.post<Titles>('/api/row_titles', { rows })).titles[0]?.title).toBe('Unnamed person')
+      const limited = await reader.post<Titles>('/api/row_titles', { rows })
+      expect(limited.titles.sort((a, b) => a.row_id.localeCompare(b.row_id))).toEqual([
+        { table: name, row_id: 'owned-1', title: 'Unnamed person' },
+        { table: name, row_id: 'unassigned-1', title: 'Waiting for an owner' },
+      ])
     }
   })
 
