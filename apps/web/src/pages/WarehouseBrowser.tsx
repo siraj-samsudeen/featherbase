@@ -8,7 +8,8 @@ import { ApiError, api } from '../lib/api'
 import { fmtCount } from '../lib/inr'
 import { formatValue, useSettings } from '../lib/settings'
 import { lastPlace, listTables, previewTable, refreshTables, rememberPlace, type WarehouseSource } from '../lib/warehouse'
-import { Button, Notice, Select, Skeleton, cardClasses } from '../components/ui'
+import { Button, Notice, SearchInput, Select, Skeleton, cardClasses } from '../components/ui'
+import { ChevronDown } from '../components/ui/icons'
 
 export function WarehouseBrowser({ name, database, schema }: { name: string; database?: string; schema?: string }) {
   const navigate = useNavigate()
@@ -20,7 +21,11 @@ export function WarehouseBrowser({ name, database, schema }: { name: string; dat
   const databases = source.data?.databases ?? []
   const [table, setTable] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
-  const [showLists, setShowLists] = useState(false)
+  // A pick folds its pane into a chip; the chip reopens it (#772, owner 02-Nov-2026).
+  const [schemaOpen, setSchemaOpen] = useState(!schema)
+  const [tableOpen, setTableOpen] = useState(true)
+  const [schemaFilter, setSchemaFilter] = useState('')
+  const [tableFilter, setTableFilter] = useState('')
   const settings = useSettings()
 
   // Checklist 13: with no place in the address, reopen where this person left off.
@@ -47,6 +52,9 @@ export function WarehouseBrowser({ name, database, schema }: { name: string; dat
 
   const go = (search: { database?: string; schema?: string }) => {
     setTable(null)
+    setSchemaOpen(!search.schema)
+    setTableOpen(true)
+    setTableFilter('')
     navigate({ to: '/featherbase/admin/source/$name', params: { name }, search: { database: search.database, schema: search.schema } })
   }
 
@@ -102,61 +110,93 @@ export function WarehouseBrowser({ name, database, schema }: { name: string; dat
       )}
       {listing.error && <Notice tone="negative">{listing.error instanceof ApiError ? listing.error.message : 'The table list could not be read'}</Notice>}
 
-      {/* Once a table is picked the panes fold into one bar, so the preview gets the full width. */}
-      {listing.data && table && activeSchema && !showLists && (
-        <div className="space-y-3">
-          <div className={cardClasses('flex flex-wrap items-end gap-3 px-4 py-3')} data-testid="browser-path">
-            <div className="w-52">
-              <Select aria-label="Schema" value={activeSchema.schema} onChange={(e) => go({ database, schema: e.target.value })} data-testid="path-schema">
-                {schemas.map((s) => <option key={s.schema} value={s.schema}>{s.schema} · {fmtCount(s.tables.length)}</option>)}
-              </Select>
+      {listing.data && (
+        <>
+          {(!schemaOpen || (table && !tableOpen)) && (
+            <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="browser-path">
+              {!schemaOpen && activeSchema && <Chip label="Schema" value={activeSchema.schema} onOpen={() => setSchemaOpen(true)} testid="chip-schema" />}
+              {table && !tableOpen && (
+                <>
+                  <span aria-hidden="true" className="text-ink-subtle">/</span>
+                  <Chip label="Table" value={table} onOpen={() => setTableOpen(true)} testid="chip-table" />
+                </>
+              )}
             </div>
-            <span aria-hidden="true" className="pb-2 text-ink-subtle">/</span>
-            <div className="w-72">
-              <Select aria-label="Table" value={table} onChange={(e) => setTable(e.target.value)} data-testid="path-table">
-                {tables.map((t) => <option key={t.name} value={t.name}>{t.name} · {fmtCount(t.rows)} rows</option>)}
-              </Select>
-            </div>
-            <Button variant="quiet" onClick={() => setShowLists(true)} data-testid="path-show-lists">Show lists</Button>
+          )}
+          <div className={`grid items-start gap-3 ${
+            schemaOpen && tableOpen ? 'lg:grid-cols-[13rem_17rem_minmax(0,1fr)]' : schemaOpen || tableOpen ? 'lg:grid-cols-[17rem_minmax(0,1fr)]' : 'grid-cols-1'
+          }`}>
+            {schemaOpen && (
+              <Pane title="Schema" count={fmtCount(schemas.length)} testid="pane-schema" total={schemas.length} filter={schemaFilter} onFilter={setSchemaFilter}>
+                {schemas.filter((s) => matches(s.schema, schemaFilter)).map((s) => (
+                  <PaneRow key={s.schema} selected={s.schema === activeSchema?.schema} onPick={() => go({ database, schema: s.schema })} testid="schema-row">
+                    <span className="truncate font-mono text-sm text-ink">{s.schema}</span>
+                    <span className="text-xs text-ink-subtle">{fmtCount(s.tables.length)}</span>
+                  </PaneRow>
+                ))}
+              </Pane>
+            )}
+            {tableOpen && (
+              <Pane title="Table" count={fmtCount(tables.length)} testid="pane-table" total={tables.length} filter={tableFilter} onFilter={setTableFilter}>
+                {tables.filter((t) => matches(t.name, tableFilter)).map((t) => (
+                  <PaneRow key={t.name} selected={t.name === table} onPick={() => { setTable(t.name); setTableOpen(false); setSchemaOpen(false) }} testid="table-row">
+                    <span className="truncate font-mono text-sm text-ink">{t.name}</span>
+                    <span className="whitespace-nowrap text-xs text-ink-subtle">{fmtCount(t.rows)} rows</span>
+                  </PaneRow>
+                ))}
+                {!tables.length && <p className="px-3 py-6 text-center text-sm text-ink-subtle">No tables</p>}
+              </Pane>
+            )}
+            {table && activeSchema ? (
+              <Preview name={name} database={database!} schema={activeSchema.schema} table={table} />
+            ) : (
+              <div className={cardClasses('px-3 py-10 text-center text-sm text-ink-subtle')} data-testid="pane-preview-empty">
+                Pick a table to see its size, first rows and columns.
+              </div>
+            )}
           </div>
-          <Preview name={name} database={database!} schema={activeSchema.schema} table={table} />
-        </div>
-      )}
-      {listing.data && (!table || showLists) && (
-        <div className="grid items-start gap-3 lg:grid-cols-[13rem_17rem_minmax(0,1fr)]">
-          <Pane title="Schema" count={`${fmtCount(schemas.length)}`} testid="pane-schema">
-            {schemas.map((s) => (
-              <PaneRow key={s.schema} selected={s.schema === activeSchema?.schema} onPick={() => go({ database, schema: s.schema })} testid="schema-row">
-                <span className="truncate font-mono text-sm text-ink">{s.schema}</span>
-                <span className="text-xs text-ink-subtle">{fmtCount(s.tables.length)}</span>
-              </PaneRow>
-            ))}
-          </Pane>
-          <Pane title="Table" count={`${fmtCount(tables.length)}`} testid="pane-table">
-            {tables.map((t) => (
-              <PaneRow key={t.name} selected={t.name === table} onPick={() => { setTable(t.name); setShowLists(false) }} testid="table-row">
-                <span className="truncate font-mono text-sm text-ink">{t.name}</span>
-                <span className="whitespace-nowrap text-xs text-ink-subtle">{fmtCount(t.rows)} rows</span>
-              </PaneRow>
-            ))}
-            {!tables.length && <p className="px-3 py-6 text-center text-sm text-ink-subtle">No tables</p>}
-          </Pane>
-          <div className={cardClasses('px-3 py-10 text-center text-sm text-ink-subtle')} data-testid="pane-preview-empty">
-            Pick a table to see its size, first rows and columns.
-          </div>
-        </div>
+        </>
       )}
     </div>
   )
 }
 
-function Pane({ title, count, testid, children }: { title: string; count: string; testid: string; children: React.ReactNode }) {
+const matches = (name: string, filter: string) => name.toLowerCase().includes(filter.trim().toLowerCase())
+
+// A folded pick: its value, and a click reopens the pane it came from.
+function Chip({ label, value, onOpen, testid }: { label: string; value: string; onOpen: () => void; testid: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      data-testid={testid}
+      title={`Change the ${label.toLowerCase()}`}
+      className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-sm hover:bg-subtle"
+    >
+      <span className="text-xs text-ink-muted">{label}</span>
+      <span className="font-mono font-semibold text-ink">{value}</span>
+      <ChevronDown aria-hidden size={14} className="text-ink-subtle" />
+    </button>
+  )
+}
+
+// More than this many entries and a pane gets a search box.
+const SEARCH_FROM = 5
+
+function Pane({ title, count, testid, total, filter, onFilter, children }: {
+  title: string; count: string; testid: string; total: number; filter: string; onFilter: (value: string) => void; children: React.ReactNode
+}) {
   return (
     <div className={cardClasses('overflow-hidden')} data-testid={testid}>
       <div className="flex items-baseline gap-2 border-b border-border px-3 py-2">
         <span className="text-sm font-semibold text-ink">{title}</span>
         <span className="text-xs text-ink-subtle">{count}</span>
       </div>
+      {total > SEARCH_FROM && (
+        <div className="border-b border-border p-2">
+          <SearchInput aria-label={`Find a ${title.toLowerCase()}`} placeholder={`Find a ${title.toLowerCase()}`} value={filter} onChange={(e) => onFilter(e.target.value)} data-testid={`${testid}-search`} />
+        </div>
+      )}
       <div className="max-h-[420px] overflow-y-auto">{children}</div>
     </div>
   )

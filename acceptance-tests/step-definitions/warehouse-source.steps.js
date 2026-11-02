@@ -188,7 +188,7 @@ Then('the rest of the token appears nowhere on the page', async function () {
 });
 
 Then('the source shows a token ending in {string}', async function (four) {
-  assert.match(await this.sourcePage.token(), new RegExp(`Saved, ending …${four}`));
+  assert.match(await this.sourcePage.tokenEnding(four), new RegExp(`Saved, ending …${four}`));
 });
 
 Then('it shows the source with {string} and {string} under it', async function (first, second) {

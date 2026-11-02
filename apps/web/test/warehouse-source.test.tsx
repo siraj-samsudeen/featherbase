@@ -103,6 +103,10 @@ test('the sidebar lists the source with its databases, and browsing goes schema,
   await screen.findByTestId('warehouse-browser', {}, WAIT)
   await waitFor(() => expect(screen.getAllByTestId('schema-row').map((r) => r.textContent)).toEqual(['history1', 'main1']), WAIT)
   await user.click(screen.getAllByTestId('table-row').find((r) => r.textContent?.startsWith('stores'))!)
+  // Both picks fold into chips, and the preview takes the full width.
+  expect(screen.getByTestId('chip-schema')).toHaveTextContent('main')
+  expect(screen.getByTestId('chip-table')).toHaveTextContent('stores')
+  expect(screen.queryByTestId('pane-table')).not.toBeInTheDocument()
   await waitFor(() => expect(screen.getByTestId('preview-size')).toHaveTextContent('3 rows · 4 columns'), WAIT)
   expect(screen.getByTestId('preview-rows')).toHaveTextContent('Harbour Road')
   expect(screen.getByTestId('preview-columns')).toHaveTextContent('state_code')
@@ -113,10 +117,12 @@ test('the browser reopens on the schema this person last had open', async ({ adm
   const user = userEvent.setup()
   await renderApp('/featherbase/admin/source/web-wh-place?database=sales&schema=history', admin)
   await screen.findByTestId('warehouse-browser', {}, WAIT)
-  await waitFor(() => expect(screen.getAllByTestId('schema-row').find((r) => r.dataset.selected)?.textContent).toBe('history1'), WAIT)
-  await user.click(screen.getByTestId('warehouse-browser')) // a click is not a navigation; the place stays
+  // A chosen schema is folded into a chip; the chip reopens the schema list.
+  await waitFor(() => expect(screen.getByTestId('chip-schema')).toHaveTextContent('history'), WAIT)
   await renderApp('/featherbase/admin/source/web-wh-place', admin)
-  await waitFor(() => expect(screen.getAllByTestId('schema-row').find((r) => r.dataset.selected)?.textContent).toBe('history1'), WAIT)
+  await waitFor(() => expect(screen.getByTestId('chip-schema')).toHaveTextContent('history'), WAIT)
+  await user.click(screen.getByTestId('chip-schema'))
+  expect(screen.getAllByTestId('schema-row').find((r) => r.dataset.selected)?.textContent).toBe('history1')
 })
 
 test('someone who is not a System Manager sees no Data sources group', async ({ admin, createUser }) => {

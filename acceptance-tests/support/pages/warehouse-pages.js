@@ -62,6 +62,13 @@ class WarehouseSourcePage {
     return this.page.getByTestId('warehouse-token').innerText();
   }
 
+  /** The token line once it names these last four (it refreshes after a replace). */
+  async tokenEnding(four) {
+    const line = this.page.getByTestId('warehouse-token').filter({ hasText: `…${four}` });
+    await line.waitFor({ timeout: 15_000 }).catch(() => {});
+    return this.token();
+  }
+
   async pageText() {
     return this.page.locator('body').innerText();
   }
@@ -129,19 +136,27 @@ class WarehouseBrowserPage {
   }
 
   async pickSchema(schema) {
+    // A chosen schema is folded into a chip; the chip reopens the list.
+    const chip = this.page.getByTestId('chip-schema');
+    if (await chip.isVisible()) await chip.click();
     await this.page.getByTestId('schema-row').filter({ hasText: new RegExp(`^${schema}\\d`) }).click();
   }
 
   async pickTable(table) {
+    const chip = this.page.getByTestId('chip-table');
+    if (await chip.isVisible()) await chip.click();
     await this.page.getByTestId('table-row').filter({ hasText: new RegExp(`^${table}\\d`) }).click();
     await this.page.getByTestId('preview-size').filter({ hasText: 'rows' }).waitFor();
   }
 
   /** The open database and the selected schema. */
   async place() {
-    await this.page.getByTestId('schema-row').first().waitFor();
+    await this.page.getByTestId('chip-schema').or(this.page.getByTestId('schema-row').first()).first().waitFor();
     const database = await this.page.getByTestId('browser-database').inputValue();
-    const schema = (await this.page.locator('[data-testid=schema-row][data-selected]').innerText()).split('\n')[0];
+    const chip = this.page.getByTestId('chip-schema');
+    const schema = (await chip.isVisible())
+      ? (await chip.innerText()).replace(/^Schema\s*/, '').trim()
+      : (await this.page.locator('[data-testid=schema-row][data-selected]').innerText()).split('\n')[0];
     return { database, schema };
   }
 
