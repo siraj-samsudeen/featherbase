@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { getMeta } from '../src/meta'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectApiError } from './fixtures'
 
 // CUST-002: Metadata Overrides override column/Table properties without
 // touching the base definition.
@@ -33,6 +34,15 @@ async function addLabelSetter(admin: TestClient) {
 }
 
 describe('CUST-002: metadata overrides', () => {
+  test('refuses a column label used as its name', async ({ admin }) => {
+    await makeDT(admin)
+    await expectApiError(admin.post('/api/save_row', {
+      table: 'Metadata Override',
+      row: { row_id: 'ps-invalid-column', table_name: DT, column_name: 'Title', property: 'label', value: 'Headline' },
+    }), { status: 417, type: 'ValidationError', message: expect.stringContaining(`Column Title not found on Table ${DT}`) })
+    await expectApiError(admin.get('/api/table/Metadata%20Override/ps-invalid-column'), { status: 404 })
+  })
+
   test('overrides a column label in effective meta but leaves the base row unchanged', async ({
     admin,
   }) => {
