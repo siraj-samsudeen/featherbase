@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest'
 import { APP_ROOT_PATTERN, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref, appTabLinks, ownFramePolicyPage } from '../src/index'
 
-test('the canonical Featherbase Admin destination has its product label and path', () => {
+test('the canonical Featherbase destination has its product label and path', () => {
   expect(FEATHERBASE_ADMIN_DESTINATION).toEqual({
-    label: 'Featherbase Admin',
+    label: 'Featherbase',
     href: '/featherbase/admin',
   })
 })

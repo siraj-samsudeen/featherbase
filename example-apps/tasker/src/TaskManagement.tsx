@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createElement, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser, listResource } from './api'
 import { listVisiblePeople, PEOPLE_LIMITED_NOTICE, type PersonOption } from './people'
@@ -564,11 +564,8 @@ export function TaskManagementPage() {
 
   return (
     <div className="tasker-shell" data-view={view} data-testid="task-management-page">
-      <aside className="tasker-sidebar">
-        <h1 className="tasker-brand">Tasker</h1>
-        <p className="tasker-brand-subtitle">Team workspace</p>
-      <nav aria-label="Task views" className="tasker-primary-nav">
-        {primaryTabs.slice(0, 3).map((tab) => (
+      {createElement('featherbase-sidebar', { className: 'tasker-sidebar', 'aria-label': 'Task views' }, <>
+        {primaryTabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -581,34 +578,22 @@ export function TaskManagementPage() {
             {tab.count != null && <span className="tasker-count">{tab.count}</span>}
           </button>
         ))}
-        {primaryTabs.slice(3).map((tab) => (
-          <button key={tab.id} type="button" onClick={() => leaveSavedView(tab.id)} aria-current={view === tab.id ? 'page' : undefined} className={`tasker-nav-item tasker-nav-${tab.id}`}>
-            <TaskerIcon name={tab.icon} />
-            <span>{tab.label}</span>
-            {tab.count != null && <span className="tasker-count">{tab.count}</span>}
-          </button>
-        ))}
         <button type="button" onClick={() => leaveSavedView('views')} aria-current={view === 'views' ? 'page' : undefined} className="tasker-nav-item tasker-nav-views">
           <TaskerIcon name="views" />
           <span>Views</span>
           {savedViews.length > 0 && <span className="tasker-count">{savedViews.length}</span>}
         </button>
-        <button type="button" onClick={() => leaveSavedView('projects', '')} aria-current={view === 'projects' ? 'page' : undefined} className="tasker-nav-item tasker-nav-projects">
+        <button type="button" onClick={() => leaveSavedView('projects', '')} aria-current={view === 'projects' && !selectedProject ? 'page' : undefined} className="tasker-nav-item tasker-nav-projects">
           <TaskerIcon name="projects" />
           <span>Projects</span>
         </button>
-        <div className="tasker-sidebar-projects" aria-label="Projects">
           {allProjects.map((project) => (
-            <div key={project.row_id} className={`tasker-sidebar-project ${view === 'projects' && selectedProject === project.row_id ? 'is-selected' : ''}`}>
-              <button type="button" className="tasker-sidebar-project-name" aria-label={project.project_name} onClick={() => leaveSavedView('projects', project.row_id)}>
+              <button key={project.row_id} type="button" data-depth="1" className="tasker-sidebar-project-name" aria-label={project.project_name} aria-current={view === 'projects' && selectedProject === project.row_id ? 'page' : undefined} onClick={() => leaveSavedView('projects', project.row_id)}>
                 <span>{project.project_name}</span>
                 <span className="tasker-count">{projectTaskCounts.get(project.row_id)!}</span>
               </button>
-            </div>
           ))}
-        </div>
-      </nav>
-      </aside>
+      </>)}
       <main className="tasker-main">
       {starredProjectIds.length > 0 && (
         <div className="tasker-project-tabs" aria-label="Starred projects">

@@ -9,7 +9,7 @@ import { sql, withTransaction } from './db'
 import { config } from './config'
 import { verifyPassword } from './auth'
 import { cadenceSeconds } from './jobs'
-import { checkVariables, DEV_ENVIRONMENTS } from './env'
+import { checkVariables, DEV_ENVIRONMENTS, readVariable } from './env'
 import { lastApply } from './managed-settings'
 import { systemManagerEmails } from './system-notice'
 import { appSetupState } from './app-settings'
@@ -24,6 +24,8 @@ export interface HealthCheck {
   /** What is checked, in sentence case. */
   title: string
   ok: boolean
+  /** Shared UI/CLI classification; history still records the underlying result. */
+  state?: 'ready' | 'optional' | 'setup-needed' | 'fault'
   /** How bad it is while failing (the banner takes the worst). */
   severity: HealthSeverity
   /** What is true now. */
@@ -122,6 +124,13 @@ async function settingsApplied(): Promise<HealthCheck> {
     title: 'Settings file applied',
     severity: 'error' as const,
     why: 'The settings file in the instance repository decides this instance\'s settings. Until it is applied, they are whatever was set by hand, and none of them is locked.',
+  }
+  if (!apply && !readVariable('FEATHERBASE_INSTANCE')?.trim()) return {
+    ...base,
+    ok: true,
+    state: 'optional',
+    message: 'Settings are managed in Featherbase. A managed settings file is optional.',
+    fix: null,
   }
   if (!apply) return { ...base, ok: false, message: 'The settings were never applied.', fix: APPLY_FIX }
   const parts = [
@@ -319,7 +328,7 @@ async function placeDrops(): Promise<HealthCheck[]> {
 /** Every check, in the page's order. */
 export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<HealthCheck[]> {
   const environment = opts.environment ?? config.environment
-  return [
+  const checks: HealthCheck[] = [
     await systemManagerEmail(environment),
     await recommendedVariables(environment),
     await settingsApplied(),
@@ -329,6 +338,13 @@ export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<He
     ...(await placeDrops()),
     await administratorPassword(environment),
   ]
+  return checks.map((check) => ({ ...check, state: check.state ?? (
+    check.ok ? (check.missing?.length ? 'optional' : 'ready')
+      : check.key === 'system-manager-email' || check.key === 'settings-applied' ? 'setup-needed'
+      : check.key === 'recommended-variables' ? (check.severity === 'error' ? 'setup-needed' : 'optional')
+      : check.key.startsWith('app-setup:') ? (check.missing?.length ? 'setup-needed' : 'optional')
+      : 'fault'
+  ) }))
 }
 
 /** The release step's lines: every check, failing ones flagged (printed as
@@ -397,6 +413,8 @@ interface InstanceHealth {
   checks: (HealthCheck & { since: string | null; history: HealthHistoryEntry[] })[]
   /** How many checks are not passing. */
   failing: number
+  setup_needed: number
+  setup: { administrator_ready: boolean; installed_apps: number; environment: string; configuration: 'file' | 'ui' }
   /** The worst severity among them, or null when every check passes. */
   worst: HealthSeverity | null
   checked_at: string
@@ -439,13 +457,21 @@ async function describeHealth(opts: HealthCheckOptions & { record?: boolean }): 
   }
   const rank = (c: HealthCheck) => (c.ok ? 2 : c.severity === 'error' ? 0 : 1)
   const ordered = checks.map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i).map(({ c }) => c)
-  const failing = checks.filter((c) => !c.ok)
+  const failing = checks.filter((c) => c.state === 'fault')
+  const [{ count }] = await sql`select count(*)::int as count from installed_app`
   return {
     checks: ordered.map((c) => {
       const history = (byKey.get(c.key) ?? []).slice(0, HISTORY_LIMIT)
       return { ...c, since: history[0]?.from ?? null, history }
     }),
     failing: failing.length,
+    setup_needed: checks.filter((c) => c.state === 'setup-needed').length,
+    setup: {
+      administrator_ready: (await systemManagerEmails()).length > 0,
+      installed_apps: Number(count),
+      environment: opts.environment ?? config.environment,
+      configuration: (await lastApply()) || readVariable('FEATHERBASE_INSTANCE')?.trim() ? 'file' : 'ui',
+    },
     worst: failing.some((c) => c.severity === 'error') ? 'error' : failing.length ? 'warning' : null,
     checked_at: now.toISOString(),
   }

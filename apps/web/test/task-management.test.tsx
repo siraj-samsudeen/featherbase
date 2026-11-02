@@ -650,7 +650,9 @@ test('projects_landing_flow: the directory opens a project and keeps its context
     renderTasker(admin)
     const user = userEvent.setup()
 
-    const navigation = await screen.findByRole('navigation', { name: 'Task views' })
+    // Tasker supplies the shared sidebar's light-DOM contents; the platform
+    // custom element owns the navigation landmark in the running app.
+    const navigation = await screen.findByLabelText('Task views')
     expect(Array.from(navigation.querySelectorAll(':scope > button')).map((button) => button.textContent?.replace(/\d+$/, ''))).toEqual([
       'Inbox', 'My Work', 'Together', 'Personal tasks', 'Views', 'Projects',
     ])

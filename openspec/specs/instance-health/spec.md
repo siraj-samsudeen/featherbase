@@ -9,49 +9,80 @@ fixed, and the history shows what broke and when it was fixed.
 
 ### Requirement: Instance health page
 
-System Managers SHALL have a page listing every health check with its state,
-why it matters and how to fix it. Checks include a System Manager with an
-email address, recommended deployment variables, the settings file applied,
-settings matching the file, the last run of each scheduled job, and the
-built-in Administrator's default password.
+System Managers SHALL be able to distinguish unfinished setup, optional next
+steps and operational faults, with an explanation and next action for each.
+The same checks SHALL inform the browser and command-line health report.
+Checks SHALL retain coverage of notice recipients, deployment variables,
+managed settings and drift, scheduled jobs, and unsafe administrator passwords.
 
 #### Scenario: A new instance being set up
 
-- **WHEN** a System Manager opens instance health on an instance whose
-  settings file has never been applied
-- **THEN** that check is failing, says the settings were never applied, and
-  says how to apply them
+```gherkin
+Given the user has a new local instance using built-in defaults
+When the user checks its health
+Then the user is told the instance is ready to explore
+And choosing a managed settings file is offered as an optional next step, not a fault
+```
 
 #### Scenario: A developer's own machine
 
-- **WHEN** an instance running as development has no System Manager email, no
-  connection for a data source, or an app that isn't set up
-- **THEN** those checks pass and say why that is expected, so a clean install
-  shows no banner, and an app's check still names what the app lacks
+```gherkin
+Given the user has a local development instance without email or a warehouse
+When the user checks its health
+Then absent optional services are explained without being counted as operational faults
+And any installed app still identifies the setup it needs
+```
 
 #### Scenario: A hosted instance lacking the same things
 
-- **WHEN** an instance running as anything other than development lacks them
-- **THEN** those checks are not passing, and each says what is missing
+```gherkin
+Given the user has a hosted instance missing required notice recipients
+When the user checks its health
+Then the user sees that shared use is not ready and how to complete that setup
+```
+
+#### Scenario: Chosen managed configuration is not applied
+
+```gherkin
+Given the user has chosen file-managed configuration for an instance
+And its settings file has never been successfully applied
+When the user checks its health
+Then the unapplied configuration is reported with the action needed to apply it
+```
+
+#### Scenario: Managed settings have drifted
+
+```gherkin
+Given the user has applied file-managed configuration to an instance
+And a managed setting was changed through an emergency operation
+When the user checks its health
+Then the differing setting is reported with the action needed to reconcile it
+```
 
 ### Requirement: Health banner
 
-While any health check is failing, every System Manager SHALL see a one-line
-banner saying how many problems need attention, leading to the health page.
-The banner SHALL disappear on its own once every check passes, and SHALL not
-be dismissable while a problem remains.
+While an operational fault remains, every System Manager SHALL see a persistent
+notice leading to its explanation and remedy. Ordinary first-time setup and
+optional configuration SHALL be presented as guidance, not a fault count.
 
 #### Scenario: A failed job
 
-- **WHEN** the last run of the leaver check failed
-- **THEN** System Managers see the banner on every page until a later run
-  succeeds
+```gherkin
+Given the user is a System Manager who has not finished first-time setup
+And the last run of an enabled scheduled job failed
+When the user opens Featherbase
+Then the job failure is visibly reported separately from setup guidance
+And the notice remains until a later run succeeds
+```
 
 #### Scenario: Other people
 
-- **WHEN** a person without the System Manager role signs in while a check is
-  failing
-- **THEN** they do not see the banner
+```gherkin
+Given the user does not have the System Manager role
+And an enabled scheduled job has failed
+When the user opens Featherbase
+Then the user does not see instance administration notices
+```
 
 ### Requirement: Health history
 
@@ -78,28 +109,55 @@ nobody opens the page.
 
 ### Requirement: First-run System Manager setup
 
-While no System Manager has an email address, the built-in Administrator SHALL
-be offered a setup step to name one or more System Managers with email
-addresses and invite them. The Administrator SHALL be able to skip it, and the
-health banner stays while the problem remains.
+The first administrator SHALL be welcomed with a resumable guide to their own
+administrator identity, optional apps and shared-instance readiness. They SHALL
+be able to explore Featherbase without completing optional steps or installing
+an app.
 
 #### Scenario: A fresh instance
 
-- **WHEN** the built-in Administrator signs in to a new instance
-- **THEN** they are asked who looks after the instance, and each person named
-  is invited as a System Manager
+```gherkin
+Given the user is the first administrator on a fresh local instance
+When the user signs in
+Then the user sees a welcome guide with clear next steps
+And the user can explore Featherbase without installing an app
+And the greeting does not present ordinary unfinished setup as health problems
+```
 
-#### Scenario: Email not working yet
+#### Scenario: Setup can be resumed
 
-- **WHEN** the Administrator completes the setup on an instance that cannot
-  send email yet
-- **THEN** each person's invitation link is shown to copy instead
+```gherkin
+Given the user has deferred optional first-time setup
+When the user returns to the setup guide
+Then completed configuration is reflected and remaining steps can be continued
+```
 
 #### Scenario: Skipped in an emergency
 
-- **WHEN** the Administrator skips the setup
-- **THEN** they reach the Admin screen at once, and the banner keeps showing the
-  problem
+```gherkin
+Given the user is the first administrator with setup unfinished
+And an enabled scheduled job has failed
+When the user skips first-time setup
+Then the user reaches Featherbase immediately
+And the operational failure remains visibly reported
+```
+
+#### Scenario: Email not working yet
+
+```gherkin
+Given the user is the first administrator on an instance that cannot send email
+When the user invites another System Manager during setup
+Then the invitation link is shown to copy and deliver separately
+```
+
+#### Scenario: A deep link is not taken over
+
+```gherkin
+Given the user is the first administrator with setup unfinished
+When the user signs in to follow a saved app link
+Then the saved destination is preserved
+And the user can open the setup guide separately
+```
 
 ### Requirement: Compare environments without revealing secrets
 

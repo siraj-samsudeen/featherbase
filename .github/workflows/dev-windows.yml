@@ -1,6 +1,6 @@
-# Proves `pnpm dev <instance>` on Windows, as the README tells a team member to
-# run it: Node LTS, pnpm through Corepack, then from a bare checkout to a ready
-# server with made-up data whose figures a reader can read. It runs only when something the path depends on
+# Proves base startup and explicit named-instance development on Windows:
+# Node LTS, pnpm through Corepack, and the optional named instance's made-up
+# data whose figures a reader can read. It runs only when something the path depends on
 # changes, and is not part of the `unit` verdict until it has proved stable.
 name: dev-windows
 
@@ -8,6 +8,8 @@ on:
   pull_request:
     paths:
       - tools/dev.mjs
+      - tools/featherbase.mjs
+      - tools/featherbase.test.mjs
       - tools/prepare-apps.mjs
       - client-apps/*/*/scripts/seed-made-up.mts
       - package.json
@@ -63,6 +65,11 @@ jobs:
           Get-Service -Name postgresql-x64-* | Start-Service
           Get-Service -Name postgresql-x64-*
 
+      - name: Install dependencies and test command registration
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm check:dev
+
       - name: From nothing to a ready server with its apps installed
         run: pnpm dev jeyarama/dash --check
 
@@ -77,12 +84,14 @@ jobs:
       - name: Made-up data again is safe
         run: pnpm dev jeyarama/dash --check --made-up-data
 
-      - name: With no instance named, it says one is needed and lists them
+      - name: With no instance named, only Featherbase starts
         shell: pwsh
         run: |
-          $out = node tools/dev.mjs 2>&1 | Out-String
-          if ($LASTEXITCODE -eq 0) { throw 'no instance should fail' }
-          if ($out -notmatch 'needs an instance' -or $out -notmatch 'jeyarama/dash') { throw "unexpected message: $out" }
+          $env:DATABASE_URL = 'postgres://postgres:root@127.0.0.1:5432/fb_windows_base_check'
+          $out = node tools/dev.mjs --check 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "base startup failed: $out" }
+          if ($out -notmatch 'Featherbase check passed') { throw "unexpected message: $out" }
+          if ($out -match 'Installing checkout dependencies|npm ci|Installing apps') { throw "base startup prepared apps: $out" }
           exit 0
 
       - name: An unknown instance names those that exist

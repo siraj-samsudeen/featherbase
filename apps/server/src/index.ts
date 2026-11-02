@@ -76,7 +76,8 @@ import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled, isInstalled, installedAppNames } from './apps'
-import { discoverPackages, packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { discoverAppLibrary, appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
@@ -102,7 +103,7 @@ registerApp(helpdesk)
 // Same discipline: checklist tables exist only after
 // POST /api/install_app { name: 'checklists' }.
 registerApp(checklists)
-await discoverPackages(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+await discoverAppLibrary(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
 await loadInstalledApps()
 // Custom fields may target app-owned Tables, so activation precedes replay.
 await reapplyCustomFields()
@@ -756,7 +757,7 @@ app.use('/api/*', rateLimit)
 // Lifecycle endpoints take the exclusive counterpart inside their handlers
 // (the upgrade preview too since #651: it runs the steps to count losses).
 app.use('/api/*', async (c, next) => {
-  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/preview_app_upgrade', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
+  if (['/api/apps/prepare-install', '/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/preview_app_upgrade', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
     return next()
   try {
     // Do not await here: only synchronous identity parsing failures belong to
@@ -1780,8 +1781,16 @@ app.post('/api/permissions/:table', async (c) => {
 // install/uninstall their Tables + doc_events and report installed state.
 app.get('/api/apps', async (c) => {
   await assertSystemManager(who(c))
-  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), versions: availableRuntimeVersions(), actions: declaredPackageActions(),
+  c.header('Cache-Control', 'no-store')
+  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), versions: availableRuntimeVersions(), actions: declaredPackageActions(), catalog: await appLibraryCatalog(),
     failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
+})
+app.post('/api/apps/prepare-install', async c => {
+  await assertSystemManager(who(c))
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body.name !== 'string' || !/^[a-z][a-z0-9_]{0,30}$/.test(body.name) || Object.keys(body).some(key => key !== 'name'))
+    throw new AppError('ValidationError', 'Expected { name } naming an app in the catalog; paths and commands are not accepted')
+  return c.json(await prepareAndInstallApp(body.name), 201)
 })
 app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
 // #629: the glossary everyone signed in reads, and an editor's way back to an

@@ -255,7 +255,7 @@ function matchesInstalled(pkg: RuntimePackage, row: Record<string, unknown>) {
 }
 
 // An app's directory: its npm identity and its parsed manifest.
-async function readArtifact(directory: string) {
+export async function readPackageDeclaration(directory: string) {
   const root = await realpath(directory)
   const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
   if (typeof pkg.name !== 'string' || typeof pkg.version !== 'string')
@@ -263,19 +263,11 @@ async function readArtifact(directory: string) {
   packageVersion.parse(pkg.version)
   const manifestPath = await contained(root, pkg.featherbase ?? 'featherbase.json')
   const manifest = manifestSchema.parse(JSON.parse(await readFile(manifestPath, 'utf8')))
-  return { root, pkg: pkg as { name: string; version: string }, manifest }
-}
-
-// One app directory, validated and loaded: its manifest, fingerprint and
-// server module. Registers nothing.
-async function loadArtifact(directory: string): Promise<RuntimePackage> {
-  const { root, pkg, manifest } = await readArtifact(directory)
   if (!SUPPORTED_PLATFORM_VERSIONS.includes(manifest.platformVersion))
     throw new Error(`App ${manifest.name} was built for platform version ${manifest.platformVersion}; this Featherbase supports ${SUPPORTED_PLATFORM_VERSIONS.join(', ')}`)
   if ((RESERVED_APP_ROOTS as readonly string[]).includes(manifest.name))
     throw new Error(`App name ${manifest.name} is reserved for Featherbase`)
   validateMigrations(manifest.name, pkg.version, manifest.tables, manifest.migrations)
-  const digest = await artifactDigest(root)
   validateRoleDefaults(manifest.roleDefaults, manifest.roles)
   validateGlossary(manifest.glossary, manifest.tables, manifest.permissions)
   const names = new Set(manifest.tables.map((t) => t.name))
@@ -285,6 +277,28 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     if (!table.name.startsWith(`${manifest.name}.`) || !table.label || table.system || table.data_source)
       throw new Error('Package Tables require qualified ownership, label and local storage')
   }
+  return { root, pkg: pkg as { name: string; version: string }, manifest }
+}
+
+export function runtimePackageDeclarations() {
+  return [...packages.values()].map(({ manifest, version }) => ({ manifest, version }))
+}
+
+export async function installedPackageDeclarations() {
+  const rows = await sql`select manifest, package_version from installed_app where runtime_package`
+  return rows.flatMap(row => {
+    const { packageName: _name, packageVersion: _version, ...declaration } = row.manifest ?? {}
+    const parsed = manifestSchema.safeParse(declaration)
+    return parsed.success ? [{ manifest: parsed.data, version: String(row.package_version ?? _version) }] : []
+  })
+}
+
+// One app directory, validated and loaded: its manifest, fingerprint and
+// server module. Registers nothing.
+async function loadArtifact(directory: string): Promise<RuntimePackage> {
+  const { root, pkg, manifest } = await readPackageDeclaration(directory)
+  const digest = await artifactDigest(root)
+  const names = new Set(manifest.tables.map(t => t.name))
   let clientRoot: string | undefined
   if (manifest.client) {
     clientRoot = await contained(root, manifest.client)
@@ -455,6 +469,19 @@ export function discoverPackages(paths: string[]) {
         selectPackage(pkg)
     }
     return packageFailures
+  }, true)
+}
+
+/** Add only the explicitly chosen package. Boot discovery clears the registry;
+ *  using it during preparation would unwire every already-running app. */
+export function registerPreparedPackage(directory: string, name: string) {
+  return appOperation(async () => {
+    if ((await listInstalledApps()).some(app => app.name === name))
+      throw new AppError('ConflictError', `App ${name} is already installed; use the upgrade lifecycle`)
+    const pkg = await loadArtifact(directory)
+    if (pkg.name !== name) throw new AppError('ValidationError', 'Prepared package identity changed; restore its reviewed manifest')
+    artifacts.set(`${pkg.name}@${pkg.version}`, pkg)
+    selectPackage(pkg)
   }, true)
 }
 

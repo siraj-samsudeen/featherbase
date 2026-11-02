@@ -36,8 +36,9 @@ import { AccountLayout } from './pages/AccountLayout'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
 import { InstanceHealth } from './pages/InstanceHealth'
+import { Apps } from './pages/Apps'
 import { GlossaryPage } from './pages/Glossary'
-import { FirstRunSetup } from './pages/FirstRunSetup'
+import { FirstRunSetup, WelcomeSetup } from './pages/FirstRunSetup'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { GanttView } from './components/GanttView'
@@ -569,6 +570,12 @@ const instanceHealthRoute = createRoute({
   ),
 })
 
+const appsRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'apps',
+  component: () => <ManageOnly><Apps /></ManageOnly>,
+})
+
 // #629: the glossary (everyone signed in; static segment, before $table).
 const glossaryRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -581,6 +588,12 @@ const glossaryRoute = createRoute({
 const setupRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'setup',
+  component: () => <ManageOnly><WelcomeSetup /></ManageOnly>,
+})
+
+const setupPeopleRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'setup/people',
   component: FirstRunSetup,
 })
 
@@ -798,5 +811,5 @@ export const routeTree = rootRoute.addChildren([
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, glossaryRoute, setupRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute]),
 ])

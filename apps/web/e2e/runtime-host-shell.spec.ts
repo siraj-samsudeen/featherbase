@@ -28,7 +28,7 @@ test("an app's nested help document loads its own relative script", async ({ ses
   })
 })
 
-test("an app keeps its deep address under the shared bar, and Open Admin leaves for the Admin", async ({ session, request }) => {
+test("an app keeps its deep address under the shared bar, and the dropdown leaves for Featherbase", async ({ session, request }) => {
   const taskerHeaders = await ensureRuntimeApp(request, 'tasker')
   const saved = await request.post('/api/save_row', {
     headers: taskerHeaders,
@@ -54,18 +54,17 @@ test("an app keeps its deep address under the shared bar, and Open Admin leaves 
       .step('opening the task restores the original deep URL', async ({ page }: { page: Page }) => {
         await expect(page).toHaveURL(location)
       })
-      .step("the shared bar names the app, with no app switcher", async ({ page }: { page: Page }) => {
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Tasker')
-        await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveCount(0)
+      .step("the shared dropdown names the app", async ({ page }: { page: Page }) => {
+        await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveValue('/tasker/')
       })
       .step('reload keeps the exact app location', async ({ page }: { page: Page }) => {
         await page.reload()
         await expect(page).toHaveURL(location)
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Tasker')
+        await expect(page.getByTestId('top-bar-name')).toHaveValue('/tasker/')
       })
       .assertText('Host shell deep-link proof')
-      .step('Open Admin loads the Admin screens', async ({ page }: { page: Page }) => {
-        await page.getByTestId('open-admin').click()
+      .step('the dropdown opens Featherbase', async ({ page }: { page: Page }) => {
+        await page.getByRole('combobox', { name: 'Switch application' }).selectOption('/featherbase/admin')
         await expect(page).toHaveURL(/\/featherbase\/admin(?:\/|$)/)
         await expect(page.getByTestId('admin-sidebar')).toBeVisible()
       })
@@ -79,7 +78,7 @@ test("an app's own hash and query links keep its deep path under the bar", async
   await session
     .visit('/other/review/37?owner=all')
     .step('the bar names the app', async ({ page }: { page: Page }) => {
-      await expect(page.getByTestId('top-bar-name')).toHaveText('Other tasks')
+      await expect(page.getByTestId('top-bar-name')).toHaveValue('/other/')
     })
     .clickLink('Selected task')
     .step('an app hash link retains its deep path and query', async ({ page }: { page: Page }) => {
@@ -89,6 +88,19 @@ test("an app's own hash and query links keep its deep path under the bar", async
     .step('an app query link retains its deep path', async ({ page }: { page: Page }) => {
       await expect(page).toHaveURL('/other/review/37?owner=me')
     })
+})
+
+test('the app sidebar follows the shared bar theme without repainting app content', async ({ session }) => {
+  await signIn(session)
+  await session.visit('/tasker/').step('both navigation surfaces follow each choice', async ({ page }) => {
+    const contentColor = await page.locator('body').evaluate(element => getComputedStyle(element).backgroundColor)
+    for (const name of ['Dark', 'Light']) {
+      await page.getByRole('radio', { name, exact: true }).click()
+      const color = await page.getByTestId('top-bar').evaluate(element => getComputedStyle(element).backgroundColor)
+      await expect(page.getByRole('navigation', { name: 'Task views' }).locator('.sidebar-frame')).toHaveCSS('background-color', color)
+      await expect(page.locator('body')).toHaveCSS('background-color', contentColor)
+    }
+  })
 })
 
 test.describe('coarse-pointer phone', () => {

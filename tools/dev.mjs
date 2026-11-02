@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// `pnpm dev <client>/<instance>`: from nothing to a running instance, on Windows,
-// macOS and Linux. Needs only Node, pnpm and a running Postgres. Every step is
+// `pnpm dev`: start only Featherbase after pnpm install. A named instance
+// explicitly builds/installs its apps. Needs Node, pnpm and local Postgres;
 // safe to repeat. ./init.sh remains the separate boot-and-smoke path.
 //
 //   pnpm dev jeyarama/dash [--made-up-data] [--check] [--environment <section>]
@@ -41,9 +41,9 @@ export function listInstances(base = root) {
 
 /** The instance a command names: its folder, settings file and apps. */
 export function resolveInstance(name, base = root) {
+  if (!name) return { name: 'Featherbase', apps: [], settingsFile: undefined }
   const known = listInstances(base)
   const example = `pnpm dev ${known[0] ?? '<client>/<instance>'}`
-  if (!name) throw new DevError(`pnpm dev needs an instance name. Instances here: ${known.join(', ') || '(none)'}. For example: ${example}`)
   if (!known.includes(name)) throw new DevError(`No instance "${name}". Name one of: ${known.join(', ') || '(none)'}, as in: ${example}`)
   const [client, instance] = name.split('/')
   const folder = join(base, 'client-apps', client, 'instances', instance)
@@ -161,17 +161,17 @@ function runTool(command, args, options) {
 }
 
 // node directly, with no shell, so an absolute path may hold spaces.
-function serverCommand(env, ...args) {
+export function serverCommand(env, ...args) {
   const result = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli.ts', ...args], { cwd: join(root, 'apps/server'), env, stdio: 'inherit' })
   if (result.error) throw new DevError(`Could not run the server's CLI: ${result.error.message}`)
-  if (result.status !== 0) throw new DevError(`cli ${args[0]} failed (exit ${result.status}); see above`)
+  if (result.status !== 0) throw new DevError(`Featherbase ${args[0]} failed (exit ${result.status}); see above`)
 }
 
 function step(text) {
   console.log(`\n==> ${text}`)
 }
 
-function loadEnvLocal() {
+export function loadEnvLocal() {
   const file = join(root, '.env.local')
   if (!existsSync(file)) return
   // process.loadEnvFile leaves a variable already set alone, so a real one wins.
@@ -326,39 +326,51 @@ async function verify(instance, env) {
   }
 }
 
-async function main(argv) {
-  const command = parseCommand(argv)
-  const instance = resolveInstance(command.instance)
-  assertMadeUpDataAllowed(command, instance)
+export function instanceEnvironment(instance = resolveInstance()) {
   loadEnvLocal()
   const env = {
     ...process.env,
-    DATABASE_URL: process.env.DATABASE_URL || `postgres://postgres:postgres@127.0.0.1:5432/fb_${instance.client}_${instance.instance}`,
+    DATABASE_URL: process.env.DATABASE_URL || `postgres://postgres:postgres@127.0.0.1:5432/${instance.client ? `fb_${instance.client}_${instance.instance}` : 'featherbase'}`,
     API_PORT: process.env.API_PORT || '8000',
     WEB_PORT: process.env.WEB_PORT || '5173',
-    FEATHERBASE_APP_PATHS: JSON.stringify(instance.apps.map((app) => app.root)),
-    // The mock Google sign-in, for a developer's machine: assertLocal holds this
-    // to development, and the server refuses it anywhere else.
-    ALLOW_MOCK_OAUTH: '1',
-    ...(command.madeUpData ? madeUpSecrets(instance.apps) : {}),
+    ...(instance.client ? {
+      FEATHERBASE_INSTANCE: instance.name,
+      FEATHERBASE_APP_PATHS: JSON.stringify(instance.apps.map((app) => app.root)),
+    } : {}),
   }
   env.PORT = env.API_PORT
+  return env
+}
+
+export async function prepareInstance(instance, env, environment = 'local') {
+  assertLocal(env)
+  const target = new URL(env.DATABASE_URL)
+  step(`Preparing ${instance.name}: database ${decodeURIComponent(target.pathname.slice(1))} on ${target.hostname}:${target.port || 5432}`)
+  for (const app of instance.apps) buildApp(app, env)
+  await ensureDatabase(env)
+  serverCommand(env, 'migrate')
+  for (const app of instance.apps) serverCommand(env, 'install-app', app.name)
+  if (instance.settingsFile) serverCommand(env, 'settings:apply', '--file', instance.settingsFile, '--environment', environment)
+  console.log('Platform schema is up to date. Existing data and installed apps are preserved.')
+  console.log('Next: featherbase start (or pnpm featherbase start from the checkout)')
+}
+
+export async function main(argv) {
+  const command = parseCommand(argv)
+  const instance = resolveInstance(command.instance)
+  assertMadeUpDataAllowed(command, instance)
+  // Never add the development sign-in provider to health or hosted operations.
+  const env = { ...instanceEnvironment(instance), ALLOW_MOCK_OAUTH: '1' }
+  if (command.madeUpData) Object.assign(env, madeUpSecrets(instance.apps))
   assertLocal(env)
   await assertPortFree(env.API_PORT, 'API_PORT')
   await assertPortFree(env.WEB_PORT, 'WEB_PORT')
 
-  step('Installing dependencies')
-  runTool('pnpm', ['install'], { cwd: root, env })
-  step(`Building ${instance.apps.map((app) => app.path).join(', ')}`)
-  for (const app of instance.apps) buildApp(app, env)
-  step('Preparing the database')
-  await ensureDatabase(env)
-  serverCommand(env, 'migrate')
-  // Before the settings: an App Setting row names an installed app.
-  step('Installing apps')
-  for (const app of instance.apps) serverCommand(env, 'install-app', app.name)
-  step(`Applying the settings file (${command.environment})`)
-  serverCommand(env, 'settings:apply', '--file', instance.settingsFile, '--environment', command.environment)
+  if (instance.client) {
+    step('Installing checkout dependencies for the named instance')
+    runTool('pnpm', ['install'], { cwd: root, env })
+  }
+  await prepareInstance(instance, env, command.environment)
 
   step('Starting the API and the web app')
   const server = join(root, 'apps/server')
@@ -404,7 +416,7 @@ async function main(argv) {
     return
   }
   const checks = await healthChecks(env)
-  const first = instance.apps[0].name
+  const first = instance.apps[0]?.name
   console.log(`\n==> ${instance.name} is running. Ctrl-C stops it.`)
   console.log(`    Sign in:  http://localhost:${env.WEB_PORT}/featherbase/login  as Administrator / admin (development only)`)
   for (const app of instance.apps) console.log(`    ${app.name === first ? 'Open:    ' : 'Also:    '} http://localhost:${env.WEB_PORT}/${app.name}/`)

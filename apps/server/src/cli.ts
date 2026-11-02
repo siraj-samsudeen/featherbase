@@ -386,11 +386,12 @@ async function cmdInstallApp(io: CommandIO, positional: string[]) {
   if (!name || positional.length !== 1) throw new Error('usage: cli install-app <name>')
   const { registerApp, installApp, isInstalled, getAvailableApps } = await import('./apps')
   const { discoverPackages, repinToFolder } = await import('./runtime-packages')
+  const { appLibraryPaths } = await import('./app-library')
   const { default: helpdesk } = await import('./sample-apps/helpdesk')
   const { default: checklists } = await import('./sample-apps/checklists')
   registerApp(helpdesk)
   registerApp(checklists)
-  await discoverPackages(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+  await discoverPackages(await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[]))
   if (await isInstalled(name)) {
     const [stamp] = await sql`select value from internal_metadata where key = 'environment'`
     const outcome = await repinToFolder(name, stamp?.value === 'development')
@@ -528,6 +529,19 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
   await loadControllers()
 
   switch (cmd) {
+    case 'health': {
+      const { instanceHealth } = await import('./instance-health')
+      const report = await instanceHealth({ record: false })
+      if (flags.json) io.out(JSON.stringify(report))
+      else {
+        io.out(report.failing ? 'Featherbase needs attention.' : report.setup_needed ? 'Complete the required setup before shared use.' : 'Featherbase is ready to explore.')
+        for (const check of report.checks) {
+          io.out(`${check.state}: ${check.title} — ${check.message}`)
+          if (check.fix && check.state !== 'ready') io.out(`  Next: ${check.fix}`)
+        }
+      }
+      return report.failing || report.setup_needed ? 1 : 0
+    }
     case 'migrate':
       await runMigrations((line) => io.out(line))
       break

@@ -68,6 +68,39 @@ env:
   ALLOW_MOCK_OAUTH: '1'
 
 jobs:
+  # No apps:prepare here: the newcomer path must work without any app build.
+  base-quick-start:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: featherbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:dev
+      - run: node --test tools/featherbase.integration.test.mjs tools/orb-service.integration.test.mjs
+      - run: pnpm featherbase setup
+      - run: pnpm featherbase setup
+      - run: pnpm featherbase start --check
+      - run: pnpm --silent featherbase health --json
+
   # Decides what runs: tools/ci-scope.mjs holds the rules and their tests.
   changes:
     runs-on: ubuntu-latest
