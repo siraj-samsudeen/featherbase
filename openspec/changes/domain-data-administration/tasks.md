@@ -15,7 +15,7 @@ The owner did not finish the simulation review. Dropping UI review does not
 approve unresolved policy. Use concrete records and expected outcomes to settle
 these questions, not another UI prototype.
 
-- [ ] 2.1 Confirm Employee/Person storage and the initial field set; resolve bulk atomicity, cross-store shared Employee membership and approver-only application. V22–V24 are provisional examples, not approved assertions.
+- [ ] 2.1 Confirm Employee/Person storage and the initial field set; resolve bulk atomicity and approver-only application. Shared contact maintenance uses any matching authorised membership (V22, agreed); V23–V24 remain provisional examples, not approved assertions.
 - [ ] 2.2 Define the membership and job-capability contracts with #617: correlated scope tuples, missing/ambiguous results, temporal activation, cycles and locking. Cover JA3/JA6, acting JA8 and multi-membership without a cross-product.
 - [ ] 2.3 Specify protected grant operations, shared-role/binding-change checks, successor-office resolution and delegation descendant limits. No direct grant, role edit or appointment may exceed the same delegation boundary.
 - [ ] 2.4 Reconcile approval application, proposal versioning and rule combination with #627. Specify fresh review and maker/approver/scope revalidation through the normal save path.

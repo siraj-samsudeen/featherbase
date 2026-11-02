@@ -147,6 +147,16 @@ The same administrative permissions, scope and delegation boundaries SHALL apply
 - **WHEN** the user allowed to change phone numbers imports a change to employee numbers
 - **THEN** the forbidden change is refused as it would be during an ordinary edit
 
+### Requirement: Shared employee contacts can be maintained through an authorised membership
+
+A user authorised to maintain an employee's contact details through one current organisational membership SHALL be able to maintain those permitted details even when the employee also works elsewhere. Column restrictions and approval rules SHALL still apply to the shared correction.
+
+#### Scenario: Employee works in two stores
+
+- **WHEN** an employee works in two stores and the user may maintain employee phone numbers in one of those stores
+- **THEN** the user may make the phone correction under the applicable approval rules, and the shared contact details reflect the correction for both stores
+- **AND** that permission does not allow the user to change assignments in the other store
+
 ## MODIFIED Requirements
 
 ### Requirement: Only a System Manager changes who can do what

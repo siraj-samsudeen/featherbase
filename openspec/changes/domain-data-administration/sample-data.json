@@ -1107,11 +1107,11 @@
     },
     {
       "id": "V22",
-      "name": "Whole shared-record footprint",
-      "setup": "Employee has simultaneous Store A and Store B memberships; Arun only Store A scope",
-      "action": "Arun changes shared Employee contact",
-      "expected": "Prototype default refuses unless all memberships covered; resolve policy before production assertions.",
-      "policy": "unresolved_default"
+      "name": "Shared contact through one authorised membership",
+      "setup": "Priya has current Store A and Store B assignments; Meera has R1/R2 within Store A only.",
+      "action": "Meera updates E3.phone through her Store A contact-maintenance grant.",
+      "expected": "Allow under the applicable approval rule. The single shared contact value changes for both stores. Other column restrictions remain; this grants no authority to change Store B job assignments.",
+      "policy": "agreed"
     },
     {
       "id": "V23",
