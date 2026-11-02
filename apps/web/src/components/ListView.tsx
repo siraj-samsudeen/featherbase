@@ -907,7 +907,7 @@ export function ListView({
       {onFiltersChange && !baseFilters.length && <RecentStrip table={table} meta={meta.data} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
         <>
-          <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
+          <StandardFilters meta={meta.data} view={columns} filters={filters} onChange={onFiltersChange} />
           <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
         </>
       )}
@@ -1587,22 +1587,23 @@ const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference', 'Email', 'Small Text']
 
 function StandardFilters({
   meta,
+  view,
   filters,
   onChange,
 }: {
   meta: import('../lib/meta').TableMeta
+  view: ListColumn[]
   filters: Filter[]
   onChange: (filters: Filter[]) => void
 }) {
   const { t } = useI18n()
-  const columns = meta.columns
-    .filter(
-      (f) =>
-        f.in_list_view &&
-        !f.hidden &&
-        (f.column_type === 'Choice' || STANDARD_TEXT_TYPES.has(f.column_type)),
-    )
-    .slice(0, 4)
+  // #742: the data columns this person sees. Row ID isn't one, so it gets no box.
+  const seen = new Set(view.map((c) => c.column_name))
+  const columns = dataColumns(meta).filter(
+    (f) =>
+      seen.has(f.column_name) &&
+      (f.column_type === 'Choice' || STANDARD_TEXT_TYPES.has(f.column_type)),
+  )
   // Drafts for the text inputs (applied on Enter/blur); choices apply at once.
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   if (!columns.length) return null
