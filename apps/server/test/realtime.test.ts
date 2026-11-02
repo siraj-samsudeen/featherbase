@@ -15,6 +15,7 @@ import {
 } from '../src/realtime'
 import type { SessionUser } from '../src/auth'
 import { realtimeFrames } from 'shared'
+import { grantRole, makeTable } from './fixtures'
 
 // RT-001/002/003 (server side): the lifecycle publishes the right channel
 // events. The browser wiring is covered by e2e/realtime.spec.ts.
@@ -349,6 +350,74 @@ describe('Open pages hear about changes as they happen', () => {
       expect((await mine.waitFor((f) => f.event === 'notification')).payload).toEqual({ n: 1 })
       await new Promise((resolve) => setTimeout(resolve, 200))
       expect(theirs.frames.some((f) => f.event === 'notification')).toBe(false)
+    } finally {
+      await live.close()
+    }
+  })
+
+  test('row subscriptions respect reader scope and the team feed requires System Manager', async ({ admin, createUser }) => {
+    const table = await makeTable(admin, { name: 'Realtime Policy', naming_rule: 'prompt', columns: ['title'] })
+    await admin.post(table.url, { row_id: 'North', title: 'Visible northern row' })
+    await admin.post(table.url, { row_id: 'South', title: 'Hidden southern row' })
+    await grantRole(admin, { role: 'Realtime Reader', table: table.name, can_read: true })
+    const reader = await createUser({ email: 'rt.reader@example.com', roles: ['Realtime Reader'] })
+    const scoped = await createUser({ email: 'rt.scoped@example.com', roles: ['Realtime Reader'] })
+    const manager = await createUser({ email: 'rt.manager@example.com', roles: ['System Manager'] })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: scoped.user, allow_table: table.name, for_value: 'North' } })
+    expect((await reader.get(table.rowUrl('South'))).row_id).toBe('South')
+    expect((await scoped.get(table.rowUrl('North'))).row_id).toBe('North')
+    await expect(scoped.get(table.rowUrl('South'))).rejects.toMatchObject({ status: 403 })
+
+    const north = `row:${table.name}:North`
+    const south = `row:${table.name}:South`
+    const live = await listen()
+    try {
+      // Each mixed request has a permitted channel, making its ACK a
+      // positive completion barrier for every permission check in that frame.
+      for (const [person, channels] of [[reader, [north, south]], [scoped, [north]], [manager, [north, south, 'feed']]] as const) {
+        const page = live.connect(person.token!)
+        await page.waitFor((f) => f.event === 'ready')
+        page.socket.send(JSON.stringify({ subscribe: [north, south, 'feed'] }))
+        expect(await page.waitFor((f) => f.event === 'subscribed')).toEqual({
+          channel: 'system', event: 'subscribed', payload: { channels },
+        })
+      }
+    } finally {
+      await live.close()
+    }
+  })
+
+  test('unsubscribing the team feed retains exact public row events without later feed pings', async ({ admin, createUser }) => {
+    const manager = await createUser({ email: 'rt.unsubscribe@example.com', roles: ['System Manager'] })
+    const live = await listen()
+    try {
+      const page = live.connect(manager.token!)
+      await page.waitFor((f) => f.event === 'ready')
+      page.socket.send(JSON.stringify({ subscribe: ['feed', 'list:Role'] }))
+      expect((await page.waitFor((f) => f.event === 'subscribed')).payload).toEqual({ channels: ['feed', 'list:Role'] })
+      await admin.post('/api/table/Role', { row_id: 'Before Unsubscribe' })
+      expect(await page.waitFor((f) => f.channel === 'list:Role')).toEqual({
+        channel: 'list:Role', event: 'created', payload: { table: 'Role', row_id: 'Before Unsubscribe' },
+      })
+      expect(page.frames.filter((f) => f.channel === 'feed')).toEqual([{ channel: 'feed', event: 'changed' }])
+
+      // Frames run in arrival order, so the following subscription ACK
+      // proves the preceding unsubscribe ran before the HTTP mutation.
+      // It does not imply that pending asynchronous deliveries drained.
+      page.frames.length = 0
+      page.socket.send(JSON.stringify({ unsubscribe: ['feed'] }))
+      page.socket.send(JSON.stringify({ subscribe: ['list:Role'] }))
+      expect((await page.waitFor((f) => f.event === 'subscribed')).payload).toEqual({ channels: ['list:Role'] })
+      await admin.post('/api/table/Role', { row_id: 'After Unsubscribe' })
+      expect(await page.waitFor((f) => f.channel === 'list:Role')).toEqual({
+        channel: 'list:Role', event: 'created', payload: { table: 'Role', row_id: 'After Unsubscribe' },
+      })
+      // publishDocEvent sends feed synchronously; list events must await
+      // eventVisibleTo. If feed were still registered, that frame would
+      // precede this same mutation's list frame on this ordered socket.
+      expect(page.frames.filter((f) => f.channel !== 'system')).toEqual([{
+        channel: 'list:Role', event: 'created', payload: { table: 'Role', row_id: 'After Unsubscribe' },
+      }])
     } finally {
       await live.close()
     }
