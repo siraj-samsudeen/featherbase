@@ -60,7 +60,7 @@ Same test file.
 ## 6. Filters fold away on a phone
 
 - [x] 6.1 S16, component test: `The folded control says 2 filters are in use`
-- [ ] 6.2 Component test: `Opening the filters shows up to four quick filters, says how many more, and lets the user add one` (changed by the owner on 02-Nov-2026: was every quick filter, then six)
+- [x] 6.2 Component test: `Opening the filters shows up to four quick filters, says how many more, and lets the user add one` (changed by the owner on 02-Nov-2026: was every quick filter, then six)
 - [x] 6.3 Component test: `While folded only the count shows; opening the filters shows the filters in use, each removable`
 - [ ] 6.4 S15, browser test in 7.7: `The rows come straight after the folded filters on a phone`
 - [x] 6.5 Component test: `On a phone, Recent folds behind the Filters button; Save view stays showing` (owner's addition)
