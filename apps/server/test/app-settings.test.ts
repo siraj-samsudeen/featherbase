@@ -14,7 +14,7 @@ import { withNamedVariable } from '../src/env'
 import { sql } from '../src/db'
 import { expectApiError } from './fixtures'
 import { applyInstanceSettings, exportInstanceSettings } from '../src/instance-settings'
-import { WITHHELD_ANSWER, WITHHELD_MESSAGE, keptSecrets, withSecretsKept } from '../src/app-settings'
+import { WITHHELD_ANSWER, WITHHELD_MESSAGE, holdsSecret, keptSecrets, withSecretsKept } from '../src/app-settings'
 
 const fixture = resolve('../..', 'test-apps/fixtures/setup-proof-v1')
 const read = '/api/app_reads/setupproof/'
@@ -245,6 +245,26 @@ describe('an app secret', () => {
     await expect(withSecretsKept(keptSecrets({ TOKEN: PLAIN }), async () => { throw failure }))
       .rejects.toThrow("The app's message was withheld: it held one of the app's secrets")
     expect(logged.join('\n')).not.toContain(PLAIN)
+  })
+
+  test('secret detection checks keys and inherited error causes without trusting throwing getters', () => {
+    const unreadable = { get unavailable(): unknown { throw new Error('not readable') } }
+    expect(holdsSecret([PLAIN], unreadable)).toBe(false)
+    expect(holdsSecret([PLAIN], { [PLAIN]: 'ordinary value' })).toBe(true)
+    class WrappedFailure extends Error { override get cause() { return PLAIN } }
+    expect(holdsSecret([PLAIN], new WrappedFailure('Safe heading'))).toBe(true)
+    expect(holdsSecret([PLAIN], new Error('Safe heading'))).toBe(false)
+  })
+
+  test('safe primitive failures and error codes survive, but a thrown secret does not', async () => {
+    const kept = keptSecrets({ TOKEN: PLAIN })
+    for (const value of [null, undefined, 37, 'ordinary refusal'])
+      await expect(withSecretsKept(kept, async () => { throw value })).rejects.toBe(value)
+    await expect(withSecretsKept(kept, async () => { throw PLAIN })).rejects.toThrow(WITHHELD_MESSAGE)
+    const failure = Object.assign(new Error('Upstream temporarily unavailable'), { code: 'EUPSTREAM' })
+    await expect(withSecretsKept(kept, async () => { throw failure })).rejects.toMatchObject({
+      message: 'Upstream temporarily unavailable', code: 'EUPSTREAM',
+    })
   })
 
   test('outside an app handler the console is left alone', async () => {

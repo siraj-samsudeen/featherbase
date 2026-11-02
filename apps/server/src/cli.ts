@@ -284,7 +284,7 @@ async function cmdSeed(io: CommandIO) {
   io.out('seed complete')
 }
 
-const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
+const AsyncFunction = Object.getPrototypeOf(cmdConsole).constructor as new (
   ...args: string[]
 ) => (...args: unknown[]) => Promise<unknown>
 

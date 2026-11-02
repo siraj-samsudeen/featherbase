@@ -146,7 +146,8 @@ function chartPlaces(units: CoveredUnit[], chart: OrgChart, on: string): Place[]
     if (unit.wholeStore) places.add(unit.store, unit.store, null, [basis])
     for (const section of unit.sections) {
       const codes = owned.get(section) ?? []
-      if (codes.length) places.add(sectionLabel(unit.store, names.get(section) ?? section), unit.store, codes, [basis])
+      // ownedOn credits only sections in this same chart, so their names exist.
+      if (codes.length) places.add(sectionLabel(unit.store, names.get(section)!), unit.store, codes, [basis])
     }
   }
   return places.list('confirmed')
@@ -162,8 +163,9 @@ function legacyPlaces(stores: LegacyStore[]): Place[] {
   for (const store of stores) {
     for (const code of store.material_groups) {
       const section = store.section_by_material_group[code]
+      // legacyCoverage creates each group's basis alongside material_groups.
       places.add(section ? sectionLabel(store.plant_code, section) : store.plant_code, store.plant_code, [code],
-        store.basis_by_material_group[code] ?? store.scope_basis)
+        store.basis_by_material_group[code])
     }
   }
   return places.list('assumed')

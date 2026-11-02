@@ -21,11 +21,18 @@ app_dir="$(cd "$(dirname "$0")/.." && pwd)"
 repo="$(cd "$app_dir/../../.." && pwd)"
 server="$repo/apps/server"
 [[ -f "$app_dir/dist/server.mjs" ]] || { echo "!! build the app first: npm run build" >&2; exit 1; }
+coverage_args=()
 target="$server/test/feather-dash-platform-$$"
 trap 'rm -rf "$target"' EXIT
 mkdir -p "$target/app"
 cp "$app_dir"/platform-test/*.ts "$app_dir"/platform-test/*.mjs "$target/"
 cp -R "$app_dir/package.json" "$app_dir/featherbase.json" "$app_dir/dist" "$target/app/"
+if [[ "${DASH_BACKEND_COVERAGE:-}" = 1 ]]; then
+  # Build only in the disposable copy. Its linked map resolves the actual
+  # app source paths, without changing a running or packageable app artifact.
+  npm --prefix "$app_dir" run build:server -- --sourcemap=linked --outfile="$target/app/dist/server.mjs"
+  coverage_args=(--config "$app_dir/vitest.backend.config.ts")
+fi
 cd "$server"
 FEATHER_DASH_DIR="$target/app" ALLOW_MOCK_OAUTH=1 PSQLRC=/dev/null \
-  node_modules/.bin/vitest run $(if (($#)); then for name in "$@"; do echo "test/$(basename "$target")/$name"; done; else echo "test/$(basename "$target")"; fi)
+  node_modules/.bin/vitest run "${coverage_args[@]}" $(if (($#)); then for name in "$@"; do echo "test/$(basename "$target")/$name"; done; else echo "test/$(basename "$target")"; fi)

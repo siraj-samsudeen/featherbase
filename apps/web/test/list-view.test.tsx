@@ -181,6 +181,44 @@ test('Act on many rows at once: setting a field on selected rows changes all of 
   expect(screen.queryByTestId('bulk-bar')).not.toBeInTheDocument()
 })
 
+test('Bulk Check edits persist true and false only on rows selected after clearing the header selection', async ({ admin }) => {
+  const table = 'Lv Bulk Check'
+  await admin.post('/api/table_def', {
+    name: table,
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },
+      { column_name: 'approved', column_type: 'Check', label: 'Approved', in_list_view: true },
+    ],
+  })
+  for (const row_id of ['change', 'keep'])
+    await admin.post('/api/save_row', { table, row: { row_id, title: row_id, approved: false } })
+  await openList(admin, table)
+  await waitFor(() => expect(cellTexts('title')).toHaveLength(2))
+
+  fireEvent.click(screen.getByTestId('select-all'))
+  expect(screen.getByTestId('bulk-count')).toHaveTextContent('2 selected')
+  fireEvent.click(screen.getByTestId('select-all'))
+  expect(screen.getByTestId('select-all')).not.toBeChecked()
+  expect(screen.queryByTestId('bulk-bar')).not.toBeInTheDocument()
+  for (const checkbox of within(rowsEl()).getAllByTestId('row-check'))
+    expect(checkbox).not.toBeChecked()
+
+  for (const [input, expected] of [[' YES ', true], ['no', false]] as const) {
+    const target = within(rowsEl()).getByRole('link', { name: 'change' }).closest('tr')!
+    fireEvent.click(within(target).getByTestId('row-check'))
+    expect(screen.getByTestId('bulk-count')).toHaveTextContent('1 selected')
+    fireEvent.change(screen.getByTestId('bulk-edit-field'), { target: { value: 'approved' } })
+    fireEvent.change(screen.getByTestId('bulk-edit-value'), { target: { value: input } })
+    fireEvent.click(screen.getByTestId('bulk-edit-apply'))
+    await waitFor(() => expect(screen.queryByTestId('bulk-bar')).not.toBeInTheDocument())
+    const changed = await admin.get<{ approved: boolean }>(`/api/table/${enc(table)}/change`)
+    const kept = await admin.get<{ approved: boolean }>(`/api/table/${enc(table)}/keep`)
+    expect(changed.approved).toBe(expected)
+    expect(kept.approved).toBe(false)
+  }
+})
+
 test('Act on many rows at once: selected rows can be deleted together', async ({ admin }) => {
   await seedTickets(admin, 'Lv Bulk Del', 4)
   await openList(admin, 'Lv Bulk Del')
@@ -229,30 +267,49 @@ test('Act on many rows at once: backing out of the delete confirmation deletes n
   expect((await admin.get<{ data: unknown[] }>(`/api/table/${enc('Lv Bulk Keep')}`)).data).toHaveLength(3)
 })
 
-test('See a row\'s nested rows without opening it: expanding shows its lines in place and collapsing hides them', async ({ admin }) => {
+test('See a row\'s nested rows without opening it: expanding shows references, zero totals and empty lines, and collapsing hides them', async ({ admin, createUser }) => {
+  const owner = await createUser({ email: 'lv.lines@example.test', fullName: 'Lila Lines' })
+  await admin.post('/api/table_def', {
+    name: 'Lv Item',
+    id_pattern: 'prompt',
+    columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
+  })
+  await admin.post('/api/save_row', { table: 'Lv Item', row: { row_id: 'bolt', title: 'Steel bolt' } })
   await admin.post('/api/table_def', {
     name: 'Lv Order Line',
     kind: 'sub_table',
-    columns: [{ column_name: 'item', column_type: 'Data', label: 'Item' }],
+    columns: [
+      { column_name: 'item', column_type: 'Reference', label: 'Item', reference_table: 'Lv Item' },
+      { column_name: 'owner', column_type: 'Reference', label: 'Owner', reference_table: 'Person' },
+      { column_name: 'amount', column_type: 'Currency', label: 'Amount' },
+    ],
   })
   await admin.post('/api/table_def', {
     name: 'Lv Order',
     columns: [
       { column_name: 'customer', column_type: 'Data', label: 'Customer', in_list_view: true },
       { column_name: 'lines', column_type: 'Sub-table', label: 'Lines', row_table: 'Lv Order Line' },
+      { column_name: 'returns', column_type: 'Sub-table', label: 'Returns', row_table: 'Lv Order Line' },
     ],
   })
   await admin.post('/api/save_row', {
     table: 'Lv Order',
-    row: { customer: 'Acme', lines: [{ item: 'bolt' }, { item: 'washer' }] },
+    row: { customer: 'Acme', lines: [{ item: 'bolt', owner: owner.user, amount: 0 }, { amount: 25.5 }], returns: [] },
   })
   await openList(admin, 'Lv Order')
   await waitFor(() => expect(cellTexts('customer')).toEqual(['Acme']))
 
   fireEvent.click(screen.getByTestId('row-expand'))
   const grid = await screen.findByTestId('inline-children-lines')
-  expect(await within(grid).findByText('bolt')).toBeInTheDocument()
-  expect(within(grid).getByText('washer')).toBeInTheDocument()
+  expect(await within(grid).findByRole('link', { name: 'bolt' })).toHaveAttribute('href', '/featherbase/admin/Lv%20Item/bolt')
+  expect(await within(grid).findByRole('link', { name: 'Lila Lines' })).toHaveAttribute('href', `/featherbase/admin/Person/${owner.user}`)
+  expect(within(grid).queryByText(owner.user!)).not.toBeInTheDocument()
+  expect(within(grid).getByRole('cell', { name: '₹0.00' })).toBeInTheDocument()
+  expect(within(grid).getByText('Σ Amount: ₹25.50')).toBeInTheDocument()
+  const empty = screen.getByTestId('inline-children-returns')
+  expect(empty).toHaveTextContent('Returns (0)')
+  expect(within(empty).getByRole('cell', { name: 'No rows' })).toHaveAttribute('colspan', '3')
+  expect(within(empty).queryByText(/Σ Amount/)).not.toBeInTheDocument()
 
   fireEvent.click(screen.getByTestId('row-expand'))
   await waitFor(() => expect(screen.queryByTestId('expanded-row')).not.toBeInTheDocument())

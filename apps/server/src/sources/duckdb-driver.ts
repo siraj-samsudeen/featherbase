@@ -16,8 +16,8 @@ import type {
 // browser). The connection string comes from the env var named by url_env:
 // either a MotherDuck URL (md:?motherduck_token=... — the recommended shape,
 // with a read-scaling token) or a local .duckdb file path (used by tests).
-// @duckdb/node-api is pinned to a DuckDB version MotherDuck supports; 1.5.5
-// was rejected by the MotherDuck extension at the time of writing.
+// @duckdb/node-api 1.5.6-r.2 (DuckDB 1.5.6) passed real MotherDuck connection,
+// introspection and read-only warehouse query checks on 1-Nov-2026 (#747).
 //
 // external_schema holds the full catalog-qualified schema ("gold.main" on
 // MotherDuck, "main" locally); identifiers are quoted part by part and every

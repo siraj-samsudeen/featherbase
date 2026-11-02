@@ -4,22 +4,29 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 export DEBIAN_FRONTEND=noninteractive
-readonly NODE_VERSION=22.18.0
-readonly PNPM_VERSION=10.33.0
+readonly NODE_VERSION=26.13.0
+readonly PNPM_VERSION=12.16.1
 readonly DEFAULT_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/featherbase'
 export DATABASE_URL="${DATABASE_URL:-$DEFAULT_DATABASE_URL}"
+# Select the installed runtime in this process and future non-interactive
+# login shells (including Amp and supervised services), even on warm snapshots.
+export PATH="/usr/local/bin:$PATH"
+node_path_export='export PATH="/usr/local/bin:$PATH" # Featherbase Node runtime'
+if ! grep -Fqx "$node_path_export" "$HOME/.bash_profile" 2>/dev/null; then
+  printf '\n%s\n' "$node_path_export" >> "$HOME/.bash_profile"
+fi
 
 echo '==> Installing system prerequisites'
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
   ca-certificates curl lsof postgresql postgresql-client xz-utils
 
-node_is_compatible() {
+node_is_current() {
   command -v node >/dev/null 2>&1 &&
-    node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 22 || (major === 22 && minor >= 13) ? 0 : 1)'
+    [[ "$(node --version)" == "v$NODE_VERSION" ]]
 }
 
-if ! node_is_compatible; then
+if ! node_is_current; then
   case "$(uname -m)" in
     x86_64) node_arch=x64 ;;
     aarch64|arm64) node_arch=arm64 ;;
@@ -29,6 +36,9 @@ if ! node_is_compatible; then
   node_archive="$(mktemp)"
   trap 'rm -f "$node_archive"' EXIT
   curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$node_arch.tar.xz" -o "$node_archive"
+  # An overlay leaves obsolete nested dependencies that can shadow npm's
+  # new ones (for example minipass 3 under npm 11's minipass-flush).
+  sudo rm -rf /usr/local/lib/node_modules/npm
   sudo tar -xJf "$node_archive" -C /usr/local --strip-components=1
   rm -f "$node_archive"
   trap - EXIT

@@ -119,6 +119,12 @@ describe('IMP-005: bulk import', () => {
       const res = await admin.fetch(PATH, { method: 'POST', body: JSON.stringify(body) })
       expect(res.status).toBe(417)
     }
+    const malformed = await admin.fetch(PATH, { method: 'POST', body: '{"rows":' })
+    expect(malformed.status).toBe(417)
+    expect(await malformed.json()).toMatchObject({
+      error: { type: 'ValidationError', message: 'Expected { rows: [...] } with at least one row' },
+    })
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}`)).toMatchObject({ total: 0, data: [] })
     const over = await admin.fetch(PATH, {
       method: 'POST',
       body: JSON.stringify({ rows: Array.from({ length: 10_001 }, () => ({ title: 'x' })) }),

@@ -2,7 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { clearControllers, registerController, runHooks } from '../src/controllers'
+import { clearControllers, registerController, runHooks, unregisterController, type TableController } from '../src/controllers'
 import { AppError } from '../src/errors'
 import { getMeta } from '../src/meta'
 
@@ -140,6 +140,27 @@ describe('DOC-004: file-based controller registry', () => {
 // directly (a deliberate exception to the HTTP-first idiom) since the point
 // is the in-process registry, not a request.
 describe('controllers: registry edges', () => {
+  test('unregistering one extension is repeatable and leaves its sibling active until it too is removed', async ({ admin }) => {
+    await makeTables(admin)
+    const removed: TableController = { table: DT, hooks: { before_save: ({ row }) => { row.title = 'removed extension' } } }
+    const kept: TableController = { table: DT, hooks: { before_save: ({ row }) => { row.computed = `kept:${row.title}` } } }
+    registerController(removed)
+    registerController(kept)
+    try {
+      unregisterController(removed)
+      unregisterController(removed)
+      const first = await admin.post<Record<string, unknown>>('/api/save_row', { table: DT, row: { title: 'first' } })
+      expect(first).toMatchObject({ title: 'first', computed: 'kept:first' })
+      unregisterController(kept)
+      unregisterController(kept)
+      const second = await admin.post<Record<string, unknown>>('/api/save_row', { table: DT, row: { title: 'second' } })
+      expect(second).toMatchObject({ title: 'second', computed: null })
+      expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/${first.row_id}`)).toMatchObject({
+        title: 'first', computed: 'kept:first',
+      })
+    } finally { clearControllers(DT) }
+  })
+
   test('clearControllers removes every controller for a table', async ({ admin }) => {
     const DT = 'Cov Clear Note'
     await admin.post('/api/table_def', {

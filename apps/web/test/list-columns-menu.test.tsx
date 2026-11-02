@@ -10,6 +10,8 @@
 
 import { screen, waitFor, within } from '@testing-library/react'
 import { test, expect, renderApp } from './pg-test'
+import { issueSession } from 'server/src/auth'
+import { setSession } from '../src/lib/api'
 
 const DT = 'Lc Mapping'
 const URL = `/api/user_settings/${encodeURIComponent(DT)}`
@@ -223,4 +225,21 @@ test("after making the default, the System Manager's own shown and hidden sets a
   await makeDefaultFromView(admin)
   await settledSettings(admin, { shownCols: [], hiddenCols: [] })
   await waitFor(() => expect(headers()).toEqual(['Row ID', 'Section', 'Remarks']))
+})
+
+test('a refused default save preserves both the shared definition and the private arrangement', async ({ admin }) => {
+  await seedTable(admin)
+  await openList(admin)
+  await openMenu()
+  screen.getByTestId('list-col-toggle-remarks').click()
+  await settledSettings(admin, { shownCols: ['remarks'] })
+  const before = await admin.get(metaUrl)
+  const expired = await issueSession('Administrator')
+  expect((await fetch('/api/logout', { method: 'POST', headers: { Authorization: `Bearer ${expired.token}` } })).status).toBe(200)
+  setSession(expired.token, { row_id: 'Administrator', email: null, full_name: null })
+  screen.getByTestId('list-make-default').click()
+  expect(await screen.findByTestId('list-make-default-error')).toHaveTextContent("Couldn't make this the default. Everyone's list is as it was.")
+  expect(await admin.get(metaUrl)).toEqual(before)
+  await settledSettings(admin, { shownCols: ['remarks'] })
+  expect(headers()).toContain('Remarks')
 })

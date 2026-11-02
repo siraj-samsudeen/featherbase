@@ -62,7 +62,9 @@ export function qualifyPlatformSql(text: string): string {
   const indexTarget = /(\bcreate\s+(?:unique\s+)?index\b[^;]*?\bon\s+)("([a-z_][a-z0-9_]*)"|([a-z_][a-z0-9_]*))(?![a-z0-9_]|\s*\.)/gi
   const rewrite = (_match: string, prefix: string, token: string, quoted: string, plain: string) => {
     const name = (quoted ?? plain).toLowerCase()
-    return PLATFORM_RELATIONS.has(name) ? `${prefix}"${PLATFORM_SCHEMA}".${token}` : `${prefix}${token}`
+    // The schema stays unquoted: postgres.js 4 reads `insert into "s".t ${sql(row)}`
+    // as two names after `into`, so the row became a list of identifiers.
+    return PLATFORM_RELATIONS.has(name) ? `${prefix}${PLATFORM_SCHEMA}.${token}` : `${prefix}${token}`
   }
 
   let out = ''

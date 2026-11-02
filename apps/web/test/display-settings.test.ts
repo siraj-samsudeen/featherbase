@@ -71,6 +71,7 @@ test('another currency is written the way its own readers write it', () => {
   expect(formatCurrency(1234567.5, with_({ currency: 'GBP' }))).toBe('£1,234,567.50')
   expect(formatCurrency(1234567.5, with_({ currency: 'EUR' }))).toBe('1.234.567,50\u00a0€')
   expect(formatCurrency(1234567.5, with_({ currency: 'JPY' }))).toBe('￥1,234,568')
+  expect(formatCurrency(1234567.5, with_({ currency: 'CAD' }))).toBe('CA$1,234,567.50')
 })
 
 test('a negative amount puts its sign before the currency symbol', () => {

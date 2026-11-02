@@ -42,8 +42,8 @@ describe('platform SQL relation mapping', () => {
       -- from permission
       /* join table_def */`
     expect(qualifyPlatformSql(input)).toBe(`
-      select u.row_id from "featherbase".person u
-      join "featherbase".role r on r.row_id = 'role'
+      select u.row_id from featherbase.person u
+      join featherbase.role r on r.row_id = 'role'
       join tasker.task t on true
       where u.full_name = 'from user'
       -- from permission
@@ -58,7 +58,7 @@ describe('platform SQL relation mapping', () => {
 
     expect(mapped).toBe(`
       select r.result, t.title
-      from "featherbase".runtime_action_result r
+      from featherbase.runtime_action_result r
       join tasker.task t on true`)
     expect(mapped).not.toContain('public.runtime_action_result')
   })
@@ -67,7 +67,7 @@ describe('platform SQL relation mapping', () => {
     expect(qualifyPlatformSql(
       'create table if not exists role (id text references "person"); create unique index role_id on role(id); select * from public.site',
     )).toBe(
-      'create table if not exists "featherbase".role (id text references "featherbase"."person"); create unique index role_id on "featherbase".role(id); select * from public.site',
+      'create table if not exists featherbase.role (id text references featherbase."person"); create unique index role_id on featherbase.role(id); select * from public.site',
     )
   })
 })

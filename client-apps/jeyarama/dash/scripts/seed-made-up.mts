@@ -14,6 +14,7 @@ import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { randomUUID } from 'node:crypto'
+import { madeUpReportDates } from './made-up-report-dates.ts'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const checkout = resolve(appDir, '../../..')
@@ -163,23 +164,14 @@ await oldRow('Section Merchandise Map', { store_code: '9904', material_group: '0
 await oldRow('Section Merchandise Map', { store_code: '9904', material_group: '010202001', mch_subcategory: 'Boys shirts', section_name: 'Kids' })
 await oldRow('Sales Target Assignment', { employee: people.assigned, plant_code: '9904', store_label: 'Parkside', material_group: '010101001' })
 
-// The cached copies, consistent with each other: refreshed at 05:49 IST on the last morning
-// that has passed, with data to the day before that refresh.
-const IST = 330 * 60_000
-const ist = (instant: number) => new Date(instant + IST).toISOString().slice(0, 10)
-const morning = (day: string) => Date.parse(`${day}T05:49:00+05:30`)
-const todayIst = ist(Date.now())
-const refreshed = Date.now() >= morning(todayIst) ? morning(todayIst) : morning(ist(Date.now() - 86_400_000))
-const refreshedAt = new Date(refreshed).toISOString()
-const dataThrough = ist(refreshed - 86_400_000)
-const periodStart = `${todayIst.slice(0, 8)}01`
-const lastMonth = new Date(Date.UTC(Number(todayIst.slice(0, 4)), Number(todayIst.slice(5, 7)) - 2, 1)).toISOString().slice(0, 10)
-const lastMonthEnd = new Date(Date.UTC(Number(todayIst.slice(0, 4)), Number(todayIst.slice(5, 7)) - 1, 0)).toISOString().slice(0, 10)
+// Both copies describe the same made-up month to date, including today. Hillview
+// deliberately retains last month's figures to demonstrate the no-data-yet state.
+const { refreshedAt, dataThrough, periodStart, lastMonth, lastMonthEnd } = madeUpReportDates(Date.now())
 // Lakeside and Parkside carry a short code, as the warehouse's store master does; the header names them by it.
 const SHORT_CODES: Record<string, string> = { '9901': 'LKS', '9904': 'PKS', '9906': 'BYS' }
 const row = (store: string, name: string, code: string, subcategory: string, target: number | null, actual: number | null, month = periodStart, through = dataThrough) => ({
   store_code: store, store_name: name, short_code: SHORT_CODES[store] ?? null, subcategory_code: code, subcategory, target, actual,
-  days_with_actual: actual == null ? 0 : 10, days: 10, period_start: month, data_through: through, targets_available: true,
+  days_with_actual: actual == null ? 0 : Number(through.slice(8, 10)), days: Number(through.slice(8, 10)), period_start: month, data_through: through, targets_available: true,
   // 0.10.0's quantities (#4453): made up from the values, three decimals as the warehouse carries them.
   target_quantity: target == null ? null : Math.round(target / 1.5) / 1000, actual_quantity: actual == null ? null : Math.round(actual / 1.5) / 1000 })
 // Figures with paise, so the two-decimal totals can be checked by hand.

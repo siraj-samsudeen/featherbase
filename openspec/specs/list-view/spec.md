@@ -73,6 +73,11 @@ This covers columns the user switched on as well as ones they switched off.
 
 #### Scenario: Return after hiding a column
 
+- **GIVEN** the user has hidden a column and sorted the list of a table
+- **WHEN** the user later reopens the same table's list
+- **THEN** the column is still hidden
+- **AND** the list is still sorted the way they left it
+
 ```gherkin
 Given the user has hidden a column and sorted the list of a table
 When the user later reopens the same table's list
@@ -81,6 +86,10 @@ And the list is still sorted the way they left it
 ```
 
 #### Scenario: Remarks is still there next time
+
+- **GIVEN** the user has switched on Remarks in the list of "Section Mapping"
+- **WHEN** the user signs out, signs back in and reopens that list
+- **THEN** Remarks still shows
 
 ```gherkin
 Given the user has switched on Remarks in the list of "Section Mapping"
@@ -237,6 +246,11 @@ for everyone to see. The table's other columns are on each row's form.
 
 #### Scenario: Section Mapping shows its seven list columns
 
+- **GIVEN** the table "Section Mapping" whose list columns are Section, MCH, Floor, Zone, Rack, Owner and Category
+- **WHEN** the user opens its list
+- **THEN** the user sees the row ID and those seven columns
+- **AND** Remarks shows only on a row's form
+
 ```gherkin
 Given the table "Section Mapping" whose list columns are Section, MCH, Floor, Zone, Rack, Owner and Category
 When the user opens its list
@@ -245,6 +259,10 @@ And Remarks shows only on a row's form
 ```
 
 #### Scenario: A table with no list columns shows its first two
+
+- **GIVEN** a table with no list columns
+- **WHEN** the user opens its list
+- **THEN** the user sees the row ID and the table's first two columns
 
 ```gherkin
 Given a table with no list columns
@@ -260,6 +278,11 @@ table.
 
 #### Scenario: Remarks shows only for me
 
+- **GIVEN** the table "Section Mapping" with Remarks not in its list
+- **WHEN** the user switches on Remarks
+- **THEN** the user's list shows Remarks
+- **AND** a colleague's list of "Section Mapping" does not show Remarks
+
 ```gherkin
 Given the table "Section Mapping" with Remarks not in its list
 When the user switches on Remarks
@@ -268,6 +291,10 @@ And a colleague's list of "Section Mapping" does not show Remarks
 ```
 
 #### Scenario: Every column off leaves the row ID
+
+- **GIVEN** the list of "Section Mapping"
+- **WHEN** the user switches off every column
+- **THEN** the user's list still shows each row's ID
 
 ```gherkin
 Given the list of "Section Mapping"
@@ -282,6 +309,11 @@ Each colleague's own choices still apply on top.
 
 #### Scenario: My view becomes the default
 
+- **GIVEN** a System Manager has switched on Remarks in the list of "Section Mapping"
+- **AND** a colleague has never changed their own view of it
+- **WHEN** the System Manager makes their view the default for everyone
+- **THEN** the colleague's list shows Remarks
+
 ```gherkin
 Given a System Manager has switched on Remarks in the list of "Section Mapping"
 And a colleague has never changed their own view of it
@@ -290,6 +322,11 @@ Then the colleague's list shows Remarks
 ```
 
 #### Scenario: A colleague's own choices hold
+
+- **GIVEN** a colleague has switched off Floor and switched on Notes in the list of "Section Mapping"
+- **WHEN** a System Manager makes a default that includes Floor and leaves out Notes
+- **THEN** the colleague's list still shows Notes
+- **AND** the colleague's list still does not show Floor
 
 ```gherkin
 Given a colleague has switched off Floor and switched on Notes in the list of "Section Mapping"

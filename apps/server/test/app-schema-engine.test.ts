@@ -1,9 +1,11 @@
 // #651: the table-engine paths an app upgrade runs. One engine: Admin and app
 // migrations share these, so there is no second schema writer.
 import { describe, expect } from 'vitest'
+import { resolve } from 'node:path'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { provisionApp } from '../src/app-lifecycle'
+import { discoverPackages } from '../src/runtime-packages'
 import { changeColumnType, createTable, deleteTable, renameColumn, renameTable } from '../src/table-engine'
 import { applyMigrations, describeLoss, countLosses, migrationSchema } from '../src/runtime-migrations'
 
@@ -421,5 +423,70 @@ describe('deleteTable for the owning app', () => {
     await shop()
     await sql`insert into installed_app (name, tables) values ('shop', ${sql.json(['shop.supplier', 'shop.line', 'shop.order'])})`
     await expect(deleteTable('shop.order', 'Administrator', { ownerApp: 'other' })).rejects.toThrow(/belongs to shop/)
+  })
+})
+
+describe('loss preview uses installed ownership', () => {
+  test('a foreign Table aborts the preview without retaining earlier steps', async ({ admin }) => {
+    await discoverPackages([resolve('../..', 'test-apps/fixtures/evolve-v1')])
+    await admin.post('/api/install_app', { name: 'evolve' })
+    await admin.post('/api/save_row', { table: 'evolve.item', row: { row_id: 'i1', title: 'Keep this item', qty: 3 } })
+    const before = await sql`select tables, migration_ledger from installed_app where name = 'evolve'`
+    const migration = step([
+      { kind: 'addTable', table: { name: 'evolve.audit', label: 'Audit', columns: [{ column_name: 'note', label: 'Note', column_type: 'Text' }] } },
+      { kind: 'dropTable', table: { name: 'Person', label: 'Person', columns: [{ column_name: 'full_name', column_type: 'Data' }] }, destructive: true },
+    ])
+    await expect(countLosses('evolve', [migration])).rejects.toMatchObject({
+      type: 'ValidationError',
+      message: "dropTable Person: Person is not one of evolve's Tables here; restore the app's metadata before retrying",
+    })
+    expect(await sql`select to_regclass('evolve.audit') as relation`).toEqual([{ relation: null }])
+    expect(await sql`select name from table_def where name = 'evolve.audit'`).toEqual([])
+    expect(await sql`select tables, migration_ledger from installed_app where name = 'evolve'`).toEqual(before)
+    expect(await sql`select row_id, title, qty from evolve.item`).toEqual([{ row_id: 'i1', title: 'Keep this item', qty: 3 }])
+  })
+
+  test('a missing stored Table is refused before any drop is attempted', async ({ admin }) => {
+    await discoverPackages([resolve('../..', 'test-apps/fixtures/evolve-v1')])
+    await admin.post('/api/install_app', { name: 'evolve' })
+    const before = await sql`select tables, migration_ledger from installed_app where name = 'evolve'`
+    await expect(countLosses('evolve', [step([
+      { kind: 'dropTable', table: { name: 'evolve.absent', label: 'Absent', columns: [{ column_name: 'note', column_type: 'Text' }] }, destructive: true },
+    ])])).rejects.toMatchObject({
+      type: 'ValidationError',
+      message: "dropTable evolve.absent: evolve.absent is not one of evolve's Tables here; restore the app's metadata before retrying",
+    })
+    expect(await sql`select tables, migration_ledger from installed_app where name = 'evolve'`).toEqual(before)
+  })
+
+  test('an overflowing Currency backfill is reported without retaining its column', async ({ admin }) => {
+    await discoverPackages([resolve('../..', 'test-apps/fixtures/evolve-v1')])
+    await admin.post('/api/install_app', { name: 'evolve' })
+    await admin.post('/api/save_row', { table: 'evolve.item', row: { row_id: 'i1', title: 'Keep this item', qty: 3 } })
+    const before = await sql`select tables, migration_ledger from installed_app where name = 'evolve'`
+    await expect(countLosses('evolve', [step([
+      { kind: 'addColumn', table: 'evolve.item', column: { column_name: 'cost', label: 'Cost', column_type: 'Currency' }, backfill: 1e20 },
+    ])])).rejects.toMatchObject({
+      type: 'ValidationError', message: 'The upgrade would fail here: numeric field overflow',
+    })
+    expect(await sql`select column_name from column_def where parent = 'evolve.item' and column_name = 'cost'`).toEqual([])
+    expect(await sql`select column_name from information_schema.columns where table_schema = 'evolve' and table_name = 'item' and column_name = 'cost'`).toEqual([])
+    expect(await sql`select tables, migration_ledger from installed_app where name = 'evolve'`).toEqual(before)
+    expect(await sql`select row_id, title, qty from evolve.item`).toEqual([{ row_id: 'i1', title: 'Keep this item', qty: 3 }])
+  })
+
+  test('dropping a layout column reports no stored values', async ({ admin }) => {
+    await discoverPackages([resolve('../..', 'test-apps/fixtures/evolve-v1')])
+    await admin.post('/api/install_app', { name: 'evolve' })
+    await admin.post('/api/save_row', { table: 'evolve.item', row: { row_id: 'i1', title: 'Keep this item', qty: 3 } })
+    const section = { column_name: 'details', label: 'Details', column_type: 'Section Break' }
+    const migration = step([
+      { kind: 'addColumn', table: 'evolve.item', column: section },
+      { kind: 'dropColumn', table: 'evolve.item', column: section, destructive: true },
+    ])
+    expect((await countLosses('evolve', [migration])).map(describeLoss))
+      .toEqual(['prune #2 dropColumn evolve.item.details: 0 values'])
+    expect(await sql`select column_name from column_def where parent = 'evolve.item' and column_name = 'details'`).toEqual([])
+    expect(await sql`select row_id, title, qty from evolve.item`).toEqual([{ row_id: 'i1', title: 'Keep this item', qty: 3 }])
   })
 })

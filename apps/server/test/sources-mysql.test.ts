@@ -8,6 +8,7 @@
 // Needs a running MySQL and MYSQL_TEST_URL (e.g. mysql://root@127.0.0.1:3306
 // — no database path; the suite creates/drops ext_mysql itself). Without the
 // variable the whole file skips: CI and checkouts without MySQL stay green.
+import { createServer, connect, type Socket } from 'node:net'
 import { afterAll, beforeAll, describe, expect, vi } from 'vitest'
 import mysql from 'mysql2/promise'
 import { test, patchDoc } from './pg-test'
@@ -93,6 +94,8 @@ beforeAll(async () => {
       id int auto_increment primary key,
       flag tinyint(1),
       small tinyint,
+      small_integer smallint,
+      medium_integer mediumint,
       big bigint,
       price decimal(8,2),
       ratio float,
@@ -104,10 +107,19 @@ beforeAll(async () => {
       kind enum('a','b'),
       picks set('x','y'),
       code varchar(20),
+      short_limit varchar(140),
+      over_limit varchar(141),
       story varchar(300),
+      wide_initial char(141),
       body text,
+      brief_text tinytext,
+      medium_text mediumtext,
+      long_text longtext,
       yr year,
       initial char(1),
+      duration time,
+      fixed_bytes binary(4),
+      variable_bytes varbinary(16),
       raw blob
     )`)
   await cli.query(`
@@ -605,6 +617,8 @@ describe.skipIf(!MYSQL_URL)('mysql: column types and browsing', () => {
       id: 'Int',
       flag: 'Check',
       small: 'Int',
+      small_integer: 'Int',
+      medium_integer: 'Int',
       big: 'Int',
       price: 'Float',
       ratio: 'Float',
@@ -616,11 +630,41 @@ describe.skipIf(!MYSQL_URL)('mysql: column types and browsing', () => {
       kind: 'Data',
       picks: 'Data',
       code: 'Data',
+      short_limit: 'Data',
+      over_limit: 'Text',
       story: 'Text',
+      wide_initial: 'Text',
       body: 'Text',
+      brief_text: 'Text',
+      medium_text: 'Text',
+      long_text: 'Text',
       yr: 'Int',
       initial: 'Data',
+      duration: 'Text',
+      fixed_bytes: 'Text',
+      variable_bytes: 'Text',
       raw: 'Text',
+    })
+  })
+
+  test('introspection distinguishes nullable columns, explicit defaults and generated keys', async () => {
+    const tables = await mysqlDriver.introspect(bindFor('tenant', 'id').source, 'ext_mysql')
+    const tenant = tables.find((t) => t.table === 'tenant')!
+    expect(tenant.columns.find((c) => c.name === 'id')).toMatchObject({
+      is_pk: true, nullable: false, has_default: true, max_length: null,
+    })
+    expect(tenant.columns.find((c) => c.name === 'slug')).toMatchObject({
+      is_pk: false, nullable: false, has_default: false, max_length: 100,
+    })
+    expect(tenant.columns.find((c) => c.name === 'active')).toMatchObject({
+      nullable: false, has_default: true, column_type: 'Check',
+    })
+    expect(tenant.columns.find((c) => c.name === 'plan')).toMatchObject({
+      nullable: true, has_default: false, max_length: 50, references: null,
+    })
+    const nokey = tables.find((t) => t.table === 'nokey')!
+    expect(nokey.columns.find((c) => c.name === 'code')).toMatchObject({
+      is_pk: true, nullable: false, has_default: true,
     })
   })
 
@@ -688,6 +732,41 @@ describe.skipIf(!MYSQL_URL)('mysql: filtering rows', () => {
     }
   })
 
+  test('null groups retain their counts and empty updates distinguish an existing row from a missing one', async () => {
+    const bind = bindFor('plain', 'id')
+    const row = await mysqlDriver.insert(bind, { note: 'null-group', qty: null }, null)
+    const filters = [{ column: 'id', op: '=' as const, value: row.id }]
+    try {
+      expect(await mysqlDriver.groupCount(bind, 'qty', filters)).toEqual([{ label: '', value: 1 }])
+      expect(await mysqlDriver.update(bind, String(row.id), {}, null)).toEqual(row)
+      expect(await mysqlDriver.remove(bind, String(row.id), null)).toBeUndefined()
+      expect(await mysqlDriver.update(bind, String(row.id), {}, null)).toBe('missing')
+      const [persisted] = await cli.query('select * from ext_mysql.plain where id = ?', [row.id])
+      expect(persisted).toEqual([])
+    } finally {
+      await cli.query('delete from ext_mysql.plain where id = ?', [row.id])
+    }
+  })
+
+  test('non-list filter values use empty-set semantics rather than becoming SQL or scalar membership', async () => {
+    const bind = bindFor('plain', 'id')
+    const row = await mysqlDriver.insert(bind, { note: 'unset-membership', qty: null }, null)
+    try {
+      const [before] = await cli.query('select * from ext_mysql.plain order by id')
+      const total = await mysqlDriver.count(bind, [])
+      expect(await mysqlDriver.count(bind, [{ column: 'qty', op: 'in', value: '1) or true --' }])).toBe(0)
+      expect(await mysqlDriver.count(bind, [{ column: 'qty', op: 'not in', value: null }])).toBe(total)
+      expect(await mysqlDriver.count(bind, [
+        { column: 'id', op: '=', value: row.id },
+        { column: 'qty', op: 'in_or_null', value: null },
+      ])).toBe(1)
+      const [after] = await cli.query('select * from ext_mysql.plain order by id')
+      expect(after).toEqual(before)
+    } finally {
+      await cli.query('delete from ext_mysql.plain where id = ?', [row.id])
+    }
+  })
+
   test('rows can be counted by a column, read straight from the source', async ({ admin }) => {
     await makeSource(admin)
     await reflectTenant(admin)
@@ -707,6 +786,63 @@ describe.skipIf(!MYSQL_URL)('mysql: filtering rows', () => {
 
 describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
   afterAll(() => mysqlDriver.dispose('ext-mysql-direct'))
+
+  test('typed values round-trip through a generated key without losing precision, UTC dates or binary bytes', async () => {
+    const bind = bindFor('kitchen', 'id')
+    const bytes = Buffer.from([0, 39, 92, 255])
+    const row = await mysqlDriver.insert(bind, {
+      flag: 1, small: -128, small_integer: 32767, medium_integer: 8388607,
+      big: '9007199254740993', price: '1234.56', ratio: 1.5, precise_ratio: 0.125,
+      born: new Date('2026-01-02T00:00:00.000Z'),
+      seen: new Date('2026-01-02T03:04:05.000Z'),
+      stamped: new Date('2026-01-02T03:04:05.000Z'),
+      meta: JSON.stringify({ quote: "O'Reilly", nested: [true, null, 'λ'] }),
+      kind: 'b', picks: 'x,y', code: "O'Reilly\\code",
+      short_limit: 's'.repeat(140), over_limit: 't'.repeat(141),
+      duration: '25:04:05', fixed_bytes: bytes, variable_bytes: bytes, raw: bytes,
+    }, null)
+    try {
+      expect(row).toMatchObject({
+        big: '9007199254740993', price: '1234.56', ratio: 1.5, precise_ratio: 0.125,
+        born: new Date('2026-01-02T00:00:00.000Z'),
+        seen: new Date('2026-01-02T03:04:05.000Z'),
+        stamped: new Date('2026-01-02T03:04:05.000Z'),
+        meta: { quote: "O'Reilly", nested: [true, null, 'λ'] },
+        kind: 'b', picks: 'x,y', code: "O'Reilly\\code",
+        short_limit: 's'.repeat(140), over_limit: 't'.repeat(141),
+        duration: '25:04:05', fixed_bytes: bytes, variable_bytes: bytes, raw: bytes,
+      })
+      expect(await mysqlDriver.getDoc(bind, String(row.id))).toEqual(row)
+      const saved = await mysqlDriver.update(bind, String(row.id), { meta: '{"saved":true}', flag: 0 }, null)
+      expect(saved).toMatchObject({ meta: { saved: true }, flag: 0, big: '9007199254740993' })
+      const [persisted] = await cli.query(
+        'select cast(big as char) as big, meta, flag, hex(raw) as bytes from ext_mysql.kitchen where id = ?',
+        [row.id],
+      )
+      expect(persisted).toEqual([{ big: '9007199254740993', meta: { saved: true }, flag: 0, bytes: '00275CFF' }])
+    } finally {
+      await cli.query('delete from ext_mysql.kitchen where id = ?', [row.id])
+    }
+  })
+
+  test('invalid enum and datetime updates name the refused column and preserve the original row', async () => {
+    const bind = bindFor('kitchen', 'id')
+    const row = await mysqlDriver.insert(bind, { kind: 'a', seen: '2026-01-02 03:04:05', code: 'original' }, null)
+    try {
+      for (const [column, value, message] of [
+        ['kind', 'not-an-enum-member', /Data truncated for column 'kind'/],
+        ['seen', 'not-a-datetime', /Incorrect datetime value/],
+      ] as const) {
+        await expect(mysqlDriver.update(bind, String(row.id), { [column]: value, code: 'must-roll-back' }, null))
+          .rejects.toMatchObject({ code: '22003', column_name: column, message: expect.stringMatching(message) })
+        expect(await mysqlDriver.getDoc(bind, String(row.id))).toEqual(row)
+        const [persisted] = await cli.query('select * from ext_mysql.kitchen where id = ?', [row.id])
+        expect(persisted).toEqual([row])
+      }
+    } finally {
+      await cli.query('delete from ext_mysql.kitchen where id = ?', [row.id])
+    }
+  })
 
   test('creating a row with no values lets the database fill everything in', async ({ admin }) => {
     await makeSource(admin)
@@ -1188,7 +1324,231 @@ describe.skipIf(!MYSQL_URL)('mysql: refused saves (#154)', () => {
   })
 })
 
+// Forward real MySQL packets, including authentication and all responses.
+// Only the armed transaction command is withheld: losing the connection
+// BEFORE COMMIT reaches MySQL has an unambiguous rollback outcome (unlike
+// dropping its reply, which cannot tell the caller whether it committed).
+async function transactionFaultProxy() {
+  const upstream = new URL(MYSQL_URL!)
+  const host = upstream.hostname
+  const port = Number(upstream.port || 3306)
+  const sockets = new Set<Socket>()
+  let armed: string | null = null
+  let interrupted: string | null = null
+  const server = createServer((client) => {
+    const source = connect(port, host)
+    for (const socket of [client, source]) {
+      socket.setNoDelay(true)
+      sockets.add(socket)
+      socket.on('close', () => sockets.delete(socket))
+    }
+    const disconnect = () => { client.destroy(); source.destroy() }
+    client.on('error', disconnect)
+    source.on('error', disconnect)
+    client.on('end', () => source.end())
+    source.on('end', () => client.end())
+    source.pipe(client)
+    let pending = Buffer.alloc(0)
+    client.on('data', (chunk: Buffer) => {
+      // TCP may split a header/payload or coalesce several packets. Frame
+      // before inspecting; never treat arbitrary TCP chunks as SQL.
+      pending = Buffer.concat([pending, chunk])
+      while (pending.length >= 4) {
+        const size = pending.readUIntLE(0, 3) + 4
+        if (pending.length < size) return
+        const packet = pending.subarray(0, size)
+        pending = pending.subarray(size)
+        // COM_QUERY (0x03), sequence 0; handshake/auth packets are not SQL.
+        // mysql2 negotiates CLIENT_QUERY_ATTRIBUTES with MySQL 8: its
+        // attribute-free queries prefix SQL with parameter_count=0 and
+        // parameter_set_count=1. Older servers send SQL immediately.
+        const sqlOffset = packet[5] === 0 && packet[6] === 1 ? 7 : 5
+        const sql = packet[3] === 0 && packet[4] === 3
+          ? packet.subarray(sqlOffset).toString('utf8').trim().toUpperCase()
+          : null
+        if (armed !== null && sql === armed) {
+          interrupted = sql
+          armed = null
+          disconnect()
+          return
+        }
+        source.write(packet)
+      }
+    })
+  })
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  const address = server.address() as { port: number }
+  upstream.hostname = '127.0.0.1'
+  upstream.port = String(address.port)
+  upstream.pathname = '/ext_mysql'
+  // This packet inspector is deliberately plaintext, not a TLS interceptor.
+  upstream.search = ''
+  return {
+    url: upstream.toString(),
+    arm(command: string) { armed = command },
+    get interrupted() { return interrupted },
+    async close() {
+      for (const socket of sockets) socket.destroy()
+      await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()))
+    },
+  }
+}
+
+describe.skipIf(!MYSQL_URL)('mysql: transaction transport failures', () => {
+  test('disposing a pool with a blocked read survives connection loss and the next read opens a new pool', async ({ admin }) => {
+    await makeSource(admin, { pool_max: 1 })
+    await reflectTenant(admin)
+    const path = '/api/table/Ext%20Tenant/1'
+    const before = await admin.get(path)
+    const [persisted] = await cli.query('select * from ext_mysql.tenant order by id')
+    let pending: Promise<Response> | undefined
+    await cli.query('LOCK TABLES ext_mysql.tenant WRITE')
+    try {
+      pending = admin.fetch(path)
+      let blockedId: number | undefined
+      // Observe the real source query waiting on our table lock, rather than
+      // guessing how long HTTP/auth/query dispatch takes on this machine.
+      await expect.poll(async () => {
+        const [processes] = await cli.query('SHOW FULL PROCESSLIST')
+        const blocked = (processes as { Id: number; db: string; State: string; Info: string | null }[])
+          .find((row) => row.db === 'ext_mysql'
+            && /^select \* from `ext_mysql`\.`tenant` where /i.test(row.Info ?? '')
+            && /waiting for .*lock/i.test(row.State))
+        blockedId = blocked?.Id
+        return blockedId ?? 0
+      }, { timeout: 2000 }).toBeGreaterThan(0)
+      // QUIT is now queued behind the blocked SELECT. Killing that exact
+      // session fails both the SELECT and pending QUIT, unlike disposing an
+      // idle pool whose Quit.start acknowledges completion before writing.
+      mysqlDriver.dispose('ext-mysql')
+      await cli.query(`KILL CONNECTION ${Number(blockedId)}`)
+      const response = await pending
+      expect(response.status).toBe(502)
+      expect(await response.json()).toMatchObject({
+        error: { type: 'DataSourceError', message: expect.stringContaining('ext-mysql') },
+      })
+    } finally {
+      await cli.query('UNLOCK TABLES')
+      // Even a failed assertion must not leave an HTTP request in flight
+      // when the SQL Sandbox rolls back the control-side metadata.
+      await pending
+    }
+    expect(await admin.get(path)).toEqual(before)
+    const [after] = await cli.query('select * from ext_mysql.tenant order by id')
+    expect(after).toEqual(persisted)
+  })
+
+  for (const command of ['START TRANSACTION', 'COMMIT', 'ROLLBACK']) {
+    test(`disconnecting before ${command} leaves no write and the next request recovers`, async ({ admin }) => {
+      const proxy = await transactionFaultProxy()
+      const env = 'EXT_MYSQL_TRANSACTION_FAULT_URL'
+      process.env[env] = proxy.url
+      const slug = `transport-${command.toLowerCase().replaceAll(' ', '-')}`
+      try {
+        await makeSource(admin, { url_env: env, pool_max: 1 })
+        await reflectTenant(admin)
+        const [before] = await cli.query("select plan from ext_mysql.tenant where slug = 'acme'")
+        proxy.arm(command)
+        const response = await admin.fetch('/api/table/Ext%20Tenant', {
+          method: 'POST',
+          // A real unique violation makes the driver issue ROLLBACK. Its
+          // original field error must survive even when rollback loses TCP.
+          body: JSON.stringify({ slug: command === 'ROLLBACK' ? 'acme' : slug }),
+        })
+        expect(proxy.interrupted).toBe(command)
+        expect(response.status).toBe(command === 'ROLLBACK' ? 417 : 502)
+        const body = await response.json()
+        if (command === 'ROLLBACK') {
+          expect(body).toMatchObject({ error: { type: 'ValidationError', fields: { slug: expect.stringContaining('unique') } } })
+        } else {
+          expect(body).toMatchObject({ error: { type: 'DataSourceError', message: expect.stringContaining('ext-mysql') } })
+        }
+        // Direct SQL is outside the proxy and the control-side sandbox.
+        const [absent] = await cli.query('select slug from ext_mysql.tenant where slug = ?', [slug])
+        expect(absent).toEqual([])
+        const [original] = await cli.query("select plan from ext_mysql.tenant where slug = 'acme'")
+        expect(original).toEqual(before)
+        // With one pooled connection, a subsequent successful write proves
+        // the failed connection was not left wedged in a transaction.
+        const recovered = await admin.post<{ slug: string }>('/api/table/Ext%20Tenant', { slug })
+        expect(recovered.slug).toBe(slug)
+        const [persisted] = await cli.query('select slug from ext_mysql.tenant where slug = ?', [slug])
+        expect(persisted).toEqual([{ slug }])
+      } finally {
+        await mysqlDriver.dispose('ext-mysql')
+        invalidateSources('ext-mysql')
+        await proxy.close()
+        delete process.env[env]
+        await cli.query('delete from ext_mysql.tenant where slug = ?', [slug])
+      }
+    })
+  }
+})
+
 describe.skipIf(!MYSQL_URL)('mysql: connection settings and failures', () => {
+  // An explicitly nonstandard test server cannot exercise the 3306 default.
+  test.skipIf(Boolean(MYSQL_URL && !['', '3306'].includes(new URL(MYSQL_URL).port)))(
+    'a URL without a port connects to MySQL on its standard port', async () => {
+      const url = new URL(MYSQL_URL!)
+      url.port = ''
+      url.pathname = '/ext_mysql'
+      const env = 'EXT_MYSQL_DEFAULT_PORT_URL'
+      process.env[env] = url.toString()
+      const bind = bindFor('plain', 'id')
+      bind.source = { ...bind.source, name: 'mysql-default-port', url_env: env }
+      try {
+        await mysqlDriver.test(bind.source)
+        const [rows] = await cli.query("select * from ext_mysql.plain where note = 'alpha'")
+        const original = (rows as { id: number; note: string; qty: number }[])[0]
+        expect(await mysqlDriver.getDoc(bind, String(original.id))).toEqual(original)
+      } finally {
+        mysqlDriver.dispose(bind.source.name)
+        delete process.env[env]
+      }
+    },
+  )
+
+  test('a source column removed after reflection gives a named source error and leaves its other data intact', async ({ admin }) => {
+    await cli.query('create table ext_mysql.schema_drift (id int primary key, note varchar(50), qty int)')
+    try {
+      await cli.query("insert into ext_mysql.schema_drift values (1, 'original', 7)")
+      await makeSource(admin)
+      const name = await reflectOne(admin, 'schema_drift')
+      const path = `/api/table/${encodeURIComponent(name)}/1`
+      expect(await admin.get(path)).toMatchObject({ row_id: '1', note: 'original', qty: 7 })
+      // The source's owner, not the platform, changes this external schema.
+      await cli.query('alter table ext_mysql.schema_drift drop column note')
+      const response = await admin.fetch(path, {
+        method: 'PATCH', body: JSON.stringify({ note: 'cannot-save', qty: 99 }),
+      })
+      expect(response.status).toBe(502)
+      expect(await response.json()).toMatchObject({
+        error: {
+          type: 'DataSourceError',
+          message: expect.stringMatching(/Data source ext-mysql failed: Unknown column 'note'/),
+        },
+      })
+      const [persisted] = await cli.query('select * from ext_mysql.schema_drift')
+      expect(persisted).toEqual([{ id: 1, qty: 7 }])
+    } finally {
+      await cli.query('drop table ext_mysql.schema_drift')
+    }
+  })
+
+  test('the driver preserves a missing configuration error on writes rather than disguising it as a connection failure', async () => {
+    const bind = bindFor('tenant', 'id')
+    bind.source = { ...bind.source, name: 'missing-mysql-configuration', url_env: null }
+    const [before] = await cli.query('select id, slug from ext_mysql.tenant order by slug')
+    await expect(mysqlDriver.insert(bind, { slug: 'must-not-write' }, null)).rejects.toMatchObject({
+      type: 'ValidationError', message: 'Data source missing-mysql-configuration has no url_env configured',
+    })
+    const [after] = await cli.query('select id, slug from ext_mysql.tenant order by slug')
+    expect(after).toEqual(before)
+  })
+
   test('a connected table says the source cannot be reached while other tables keep working', async ({ admin }) => {
     await makeSource(admin)
     await reflectTenant(admin)

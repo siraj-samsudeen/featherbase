@@ -38,16 +38,18 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 Answer `Y` if it asks. It prints nothing when it works.
 
 **3. Install Node and pnpm.** From [nodejs.org/en/download](https://nodejs.org/en/download),
-install **Node 24**, the Windows installer (`.msi`), with the default options. Close
+install **Node 26.13.0 LTS (Lithium)**, the Windows installer (`.msi`), with the default options. Close
 PowerShell and open it again as Administrator, so it finds Node. Check it:
 
 ```powershell
 node --version
 ```
 
-You should see a line starting `v24`. Then switch on pnpm:
+You should see `v26.13.0`. Node 26 does not bundle Corepack, so install it,
+then switch on pnpm (the repository selects its pnpm version):
 
 ```powershell
+npm install --global corepack@0.36.0
 corepack enable
 ```
 
@@ -170,7 +172,7 @@ Step 8 then makes a new one.
 | What you see | What to do |
 |---|---|
 | `running scripts is disabled on this system` | Do step 2, or use Command Prompt instead of PowerShell. |
-| `corepack` is not recognized | You installed Node 25 or newer, which leaves it out. Run `npm install -g corepack` in an Administrator PowerShell, then `corepack enable`. |
+| `corepack` is not recognized | Node 26 leaves it out. Run step 3's `npm install --global corepack@0.36.0` in an Administrator PowerShell, then `corepack enable`. |
 | `corepack enable` says `EPERM` or `operation not permitted` | Its window isn't an Administrator one. See step 1. |
 | `pnpm` is not recognized | Do step 3's `corepack enable`, then open a new PowerShell. |
 | `Can't reach Postgres at 127.0.0.1:5432` | PostgreSQL isn't running. See step 4. |
@@ -184,7 +186,7 @@ other `.sh` scripts are bash, for macOS and Linux; `pnpm dev` does not use them.
 
 ### macOS and Linux
 
-You need [Git](https://git-scm.com/downloads), [Node 24](https://nodejs.org/en/download)
+You need [Git](https://git-scm.com/downloads), [Node 26.13.0 LTS (Lithium)](https://nodejs.org/en/download)
 and PostgreSQL running on this machine (on a Mac, `brew install postgresql@18` then
 `brew services start postgresql@18`; on Linux, your distribution's package).
 
@@ -204,6 +206,7 @@ sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres'"
 Or put your own login in `DATABASE_URL` in `.env.local`. Then:
 
 ```bash
+npm install --global corepack@0.36.0
 corepack enable
 git clone https://github.com/siraj-samsudeen/featherbase.git
 cd featherbase

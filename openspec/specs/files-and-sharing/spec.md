@@ -120,7 +120,11 @@ the meantime.
 
 A file attached to a row SHALL be listed, opened and removed only by someone
 who can open that row, or with whom the row is shared, whatever their access
-to files in general. It SHALL be attached to, or moved onto, a row only by
+to files in general.
+
+#### Normative details for the whole requirement
+
+It SHALL be attached to, or moved onto, a row only by
 someone who can open that row, and taken off its row only by a System
 Manager. A file or comment MAY sit on a file, comment or edit that is itself
 on a row, one level deep and no further. A file attached to a whole table, or to nothing, SHALL follow the

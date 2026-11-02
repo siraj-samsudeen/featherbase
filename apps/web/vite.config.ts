@@ -4,7 +4,7 @@ import { request } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import istanbul from 'vite-plugin-istanbul'
-import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN } from '../../packages/shared/src/app-routes'
+import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN } from '../../packages/shared/src/app-routes.ts'
 
 // Parallel checkouts (git worktrees) each need their own ports: WEB_PORT
 // moves the dev server, API_PORT points the proxy at that checkout's API.

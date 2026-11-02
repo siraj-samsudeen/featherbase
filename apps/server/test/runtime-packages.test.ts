@@ -1,11 +1,11 @@
 import { describe, expect } from 'vitest'
 import { join, resolve } from 'node:path'
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { test as base } from './pg-test'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
 import { taskerClient } from './tasker-client'
-import { discoverPackages } from '../src/runtime-packages'
+import { discoverPackages, findScopeProvider, shippedUpgrades } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
@@ -20,7 +20,232 @@ const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   createUser: async ({ createUser }, use) => use(async options => taskerClient(await createUser(options))),
 })
 
+describe('Rejected runtime artifacts never become applications', () => {
+  type PackageFiles = { root: string; manifest: Record<string, any>; npm: Record<string, any> }
+  type Rejection = { name: string; error: string; change: (files: PackageFiles) => void | Promise<void> }
+  const provider = { name: 'places', tables: ['other.task'] }
+  const actions = { version: 2, tables: ['other.task'], operations: {
+    count: { policy: { kind: 'table' }, authorization: { kind: 'generic' } },
+  } }
+  const serverExports = (body: string) => async ({ root }: PackageFiles) => {
+    await writeFile(resolve(root, 'server.mjs'), `export const platformVersion = '2026-10'\n${body}\n`)
+  }
+  const rejected: Rejection[] = [
+    ...['name', 'version'].map((field): Rejection => ({
+      name: `npm identity lacks ${field}`, error: 'Expected npm package name and version',
+      change: ({ npm }) => { delete npm[field] },
+    })),
+    { name: 'absolute manifest path', error: 'Package paths must be relative',
+      change: ({ root, npm }) => { npm.featherbase = resolve(root, 'featherbase.json') } },
+    { name: 'manifest path points at its root', error: 'Package path escapes its declared root',
+      change: ({ npm }) => { npm.featherbase = '.' } },
+    { name: 'escaping manifest path', error: 'Package path escapes its declared root',
+      change: async ({ root, npm }) => {
+        await cp(resolve(root, 'featherbase.json'), resolve(root, '../outside.json'))
+        npm.featherbase = '../outside.json'
+      } },
+    { name: 'artifact contains a symlink', error: 'Package artifact must not contain symbolic links',
+      change: async ({ root }) => { await symlink('server.mjs', resolve(root, 'linked.mjs')) } },
+    { name: 'duplicate Table declaration', error: 'Duplicate Tables or unknown entryTable',
+      change: ({ manifest }) => { manifest.tables.push(structuredClone(manifest.tables[0])) } },
+    { name: 'entry Table is absent', error: 'Duplicate Tables or unknown entryTable',
+      change: ({ manifest }) => { manifest.entryTable = 'other.absent' } },
+    ...[
+      ['unqualified Table', { name: 'Task' }],
+      ['foreign Table', { name: 'someone.task' }],
+      ['missing Table label', { label: null }],
+      ['system Table', { system: true }],
+      ['external storage', { data_source: 'remote' }],
+    ].map(([name, fields]): Rejection => ({
+      name: String(name), error: 'Package Tables require qualified ownership, label and local storage',
+      change: ({ manifest }) => {
+        Object.assign(manifest.tables[0], fields)
+        // Keep entryTable valid so the ownership/storage guard is reached.
+        manifest.entryTable = manifest.tables[0].name
+      },
+    })),
+    { name: 'client is a file', error: 'Client root is not a directory',
+      change: ({ manifest }) => { manifest.client = 'server.mjs' } },
+    { name: 'absolute client path', error: 'Package paths must be relative',
+      change: ({ root, manifest }) => { manifest.client = resolve(root, 'client') } },
+    { name: 'escaping client path', error: 'Package path escapes its declared root',
+      change: ({ manifest }) => { manifest.client = '..' } },
+    { name: 'provider has no server', error: 'A scope provider requires a server module',
+      change: ({ manifest }) => { manifest.scopeProvider = provider; delete manifest.server } },
+    { name: 'provider reads an unmarked Table', error: 'A scope provider reads only Tables marked decides_scope',
+      change: ({ manifest }) => { manifest.scopeProvider = provider } },
+    { name: 'provider reads a Table containing Sub-tables', error: 'A scope provider cannot read Tables with Sub-tables',
+      change: ({ manifest }) => {
+        manifest.scopeProvider = provider
+        manifest.tables[0].decides_scope = true
+        manifest.tables.push({ ...structuredClone(manifest.tables[0]), name: 'other.line', kind: 'sub_table' })
+        manifest.tables[0].columns.push({ column_name: 'lines', column_type: 'Sub-table', row_table: 'other.line' })
+      } },
+    { name: 'provider handler is absent', error: 'Package handlers and authorization callbacks must match declared names',
+      change: ({ manifest }) => {
+        manifest.scopeProvider = provider
+        manifest.tables[0].decides_scope = true
+      } },
+    { name: 'operations have no server', error: 'Declared operations require a server module',
+      change: ({ manifest }) => { manifest.actions = actions; delete manifest.server } },
+    { name: 'reads have no server', error: 'Declared operations require a server module',
+      change: ({ manifest }) => { manifest.reads = { ...actions, version: 1 }; delete manifest.server } },
+    { name: 'shared action Table lacks a permission', error: 'Shared action Tables require declared permissions; other apps are not allowed',
+      change: ({ manifest }) => { manifest.actions = { ...actions, tables: ['Comment'] } } },
+    { name: 'action names another app despite a permission', error: 'Shared action Tables require declared permissions; other apps are not allowed',
+      change: ({ manifest }) => {
+        manifest.actions = { ...actions, tables: ['tasker.task'] }
+        manifest.permissions.push({ table: 'tasker.task', role: 'All', can_read: true })
+      } },
+    { name: 'absolute server path', error: 'Package paths must be relative',
+      change: ({ root, manifest }) => { manifest.server = resolve(root, 'server.mjs') } },
+    { name: 'escaping server path', error: 'Package path escapes its declared root',
+      change: ({ manifest }) => { manifest.server = '..' } },
+    { name: 'uncompiled server module', error: 'Server module must be compiled JavaScript',
+      change: async ({ root, manifest }) => {
+        await cp(resolve(root, 'server.mjs'), resolve(root, 'server.ts'))
+        manifest.server = 'server.ts'
+      } },
+    { name: 'handlers are an array', error: 'Expected named package functions', change: serverExports('export const actions = []') },
+    { name: 'handlers are a scalar', error: 'Expected named package functions', change: serverExports('export const actions = 37') },
+    { name: 'undeclared handler', error: 'Package handlers and authorization callbacks must match declared names',
+      change: serverExports('export const actions = { count() {} }') },
+    { name: 'declared handler is absent', error: 'Package handlers and authorization callbacks must match declared names',
+      change: ({ manifest }) => { manifest.actions = actions } },
+    { name: 'declared handler is not callable', error: 'Package handlers and authorization callbacks must match declared names',
+      change: async (files) => {
+        files.manifest.actions = actions
+        await serverExports('export const actions = { count: 37 }')(files)
+      } },
+    { name: 'handler uses the wrong declared name', error: 'Package handlers and authorization callbacks must match declared names',
+      change: async (files) => {
+        files.manifest.actions = actions
+        await serverExports('export const actions = { different() {} }')(files)
+      } },
+    { name: 'validator targets a foreign Table', error: 'Validators must target owned Tables',
+      change: serverExports("export const validators = { 'tasker.task'() {} }") },
+    { name: 'validator is not callable', error: 'Validators must target owned Tables',
+      change: serverExports("export const validators = { 'other.task': 37 }") },
+  ]
+
+  test.for(rejected)('$name is refused before registration', async ({ change, error }, { admin }) => {
+    const directory = await mkdtemp(resolve('test/.runtime-rejected-'))
+    const root = resolve(directory, 'package')
+    try {
+      await cp(resolve('../..', 'test-apps/other'), root, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(root, 'featherbase.json'), 'utf8'))
+      const npm = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
+      await change({ root, manifest, npm })
+      await writeFile(resolve(root, 'featherbase.json'), JSON.stringify(manifest))
+      await writeFile(resolve(root, 'package.json'), JSON.stringify(npm))
+      expect(await discoverPackages([root])).toEqual([{ path: root, error }])
+      const status = await admin.get<{ available: string[]; installed: unknown[]; versions: unknown[]; actions: unknown[]; failures: unknown[] }>('/api/apps')
+      expect(status.available).not.toContain('other')
+      expect(status.installed).toEqual([])
+      expect(status.versions).toEqual([])
+      expect(status.actions).toEqual([])
+      // HTTP diagnostics deliberately hide operator paths and module details.
+      expect(status.failures).toEqual([{ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' }])
+      await expect(admin.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({
+        status: 417, type: 'ValidationError', message: '417 ValidationError: Unknown app: other', fields: { name: 'Not registered' },
+      })
+      expect(await admin.get('/api/app_catalog')).toEqual([])
+      expect(await findScopeProvider()).toBeUndefined()
+      expect(await sql`select name from installed_app where name = 'other'`).toEqual([])
+      expect(await sql`select name from table_def where name = 'other.task'`).toEqual([])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('identical artifacts on multiple paths register one installable version', async ({ admin }) => {
+    const directory = await mkdtemp(resolve('test/.runtime-duplicates-'))
+    try {
+      const first = resolve(directory, 'first')
+      const second = resolve(directory, 'second')
+      for (const root of [first, second]) await cp(resolve('../..', 'test-apps/other'), root, { recursive: true })
+      expect(await discoverPackages([first, second, first])).toEqual([])
+      const status = await admin.get<{ versions: { name: string; version: string; digest: string }[] }>('/api/apps')
+      expect(status.versions).toEqual([{ name: 'other', version: '0.0.1', digest: expect.stringMatching(/^[a-f0-9]{64}$/) }])
+      await admin.post('/api/install_app', { name: 'other' })
+      expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'once', quantity: 13 } }))
+        .toMatchObject({ validation_runs: 1 })
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('conflicting artifacts quarantine every copy of the version', async ({ admin }) => {
+    const directory = await mkdtemp(resolve('test/.runtime-conflicts-'))
+    try {
+      const roots = ['first', 'changed', 'third'].map(name => resolve(directory, name))
+      for (const root of roots) await cp(resolve('../..', 'test-apps/other'), root, { recursive: true })
+      await writeFile(resolve(roots[1], 'extra.txt'), 'different immutable artifact')
+      expect(await discoverPackages(roots)).toEqual(roots.slice(1).map(path => ({
+        path, error: 'Duplicate different artifacts for one package version',
+      })))
+      const status = await admin.get<{ available: string[]; versions: unknown[]; installed: unknown[]; actions: unknown[] }>('/api/apps')
+      expect(status.available).not.toContain('other')
+      expect(status.versions).toEqual([])
+      expect(status.installed).toEqual([])
+      expect(status.actions).toEqual([])
+      await expect(admin.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({
+        status: 417, type: 'ValidationError', message: '417 ValidationError: Unknown app: other', fields: { name: 'Not registered' },
+      })
+      expect(await findScopeProvider()).toBeUndefined()
+      expect(await sql`select name from table_def where name = 'other.task'`).toEqual([])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test.for([
+    { name: 'changed', error: 'Package artifact changed; restore immutable files and restart before previewing again' },
+    { name: 'missing', error: 'Package artifact is missing; restore the exact version and restart' },
+    { name: 'symlinked', error: 'Package artifact must not contain symbolic links' },
+  ])('a $name discovered artifact cannot be installed', async ({ name, error }, { admin }) => {
+    const root = await mkdtemp(resolve('test/.runtime-immutable-'))
+    try {
+      await cp(resolve('../..', 'test-apps/other'), root, { recursive: true })
+      expect(await discoverPackages([root])).toEqual([])
+      if (name === 'changed') await writeFile(resolve(root, 'extra.txt'), 'post-discovery change')
+      else if (name === 'missing') await rm(root, { recursive: true })
+      else await symlink('server.mjs', resolve(root, 'linked.mjs'))
+      await expect(admin.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({
+        status: 417, type: 'ValidationError', message: `417 ValidationError: ${error}`,
+      })
+      expect(await sql`select name from installed_app where name = 'other'`).toEqual([])
+      expect(await sql`select name from table_def where name = 'other.task'`).toEqual([])
+      expect(await admin.get('/api/app_catalog')).toEqual([])
+      expect(await findScopeProvider()).toBeUndefined()
+    } finally { await rm(root, { recursive: true, force: true }) }
+  })
+})
+
 describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
+  test('shipped upgrades choose 1.10 over 1.9 regardless of artifact discovery order', async ({ admin }) => {
+    const directory = await mkdtemp(resolve('test/.runtime-newest-'))
+    try {
+      const installed = resolve(directory, 'installed')
+      await cp(resolve('../..', 'test-apps/other'), installed, { recursive: true })
+      expect(await discoverPackages([installed])).toEqual([])
+      await admin.post('/api/install_app', { name: 'other' })
+      const versions = ['1.9.0', '1.10.0']
+      const roots = versions.map(version => resolve(directory, version))
+      const migrations = versions.map((version, index) => ({
+        id: `release_${index + 1}`, fromVersion: index === 0 ? '0.0.1' : versions[index - 1],
+        toVersion: version, operations: [],
+      }))
+      for (const [index, root] of roots.entries()) {
+        await cp(installed, root, { recursive: true })
+        const npm = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
+        const manifest = JSON.parse(await readFile(resolve(root, 'featherbase.json'), 'utf8'))
+        await writeFile(resolve(root, 'package.json'), JSON.stringify({ ...npm, version: versions[index] }))
+        await writeFile(resolve(root, 'featherbase.json'), JSON.stringify({ ...manifest, migrations: migrations.slice(0, index + 1) }))
+      }
+      const rows = await sql`select name, package_version, migration_ledger from installed_app where name = 'other'`
+      const expected = [{ name: 'other', from: '0.0.1', to: '1.10.0', ownsClient: true, migrations }]
+      expect(await shippedUpgrades(rows, roots)).toEqual(expected)
+      expect(await shippedUpgrades(rows, [...roots].reverse())).toEqual(expected)
+      expect(await sql`select package_version, migration_ledger from installed_app where name = 'other'`)
+        .toEqual([{ package_version: '0.0.1', migration_ledger: [] }])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   test('PKG-R6: legacy human deep links redirect to Featherbase while technical roots remain reserved', async ({ api }) => {
     const old = await api.fetch('/admin/Tasker%20Task/one?view=board')
     expect(old.status).toBe(308)

@@ -14,9 +14,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import libCoverage from 'istanbul-lib-coverage'
-import libSourceMaps from 'istanbul-lib-source-maps'
-import ts from 'typescript'
+// Match Vitest's remapper: upstream drops unmapped branch arms, shrinking the
+// denominator when browser counters are added to the component baseline.
+import * as libCoverage from '@vitest/istanbul-lib-coverage'
+import * as libSourceMaps from '@vitest/istanbul-lib-source-maps'
+// TypeScript 7 ships no JavaScript API; Vite's own parser (oxc) reads the source.
+import { parseAst } from 'vite'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const input = path.join(root, '.nyc_output')
@@ -52,7 +55,17 @@ for (const f of files.sort()) {
   const map = await libSourceMaps.createSourceMapStore().transformCoverage(libCoverage.createCoverageMap(raw))
   // Browser-only entry points belong in the denominator too.
   map.filter((file) => file.startsWith(src) && !/\.test\.[tj]sx?$/.test(file) && !file.endsWith('.d.ts'))
-  merged.merge(normalise(map))
+  normalise(map)
+  for (const file of map.files()) {
+    if (!merged.files().includes(file)) continue
+    const previous = merged.fileCoverageFor(file).data
+    const current = map.fileCoverageFor(file).data
+    for (const kind of ['statementMap', 'fnMap', 'branchMap']) {
+      if (JSON.stringify(Object.values(previous[kind])) !== JSON.stringify(Object.values(current[kind])))
+        throw new Error(`Incompatible ${kind} for ${file} in ${f}; rerun both suites with the same Istanbul instrumentation`)
+    }
+  }
+  merged.merge(map)
   console.log(`${f}: ${map.files().length} files`)
 }
 
@@ -64,10 +77,13 @@ const missing = fs.readdirSync(src, { recursive: true })
   .map((file) => path.join(src, file))
   .filter((file) => !merged.files().includes(file))
   .filter((file) => {
-    const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest)
-    return source.statements.some((statement) => !(
-      ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement) ||
-      ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement) || ts.isEmptyStatement(statement)
+    const types = new Set(['TSInterfaceDeclaration', 'TSTypeAliasDeclaration'])
+    const ast = parseAst(fs.readFileSync(file, 'utf8'), { lang: file.endsWith('.tsx') ? 'tsx' : 'ts' })
+    return ast.body.some((statement) => !(
+      statement.type === 'ImportDeclaration' || statement.type === 'ExportAllDeclaration' ||
+      statement.type === 'EmptyStatement' || types.has(statement.type) ||
+      // `export { … }` re-exports; `export type`/`export interface` declare only types.
+      (statement.type === 'ExportNamedDeclaration' && (!statement.declaration || types.has(statement.declaration.type)))
     ))
   })
 if (missing.length) throw new Error(`coverage is missing executable source:\n${missing.join('\n')}`)

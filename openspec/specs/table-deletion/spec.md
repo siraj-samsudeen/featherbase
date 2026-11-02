@@ -63,7 +63,11 @@ SHALL be refused outright, with no way around it.
 
 Deletion SHALL sweep every real link to the table anywhere in the platform —
 permissions, navigation links, and the like — in the same step as the table
-itself. The table's history SHALL survive it: its change history, import
+itself.
+
+#### Normative details for the whole requirement
+
+The table's history SHALL survive it: its change history, import
 history, queued email and notifications keep naming the deleted table and can
 still be read. A place that merely mentions the table's name in passing, such
 as an activity log entry, is not a link and SHALL survive as a historical

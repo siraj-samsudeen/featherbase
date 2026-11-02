@@ -24,9 +24,10 @@ ARG FINAL_STAGE=${FEATHERBASE_INSTANCE:+instance-image}
 # deployment" in docs/DEPLOY.md.
 
 # ---- Stage 1: build the SPA -------------------------------------------------
-FROM node:22-slim AS web-build
+FROM node:26.13.0-slim AS web-build
 WORKDIR /app
-RUN corepack enable
+# Node 26 no longer bundles Corepack; package.json still selects pnpm.
+RUN npm install --global corepack@0.36.0 && corepack enable
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -42,7 +43,7 @@ COPY apps/web apps/web
 RUN pnpm --filter web build
 
 # ---- Stage 2: build independently packaged runtime apps --------------------
-FROM node:22-slim AS tasker-build
+FROM node:26.13.0-slim AS tasker-build
 WORKDIR /app/example-apps/tasker
 COPY example-apps/tasker/package.json example-apps/tasker/package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -60,9 +61,9 @@ RUN npm run build
 # "Building a client image"). Build it alone with:
 #
 #   docker build --target platform -f apps/server/Dockerfile -t featherbase-platform .
-FROM node:22-slim AS platform
+FROM node:26.13.0-slim AS platform
 WORKDIR /app
-RUN corepack enable
+RUN npm install --global corepack@0.36.0 && corepack enable
 # Native TLS clients (including the MotherDuck DuckDB extension) use the
 # system trust store rather than Node's bundled roots. Keep its CA bundle in
 # the final image, not only in the build stage.
@@ -87,7 +88,7 @@ CMD ["pnpm", "--filter", "server", "start"]
 
 # ---- Stage 4: a client instance's apps and folder ---------------------------
 # Skipped by every build that doesn't name an instance.
-FROM node:22-slim AS instance-build
+FROM node:26.13.0-slim AS instance-build
 ARG FEATHERBASE_INSTANCE
 WORKDIR /build
 COPY client-apps client-apps

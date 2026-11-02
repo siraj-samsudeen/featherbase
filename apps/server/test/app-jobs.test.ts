@@ -87,6 +87,35 @@ const HANDLERS: Record<string, string> = {
     await ctx.datasets.live('also ' + ctx.secrets.FBJOBS_TOKEN)
   }`,
   hold: `async hold(ctx) { calls.push({ job: ctx.job.name }); ctx.refuse('the feed is stale') }`,
+  disable_empty_person: `async disable_empty_person(ctx) { await ctx.people.disable('', 'left') }`,
+  disable_nonstring_person: `async disable_nonstring_person(ctx) { await ctx.people.disable(null, 'left') }`,
+  disable_blank_reason: `async disable_blank_reason(ctx) {
+    const [person] = (await ctx.people.list()).filter((p) => !p.privileged)
+    await ctx.people.disable(person.person, '   ')
+  }`,
+  disable_nonstring_reason: `async disable_nonstring_reason(ctx) {
+    const [person] = (await ctx.people.list()).filter((p) => !p.privileged)
+    await ctx.people.disable(person.person, null)
+  }`,
+  disable_twice: `async disable_twice(ctx) {
+    const [person] = (await ctx.people.list()).filter((p) => !p.privileged)
+    const first = await ctx.people.disable(person.person, 'left')
+    const second = await ctx.people.disable(person.person, 'left again')
+    ctx.setResult(JSON.stringify([first, second]))
+  }`,
+  disable_protected: `async disable_protected(ctx) {
+    const manager = (await ctx.people.list()).find((p) => p.email === 'protected@example.test')
+    ctx.setResult(JSON.stringify([
+      await ctx.people.disable('psn_missing_job_target', 'left'),
+      await ctx.people.disable('Administrator', 'left'),
+      await ctx.people.disable(manager.person, 'left')
+    ]))
+  }`,
+  mail_null: `async mail_null(ctx) { await ctx.email.systemManagers(null) }`,
+  mail_string: `async mail_string(ctx) { await ctx.email.systemManagers('not a message') }`,
+  mail_blank_subject: `async mail_blank_subject(ctx) { await ctx.email.systemManagers({ subject: '  ', body: 'body' }) }`,
+  mail_nonstring_subject: `async mail_nonstring_subject(ctx) { await ctx.email.systemManagers({ subject: 42, body: 'body' }) }`,
+  mail_nonstring_body: `async mail_nonstring_body(ctx) { await ctx.email.systemManagers({ subject: 'Invalid body', body: null }) }`,
 }
 const server = (jobs: Job[]) => `export const platformVersion = '2026-10'
 const calls = (globalThis.__fbjobsCalls ??= [])
@@ -324,6 +353,20 @@ describe("a job follows its app's lifecycle", () => {
 })
 
 describe('a job name belongs to one owner', () => {
+  for (const { label, job, extra, error } of [
+    { label: 'a missing server module', job: sweep, extra: { server: undefined }, error: 'Declared jobs require a server module' },
+    { label: 'an undeclared dataset', job: { ...sweep, datasets: ['missing'] }, extra: {},
+      error: 'The job sweep reads the dataset missing, which the app does not declare in its datasets' },
+    { label: 'an undeclared optional secret', job: { ...sweep, needs: ['FBJOBS_UNDECLARED'] }, extra: {},
+      error: 'The job sweep needs the secret FBJOBS_UNDECLARED, which the app does not declare in its secrets' },
+  ]) {
+    test(`package discovery rejects ${label}`, async ({ admin: _admin }) => {
+      expect(await discoverPackages([await writeApp({ name: 'fbjobsinvalid', jobs: [job], extra })])).toEqual([{ path: expect.any(String), error }])
+      expect(jobRegistrant('fbjobsinvalid.sweep')).toBeNull()
+      expect(await row('fbjobsinvalid.sweep')).toBeUndefined()
+    })
+  }
+
   test("a name Featherbase already schedules is refused, and the install leaves nothing behind", async ({ admin }) => {
     await sql`insert into scheduled_job (row_id, method, cadence, enabled, description) values (${SWEEP}, ${SWEEP}, 'daily', false, 'A platform job.')`
     expect(await discoverPackages([await writeApp({ jobs: [sweep] })])).toEqual([])
@@ -590,5 +633,115 @@ describe('the instance settings file sets a job\'s cadence', () => {
     const error = await applyInstanceSettings(file, { by: 'Administrator' }).catch((e: unknown) => e) as { fields?: Record<string, string> }
     expect(Object.keys(error.fields ?? {})).toEqual(['Scheduled Job.check_sla.cadence'])
     expect(await row('check_sla')).toMatchObject({ cadence: 'every minute' })
+  })
+})
+
+describe('job capability arguments are checked by the platform', () => {
+  for (const [name, error] of [
+    ['disable_empty_person', 'disable needs a person'],
+    ['disable_nonstring_person', 'disable needs a person'],
+    ['disable_blank_reason', 'disable needs a reason'],
+    ['disable_nonstring_reason', 'disable needs a reason'],
+  ]) {
+    test(`${name} cannot disable a person`, async ({ admin, createUser }) => {
+      const target = await createUser({ email: 'invalid-disable@example.test', roles: [] })
+      const job: Job = { name, cadence: 'daily', description: 'Checks a disable argument.', grants: ['read_people', 'disable_people'] }
+      expect(await discoverPackages([await writeApp({ jobs: [job] })])).toEqual([])
+      await admin.post('/api/install_app', { name: APP })
+      await runDue()
+      expect(await row(`${APP}.${name}`)).toMatchObject({ last_outcome: 'error', last_result: error })
+      expect(await enabled(target.user)).toBe(true)
+      expect(await sql`select operation from activity_log where "user" = ${`${APP}.${name}`}`).toEqual([])
+    })
+  }
+
+  for (const name of ['mail_null', 'mail_string', 'mail_blank_subject', 'mail_nonstring_subject', 'mail_nonstring_body']) {
+    test(`${name} rejects the app email and queues only the scheduler failure alert`, async ({ admin, createUser }) => {
+      await createUser({ email: 'invalid-mail@example.test', roles: ['System Manager'] })
+      const job: Job = { name, cadence: 'daily', description: 'Checks a mail argument.', grants: ['email_system_managers'] }
+      expect(await discoverPackages([await writeApp({ jobs: [job] })])).toEqual([])
+      await admin.post('/api/install_app', { name: APP })
+      const before = await sql`select row_id from email_queue order by row_id`
+      await runDue()
+      expect(await row(`${APP}.${name}`)).toMatchObject({ last_outcome: 'error', last_result: 'An email needs a subject and a body' })
+      const queued = await sql`select row_id, recipient, subject, body from email_queue order by row_id`
+      expect(queued.filter(mail => !before.some(old => old.row_id === mail.row_id))).toEqual([{
+        row_id: expect.any(String), recipient: 'invalid-mail@example.test',
+        subject: `Scheduled job failed: Fbjobsa.${name.replaceAll('_', ' ')}`,
+        body: expect.stringContaining('What failed: An email needs a subject and a body'),
+      }])
+    })
+  }
+
+  test('disabling an already disabled person makes no second write', async ({ admin, createUser }) => {
+    const target = await createUser({ email: 'disable-once@example.test', roles: [] })
+    const job: Job = { name: 'disable_twice', cadence: 'daily', description: 'Disables the same person twice.', grants: ['read_people', 'disable_people'] }
+    expect(await discoverPackages([await writeApp({ jobs: [job] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await runDue()
+    expect(await row(`${APP}.disable_twice`)).toMatchObject({ last_outcome: 'success', last_result: '[true,false]' })
+    expect(await enabled(target.user)).toBe(false)
+    expect(await sql`select operation from activity_log where "user" = ${`${APP}.disable_twice`}`)
+      .toEqual([{ operation: `disabled ${target.user}: left` }])
+  })
+
+  test('protected disable targets are no-ops', async ({ admin, createUser }) => {
+    const manager = await createUser({ email: 'protected@example.test', roles: ['System Manager'] })
+    const job: Job = { name: 'disable_protected', cadence: 'daily', description: 'Tries protected disable targets.', grants: ['read_people', 'disable_people'] }
+    expect(await discoverPackages([await writeApp({ jobs: [job] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await runDue()
+    expect(await row(`${APP}.disable_protected`)).toMatchObject({ last_outcome: 'success', last_result: '[false,false,false]' })
+    expect(await enabled(manager.user)).toBe(true)
+    expect(await enabled('Administrator')).toBe(true)
+    expect(await sql`select operation from activity_log where "user" = ${`${APP}.disable_protected`}`).toEqual([])
+  })
+})
+
+describe('job upgrade defaults respect the installed choices', () => {
+  test('an upgrade removes a grant from the running job', async ({ admin, createUser }) => {
+    const target = await createUser({ email: 'downgraded-grant@example.test', roles: [] })
+    await link(target.user, 'LEFT')
+    const v1 = await writeApp({ jobs: [sweep] })
+    expect(await discoverPackages([v1])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    const v2 = await writeApp({ version: '2.0.0', jobs: [{ ...sweep, grants: ['read_people'] }],
+      migrations: [{ id: 'jobs_v2', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }] })
+    expect(await discoverPackages([v1, v2])).toEqual([])
+    const plan = await admin.post('/api/preview_app_upgrade', { name: APP, version: '2.0.0' }) as { planId: string; jobs: unknown[] }
+    expect(plan.jobs).toEqual([{ change: { name: 'sweep', grants: ['read_people'] } }])
+    await admin.post('/api/upgrade_app', { name: APP, version: '2.0.0', planId: plan.planId })
+    await admin.post('/api/activate_app_upgrade', { name: APP, version: '2.0.0' })
+    await runDue()
+    expect(await enabled(target.user)).toBe(true)
+    expect(await row(SWEEP)).toMatchObject({ last_outcome: 'error', last_result: `The job ${SWEEP} has not declared the grant disable_people` })
+    expect(await sql`select operation, method from access_log where "user" = ${SWEEP}`)
+      .toEqual([{ operation: 'app_access_denied', method: `${SWEEP}:disable_people` }])
+  })
+
+  test('an unchanged job contributes no upgrade step', async ({ admin }) => {
+    const v1 = await writeApp({ jobs: [sweep] })
+    expect(await discoverPackages([v1])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    const v2 = await writeApp({ version: '2.0.0', jobs: [sweep],
+      migrations: [{ id: 'jobs_v2', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }] })
+    expect(await discoverPackages([v1, v2])).toEqual([])
+    expect(await admin.post('/api/preview_app_upgrade', { name: APP, version: '2.0.0' })).toMatchObject({ jobs: [] })
+  })
+
+  test('an upgrade keeps a file-managed cadence even when it equals the old default', async ({ admin }) => {
+    const v1 = await writeApp({ jobs: [sweep] })
+    expect(await discoverPackages([v1])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await applyInstanceSettings({ settings: { 'Scheduled Job': [{ row_id: SWEEP, cadence: 'daily' }] } }, { by: 'Administrator' })
+    const v2 = await writeApp({ version: '2.0.0', jobs: [{ ...sweep, cadence: 'hourly', description: 'New default description.' }],
+      migrations: [{ id: 'jobs_v2', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }] })
+    expect(await discoverPackages([v1, v2])).toEqual([])
+    const plan = await admin.post('/api/preview_app_upgrade', { name: APP, version: '2.0.0' }) as { planId: string }
+    await admin.post('/api/upgrade_app', { name: APP, version: '2.0.0', planId: plan.planId })
+    await admin.post('/api/activate_app_upgrade', { name: APP, version: '2.0.0' })
+    expect(await row(SWEEP)).toMatchObject({ cadence: 'daily', description: 'New default description.' })
+    const pending = await sql`select repeat_every from background_job where method = ${SWEEP} and job_status = 'queued'`
+    expect(pending.map((entry) => Number(entry.repeat_every))).toEqual([86400])
   })
 })

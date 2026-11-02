@@ -222,7 +222,7 @@ export function TaskManagementPage() {
   const focusIds = (focus.data?.settings?.task_ids ?? []).filter((id) => byId.has(id))
   const focusSet = new Set(focusIds)
   const inbox = allTasks.filter((task) => !task.project && !task.personal_tasks_owner)
-  const focused = focusIds.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []))
+  const focused = focusIds.map((id) => byId.get(id)!)
   const myWork = [
     ...focused,
     ...allTasks.filter((task) => task.assigned_to === me && !focusSet.has(task.row_id)),
@@ -602,7 +602,7 @@ export function TaskManagementPage() {
             <div key={project.row_id} className={`tasker-sidebar-project ${view === 'projects' && selectedProject === project.row_id ? 'is-selected' : ''}`}>
               <button type="button" className="tasker-sidebar-project-name" aria-label={project.project_name} onClick={() => leaveSavedView('projects', project.row_id)}>
                 <span>{project.project_name}</span>
-                <span className="tasker-count">{projectTaskCounts.get(project.row_id) ?? 0}</span>
+                <span className="tasker-count">{projectTaskCounts.get(project.row_id)!}</span>
               </button>
             </div>
           ))}
@@ -707,7 +707,7 @@ export function TaskManagementPage() {
                 </form>
                 {toolbarFor(projectRows, filteredProjectRows, { kind: 'project', projectId: selectedProject }, 'This project', false)}
                 {filteredProjectRows.length
-                  ? <TaskList tasks={filteredProjectRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+                  ? <TaskList tasks={filteredProjectRows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
                   : <NoTaskMatches total={projectRows.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
               </>
             ) : <>
@@ -725,7 +725,7 @@ export function TaskManagementPage() {
                     <span className="tasker-project-directory-icon" aria-hidden="true"><TaskerIcon name="projects" /></span>
                     <span>
                       <strong>{project.project_name}</strong>
-                      <small>{projectTaskCounts.get(project.row_id) ?? 0} {(projectTaskCounts.get(project.row_id) ?? 0) === 1 ? 'task' : 'tasks'}</small>
+                      <small>{projectTaskCounts.get(project.row_id)!} {projectTaskCounts.get(project.row_id)! === 1 ? 'task' : 'tasks'}</small>
                     </span>
                     <span aria-hidden="true">›</span>
                   </button>
@@ -1287,12 +1287,12 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
       }}>
         <label className="block text-sm mb-3">Task title
           <input autoFocus className="mt-2 w-full rounded border border-[var(--color-border)] p-3"
-            disabled={saving} value={draft?.task_title ?? task.data.task_title}
+            disabled={saving} value={draft.task_title}
             onChange={(event) => setDraft({ ...draft, task_title: event.target.value })} />
         </label>
         <label className="block text-sm">Description
           <textarea className="mt-2 w-full rounded border border-[var(--color-border)] p-3" rows={4} disabled={saving}
-            value={draft?.description ?? task.data.description ?? ''}
+            value={draft.description}
             onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
         </label>
         <div className="mt-3 flex gap-2">

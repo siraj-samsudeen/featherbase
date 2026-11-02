@@ -635,7 +635,7 @@ const appPermissionSchema = z
 const appFixtureSchema = z
   .object({
     table: z.string().min(1),
-    rows: z.array(z.record(z.unknown())),
+    rows: z.array(z.record(z.string(), z.unknown())),
   })
   .strict()
 

@@ -107,6 +107,11 @@ way at all.
 
 #### Scenario: A platform table's columns are closed to editing
 
+- **GIVEN** a table the platform depends on
+- **WHEN** a builder opens its Columns screen
+- **THEN** it says the table's columns belong to the platform
+- **AND** it offers no way to add or rename one
+
 ```gherkin
 Given a table the platform depends on
 When a builder opens its Columns screen
@@ -115,6 +120,11 @@ And it offers no way to add or rename one
 ```
 
 #### Scenario: Only a System Manager changes the list for everyone
+
+- **GIVEN** the user is not a System Manager
+- **WHEN** the user opens the list of "Section Mapping"
+- **THEN** the user can change which columns they see themselves
+- **AND** nothing there changes the list for anyone else
 
 ```gherkin
 Given the user is not a System Manager
@@ -504,6 +514,11 @@ the table can switch any column in or out, or all of them at once, before creati
 
 #### Scenario: An imported Section Mapping lists its first seven columns
 
+- **GIVEN** a sheet with the columns Section, MCH, Floor, Zone, Rack, Owner, Category, Remarks, Updated By and Notes
+- **WHEN** the user imports it as a new table "Section Mapping" without changing which columns are in the list
+- **THEN** the list of "Section Mapping" shows Section, MCH, Floor, Zone, Rack, Owner and Category
+- **AND** Remarks, Updated By and Notes show only on each row's form
+
 ```gherkin
 Given a sheet with the columns Section, MCH, Floor, Zone, Rack, Owner, Category, Remarks, Updated By and Notes
 When the user imports it as a new table "Section Mapping" without changing which columns are in the list
@@ -513,6 +528,10 @@ And Remarks, Updated By and Notes show only on each row's form
 
 #### Scenario: A typed table starts the same way
 
+- **GIVEN** the user is building a table by typing the same ten columns
+- **WHEN** the user creates it without changing which columns are in the list
+- **THEN** its list shows Section, MCH, Floor, Zone, Rack, Owner and Category
+
 ```gherkin
 Given the user is building a table by typing the same ten columns
 When the user creates it without changing which columns are in the list
@@ -520,6 +539,11 @@ Then its list shows Section, MCH, Floor, Zone, Rack, Owner and Category
 ```
 
 #### Scenario: A column left out of the import makes room for the next
+
+- **GIVEN** the same ten-column sheet
+- **WHEN** the user leaves MCH out and imports it as a new table
+- **THEN** MCH is not in the list
+- **AND** Remarks is in the list as the seventh column
 
 ```gherkin
 Given the same ten-column sheet
@@ -529,6 +553,10 @@ And Remarks is in the list as the seventh column
 ```
 
 #### Scenario: All ten in one go
+
+- **GIVEN** the same ten-column sheet
+- **WHEN** the user switches every column into the list at once and imports it as a new table
+- **THEN** the list shows all ten columns
 
 ```gherkin
 Given the same ten-column sheet
@@ -542,6 +570,11 @@ A System Manager SHALL be able to switch any of a table's existing columns into 
 list at any time, for everyone. No row changes.
 
 #### Scenario: Remarks shows for everyone
+
+- **GIVEN** the table "Section Mapping" with Remarks not in its list
+- **WHEN** a System Manager switches Remarks into its list
+- **THEN** a colleague opening the list of "Section Mapping" sees Remarks
+- **AND** no row's values have changed
 
 ```gherkin
 Given the table "Section Mapping" with Remarks not in its list

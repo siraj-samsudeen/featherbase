@@ -141,7 +141,11 @@ list SHALL be reachable by a tap or a key press, not only by hovering.
 
 ### Requirement: A reader with several stores switches between them
 
-When a reader's scope spans more than one store, the report SHALL show one store at a time and SHALL offer a store dropdown listing each of the reader's stores. The report SHALL open on the remembered store when the reader still has it, otherwise on the default store: the store with the most Sections, a tie going to the lowest store code. The server SHALL serve a requested store only when it is one of the reader's own stores and SHALL refuse any other. A reader with one store SHALL see no dropdown, and a reader with an ambiguous employee code SHALL still have no store at all.
+When a reader's scope spans more than one store, the report SHALL show one store at a time and SHALL offer a store dropdown listing each of the reader's stores.
+
+#### Normative details for the whole requirement
+
+The report SHALL open on the remembered store when the reader still has it, otherwise on the default store: the store with the most Sections, a tie going to the lowest store code. The server SHALL serve a requested store only when it is one of the reader's own stores and SHALL refuse any other. A reader with one store SHALL see no dropdown, and a reader with an ambiguous employee code SHALL still have no store at all.
 
 #### Scenario: A Department Manager with Sections in two stores
 

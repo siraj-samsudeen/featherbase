@@ -89,7 +89,11 @@ replace the last good copy, and an admin SHALL be able to see why it was refused
 An app SHALL be able to declare checks a refresh of its report data must pass before it
 replaces the last good copy: at least so many rows, a figure that is not empty or zero
 everywhere, or a figure that has not fallen by more than a stated share since the last
-good copy, counted in rows or in its total. A total SHALL be compared exactly, to the
+good copy, counted in rows or in its total.
+
+#### Normative details for the whole requirement
+
+A total SHALL be compared exactly, to the
 paisa. A check on a fall SHALL be able to stay within one reporting period: it then
 compares a refresh only with a last good copy of the same period, and a refresh that
 does not hold exactly one period SHALL be refused. A refresh that fails one SHALL be
@@ -319,7 +323,11 @@ serving.
 ### Requirement: An app can provide people's scope
 
 An app SHALL be able to declare that it works out which places each person is
-responsible for, so other apps on the instance can rely on that answer. It SHALL read
+responsible for, so other apps on the instance can rely on that answer.
+
+#### Normative details for the whole requirement
+
+It SHALL read
 only the records it declared, and only records marked as deciding scope. It MAY also
 declare the kinds of identifier it needs, such as employee codes. It SHALL then be
 given the person's identifiers of those kinds that are valid today, read afresh each
@@ -429,7 +437,11 @@ cached copy or live figures.
 ### Requirement: An app owns its screen under the shared top bar
 
 An app that brings its own screen SHALL fully control its address, document,
-inner navigation and styling. Featherbase SHALL serve only that app's declared
+inner navigation and styling.
+
+#### Normative details for the whole requirement
+
+Featherbase SHALL serve only that app's declared
 client files, SHALL NOT show one app's screen or its own in place of a missing
 piece, and SHALL preserve an app-owned deep path, query and fragment across
 sign-in and refresh while loading the app's entry document.

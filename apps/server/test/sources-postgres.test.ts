@@ -89,6 +89,21 @@ beforeAll(async () => {
       status text,
       business_code int references ext_fixture.business(code)
     )`)
+  await cli.unsafe(`
+    create table ext_fixture.refusal_parent (
+      id serial primary key,
+      label text unique,
+      qty smallint constraint nonnegative_quantity check (qty >= 0),
+      code varchar(3),
+      hidden_required text not null
+    );
+    create table ext_fixture.refusal_child (
+      id serial primary key,
+      parent_label text references ext_fixture.refusal_parent(label)
+    );
+    insert into ext_fixture.refusal_parent (label, qty, code, hidden_required)
+      values ('kept', 1, 'abc', 'source-only');
+    insert into ext_fixture.refusal_child (parent_label) values ('kept')`)
 })
 
 afterAll(async () => {
@@ -276,6 +291,58 @@ describe('EDS-5: reading bound rows', () => {
 })
 
 describe('EDS-6/EDS-8: writing bound rows', () => {
+  test('an explicit source primary key is created once; a duplicate create cannot overwrite it', async ({ admin }) => {
+    await makeSource(admin)
+    const reflected = await admin.post<{ created: { name: string }[] }>(
+      '/api/table/Data%20Source/ext-fixture:reflect',
+      { schema: 'ext_fixture', tables: ['business'] },
+    )
+    const path = `/api/table/${encodeURIComponent(reflected.created[0].name)}`
+    try {
+      const created = await admin.post<Record<string, unknown>>(path, {
+        row_id: '747', name: 'Explicit source key',
+      })
+      expect(created).toMatchObject({ row_id: '747', name: 'Explicit source key' })
+      expect(await cli`select code, name from ext_fixture.business where code = 747`).toEqual([
+        { code: 747, name: 'Explicit source key' },
+      ])
+
+      const duplicate = await admin.fetch(path, {
+        method: 'POST',
+        body: JSON.stringify({ row_id: '747', name: 'Must not overwrite' }),
+      })
+      expect(duplicate.status).toBe(409)
+      expect(await duplicate.json()).toMatchObject({ error: { type: 'ConflictError' } })
+      expect(await admin.get(`${path}/747`)).toMatchObject({ row_id: '747', name: 'Explicit source key' })
+      expect(await cli`select code, name from ext_fixture.business where code = 747`).toEqual([
+        { code: 747, name: 'Explicit source key' },
+      ])
+    } finally {
+      await cli`delete from ext_fixture.business where code = 747`
+    }
+  })
+
+  test('deleting a row already removed at the source returns not found and preserves other rows', async ({ admin }) => {
+    await makeSource(admin)
+    const reflected = await admin.post<{ created: { name: string }[] }>(
+      '/api/table/Data%20Source/ext-fixture:reflect',
+      { schema: 'ext_fixture', tables: ['business'] },
+    )
+    const path = `/api/table/${encodeURIComponent(reflected.created[0].name)}`
+    const original = await cli`select code, name from ext_fixture.business order by code`
+    await cli`insert into ext_fixture.business (code, name) values (748, 'Removed externally')`
+    try {
+      expect(await admin.get(`${path}/748`)).toMatchObject({ row_id: '748', name: 'Removed externally' })
+      await cli`delete from ext_fixture.business where code = 748`
+      const missing = await admin.fetch(`${path}/748`, { method: 'DELETE' })
+      expect(missing.status).toBe(404)
+      expect(await missing.json()).toMatchObject({ error: { type: 'NotFoundError' } })
+      expect(await cli`select code, name from ext_fixture.business order by code`).toEqual(original)
+    } finally {
+      await cli`delete from ext_fixture.business where code = 748`
+    }
+  })
+
   test('create takes the name from the source default (RETURNING)', async ({ admin }) => {
     await makeSource(admin)
     await reflectTenant(admin)
@@ -332,6 +399,61 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     await expect(
       admin.post('/api/table/Ext%20Tenant', { slug: 'acme' }),
     ).rejects.toMatchObject({ status: 417, fields: { slug: expect.stringContaining('unique') } })
+  })
+
+  test('real source constraints refuse updates and deletion without changing either side of a foreign key', async ({ admin }) => {
+    await makeSource(admin)
+    const reflected = await admin.post<{ created: { name: string }[] }>('/api/table/Data%20Source/ext-fixture:reflect', {
+      schema: 'ext_fixture', tables: ['refusal_parent'],
+    })
+    const name = reflected.created[0].name
+    const before = await cli`select * from ext_fixture.refusal_parent order by id`
+    const children = await cli`select * from ext_fixture.refusal_child order by id`
+    const path = `/api/table/${encodeURIComponent(name)}/${before[0].id}`
+    for (const [payload, error] of [
+      [{ code: 'wide' }, { type: 'ValidationError', message: 'Value too long for a field' }],
+      [{ qty: 40000 }, { type: 'ValidationError', message: 'Value out of range for a field' }],
+      [{ qty: -1 }, { type: 'ValidationError', message: "These values break the data source's rule nonnegative_quantity" }],
+      [{ label: 'changed' }, {
+        type: 'ValidationError',
+        message: "Other rows at the data source still point at this row's Label, so it cannot change",
+        fields: { label: 'Other rows at the data source still point at this value' },
+      }],
+    ] as const) {
+      const res = await admin.fetch(path, { method: 'PATCH', body: JSON.stringify(payload) })
+      expect(res.status).toBe(417)
+      expect(await res.json()).toEqual({ error })
+      expect(await cli`select * from ext_fixture.refusal_parent order by id`).toEqual(before)
+      expect(await cli`select * from ext_fixture.refusal_child order by id`).toEqual(children)
+    }
+    const deletion = await admin.fetch(path, { method: 'DELETE' })
+    expect(deletion.status).toBe(417)
+    expect(await deletion.json()).toEqual({ error: {
+      type: 'ValidationError',
+      message: `Cannot delete ${name} ${before[0].id}: other rows at the data source still point at it`,
+    } })
+    expect(await cli`select * from ext_fixture.refusal_parent order by id`).toEqual(before)
+    expect(await cli`select * from ext_fixture.refusal_child order by id`).toEqual(children)
+  })
+
+  test('a required source column omitted from a valid binding produces a source validation error and no insert', async ({ admin }) => {
+    await makeSource(admin)
+    // A binding may intentionally expose only some columns of a relation.
+    await admin.post('/api/table_def', {
+      name: 'Partial Refusal Parent', data_source: 'ext-fixture', external_schema: 'ext_fixture',
+      external_table: 'refusal_parent', external_pk: 'id',
+      columns: [{ column_name: 'label', column_type: 'Text' }],
+    })
+    const before = await cli`select * from ext_fixture.refusal_parent order by id`
+    const res = await admin.fetch('/api/table/Partial%20Refusal%20Parent', {
+      method: 'POST', body: JSON.stringify({ label: 'cannot-insert' }),
+    })
+    expect(res.status).toBe(417)
+    expect(await res.json()).toEqual({ error: {
+      type: 'ValidationError',
+      message: 'The data source needs a value for hidden_required, which this table does not show',
+    } })
+    expect(await cli`select * from ext_fixture.refusal_parent order by id`).toEqual(before)
   })
 
   test('a missing required value or a broken link comes back on its field, without the database text (#154)', async ({ admin }) => {

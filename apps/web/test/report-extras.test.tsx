@@ -78,14 +78,19 @@ test('with no column marked for the list, the report shows the first three colum
 
 test('an ungrouped CSV export has a line per row and a total, and is logged', async ({ admin }) => {
   await seed(admin)
+  const row = await admin.get<Record<string, unknown>>(`/api/table/${ENC}/s1`)
+  await admin.post('/api/save_row', { table: T, row: { ...row, region: 'North, "Silk"\nAnnex' } })
   const blobs = captureDownloads()
   await openReport(admin)
   await userEvent.click(screen.getByTestId('export-csv'))
   await waitFor(() => expect(blobs).toHaveLength(1))
-  const lines = (await textOf(blobs[0])).split('\n')
-  expect(lines[0]).toBe('Name,Region,Amount,Units')
-  expect(lines.slice(1, 3).sort()).toEqual(['s1,North,100,2', 's2,South,50,7'])
-  expect(lines[3]).toBe('Total (2),,150,9')
+  const csv = await textOf(blobs[0])
+  // The embedded newline is part of one quoted field, not another record;
+  // compare the whole download so duplicate or extra records also fail.
+  const records = ['s1,"North, ""Silk""\nAnnex",100,2', 's2,South,50,7']
+  expect([records, [...records].reverse()].map((order) =>
+    ['Name,Region,Amount,Units', ...order, 'Total (2),,150,9'].join('\n'),
+  )).toContain(csv)
   await waitFor(async () => {
     const [n] = await sql`select count(*)::int as n from access_log where operation = 'export' and ref_table = ${T} and method = 'csv'`
     expect(n.n).toBe(1)

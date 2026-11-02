@@ -80,6 +80,16 @@ describe('PRN-004: letterheads', () => {
     expect(html).not.toContain('ACME GLOBAL')
   })
 
+  test('an unavailable explicit letterhead leaves the document body intact without substituting another header', async () => {
+    await setup()
+    const html = await renderPrintHtml(DT, 'lh-1', 'Administrator', 'standard', 'Missing Letterhead')
+    expect(html).toContain('Umbrella Corp')
+    expect(html).toContain('4200')
+    expect(html).not.toContain('<header class="letter-head">')
+    expect(html).not.toContain('<footer class="letter-foot">')
+    expect(html).not.toContain('ACME GLOBAL')
+  })
+
   test("'none' suppresses the letterhead entirely", async () => {
     await setup()
     const html = await renderPrintHtml(DT, 'lh-1', 'Administrator', 'standard', 'none')

@@ -270,6 +270,12 @@ gates. Floors only rise. The server suite's three CI shards run with thresholds
 zeroed and the `unit` job enforces the floor on the merged shard reports, only
 when the server suite ran; locally each suite runs whole against its floor.
 
+[ADR 0016](../adr/0016-backend-coverage-includes-branches.md) requires the
+backend gates to be 100% for statements, functions, lines **and branches now**,
+even while coverage work is unfinished; a failing gate must not be lowered to
+the current result. Frontend coverage strives for 100%, with genuine exceptions
+requiring an owner proposal and approval. No new exclusions are authorized.
+
 CI merges the PostgreSQL 18 release-preflight coverage with the server's
 three shards before enforcing the server gate. `src/sources/mysql-driver.ts`
 is measured only when `MYSQL_TEST_URL` is set (CI sets it for both the shards
@@ -305,6 +311,9 @@ pnpm --filter web coverage:merged  # → apps/web/coverage-merged/index.html
   prevent counting the same execution twice.
 - `scripts/coverage-merge.mjs` remaps each input to source lines *before*
   merging (`nyc merge` would add served-code counters to source-level ones).
+  It uses Vitest's Istanbul remapper to retain implicit branch arms, and
+  refuses incompatible statement, function or branch inventories. The merge
+  command first runs a regression test using genuine instrumented executions.
   It requires both suites and refuses missing executable source files,
   including the SPA and gallery entries.
 - The jsdom run's own thresholds gate CI's `unit-web` job; CI's
@@ -346,9 +355,38 @@ Do not rebuild or edit an app while a server using its artifact is running:
 installed versions require their exact fingerprint. CI collects the HTTP and
 packaged layers after E2E, then publishes the merged runtime report alongside
 the web report. The runtime merger requires every line, statement and function
-to be covered, comparing exact counts rather than rounded percentages. Each
-collector clears only its own previous output before a run; fresh browser
+to be covered, comparing exact counts rather than rounded percentages. It also
+requires every branch arm in Tasker's owned esbuild server-entry import closure
+to be covered; missing source coverage fails rather than shrinking that scope.
+This does not gate frontend branches or count platform backend code as Tasker.
+Each collector clears only its own previous output before a run; fresh browser
 collection preserves the independent component report.
+
+### Dash frontend coverage
+
+Dash's frontend profile is separate from its backend collector. It derives
+the executable source inventory from the browser entry's esbuild import
+closure and rejects missing or extra files. An unexecuted entry remains in
+the denominator. The profile includes public formatting contracts and page
+tests that use the real platform server and SQLSandbox; the older tests
+that inject API responses are not inputs to this report.
+
+After `pnpm apps:prepare`, use the explicitly named disposable local database:
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/featherbase_dash_frontend_test \
+  npm run test:coverage:frontend --prefix client-apps/jeyarama/dash
+npm run typecheck:frontend --prefix client-apps/jeyarama/dash
+```
+
+The report is `coverage/dash-frontend/coverage-final.json` with a summary and
+HTML beside it. This is frontend coverage only, not backend coverage or
+evidence of hosted warehouse or embedded-frame integration. There is no
+100% frontend gate yet: add it only when the actual report reaches 100%,
+without excluding executable source or weakening existing gates.
+Dash backend profiles currently have incompatible remapping and cannot be
+merged honestly; their separate measurements are not a combined backend total
+or evidence of meeting the backend policy.
 
 ### Mutation testing
 

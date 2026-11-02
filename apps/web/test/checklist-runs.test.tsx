@@ -5,6 +5,7 @@
 // checklist-binding.test.tsx open runs directly by URL.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 import { dayLabel } from '../src/components/ChecklistView'
 import { timelineDayKey } from '../src/lib/inr'
@@ -74,6 +75,73 @@ test('a checklist with no runs yet says so', async ({ admin }) => {
   const view = await screen.findByTestId('checklist-view', {}, { timeout: 10_000 })
   expect(await within(view).findByText('No runs yet.')).toBeInTheDocument()
   expect(view).toHaveTextContent('0 runs')
+})
+
+test('runs on the same date are ordered by latest update rather than title', async ({ admin }) => {
+  await seedTables(admin)
+  for (const [title, date, updated] of [
+    ['A older update', '2026-01-05', '2026-02-03T00:00:00Z'],
+    ['Z newer update', '2026-01-05', '2026-02-04T00:00:00Z'],
+    ['Later calendar day', '2026-01-06', '2026-02-01T00:00:00Z'],
+    ['A older undated', null, '2026-02-05T00:00:00Z'],
+    ['Z newer undated', null, '2026-02-06T00:00:00Z'],
+  ]) {
+    const saved = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: T, row: { run_title: title, run_date: date },
+    })
+    // Independent of transaction time: date ordering must beat update time,
+    // while two runs on the same date must use update time as the tie-break.
+    await sql`update featherbase.cr_opening set updated_at = ${updated} where row_id = ${saved.row_id}`
+  }
+  await renderApp(`/featherbase/admin/${ENC}/view/checklist`, admin)
+  await waitFor(() => expect(screen.getAllByTestId('checklist-run-card')).toHaveLength(5))
+  expect(screen.getAllByTestId('checklist-run-card').map((card) => card.textContent)).toEqual([
+    'Later calendar day', 'Z newer update', 'A older update',
+    'Z newer undated', 'A older undated',
+  ])
+})
+
+test('a checklist without date or summary columns lists only titles in update order', async ({ admin }) => {
+  await seedTables(admin)
+  await admin.post('/api/table_def', {
+    name: 'Cr Minimal',
+    title_column: 'title',
+    columns: [
+      { column_name: 'title', label: 'Title', column_type: 'Data' },
+      { column_name: 'steps', label: 'Steps', column_type: 'Sub-table', row_table: 'Cr Opening Step' },
+    ],
+  })
+  for (const [title, updated] of [
+    ['A older run', '2026-01-01T00:00:00Z'],
+    ['Z newest run', '2026-01-03T00:00:00Z'],
+    ['M middle run', '2026-01-02T00:00:00Z'],
+  ]) {
+    const saved = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Cr Minimal', row: { title },
+    })
+    await sql`update featherbase.cr_minimal set updated_at = ${updated} where row_id = ${saved.row_id}`
+  }
+  await renderApp('/featherbase/admin/Cr%20Minimal/view/checklist', admin)
+  await waitFor(() => expect(screen.getAllByTestId('checklist-run-card')).toHaveLength(3))
+  expect(screen.getAllByTestId('checklist-run-card').map((card) => card.textContent)).toEqual([
+    'Z newest run', 'M middle run', 'A older run',
+  ])
+  expect(screen.queryByText('Undated')).not.toBeInTheDocument()
+})
+
+test('an empty run displays zero progress without a completed bar', async ({ admin }) => {
+  await seedTables(admin)
+  const saved = await admin.post<{ row_id: string }>('/api/save_row', {
+    table: T, row: { run_title: 'Awaiting steps', progress: '0/0', steps: [] },
+  })
+  await renderApp(`/featherbase/admin/${ENC}/view/checklist?run=${encodeURIComponent(saved.row_id)}`, admin)
+  const view = await screen.findByTestId('checklist-run-view')
+  expect(within(view).getByTestId('checklist-progress')).toHaveTextContent('0/0')
+  expect(within(view).getByText('This run has no items.')).toBeInTheDocument()
+  expect(within(view).queryByRole('checkbox')).not.toBeInTheDocument()
+  const bar = view.querySelector('[style*="width"]')
+  expect(bar).toHaveStyle({ width: '0%' })
+  expect(bar).toHaveAttribute('style', expect.stringContaining('background: var(--color-action)'))
 })
 
 // #539: Today and Yesterday are the reader's own days, not UTC's: at 02:00 IST the UTC

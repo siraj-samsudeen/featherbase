@@ -84,6 +84,9 @@ describe('CUST-004: server scripts', () => {
     await makeScript(admin, { row_id: 'ss-srv-http', script_type: 'API', api_method: 'srv_http', script: 'result = { doubled: (args.n || 0) * 2 }', enabled: true })
     const res = await admin.post<{ result: { doubled: number } }>('/api/server_script/srv_http', { n: 4 })
     expect(res.result).toEqual({ doubled: 8 })
+    const missing = await admin.fetch('/api/server_script/srv_http', { method: 'POST', body: '{"n":' })
+    expect(missing.status).toBe(200)
+    expect(await missing.json()).toEqual({ result: { doubled: 0 } })
     await expect(admin.post('/api/server_script/no_such_method', {})).rejects.toMatchObject({ status: 404 })
   })
 

@@ -197,7 +197,7 @@ export function buildApp(app, env) {
 }
 
 async function ensureDatabase(env) {
-  const postgres = createRequire(join(root, 'apps/server/package.json'))('postgres')
+  const { default: postgres } = createRequire(join(root, 'apps/server/package.json'))('postgres')
   const target = new URL(env.DATABASE_URL)
   const name = decodeURIComponent(target.pathname.slice(1))
   const admin = new URL(target)

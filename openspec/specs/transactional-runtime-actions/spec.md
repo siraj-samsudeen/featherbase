@@ -14,7 +14,11 @@ still answers only to what the calling person is actually allowed to do.
 
 The host SHALL execute only version-2 declared named actions with an explicit
 recognized policy for every operation through one authenticated app-identity/
-action-name endpoint. Declaration and handler names SHALL match exactly. Missing,
+action-name endpoint.
+
+#### Normative details for the whole requirement
+
+Declaration and handler names SHALL match exactly. Missing,
 disabled, incompatible, inaccessible or undeclared actions SHALL fail before
 handler execution or replay-result disclosure. Manager diagnostics SHALL expose
 declared names and policy-upgrade requirements. Identical local names in different
@@ -38,7 +42,11 @@ for exact-identity upgrade planning but SHALL NOT acquire a default policy.
 
 Handlers SHALL receive unknown payload, caller identity, immutable host-authorized
 operation scope, host validation rejection and narrow document helpers, never a
-raw SQL transaction or caller override. Helpers SHALL restrict access to declared
+raw SQL transaction or caller override.
+
+#### Normative details for the whole requirement
+
+Helpers SHALL restrict access to declared
 local tables, ordinary caller table, row, field and reference permissions, and
 current app availability. Shared tables SHALL require package permission
 declarations as well as caller permission. Bound sources and privileged platform
@@ -58,6 +66,9 @@ labelling an action read-only SHALL NOT grant mutation helpers to read-only role
 An action SHALL execute within one host-owned transaction. A successful command
 SHALL atomically persist its JSON result, immutable complete authorization scope
 metadata and payload identity under caller, app, action and idempotency key.
+
+#### Normative details for the whole requirement
+
 Same-key identical-payload retries SHALL return that result without business
 handler execution only after fresh current authorization of the original scope;
 different-payload retries SHALL conflict without result disclosure. Store sets
