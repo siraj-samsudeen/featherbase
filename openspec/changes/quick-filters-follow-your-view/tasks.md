@@ -40,13 +40,13 @@ Same test file.
 
 Same test file.
 
-- [ ] 4.1 S1: `Adding Status = Open narrows the rows, and removing it brings them all back`
-- [ ] 4.2 S2: `Adding a filter on Status offers its choices, without typing`
-- [ ] 4.3 S10: `An added filter on Active finds the active rows, and its chip reads Yes`
-- [ ] 4.4 Test: `Choice and Yes/No columns offer only = and !=`, and moving to one from another operator resets it to =
-- [ ] 4.5 Test: `A text column keeps its typed value and every operator`
-- [ ] 4.6 Test: the saved report's filter bar, which shares this control, also offers the dropdowns
-- [ ] 4.7 Update the existing tests that type a Choice value into Add filter (`list-view.test.tsx`, `saved-report.spec.ts`) to pick it instead, keeping what they expect
+- [x] 4.1 S1: `Adding Status = Open narrows the rows, and removing it brings them all back`
+- [x] 4.2 S2: `Adding a filter on Status offers its choices, without typing`
+- [x] 4.3 S10: `An added filter on Active finds the active rows, and its chip reads Yes`
+- [x] 4.4 Test: `Choice and Yes/No columns offer only = and !=`, and moving to one from another operator resets it to =
+- [x] 4.5 Test: `A text column keeps its typed value and every operator`
+- [x] 4.6 Test: the saved report's filter bar, which shares this control, also offers the dropdowns
+- [x] 4.7 Update the existing tests that type a Choice value into Add filter (`list-view.test.tsx`, `saved-report.spec.ts`) to pick it instead, keeping what they expect
 
 ## 5. Many boxes stay out of the way
 

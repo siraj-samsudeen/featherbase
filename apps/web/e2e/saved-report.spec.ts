@@ -53,7 +53,7 @@ test('RPT-002: saved report restores columns, filters, and grouping', async ({ s
     await page.getByTestId('report-col-qty').uncheck()
     await page.getByTestId('report-columns').click()
     await page.getByTestId('filter-field').selectOption('stage')
-    await page.getByTestId('filter-value').fill('Open')
+    await page.getByTestId('filter-value').selectOption('Open')
     await page.getByTestId('filter-add').click()
     await expect(page.getByTestId('report-row')).toHaveCount(2)
     await page.getByTestId('report-groupby').selectOption('stage')
