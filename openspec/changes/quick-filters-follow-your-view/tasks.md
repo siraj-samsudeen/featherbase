@@ -59,9 +59,9 @@ Same test file.
 
 ## 6. Filters fold away on a phone
 
-- [ ] 6.1 S16, component test: `The folded control says 2 filters are in use`
-- [ ] 6.2 Component test: `Opening the filters shows every quick filter and lets the user add one`
-- [ ] 6.3 Component test: `While folded only the count shows; opening the filters shows the filters in use, each removable`
+- [x] 6.1 S16, component test: `The folded control says 2 filters are in use`
+- [x] 6.2 Component test: `Opening the filters shows every quick filter and lets the user add one`
+- [x] 6.3 Component test: `While folded only the count shows; opening the filters shows the filters in use, each removable`
 - [ ] 6.4 S15, browser test in 7.7: `The rows come straight after the folded filters on a phone`
 
 ## 7. Browser journeys

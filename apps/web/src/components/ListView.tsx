@@ -177,6 +177,8 @@ export function ListView({
   const queryClient = useQueryClient()
   // usable-on-any-device "Lists fit a phone": below 40rem the rows are cards.
   const narrow = useMediaQuery(NARROW_QUERY)
+  // #742: on a phone the filters fold behind one button, so the rows come first.
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
   // UI-013 / #738: per-user saved settings — sort, and which columns show,
@@ -907,8 +909,23 @@ export function ListView({
       {onFiltersChange && !baseFilters.length && <RecentStrip table={table} meta={meta.data} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
         <>
-          <StandardFilters meta={meta.data} view={columns} filters={filters} onChange={onFiltersChange} />
-          <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
+          {narrow && (
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((open) => !open)}
+              aria-expanded={filtersOpen}
+              data-testid="filters-toggle"
+              className={buttonClasses({ className: 'mb-3' })}
+            >
+              Filters{filters.length > 0 && ` (${filters.length})`}
+            </button>
+          )}
+          {(!narrow || filtersOpen) && (
+            <>
+              <StandardFilters meta={meta.data} view={columns} filters={filters} onChange={onFiltersChange} stacked={narrow} />
+              <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
+            </>
+          )}
         </>
       )}
       {selected.size > 0 && !isRowsReadOnly(meta.data) && (
@@ -1600,11 +1617,14 @@ function StandardFilters({
   view,
   filters,
   onChange,
+  stacked,
 }: {
   meta: import('../lib/meta').TableMeta
   view: ListColumn[]
   filters: Filter[]
   onChange: (filters: Filter[]) => void
+  /** On a phone, opened from the Filters button: every box, one above the other. */
+  stacked: boolean
 }) {
   const { t } = useI18n()
   // #742: the data columns this person sees. Row ID isn't one, so it gets no box.
@@ -1621,8 +1641,8 @@ function StandardFilters({
   // #742: the first six show; past them, only a box holding a value, until
   // the person asks for the rest.
   const inRow = columns.filter((f, i) => i < QUICK_FILTER_ROW || current(f.column_name, boxOp(f)) !== '')
-  const shown = showAll ? columns : inRow
-  const folded = columns.length - inRow.length
+  const shown = showAll || stacked ? columns : inRow
+  const folded = stacked ? 0 : columns.length - inRow.length
 
   function current(columnName: string, op: string): string {
     const hit = filters.find((f) => f[0] === columnName && f[1] === op)
@@ -1643,7 +1663,10 @@ function StandardFilters({
   }
 
   return (
-    <div className="mb-3 flex flex-wrap items-end gap-2" data-testid="standard-filters">
+    <div
+      className={stacked ? 'mb-3 flex flex-col gap-2' : 'mb-3 flex flex-wrap items-end gap-2'}
+      data-testid="standard-filters"
+    >
       {shown.map((f) =>
         f.column_type === 'Reference' && f.reference_table ? (
           // #793: a link filters by picking a row by its name, not by typing its id.
