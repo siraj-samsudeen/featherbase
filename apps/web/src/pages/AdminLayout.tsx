@@ -732,6 +732,8 @@ function AdminShell() {
             testid="sidebar-group-instance"
             items={canManage
               ? [
+                  { to: '/featherbase/admin/setup', label: 'Welcome', icon: ListChecks, testid: 'welcome-link' },
+                  { to: '/featherbase/admin/apps', label: 'Apps', icon: Compass, testid: 'apps-link' },
                   { to: JOBS_PATH, label: 'Jobs', icon: CalendarClock, testid: 'jobs-link' },
                   { to: INSTANCE_HEALTH_PATH, label: 'Instance health', icon: ListChecks, testid: 'instance-health-link' },
                 ]

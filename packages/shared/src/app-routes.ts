@@ -11,7 +11,7 @@ export const LEGACY_HUMAN_ROOT_PATTERN = '^/(admin|login|form|portal|print|oauth
 export function appHref(name: string): string { return `/${name}/` }
 
 export const FEATHERBASE_ADMIN_DESTINATION = {
-  label: 'Featherbase Admin',
+  label: 'Featherbase',
   href: '/featherbase/admin',
 } as const
 
@@ -71,6 +71,7 @@ export const ADMIN_STATIC_PAGES: readonly { slug: string; title: string; manage?
   { slug: 'explore', title: 'Explore' },
   { slug: 'glossary', title: 'Glossary' },
   { slug: 'waiting-for-access', title: 'Waiting for access', manage: true },
+  { slug: 'apps', title: 'Apps', manage: true },
   { slug: 'instance-health', title: 'Instance health', manage: true },
 ]
 

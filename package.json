@@ -1,7 +1,11 @@
 {
   "name": "featherbase",
   "private": true,
+  "bin": {
+    "featherbase": "tools/featherbase.mjs"
+  },
   "scripts": {
+    "featherbase": "node tools/featherbase.mjs",
     "dev": "node tools/dev.mjs",
     "dev:jeyarama": "node tools/dev.mjs jeyarama/dash",
     "apps:prepare": "node tools/prepare-apps.mjs",
@@ -13,7 +17,7 @@
     "check:unarchived-changes": "node --test tools/check-unarchived-changes.test.mjs && node tools/check-unarchived-changes.mjs",
     "check:e2e-dsl": "node --test tools/check-e2e-dsl.test.mjs && node tools/check-e2e-dsl.mjs",
     "check:sensitive": "node --test tools/check-sensitive.test.mjs && node tools/check-sensitive.mjs",
-    "check:dev": "node --test tools/dev.test.mjs tools/build-instance-apps.test.mjs",
+    "check:dev": "node --test tools/dev.test.mjs tools/build-instance-apps.test.mjs tools/featherbase.test.mjs tools/orb-service.test.mjs",
     "check:ci-scope": "node --test tools/ci-scope.test.mjs",
     "check:app-versions": "node --test tools/check-app-versions.test.mjs && node tools/check-app-versions.mjs",
     "check:vocabulary": "node --test tools/check-vocabulary.test.mjs && node tools/check-vocabulary.mjs",

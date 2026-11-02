@@ -5,14 +5,14 @@
 // featherbase_e2e, and never collides with ./init.sh (8000/5173) or the e2e
 // suite (8020/5193).
 //
-// It reuses the e2e isolated stack's code path rather than a copy of it:
-// `pnpm --filter server e2e:serve` drops and recreates the database (refusing
+// It reuses the e2e isolated stack's reset and migration commands:
+// `pnpm --filter server e2e:reset` drops and recreates the database (refusing
 // any name that does not end in _e2e, or one stamped for another environment),
-// migrates it and starts the API; `pnpm --filter web dev` serves the web app
+// then `migrate` and `start` boot the API; `pnpm --filter web dev` serves the web app
 // pointed at that API. See apps/web/playwright.config.ts for why each
 // variable below is set.
 
-const { spawn } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
 const net = require('node:net');
 const path = require('node:path');
 const { BeforeAll, AfterAll } = require('@cucumber/cucumber');
@@ -33,10 +33,62 @@ function acceptanceDatabaseUrl() {
 
 const children = [];
 const logs = [];
+let apiChild;
+let scenarioEnvironment;
 
-function start(name, args, env) {
+function isolatedEnvironment(overrides = {}) {
+  return {
+    ...process.env, DATABASE_URL: acceptanceDatabaseUrl(), PORT: String(API_PORT),
+    API_PORT: String(API_PORT), WEB_PORT: String(WEB_PORT), FEATHERBASE_ENV: 'test',
+    FEATHERBASE_INSTANCE: '', FEATHERBASE_APP_PATHS: '[]', MOTHERDUCK_TOKEN: '',
+    SMTP_HOST: '', SMTP_USER: '', SMTP_PASSWORD: '',
+    GOOGLE_CLIENT_SECRET: 'acceptance-private-secret',
+    ALLOW_MOCK_OAUTH: '1', PREAUTH_LOGIN_MAX: '10000', WEB_ORIGINS: BASE_URL,
+    ...overrides,
+  };
+}
+
+async function acceptanceSql(statement, parameters = []) {
+  const { default: postgres } = require(require.resolve('postgres', { paths: [path.join(REPO_ROOT, 'apps/server')] }));
+  const db = postgres(acceptanceDatabaseUrl(), { max: 1, prepare: false, onnotice() {} });
+  try { return await db.unsafe(statement, parameters); }
+  finally { await db.end(); }
+}
+
+async function stopApi() {
+  if (apiChild?.exitCode === null && apiChild.signalCode === null) {
+    process.kill(-apiChild.pid, 'SIGTERM');
+    await new Promise(resolve => apiChild.once('exit', resolve));
+  }
+  apiChild = undefined;
+}
+
+// Change host configuration without replacing the scenario's saved data/sessions.
+async function restartAcceptance(overrides = {}, root = REPO_ROOT) {
+  await stopApi();
+  scenarioEnvironment = { ...(scenarioEnvironment ?? isolatedEnvironment()), ...overrides };
+  apiChild = start('api', ['--filter', 'server', 'start'], scenarioEnvironment, root);
+  await waitFor(`${API_URL}/api/ping`, apiChild, 'The scenario API');
+}
+
+// Reset only our disposable DB, with the API stopped (its metadata is cached).
+// Local/hosted health scenarios need distinct real process environments. Restore
+// the test stamp before calling the existing guarded reset, never another DB.
+async function resetAcceptance(overrides = {}, root = REPO_ROOT) {
+  await stopApi();
+  await acceptanceSql("update featherbase.internal_metadata set value = 'test' where key = 'environment'");
+  const env = isolatedEnvironment();
+  for (const command of ['e2e:reset', 'migrate']) {
+    execFileSync('pnpm', ['--filter', 'server', command], { cwd: REPO_ROOT, env, timeout: 120_000, stdio: 'pipe' });
+  }
+  scenarioEnvironment = isolatedEnvironment(overrides);
+  await acceptanceSql("update featherbase.internal_metadata set value = $1 where key = 'environment'", [scenarioEnvironment.FEATHERBASE_ENV]);
+  await restartAcceptance({}, root);
+}
+
+function start(name, args, env, root = REPO_ROOT) {
   const child = spawn('pnpm', args, {
-    cwd: REPO_ROOT,
+    cwd: root,
     env: { ...process.env, ...env },
     detached: true, // its own process group, so shutdown takes tsx/vite with it
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -99,14 +151,12 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
           `Wait for it to finish, or run on other ports (${name}).`,
       );
   }
-  const api = start('api', ['--filter', 'server', 'e2e:serve'], {
-    PORT: String(API_PORT),
-    DATABASE_URL: acceptanceDatabaseUrl(),
-    FEATHERBASE_ENV: 'test',
-    ALLOW_MOCK_OAUTH: '1',
-    PREAUTH_LOGIN_MAX: '10000',
-    WEB_ORIGINS: BASE_URL,
-  });
+  const env = isolatedEnvironment();
+  for (const command of ['e2e:reset', 'migrate'])
+    execFileSync('pnpm', ['--filter', 'server', command], { cwd: REPO_ROOT, env, timeout: 120_000, stdio: 'pipe' });
+  // No watcher: tsx watch starts its own process group and can survive the
+  // scenario API's shutdown, retaining stale schema and environment state.
+  const api = apiChild = start('api', ['--filter', 'server', 'start'], env);
   const web = start('web', ['--filter', 'web', 'dev'], {
     WEB_PORT: String(WEB_PORT),
     API_PORT: String(API_PORT),
@@ -115,10 +165,11 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
   await waitFor(BASE_URL, web, 'The web app');
 });
 
-AfterAll(function () {
+AfterAll(async function () {
   stopAll();
+  if (scenarioEnvironment) await acceptanceSql("update featherbase.internal_metadata set value = 'test' where key = 'environment'");
 });
 
 process.on('exit', stopAll);
 
-module.exports = { BASE_URL, API_URL };
+module.exports = { BASE_URL, API_URL, resetAcceptance, restartAcceptance, acceptanceSql, isolatedEnvironment, REPO_ROOT };

@@ -11,6 +11,7 @@ import { test, expect, renderApp } from './pg-test'
 afterEach(() => {
   vi.restoreAllMocks()
   overrideVariable('GOOGLE_CLIENT_SECRET', undefined)
+  overrideVariable('FEATHERBASE_INSTANCE', undefined)
 })
 
 const card = (key: string) => screen.findByTestId(`health-check-${key}`)
@@ -26,24 +27,27 @@ async function healthy(createUser: (o: { email: string; roles: string[] }) => Pr
   await createUser({ email: 'keeper@example.com', roles: ['System Manager'] })
 }
 
-test('never applied: the page says so and how to apply, failing checks first (items 1, 4–7)', async ({ admin }) => {
+test('chosen file configuration shows the required setup without a fault banner', async ({ admin }) => {
+  overrideVariable('FEATHERBASE_INSTANCE', 'client/instance')
   await sql`delete from instance_settings_apply`
   await renderApp('/featherbase/admin/instance-health', admin)
   const page = await screen.findByTestId('instance-health')
   expect(within(page).getByRole('heading', { level: 1 })).toHaveTextContent('Instance health')
   const applied = await card('settings-applied')
-  expect(within(applied).getByTestId('health-state')).toHaveTextContent('Failing')
+  expect(within(applied).getByTestId('health-state')).toHaveTextContent('Setup needed')
   expect(applied).toHaveTextContent('The settings were never applied.')
   expect(within(applied).getByTestId('health-fix')).toHaveTextContent('cli settings:apply')
   expect(within(applied).getByTestId('health-why')).toHaveTextContent('Why it matters')
   expect(await card('settings-match-file')).toHaveTextContent('Nothing to compare until the settings file is applied.')
   // Failing cards come before passing ones.
   const states = within(page).getAllByTestId('health-state').map((s) => s.textContent)
-  expect(states.indexOf('Passing')).toBeGreaterThan(states.lastIndexOf('Failing'))
-  expect(page).toHaveTextContent(/\d+ problems? needs? attention\./)
+  expect(states.indexOf('Passing')).toBeGreaterThan(states.lastIndexOf('Setup needed'))
+  expect(page).toHaveTextContent('No operational faults. Complete the required setup before shared use.')
+  expect(screen.queryByTestId('health-banner')).not.toBeInTheDocument()
 })
 
 test('history: each change of state, with the activity around it one step away (items 8–10)', async ({ admin }) => {
+  overrideVariable('FEATHERBASE_INSTANCE', 'client/instance')
   await sql`delete from instance_settings_apply`
   await sql`delete from health_check_event`
   await sql`insert into health_check_event (check_key, ok, severity, message, at) values
@@ -66,6 +70,7 @@ test('history: each change of state, with the activity around it one step away (
 
 test('a System Manager sees a red banner leading to the page; it has no close button (items 12–16)', async ({ admin }) => {
   await sql`delete from instance_settings_apply`
+  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'disable_leavers'`
   await renderApp('/featherbase/admin/all-tables', admin)
   const banner = await screen.findByTestId('health-banner')
   expect(banner).toHaveAttribute('data-severity', 'error')
@@ -93,7 +98,7 @@ test('only warnings: the banner is amber; once fixed it goes on the next page ch
   await userEvent.click(screen.getByTestId('instance-health-link'))
   await screen.findByTestId('instance-health')
   await waitFor(() => expect(screen.queryByTestId('health-banner')).not.toBeInTheDocument())
-  expect(await screen.findByTestId('instance-health-summary')).toHaveTextContent('Every check passes.')
+  expect(await screen.findByTestId('instance-health-summary')).toHaveTextContent('Ready to explore.')
 })
 
 test('someone without the System Manager role sees no banner, no link and never asks (item 13)', async ({ admin, createUser }) => {

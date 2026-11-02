@@ -27,6 +27,7 @@ interface HealthCheckView {
   key: string
   title: string
   ok: boolean
+  state: 'ready' | 'optional' | 'setup-needed' | 'fault'
   severity: Severity
   message: string
   why: string
@@ -38,6 +39,8 @@ interface HealthCheckView {
 interface InstanceHealthView {
   checks: HealthCheckView[]
   failing: number
+  setup_needed: number
+  setup: { administrator_ready: boolean; installed_apps: number; environment: string; configuration: 'file' | 'ui' }
   worst: Severity | null
   checked_at: string
 }
@@ -133,7 +136,9 @@ function Prose({ text }: { text: string }) {
 }
 
 function CheckCard({ check }: { check: HealthCheckView }) {
-  const state = stateOf(check.ok, check.severity)
+  const state = check.state === 'optional' ? { label: 'Optional', tone: 'neutral' as const }
+    : check.state === 'setup-needed' ? { label: 'Setup needed', tone: 'opportunity' as const }
+    : stateOf(check.ok, check.severity)
   return (
     <Card data-testid={`health-check-${check.key}`} className="p-4">
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
@@ -149,9 +154,9 @@ function CheckCard({ check }: { check: HealthCheckView }) {
           <dt className="font-medium text-ink">Why it matters</dt>
           <dd className="text-ink-muted">{check.why}</dd>
         </div>
-        {!check.ok && check.fix && (
+        {check.state !== 'ready' && check.fix && (
           <div data-testid="health-fix">
-            <dt className="font-medium text-ink">How to fix</dt>
+            <dt className="font-medium text-ink">{check.state === 'fault' ? 'How to fix' : 'Next action'}</dt>
             <dd className="text-ink-muted [overflow-wrap:anywhere]"><Prose text={check.fix} /></dd>
           </div>
         )}
@@ -191,7 +196,7 @@ export function InstanceHealth() {
         <h1 className="text-lg font-semibold text-ink">{adminPageTitle('instance-health')}</h1>
         {data && (
           <p className="text-sm text-ink-muted" data-testid="instance-health-summary">
-            {data.failing === 0 ? 'Every check passes.' : `${problemsLine(data.failing)}.`}
+            {data.failing ? `${problemsLine(data.failing)}.` : data.setup_needed ? 'No operational faults. Complete the required setup before shared use.' : 'Ready to explore. Optional next steps are listed separately.'}
           </p>
         )}
       </div>

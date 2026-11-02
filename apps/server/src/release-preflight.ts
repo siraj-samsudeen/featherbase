@@ -16,6 +16,7 @@ import { parseDomainList } from './identities'
 import { appSetupState } from './app-settings'
 import { shippedUpgrades, unshippedApps, upgradeLossWarning, whyUnshipped } from './runtime-packages'
 import { followsAppFiles, unshippedRefusal } from './deploy-instance'
+import { appLibraryPaths } from './app-library'
 
 interface PreflightOptions {
   /** The environment the new server will run as (default: this process's). */
@@ -196,7 +197,7 @@ export async function assertInstalledAppsShipped(instanceDeploy?: { followFiles:
   if (!found) return 'shipped app check skipped (no app versions recorded yet)'
   const { installed, missing } = found
   if (missing.length && instanceDeploy) {
-    const paths = JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[]
+    const paths = await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
     const refusals: string[] = []
     const followed: string[] = []
     for (const row of found.missingRows) {
@@ -229,14 +230,14 @@ export async function installedAppsAtStart(environment = currentEnvironment()): 
     `WARNING: App ${name} version ${version} is installed and enabled, but this server does not have it, so it is unavailable. On a developer machine, add the folder holding ${name} ${version} to FEATHERBASE_APP_PATHS (init.sh sets it), or disable the app in Admin. A release refuses until it ships.`)
 }
 
-/** The installed, enabled apps with a recorded version, and those of them no
- *  app on FEATHERBASE_APP_PATHS ships; null on a new database. */
+/** The installed, enabled apps with a recorded version, and those not shipped
+ *  by explicit paths or the installed source library; null on a new database. */
 async function installedNotShipped() {
   if (!(await installed())) return null
   const rows = await sql`select name, package_version, artifact_digest, manifest from installed_app
     where runtime_package and enabled and package_version is not null order by name`
   const named = (row: Record<string, unknown>) => ({ name: String(row.name), version: String(row.package_version) })
-  const missing = await unshippedApps(rows, JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+  const missing = await unshippedApps(rows, await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[]))
   return { installed: rows.map(named), missing: missing.map(named), missingRows: missing }
 }
 

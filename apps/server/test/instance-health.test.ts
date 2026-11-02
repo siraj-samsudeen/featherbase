@@ -12,6 +12,9 @@ import { applyInstanceSettings } from '../src/instance-settings'
 import { BREAK_GLASS_ACTOR } from '../src/managed-settings'
 import { runAsSystemActor } from '../src/system-actor'
 import { drainJobs, enqueue, loadJobs } from '../src/jobs'
+import { main } from '../src/cli'
+import { config } from '../src/config'
+import { runMain } from './command-io'
 import {
   HEALTH_CHECK_JOB,
   formatHealthReport,
@@ -37,7 +40,36 @@ async function apply(file: unknown = { settings: { 'System Settings': { app_name
   return applyInstanceSettings(file, { by: 'Administrator' })
 }
 
+async function healthCommand(environment: string) {
+  const previous = config.environment
+  config.environment = environment
+  try { return await runMain(main, ['health', '--json']) }
+  finally { config.environment = previous }
+}
+
 describe('the checks (5.1)', () => {
+  test('a fresh local instance treats file-managed settings as optional', async () => {
+    await sql`delete from instance_settings_apply`
+    await withVariable('FEATHERBASE_INSTANCE', '', async () => {
+      const health = await instanceHealth({ environment: 'development', record: false })
+      expect(byKey(health.checks, 'settings-applied')).toMatchObject({ ok: true, state: 'optional', fix: null })
+      expect(health.failing).toBe(0)
+      expect(health.setup).toMatchObject({ environment: 'development', configuration: 'ui' })
+      const result = await healthCommand('development')
+      expect(result.code).toBe(0)
+      expect(JSON.parse(result.stdout).checks).toContainEqual(expect.objectContaining({ key: 'settings-applied', state: 'optional' }))
+    })
+  })
+
+  test('CLI health fails for required hosted readiness', async () => {
+    await noManagerEmails()
+    const result = await healthCommand('production')
+    expect(result.code).toBe(1)
+    expect(JSON.parse(result.stdout).checks).toContainEqual(expect.objectContaining({
+      key: 'system-manager-email', state: 'setup-needed', fix: expect.stringContaining('email address'),
+    }))
+  })
+
   test('a System Manager with an email address: failing with none, passing once one has an address', async ({ createUser }) => {
     await noManagerEmails()
     const failing = byKey(await runHealthChecks(), 'system-manager-email')
@@ -79,9 +111,9 @@ describe('the checks (5.1)', () => {
     })
   })
 
-  test('settings file applied: failing and saying how to apply it before the first apply, passing after', async () => {
+  test('chosen instance settings remain actionable until applied', async () => {
     await sql`delete from instance_settings_apply`
-    const never = byKey(await runHealthChecks(), 'settings-applied')
+    const never = await withVariable('FEATHERBASE_INSTANCE', 'client/instance', async () => byKey(await runHealthChecks(), 'settings-applied'))
     expect(never).toMatchObject({ ok: false, severity: 'error' })
     expect(never.message).toBe('The settings were never applied.')
     expect(never.fix).toContain('cli settings:apply --file')
@@ -138,6 +170,9 @@ describe('the checks (5.1)', () => {
     const failed = byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')
     expect(failed).toMatchObject({ ok: false, severity: 'error' })
     expect(failed.message).toContain('the warehouse feed is stale')
+    const result = await healthCommand('development')
+    expect(result.code).toBe(1)
+    expect(JSON.parse(result.stdout).checks).toContainEqual(expect.objectContaining({ key: 'scheduled-job:disable_leavers', state: 'fault' }))
 
     await sql`update scheduled_job set last_outcome = 'success' where method = 'disable_leavers'`
     expect(byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers').ok).toBe(true)
@@ -251,7 +286,7 @@ describe('the checks (5.1)', () => {
 
   test('the release prints every check, failing ones as warnings', async () => {
     await sql`delete from instance_settings_apply`
-    const lines = formatHealthReport(await runHealthChecks())
+    const lines = await withVariable('FEATHERBASE_INSTANCE', 'client/instance', async () => formatHealthReport(await runHealthChecks()))
     const applied = lines.find((l) => l.text.includes('Settings file applied'))
     expect(applied).toMatchObject({ failing: true })
     expect(applied!.text).toMatch(/^health: FAILING \(error\) Settings file applied: The settings were never applied\./)
@@ -335,11 +370,11 @@ describe('the health API (5.3, 5.4)', () => {
       worst: string | null
     }>('/api/instance-health')
     const applied = health.checks.find((c) => c.key === 'settings-applied')!
-    expect(applied).toMatchObject({ ok: false, message: 'The settings were never applied.' })
+    expect(applied).toMatchObject({ ok: true, state: 'optional' })
     expect(applied.history).toHaveLength(1)
     expect(applied.since).toBeTruthy()
-    expect(health.failing).toBe(health.checks.filter((c) => !c.ok).length)
-    expect(health.worst).toBe('error')
+    expect(health.failing).toBe(health.checks.filter((c) => c.state === 'fault').length)
+    expect(health.worst).toBeNull()
     // Failing first, red before amber.
     const firstPassing = health.checks.findIndex((c) => c.ok)
     expect(health.checks.slice(firstPassing).every((c) => c.ok)).toBe(true)

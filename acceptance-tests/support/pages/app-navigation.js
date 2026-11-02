@@ -4,8 +4,9 @@ const assert = require('node:assert/strict');
 const { createHash, randomUUID } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
-const postgres = require('postgres');
+const { default: postgres } = require('postgres');
 const { Api } = require('../api');
+const { restartAcceptance } = require('../stack');
 
 class AppNavigation {
   constructor(page) { this.page = page; }
@@ -14,7 +15,7 @@ class AppNavigation {
     const { installed } = await res.json();
     for (const name of ['tasker', 'feather_dash'])
       if (!installed.some(app => app.name === name))
-        await api.call('POST', '/api/install_app', { name }, [201], `install ${name}`);
+        await api.call('POST', '/api/apps/prepare-install', { name }, [201], `prepare and install ${name}`);
   }
   static async appApi(api, name) {
     const res = await api.call('GET', '/api/apps', undefined, [200], 'installed versions');
@@ -28,6 +29,9 @@ class AppNavigation {
       await tasker.saveRow('tasker.task', { task_title, project: project.row_id });
   }
   static async store(api, email) {
+    // Satisfy the app's declared host secret without a real warehouse token;
+    // navigation reads the local cached dataset configured below.
+    await restartAcceptance({ MOTHERDUCK_TOKEN: 'acceptance-unused-warehouse-token' });
     const systems = JSON.parse(readFileSync(path.resolve(__dirname, '../../../apps/server/seeds/jeyarama/identifier-systems.json')));
     await api.saveRow('Identifier System', { ...systems.identifier_systems.find(system => system.row_id === 'stylehr-employee-code'), enabled: true });
     // The shipped scope provider still declares the legacy chart during its
