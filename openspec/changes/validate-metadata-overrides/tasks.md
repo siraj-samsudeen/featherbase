@@ -10,4 +10,4 @@
 - [x] 2.1 Run effective acceptance scenarios with zero undefined/pending steps and an HTML report; run meaningful server regressions, typecheck, and strict OpenSpec validation.
 - [x] 2.2 Verify saves, edits, refusals, unchanged persisted state after refusal, and effective metadata through the separately running HTTP server on disposable fixtures.
 - [ ] 2.3 Complete required ordinary code review and triage findings. Local Codex/Claude CLI and authentication are unavailable; inspect exact-head GitHub Codex review without claiming the local-review requirement ran.
-- [ ] 2.4 Commit/push, open one PR, subscribe to exact-head CI and PR comments, and report evidence to the manager. Leave merge/deploy/archive gated on owner review.
+- [x] 2.4 Commit/push, open one PR, subscribe to exact-head CI and PR comments, and report evidence to the manager. Leave merge/deploy/archive gated on owner review.
