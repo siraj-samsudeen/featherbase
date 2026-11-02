@@ -21,8 +21,10 @@ flowchart LR
 ### D1. A pasted token is encrypted with one master key per deployment
 
 The token is stored on the Data Source row, encrypted with AES-256-GCM under a key from a new
-deployment variable, `SECRET_STORE_KEY`, declared in the variable registry like `JWT_SECRET`:
-required outside development, a fixed development default, must differ across environments. The
+deployment variable, `SECRET_STORE_KEY`, declared in the variable registry: must differ across
+environments, with a fixed default in development and test. It is not required at boot, so
+existing deployments keep starting; outside development and test, saving a pasted token is
+refused, naming the variable, until it is set. The
 row also keeps the token's last four characters for display. The server decrypts only to open a
 connection and never returns, logs or echoes the token; error messages have it scrubbed.
 
