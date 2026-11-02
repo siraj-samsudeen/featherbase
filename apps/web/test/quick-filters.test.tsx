@@ -34,7 +34,7 @@ async function openList(admin: Admin, search = '') {
 }
 
 const boxes = () =>
-  [...screen.getByTestId('standard-filters').querySelectorAll('[data-testid^="std-filter-"]')].map((e) =>
+  [...screen.getByTestId('standard-filters').querySelectorAll('[data-testid^="std-filter-"]:not([data-testid="std-filter-more"])')].map((e) =>
     e.getAttribute('data-testid')!.replace('std-filter-', ''),
   )
 const sections = () =>
