@@ -4,6 +4,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { NARROW_QUERY } from '../src/components/ui/DataList'
+import { recordAction } from '../src/lib/recents'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -301,15 +302,39 @@ test('On a phone, the folded filters say 2 filters are in use', async ({ admin }
   expect(screen.queryByTestId('filter-field')).not.toBeInTheDocument()
 })
 
-test('On a phone, opening the filters shows every quick filter and lets the user add one', async ({ admin }) => {
+test('On a phone, opening the filters shows up to six quick filters, says how many more, and lets the user add one', async ({ admin }) => {
   onPhone()
   await seedEight(admin)
   await openList(admin)
   expect(screen.getByTestId('filters-toggle')).toHaveTextContent('Filters')
   fireEvent.click(screen.getByTestId('filters-toggle'))
+  expect(boxes()).toEqual(EIGHT.slice(0, 6))
+  fireEvent.click(screen.getByTestId('std-filter-more'))
   expect(boxes()).toEqual(EIGHT)
-  expect(screen.queryByTestId('std-filter-more')).not.toBeInTheDocument()
   expect(screen.getByTestId('filter-field')).toBeInTheDocument()
+})
+
+test('On a phone, Recent folds behind the Filters button; Save view stays showing', async ({ admin }) => {
+  onPhone()
+  await seed(admin)
+  recordAction('Administrator', { kind: 'row', key: `row:${T}/r-1`, label: 'r-1', sub: T, path: `/featherbase/admin/${enc(T)}/r-1` })
+  // Save view shows once a filter is on.
+  await openList(admin, `?filters=${enc(JSON.stringify([['floor', '=', 'Ground']]))}`)
+  expect(await screen.findByTestId('saved-views-bar')).toBeInTheDocument()
+  expect(screen.queryByTestId('recent-strip')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('filters-toggle'))
+  expect(screen.getByTestId('recent-strip')).toBeInTheDocument()
+})
+
+test('The Filters button shows an arrow that turns over when opened', async ({ admin }) => {
+  onPhone()
+  await seed(admin)
+  await openList(admin)
+  const toggle = screen.getByTestId('filters-toggle')
+  const arrow = toggle.querySelector('[data-chevron]')!
+  expect(arrow).not.toHaveClass('rotate-180')
+  fireEvent.click(toggle)
+  expect(screen.getByTestId('filters-toggle').querySelector('[data-chevron]')).toHaveClass('rotate-180')
 })
 
 test('On a phone, only the count shows while folded; opening shows the filters in use, each removable', async ({ admin }) => {
