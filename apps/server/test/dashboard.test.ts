@@ -39,6 +39,16 @@ describe('UI-026: dashboard aggregates', () => {
       { label: 'Closed', value: 2 },
       { label: 'Pending', value: 1 },
     ])
+    for (const title of ['unset-a', 'unset-b', 'unset-c', 'unset-d'])
+      await admin.post('/api/save_row', { table: DT, row: { title, stage: null } })
+    expect(await admin.post('/api/dashboard/chart', { table: DT, group_by: 'stage' })).toEqual({
+      data: [
+        { label: '', value: 4 },
+        { label: 'Open', value: 3 },
+        { label: 'Closed', value: 2 },
+        { label: 'Pending', value: 1 },
+      ],
+    })
   })
 
   test('respects filters in grouped counts', async ({ admin }) => {
