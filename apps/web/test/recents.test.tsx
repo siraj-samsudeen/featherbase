@@ -33,6 +33,12 @@ const row = (name: string) => ({
 beforeEach(() => localStorage.clear())
 
 describe('recordAction / recentActions', () => {
+  it('clears cached destinations when the server history is empty', () => {
+    localStorage.setItem(`fc-recents:${USER}`, JSON.stringify([{ ...row('STALE'), visits: [NOW] }]))
+    mergeServerEntries(USER, [])
+    expect(recentActions(USER, 10)).toEqual([])
+  })
+
   it('skips unknown kinds and missing identities in a server merge without losing valid destinations', () => {
     recordAction(USER, row('LOCAL'), NOW)
     mergeServerEntries(USER, [
