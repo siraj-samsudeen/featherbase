@@ -145,6 +145,10 @@ class WarehouseBrowserPage {
     return { database, schema };
   }
 
+  async previewTitle() {
+    return (await this.page.getByTestId('pane-preview').locator('h2').innerText()).trim();
+  }
+
   async preview() {
     return {
       size: await this.page.getByTestId('preview-size').innerText(),
@@ -158,9 +162,12 @@ class WarehouseBrowserPage {
     return (await this.page.getByTestId('table-row').allInnerTexts()).map((t) => t.split('\n')[0]);
   }
 
+  /** Refreshes the table list and waits for the fresh list to come back. */
   async refresh() {
-    await this.page.getByTestId('browser-refresh').click();
-    await this.page.getByTestId('browser-refresh').and(this.page.locator(':not([aria-busy=true])')).waitFor();
+    await Promise.all([
+      this.page.waitForResponse((res) => res.url().includes(':refresh_tables') && res.ok()),
+      this.page.getByTestId('browser-refresh').click(),
+    ]);
   }
 }
 
