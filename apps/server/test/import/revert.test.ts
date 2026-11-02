@@ -171,6 +171,44 @@ describe('RVT-R2/R3: the revert boundary restores and deletes', () => {
     expect(res.status).toBe(404)
   })
 
+  test('RVT-R2: an invalid run ID cannot start a revert', async ({ admin }) => {
+    await setup(admin)
+    const runId = await seedAndRun(admin)
+    const before = await rowsByZone(admin)
+    for (const args of [{}, { run_id: '' }, { run_id: 7 }]) {
+      await expectApiError(admin.post(REVERT, args), {
+        status: 417, type: 'ValidationError', message: '417 ValidationError: Expected { run_id }',
+      })
+      expect(await rowsByZone(admin)).toEqual(before)
+    }
+    expect(await admin.post(REVERT, { run_id: runId, dry_run: true }))
+      .toEqual({ restored: 1, deleted: 1, skipped: [], failed: [], dry_run: true })
+    expect(await rowsByZone(admin)).toEqual(before)
+  })
+
+  test('RVT-R2: an override must be a list containing only row IDs', async ({ admin }) => {
+    await setup(admin)
+    const runId = await seedAndRun(admin)
+    const before = await rowsByZone(admin)
+    for (const override of [String(before.Alpha.row_id), [String(before.Alpha.row_id), 7]]) {
+      await expectApiError(admin.post(REVERT, { run_id: runId, override }), {
+        status: 417, type: 'ValidationError', message: '417 ValidationError: override must be an array of row ids',
+      })
+      expect(await rowsByZone(admin)).toEqual(before)
+    }
+    expect(await admin.post(REVERT, { run_id: runId, override: [], dry_run: true }))
+      .toEqual({ restored: 1, deleted: 1, skipped: [], failed: [], dry_run: true })
+    expect(await rowsByZone(admin)).toEqual(before)
+  })
+
+  test('RVT-R2: Settings Tables cannot revert imports', async ({ admin }) => {
+    const table = 'Revert Settings Target'
+    await admin.post('/api/table_def', { name: table, kind: 'settings', columns: [{ column_name: 'label', column_type: 'Data' }] })
+    await expectApiError(admin.post(`/api/table/${encodeURIComponent(table)}:import-revert`, { run_id: 'not-a-run' }), {
+      status: 417, type: 'ValidationError', message: '417 ValidationError: Cannot revert an import on a settings Table',
+    })
+  })
+
   test('RVT-R3: a no-op update has nothing to restore — skipped: unchanged', async ({
     admin,
   }) => {
