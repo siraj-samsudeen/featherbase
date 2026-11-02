@@ -164,6 +164,69 @@ test('A Yes/No box stores the word Yes or No in the page address, as Choice does
   expect(screen.getByTestId('filter-chip')).toHaveTextContent('active = No')
 })
 
+const options = (testId: string) =>
+  [...screen.getByTestId(testId).querySelectorAll('option')].map((o) => o.getAttribute('value'))
+
+test('Adding Floor = Ground narrows the rows, and removing it brings them all back', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  await waitFor(() => expect(sections()).toHaveLength(3))
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'floor' } })
+  fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'Ground' } })
+  fireEvent.click(screen.getByTestId('filter-add'))
+  await waitFor(() => expect(sections().sort()).toEqual(['Sarees', 'Shawls']))
+  const chip = screen.getByTestId('filter-chip')
+  expect(chip).toHaveTextContent('floor = Ground')
+  fireEvent.click(within(chip).getByLabelText('Remove filter'))
+  await waitFor(() => expect(sections()).toHaveLength(3))
+})
+
+test('Adding a filter on Floor offers its choices, without typing', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'floor' } })
+  expect(screen.getByTestId('filter-value').tagName).toBe('SELECT')
+  expect(options('filter-value')).toEqual(['', 'Ground', 'First'])
+})
+
+test('An added filter on Active finds the active rows, and its chip reads Yes', async ({ admin }) => {
+  await seedActive(admin)
+  await openList(admin)
+  await waitFor(() => expect(sections()).toHaveLength(3))
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'active' } })
+  expect(options('filter-value')).toEqual(['', 'Yes', 'No'])
+  fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'Yes' } })
+  fireEvent.click(screen.getByTestId('filter-add'))
+  await waitFor(() => expect(sections().sort()).toEqual(['Sarees', 'Shawls']))
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('active = Yes')
+})
+
+test('Choice and Yes/No columns offer only = and !=, and moving to one resets another operator to =', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'section' } })
+  fireEvent.change(screen.getByTestId('filter-op'), { target: { value: 'like' } })
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'floor' } })
+  expect(options('filter-op')).toEqual(['=', '!='])
+  expect(screen.getByTestId('filter-op')).toHaveValue('=')
+})
+
+test('A text column keeps its typed value and every operator', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'section' } })
+  expect(screen.getByTestId('filter-value').tagName).toBe('INPUT')
+  expect(options('filter-op')).toEqual(['=', '!=', 'like', '>', '<', '>=', '<='])
+})
+
+test("The report's filter bar also offers the dropdowns", async ({ admin }) => {
+  await seed(admin)
+  await renderApp(`/featherbase/admin/${enc(T)}/view/report`, admin)
+  await screen.findByTestId('report-view', {}, { timeout: 8000 })
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'floor' } })
+  expect(options('filter-value')).toEqual(['', 'Ground', 'First'])
+})
+
 test('Row ID gets no box and takes none of the six places, and can still get an added filter', async ({ admin }) => {
   await seed(admin)
   await openList(admin)
