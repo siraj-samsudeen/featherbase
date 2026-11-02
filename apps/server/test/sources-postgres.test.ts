@@ -13,7 +13,7 @@ import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
 import type { ReflectionCandidate } from '../src/sources/reflect'
-import { makeTable } from './fixtures'
+import { grantRole, makeTable } from './fixtures'
 
 const EXT_URL_ENV = 'EXT_FIXTURE_URL'
 process.env[EXT_URL_ENV] = EXTERNAL_DATABASE_URL
@@ -643,6 +643,90 @@ describe('EDS-11: source failure', () => {
 })
 
 describe('EDS-2: foreign keys reflect as References', () => {
+  test('reflected foreign keys scope garage reads without restricting vehicle or unset garage', async ({ admin, createUser }) => {
+    // These are source-owned business rows, not control-side metadata. Let
+    // the real source allocate collision-free ids and remove only our rows.
+    const existing = {
+      vehicles: await cli`select * from ext_fixture.vehicle order by id`,
+      garages: await cli`select * from ext_fixture.garage order by id`,
+      accidents: await cli`select * from ext_fixture.accident order by id`,
+    }
+    const vehicles = await cli<{ id: number }[]>`insert into ext_fixture.vehicle (reg_no) values ('scope-A'), ('scope-B') returning id`
+    const garages = await cli<{ id: number }[]>`insert into ext_fixture.garage (city) values ('North'), ('South') returning id`
+    const [vehicleA, vehicleB] = vehicles.map((v) => v.id)
+    const [garageA, garageB] = garages.map((g) => g.id)
+    try {
+      const accidents = await cli<{ id: number }[]>`
+        insert into ext_fixture.accident (garage_id, vehicle_id, severity) values
+          (${garageA}, ${vehicleA}, 'low'), (${garageB}, ${vehicleA}, 'high'),
+          (${garageA}, ${vehicleB}, 'high'), (null, ${vehicleB}, null) returning id`
+      const ids = accidents.map((r) => String(r.id))
+      await makeSource(admin)
+      const reflected = await admin.post<{ created: { table: string; name: string }[]; skipped: unknown[] }>(
+        '/api/table/Data%20Source/ext-fixture:reflect',
+        { schema: 'ext_fixture', tables: ['vehicle', 'garage', 'accident'] },
+      )
+      expect(reflected.skipped).toEqual([])
+      expect(reflected.created.map((r) => r.table)).toEqual(['vehicle', 'garage', 'accident'])
+      const [vehicle, garage, accident] = reflected.created.map((r) => r.name)
+      const path = `/api/table/${encodeURIComponent(accident)}`
+      const metaPaths = reflected.created.map((r) => `/api/table/${encodeURIComponent(r.name)}:meta`)
+      const allMetadata = await Promise.all(metaPaths.map((p) => admin.get<{ columns: Record<string, unknown>[] }>(p)))
+      const metadata = allMetadata[2]
+      expect(metadata.columns.find((c) => c.column_name === 'vehicle_id')).toMatchObject({ column_type: 'Reference', reference_table: vehicle, source_column: 'vehicle_id' })
+      expect(metadata.columns.find((c) => c.column_name === 'garage_id')).toMatchObject({ column_type: 'Reference', reference_table: garage, source_column: 'garage_id' })
+      await grantRole(admin, { role: 'Bound Scope Reader', table: [vehicle, garage, accident], can_read: true })
+      const reader = await createUser({ email: 'bound.scope@example.com', roles: ['Bound Scope Reader'] })
+      await admin.post('/api/save_row', { table: 'Data Scope', row: { person: reader.user, allow_table: garage, for_value: String(garageA) } })
+      const before = {
+        vehicles: await cli`select * from ext_fixture.vehicle order by id`,
+        garages: await cli`select * from ext_fixture.garage order by id`,
+        accidents: await cli`select * from ext_fixture.accident order by id`,
+      }
+      const fields = ['row_id', 'garage_id', 'vehicle_id', 'severity']
+      const rows = [
+        { row_id: ids[0], garage_id: String(garageA), vehicle_id: String(vehicleA), severity: 'low' },
+        { row_id: ids[1], garage_id: String(garageB), vehicle_id: String(vehicleA), severity: 'high' },
+        { row_id: ids[2], garage_id: String(garageA), vehicle_id: String(vehicleB), severity: 'high' },
+        { row_id: ids[3], garage_id: null, vehicle_id: String(vehicleB), severity: null },
+      ]
+      const scopedRows = [rows[0], rows[2], rows[3]]
+      for (const [client, extra, expectedRows, high, low, empty] of [
+        [reader, [], scopedRows, 1, 1, 1],
+        [admin, [], rows, 2, 1, 1],
+        [reader, [['garage_id', '=', String(garageB)]], [], 0, 0, 0],
+        [reader, [['vehicle_id', '=', String(vehicleB)]], [rows[2], rows[3]], 1, 0, 1],
+      ] as const) {
+        const filters = [['row_id', 'in', ids], ...extra]
+        const query = new URLSearchParams({ fields: JSON.stringify(fields), filters: JSON.stringify(filters), order_by: 'row_id asc' })
+        expect(await client.get(`${path}?${query}`)).toEqual({ data: expectedRows, total: expectedRows.length, limit_start: 0, limit_page_length: 20 })
+        expect(await client.get(`${path}:count?filters=${encodeURIComponent(JSON.stringify(filters))}`)).toEqual({ count: expectedRows.length })
+        const groups = [
+          ...(high ? [{ value: 'high', count: high, sums: {} }] : []),
+          ...(low ? [{ value: 'low', count: low, sums: {} }] : []),
+          ...(empty ? [{ value: null, count: empty, sums: {} }] : []),
+        ]
+        expect(await client.get(`${path}:summary?group_by=severity&filters=${encodeURIComponent(JSON.stringify(filters))}`)).toEqual({ count: expectedRows.length, sums: {}, groups })
+        const chart = await client.post<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', { table: accident, group_by: 'severity', filters })
+        // Chart frequency order and summary value order intentionally differ;
+        // compare every exact chart group without prescribing tie ordering.
+        expect(chart.data).toHaveLength(groups.length)
+        expect(chart.data).toEqual(expect.arrayContaining(groups.map((g) => ({ label: g.value ?? '', value: g.count }))))
+      }
+      expect(await cli`select * from ext_fixture.vehicle order by id`).toEqual(before.vehicles)
+      expect(await cli`select * from ext_fixture.garage order by id`).toEqual(before.garages)
+      expect(await cli`select * from ext_fixture.accident order by id`).toEqual(before.accidents)
+      expect(await Promise.all(metaPaths.map((p) => admin.get(p)))).toEqual(allMetadata)
+    } finally {
+      await cli`delete from ext_fixture.accident where vehicle_id in ${cli(vehicles.map((v) => v.id))}`
+      await cli`delete from ext_fixture.vehicle where id in ${cli(vehicles.map((v) => v.id))}`
+      await cli`delete from ext_fixture.garage where id in ${cli(garages.map((g) => g.id))}`
+      expect(await cli`select * from ext_fixture.vehicle order by id`).toEqual(existing.vehicles)
+      expect(await cli`select * from ext_fixture.garage order by id`).toEqual(existing.garages)
+      expect(await cli`select * from ext_fixture.accident order by id`).toEqual(existing.accidents)
+    }
+  })
+
   test('FK edges surface on introspect and converge in child-first order', async ({ admin }) => {
     await makeSource(admin)
     const intro = (await admin.get(
