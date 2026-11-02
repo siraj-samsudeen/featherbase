@@ -1,0 +1,49 @@
+{
+  "name": "@featherbase-learning/tasker",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "featherbase": "featherbase.json",
+  "files": [
+    "featherbase.json",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --noEmit && vite build && node scripts/build-server.mjs",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "coverage:merged": "node scripts/coverage-merge.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.105.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-markdown": "10.1.0",
+    "@featherbase/shop-floor": "file:../../packages/shop-floor"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/coverage-istanbul": "5.0.5",
+    "@vitest/istanbul-lib-coverage": "2.1.0",
+    "@vitest/istanbul-lib-source-maps": "2.1.0",
+    "esbuild": "^0.28.2",
+    "istanbul-lib-instrument": "6.0.3",
+    "istanbul-lib-report": "3.0.1",
+    "istanbul-reports": "3.2.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vite-plugin-istanbul": "9.0.1",
+    "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "test-exclude": {
+      "glob": "^14.0.2",
+      "minimatch": "^11.0.1"
+    }
+  }
+}

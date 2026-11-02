@@ -175,6 +175,11 @@ test('a label is changed without touching the column or its data', async ({ admi
   await openEditor(admin)
 
   const label = await screen.findByTestId('ce-label-glor')
+  const originalLabel = (await meta(admin)).columns.find((c) => c.column_name === 'glor')?.label
+  await user.clear(label)
+  await user.type(label, '   ')
+  await user.click(screen.getByTestId('ce-label-save-glor'))
+  expect((await meta(admin)).columns.find((c) => c.column_name === 'glor')?.label).toBe(originalLabel)
   await user.clear(label)
   await user.type(label, 'Floor')
   await user.click(screen.getByTestId('ce-label-save-glor'))
@@ -196,4 +201,48 @@ test('a system Table refuses the whole editor', async ({ admin }) => {
   )
   expect(screen.queryByTestId('ce-add')).not.toBeInTheDocument()
   expect(screen.queryByTestId('ce-rename-file_name')).not.toBeInTheDocument()
+})
+
+// #738 (list-columns-from-the-table, point 9): each column's "In list" tick
+// is the Table's list for everyone, saved the moment it is ticked.
+const inListTick = (column: string) =>
+  within(screen.getByTestId(`ce-row-${column}`)).getByRole('checkbox', { name: /in list/i })
+
+test('each column has an "In list" tick showing whether it is in the list', async ({ admin }) => {
+  await seed(admin)
+  await admin.put(`/api/table_def/${encodeURIComponent(DT)}`, {
+    ...(await meta(admin)),
+    columns: (await meta(admin)).columns.map((c) => ({ ...c, in_list_view: c.column_name === 'glor' })),
+  })
+  await openEditor(admin)
+  await screen.findByTestId('ce-row-glor')
+  expect(inListTick('glor')).toBeChecked()
+  expect(inListTick('pop')).not.toBeChecked()
+})
+
+test('unticking "In list" takes the column out of the list at once', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await openEditor(admin)
+  await screen.findByTestId('ce-row-pop')
+  await user.click(inListTick('pop'))
+  await waitFor(() => expect(screen.getByTestId('ce-saved')).toHaveTextContent('Took pop out of the list'))
+  const pop = (await meta(admin)).columns.find((c) => c.column_name === 'pop') as { in_list_view?: boolean }
+  expect(pop.in_list_view).toBe(false)
+})
+
+test('a system Table\'s "In list" ticks cannot be changed', async ({ admin }) => {
+  await openEditor(admin, 'Import Log')
+  await screen.findByTestId('ce-row-file_name')
+  expect(inListTick('file_name')).toBeDisabled()
+})
+
+test('an "In list" tick moves the moment it is clicked, before the save returns', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await openEditor(admin)
+  await screen.findByTestId('ce-row-pop')
+  await user.click(inListTick('pop'))
+  expect(inListTick('pop')).not.toBeChecked()
+  await waitFor(() => expect(screen.getByTestId('ce-saved')).toHaveTextContent('Took pop out of the list'))
 })

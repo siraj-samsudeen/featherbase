@@ -24,7 +24,7 @@ prove('scope locks, product locks and duplicate waits never retain pre-wait gran
     (select value from internal_metadata where key = 'environment') as environment`
   expect(identity).toEqual({ name: 'featherbase_issue279_access_commit_e2e', environment: 'test' })
   expect(await sql`select name from installed_app where name = 'scopeproof'`).toHaveLength(0)
-  expect(await discoverPackages([resolve('../..', 'runtime-apps/scope-proof')])).toEqual([])
+  expect(await discoverPackages([resolve('../..', 'test-apps/scope-proof')])).toEqual([])
   await installApp('scopeproof')
   // A person id is assigned, never chosen; this committed proof needs a known
   // one across connections, so the row is written directly.
@@ -80,7 +80,7 @@ prove('actual HTTP callback failures are redacted and audited after committed ro
   const [identity] = await sql`select current_database() as name,
     (select value from internal_metadata where key = 'environment') as environment`
   expect(identity).toEqual({ name: 'featherbase_issue279_access_commit_e2e', environment: 'test' })
-  const directory = resolve('../..', 'runtime-apps/scope-proof')
+  const directory = resolve('../..', 'test-apps/scope-proof')
   expect(await discoverPackages([directory])).toEqual([])
   await installApp('scopeproof')
   // A person id is assigned, never chosen; this committed proof needs a known

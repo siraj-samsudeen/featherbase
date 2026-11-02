@@ -2,14 +2,46 @@
 // every screen shows names; Data Scope and Share pick a Person or a Service
 // account; service accounts are listed by name; and a session that ended
 // (as it does for everyone at the upgrade) says so on the sign-in page.
-import { screen, waitFor, within } from '@testing-library/react'
+import { render, renderHook, screen, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 import { pickerFor } from '../src/lib/pickers'
-import { isOpaqueId, principalLabel } from '../src/lib/people'
+import { isOpaqueId, principalLabel, PrincipalName, usePrincipalLabels } from '../src/lib/people'
+import { RowTitle } from '../src/lib/row-titles'
+import { api, getToken, setSession } from '../src/lib/api'
 import { recordAction } from '../src/lib/recents'
 
 const anonymous = { user: null, token: null } as never
+
+test('principal labels resolve a cold batch of names for text controls', async ({ admin, createUser }) => {
+  const ravi = await createUser({ email: 'labels.ravi@example.test', fullName: 'Ravi Menon' })
+  setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
+  const client = new QueryClient()
+  const { result } = renderHook(() => usePrincipalLabels([ravi.user!, 'Administrator']), {
+    wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+  })
+  await waitFor(() => expect(result.current(ravi.user!)).toBe('Ravi Menon'))
+  expect(result.current('Administrator')).toBe('Administrator')
+  expect(principalLabel('Guest', null, false)).toBe('Guest')
+})
+
+test('a revoked session settles name and row-title reads without leaking names or hanging', async ({ admin, createUser }) => {
+  const ravi = await createUser({ email: 'expired.ravi@example.test', fullName: 'Private Ravi' })
+  setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
+  await api.get('/api/whoami')
+  await admin.post('/api/logout', {})
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<QueryClientProvider client={client}>
+    <PrincipalName id={ravi.user!} />
+    <p data-testid="expired-row-title"><RowTitle table="Person" rowId={ravi.user!} /></p>
+  </QueryClientProvider>)
+  await waitFor(() => expect(screen.getAllByTestId('principal-name').every((name) => name.textContent === 'Unnamed person')).toBe(true))
+  await waitFor(() => expect(client.isFetching()).toBe(0))
+  expect(screen.getByTestId('expired-row-title')).toHaveTextContent('Unnamed person')
+  expect(screen.queryByText('Private Ravi')).not.toBeInTheDocument()
+  expect(getToken()).toBeNull()
+})
 
 test('the sign-in page says a session has ended when it was sent there by one', async () => {
   window.history.replaceState({}, '', '/featherbase/login?ended=1')

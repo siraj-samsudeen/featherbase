@@ -11,6 +11,7 @@ import { assertNothingRetained, repointRowActivity, retainedActivityCounts, reta
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
+import { holdBeforeRowLock } from './row-lock-order'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
 import { applySla } from './sla'
@@ -18,7 +19,7 @@ import { getActiveWorkflow, stateField, rethrowWorkflowConflict, notifyApprovers
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
-import { FULL_READER, ROW_ATTACHED_TABLES, readerFor, restrictRow, seesEveryColumn, type Tiers } from './row-readers'
+import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, readerFor, restrictRow, seesEveryColumn, type Tiers } from './row-readers'
 import { assertNotSystemWritten } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
@@ -383,7 +384,7 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
     if (err instanceof AppError) throw refused()
     throw err
   }
-  if (table === 'Version' && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
+  if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
     throw refused()
 }
 
@@ -760,6 +761,14 @@ interface SaveOptions {
   // created_by, which is what makes own_rows_only portals work. Never expose
   // this to callers that pass through arbitrary client input.
   skipPermissions?: boolean
+  // Only the upload route supplies the exact path returned by storage.
+  // Never derive this option from a client row or request body.
+  uploadedFileUrl?: string
+}
+
+function assertStoredFileUrl(meta: TableMeta, row: RowValues, allowed: unknown) {
+  if (meta.name === 'File' && String(row.file_url ?? '') !== String(allowed ?? ''))
+    throw new AppError('ValidationError', 'file_url is managed by uploads and cannot be assigned or changed')
 }
 
 export function saveDoc(...args: Parameters<typeof saveDocImpl>) {
@@ -875,7 +884,7 @@ async function writeDoc(
   const [saved] = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
-      await holdManagedSet(stx, meta.name)
+      await holdBeforeRowLock(stx, meta, user, { ...values }, true)
       const rowId = await resolveRowId(stx, meta, values)
       const now = new Date()
       const row: RowValues = {
@@ -900,6 +909,7 @@ async function writeDoc(
       await runDocEventScripts('before_save', meta.name, ctx.row, ctx.tx)
       await assertMandatoryAccess(user, meta, row)
       await assertAttachedTarget(meta, row, null, user, Boolean(opts.skipPermissions))
+      assertStoredFileUrl(meta, row, opts.uploadedFileUrl)
       // Hooks may add or replace Sub-table arrays on ctx.row (an app hook
       // snapshotting template items into a new row, say) — re-pick from the
       // hooked row so what saves is what the chain left behind.
@@ -1138,7 +1148,7 @@ async function updateDoc(
   const saved = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
-      await holdManagedSet(stx, meta.name)
+      await holdBeforeRowLock(stx, meta, user, { ...values, [meta.row_key]: name })
       const [existing] = await tx`
         select * from ${tx(table)} where ${tx(meta.row_key)} = ${name} for update`
       if (!existing)
@@ -1189,6 +1199,7 @@ async function updateDoc(
       await assertAccessColumnsUnchanged(stx, meta, row, existing as RowValues, user, trusted, writeTiers)
       await assertMandatoryAccess(user, meta, row)
       await assertAttachedTarget(meta, row, existing as RowValues, user, trusted)
+      assertStoredFileUrl(meta, row, existing.file_url)
       const dbRow = {
         ...columnValues(meta, row),
         updated_at: new Date(),
@@ -1292,6 +1303,7 @@ async function setStatus(
   const tbl = await tableRelation(table)
   const [saved] = await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
+    await runHooks('before_lock', { row: { [meta.row_key]: name }, meta, user, isNew: false, tx: stx })
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
@@ -1424,7 +1436,7 @@ async function deleteDocImpl(
   if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
   await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
-    await holdManagedSet(stx, meta.name)
+    await holdBeforeRowLock(stx, meta, user, { [meta.row_key]: name })
     const [existing] = await tx`
       select * from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
@@ -1612,6 +1624,7 @@ async function renameDocImpl(
   await sql.begin(async (tx) => {
     const tbl = await tableRelation(table)
     await holdManagedSet(tx as unknown as typeof sql, null)
+    await runHooks('before_lock', { row: { [meta.row_key]: oldName }, meta, user, isNew: false, tx: tx as unknown as typeof sql })
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${oldName} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${oldName} not found`)

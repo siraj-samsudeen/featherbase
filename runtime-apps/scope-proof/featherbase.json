@@ -1,0 +1,347 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "scopeproof",
+  "title": "App scope proof",
+  "entryTable": "scopeproof.object",
+  "server": "server.mjs",
+  "tables": [
+    {
+      "name": "scopeproof.store",
+      "label": "store",
+      "id_pattern": "prompt",
+      "columns": [
+        {
+          "column_name": "label",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "scopeproof.object",
+      "label": "object",
+      "id_pattern": "prompt",
+      "columns": [
+        {
+          "column_name": "stores",
+          "column_type": "JSON"
+        },
+        {
+          "column_name": "secret",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "scopeproof.line",
+      "label": "line",
+      "id_pattern": "prompt",
+      "columns": [
+        {
+          "column_name": "parent_id",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "scopeproof.access",
+      "label": "access",
+      "id_pattern": "prompt",
+      "columns": [
+        {
+          "column_name": "pairs",
+          "column_type": "JSON"
+        }
+      ]
+    },
+    {
+      "name": "scopeproof.effect",
+      "label": "effect",
+      "id_pattern": "prompt",
+      "columns": [
+        {
+          "column_name": "value",
+          "column_type": "Data"
+        }
+      ]
+    }
+  ],
+  "roles": [
+    "Scope Reader",
+    "Scope Planner"
+  ],
+  "permissions": [
+    {
+      "table": "scopeproof.store",
+      "role": "All",
+      "can_read": true,
+      "can_create": true,
+      "can_write": true,
+      "can_delete": true
+    },
+    {
+      "table": "scopeproof.object",
+      "role": "All",
+      "can_read": true,
+      "can_create": true,
+      "can_write": true,
+      "can_delete": true
+    },
+    {
+      "table": "scopeproof.line",
+      "role": "All",
+      "can_read": true,
+      "can_create": true,
+      "can_write": true,
+      "can_delete": true
+    },
+    {
+      "table": "scopeproof.access",
+      "role": "All",
+      "can_read": true,
+      "can_create": true,
+      "can_write": true,
+      "can_delete": true
+    },
+    {
+      "table": "scopeproof.effect",
+      "role": "All",
+      "can_read": true,
+      "can_create": true,
+      "can_write": true,
+      "can_delete": true
+    },
+    {
+      "table": "scopeproof.object",
+      "role": "Scope Reader",
+      "can_read": true
+    },
+    {
+      "table": "scopeproof.object",
+      "role": "Scope Planner",
+      "can_read": true
+    }
+  ],
+  "actions": {
+    "version": 2,
+    "tables": [
+      "scopeproof.store",
+      "scopeproof.object",
+      "scopeproof.line",
+      "scopeproof.access",
+      "scopeproof.effect"
+    ],
+    "operations": {
+      "write": {
+        "policy": {
+          "kind": "stores",
+          "storeTable": "scopeproof.store",
+          "readRoles": [
+            "Scope Reader",
+            "Scope Planner"
+          ],
+          "actionRoles": [
+            "Scope Planner"
+          ]
+        },
+        "scope": {
+          "kind": "request"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "discard": {
+        "policy": {
+          "kind": "stores",
+          "storeTable": "scopeproof.store",
+          "readRoles": [
+            "Scope Reader",
+            "Scope Planner"
+          ],
+          "actionRoles": [
+            "Scope Planner"
+          ]
+        },
+        "scope": {
+          "kind": "resolver",
+          "name": "object",
+          "facts": [
+            {
+              "table": "scopeproof.object",
+              "columns": [
+                "stores"
+              ]
+            },
+            {
+              "table": "scopeproof.line",
+              "columns": [
+                "parent_id"
+              ]
+            }
+          ]
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "product": {
+        "policy": {
+          "kind": "stores",
+          "storeTable": "scopeproof.store",
+          "readRoles": [
+            "Scope Reader",
+            "Scope Planner"
+          ],
+          "actionRoles": [
+            "Scope Planner"
+          ]
+        },
+        "scope": {
+          "kind": "resolver",
+          "name": "pairs",
+          "facts": []
+        },
+        "authorization": {
+          "kind": "product",
+          "name": "pairs",
+          "facts": [
+            {
+              "table": "scopeproof.access",
+              "columns": [
+                "pairs"
+              ]
+            }
+          ]
+        }
+      },
+      "place": {
+        "policy": {
+          "kind": "person_scope",
+          "readRoles": [
+            "Scope Reader",
+            "Scope Planner"
+          ],
+          "actionRoles": [
+            "Scope Planner"
+          ]
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      }
+    }
+  },
+  "reads": {
+    "version": 1,
+    "tables": [
+      "scopeproof.store",
+      "scopeproof.object",
+      "scopeproof.line",
+      "scopeproof.access",
+      "scopeproof.effect"
+    ],
+    "operations": {
+      "stores": {
+        "policy": {
+          "kind": "stores",
+          "storeTable": "scopeproof.store",
+          "readRoles": [
+            "Scope Reader",
+            "Scope Planner"
+          ],
+          "actionRoles": [
+            "Scope Planner"
+          ]
+        },
+        "scope": {
+          "kind": "request"
+        },
+        "authorization": {
+          "kind": "generic"
+        },
+        "discoverStoreAccess": true
+      },
+      "object": {
+        "policy": {
+          "kind": "stores",
+          "storeTable": "scopeproof.store",
+          "readRoles": [
+            "Scope Reader",
+            "Scope Planner"
+          ],
+          "actionRoles": [
+            "Scope Planner"
+          ]
+        },
+        "scope": {
+          "kind": "resolver",
+          "name": "object",
+          "facts": [
+            {
+              "table": "scopeproof.object",
+              "columns": [
+                "stores"
+              ]
+            },
+            {
+              "table": "scopeproof.line",
+              "columns": [
+                "parent_id"
+              ]
+            }
+          ]
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "product": {
+        "policy": {
+          "kind": "stores",
+          "storeTable": "scopeproof.store",
+          "readRoles": [
+            "Scope Reader",
+            "Scope Planner"
+          ],
+          "actionRoles": [
+            "Scope Planner"
+          ]
+        },
+        "scope": {
+          "kind": "resolver",
+          "name": "pairs",
+          "facts": []
+        },
+        "authorization": {
+          "kind": "product",
+          "name": "pairs",
+          "facts": [
+            {
+              "table": "scopeproof.access",
+              "columns": [
+                "pairs"
+              ]
+            }
+          ]
+        },
+        "discoverStoreAccess": true
+      },
+      "places": {
+        "policy": {
+          "kind": "person_scope",
+          "readRoles": [
+            "Scope Reader",
+            "Scope Planner"
+          ],
+          "actionRoles": [
+            "Scope Planner"
+          ]
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      }
+    }
+  }
+}

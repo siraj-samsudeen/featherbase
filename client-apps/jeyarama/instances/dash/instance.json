@@ -1,0 +1,4 @@
+{
+  "apps": ["client-apps/jeyarama/dash", "example-apps/tasker"],
+  "madeUpData": "client-apps/jeyarama/dash/scripts/seed-made-up.mts"
+}

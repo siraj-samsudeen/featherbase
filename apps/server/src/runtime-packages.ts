@@ -3,18 +3,20 @@ import { createHash } from 'node:crypto'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
-import { registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, type AppManifest } from './apps'
+import { registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, syncAppJobs, type AppManifest } from './apps'
+import { applyJobPlan, bindAppJobs, jobsDeclaration, planJobChanges, validateAppJobs } from './app-jobs'
 import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
-import { APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
+import { APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
 import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
+import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
 import { sql, withTransaction, usingTransaction } from './db'
 import { logActivity } from './audit'
 import { invalidateMeta } from './meta'
@@ -112,6 +114,12 @@ const manifestSchema = z.object({
   // #642 (E8): the app's controls in the shared top bar.
   bar: z.array(barControl).optional(),
   tabs: tabsDeclaration.optional(),
+  // #629: the app's glossary terms, written under the app at install and
+  // upgrade.
+  glossary: glossaryDeclaration.optional(),
+  // #700: the app's scheduled jobs, each run as its own system actor holding
+  // only the grants it declares.
+  jobs: jobsDeclaration.optional(),
   migrations: z.array(migrationSchema).default([]),
 }).strict()
 
@@ -157,10 +165,7 @@ async function contained(root: string, name: string): Promise<string> {
 }
 
 // Shipped files, never operator directory spelling, identify an artifact.
-// `transform` may rewrite a file's bytes (by its path relative to the root)
-// before hashing; only migration 0125 uses it, to fingerprint files as they
-// were before a rename.
-export async function artifactDigest(root: string, transform?: (file: string, bytes: Buffer) => Buffer) {
+export async function artifactDigest(root: string) {
   const hash = createHash('sha256')
   async function walk(directory: string) {
     for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -170,7 +175,7 @@ export async function artifactDigest(root: string, transform?: (file: string, by
       if (entry.isDirectory()) await walk(file)
       else {
         const bytes = await readFile(file)
-        hash.update(canonical([relative(root, file), (transform ? transform(relative(root, file), bytes) : bytes).toString('base64')]))
+        hash.update(canonical([relative(root, file), bytes.toString('base64')]))
       }
     }
   }
@@ -193,6 +198,26 @@ function selectPackage(pkg: RuntimePackage) {
   registerApp(pkg.app)
   packages.set(pkg.name, pkg)
   registerAppDatasets(pkg.name, pkg.manifest.datasets)
+}
+
+/** #703: whether an installed app still is the folder on the app path; if only
+ *  its files changed (same version, same manifest), a development database can
+ *  follow them. A code-registered app has no folder, so it always matches. */
+export async function repinToFolder(name: string, development: boolean): Promise<'same' | 'repinned' | 'different'> {
+  const [row] = await sql`select * from installed_app where name = ${name} and runtime_package`
+  if (!row) return 'same'
+  const pkg = artifacts.get(`${name}@${String(row.package_version)}`)
+  if (!pkg) return 'different'
+  if (matchesInstalled(pkg, row)) return 'same'
+  if (!development || !sameManifest(pkg, row)) return 'different'
+  await sql`update installed_app set artifact_digest = ${pkg.digest} where name = ${name}`
+  return 'repinned'
+}
+
+/** The manifest this artifact declares is the one the instance installed. */
+function sameManifest(pkg: RuntimePackage, row: Record<string, unknown>) {
+  const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
+  return canonical(stored) === canonical(pkg.app.runtime_manifest)
 }
 
 export async function verifySelectedRuntimePackage(name: string) {
@@ -227,12 +252,11 @@ function matchesInstalled(pkg: RuntimePackage, row: Record<string, unknown>) {
   if (row.artifact_digest) return row.artifact_digest === pkg.digest
   // Legacy installs have no artifact fingerprint. Require their recorded
   // declaration, not just version, before trusting the operator's v1 artifact.
-  const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
-  return canonical(stored) === canonical(pkg.app.runtime_manifest)
+  return sameManifest(pkg, row)
 }
 
 // An app's directory: its npm identity and its parsed manifest.
-async function readArtifact(directory: string) {
+export async function readPackageDeclaration(directory: string) {
   const root = await realpath(directory)
   const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
   if (typeof pkg.name !== 'string' || typeof pkg.version !== 'string')
@@ -240,26 +264,13 @@ async function readArtifact(directory: string) {
   packageVersion.parse(pkg.version)
   const manifestPath = await contained(root, pkg.featherbase ?? 'featherbase.json')
   const manifest = manifestSchema.parse(JSON.parse(await readFile(manifestPath, 'utf8')))
-  return { root, pkg: pkg as { name: string; version: string }, manifest }
-}
-
-/** An app directory's name, version and resolved root (migration 0125). */
-export async function artifactIdentity(directory: string) {
-  const { root, pkg, manifest } = await readArtifact(directory)
-  return { name: manifest.name, version: pkg.version, root }
-}
-
-// One app directory, validated and loaded: its manifest, fingerprint and
-// server module. Registers nothing.
-async function loadArtifact(directory: string): Promise<RuntimePackage> {
-  const { root, pkg, manifest } = await readArtifact(directory)
   if (!SUPPORTED_PLATFORM_VERSIONS.includes(manifest.platformVersion))
     throw new Error(`App ${manifest.name} was built for platform version ${manifest.platformVersion}; this Featherbase supports ${SUPPORTED_PLATFORM_VERSIONS.join(', ')}`)
   if ((RESERVED_APP_ROOTS as readonly string[]).includes(manifest.name))
     throw new Error(`App name ${manifest.name} is reserved for Featherbase`)
   validateMigrations(manifest.name, pkg.version, manifest.tables, manifest.migrations)
-  const digest = await artifactDigest(root)
   validateRoleDefaults(manifest.roleDefaults, manifest.roles)
+  validateGlossary(manifest.glossary, manifest.tables, manifest.permissions)
   const names = new Set(manifest.tables.map((t) => t.name))
   if (names.size !== manifest.tables.length || !names.has(manifest.entryTable))
     throw new Error('Duplicate Tables or unknown entryTable')
@@ -267,6 +278,28 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     if (!table.name.startsWith(`${manifest.name}.`) || !table.label || table.system || table.data_source)
       throw new Error('Package Tables require qualified ownership, label and local storage')
   }
+  return { root, pkg: pkg as { name: string; version: string }, manifest }
+}
+
+export function runtimePackageDeclarations() {
+  return [...packages.values()].map(({ manifest, version }) => ({ manifest, version }))
+}
+
+export async function installedPackageDeclarations() {
+  const rows = await sql`select manifest, package_version from installed_app where runtime_package`
+  return rows.flatMap(row => {
+    const { packageName: _name, packageVersion: _version, ...declaration } = row.manifest ?? {}
+    const parsed = manifestSchema.safeParse(declaration)
+    return parsed.success ? [{ manifest: parsed.data, version: String(row.package_version ?? _version) }] : []
+  })
+}
+
+// One app directory, validated and loaded: its manifest, fingerprint and
+// server module. Registers nothing.
+async function loadArtifact(directory: string): Promise<RuntimePackage> {
+  const { root, pkg, manifest } = await readPackageDeclaration(directory)
+  const digest = await artifactDigest(root)
+  const names = new Set(manifest.tables.map(t => t.name))
   let clientRoot: string | undefined
   if (manifest.client) {
     clientRoot = await contained(root, manifest.client)
@@ -279,6 +312,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   let resolvers = new Map<string, AppScopeResolver>()
   let authorizers = new Map<string, AppProductAuthorizer>()
   let providers = new Map<string, AppScopeProvider>()
+  let jobHandlers = new Map<string, RuntimeJobHandler>()
   const provider = manifest.scopeProvider
   if (provider) {
     if (!manifest.server) throw new Error('A scope provider requires a server module')
@@ -307,6 +341,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
       for (const secret of declaration.needs ?? [])
         if (!declaredSecrets.has(secret)) throw new Error(`The ${kind} ${operation} needs the secret ${secret}, which the app does not declare in its secrets`)
   for (const operation of allOperations) validateOperationFacts(operation, manifest.tables)
+  validateAppJobs(manifest.name, manifest, declaredSecrets)
   for (const declaration of [manifest.actions, manifest.reads]) {
     if (!declaration) continue
     if (!manifest.server) throw new Error('Declared operations require a server module')
@@ -326,6 +361,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     resolvers = namedFunctions(module.scopeResolvers, allOperations.flatMap(o => 'scope' in o && o.scope.kind === 'resolver' ? [o.scope.name] : []))
     authorizers = namedFunctions(module.authorizers, allOperations.flatMap(o => o.authorization.kind === 'product' ? [o.authorization.name] : []))
     providers = namedFunctions(module.scopeProviders, provider ? [provider.name] : [])
+    jobHandlers = namedFunctions(module.jobs, (manifest.jobs ?? []).map(job => job.name))
     for (const [table, validator] of Object.entries(module.validators ?? {})) {
       if (!names.has(table) || typeof validator !== 'function')
         throw new Error('Validators must target owned Tables')
@@ -348,6 +384,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   const setup = () => loadAppSetup(manifest.name, manifest)
   const app: AppManifest = { name: manifest.name, tables: manifest.tables,
     roles: manifest.roles, permissions: manifest.permissions, doc_events, runtime_package: true,
+    scheduler_events: bindAppJobs({ app: manifest.name, jobs: manifest.jobs ?? [], handlers: jobHandlers, setup, datasets: manifest.datasets ?? [] }),
     runtime_identity: { version: pkg.version, digest, ledger: migrationLedger(manifest.migrations) },
     runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
   return { name: manifest.name, title: manifest.title,
@@ -366,7 +403,20 @@ async function loadArtifacts(paths: string[]) {
   const loaded = new Map<string, RuntimePackage>()
   const failures: { path: string; error: string }[] = []
   const duplicates = new Set<string>()
-  for (const directory of paths) {
+  // `<folder>/*` is every folder in it: an image can set this variable once
+  // though the apps it holds depend on the instance it was built for (#703).
+  const directories: string[] = []
+  for (const path of paths) {
+    if (!path.endsWith('/*')) { directories.push(path); continue }
+    const folder = path.slice(0, -2)
+    try {
+      const entries = await readdir(folder, { withFileTypes: true })
+      directories.push(...entries.filter(e => e.isDirectory()).map(e => resolve(folder, e.name)).sort())
+    } catch (error) {
+      failures.push({ path, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+  for (const directory of directories) {
     try {
       const pkg = await loadArtifact(directory)
       const key = `${pkg.name}@${pkg.version}`
@@ -394,6 +444,16 @@ export async function unshippedApps<Row extends Record<string, unknown>>(install
   return installed.filter(row => !shipped.some(pkg => pkg.name === row.name && matchesInstalled(pkg, row)))
 }
 
+/** #703: why an installed row is not on `paths`: its files changed under the
+ *  same version and manifest, its manifest changed under the same version, or
+ *  that version is not there at all. */
+export async function whyUnshipped(row: Record<string, unknown>, paths: string[]): Promise<'files' | 'manifest' | 'absent'> {
+  const shipped = [...(await loadArtifacts(paths)).loaded.values()]
+  const pkg = shipped.find(p => p.name === row.name && p.version === row.package_version)
+  if (!pkg) return 'absent'
+  return sameManifest(pkg, row) ? 'files' : 'manifest'
+}
+
 // Boot discovery indexes versions without upgrading an installed application.
 // Importing any server module grants full Node privileges, deliberately.
 export function discoverPackages(paths: string[]) {
@@ -416,6 +476,19 @@ export function discoverPackages(paths: string[]) {
         selectPackage(pkg)
     }
     return packageFailures
+  }, true)
+}
+
+/** Add only the explicitly chosen package. Boot discovery clears the registry;
+ *  using it during preparation would unwire every already-running app. */
+export function registerPreparedPackage(directory: string, name: string) {
+  return appOperation(async () => {
+    if ((await listInstalledApps()).some(app => app.name === name))
+      throw new AppError('ConflictError', `App ${name} is already installed; use the upgrade lifecycle`)
+    const pkg = await loadArtifact(directory)
+    if (pkg.name !== name) throw new AppError('ValidationError', 'Prepared package identity changed; restore its reviewed manifest')
+    artifacts.set(`${pkg.name}@${pkg.version}`, pkg)
+    selectPackage(pkg)
   }, true)
 }
 
@@ -469,11 +542,13 @@ async function upgradePlan(name: string, version: string, preview = true) {
   const withdrawn = priorGrants.filter(g => !g.now || !kept.has(canonical(g.now))).map(g => g.prior)
   const granted = target.manifest.permissions.filter(p => added.has(p.table))
   const destructive = operations.some(op => 'destructive' in op && op.destructive === true)
+  // #700: what the upgrade does to the app's scheduled jobs.
+  const jobs = planJobChanges(name, prior.manifest.jobs ?? [], target.manifest.jobs ?? [])
   const plan = { name, currentVersion: prior.version, targetVersion: target.version,
     currentArtifact: prior.digest, targetArtifact: target.digest, enabled: row.enabled,
     migrations: pending.map(m => ({ id: m.id, checksum: checksum(m), operations: m.operations })),
     tables: [...new Set(operations.flatMap(op => op.kind === 'renameTable' ? [op.from, op.to] : [typeof op.table === 'string' ? op.table : op.table.name]))],
-    permissions: [...withdrawn.map((p) => ({ withdraw: p })), ...granted.map((p) => ({ grant: p }))], jobs: [], indexes: [], destructive,
+    permissions: [...withdrawn.map((p) => ({ withdraw: p })), ...granted.map((p) => ({ grant: p }))], jobs, indexes: [], destructive,
     dataEffects: destructive ? 'Destructive: the steps under losses remove data; every other row is unchanged' : 'Existing rows unchanged; added columns are NULL unless backfilled',
     codeOnly: operations.length === 0 }
   // What this instance would lose: the steps run in a rolled-back
@@ -483,7 +558,7 @@ async function upgradePlan(name: string, version: string, preview = true) {
   // apply must not make the review stale. Applying runs the steps for real
   // in its own transaction, so it does not count them first.
   const losses = preview ? await countLosses(name, pending, { ownsClient: typeof target.manifest.client === 'string' }) : []
-  return { row, target, prior, pending, ledger, withdrawn, granted,
+  return { row, target, prior, pending, ledger, withdrawn, granted, jobs,
     plan: { ...plan, planId: checksum(plan), losses: losses.map(describeLoss) } }
 }
 
@@ -554,6 +629,8 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           migration_ledger = ${sql.json(prepared.ledger)}, activation_pending = true,
           previous_artifact = ${sql.json({ version: prepared.prior.version, digest: prepared.prior.digest })},
           upgrade_plan = ${planId} where name = ${name}`
+        await syncAppGlossary(name, prepared.target.manifest.glossary, actor)
+        await applyJobPlan(name, prepared.jobs, prepared.prior.manifest.jobs ?? [], actor)
       }))
     } catch (error) {
       invalidateMeta()
@@ -562,6 +639,8 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
     }
     suspendRuntimeApp(name)
     selectPackage(prepared.target)
+    // Its jobs wait for activation, like the rest of the app.
+    await syncAppJobs(name)
     return { name, version, activationPending: true }
   }, true)
 }

@@ -22,8 +22,8 @@ import { useCapabilities, useShellKind, useShellTables } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
-import { Logo } from '../components/Logo'
-import { ADMIN_NAME, PHONE_QUERY, TopBar } from '../components/TopBar'
+import { AppSwitcher } from '../components/AppSwitcher'
+import { PHONE_QUERY, TopBar } from '../components/TopBar'
 import { PeekProvider } from '../components/Peek'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel } from '../lib/row-titles'
@@ -32,9 +32,10 @@ import { KindIcon } from '../lib/kind-icons'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
+import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
-import { Select, StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { Bell, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { Bell, BookOpen, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 
 interface SearchHit {
@@ -57,7 +58,6 @@ connectEventSink({
   currentUser: () => getSessionUser()?.row_id ?? null,
   post: (events) => {
     void api.post('/api/events', { events }).catch(
-      /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; the recorder only sends batches the server accepts */
       () => {},
     )
   },
@@ -166,7 +166,6 @@ function AdminShell() {
       .get<{ entries: ServerRecentEntry[] }>('/api/events/summary')
       .then((res) => mergeServerEntries(user.row_id, res.entries))
       .catch(
-        /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; the summary answers for every signed-in person */
         () => {},
       )
   }, [user?.row_id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -276,10 +275,6 @@ function AdminShell() {
   // dedicated endpoint is its only source (role visibility and link
   // permission-filtering are computed server-side).
   const homePages = useHomePages()
-  const appCatalog = useQuery({
-    queryKey: ['app-catalog'],
-    queryFn: () => api.get<{ name: string; title: string; href: string }[]>('/api/app_catalog'),
-  })
 
 
   // UI-014: row hits from the server, debounced.
@@ -310,12 +305,14 @@ function AdminShell() {
 
   // #101 Phase 2: the sidebar's zero-keystroke recall — destinations only
   // (searches stay in the command bar, where they can be re-run).
-  const sidebarRecent = user
+  const sidebarCandidates = user
     ? uniqueByDisplay(recentActions(user.row_id, 20).filter((e) => e.kind !== 'search')).slice(0, SIDEBAR_RECENT_CAP)
     : []
+  const recentSlots = sidebarCandidates.slice(0, 3)
   const sidebarFrequent = user
-    ? uniqueByDisplay([...sidebarRecent, ...frequentActions(user.row_id, 12)]).slice(sidebarRecent.length, SIDEBAR_RECENT_CAP)
+    ? uniqueByDisplay([...recentSlots, ...frequentActions(user.row_id, 12)]).slice(recentSlots.length, recentSlots.length + 2)
     : []
+  const sidebarRecent = sidebarFrequent.length ? recentSlots : sidebarCandidates
 
   function recordSearch(q: string) {
     if (user && q) recordAction(user.row_id, { kind: 'search', key: `search:${q.toLowerCase()}`, label: q, path: '' })
@@ -566,28 +563,7 @@ function AdminShell() {
           column below; the command bar then fills what is left up to the bell. */}
       <TopBar
         home="admin"
-        left={
-          <>
-            <Link to={FEATHERBASE_ADMIN_DESTINATION.href} aria-label={FEATHERBASE_ADMIN_DESTINATION.label} title={FEATHERBASE_ADMIN_DESTINATION.label}className={iconButtonClasses('shrink-0 max-sm:min-h-11 max-sm:min-w-11')}>
-              <Logo className="h-7 w-7" />
-            </Link>
-            <label className="sr-only" htmlFor="admin-app-switcher">Switch application</label>
-            {/* The switcher's current entry is the bar's name, "Featherbase Admin"
-                (#489 item 2); on a phone it is cut with an ellipsis (item 9). */}
-            <Select
-              id="admin-app-switcher"
-              aria-label="Switch application"
-              value={FEATHERBASE_ADMIN_DESTINATION.href}
-              onChange={(event) => { window.location.assign(event.target.value) }}
-              wrapperClassName="min-w-0 flex-1 sm:w-52 sm:flex-none md:w-auto md:flex-1"
-              className="truncate pl-2.5 pr-8 font-semibold max-sm:min-h-11"
-              data-testid="top-bar-name"
-            >
-              <option value={FEATHERBASE_ADMIN_DESTINATION.href}>{ADMIN_NAME}</option>
-              {(appCatalog.data ?? []).map((entry) => <option key={entry.name} value={entry.href}>{entry.title}</option>)}
-            </Select>
-          </>
-        }
+        left={<AppSwitcher />}
         beforeRight={
           <div className="relative" title="Notifications">
             {/* An indicator, not a control, so it needs no thumb-sized hit area. */}
@@ -718,6 +694,8 @@ function AdminShell() {
               // #100 pattern 4: the cross-filter Explore surface.
               { to: '/featherbase/admin/explore', search: { root: undefined, chain: undefined, select: undefined }, label: 'Explore', icon: Compass, testid: 'explore-link' },
               { to: '/featherbase/admin/all-tables', label: 'All tables', icon: Table, testid: 'all-tables-link' },
+              // #629: everyone signed in reads the glossary.
+              { to: GLOSSARY_PATH, label: 'Glossary', icon: BookOpen, testid: 'glossary-link' },
               // #206: an import is a thing you did, not just rows that appeared —
               // so it has a place to be found again.
               ...(canManage ? [{ to: '/featherbase/admin/imports', label: 'Past imports', icon: History, testid: 'past-imports-link' }] : []),
@@ -754,6 +732,8 @@ function AdminShell() {
             testid="sidebar-group-instance"
             items={canManage
               ? [
+                  { to: '/featherbase/admin/setup', label: 'Welcome', icon: ListChecks, testid: 'welcome-link' },
+                  { to: '/featherbase/admin/apps', label: 'Apps', icon: Compass, testid: 'apps-link' },
                   { to: JOBS_PATH, label: 'Jobs', icon: CalendarClock, testid: 'jobs-link' },
                   { to: INSTANCE_HEALTH_PATH, label: 'Instance health', icon: ListChecks, testid: 'instance-health-link' },
                 ]

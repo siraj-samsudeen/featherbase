@@ -5,12 +5,14 @@
 # It builds both targets of apps/server/Dockerfile, then checks that:
 #   - the `platform` target (what publish-image.yml publishes) holds no app
 #     and sets no FEATHERBASE_APP_PATHS;
-#   - the default target (what Railway builds) still holds Tasker and its
-#     predecessor, with today's FEATHERBASE_APP_PATHS;
+#   - the default target (what Railway builds) still holds Tasker, with
+#     today's FEATHERBASE_APP_PATHS;
 #   - the platform image runs the release and passes `cli boot-check`
 #     against a throwaway Postgres;
 #   - a throwaway client image FROM it, adding the `other` fixture app with
-#     FEATHERBASE_APP_PATHS, discovers `other`.
+#     FEATHERBASE_APP_PATHS, discovers `other`;
+#   - the image for a client instance holds its apps and folder, and its
+#     pre-deploy installs them and applies the settings, twice over.
 #
 # Scope is limited by `paths:` to the build inputs: the Dockerfile, the
 # lockfiles and manifests, the image workflows and this check's own files.
@@ -28,7 +30,12 @@ on:
       - .github/workflows/publish-image.yml
       - .github/workflows/image-check.yml
       - .github/image-check/**
-      - runtime-apps/other/**
+      - tools/build-instance-apps.mjs
+      - tools/dev.mjs
+      - client-apps/*/instances/**
+      - test-apps/other/**
+      # No image holds a client app, so its manifest is not a build input.
+      - '!client-apps/**'
 
 permissions:
   contents: read
@@ -97,22 +104,24 @@ jobs:
         run: |
           app_paths=$(docker image inspect featherbase-platform:ci --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^FEATHERBASE_APP_PATHS=//p')
           [ -z "$app_paths" ] || { echo "platform image sets FEATHERBASE_APP_PATHS=$app_paths"; exit 1; }
-          if docker run --rm featherbase-platform:ci test -e /app/runtime-apps; then
-            echo "platform image has /app/runtime-apps"; exit 1
-          fi
-          echo "platform image: no /app/runtime-apps, no FEATHERBASE_APP_PATHS"
+          for folder in example-apps test-apps client-apps; do
+            if docker run --rm featherbase-platform:ci test -e "/app/$folder"; then
+              echo "platform image has /app/$folder"; exit 1
+            fi
+          done
+          echo "platform image: no app folders, no FEATHERBASE_APP_PATHS"
 
       - name: The default image still holds Tasker
         run: |
           app_paths=$(docker image inspect featherbase-default:ci --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^FEATHERBASE_APP_PATHS=//p')
-          expected='["/app/runtime-apps/tasker-2.2.0","/app/runtime-apps/tasker"]'
+          expected='["/app/example-apps/tasker"]'
           [ "$app_paths" = "$expected" ] || { echo "FEATHERBASE_APP_PATHS=$app_paths, expected $expected"; exit 1; }
-          for app in tasker tasker-2.2.0; do
+          for app in tasker; do
             for file in package.json featherbase.json dist; do
-              docker run --rm featherbase-default:ci test -e "/app/runtime-apps/$app/$file" || { echo "missing /app/runtime-apps/$app/$file"; exit 1; }
+              docker run --rm featherbase-default:ci test -e "/app/example-apps/$app/$file" || { echo "missing /app/example-apps/$app/$file"; exit 1; }
             done
           done
-          echo "default image: Tasker and Tasker 2.2.0 present; FEATHERBASE_APP_PATHS=$app_paths"
+          echo "default image: Tasker present; FEATHERBASE_APP_PATHS=$app_paths"
 
       # --network host: the Postgres service listens on the runner's 5432.
       - name: The platform image releases and passes boot-check
@@ -126,10 +135,26 @@ jobs:
           context="$RUNNER_TEMP/client-image"
           mkdir -p "$context"
           cp .github/image-check/Dockerfile .github/image-check/discover-check.mts "$context/"
-          cp -R runtime-apps/other "$context/other"
+          cp -R test-apps/other "$context/other"
           # The `default` builder (the Docker engine's own) sees the image
           # loaded above; the container builder setup-buildx made current
           # would look for it in a registry instead.
           docker buildx build --builder default --load --build-arg PLATFORM_IMAGE=featherbase-platform:ci -t featherbase-client:ci "$context"
           docker run --rm --network host -e FEATHERBASE_ENV -e JWT_SECRET -e INSTANCE_ADDRESSES -e DATABASE_URL -e EXPECT_APPS=other \
             featherbase-client:ci pnpm --filter server exec tsx /app/discover-check.mts
+
+      - name: The image for a client instance deploys its apps and settings
+        run: |
+          docker buildx build --builder default --load -f apps/server/Dockerfile --build-arg FEATHERBASE_INSTANCE=jeyarama/dash -t featherbase-instance:ci .
+          docker run --rm featherbase-instance:ci sh -c 'test -e /app/client-apps/jeyarama/instances/dash/instance-settings.json && ls -d /app/instance-apps/feather_dash-* /app/instance-apps/tasker-*'
+          psql_new() { docker run --rm --network host postgres:17 psql "postgres://postgres:postgres@127.0.0.1:5432/postgres" -c "create database instance_check"; }
+          psql_new
+          # Made-up values for a database created and destroyed with this job.
+          run() { docker run --rm --network host -e FEATHERBASE_ENV -e JWT_SECRET -e INSTANCE_ADDRESSES \
+            -e DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/instance_check \
+            -e GOOGLE_CLIENT_SECRET=made-up -e DIVE_ID=made-up -e DIVE_VERSION=1 -e SERVICE_ACCOUNT=made-up \
+            featherbase-instance:ci pnpm --filter server pre-deploy; }
+          run | tee first.log
+          grep -q 'installed feather_dash' first.log
+          run | tee second.log
+          grep -q 'settings:apply: nothing changed' second.log

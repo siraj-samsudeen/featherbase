@@ -14,7 +14,11 @@ access ends.
 ### Requirement: Sign in with a password
 
 Signing in SHALL check a username or email, ignoring capital letters, against
-a password. When what was typed is one person's username and another
+a password.
+
+#### Normative details for the whole requirement
+
+When what was typed is one person's username and another
 person's email, the username wins; when it names two different people equally
 — one person's account ID and another's username — nobody is signed in. A
 username can never be set to another person's ID, username or email. A failed
@@ -56,10 +60,20 @@ takes a typed name counts its own attempts.
 
 ### Requirement: Sign in with Google
 
-Featherbase SHALL let a user sign in with their Google account. A Google
+Featherbase SHALL let a user sign in with their Google account.
+
+#### Normative details for the whole requirement
+
+A Google
 account that is linked to a person opens that person's account; any other
 Google account is handled by the rule an administrator chose for people
-Google does not recognise.
+Google does not recognise. While Google sign-in lists allowed domains, a
+link that person made themselves, or that the domain rule made, SHALL open
+the account only while that rule still admits the account; a link an
+administrator made, or an invite the person claimed, SHALL keep opening it.
+When a change to the allowed domains stops admitting such a link, the
+sessions opened through that link SHALL end; sessions opened another way
+SHALL NOT.
 
 #### Scenario: First-time sign-in from an allowed domain
 
@@ -72,6 +86,33 @@ Google does not recognise.
 - **WHEN** someone with no Featherbase account signs in with Google using an
   address from a domain that isn't allowed
 - **THEN** they are refused and told to contact IT
+
+#### Scenario: A domain is removed from the list
+
+- **WHEN** a person who linked a Google account on a domain signs in with it
+  after an administrator removed that domain from the allowed list
+- **THEN** they are refused and told to contact IT, and the link is kept, so
+  adding the domain back lets them in again
+
+#### Scenario: Removing a domain ends sessions through it
+
+- **WHEN** an administrator removes a domain while a person is signed in
+  through a Google account they linked on that domain
+- **THEN** that session ends on its next request, a session the same person
+  opened with their password stays open, and adding the domain back does not
+  reopen the ended session
+
+#### Scenario: An administrator's link outside the list
+
+- **WHEN** an administrator linked a person's personal Google account and
+  that person signs in with it while only a company domain is allowed
+- **THEN** they are signed in
+
+#### Scenario: Narrowing the list would lock out a System Manager
+
+- **WHEN** an administrator removes the only domain through which a System
+  Manager can still sign in
+- **THEN** the change is refused and names the System Manager
 
 ### Requirement: Return to where they were headed
 
@@ -278,7 +319,11 @@ opens it.
 ### Requirement: An administrator links sign-in methods
 
 An administrator who manages the system SHALL be able to link a sign-in method
-to any person, change or move a link in one step, and remove one. A Google
+to any person, change or move a link in one step, and remove one.
+
+#### Normative details for the whole requirement
+
+A Google
 account can be invited by its address before the person first signs in: their
 first Google sign-in with that address links the account for good, and after
 that the address is never used to find them. Any change to the person's email
@@ -312,6 +357,8 @@ A signed-in person SHALL be able to link another sign-in method to their own
 account by proving it, for example by completing a Google sign-in, where an
 administrator allows it for that method. They must have signed in within the
 last few minutes, and a method already linked to someone else is refused.
+Where the method lists allowed domains, the account SHALL pass the same
+domain rule as a first sign-in, or the link is refused and nothing changes.
 
 #### Scenario: Add Google to an HR system account
 
@@ -324,6 +371,13 @@ last few minutes, and a method already linked to someone else is refused.
 - **WHEN** a person tries to link a Google account that is already linked to a
   different account
 - **THEN** the link is refused and neither account changes
+
+#### Scenario: A personal account where only the company domain is allowed
+
+- **WHEN** a person tries to link a personal Gmail account while Google
+  sign-in allows only the company domain
+- **THEN** the link is refused, nothing is linked, and the sign-in methods
+  page says the account is not on a domain the site allows
 
 ### Requirement: Some sign-ins cannot change access
 
@@ -381,7 +435,11 @@ through it.
 When an administrator has connected an outside sign-in service, such as the
 organisation's HR system, the sign-in page SHALL open on that service's form,
 because most people who sign in there are store staff who know only their
-employee ID. The person types their ID in that service and its password;
+employee ID.
+
+#### Normative details for the whole requirement
+
+The person types their ID in that service and its password;
 Featherbase asks that service to check them and never keeps, logs or shows the
 password. The page's other ways in (Google, another connected service, an email
 or username and a password) sit under the form, one tap away.
@@ -503,15 +561,19 @@ A deployment MAY switch on test mode for sign-in through a connected service,
 only through its server environment and only with an exact switch value, and
 only on a development, test or staging server — staging being a hosted trial
 instance that is a production server in every other respect: any other server
-refuses to start with it set. While it is on, the service SHALL NOT be asked:
+refuses to start with it set.
+A typed password SHALL NOT be logged.
+
+#### Normative details for the whole requirement
+
+While it is on, the service SHALL NOT be asked:
 a tester signs in as a person by typing the employee code on that person's
 record, in any mix of capitals, with any password or none. The code must
 belong to exactly one person, and that person must have a live, unended link
 to the service; who may sign in is otherwise unchanged — one enabled account,
 and not the Administrator or a System Manager. The sign-in page SHALL look
 exactly as it does without test mode and SHALL NOT say that test mode is on,
-so the shortcut is known only to those who need it. A typed password SHALL
-NOT be logged.
+so the shortcut is known only to those who need it.
 
 Because the service is not asked, it cannot report that someone has left.
 While test mode is on, a person who has left is refused only when their
@@ -571,7 +633,11 @@ on where real users sign in.
 ### Requirement: A refused sign-in is explained on the sign-in page
 
 A sign-in that the browser reaches by navigation, such as the Google sign-in
-and its return from Google, SHALL NOT show a raw error. When it is refused,
+and its return from Google, SHALL NOT show a raw error.
+
+#### Normative details for the whole requirement
+
+When it is refused,
 the browser SHALL go back to the sign-in page with a short reason, and the
 page SHALL explain it in one plain sentence that says what to do next (ask
 their manager or IT, try again, or use another way in) and reveals nothing
@@ -626,7 +692,11 @@ usual sign-in rather than the refusal again.
 ### Requirement: The sign-in forms never show a raw server message
 
 A sign-in form SHALL check that the fields it needs are filled before it
-sends anything, and say plainly what to enter when they are not. It SHALL
+sends anything, and say plainly what to enter when they are not.
+
+#### Normative details for the whole requirement
+
+It SHALL
 send what is in the boxes when it is submitted, including values the
 browser's autofill wrote, and SHALL NOT show example text that could pass for
 a filled-in value. A server message SHALL be shown only when it is worded for
@@ -711,7 +781,11 @@ can change or be reused; the reference cannot.
 
 When linked sign-in methods were introduced, everyone who could sign in before
 SHALL keep signing in the same way without doing anything, after signing in
-once more. A person who had already signed in with Google gets a one-time
+once more.
+
+#### Normative details for the whole requirement
+
+A person who had already signed in with Google gets a one-time
 link: their next Google sign-in with the same address links their Google
 account's permanent ID, and from then on the address is never used to find
 them. Before the upgrade an administrator can list what it will do, including
@@ -854,7 +928,11 @@ A System Manager SHALL be able to see everyone who signed in but holds no role y
 
 ### Requirement: Tell System Managers about a new arrival
 
-When a sign-in rule creates a new person, every enabled System Manager with an email address SHALL get one email saying who arrived, from which domain, how they signed in, and where to give them access. A failed email SHALL NOT stop that person signing in. A day's alerts, counted by the India day, SHALL be capped; the cap is best-effort, so arrivals at the same moment can pass it by a few. Someone who arrives after the cap is reached SHALL NOT be emailed about later, but SHALL still show on the waiting list. Test-mode sign-ins SHALL NOT send alerts.
+When a sign-in rule creates a new person, every enabled System Manager with an email address SHALL get one email saying who arrived, from which domain, how they signed in, and where to give them access.
+
+#### Normative details for the whole requirement
+
+A failed email SHALL NOT stop that person signing in. A day's alerts, counted by the India day, SHALL be capped; the cap is best-effort, so arrivals at the same moment can pass it by a few. Someone who arrives after the cap is reached SHALL NOT be emailed about later, but SHALL still show on the waiting list. Test-mode sign-ins SHALL NOT send alerts.
 
 #### Scenario: One email per arrival
 
@@ -1053,3 +1131,17 @@ lives in one instance's own storage.
 
 - **WHEN** no logo is set
 - **THEN** the sign-in page shows the Featherbase mark above the instance's name
+
+### Requirement: Rotating IPv6 addresses does not reset sign-in limits
+
+Sign-in attempt limits SHALL treat IPv6 addresses in the same /64 network as one source. Sign-in history SHALL still record the full address used.
+
+#### Scenario: Rotate within one network
+
+- **WHEN** the user exhausts sign-in attempts and changes to another IPv6 address in the same /64 network
+- **THEN** further attempts are refused until the budget resets
+
+#### Scenario: Another network has its own budget
+
+- **WHEN** the user signs in from a different IPv6 /64 network
+- **THEN** it has a separate attempt budget and history records the full sign-in address

@@ -61,10 +61,11 @@ test('a missing required answer is explained and nothing already typed is lost; 
   expect((await sql`select 1 from featherbase.wf_comp_order`).length).toBe(0)
 
   await userEvent.selectOptions(screen.getByLabelText(/Delivery speed/), 'Expedited')
+  await userEvent.clear(screen.getByLabelText('Notes'))
   await userEvent.click(screen.getByTestId('web-form-submit'))
   expect(await screen.findByTestId('web-form-success')).toHaveTextContent('Thanks, we have your order.')
-  const [row] = await sql`select full_name, delivery_speed from featherbase.wf_comp_order`
-  expect(row).toMatchObject({ full_name: 'Ada Lovelace', delivery_speed: 'Expedited' })
+  const [row] = await sql`select full_name, delivery_speed, notes from featherbase.wf_comp_order`
+  expect(row).toMatchObject({ full_name: 'Ada Lovelace', delivery_speed: 'Expedited', notes: null })
 })
 
 test('a form that is still a draft is not shown', async ({ admin }) => {

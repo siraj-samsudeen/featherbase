@@ -13,7 +13,7 @@
 // Two claims: the rows are links, and a page button keeps its name to itself
 // even when a chip is wearing the same words.
 
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
 
@@ -62,7 +62,38 @@ test('sidebar recall rows expose the link role, never button', async ({ admin })
   expect(row).toHaveRole('link')
   expect(row).toHaveAttribute('href', '/featherbase/admin/Saved%20Search/SS-1')
   expect(screen.queryAllByRole('button')).not.toContain(row)
+  // Modified clicks belong to the browser (new tab/window), not the SPA.
+  expect(fireEvent.click(row, { ctrlKey: true })).toBe(true)
+  expect(screen.getByTestId('form-view')).toBeInTheDocument()
 }, TEST_TIMEOUT)
+
+for (const repeats of [0, 1, 2]) {
+  test(`sidebar reserves distinct frequent slots with ${repeats} older repeat destinations`, async ({ admin }) => {
+    await seed(admin)
+    const now = Date.now()
+    const trail = (name: string, at: number) => recordAction('Administrator', {
+      kind: 'list', key: `list:${name}`, label: name, path: `/featherbase/admin/${name}`,
+    }, at)
+    for (let i = 0; i < repeats; i++) {
+      trail(`Frequent${i}`, now - 20_000 - i)
+      trail(`Frequent${i}`, now - 10_000 - i)
+    }
+    for (let i = 0; i < 6; i++) trail(`Recent${i}`, now - 1000 - i)
+    // A recent destination is also highly frequent: never duplicate it.
+    if (repeats) trail('Recent0', now - 500)
+    await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/new`, admin)
+    await screen.findByTestId('form-view')
+    await waitFor(() => {
+      const recent = screen.getAllByTestId('sidebar-recent')
+      const frequent = screen.queryAllByTestId('sidebar-frequent')
+      expect(recent).toHaveLength(repeats ? 3 : 5)
+      expect(frequent).toHaveLength(repeats)
+      for (let i = 0; i < repeats; i++) expect(frequent[i]).toHaveTextContent(`Frequent${i}`)
+      const destinations = [...recent, ...frequent].map((e) => e.getAttribute('href'))
+      expect(new Set(destinations).size).toBe(repeats ? 3 + repeats : 5)
+    })
+  }, TEST_TIMEOUT)
+}
 
 test("a chip wearing a button's words does not widen that button's name lookup", async ({
   admin,

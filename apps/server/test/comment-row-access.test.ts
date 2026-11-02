@@ -55,6 +55,22 @@ const listOf = (client: TestClient, table: ReturnType<typeof tableRef>, refTable
   )
 
 describe('#342: comments follow the row they are on', () => {
+  test('a Comment list pinned to a missing target Table is empty', async ({ admin, createUser }) => {
+    const { agent } = await setup(admin, createUser)
+    const visible = await listOf(agent, COMMENT, PLAIN, ['content'])
+    expect(visible.data).toEqual([{ content: 'my note' }])
+    expect(visible.total).toBe(1)
+    const all = await listOf(admin, COMMENT, PLAIN, ['content'])
+    expect(all.data.map(c => c.content).sort()).toEqual(['my note', 'secret plan'])
+    expect(all.total).toBe(2)
+
+    const missing = await listOf(agent, COMMENT, 'Cra Never Created', ['content'])
+    expect(missing.data).toEqual([])
+    expect(missing.total).toBe(0)
+    expect(await listOf(agent, COMMENT, PLAIN, ['content'])).toEqual(visible)
+    expect(await listOf(admin, COMMENT, PLAIN, ['content'])).toEqual(all)
+  })
+
   test('a broad Comment grant lists only the comments on rows the reader may open', async ({ admin, createUser }) => {
     const { agent } = await setup(admin, createUser)
     const seen = await listOf(agent, COMMENT, PLAIN, ['content'])

@@ -65,6 +65,10 @@ describe('decisions survive the round trip', () => {
     // to open either way.
     sessionStorage.setItem(IMPORT_DECISIONS_KEY, '{"fileName":"x"}')
     expect(loadDecisions()).toBeNull()
+    sessionStorage.setItem(IMPORT_DECISIONS_KEY, JSON.stringify({ ...decisions(), shape: null }))
+    expect(loadDecisions()).toBeNull()
+    sessionStorage.setItem(IMPORT_DECISIONS_KEY, JSON.stringify({ ...decisions(), selected: {} }))
+    expect(loadDecisions()).toBeNull()
     sessionStorage.setItem(IMPORT_DECISIONS_KEY, 'not json at all')
     expect(loadDecisions()).toBeNull()
   })

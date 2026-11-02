@@ -48,9 +48,7 @@ export async function removeDelegated() {
 }
 
 /** Link `user` at a delegated method: subject defaults to the user id. The
- *  person also gets that value as a current employee code (subject_kind
- *  `employee-code`), the trial's shape until the roster supplies record
- *  numbers. */
+ *  person also gets that value as a current employee code. */
 export async function linkDelegated(user: string, signInName: string | null, o: { key?: string; subject?: string } = {}) {
   const id = 'uid_' + randomBytes(6).toString('hex')
   const [system] = await sql`select 1 from identifier_system where row_id = 'stylehr-employee-code'`
@@ -61,7 +59,6 @@ export async function linkDelegated(user: string, signInName: string | null, o: 
     method: o.key ?? 'stylehr',
     subject: o.subject ?? user,
     sign_in_name: signInName,
-    subject_kind: 'employee-code',
     linked_by: 'test',
   })}`
   return id

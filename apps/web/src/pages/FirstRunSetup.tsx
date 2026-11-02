@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Navigate, useNavigate, useRouterState } from '@tanstack/react-router'
+import { Link, Navigate, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { SETUP_MAX_PEOPLE } from 'shared'
 import { ApiError, api, getSessionUser } from '../lib/api'
-import { Button, Card, Field, Notice, TextInput } from '@featherbase/shop-floor'
+import { Button, Card, Field, Notice, Skeleton, StatusPill, TextInput, buttonClasses } from '@featherbase/shop-floor'
 import { Plus } from '@featherbase/shop-floor'
-import { INSTANCE_HEALTH_QUERY_KEY, useInstanceHealth } from './InstanceHealth'
+import { INSTANCE_HEALTH_PATH, INSTANCE_HEALTH_QUERY_KEY, useInstanceHealth } from './InstanceHealth'
 
 // First-run setup (#465, design D9; spec "First-run System Manager setup").
 // Offered to the built-in Administrator whenever "A System Manager with an
@@ -15,7 +15,6 @@ import { INSTANCE_HEALTH_QUERY_KEY, useInstanceHealth } from './InstanceHealth'
 
 const SETUP_PATH = '/featherbase/admin/setup'
 const ADMINISTRATOR = 'Administrator'
-const EMAIL_CHECK = 'system-manager-email'
 
 /** Set by the sign-in page for the Administrator; spent on the first Admin page. */
 export const OFFER_SETUP_KEY = 'featherbase.offer-setup'
@@ -58,12 +57,59 @@ export function useSetupOffer(enabled: boolean): void {
     if (!health.data) return
     decided.current = true
     if (!takeSetupOffer() || getSessionUser()?.row_id !== ADMINISTRATOR) return
-    const check = health.data.checks.find((c) => c.key === EMAIL_CHECK)
-    if (check && !check.ok) void navigate({ to: SETUP_PATH, replace: true })
+    if (!health.data.setup.administrator_ready) void navigate({ to: SETUP_PATH, replace: true })
   }, [enabled, health.data, navigate, pathname])
 }
 
 interface Row { full_name: string; email: string }
+
+export function WelcomeSetup() {
+  const health = useInstanceHealth(true)
+  const data = health.data
+  return (
+    <div className="mx-auto max-w-3xl space-y-5" data-testid="welcome-setup">
+      <div>
+        <h1 className="text-2xl font-semibold text-ink">Welcome to Featherbase</h1>
+        <p className="mt-2 text-ink-muted">Your base is ready to explore. Add an app when you need one; nothing is installed automatically.</p>
+      </div>
+      {health.isPending && <Skeleton label="Loading setup progress" className="w-full" />}
+      {health.isError && <Notice tone="negative">Setup progress could not be loaded. <Button variant="secondary" onClick={() => void health.refetch()}>Try again</Button></Notice>}
+      {data && <>
+        <Card className="divide-y divide-border">
+          <section className="p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-semibold text-ink">1. Set up your administrators</h2>
+              <StatusPill tone={data.setup.administrator_ready ? 'positive' : 'neutral'}>{data.setup.administrator_ready ? 'Ready' : 'Next step'}</StatusPill>
+            </div>
+            <p className="mt-2 text-sm text-ink-muted">Use your own identity and choose who receives system notices. You can do this later while exploring locally.</p>
+            <div className="mt-3 flex flex-wrap gap-3">
+              {getSessionUser()?.row_id === ADMINISTRATOR && <Link to="/featherbase/admin/setup/people" className={buttonClasses()}>Set up administrators</Link>}
+              <Link to="/featherbase/admin/$table" params={{ table: 'Person' }} search={{ filters: undefined }} className={buttonClasses()}>Manage people</Link>
+            </div>
+          </section>
+          <section className="p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-semibold text-ink">2. Choose your apps</h2>
+              <StatusPill tone={data.setup.installed_apps ? 'positive' : 'neutral'}>{data.setup.installed_apps ? `${data.setup.installed_apps} installed` : 'Optional'}</StatusPill>
+            </div>
+            <p className="mt-2 text-sm text-ink-muted">Inspect what each app adds, what it may access and the configuration it needs before installing.</p>
+            <Link to="/featherbase/admin/apps" className={buttonClasses({ className: 'mt-3' })}>Browse apps</Link>
+          </section>
+          <section className="p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-semibold text-ink">3. Prepare for shared use</h2>
+              <StatusPill tone="neutral">{data.setup.environment === 'development' ? 'When you need it' : data.setup_needed ? 'Setup needed' : 'Ready'}</StatusPill>
+            </div>
+            <p className="mt-2 text-sm text-ink-muted">Review sign-in, notices and deployment settings before others rely on this instance. {data.setup.configuration === 'file' ? 'Your instance uses a managed settings file.' : 'Settings can be edited here; a managed settings file is optional.'}</p>
+            <Link to={INSTANCE_HEALTH_PATH} className={buttonClasses({ className: 'mt-3' })}>Review readiness</Link>
+          </section>
+        </Card>
+        <p className="text-sm text-ink-muted">No need to finish everything now. Return to Welcome in the sidebar; progress follows your actual configuration.</p>
+      </>}
+      <Link to="/featherbase/admin/all-tables" className={buttonClasses({ variant: 'primary' })}>Explore Featherbase</Link>
+    </div>
+  )
+}
 
 type Invitation =
   | { status: 'sent' }

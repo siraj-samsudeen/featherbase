@@ -4,7 +4,7 @@
 - [x] 1.2 Use domain-modeling to append an ADR superseding Tasker's retirement; verify #563 is linked and historical ADRs remain intact.
 - [ ] 1.3 Inspect installed Tasker versions and legacy task ownership; obtain a migration decision if creator and former personal owner differ or work was already shared, recording evidence without exposing private data.
 - [ ] 1.4 Use codebase-design to specify the generic mandatory privacy seam and app-facing UI exports; prove the design covers administrative bypass and every relevant read/write surface, without Tasker-specific platform branches.
-- [ ] 1.5 Resolve the remaining recurrence and parent-reopening decisions in design.md before those tasks; update their scenarios and verify owner decisions are recorded.
+- [x] 1.5 Resolve the remaining recurrence and parent-reopening decisions in design.md before those tasks; update their scenarios and verify owner decisions are recorded.
 
 ## 2. Privacy and access
 

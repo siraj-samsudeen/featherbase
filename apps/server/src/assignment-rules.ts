@@ -4,7 +4,7 @@ import { tableRelation } from './table-engine'
 import { getMeta } from './meta'
 import { createAssignment } from './assign'
 import { evalCondition } from './server-scripts'
-import { isAccessTarget } from './security-tables'
+import { directWriteRestriction } from './security-tables'
 
 // Assignment Rules: metadata-driven auto-assignment. A rule names a Table,
 // an optional boolean condition over the new row, and a pool of users;
@@ -28,10 +28,10 @@ export async function evaluateAssignmentRules(
     where ref_table = ${table} and disabled = false`
 
   for (const rule of rules) {
-    // #437: refused when the rule is saved; a rule saved before that check
-    // existed never acts on access either.
-    if (await isAccessTarget(table, String(rule.assign_to_field ?? '').trim())) {
-      console.warn(`[assignment-rules] ${String(rule.row_id)} targets ${table} access data; skipped`)
+    // Refused when saved; legacy rules cannot bypass the direct-write guard.
+    const restriction = await directWriteRestriction(table, String(rule.assign_to_field ?? '').trim())
+    if (restriction) {
+      console.warn(`[assignment-rules] ${String(rule.row_id)} targets ${table} ${restriction === 'access' ? 'access' : 'upload-managed'} data; skipped`)
       continue
     }
     if (!evalCondition(rule.assign_condition as string | null, row, `assignment rule ${rule.row_id}`))

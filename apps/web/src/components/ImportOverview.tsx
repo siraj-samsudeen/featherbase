@@ -312,10 +312,12 @@ export function ImportOverview({
             <strong className="text-ink">{fmtCount(chosenRows)}</strong> rows
             will be imported ·{' '}
             <strong className="text-ink">{sheets.length - chosen}</strong> left out ·{' '}
-            <strong className="text-ink">
-              {mode === 'merge' && chosen >= 2 ? 1 : chosen}
-            </strong>{' '}
-            {mode === 'merge' && chosen >= 2 ? 'Table' : `Table${chosen === 1 ? '' : 's'}`}
+            <span className="whitespace-nowrap">
+              <strong className="text-ink">
+                {mode === 'merge' && chosen >= 2 ? 1 : chosen}
+              </strong>{' '}
+              {mode === 'merge' && chosen >= 2 ? 'Table' : `Table${chosen === 1 ? '' : 's'}`}
+            </span>
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2 px-3 py-3">

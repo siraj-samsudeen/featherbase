@@ -16,7 +16,19 @@ const merchMap = {
 
 test('a Table with a title column shows that column', () => {
   const meta = { ...merchMap, title_column: 'section_name' }
-  expect(rowDisplayTitle(meta, { section_name: 'Kurti' }, '1517|040802006')).toBe('Kurti')
+  expect(rowDisplayTitle(meta, { store_code: '1517', mch_subcategory: 'Tops', section_name: '  Kurti  ' }, '1517|040802006')).toBe('Kurti')
+})
+
+test('an absent or blank title falls back to readable values', () => {
+  const meta = { ...merchMap, title_column: 'section_name' }
+  expect(rowDisplayTitle(meta, { store_code: '1517' }, 'unused')).toBe('1517')
+  expect(rowDisplayTitle(meta, { section_name: '  ', mch_subcategory: 'Kurti' }, 'unused')).toBe('Kurti')
+})
+
+test('titles keep 80 characters and truncate longer values with an ellipsis', () => {
+  const meta = { ...merchMap, title_column: 'section_name' }
+  expect(rowDisplayTitle(meta, { section_name: 'A'.repeat(80) }, 'unused')).toBe('A'.repeat(80))
+  expect(rowDisplayTitle(meta, { section_name: 'A'.repeat(81) }, 'unused')).toBe(`${'A'.repeat(79)}…`)
 })
 
 test('with no title column, a leading code is paired with the first name-like value', () => {
@@ -32,29 +44,44 @@ test('with no title column, a name-like first value stands alone', () => {
   expect(rowDisplayTitle(meta, { customer_name: 'Acme Traders', city: 'Chennai' }, 'h4sh')).toBe('Acme Traders')
 })
 
+test('readable values from supported column types become titles', () => {
+  for (const [column_type, value, title] of [
+    ['Choice', 'Ready', 'Ready'], ['Reference', 'STORE-7', 'STORE-7'],
+    ['Int', 42, '42'], ['Text', 'Delivery notes', 'Delivery notes'],
+  ] as const) {
+    const meta = { name: 'Visit', columns: [{ column_name: 'value', column_type }] }
+    expect(rowDisplayTitle(meta, { value }, 'V-1')).toBe(title)
+  }
+})
+
 test('a row id shown as the title counts as no title column', () => {
-  const row = { store_code: '1517', material_group: '040802006', mch_subcategory: 'Kurti Z' }
+  const row = { row_id: '1517|040802006', store_code: ' 1517 ', material_group: '040802006', mch_subcategory: ' Kurti Z ' }
   expect(rowDisplayTitle({ ...merchMap, title_column: 'row_id' }, row, '1517|040802006')).toBe('1517 · Kurti Z')
 })
 
 test('hidden, layout and opaque-id values are skipped', () => {
   const meta = { name: 'Visit', title_column: null, columns: [
+    { column_name: 'row_id', column_type: 'Data' },
     { column_name: 'owner', column_type: 'Reference' },
     { column_name: 'notes_break', column_type: 'Section Break' },
     { column_name: 'secret', column_type: 'Data', hidden: true },
     { column_name: 'place', column_type: 'Data' },
   ] }
-  const row = { owner: 'psn_abcdefghijklmnopqrst', secret: 'Hidden', place: 'Madurai' }
+  const row = { row_id: 'V-1', owner: 'psn_abcdefghijklmnopqrst', notes_break: 'Layout only', secret: 'Hidden', place: 'Madurai' }
   expect(rowDisplayTitle(meta, row, 'V-1')).toBe('Madurai')
+  for (const owner of ['prefix-psn_abcdefghijklmnopqrst', 'psn_abcdefghijklmnopqrst-suffix']) {
+    expect(rowDisplayTitle(meta, { ...row, owner }, 'V-1')).toBe(owner)
+  }
 })
 
 test('only codes: the first two are joined', () => {
-  const row = { store_code: '1517', material_group: '040802006' }
+  const row = { store_code: '1517', material_group: '040802006', mch_subcategory: '123' }
   expect(rowDisplayTitle(merchMap, row, '1517|040802006')).toBe('1517 · 040802006')
 })
 
 test('nothing readable at all: the Table name and the key parts', () => {
   expect(rowDisplayTitle(merchMap, {}, '1517|040802006')).toBe('Section Merchandise Map · 1517 · 040802006')
+  expect(rowDisplayTitle(merchMap, {}, '|1517||040802006|')).toBe('Section Merchandise Map · 1517 · 040802006')
 })
 
 test('a fixed admin page path reads as its title, whatever the query or slash', () => {
@@ -63,5 +90,6 @@ test('a fixed admin page path reads as its title, whatever the query or slash', 
   expect(adminPathTitle('/featherbase/admin/access-tokens#top')).toBe('Access tokens')
   expect(adminPathTitle('/featherbase/admin/Task')).toBeUndefined()
   expect(adminPathTitle('/featherbase/admin/explore/extra')).toBeUndefined()
+  expect(adminPathTitle('/junk/featherbase/admin/explore')).toBeUndefined()
   expect(adminPathTitle(null)).toBeUndefined()
 })

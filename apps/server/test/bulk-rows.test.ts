@@ -10,6 +10,7 @@ import { test } from './pg-test'
 import { createUserWithRole, expectApiError } from './fixtures'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { invalidateSources } from '../src/sources/registry'
+import { registerController, unregisterController, type TableController } from '../src/controllers'
 
 const T = 'Bulk Order'
 const enc = encodeURIComponent
@@ -167,5 +168,19 @@ describe('on a connected Table', () => {
     expect(await cli`select label from bulk_fixture.shelf order by id`).toEqual([
       { label: 'Z' }, { label: 'Z' }, { label: 'A3' },
     ])
+  })
+
+  test('an unexpected controller failure is reported per row while later rows still change', async ({ admin }) => {
+    await bind(admin)
+    const controller: TableController = { table: BOUND, hooks: { validate(ctx) { if (ctx.row.row_id === '2') throw new Error('private upstream diagnostic') } } }
+    registerController(controller)
+    try {
+      expect(await admin.post(`/api/table/${enc(BOUND)}:bulk-edit`, { rows: ['1', '2', '3'], values: { label: 'Z' } }))
+        .toEqual({ changed: 2, failed: [{ row_id: '2', message: 'This row could not be reached in its source' }] })
+      expect(await cli`select id, label from bulk_fixture.shelf order by id`)
+        .toEqual([{ id: 1, label: 'Z' }, { id: 2, label: 'A2' }, { id: 3, label: 'Z' }])
+    } finally {
+      unregisterController(controller)
+    }
   })
 })

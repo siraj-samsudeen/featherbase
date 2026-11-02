@@ -12,11 +12,42 @@ the step an operator runs when new code goes live.
 
 ## Requirements
 
+### Requirement: One command starts an instance from nothing
+
+A developer with a checkout, a running database server and the language tools
+SHALL be able to start any instance by naming it, on Windows, macOS or Linux.
+The command SHALL create what is missing, and SHALL be safe to run again.
+
+#### Scenario: A new team member starts an instance
+
+- **WHEN** the user names an instance on a machine that has never run it
+- **THEN** the instance's apps are installed and its settings applied, and the
+  user is told where to go and how to sign in
+
+#### Scenario: A name that doesn't exist
+
+- **WHEN** the user names an instance that doesn't exist
+- **THEN** the command fails and lists the instances that do
+
+#### Scenario: The database server is not running
+
+- **WHEN** the database server can't be reached
+- **THEN** the command says exactly that and how to fix it on the user's system
+
+### Requirement: An app can be installed from the command line
+
+The user SHALL be able to install an app from the command line. Installing one
+that is already installed SHALL succeed and say so.
+
+#### Scenario: Installing twice
+
+- **WHEN** the user installs an app and then installs it again
+- **THEN** the first installs it and the second says it is already installed
+
 ### Requirement: A release brings the database up to date
 
 A release SHALL apply every database change that has not been applied yet,
-then every pending one-off fix, and SHALL leave an instance that is already up
-to date as it was.
+and SHALL leave an instance that is already up to date as it was.
 
 #### Scenario: Releasing an older instance keeps its data
 
@@ -30,23 +61,6 @@ to date as it was.
 - **WHEN** an operator releases again with nothing new to apply
 - **THEN** nothing is applied a second time
 
-### Requirement: Each one-off fix runs once
-
-A one-off fix, called a patch, SHALL run exactly once per database, in order. If one fails,
-the patches before it SHALL stay applied and the failed one SHALL leave no
-trace, so it is tried again at the next release.
-
-#### Scenario: A patch is never repeated
-
-- **WHEN** the operator runs the patches several times
-- **THEN** each patch has run once, in its listed order
-
-#### Scenario: A patch fails
-
-- **WHEN** a patch fails part-way
-- **THEN** the run stops there, the patches before it stay applied, and neither
-  the failed patch's changes nor any later patch is applied
-
 ### Requirement: A failed database change changes nothing
 
 When a database change fails during a release, the instance SHALL be left as
@@ -58,27 +72,6 @@ point.
 - **WHEN** a database change fails while the release is recording it
 - **THEN** nothing it did remains
 - **AND** the next release applies it once
-
-### Requirement: The person-record changes stand or fall together
-
-The database changes that move people onto their permanent records SHALL be
-applied as one step, so a failure in any of them leaves none of them applied.
-
-#### Scenario: One of the person changes fails
-
-- **WHEN** a release applies the person-record changes and one of them fails
-- **THEN** none of them is left applied
-
-### Requirement: A release refuses an instance that skipped versions
-
-A release SHALL refuse an instance whose earlier database changes are not all
-recorded, and SHALL say which are missing, before changing anything.
-
-#### Scenario: An instance with a gap in its history
-
-- **WHEN** an operator releases onto an instance that is missing one of its
-  earlier database changes
-- **THEN** the release stops, names the missing change, and changes nothing
 
 ### Requirement: Two releases at once do not collide
 
@@ -399,19 +392,18 @@ sign-in key placed in the connection's web address SHALL NOT count.
 
 An operator SHALL be able to try every pending database change on a copy of
 an instance, with nothing kept afterwards, and read what each change reported.
-The rehearsal SHALL run each change as the release would, on a copy of any
-version this release can bring up to date.
+The rehearsal SHALL run each change as the release would.
 
 #### Scenario: A copy of an instance last released long ago
 
 - **WHEN** the operator rehearses on a copy of an instance released many
-  versions ago, whose changes the release still knows how to bring up to date
+  versions ago
 - **THEN** each pending change runs and reports as it would in the release
 - **AND** the copy is left exactly as it was
 
 #### Scenario: A copy the release would refuse
 
-- **WHEN** the operator rehearses on a copy too old for this release to upgrade
+- **WHEN** the operator rehearses on a database the release would refuse
 - **THEN** the rehearsal refuses with the same reason the release would give
 
 ### Requirement: A rehearsal does not hold up a live instance
@@ -466,3 +458,121 @@ When the operator has set the Administrator password in the deployment settings,
 
 - **WHEN** the setting holds the Administrator's live password
 - **THEN** the release says they match and gives no warning
+
+### Requirement: A new instance starts in one step
+
+A release onto an empty database SHALL build the platform from one starting
+point, and SHALL list only a few steps.
+
+#### Scenario: Installing a new instance
+
+- **WHEN** an operator releases onto an empty database
+- **THEN** it has every table and starting record the platform needs, and the
+  release lists only a few steps
+
+### Requirement: A release refuses a database it did not install
+
+A release SHALL refuse a database that has no record of Featherbase's changes
+but already holds tables, before changing anything, and SHALL say to use a new
+database.
+
+#### Scenario: Pointing a release at someone else's database
+
+- **WHEN** an operator releases onto a database that already holds tables but
+  was never installed by Featherbase
+- **THEN** the release stops, says to use a new database, and changes nothing
+
+### Requirement: Start with only the platform
+
+Starting a new instance without choosing any apps SHALL provide only
+Featherbase. Example apps, client apps and test apps SHALL require an explicit choice.
+
+#### Scenario: A fresh checkout opens only Featherbase
+
+```gherkin
+Given the user has a fresh checkout and an empty development instance
+When the user starts Featherbase without choosing an instance or any apps
+Then the user can sign in to Featherbase
+And no example app, client app or test app is installed
+And no client app or test app was built by the startup command
+```
+
+#### Scenario: Starting again keeps a chosen app
+
+```gherkin
+Given the user has explicitly installed Tasker on a development instance
+When the user starts Featherbase again without choosing an instance or any apps
+Then Tasker and its existing tasks are still installed
+```
+
+### Requirement: Discover the command line without prior knowledge
+
+The command line SHALL introduce itself as Featherbase and show a small set of
+plain-language starting actions before advanced administration. Help SHALL work
+before a database is configured, and an unknown command SHALL fail with a useful next action.
+
+#### Scenario: The user has not chosen a command
+
+```gherkin
+Given the user has installed the checkout dependencies but has not configured a database
+When the user opens Featherbase command-line help
+Then the user sees how to prepare an instance, start it and check its health
+And each action explains what it does and what to run next
+And help does not require a database connection
+```
+
+#### Scenario: A command is mistyped
+
+```gherkin
+Given the user has installed the checkout dependencies
+When the user enters an unknown Featherbase command
+Then the command fails and points to the relevant help
+And no setup or installation is performed
+```
+
+### Requirement: Prepare a local instance deliberately
+
+The user SHALL be able to prepare a platform-only local instance with one
+repeatable command, with a clear summary of changes and the next action.
+
+#### Scenario: Setup is safe to repeat
+
+```gherkin
+Given the user has prepared a local Featherbase instance
+When the user runs the preparation command again
+Then existing data and installed apps are preserved
+And the user is told what changed and how to start the instance
+```
+
+### Requirement: Read a useful health report from the command line
+
+The user SHALL be able to read setup readiness and operational health without
+opening the browser. The command SHALL provide a machine-readable report and
+fail when an operational fault or required setup prevents the intended use.
+
+#### Scenario: A clean local instance needs no optional services
+
+```gherkin
+Given the user has a new local instance using built-in defaults
+When the user checks its health from the command line
+Then the report succeeds and says it is ready to explore
+And optional configuration is reported separately from faults
+```
+
+#### Scenario: A real failure is actionable for a person or an agent
+
+```gherkin
+Given the user has a local instance with an enabled scheduled job whose last run failed
+When the user requests a machine-readable command-line health report
+Then the command fails and the report identifies the failed check and next action
+And the report does not contain secret values
+```
+
+#### Scenario: Required hosted setup is not ready
+
+```gherkin
+Given the user has a hosted instance missing required notice recipients
+When the user requests a machine-readable command-line health report
+Then the command fails with a setup-readiness finding and the next action
+And the missing setup is distinguished from an operational fault
+```

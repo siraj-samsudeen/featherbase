@@ -10,7 +10,7 @@ import { join, resolve } from 'node:path'
 import { act, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
-import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION } from 'shared'
 import { discoverPackages } from 'server/src/runtime-packages'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { setSession } from '../src/lib/api'
@@ -19,8 +19,8 @@ import { mountBar } from '../src/bar/mount'
 import { PHONE_QUERY } from '../src/components/TopBar'
 import { test, expect } from './pg-test'
 
-const BAR_PROOF = resolve('../..', 'runtime-apps/fixtures/bar-proof')
-const ROSTER = resolve('../..', 'runtime-apps/fixtures/place-roster')
+const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
+const ROSTER = resolve('../..', 'test-apps/fixtures/place-roster')
 const STORES: [string, string][] = [['Hill Road', 'S102'], ['Lake View', 'S103'], ['Riverside', 'S101']]
 
 let mounted: { unmount: () => void; host: HTMLElement } | undefined
@@ -111,19 +111,24 @@ test("the browser's back button brings the picker back to the earlier choice", a
   await waitFor(async () => expect(await bar.findByRole('combobox', { name: 'Store' })).toHaveTextContent('Lake View'))
 })
 
-test("Open Admin is offered on an app's page to someone who can use Admin, on any address", async ({ admin }) => {
+test("the app-name dropdown offers Featherbase to a person who can open it", async ({ admin }) => {
   expect(await discoverPackages([BAR_PROOF, ROSTER])).toEqual([])
   await admin.post('/api/install_app', { name: 'barproof' })
   const bar = openAppPage(admin)
-  expect(await bar.findByTestId('open-admin')).toBeVisible()
+  const choices = await bar.findByRole('combobox', { name: 'Switch application' })
+  expect(await within(choices).findByRole('option', { name: FEATHERBASE_ADMIN_DESTINATION.label })).toHaveValue(FEATHERBASE_ADMIN_DESTINATION.href)
+  expect(choices).toHaveValue('/barproof/')
+  expect(bar.queryByTestId('open-admin')).toBeNull()
 })
 
 // #659 (owner decision, 28-Oct-2026): an app's own Tables do not open the
 // Admin. A Bar Reader reads only the app's Tables, so the bar offers no Admin.
-test("Open Admin is not offered on an app's page to a person who only reads the app", async ({ admin, createUser }) => {
+test("the app-name dropdown excludes Featherbase for an app-only reader", async ({ admin, createUser }) => {
   const bar = openAppPage(await readerOf(admin, createUser))
   await bar.findByTestId('session-user')
-  await settle()
+  const choices = await bar.findByRole('combobox', { name: 'Switch application' })
+  await waitFor(() => expect(within(choices).getAllByRole('option')).toHaveLength(1))
+  expect(within(choices).queryByRole('option', { name: FEATHERBASE_ADMIN_DESTINATION.label })).toBeNull()
   expect(bar.queryByTestId('open-admin')).toBeNull()
 })
 

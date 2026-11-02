@@ -348,7 +348,7 @@ async function keyIsAutoIncrement(bind: Binding): Promise<boolean> {
     bind.source,
     `select extra as extra from information_schema.columns
      where table_schema = coalesce(?, database()) and table_name = ? and column_name = ?`,
-    [bind.schema ?? null, bind.table, bind.pk],
+    [bind.schema || null, bind.table, bind.pk],
   )
   return String(rows[0]?.extra ?? '').toLowerCase().includes('auto_increment')
 }

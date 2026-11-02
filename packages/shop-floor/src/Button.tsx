@@ -12,6 +12,12 @@ const VARIANT: Record<ButtonVariant, string> = {
 }
 
 /**
+ * A button whose menu or panel is open (aria-expanded="true") looks pressed:
+ * accent border, tint and text, the same in light and dark through the tokens.
+ */
+const OPEN = 'aria-expanded:border-action aria-expanded:bg-action-tint aria-expanded:text-action'
+
+/**
  * The button look as a class string, for anything that must stay its own
  * element — a router Link, an anchor to an OAuth route — but read as a button.
  */
@@ -27,6 +33,9 @@ export function buttonClasses({
       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
       'disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none',
       VARIANT[variant],
+      (variant === 'secondary' || variant === 'quiet') && OPEN,
+      // A chevron inside (marked data-chevron) points up while the menu is open.
+      'aria-expanded:[&_[data-chevron]]:rotate-180 [&_[data-chevron]]:transition-transform motion-reduce:[&_[data-chevron]]:transition-none',
       block && 'w-full',
     ),
     className,

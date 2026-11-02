@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { cleanup, configure } from '@testing-library/react'
 
 // #527: a first render warms the in-process server and Vite's transform cache,
@@ -32,7 +32,30 @@ class SilentWebSocket {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ;(globalThis as any).WebSocket = SilentWebSocket
 
+// jsdom reports what it cannot do (a full-page load: "Not implemented:
+// navigation") as a jsdomError. Under Vitest 5 its console is not the one a
+// test spies on, so tests that spot a page load through console.error saw
+// nothing. Send each report to whatever console.error is at that moment.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const jsdomConsole = (window as any)._settings.virtualConsole as { removeAllListeners(e: string): void; on(e: string, f: (err: Error) => void): void }
+jsdomConsole.removeAllListeners('jsdomError')
+jsdomConsole.on('jsdomError', (err) => console.error(err))
+
+// jsdom has no matchMedia, and Vitest 4+ refuses vi.spyOn on a missing
+// property. This one never matches, which is what the app reads from an
+// absent matchMedia (useMediaQuery, theme-paint), so a phone-width test can
+// spy on it and vi.restoreAllMocks() returns it here.
+window.matchMedia = (query: string) =>
+  ({
+    matches: false, media: query, onchange: null,
+    addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false,
+  }) as MediaQueryList
+
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  // A spy one test leaves on would be the next test's "real" function, and
+  // Vitest 4+ re-spies a spy in place instead of wrapping it, so a pass-through
+  // spy (`real = globalThis.fetch; spyOn(...)(() => real(...))`) calls itself.
+  vi.restoreAllMocks()
 })

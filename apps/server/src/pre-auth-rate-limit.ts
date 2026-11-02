@@ -110,8 +110,8 @@ function rejection(c: Context, retryAfter: number) {
 /** The client's network address, or null when none can be told (#396). The
  *  header named by CLIENT_ADDRESS_HEADER wins when it holds exactly one
  *  address; otherwise the socket peer, or behind TRUSTED_PROXY_IPS the
- *  right-most hop they did not append. Sign-ins record it; the pre-auth
- *  budgets count by it. */
+ *  right-most hop they did not append. Sign-ins record the full address;
+ *  pre-auth budgets group IPv6 addresses by /64 in source(). */
 export function clientAddress(c: Context, policy = preAuthPolicy()): string | null {
   const named = policy.clientHeader ? ip(c.req.header(policy.clientHeader)?.trim()) : null
   if (named) return named
@@ -120,7 +120,15 @@ export function clientAddress(c: Context, policy = preAuthPolicy()): string | nu
 }
 
 function source(c: Context, policy: ReturnType<typeof preAuthPolicy>) {
-  return clientAddress(c, policy) ?? 'unknown'
+  const address = clientAddress(c, policy) ?? 'unknown'
+  if (isIP(address) !== 6) return address
+  // #575: budget one IPv6 network, not each freely rotated host address.
+  // clientAddress remains the full canonical address for sign-in history.
+  const [left, right] = address.split('::')
+  const head = left ? left.split(':') : []
+  const tail = right ? right.split(':') : []
+  const words = right === undefined ? head : [...head, ...Array<string>(8 - head.length - tail.length).fill('0'), ...tail]
+  return `${words.slice(0, 4).map(word => parseInt(word, 16).toString(16)).join(':')}::/64`
 }
 
 export function publicLimit(kind: Exclude<Kind, 'PASSWORD'>) {

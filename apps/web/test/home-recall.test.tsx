@@ -10,7 +10,12 @@
 // (offered), pinned (chips replace the card), reloaded (chips survive), and
 // a chip click (navigates). One claim each.
 
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createRootRoute, createRouter, RouterContextProvider } from '@tanstack/react-router'
+import { ResumeStrip, RoutineCard } from '../src/components/HomeRecall'
+import { clearSession, setSession } from '../src/lib/api'
+import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
 
 const DAY = 86_400_000
@@ -47,6 +52,23 @@ async function openHome(as: Client) {
   await screen.findByTestId('home-page')
   return rendered
 }
+
+test('signing out hides the previous person’s recalled destinations and routine', async ({ admin }) => {
+  await admin.post('/api/events', { events: habit(5) })
+  setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
+  recordAction(admin.user!, { kind: 'list', key: 'list:Private Work', label: 'Private Work', path: '/featherbase/admin/Private%20Work' })
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const router = createRouter({ routeTree: createRootRoute() })
+  const content = () => <QueryClientProvider client={client}><RouterContextProvider router={router}>
+    <ResumeStrip /><RoutineCard />
+  </RouterContextProvider></QueryClientProvider>
+  const view = render(content())
+  expect(await screen.findByTestId('resume-strip')).toHaveTextContent('Private Work')
+  await screen.findByTestId('routine-card')
+  clearSession()
+  view.rerender(content())
+  expect(view.container).toBeEmptyDOMElement()
+})
 
 test('a user with no habit is offered no routine at all', async ({ createUser }) => {
   const user = await createUser({ roles: ['System Manager'] })

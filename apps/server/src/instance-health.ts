@@ -9,7 +9,7 @@ import { sql, withTransaction } from './db'
 import { config } from './config'
 import { verifyPassword } from './auth'
 import { cadenceSeconds } from './jobs'
-import { checkVariables, DEV_ENVIRONMENTS } from './env'
+import { checkVariables, DEV_ENVIRONMENTS, readVariable } from './env'
 import { lastApply } from './managed-settings'
 import { systemManagerEmails } from './system-notice'
 import { appSetupState } from './app-settings'
@@ -24,6 +24,8 @@ export interface HealthCheck {
   /** What is checked, in sentence case. */
   title: string
   ok: boolean
+  /** Shared UI/CLI classification; history still records the underlying result. */
+  state?: 'ready' | 'optional' | 'setup-needed' | 'fault'
   /** How bad it is while failing (the banner takes the worst). */
   severity: HealthSeverity
   /** What is true now. */
@@ -32,6 +34,9 @@ export interface HealthCheck {
   why: string
   /** How to make it pass; null while it passes. */
   fix: string | null
+  /** An app-setup check: what the app lacks, so the app's own page can say so
+   *  to whoever can manage it. Names only, never a value. */
+  missing?: string[]
 }
 
 interface HealthCheckOptions {
@@ -45,7 +50,12 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 
 // ---------------------------------------------------------------- the checks
 
-async function systemManagerEmail(): Promise<HealthCheck> {
+/** A developer's machine sends no notices and has no warehouse or deployment
+ *  variables, so what it lacks is not a problem to raise. Only `development`:
+ *  a test run and every hosted environment judge these as they always did. */
+const LOCAL = 'development'
+
+async function systemManagerEmail(environment: string): Promise<HealthCheck> {
   const emails = await systemManagerEmails()
   const base = {
     key: 'system-manager-email',
@@ -60,6 +70,8 @@ async function systemManagerEmail(): Promise<HealthCheck> {
       message: `${emails.length} ${plural(emails.length, 'System Manager has an email address', 'System Managers have email addresses')} and ${plural(emails.length, 'receives', 'receive')} system notices.`,
       fix: null,
     }
+  if (environment === LOCAL)
+    return { ...base, ok: true, message: `No System Manager has an email address. That is expected on a ${LOCAL} server, which nobody relies on for notices.`, fix: null }
   return {
     ...base,
     ok: false,
@@ -113,6 +125,13 @@ async function settingsApplied(): Promise<HealthCheck> {
     severity: 'error' as const,
     why: 'The settings file in the instance repository decides this instance\'s settings. Until it is applied, they are whatever was set by hand, and none of them is locked.',
   }
+  if (!apply && !readVariable('FEATHERBASE_INSTANCE')?.trim()) return {
+    ...base,
+    ok: true,
+    state: 'optional',
+    message: 'Settings are managed in Featherbase. A managed settings file is optional.',
+    fix: null,
+  }
   if (!apply) return { ...base, ok: false, message: 'The settings were never applied.', fix: APPLY_FIX }
   const parts = [
     `Last applied ${fmtInstantIST(new Date(apply.applied_at))} by ${await principalName(apply.applied_by)}`,
@@ -145,7 +164,8 @@ async function settingsMatchFile(): Promise<HealthCheck> {
     ...base,
     ok: false,
     message: `${drift.length} ${plural(drift.length, 'setting differs', 'settings differ')} from the file: ${names.join(', ')}.`,
-    fix: 'These were changed outside the file (`cli settings:set` is the break-glass way). Put the same values in the settings file and apply it, or apply the file again to put its values back.',
+    fix: `These were changed outside the file (\`cli settings:set\` is the break-glass way). Put the same values in the settings file and apply it, or apply the file again to put its values back.${
+      drift.some((d) => d.from_variable) ? ' A value the file reads from a variable never goes in the file: change the variable, then apply.' : ''}`,
   }
 }
 
@@ -232,7 +252,7 @@ async function administratorPassword(environment: string): Promise<HealthCheck> 
 
 /** #620 (E2): one check per enabled app that declares settings or secrets.
  *  Names what is missing, never a value. */
-async function appsSetUp(): Promise<HealthCheck[]> {
+async function appsSetUp(environment: string): Promise<HealthCheck[]> {
   return (await appSetupState()).map(({ app, title, missing, optional }) => {
     const base = {
       key: `app-setup:${app}`,
@@ -243,10 +263,19 @@ async function appsSetUp(): Promise<HealthCheck[]> {
     // #666: a missing optional secret holds up only the reads and actions
     // that need it: still a warning, but the app is set up.
     const lacking = optional.length ? `lacks ${optional.join(', ')}. Only those answer "not set up yet".` : ''
-    if (!missing.length && !optional.length) return { ...base, ok: true, message: `${title} has every setting and secret it requires.`, fix: null }
+    if (!missing.length && !optional.length) return { ...base, ok: true, message: `${title} has every setting and secret it requires.`, fix: null, missing }
+    if (environment === LOCAL)
+      return {
+        ...base,
+        ok: true,
+        message: `${title} is not fully set up on this machine: ${[...missing, ...optional].join(', ')}. That is expected on a ${LOCAL} server, so it needs no attention.`,
+        fix: null,
+        missing,
+      }
     return {
       ...base,
       ok: false,
+      missing,
       message: missing.length
         ? `${title} answers "not set up yet": missing ${missing.join(', ')}.${lacking ? ` It also ${lacking}` : ''}`
         : `${title} is set up, but ${lacking}`,
@@ -299,16 +328,23 @@ async function placeDrops(): Promise<HealthCheck[]> {
 /** Every check, in the page's order. */
 export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<HealthCheck[]> {
   const environment = opts.environment ?? config.environment
-  return [
-    await systemManagerEmail(),
+  const checks: HealthCheck[] = [
+    await systemManagerEmail(environment),
     await recommendedVariables(environment),
     await settingsApplied(),
     await settingsMatchFile(),
     ...(await scheduledJobs(opts.now ?? new Date())),
-    ...(await appsSetUp()),
+    ...(await appsSetUp(environment)),
     ...(await placeDrops()),
     await administratorPassword(environment),
   ]
+  return checks.map((check) => ({ ...check, state: check.state ?? (
+    check.ok ? (check.missing?.length ? 'optional' : 'ready')
+      : check.key === 'system-manager-email' || check.key === 'settings-applied' ? 'setup-needed'
+      : check.key === 'recommended-variables' ? (check.severity === 'error' ? 'setup-needed' : 'optional')
+      : check.key.startsWith('app-setup:') ? (check.missing?.length ? 'setup-needed' : 'optional')
+      : 'fault'
+  ) }))
 }
 
 /** The release step's lines: every check, failing ones flagged (printed as
@@ -377,6 +413,8 @@ interface InstanceHealth {
   checks: (HealthCheck & { since: string | null; history: HealthHistoryEntry[] })[]
   /** How many checks are not passing. */
   failing: number
+  setup_needed: number
+  setup: { administrator_ready: boolean; installed_apps: number; environment: string; configuration: 'file' | 'ui' }
   /** The worst severity among them, or null when every check passes. */
   worst: HealthSeverity | null
   checked_at: string
@@ -419,13 +457,21 @@ async function describeHealth(opts: HealthCheckOptions & { record?: boolean }): 
   }
   const rank = (c: HealthCheck) => (c.ok ? 2 : c.severity === 'error' ? 0 : 1)
   const ordered = checks.map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i).map(({ c }) => c)
-  const failing = checks.filter((c) => !c.ok)
+  const failing = checks.filter((c) => c.state === 'fault')
+  const [{ count }] = await sql`select count(*)::int as count from installed_app`
   return {
     checks: ordered.map((c) => {
       const history = (byKey.get(c.key) ?? []).slice(0, HISTORY_LIMIT)
       return { ...c, since: history[0]?.from ?? null, history }
     }),
     failing: failing.length,
+    setup_needed: checks.filter((c) => c.state === 'setup-needed').length,
+    setup: {
+      administrator_ready: (await systemManagerEmails()).length > 0,
+      installed_apps: Number(count),
+      environment: opts.environment ?? config.environment,
+      configuration: (await lastApply()) || readVariable('FEATHERBASE_INSTANCE')?.trim() ? 'file' : 'ui',
+    },
     worst: failing.some((c) => c.severity === 'error') ? 'error' : failing.length ? 'warning' : null,
     checked_at: now.toISOString(),
   }

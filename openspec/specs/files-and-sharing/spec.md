@@ -120,7 +120,11 @@ the meantime.
 
 A file attached to a row SHALL be listed, opened and removed only by someone
 who can open that row, or with whom the row is shared, whatever their access
-to files in general. It SHALL be attached to, or moved onto, a row only by
+to files in general.
+
+#### Normative details for the whole requirement
+
+It SHALL be attached to, or moved onto, a row only by
 someone who can open that row, and taken off its row only by a System
 Manager. A file or comment MAY sit on a file, comment or edit that is itself
 on a row, one level deep and no further. A file attached to a whole table, or to nothing, SHALL follow the
@@ -144,3 +148,17 @@ on its rows SHALL be listed for someone who may read every row of it.
 - **WHEN** a user who may edit files moves one of their files onto a row they
   cannot open, or takes it off its row
 - **THEN** it is refused and the file stays where it was
+
+### Requirement: Stored content cannot be claimed through a file edit
+
+Uploading SHALL be the only way a user assigns stored content to a file. Creating a file by supplying a stored location, or editing it to claim a different one, SHALL be refused.
+
+#### Scenario: Claim someone else's private upload
+
+- **WHEN** the user creates another file referring to someone else's private upload
+- **THEN** the save is refused and the original upload remains unchanged
+
+#### Scenario: Replace an upload's stored content reference
+
+- **WHEN** the user edits a file to refer to a different upload's stored content
+- **THEN** the save is refused and both uploads remain unchanged

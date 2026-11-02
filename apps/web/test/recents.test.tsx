@@ -1,5 +1,4 @@
 import { ADMIN_NAMED_PAGE_KINDS, ADMIN_STATIC_PAGES, ADMIN_UNRECORDED_ROOTS } from 'shared'
-import { routeTree } from '../src/router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   actionForLocation,
@@ -11,6 +10,7 @@ import {
   flushPendingEvents,
   frecency,
   frequentActions,
+  mergeServerEntries,
   recentActions,
   recentSearches,
   recordAction,
@@ -33,6 +33,19 @@ const row = (name: string) => ({
 beforeEach(() => localStorage.clear())
 
 describe('recordAction / recentActions', () => {
+  it('skips unknown kinds and missing identities in a server merge without losing valid destinations', () => {
+    recordAction(USER, row('LOCAL'), NOW)
+    mergeServerEntries(USER, [
+      { ...row('UNKNOWN'), kind: 'future-kind', visits: [NOW + 1] },
+      { ...row('NO-KEY'), key: '', visits: [NOW + 2] },
+      { ...row('REMOTE'), visits: [NOW + 3] },
+    ])
+    expect(recentActions(USER, 10)).toEqual([
+      { ...row('REMOTE'), visits: [NOW + 3] },
+      { ...row('LOCAL'), visits: [NOW] },
+    ])
+  })
+
   it('orders newest first and revisiting bumps instead of duplicating', () => {
     recordAction(USER, row('CUST-1'), NOW - 3000)
     recordAction(USER, row('CUST-2'), NOW - 2000)
@@ -115,6 +128,7 @@ describe('actionForLocation', () => {
 
   it('ignores home pages, builders, and transient new forms', () => {
     expect(actionForLocation('/featherbase/admin', {})).toBeNull()
+    expect(actionForLocation('/featherbase/admin///', {})).toBeNull()
     expect(actionForLocation('/featherbase/admin/home/home', {})).toBeNull()
     expect(actionForLocation('/featherbase/admin/new-table', {})).toBeNull()
     expect(actionForLocation('/featherbase/admin/import', {})).toBeNull()
@@ -133,7 +147,10 @@ describe('actionForLocation', () => {
     })
   })
 
-  it('#440: every static admin page in the router is catalogued or deliberately unrecorded', () => {
+  it('#440: every static admin page in the router is catalogued or deliberately unrecorded', async () => {
+    // Load the shell only for this contract: the buffer above also works
+    // before a shell has connected its optional server transport.
+    const { routeTree } = await import('../src/router')
     const admin = (routeTree.children as unknown as Array<{ options: { path?: string }; children?: unknown }>).find(
       (r) => r.options.path === '/featherbase/admin',
     )!

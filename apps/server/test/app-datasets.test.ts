@@ -5,8 +5,8 @@
 // limited to the reader's scope, through the same shaping. A read declared
 // outbound runs after its authorization transaction has closed.
 //
-// Fixtures: runtime-apps/fixtures/dataset-proof reads the dataset;
-// runtime-apps/fixtures/place-roster provides people's places. The "warehouse"
+// Fixtures: test-apps/fixtures/dataset-proof reads the dataset;
+// test-apps/fixtures/place-roster provides people's places. The "warehouse"
 // is a schema of made-up rows in the sibling test database (external-database.ts),
 // reached through an ordinary postgres Data Source. Nothing remote is touched.
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -31,8 +31,8 @@ import { _getRootSql, inAppTransaction, sql } from '../src/db'
 import { assertStillServing, servingIdentity } from '../src/app-lifecycle'
 import { runHealthChecks } from '../src/instance-health'
 
-const fixture = resolve('../..', 'runtime-apps/fixtures/dataset-proof')
-const provider = resolve('../..', 'runtime-apps/fixtures/place-roster')
+const fixture = resolve('../..', 'test-apps/fixtures/dataset-proof')
+const provider = resolve('../..', 'test-apps/fixtures/place-roster')
 const read = '/api/app_reads/datasetproof/'
 const SOURCE_ENV = 'B4_WAREHOUSE_URL'
 process.env[SOURCE_ENV] = EXTERNAL_DATABASE_URL
@@ -112,6 +112,25 @@ describe('the snapshot of an app dataset', () => {
       expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'failed' })
     })
     expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+  })
+
+  test('a real CSV source cannot run a dataset SQL query and leaves the last snapshot active', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const good = await buildSnapshot('datasetproof.sales')
+    const folder = await mkdtemp(resolve('test/.dataset-seeds-'))
+    try {
+      await writeFile(resolve(folder, 'sales.csv'), 'plant_code,section_code,business_day,amount,units,note\nN1,kids,2026-10-01,5,1,CSV\n')
+      const source = await admin.get<{ updated_at: string }>('/api/table/Data%20Source/datasetproof-warehouse')
+      await admin.post('/api/save_row', { table: 'Data Source', row: {
+        row_id: 'datasetproof-warehouse', updated_at: source.updated_at, engine: 'csv-folder', root_path: folder, url_env: null,
+      } })
+      invalidateSources()
+      expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
+        status: 'failed', reason: 'Data source datasetproof-warehouse (csv-folder) cannot run a dataset query',
+      })
+      expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+      expect(await warehouse`select count(*)::int as count from b4_dataset.sales`).toEqual([{ count: 4 }])
+    } finally { await rm(folder, { recursive: true, force: true }) }
   })
 
   test('an empty candidate is refused, so the last good copy keeps serving', async ({ admin, createUser }) => {
@@ -196,6 +215,16 @@ describe('the guard on an app dataset', () => {
     await fillWarehouse(withUnits(0, null, 0, null))
     expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
       status: 'refused', reason: 'sales: every units value is empty or zero (4 rows)' })
+  })
+
+  test('a row-only guard accepts its boundary and refuses a smaller nonempty refresh', async ({ admin }) => {
+    await setupGuarded(admin, [{ kind: 'min_rows', value: 4 }])
+    const good = await buildSnapshot('datasetproof.sales')
+    expect(good).toMatchObject({ status: 'activated', rowCount: 4 })
+    await fillWarehouse(SALES.slice(0, 2))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
+      status: 'refused', reason: 'sales: 2 rows, at least 4 required' })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
   })
 
   test('a refusal is a failed refresh run that names the guard and its numbers', async ({ admin }) => {
@@ -415,6 +444,63 @@ const row = (plant_code: string, section_code: string, business_day: string, amo
   ({ plant_code, section_code, business_day, amount, units, note })
 
 describe('a cached dataset read', () => {
+  test('non-record person-scope payloads refuse without writes while North and South remain distinct', async ({ admin, createUser }) => {
+    const scopeFixture = resolve('../..', 'test-apps/scope-proof')
+    expect(await discoverPackages([scopeFixture, provider])).toEqual([])
+    await admin.post('/api/install_app', { name: 'scopeproof' })
+    await admin.post('/api/install_app', { name: 'placeroster' })
+    const reader = await createUser({ email: 'places@example.test', roles: ['Scope Planner'] })
+    const user = makeClient({ request: (path, init) => reader.fetch(String(path), {
+      ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'scopeproof@1.0.0' },
+    }) }, reader.token, reader.user)
+    await position(admin, user.user!, 'North', 'N1', 'kids')
+    await position(admin, user.user!, 'South', 'S1', 'mens')
+    expect(await user.post('/api/app_actions/scopeproof/place', {
+      idempotencyKey: 'valid-north', payload: { effect: 'only-north', scope: { places: ['North'] } },
+    })).toEqual({ result: { places: 'North' } })
+    const before = {
+      positions: await sql`select * from placeroster.position order by row_id`,
+      stores: await sql`select * from scopeproof.store order by row_id`,
+      objects: await sql`select * from scopeproof.object order by row_id`,
+      effects: await sql`select * from scopeproof.effect order by row_id`,
+      receipts: await sql`select * from runtime_action_result where caller = ${user.user} order by idempotency_key`,
+    }
+    for (const payload of [null, 42, ['North']]) {
+      for (const [path, body] of [
+        ['/api/app_reads/scopeproof/places', { payload }],
+        ['/api/app_actions/scopeproof/place', { idempotencyKey: 'refused', payload }],
+      ] as const) {
+        const response = await user.fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        expect(response.status).toBe(403)
+        expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
+      }
+    }
+    expect({
+      positions: await sql`select * from placeroster.position order by row_id`,
+      stores: await sql`select * from scopeproof.store order by row_id`,
+      objects: await sql`select * from scopeproof.object order by row_id`,
+      effects: await sql`select * from scopeproof.effect order by row_id`,
+      receipts: await sql`select * from runtime_action_result where caller = ${user.user} order by idempotency_key`,
+    }).toEqual(before)
+    expect(await sql`select operation, method, ref_table, reference_name from access_log
+      where "user" = ${user.user} and operation = 'app_access_denied' order by method`).toEqual([
+      ...Array.from({ length: 3 }, () => ({ operation: 'app_access_denied', method: 'scopeproof.place:scope', ref_table: null, reference_name: null })),
+      ...Array.from({ length: 3 }, () => ({ operation: 'app_access_denied', method: 'scopeproof.places:scope', ref_table: null, reference_name: null })),
+    ])
+    for (const [place, store, section] of [['North', 'N1', 'kids'], ['South', 'S1', 'mens']]) {
+      expect(await user.post('/api/app_reads/scopeproof/places', { payload: { scope: { places: [place] } } }))
+        .toEqual({ result: { places: [{ label: place, filters: { store: [store], section: [section] }, confirmation: { section: { [section]: 'confirmed' } } }] } })
+    }
+    expect(await user.post('/api/app_actions/scopeproof/place', {
+      idempotencyKey: 'valid-south', payload: { effect: 'only-south', scope: { places: ['South'] } },
+    })).toEqual({ result: { places: 'South' } })
+    expect(await sql`select row_id, value from scopeproof.effect order by row_id`).toEqual([
+      { row_id: 'only-north', value: 'North' }, { row_id: 'only-south', value: 'South' },
+    ])
+    expect(await sql`select idempotency_key from runtime_action_result where caller = ${user.user} order by idempotency_key`)
+      .toEqual([{ idempotency_key: 'valid-north' }, { idempotency_key: 'valid-south' }])
+  })
+
   test('returns only the rows the caller\'s places cover', async ({ admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
     await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
@@ -501,6 +587,66 @@ describe('a cached dataset read', () => {
 })
 
 describe('a live dataset read', () => {
+  test('unions whole places without cross-pairing their filters or duplicating overlapping rows', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await fillWarehouse([...SALES, ['S1', 'mens', '2026-10-02', '7.50', 9, 'south mens']])
+    await position(admin, reader.user!, 'North kids', 'N1', 'kids')
+    await position(admin, reader.user!, 'North kids overlap', 'N1', 'kids')
+    await position(admin, reader.user!, 'South mens', 'S1', 'mens')
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'activated', rowCount: 5 })
+    app.hooks.run = async (context: Context) => ({
+      cached: await context.datasets.active('sales'),
+      live: await context.datasets.live('sales'),
+      narrowedCached: await context.datasets.active('sales', { business_day: ['2026-10-02'], plant_code: 'S1' }),
+      narrowedLive: await context.datasets.live('sales', { business_day: ['2026-10-02'], plant_code: 'S1' }),
+    })
+    const { result } = await reader.post<{ result: Record<'cached' | 'live' | 'narrowedCached' | 'narrowedLive', { rows: unknown[] }> }>(read + 'outside', { payload: {} })
+    const south = row('S1', 'mens', '2026-10-02', 7.5, 9, 'south mens')
+    const expected = [row('N1', 'kids', '2026-10-01', 100.5, 3, 'north kids'),
+      row('N1', 'kids', '2026-10-02', 20.25, 1, 'north kids'), south]
+    expect(result.cached.rows).toEqual(expected)
+    expect(result.live.rows).toEqual(expected)
+    expect(result.narrowedCached.rows).toEqual([south])
+    expect(result.narrowedLive.rows).toEqual([south])
+  })
+
+  test('orders null figures first and numeric figures numerically, then breaks ties by later columns', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    // Every leading key is equal: neither lexical ordering of figures nor
+    // source insertion order can produce the declared-column order.
+    const figures = [
+      ['10', 1, 'ten'], [null, 4, 'missing four'], ['2', 10, 'two ten'],
+      [null, 2, 'missing two'], ['-1', 3, 'negative'], ['2', 2, 'two two'],
+    ] as const
+    await fillWarehouse(figures.map(([amount, units, note]) => ['N1', 'kids', '2026-10-01', amount, units, note]))
+    await position(admin, reader.user!, 'North kids', 'N1', 'kids')
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'activated', rowCount: 6 })
+    app.hooks.run = async (context: Context) => ({ cached: await context.datasets.active('sales'), live: await context.datasets.live('sales') })
+    const { result } = await reader.post<{ result: Record<'cached' | 'live', { rows: unknown[] }> }>(read + 'outside', { payload: {} })
+    const expected = [
+      { ...row('N1', 'kids', '2026-10-01', 0, 2, 'missing two'), amount: null },
+      { ...row('N1', 'kids', '2026-10-01', 0, 4, 'missing four'), amount: null },
+      row('N1', 'kids', '2026-10-01', -1, 3, 'negative'),
+      row('N1', 'kids', '2026-10-01', 2, 2, 'two two'),
+      row('N1', 'kids', '2026-10-01', 2, 10, 'two ten'),
+      row('N1', 'kids', '2026-10-01', 10, 1, 'ten'),
+    ]
+    expect(result.cached.rows).toEqual(expected)
+    expect(result.live.rows).toEqual(expected)
+  })
+
+  test('identical source rows keep their multiplicity in live and cached answers', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await fillWarehouse([SALES[0], SALES[0], SALES[1]])
+    await position(admin, reader.user!, 'North', 'N1', 'kids')
+    await buildSnapshot('datasetproof.sales')
+    app.hooks.run = async (context: Context) => ({ cached: await context.datasets.active('sales'), live: await context.datasets.live('sales') })
+    const { result } = await reader.post<{ result: Record<'cached' | 'live', { rows: unknown[] }> }>(read + 'outside', { payload: {} })
+    const expected = [row('N1', 'kids', '2026-10-01', 100.50, 3, 'north kids'), row('N1', 'kids', '2026-10-01', 100.50, 3, 'north kids'), row('N1', 'kids', '2026-10-02', 20.25, 1, 'north kids')]
+    expect(result.live.rows).toEqual(expected)
+    expect(result.cached.rows).toEqual(expected)
+  })
+
   test('answers the same rows, in the same shape and with the same totals, as the cached read', async ({ admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
     await position(admin, reader.user!, 'North', 'N1', 'kids')
@@ -739,6 +885,15 @@ describe('the shaping function', () => {
   const dataset = (columns: DatasetDeclaration['columns']): DatasetDeclaration =>
     ({ name: 'probe', source: 's', query: 'select 1', columns, keys: [], filters: { store: columns[0].name } })
 
+  test('integer scope keys keep exact digits and reject numbers already outside the safe range', () => {
+    const probe = dataset([{ name: 'account', type: 'integer' }])
+    expect(shapeRows(probe, [{ account: -7 }, { account: 0 }, { account: '9007199254740993' }])).toEqual([
+      { account: '-7' }, { account: '0' }, { account: '9007199254740993' },
+    ])
+    for (const account of [9007199254740992, 1.5, '1.5'])
+      expect(() => shapeRows(probe, [{ account }])).toThrow('column account holds a value that is not integer')
+  })
+
   // A count or amount is answered as a number, so it must be one a number holds exactly.
   test('refuses an integer value column holding a number above 2^53', () => {
     expect(() => shapeRows(dataset([{ name: 'store', type: 'text' }, { name: 'units', type: 'integer' }]),
@@ -897,6 +1052,7 @@ describe('what a read may ask of a dataset', () => {
     ['a dataset the app has not declared', (c: Context) => c.datasets.active('elsewhere'), /has not declared the dataset elsewhere/],
     ['filters that are not an object', (c: Context) => c.datasets.active('sales', ['N1'] as never), /filters must be an object/],
     ['an empty list of filter values', (c: Context) => c.datasets.active('sales', { plant_code: [] }), /must be a value or a list of values/],
+    ['a boolean among otherwise valid filter values', (c: Context) => c.datasets.active('sales', { plant_code: ['N1', false] } as never), /Dataset filter plant_code must be a value or a list of values/],
     ['a view of a dataset the app has not declared', (c: Context) => c.recordView({ dataset: 'elsewhere' }), /recordView takes \{ dataset \}/],
   ] as const)('refuses %s', async ([, ask, message], { admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
@@ -910,8 +1066,12 @@ describe('what a read may ask of a dataset', () => {
     await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
     app.hooks.run = async (context: Context) => { await context.recordView(); return null }
     await reader.post(read + 'inside', { payload: {} })
-    const rows = await sql`select ref_table, method from access_log where "user" = ${reader.user} and operation = 'view_report'`
-    expect(rows.map(r => ({ ...r }))).toEqual([{ ref_table: 'datasetproof.inside', method: null }])
+    await reader.post(read + 'unscoped', { payload: {} })
+    const rows = await sql`select ref_table, method, scope from access_log where "user" = ${reader.user} and operation = 'view_report' order by ref_table`
+    expect(rows.map(r => ({ ...r }))).toEqual([
+      { ref_table: 'datasetproof.inside', method: null, scope: 'North / Kids' },
+      { ref_table: 'datasetproof.unscoped', method: null, scope: null },
+    ])
   })
 })
 
@@ -1017,6 +1177,15 @@ describe('a place a dataset cannot apply', () => {
   })
 
   const dropsCheck = async () => (await runHealthChecks()).find(check => check.key === 'scope-place-drops:datasetproof')
+
+  test('turning off the provider stops reporting drops from its old answers', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'inside', { payload: {} }))
+    expect(await dropsCheck()).toMatchObject({ ok: false })
+    await admin.post('/api/set_app_enabled', { name: 'placeroster', enabled: false })
+    expect(await dropsCheck()).toMatchObject({ ok: true, message: "No place has been dropped from Dataset proof's datasets." })
+  })
 
   test('after a read drops a place, Instance health names the provider, the dataset and the keys', async ({ admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)

@@ -46,6 +46,31 @@ test('a report viewer signing in on the admin address lands on the app address',
   })
 })
 
+test('Google sign-in hands a report viewer from the admin address to the app address', async ({ session, page, request }) => {
+  const email = await person(request, 'GoogleDashViewer', [VIEWER_ROLE])
+  const headers = await adminAuth(request)
+  const filters = encodeURIComponent(JSON.stringify([['email', '=', email]]))
+  const people = await (await request.get(`/api/table/Person?filters=${filters}`, { headers })).json()
+  const invited = await request.post(`/api/people/${people.data[0].row_id}/identities`, {
+    headers, data: { method: 'google', email },
+  })
+  expect(invited.status(), await invited.text()).toBe(201)
+  await session.step('approve the invited identity on the mock Google provider', async () => {
+    await page.goto(`${ADMIN}/featherbase/login`)
+    await page.getByTestId('google-login').click()
+    await page.getByTestId('mock-email').fill(email)
+    await page.getByTestId('mock-approve').click()
+  })
+  await session.step('the one-time OAuth session hands off and signs in on the app address', async () => {
+    await expect(page).toHaveURL(`${DASH}/featherbase/sales-target`)
+    await expect(page.getByTestId('session-user')).toBeVisible()
+    expect(await page.evaluate(() => localStorage.getItem('fc_token'))).toBeTruthy()
+    await page.reload()
+    await expect(page).toHaveURL(`${DASH}/featherbase/sales-target`)
+    await expect(page.getByTestId('session-user')).toBeVisible()
+  })
+})
+
 test('a System Manager signing in on the admin address stays on it', async ({ session, page, request }) => {
   const manager = await person(request, 'Admin Manager', ['System Manager'])
   await session.step('sign in on the admin address', async () => signInAt(page, ADMIN, manager))

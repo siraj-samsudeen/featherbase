@@ -83,6 +83,34 @@ describe('RPT-005: script reports', () => {
     })
   })
 
+  test('refuses to execute a Report Builder report as a script report', async ({ admin }) => {
+    const report = 'SR Srv Builder'
+    await admin.post('/api/save_row', {
+      table: 'Report',
+      row: { row_id: report, ref_table: 'Person', report_type: 'Report Builder', config: { columns: ['full_name'] } },
+    })
+    const before = await admin.get(`/api/table/Report/${encodeURIComponent(report)}`)
+    await expectApiError(admin.post('/api/run_script_report', { report }), {
+      status: 417, type: 'ValidationError', message: `417 ValidationError: ${report} is not a Script Report`,
+    })
+    expect(await admin.get(`/api/table/Report/${encodeURIComponent(report)}`)).toEqual(before)
+    const chart = await admin.post<{ data: { label: string; value: number }[] }>('/api/report_chart', { report })
+    expect(chart.data).toContainEqual({ label: 'Administrator', value: 0 })
+  })
+
+  test('refuses a script report without a registered script name', async ({ admin }) => {
+    const report = 'SR Srv Unconfigured'
+    await admin.post('/api/save_row', {
+      table: 'Report',
+      row: { row_id: report, ref_table: 'Person', report_type: 'Script Report' },
+    })
+    const before = await admin.get(`/api/table/Report/${encodeURIComponent(report)}`)
+    await expectApiError(admin.post('/api/run_script_report', { report }), {
+      status: 417, type: 'ValidationError', message: '417 ValidationError: No script report registered as ""',
+    })
+    expect(await admin.get(`/api/table/Report/${encodeURIComponent(report)}`)).toEqual(before)
+  })
+
   test('a choice filter narrows the rows: Enabled Yes returns only enabled people, No only the others', async ({ admin, createUser }) => {
     await setup(admin)
     const gone = await createUser({ email: 'sr.gone@example.com', fullName: 'Gone Person' })

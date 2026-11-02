@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { pathToFileURL } from 'node:url'
 import { readFileSync } from 'node:fs'
-import { TASKER_SCENARIOS } from '../runtime-apps/tasker/development/scenarios.mjs'
+import { TASKER_SCENARIOS } from '../example-apps/tasker/development/scenarios.mjs'
 export { TASKER_SCENARIOS }
-const { version } = JSON.parse(readFileSync(new URL('../runtime-apps/tasker/package.json', import.meta.url), 'utf8'))
+const { version } = JSON.parse(readFileSync(new URL('../example-apps/tasker/package.json', import.meta.url), 'utf8'))
 
 export function requireLoopback(rawUrl) {
   const url = new URL(rawUrl)

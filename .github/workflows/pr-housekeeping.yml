@@ -1,0 +1,37 @@
+# Area labels from file paths, and a reminder about PR title scopes (ADR 0014
+# section 6). Neither blocks a merge. Labels added with this workflow's token
+# start no further runs, so test.yml's `labeled` trigger does not fire again.
+#
+# `pull_request`, not `pull_request_target`: this repository is public and a PR
+# from a fork must get no write token. So a fork's PR is simply not labelled.
+name: pr-housekeeping
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  labels:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/labeler@v5
+
+  title:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      # Report only: a warning, never a failure.
+      - name: Title starts with [#N] or a scope
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if ! printf '%s' "$TITLE" | grep -qE '^(\[#[0-9]+\]|[a-z0-9-]+(/[a-z0-9-]+)*:)'; then
+            echo '::warning title=PR title::Start the title with [#N] or a scope such as platform: or jeyarama/dash: (ADR 0014 section 6).'
+          fi

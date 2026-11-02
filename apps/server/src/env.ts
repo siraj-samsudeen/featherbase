@@ -151,7 +151,8 @@ export const VARIABLES = [
   // ---- Break-glass and tooling
   { name: 'DISABLE_DATABASE_ENVIRONMENT_CHECK', secret: false, required: 'optional',
     purpose: '`1` skips the check that the database was stamped by this environment. Break-glass only' },
-  { name: 'FEATHERBASE_APP_PATHS', secret: false, required: 'optional', default: '`[]`', purpose: 'JSON array of extra app package directories to discover at boot' },
+  { name: 'FEATHERBASE_APP_PATHS', secret: false, required: 'optional', default: '`[]`', purpose: 'JSON array of extra app package directories to discover at boot; `<folder>/*` means every folder in it' },
+  { name: 'FEATHERBASE_INSTANCE', secret: false, required: 'optional', purpose: 'the client instance this image was built for (`<client>/<instance>`), as a build argument and a variable. Set, the pre-deploy step installs or upgrades its apps and applies its settings. See [A client instance](#a-client-instance)' },
   { name: 'JOB_POLL_MS', secret: false, required: 'optional', default: '`500`', purpose: 'background worker poll interval' },
   { name: 'SERVER_URL', secret: false, required: 'optional', default: '`http://localhost:8000`', purpose: 'the server `pnpm smoke` probes' },
   // ---- Sales target (Feather Dash)
@@ -230,9 +231,10 @@ export async function withNamedVariable<T>(name: string, value: string | undefin
   }
 }
 
-/** The environment a child process inherits, with `extra` on top. */
-export function childEnvironment(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
-  return { ...process.env, ...extra }
+/** The environment a child process inherits, optionally restricted to named
+ * execution variables, with `extra` on top. Names are case-insensitive on Windows. */
+export function childEnvironment(extra: Record<string, string> = {}, inherit?: readonly string[]): NodeJS.ProcessEnv {
+  return { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !inherit || inherit.includes(name.toUpperCase()))), ...extra }
 }
 
 /** The whole environment, for functions that take one as a parameter so a
@@ -316,11 +318,14 @@ export function checkVariables(opts: CheckVariablesOptions): VariableReport {
     else if (req === 'recommended') report.warnings.push(`WARNING: ${missing(v)}`)
     else report.refusals.push(missing(v))
   }
-  // A data-named variable only ever warns, in every environment: without it
+  // A data-named variable only ever warns, outside development: without it
   // that one Data Source is unusable (its queries refuse, naming the
   // variable, sources/registry.ts resolveUrl), and the rest of the app is not.
   for (const { name, reason } of opts.named ?? []) {
     if (readNamedVariable(name)?.trim()) report.passed.push(`${name} set (${reason})`)
+    // A developer's machine has no warehouse to point it at, so saying so on
+    // every boot only teaches people to ignore warnings. Hosted, it still warns.
+    else if (environment === 'development') report.passed.push(`${name} unset, allowed on a "${environment}" server (${reason})`)
     else report.warnings.push(`WARNING: ${name} is not set on a "${environment}" server (${reason}). That source refuses every query until it is set; set it, or delete the data source.`)
   }
   return report

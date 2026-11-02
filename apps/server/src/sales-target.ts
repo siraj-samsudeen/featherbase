@@ -488,11 +488,6 @@ function requestedStore(values: string[] | undefined): string | undefined {
   return values?.[0] || undefined
 }
 
-/** The default store's assignment — what a reader who names no store is shown. */
-export async function currentAssignment(user: string, period: Period = currentPeriod()): Promise<Assignment | null> {
-  return (await assignmentFor(user, undefined, period)).chosen
-}
-
 /** Exactly the Dive's useDiveState keys — nothing else rides along. */
 export function initialStateFor(a: Assignment, period: Period = currentPeriod()) {
   return {

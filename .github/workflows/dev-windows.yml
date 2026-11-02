@@ -1,0 +1,110 @@
+# Proves base startup and explicit named-instance development on Windows:
+# Node LTS, pnpm through Corepack, and the optional named instance's made-up
+# data whose figures a reader can read. It runs only when something the path depends on
+# changes, and is not part of the `unit` verdict until it has proved stable.
+name: dev-windows
+
+on:
+  pull_request:
+    paths:
+      - tools/dev.mjs
+      - tools/featherbase.mjs
+      - tools/featherbase.test.mjs
+      - tools/prepare-apps.mjs
+      - client-apps/*/*/scripts/seed-made-up.mts
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - client-apps/*/instances/**
+      - client-apps/*/*/package.json
+      - client-apps/*/*/featherbase.json
+      - example-apps/*/package.json
+      - apps/server/package.json
+      - apps/web/package.json
+      - apps/web/vite.config.ts
+      - apps/server/src/cli.ts
+      - apps/server/src/instance-settings.ts
+      - apps/server/src/runtime-packages.ts
+      - .github/workflows/dev-windows.yml
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dev-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+      # The runner's preinstalled PostgreSQL has this login.
+      DATABASE_URL: postgres://postgres:root@127.0.0.1:5432/fb_windows_check
+    steps:
+      - name: Long paths, and no symlinks, as on a plain team machine
+        run: |
+          git config --global core.longpaths true
+          git config --global core.symlinks false
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+
+      - name: pnpm through Corepack, as the README says
+        run: |
+          npm install --global corepack@0.36.0
+          corepack enable
+          pnpm --version
+
+      - name: Start the preinstalled PostgreSQL
+        shell: pwsh
+        run: |
+          Get-Service -Name postgresql-x64-* | Set-Service -StartupType Manual
+          Get-Service -Name postgresql-x64-* | Start-Service
+          Get-Service -Name postgresql-x64-*
+
+      - name: Install dependencies and test command registration
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm check:dev
+
+      - name: From nothing to a ready server with its apps installed
+        run: pnpm dev jeyarama/dash --check
+
+      - name: Running it again is safe
+        run: pnpm dev jeyarama/dash --check
+
+      # What the README's last step runs. The script reads a figure back as a
+      # made-up reader, and a second run proves it is safe to repeat.
+      - name: Made-up data, and a reader sees figures
+        run: pnpm dev jeyarama/dash --check --made-up-data
+
+      - name: Made-up data again is safe
+        run: pnpm dev jeyarama/dash --check --made-up-data
+
+      - name: With no instance named, only Featherbase starts
+        shell: pwsh
+        run: |
+          $env:DATABASE_URL = 'postgres://postgres:root@127.0.0.1:5432/fb_windows_base_check'
+          $out = node tools/dev.mjs --check 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "base startup failed: $out" }
+          if ($out -notmatch 'Featherbase check passed') { throw "unexpected message: $out" }
+          if ($out -match 'Installing checkout dependencies|npm ci|Installing apps') { throw "base startup prepared apps: $out" }
+          exit 0
+
+      - name: An unknown instance names those that exist
+        shell: pwsh
+        run: |
+          $out = node tools/dev.mjs no/such 2>&1 | Out-String
+          if ($LASTEXITCODE -eq 0) { throw 'an unknown instance should fail' }
+          if ($out -notmatch 'jeyarama/dash') { throw "the failure did not name the instances: $out" }
+          exit 0
+
+      - name: Nothing is left listening
+        shell: pwsh
+        run: |
+          foreach ($port in 8000, 5173) {
+            if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { throw "port $port is still held" }
+          }

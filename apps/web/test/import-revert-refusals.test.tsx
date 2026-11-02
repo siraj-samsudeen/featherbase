@@ -6,8 +6,33 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
+import { sql } from 'server/src/db'
 
 type Admin = Parameters<typeof renderApp>[1]
+
+test('history excludes pre-run-id logs without hiding a current revertable import', async ({ admin }) => {
+  clearSession()
+  await admin.post('/api/table_def', { name: 'Iwv Shelf', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/table/Iwv%20Shelf:import', {
+    rows: [{ title: 'old shelf' }], context: { run_id: 'legacy-run', file_name: 'legacy.csv' },
+  })
+  // Historical persisted state: before run identities existed, Import Log
+  // entries had no run_id. The current API always supplies one.
+  await sql`update import_log set run_id = null where ref_table = 'Iwv Shelf' and run_id = 'legacy-run'`
+  await admin.post('/api/table/Iwv%20Shelf:import', {
+    rows: [{ title: 'current shelf' }], context: { run_id: 'current-run', file_name: 'current.csv' },
+  })
+  await renderApp('/featherbase/admin/import?table=Iwv%20Shelf', admin)
+  const history = await screen.findByTestId('iw-run-history')
+  expect(history).toHaveTextContent('current.csv — 0 updated · 1 added · 0 failed')
+  expect(history).not.toHaveTextContent('legacy.csv')
+  const user = userEvent.setup()
+  await user.click(within(history).getByTestId('iw-revert-open-h0'))
+  expect(await within(history).findByTestId('iw-revert-preview-h0')).toHaveTextContent('delete 1 added rows')
+  await user.click(within(history).getByRole('button', { name: 'Cancel' }))
+  expect(await admin.get('/api/table/Iwv%20Shelf')).toMatchObject({ total: 2 })
+  clearSession()
+})
 
 async function importedShelf(admin: Admin) {
   clearSession()

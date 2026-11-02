@@ -57,6 +57,18 @@ describe('Button', () => {
     expect(onClick).not.toHaveBeenCalled()
   })
 
+  // #738 point 4: one shared look for "my menu is open", keyed on aria-expanded.
+  test('a button that reports its menu open looks pressed: tinted with the accent', () => {
+    for (const variant of ['secondary', 'quiet'] as const) {
+      const c = buttonClasses({ variant }).split(' ')
+      expect(c).toEqual(expect.arrayContaining(['aria-expanded:border-action', 'aria-expanded:bg-action-tint', 'aria-expanded:text-action']))
+    }
+  })
+
+  test("a button that reports its menu open turns its chevron to point up", () => {
+    expect(buttonClasses().split(' ')).toContain('aria-expanded:[&_[data-chevron]]:rotate-180')
+  })
+
   test('its class recipe dresses a link as a button without wrapping it', () => {
     render(<a href="/x" className={buttonClasses({ variant: 'secondary' })}>Open</a>)
     const link = screen.getByRole('link', { name: 'Open' })
@@ -191,6 +203,12 @@ describe('Skeleton', () => {
 
 describe('Toast', () => {
   afterEach(() => vi.useRealTimers())
+
+  test('a consumer without its provider reports the missing ToastProvider', () => {
+    expect(() => render(<Trigger tone="positive" message="Saved" />)).toThrow(
+      'useToast needs a <ToastProvider> above it',
+    )
+  })
 
   function Trigger({ tone, message, label = 'Go' }: { tone: 'positive' | 'negative'; message: string; label?: string }) {
     const toast = useToast()

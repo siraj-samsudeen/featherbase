@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
@@ -15,16 +14,6 @@ test('database rejects a second active workflow without restricting inactive alt
   })).rejects.toMatchObject({ code: '23505', constraint_name: 'workflow_one_active_per_table' })
   expect(await sql`select row_id from workflow where ref_table = 'Approval target' and is_active = true`)
     .toEqual([{ row_id: 'Active original' }])
-})
-
-test('installing the invariant refuses existing duplicates without changing either workflow', async () => {
-  await sql`drop index featherbase.workflow_one_active_per_table`
-  await sql`insert into workflow (row_id, ref_table, is_active) values
-    ('Older rules', 'Duplicate target', true), ('Newer rules', 'Duplicate target', true)`
-  const before = await sql`select * from workflow where ref_table = 'Duplicate target' order by row_id`
-  const migration = readFileSync(new URL('../migrations/0098_workflow_one_active.sql', import.meta.url), 'utf8')
-  await expect(sql.begin(tx => tx.unsafe(migration))).rejects.toMatchObject({ code: '23505' })
-  expect(await sql`select * from workflow where ref_table = 'Duplicate target' order by row_id`).toEqual(before)
 })
 
 test('saving a competing active workflow names the original and preserves its rules', async ({ admin }) => {

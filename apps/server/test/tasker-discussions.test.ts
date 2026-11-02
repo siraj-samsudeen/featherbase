@@ -6,7 +6,7 @@ import { installApp } from '../src/apps'
 import { taskerClient } from './tasker-client'
 
 test('questions keep replies with their task and only the asker controls resolution', async ({ createUser }) => {
-  expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker')])).toEqual([])
+  expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
   await installApp('tasker')
   const asker = taskerClient(await createUser({ roles: ['Tasker Member'] }))
   const teammate = taskerClient(await createUser({ roles: ['Tasker Member'] }))

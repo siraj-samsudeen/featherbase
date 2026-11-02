@@ -20,6 +20,10 @@ test('Change password with nothing typed asks for a password and sends nothing',
   await userEvent.click(screen.getByTestId('change-password-submit'))
   expect(await screen.findByTestId('change-password-error')).toHaveTextContent('Password is required')
   expect(screen.getByTestId('change-password-form')).toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('change-password-form'))
+  expect(screen.getByTestId('change-password-modal')).toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('change-password-modal'))
+  expect(screen.queryByTestId('change-password-modal')).not.toBeInTheDocument()
 })
 
 test('Change password from a preview sign-in is refused with the reason', async ({ admin }) => {

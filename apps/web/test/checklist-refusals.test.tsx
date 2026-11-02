@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
 import { installApp } from 'server/src/apps'
 import { sql } from 'server/src/db'
+import { deleteStored } from 'server/src/storage'
 import { test, expect, renderApp } from './pg-test'
 import { pickedFile, useNodeMultipart } from './node-multipart'
 
@@ -58,6 +59,53 @@ test('a note is saved when the person leaves the box, without pressing Enter', a
   expect(doc.items.map((i) => i.note)).toContain('Shutter stuck')
 })
 
+test('note controls wait for a pending save, then allow the next note to persist', async ({ admin }) => {
+  const user = userEvent.setup()
+  const run = await seedRun(admin)
+  await openRun(admin, run)
+  const item = (n: number) => within(screen.getAllByTestId('checklist-item')[n])
+  await user.click(item(4).getByTestId('checklist-add-note'))
+  await user.type(item(4).getByTestId('checklist-note-input'), 'Existing note{Enter}')
+  await waitFor(() => expect(item(4).getByTitle('Edit note')).toHaveTextContent('Existing note'))
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  let started!: () => void
+  const pending = new Promise<void>((resolve) => { started = resolve })
+  const real = globalThis.fetch
+  let first = true
+  const delayed = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const response = await real(input, init)
+    if (first && String(input).endsWith('/api/save_row')) {
+      first = false
+      started()
+      await gate
+    }
+    return response
+  })
+  try {
+    await user.click(item(3).getByTestId('checklist-add-note'))
+    await user.type(item(3).getByTestId('checklist-note-input'), 'First note{Enter}')
+    await pending
+    expect(item(4).getByTitle('Edit note')).toBeDisabled()
+    expect(item(6).getByTestId('checklist-add-note')).toBeDisabled()
+    await user.click(item(4).getByTitle('Edit note'))
+    expect(screen.queryByTestId('checklist-note-input')).not.toBeInTheDocument()
+    release()
+    await waitFor(() => expect(item(4).getByTitle('Edit note')).toBeEnabled())
+    await user.click(item(4).getByTitle('Edit note'))
+    await user.clear(item(4).getByTestId('checklist-note-input'))
+    await user.type(item(4).getByTestId('checklist-note-input'), 'Second note{Enter}')
+    await waitFor(async () => {
+      const doc = await admin.get<{ items: { note: string | null }[] }>(`/api/table/Checklist%20Run/${encodeURIComponent(run)}`)
+      expect(doc.items[3].note).toBe('First note')
+      expect(doc.items[4].note).toBe('Second note')
+    })
+  } finally {
+    release()
+    delayed.mockRestore()
+  }
+})
+
 test('the camera button opens the picker; a photo the server refuses offers a retry', async ({ admin }) => {
   const user = userEvent.setup()
   const run = await seedRun(admin)
@@ -77,4 +125,57 @@ test('the camera button opens the picker; a photo the server refuses offers a re
   await waitFor(() => expect(screen.getAllByTestId('checklist-photo-add')[0]).toHaveTextContent('📷 Retry'))
   const [stored] = await sql`select count(*)::int as n from file where file_name = 'shelf.jpg'`
   expect(stored.n).toBe(0)
+})
+
+test('multiple photos remain attached to their own checklist item', async ({ admin }) => {
+  const run = await seedRun(admin)
+  const doc = await admin.get<{ items: { row_id: string; photo_proof: boolean }[] }>(
+    `/api/table/Checklist%20Run/${encodeURIComponent(run)}`,
+  )
+  const photoItems = doc.items.filter((item) => item.photo_proof)
+  expect(photoItems.length).toBeGreaterThanOrEqual(2)
+  await useNodeMultipart()
+  const uploaded: string[] = []
+  try {
+    for (const [filename, item] of [
+      ['left-shelf.svg', photoItems[0]],
+      ['right-shelf.svg', photoItems[0]],
+      ['entrance.svg', photoItems[1]],
+    ] as const) {
+      // SVG is a valid picked image without a raster thumbnail. Its attachment
+      // must still be offered by name instead of disappearing from the item.
+      const form = new FormData()
+      form.append('file', pickedFile(filename, '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="red"/></svg>', 'image/svg+xml'))
+      form.append('ref_table', 'Checklist Run Item')
+      form.append('ref_name', item.row_id)
+      form.append('is_private', '1')
+      const response = await admin.fetch('/api/upload_file', { method: 'POST', body: form })
+      expect(response.status).toBe(201)
+      const file = await response.json() as { file_url: string; thumbnail_url: string | null }
+      uploaded.push(file.file_url)
+      expect(file.thumbnail_url).toBeNull()
+    }
+    await openRun(admin, run)
+    await waitFor(() => expect(screen.getAllByTestId('checklist-photo-thumb')).toHaveLength(3))
+    const items = screen.getAllByTestId('checklist-item')
+    const first = within(items[doc.items.indexOf(photoItems[0])])
+    const second = within(items[doc.items.indexOf(photoItems[1])])
+    expect(first.getAllByTestId('checklist-photo-thumb').map((button) => button.getAttribute('aria-label'))).toEqual([
+      'View left-shelf.svg', 'View right-shelf.svg',
+    ])
+    expect(second.getAllByTestId('checklist-photo-thumb').map((button) => button.getAttribute('aria-label'))).toEqual([
+      'View entrance.svg',
+    ])
+    expect(first.getByRole('button', { name: 'View right-shelf.svg' })).toHaveTextContent('📎')
+    await userEvent.click(first.getByRole('button', { name: 'View right-shelf.svg' }))
+    const viewer = await screen.findByRole('dialog', { name: 'Photo viewer' })
+    expect(await within(viewer).findByRole('img', { name: 'Checklist photo' })).toHaveAttribute(
+      'src', expect.stringContaining(`${uploaded[1]}?expires=`),
+    )
+    await userEvent.click(within(viewer).getByRole('button', { name: 'Close photo' }))
+    expect(screen.queryByRole('dialog', { name: 'Photo viewer' })).not.toBeInTheDocument()
+  } finally {
+    // Database rows roll back; uploaded disk objects do not.
+    for (const url of uploaded) await deleteStored(url)
+  }
 })

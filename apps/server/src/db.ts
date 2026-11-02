@@ -82,8 +82,8 @@ export function usingTransaction<T>(tx: Sql, fn: () => Promise<T>): Promise<T> {
 }
 
 /** The current transaction WITHOUT platform-name
- *  qualification: for SQL that must resolve its names by `search_path`, such
- *  as the migrations written before the platform schema existed (0088–0093). */
+ *  qualification: for SQL that must run as written, such as the .sql
+ *  migrations (the baseline names everything in full). */
 export function _getUnqualifiedSql(): Sql {
   const tx = transactions.getStore()
   // Outside a transaction a `set local search_path` would not reach the next
@@ -133,7 +133,7 @@ function qualifiedClient(client: Sql): Sql {
   })
 }
 
-export const sql: Sql = new Proxy((() => {}) as unknown as Sql, {
+export const sql: Sql = new Proxy(root, {
   apply(_target, _thisArg, args) {
     const current = qualifiedClient(transactions.getStore() ?? delegate)
     return (current as unknown as (...a: unknown[]) => unknown)(...args)

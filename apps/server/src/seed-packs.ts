@@ -24,7 +24,7 @@ export async function saveIdentifierSystem(row: Record<string, unknown>): Promis
     where row_id = ${String(full.row_id)}`
 }
 
-export function seedPackFile(name: string): string {
+function seedPackFile(name: string): string {
   return join(SEEDS, name, 'identifier-systems.json')
 }
 

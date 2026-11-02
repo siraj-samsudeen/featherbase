@@ -13,6 +13,7 @@ import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
 import type { ReflectionCandidate } from '../src/sources/reflect'
+import { grantRole, makeTable } from './fixtures'
 
 const EXT_URL_ENV = 'EXT_FIXTURE_URL'
 process.env[EXT_URL_ENV] = EXTERNAL_DATABASE_URL
@@ -89,6 +90,21 @@ beforeAll(async () => {
       status text,
       business_code int references ext_fixture.business(code)
     )`)
+  await cli.unsafe(`
+    create table ext_fixture.refusal_parent (
+      id serial primary key,
+      label text unique,
+      qty smallint constraint nonnegative_quantity check (qty >= 0),
+      code varchar(3),
+      hidden_required text not null
+    );
+    create table ext_fixture.refusal_child (
+      id serial primary key,
+      parent_label text references ext_fixture.refusal_parent(label)
+    );
+    insert into ext_fixture.refusal_parent (label, qty, code, hidden_required)
+      values ('kept', 1, 'abc', 'source-only');
+    insert into ext_fixture.refusal_child (parent_label) values ('kept')`)
 })
 
 afterAll(async () => {
@@ -130,6 +146,54 @@ async function reflectTenant(admin: {
 }
 
 describe('EDS-1: Data Source registry', () => {
+  test('source actions refuse an ordinary row without mutation while real Postgres actions succeed', async ({ admin }) => {
+    await makeSource(admin)
+    const ordinary = await makeTable(admin, {
+      name: 'Source Action Note', id_pattern: 'prompt', columns: ['title', 'quantity:Int'],
+    })
+    await admin.post(ordinary.url, { row_id: 'ext-fixture', title: 'keep this note', quantity: 37 })
+    const state = async () => ({
+      rows: await sql`select * from featherbase.source_action_note order by row_id`,
+      sources: await sql`select * from data_source order by row_id`,
+      tables: await sql`select * from table_def order by name`,
+      columns: await sql`select * from column_def order by row_id`,
+      versions: await sql`select * from version order by row_id`,
+      activity: await sql`select * from activity_log order by row_id`,
+      external: await cli`select * from ext_fixture.business order by code`,
+    })
+    const before = await state()
+    for (const action of ['test_connection', 'introspect', 'reflect']) {
+      const response = await admin.fetch(`${ordinary.rowUrl('ext-fixture')}:${action}?schema=ext_fixture`,
+        action === 'introspect' ? undefined : {
+          method: 'POST', body: JSON.stringify({ schema: 'ext_fixture', tables: ['business'] }),
+        })
+      expect(response.status).toBe(404)
+      expect(await response.json()).toEqual({ error: {
+        type: 'NotFoundError', message: 'No such action for Source Action Note',
+      } })
+      expect(await state()).toEqual(before)
+    }
+    expect(await admin.post('/api/table/Data%20Source/ext-fixture:test_connection', {})).toEqual({ ok: true })
+    const [connected] = await sql`select * from data_source where row_id = 'ext-fixture'`
+    expect(connected).toMatchObject({ conn_status: 'ok', last_error: null })
+    expect(connected.last_checked_at).not.toBeNull()
+    const preview = await admin.get<{ tables: ReflectionCandidate[] }>(
+      '/api/table/Data%20Source/ext-fixture:introspect?schema=ext_fixture',
+    )
+    expect(preview.tables.find((table) => table.table === 'business')).toMatchObject({
+      schema: 'ext_fixture', pk: 'code', bindable: true, already_reflected: null,
+    })
+    expect(await admin.post('/api/table/Data%20Source/ext-fixture:reflect', {
+      schema: 'ext_fixture', tables: ['business'],
+    })).toMatchObject({ created: [{ name: 'Ext Business' }], skipped: [] })
+    expect(await admin.get(`/api/table/Ext%20Business?fields=${encodeURIComponent('["row_id","name"]')}&order_by=row_id%20asc`))
+      .toMatchObject({ data: [{ row_id: '1', name: 'Zulu' }, { row_id: '9', name: 'Alpha' }] })
+    const after = await state()
+    expect(after.rows).toEqual(before.rows)
+    expect(after.external).toEqual(before.external)
+    expect(after.sources).toEqual([connected])
+  })
+
   test('validates engine, url_env shape, and IV1 names', async ({ admin }) => {
     await expect(
       admin.post('/api/table/Data%20Source', {
@@ -276,6 +340,58 @@ describe('EDS-5: reading bound rows', () => {
 })
 
 describe('EDS-6/EDS-8: writing bound rows', () => {
+  test('an explicit source primary key is created once; a duplicate create cannot overwrite it', async ({ admin }) => {
+    await makeSource(admin)
+    const reflected = await admin.post<{ created: { name: string }[] }>(
+      '/api/table/Data%20Source/ext-fixture:reflect',
+      { schema: 'ext_fixture', tables: ['business'] },
+    )
+    const path = `/api/table/${encodeURIComponent(reflected.created[0].name)}`
+    try {
+      const created = await admin.post<Record<string, unknown>>(path, {
+        row_id: '747', name: 'Explicit source key',
+      })
+      expect(created).toMatchObject({ row_id: '747', name: 'Explicit source key' })
+      expect(await cli`select code, name from ext_fixture.business where code = 747`).toEqual([
+        { code: 747, name: 'Explicit source key' },
+      ])
+
+      const duplicate = await admin.fetch(path, {
+        method: 'POST',
+        body: JSON.stringify({ row_id: '747', name: 'Must not overwrite' }),
+      })
+      expect(duplicate.status).toBe(409)
+      expect(await duplicate.json()).toMatchObject({ error: { type: 'ConflictError' } })
+      expect(await admin.get(`${path}/747`)).toMatchObject({ row_id: '747', name: 'Explicit source key' })
+      expect(await cli`select code, name from ext_fixture.business where code = 747`).toEqual([
+        { code: 747, name: 'Explicit source key' },
+      ])
+    } finally {
+      await cli`delete from ext_fixture.business where code = 747`
+    }
+  })
+
+  test('deleting a row already removed at the source returns not found and preserves other rows', async ({ admin }) => {
+    await makeSource(admin)
+    const reflected = await admin.post<{ created: { name: string }[] }>(
+      '/api/table/Data%20Source/ext-fixture:reflect',
+      { schema: 'ext_fixture', tables: ['business'] },
+    )
+    const path = `/api/table/${encodeURIComponent(reflected.created[0].name)}`
+    const original = await cli`select code, name from ext_fixture.business order by code`
+    await cli`insert into ext_fixture.business (code, name) values (748, 'Removed externally')`
+    try {
+      expect(await admin.get(`${path}/748`)).toMatchObject({ row_id: '748', name: 'Removed externally' })
+      await cli`delete from ext_fixture.business where code = 748`
+      const missing = await admin.fetch(`${path}/748`, { method: 'DELETE' })
+      expect(missing.status).toBe(404)
+      expect(await missing.json()).toMatchObject({ error: { type: 'NotFoundError' } })
+      expect(await cli`select code, name from ext_fixture.business order by code`).toEqual(original)
+    } finally {
+      await cli`delete from ext_fixture.business where code = 748`
+    }
+  })
+
   test('create takes the name from the source default (RETURNING)', async ({ admin }) => {
     await makeSource(admin)
     await reflectTenant(admin)
@@ -334,6 +450,61 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     ).rejects.toMatchObject({ status: 417, fields: { slug: expect.stringContaining('unique') } })
   })
 
+  test('real source constraints refuse updates and deletion without changing either side of a foreign key', async ({ admin }) => {
+    await makeSource(admin)
+    const reflected = await admin.post<{ created: { name: string }[] }>('/api/table/Data%20Source/ext-fixture:reflect', {
+      schema: 'ext_fixture', tables: ['refusal_parent'],
+    })
+    const name = reflected.created[0].name
+    const before = await cli`select * from ext_fixture.refusal_parent order by id`
+    const children = await cli`select * from ext_fixture.refusal_child order by id`
+    const path = `/api/table/${encodeURIComponent(name)}/${before[0].id}`
+    for (const [payload, error] of [
+      [{ code: 'wide' }, { type: 'ValidationError', message: 'Value too long for a field' }],
+      [{ qty: 40000 }, { type: 'ValidationError', message: 'Value out of range for a field' }],
+      [{ qty: -1 }, { type: 'ValidationError', message: "These values break the data source's rule nonnegative_quantity" }],
+      [{ label: 'changed' }, {
+        type: 'ValidationError',
+        message: "Other rows at the data source still point at this row's Label, so it cannot change",
+        fields: { label: 'Other rows at the data source still point at this value' },
+      }],
+    ] as const) {
+      const res = await admin.fetch(path, { method: 'PATCH', body: JSON.stringify(payload) })
+      expect(res.status).toBe(417)
+      expect(await res.json()).toEqual({ error })
+      expect(await cli`select * from ext_fixture.refusal_parent order by id`).toEqual(before)
+      expect(await cli`select * from ext_fixture.refusal_child order by id`).toEqual(children)
+    }
+    const deletion = await admin.fetch(path, { method: 'DELETE' })
+    expect(deletion.status).toBe(417)
+    expect(await deletion.json()).toEqual({ error: {
+      type: 'ValidationError',
+      message: `Cannot delete ${name} ${before[0].id}: other rows at the data source still point at it`,
+    } })
+    expect(await cli`select * from ext_fixture.refusal_parent order by id`).toEqual(before)
+    expect(await cli`select * from ext_fixture.refusal_child order by id`).toEqual(children)
+  })
+
+  test('a required source column omitted from a valid binding produces a source validation error and no insert', async ({ admin }) => {
+    await makeSource(admin)
+    // A binding may intentionally expose only some columns of a relation.
+    await admin.post('/api/table_def', {
+      name: 'Partial Refusal Parent', data_source: 'ext-fixture', external_schema: 'ext_fixture',
+      external_table: 'refusal_parent', external_pk: 'id',
+      columns: [{ column_name: 'label', column_type: 'Text' }],
+    })
+    const before = await cli`select * from ext_fixture.refusal_parent order by id`
+    const res = await admin.fetch('/api/table/Partial%20Refusal%20Parent', {
+      method: 'POST', body: JSON.stringify({ label: 'cannot-insert' }),
+    })
+    expect(res.status).toBe(417)
+    expect(await res.json()).toEqual({ error: {
+      type: 'ValidationError',
+      message: 'The data source needs a value for hidden_required, which this table does not show',
+    } })
+    expect(await cli`select * from ext_fixture.refusal_parent order by id`).toEqual(before)
+  })
+
   test('a missing required value or a broken link comes back on its field, without the database text (#154)', async ({ admin }) => {
     await makeSource(admin)
     const res = await admin.post<{ created: { name: string }[] }>('/api/table/Data%20Source/ext-fixture:reflect', {
@@ -378,6 +549,29 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     expect(res.status).toBe(200)
     const rows = await cli`select 1 from ext_fixture.tenant where slug = 'doomed'`
     expect(rows).toHaveLength(0)
+  })
+
+  test.for([
+    ['23502', "column = 'hidden_required'", 'The data source needs a value for hidden_required, which this table does not show'],
+    ['23502', "detail = 'no column supplied'", 'The data source needs a value this save did not give'],
+    ['23503', "detail = 'custom link check'", 'Ext Gauge links to a row the data source does not have'],
+    ['23514', "detail = 'custom business rule'", 'These values break one of the data source\'s rules'],
+    ['22001', "detail = 'custom width check'", 'Value too long for a field'],
+    ['22003', "detail = 'custom range check'", 'Value out of range for a field'],
+  ])('a source trigger refusal %s without a mapped field stays a readable validation error', async ([code, diagnostic, message], { admin }) => {
+    await makeSource(admin)
+    await admin.post('/api/table/Data%20Source/ext-fixture:reflect', { schema: 'ext_fixture', tables: ['gauge'] })
+    // Real source triggers need not name a mapped column or constraint.
+    // Their database-specific diagnostics must never become the UI message.
+    await cli.unsafe(`create or replace function ext_fixture.refuse_gauge() returns trigger language plpgsql as $$ begin raise exception using errcode = '${code}', message = 'private source diagnostic', ${diagnostic}; end $$`)
+    await cli.unsafe('create trigger refuse_gauge before insert on ext_fixture.gauge for each row execute function ext_fixture.refuse_gauge()')
+    try {
+      const response = await admin.fetch('/api/table/Ext%20Gauge', { method: 'POST', body: JSON.stringify({ status_1: 'new' }) })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message } })
+    } finally {
+      await cli.unsafe('drop trigger refuse_gauge on ext_fixture.gauge')
+    }
   })
 
   // SPEC: A row with comments, history, attachments or shares can't be
@@ -449,6 +643,90 @@ describe('EDS-11: source failure', () => {
 })
 
 describe('EDS-2: foreign keys reflect as References', () => {
+  test('reflected foreign keys scope garage reads without restricting vehicle or unset garage', async ({ admin, createUser }) => {
+    // These are source-owned business rows, not control-side metadata. Let
+    // the real source allocate collision-free ids and remove only our rows.
+    const existing = {
+      vehicles: await cli`select * from ext_fixture.vehicle order by id`,
+      garages: await cli`select * from ext_fixture.garage order by id`,
+      accidents: await cli`select * from ext_fixture.accident order by id`,
+    }
+    const vehicles = await cli<{ id: number }[]>`insert into ext_fixture.vehicle (reg_no) values ('scope-A'), ('scope-B') returning id`
+    const garages = await cli<{ id: number }[]>`insert into ext_fixture.garage (city) values ('North'), ('South') returning id`
+    const [vehicleA, vehicleB] = vehicles.map((v) => v.id)
+    const [garageA, garageB] = garages.map((g) => g.id)
+    try {
+      const accidents = await cli<{ id: number }[]>`
+        insert into ext_fixture.accident (garage_id, vehicle_id, severity) values
+          (${garageA}, ${vehicleA}, 'low'), (${garageB}, ${vehicleA}, 'high'),
+          (${garageA}, ${vehicleB}, 'high'), (null, ${vehicleB}, null) returning id`
+      const ids = accidents.map((r) => String(r.id))
+      await makeSource(admin)
+      const reflected = await admin.post<{ created: { table: string; name: string }[]; skipped: unknown[] }>(
+        '/api/table/Data%20Source/ext-fixture:reflect',
+        { schema: 'ext_fixture', tables: ['vehicle', 'garage', 'accident'] },
+      )
+      expect(reflected.skipped).toEqual([])
+      expect(reflected.created.map((r) => r.table)).toEqual(['vehicle', 'garage', 'accident'])
+      const [vehicle, garage, accident] = reflected.created.map((r) => r.name)
+      const path = `/api/table/${encodeURIComponent(accident)}`
+      const metaPaths = reflected.created.map((r) => `/api/table/${encodeURIComponent(r.name)}:meta`)
+      const allMetadata = await Promise.all(metaPaths.map((p) => admin.get<{ columns: Record<string, unknown>[] }>(p)))
+      const metadata = allMetadata[2]
+      expect(metadata.columns.find((c) => c.column_name === 'vehicle_id')).toMatchObject({ column_type: 'Reference', reference_table: vehicle, source_column: 'vehicle_id' })
+      expect(metadata.columns.find((c) => c.column_name === 'garage_id')).toMatchObject({ column_type: 'Reference', reference_table: garage, source_column: 'garage_id' })
+      await grantRole(admin, { role: 'Bound Scope Reader', table: [vehicle, garage, accident], can_read: true })
+      const reader = await createUser({ email: 'bound.scope@example.com', roles: ['Bound Scope Reader'] })
+      await admin.post('/api/save_row', { table: 'Data Scope', row: { person: reader.user, allow_table: garage, for_value: String(garageA) } })
+      const before = {
+        vehicles: await cli`select * from ext_fixture.vehicle order by id`,
+        garages: await cli`select * from ext_fixture.garage order by id`,
+        accidents: await cli`select * from ext_fixture.accident order by id`,
+      }
+      const fields = ['row_id', 'garage_id', 'vehicle_id', 'severity']
+      const rows = [
+        { row_id: ids[0], garage_id: String(garageA), vehicle_id: String(vehicleA), severity: 'low' },
+        { row_id: ids[1], garage_id: String(garageB), vehicle_id: String(vehicleA), severity: 'high' },
+        { row_id: ids[2], garage_id: String(garageA), vehicle_id: String(vehicleB), severity: 'high' },
+        { row_id: ids[3], garage_id: null, vehicle_id: String(vehicleB), severity: null },
+      ]
+      const scopedRows = [rows[0], rows[2], rows[3]]
+      for (const [client, extra, expectedRows, high, low, empty] of [
+        [reader, [], scopedRows, 1, 1, 1],
+        [admin, [], rows, 2, 1, 1],
+        [reader, [['garage_id', '=', String(garageB)]], [], 0, 0, 0],
+        [reader, [['vehicle_id', '=', String(vehicleB)]], [rows[2], rows[3]], 1, 0, 1],
+      ] as const) {
+        const filters = [['row_id', 'in', ids], ...extra]
+        const query = new URLSearchParams({ fields: JSON.stringify(fields), filters: JSON.stringify(filters), order_by: 'row_id asc' })
+        expect(await client.get(`${path}?${query}`)).toEqual({ data: expectedRows, total: expectedRows.length, limit_start: 0, limit_page_length: 20 })
+        expect(await client.get(`${path}:count?filters=${encodeURIComponent(JSON.stringify(filters))}`)).toEqual({ count: expectedRows.length })
+        const groups = [
+          ...(high ? [{ value: 'high', count: high, sums: {} }] : []),
+          ...(low ? [{ value: 'low', count: low, sums: {} }] : []),
+          ...(empty ? [{ value: null, count: empty, sums: {} }] : []),
+        ]
+        expect(await client.get(`${path}:summary?group_by=severity&filters=${encodeURIComponent(JSON.stringify(filters))}`)).toEqual({ count: expectedRows.length, sums: {}, groups })
+        const chart = await client.post<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', { table: accident, group_by: 'severity', filters })
+        // Chart frequency order and summary value order intentionally differ;
+        // compare every exact chart group without prescribing tie ordering.
+        expect(chart.data).toHaveLength(groups.length)
+        expect(chart.data).toEqual(expect.arrayContaining(groups.map((g) => ({ label: g.value ?? '', value: g.count }))))
+      }
+      expect(await cli`select * from ext_fixture.vehicle order by id`).toEqual(before.vehicles)
+      expect(await cli`select * from ext_fixture.garage order by id`).toEqual(before.garages)
+      expect(await cli`select * from ext_fixture.accident order by id`).toEqual(before.accidents)
+      expect(await Promise.all(metaPaths.map((p) => admin.get(p)))).toEqual(allMetadata)
+    } finally {
+      await cli`delete from ext_fixture.accident where vehicle_id in ${cli(vehicles.map((v) => v.id))}`
+      await cli`delete from ext_fixture.vehicle where id in ${cli(vehicles.map((v) => v.id))}`
+      await cli`delete from ext_fixture.garage where id in ${cli(garages.map((g) => g.id))}`
+      expect(await cli`select * from ext_fixture.vehicle order by id`).toEqual(existing.vehicles)
+      expect(await cli`select * from ext_fixture.garage order by id`).toEqual(existing.garages)
+      expect(await cli`select * from ext_fixture.accident order by id`).toEqual(existing.accidents)
+    }
+  })
+
   test('FK edges surface on introspect and converge in child-first order', async ({ admin }) => {
     await makeSource(admin)
     const intro = (await admin.get(

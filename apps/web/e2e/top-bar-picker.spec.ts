@@ -142,6 +142,27 @@ test.describe('at 1280px', () => {
       await expect(page).toHaveURL(`${ACCOUNT}?store=S103`)
       await expect(page.getByRole('listbox', { name: 'Store' })).toBeHidden()
     })
+    await session.step('navigation keys clamp at each end without changing the selected store', async () => {
+      await page.keyboard.press('ArrowDown')
+      for (const [key, name] of [
+        ['End', 'Riverside and Station Square Junction'],
+        ['ArrowDown', 'Riverside and Station Square Junction'],
+        ['ArrowUp', 'Lake View'],
+        ['Home', 'Hill Road'],
+        ['ArrowUp', 'Hill Road'],
+        ['PageDown', 'Riverside and Station Square Junction'],
+        ['PageUp', 'Hill Road'],
+      ]) {
+        await page.keyboard.press(key)
+        const active = await picker(page).getAttribute('aria-activedescendant')
+        await expect(page.locator(`[id="${active}"]`)).toHaveText(name)
+        await expect(page).toHaveURL(`${ACCOUNT}?store=S103`)
+      }
+      await page.keyboard.press('Tab')
+      await expect(page.getByRole('listbox', { name: 'Store' })).toBeHidden()
+      await expect(picker(page)).not.toBeFocused()
+      await expect(picker(page)).toHaveText('Lake View')
+    })
   })
 
   test('the focus ring shows in the dark theme too', async ({ session, page, request }) => {

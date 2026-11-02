@@ -1,0 +1,425 @@
+{
+  "_about": "Made-up data for the coverage comparison (data-warehouse #4438). Two stores, Lakeside (9901) and Hillview (9902); people psn_101 onwards; employee codes EMP-0101 onwards. No real store, person, code or figure.",
+  "rollout": [
+    {
+      "store": "9902",
+      "live_since": "2026-10-01"
+    }
+  ],
+  "chart": {
+    "floors": [
+      {
+        "row_id": "f-ground",
+        "store": "9901",
+        "floor_name": "Ground"
+      },
+      {
+        "row_id": "f-first",
+        "store": "9901",
+        "floor_name": "First"
+      }
+    ],
+    "departments": [
+      {
+        "row_id": "d-ethnic",
+        "store": "9901",
+        "department_key": "dm-P-107",
+        "name": "Ladies Ethnic"
+      },
+      {
+        "row_id": "d-kids",
+        "store": "9901",
+        "department_key": "dm-P-109",
+        "name": null
+      },
+      {
+        "row_id": "d-hill",
+        "store": "9902",
+        "department_key": "dm-P-120",
+        "name": "Hillview Apparel"
+      }
+    ],
+    "sections": [
+      {
+        "row_id": "s-sarees",
+        "store": "9901",
+        "section_name": "Sarees",
+        "floor": "f-ground",
+        "department": "d-ethnic",
+        "team_leaders_allowed": 2
+      },
+      {
+        "row_id": "s-silk",
+        "store": "9901",
+        "section_name": "Silk Sarees",
+        "floor": "f-first",
+        "department": "d-ethnic",
+        "team_leaders_allowed": 1
+      },
+      {
+        "row_id": "s-kids",
+        "store": "9901",
+        "section_name": "Kids Wear",
+        "floor": "f-first",
+        "department": "d-kids",
+        "team_leaders_allowed": 1
+      },
+      {
+        "row_id": "s-tops",
+        "store": "9901",
+        "section_name": "Women Tops",
+        "floor": "f-ground",
+        "department": null,
+        "team_leaders_allowed": 1
+      },
+      {
+        "row_id": "s-acc",
+        "store": "9902",
+        "section_name": "Accessories",
+        "floor": null,
+        "department": "d-hill",
+        "team_leaders_allowed": 1
+      }
+    ],
+    "placements": [
+      {
+        "row_id": "p1",
+        "store": "9901",
+        "subcategory": "010101001",
+        "section": "s-sarees",
+        "starts_on": "2026-01-01",
+        "ends_on": null
+      },
+      {
+        "row_id": "p2",
+        "store": "9901",
+        "subcategory": "010101002",
+        "section": "s-silk",
+        "starts_on": "2026-01-01",
+        "ends_on": null
+      },
+      {
+        "row_id": "p3",
+        "store": "9901",
+        "subcategory": "010202001",
+        "section": "s-kids",
+        "starts_on": "2026-01-01",
+        "ends_on": null
+      },
+      {
+        "row_id": "p4",
+        "store": "9901",
+        "subcategory": "010303001",
+        "section": "s-tops",
+        "starts_on": "2026-01-01",
+        "ends_on": "2026-08-15"
+      },
+      {
+        "row_id": "p5",
+        "store": "9901",
+        "subcategory": "010303001",
+        "section": "s-sarees",
+        "starts_on": "2026-08-15",
+        "ends_on": null
+      },
+      {
+        "row_id": "p6",
+        "store": "9901",
+        "subcategory": "010303002",
+        "section": "s-tops",
+        "starts_on": "2026-01-01",
+        "ends_on": null
+      },
+      {
+        "row_id": "p7",
+        "store": "9902",
+        "subcategory": "010404001",
+        "section": "s-acc",
+        "starts_on": "2026-01-01",
+        "ends_on": null
+      }
+    ],
+    "jobs": [
+      {
+        "row_id": "ja1",
+        "person": "psn_101",
+        "job": "Store Manager",
+        "store": "9901",
+        "floor": null,
+        "department": null,
+        "section": null,
+        "reports_to": null,
+        "acting": false,
+        "starts_on": "2026-07-01",
+        "ends_on": null
+      },
+      {
+        "row_id": "ja2",
+        "person": "psn_102",
+        "job": "Floor Manager",
+        "store": "9901",
+        "floor": "f-ground",
+        "department": null,
+        "section": null,
+        "reports_to": "psn_101",
+        "acting": false,
+        "starts_on": "2026-07-01",
+        "ends_on": null
+      },
+      {
+        "row_id": "ja3",
+        "person": "psn_107",
+        "job": "Department Manager",
+        "store": "9901",
+        "floor": null,
+        "department": "d-ethnic",
+        "section": null,
+        "reports_to": "psn_102",
+        "acting": false,
+        "starts_on": "2026-07-01",
+        "ends_on": null
+      },
+      {
+        "row_id": "ja4",
+        "person": "psn_103",
+        "job": "Team Leader",
+        "store": "9901",
+        "floor": null,
+        "department": null,
+        "section": "s-sarees",
+        "reports_to": "psn_107",
+        "acting": false,
+        "starts_on": "2026-07-01",
+        "ends_on": null
+      },
+      {
+        "row_id": "ja5",
+        "person": "psn_110",
+        "job": "Team Leader",
+        "store": "9901",
+        "floor": null,
+        "department": null,
+        "section": "s-sarees",
+        "reports_to": "psn_107",
+        "acting": false,
+        "starts_on": "2026-07-01",
+        "ends_on": null
+      },
+      {
+        "row_id": "ja6",
+        "person": "psn_104",
+        "job": "Team Leader",
+        "store": "9901",
+        "floor": null,
+        "department": null,
+        "section": "s-silk",
+        "reports_to": "psn_107",
+        "acting": false,
+        "starts_on": "2026-07-01",
+        "ends_on": null
+      },
+      {
+        "row_id": "ja7",
+        "person": "psn_105",
+        "job": "Staff",
+        "store": "9901",
+        "floor": null,
+        "department": null,
+        "section": "s-silk",
+        "reports_to": "psn_104",
+        "acting": false,
+        "starts_on": "2026-07-01",
+        "ends_on": null
+      },
+      {
+        "row_id": "ja8",
+        "person": "psn_106",
+        "job": "Team Leader",
+        "store": "9901",
+        "floor": null,
+        "department": null,
+        "section": "s-kids",
+        "reports_to": null,
+        "acting": false,
+        "starts_on": "2026-07-01",
+        "ends_on": null
+      },
+      {
+        "row_id": "ja9",
+        "person": "psn_120",
+        "job": "Store Manager",
+        "store": "9902",
+        "floor": null,
+        "department": null,
+        "section": null,
+        "reports_to": null,
+        "acting": false,
+        "starts_on": "2026-07-01",
+        "ends_on": null
+      },
+      {
+        "row_id": "ja10",
+        "person": "psn_121",
+        "job": "Team Leader",
+        "store": "9902",
+        "floor": null,
+        "department": null,
+        "section": "s-acc",
+        "reports_to": "psn_120",
+        "acting": false,
+        "starts_on": "2026-07-01",
+        "ends_on": null
+      }
+    ]
+  },
+  "sectionAliases": [
+    {
+      "store": "9901",
+      "source": "store-sections",
+      "alias": "Saree",
+      "section": "s-sarees"
+    }
+  ],
+  "legacy": {
+    "assignments": [
+      {
+        "employee": "psn_121",
+        "plant_code": "9902",
+        "store_label": "Hillview",
+        "material_group": "010404001"
+      }
+    ],
+    "employeeSections": [
+      {
+        "store_code": "9901",
+        "employee_code": "EMP-0105",
+        "subcategory": "Silk Saree",
+        "section_name": "Silk Sarees"
+      },
+      {
+        "store_code": "9901",
+        "employee_code": "EMP-0199",
+        "subcategory": "Kids Tee",
+        "section_name": "Kids Wear"
+      }
+    ],
+    "ownership": [
+      {
+        "store_code": "9901",
+        "section_name": "Saree",
+        "tl_employee_code": "EMP-0103",
+        "dm_employee_code": "EMP-0107",
+        "effective_from": "2026-07-01"
+      },
+      {
+        "store_code": "9901",
+        "section_name": "Silk Sarees",
+        "tl_employee_code": "EMP-0104",
+        "dm_employee_code": "EMP-0107",
+        "effective_from": "2026-07-01"
+      },
+      {
+        "store_code": "9901",
+        "section_name": "Kids Wear",
+        "tl_employee_code": "EMP-0106",
+        "dm_employee_code": "EMP-0102",
+        "effective_from": "2026-07-01"
+      },
+      {
+        "store_code": "9901",
+        "section_name": "Tops Corner",
+        "tl_employee_code": "EMP-0106",
+        "dm_employee_code": "",
+        "effective_from": "2026-07-01"
+      }
+    ],
+    "storeManagers": [
+      {
+        "store_code": "9901",
+        "employee_code": "EMP-0101"
+      }
+    ],
+    "merchandise": [
+      {
+        "store_code": "9901",
+        "material_group": "010101001",
+        "mch_subcategory": "Saree",
+        "section_name": "Sarees"
+      },
+      {
+        "store_code": "9901",
+        "material_group": "010303001",
+        "mch_subcategory": "Scarf",
+        "section_name": "Sarees"
+      },
+      {
+        "store_code": "9901",
+        "material_group": "010101002",
+        "mch_subcategory": "Silk Saree",
+        "section_name": "Silk Sarees"
+      },
+      {
+        "store_code": "9901",
+        "material_group": "010202001",
+        "mch_subcategory": "Kids Tee",
+        "section_name": "Kids Wear"
+      },
+      {
+        "store_code": "9901",
+        "material_group": "010303002",
+        "mch_subcategory": "Tee Top",
+        "section_name": "Tops Corner"
+      },
+      {
+        "store_code": "9902",
+        "material_group": "010404001",
+        "mch_subcategory": "Belts",
+        "section_name": "Accessories"
+      }
+    ],
+    "aliases": [
+      {
+        "store_code": "9901",
+        "roster_section_name": "Saree",
+        "merch_section_name": "Sarees"
+      }
+    ]
+  },
+  "codeHolders": {
+    "EMP-0101": [
+      "psn_101"
+    ],
+    "EMP-0102": [
+      "psn_102"
+    ],
+    "EMP-0103": [
+      "psn_103"
+    ],
+    "EMP-0104": [
+      "psn_104"
+    ],
+    "EMP-0105": [
+      "psn_105"
+    ],
+    "EMP-0106": [
+      "psn_106",
+      "psn_206"
+    ],
+    "EMP-0107": [
+      "psn_107"
+    ]
+  },
+  "people": {
+    "psn_101": "P-101",
+    "psn_102": "P-102",
+    "psn_103": "P-103",
+    "psn_104": "P-104",
+    "psn_105": "P-105",
+    "psn_106": "P-106",
+    "psn_107": "P-107",
+    "psn_110": "P-110",
+    "psn_120": "P-120",
+    "psn_121": "P-121",
+    "psn_206": "P-206"
+  }
+}

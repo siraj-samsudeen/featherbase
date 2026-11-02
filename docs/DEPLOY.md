@@ -9,7 +9,7 @@ Every deploy is **release, then serve** — never the reverse, and never both
 in one process:
 
 ```sh
-# 1. Release: apply migrations + patches. Run ONCE per deploy, before any
+# 1. Release: apply migrations. Run ONCE per deploy, before any
 #    new-code instance serves traffic.
 pnpm --filter server release
 
@@ -95,7 +95,8 @@ variable.
 | `PREVIEW_LOGIN_USER` | **never in production**: development, test and staging only | no |  | preview deployments: the account the link signs in as (never Administrator) |
 | `PREVIEW_USER_NAME` | no | no |  | preview deployments: the full name the pre-deploy step gives the preview person (default `Preview Visitor`) |
 | `DISABLE_DATABASE_ENVIRONMENT_CHECK` | no | no |  | `1` skips the check that the database was stamped by this environment. Break-glass only |
-| `FEATHERBASE_APP_PATHS` | no | no | `[]` | JSON array of extra app package directories to discover at boot |
+| `FEATHERBASE_APP_PATHS` | no | no | `[]` | JSON array of extra app package directories to discover at boot; `<folder>/*` means every folder in it |
+| `FEATHERBASE_INSTANCE` | no | no |  | the client instance this image was built for (`<client>/<instance>`), as a build argument and a variable. Set, the pre-deploy step installs or upgrades its apps and applies its settings. See [A client instance](#a-client-instance) |
 | `JOB_POLL_MS` | no | no | `500` | background worker poll interval |
 | `SERVER_URL` | no | no | `http://localhost:8000` | the server `pnpm smoke` probes |
 | `MOTHERDUCK_TOKEN` | no | yes |  | MotherDuck access for the sales-target embed and warehouse reads; never logged, returned or stored |
@@ -193,11 +194,91 @@ on one origin**, with `/ws` and the file routes alongside; `WEB_ORIGINS` is
 then irrelevant. The server-owned prefixes (`/api`, `/files`,
 `/private/files`, `/web`, `/ws`) never fall through to `index.html`.
 
-### Building a client image
+### A client instance
 
-A client app lives in the client's own repository (ADR 0013), so it reaches the
-server in a **client image built on the platform image**. This repository
-publishes that platform image to the GitHub Container Registry as a public
+A client instance (`client-apps/<client>/instances/<instance>/`, ADR 0014) is
+built and deployed from this repository. Name it in one variable; the image and
+the pre-deploy step do the rest:
+
+```sh
+docker build -f apps/server/Dockerfile --build-arg FEATHERBASE_INSTANCE=<client>/<instance> -t my-instance .
+```
+
+The image holds the apps its `instance.json` lists, each in
+`/app/instance-apps/<app>-<version>/`, and the instance's folder, and sets
+`FEATHERBASE_APP_PATHS` to `["/app/instance-apps/*"]`. Without the build argument
+the image is the default one, and the `platform` target stays app-free.
+
+With `FEATHERBASE_INSTANCE` set, `pnpm --filter server pre-deploy` runs, in order,
+stopping at the first problem so that the old deployment keeps serving:
+
+1. the release (preflight, migrations);
+2. each app the image ships: install it if missing, upgrade and activate it if a
+   newer version ships;
+3. the settings file's section for this environment: `staging` applies `dev`,
+   `production` applies `prod`. Any other environment refuses (`pnpm dev` is for a
+   developer's machine);
+4. on `staging` only, re-pin an app whose files changed (below).
+
+**Variables.** The table above, and for a client instance:
+
+| Variable | Why |
+| --- | --- |
+| `FEATHERBASE_INSTANCE` | `<client>/<instance>`; Railway passes it to the build as well, because the Dockerfile declares the `ARG` |
+| `FEATHERBASE_ENV` | `staging` for its dev, `production` for its prod |
+| `PORT` | `8000` on Railway, matching the port of its domain |
+| `RAILWAY_DOCKERFILE_PATH` | `apps/server/Dockerfile`, on Railway (see [Railway](#railway)) |
+| `DATABASE_URL`, `JWT_SECRET`, `INSTANCE_ADDRESSES`, `ADMIN_PASSWORD` | as for any instance, with its own values |
+| every `{ "env": "NAME" }` in the settings section | a missing one fails the deploy, naming it |
+| `GOOGLE_CLIENT_SECRET` | when the section enables Google sign-in with a client id; missing, the deploy fails, naming it |
+| the `url_env` of each Data Source, and each app's declared secrets | missing, the deploy warns, and only what needs them refuses |
+
+**Which code each environment runs.**
+
+| | Dev (`staging`) | Prod (`production`) |
+| --- | --- | --- |
+| Branch the service builds | `main` | `release/<client>-<instance>-prod` |
+| An app's files changed, same version and manifest | re-pinned automatically | **the deploy fails**: bump the version |
+| An app's manifest changed, same version | the deploy fails, naming the app: bump the version | the same |
+| A newer app version | upgraded | upgraded |
+
+So moving prod is merging into its release branch, whose history is the deploy
+log. `cli repin-apps` is the re-pin by hand. It refuses a production server or
+database.
+
+**Upgrading needs both versions in the image.** An upgrade replays the installed
+version's declaration, and that exact version must ship or the release refuses.
+So the release PR that bumps an app adds the version it replaces to `instance.json`,
+naming a source archive of the commit that released it; the build rebuilds it from
+there (`tools/build-instance-apps.mjs`):
+
+```json
+"previousVersions": [{ "path": "client-apps/<client>/<app>", "version": "1.0.0",
+                       "archive": "https://codeload.github.com/<owner>/<repo>/tar.gz/<commit>" }]
+```
+
+**Watch paths**, so that a service rebuilds only for what is in its image. On
+Railway they are set per service, and `.railway/railway.ts` records them for
+the environments it manages. `.railway/**` is not one of them: Railway doesn't
+read it during a deploy.
+
+```text
+apps/**
+packages/**
+pnpm-lock.yaml
+tools/dev.mjs
+tools/build-instance-apps.mjs
+client-apps/<client>/instances/<instance>/**
+<each app path in its instance.json>/**
+```
+
+### Building your own client image
+
+A client whose app lives in its own repository builds on the published platform
+image instead. The rest of this section is that path.
+
+There the app reaches the server in a **client image built on the platform
+image**. This repository publishes that platform image to the GitHub Container Registry as a public
 package (made public by hand once; see below):
 
 - `ghcr.io/siraj-samsudeen/featherbase-server:<full commit SHA>`: one tag per
@@ -272,11 +353,46 @@ still lists the app's `platformVersion`
 
 ### Railway
 
-`railway.json` at the repo root encodes this shape: Dockerfile build, a
-pre-deploy step of `pnpm --filter server pre-deploy` (the release, then the
-preview seed, which does nothing unless the preview variables are set; either
-failing fails the deploy), and `/api/ping` as the healthcheck. Keep the
-pre-deploy step one command: Railway may run each entry as argv rather than
+**The settings live on the service.** Railway reads no file from the
+repository when it deploys. A service left at Railway's defaults builds with
+Railpack and runs no pre-deploy step, so the server starts on an empty database
+and crashes. Each service needs:
+
+| Setting | Value |
+| --- | --- |
+| Builder, Dockerfile path | `DOCKERFILE`, `apps/server/Dockerfile` |
+| Pre-deploy command | `pnpm --filter server pre-deploy` |
+| Healthcheck path, timeout | `/api/ping`, `300` |
+| Restart policy | `ON_FAILURE` (Railway's default), 5 retries |
+| Volume | mounted at `/data` |
+
+`.railway/railway.ts` (Railway's Infrastructure as Code, which replaced
+`railway.json`) holds them for each environment, beside what differs between
+environments: the service's name, its volume and its watch paths. To bring an
+environment into line, or to check it, run from the repo root with the
+[Railway CLI](https://docs.railway.com/cli) (5.49.1 or newer) signed in:
+
+```sh
+railway link --project jeyarama-featherbase --environment <environment>
+railway config plan     # reads only; lists what an apply would change
+railway config apply    # asks for confirmation of that same list
+```
+
+A plan that lists nothing means the environment already matches. Apply only
+when the plan lists only the changes you meant. The file is a named partial
+(`featherbase-server`), so it manages only the server service and its volume.
+Without the partial name, an apply would delete every resource the file leaves
+out, the database included. Inside the service, a setting the file leaves out
+is one an apply clears, which is why the source and volume are declared.
+Variables are never managed by the file: secrets stay on Railway. An
+environment the file doesn't name is refused. Add it to `ENVIRONMENTS` first.
+A new environment's service gets these settings from that apply, or by hand.
+
+The pre-deploy command, `pnpm --filter server pre-deploy`, runs the release, then
+[a client instance's apps and settings](#a-client-instance) when
+`FEATHERBASE_INSTANCE` is set, then the preview seed, which does nothing unless
+the preview variables are set. Any of them failing fails the deploy. Keep the
+pre-deploy step one command (a test pins it): Railway may run each entry as argv rather than
 through a shell, and a second command chained with `&&` was observed never to
 run while the deploy still went green (#307). Other platforms map the same
 settings onto their own vocabulary. Turn on the host's **deploy-failure
@@ -328,22 +444,23 @@ variables:**
 5. `pnpm --filter server release` on the copy, then check the data the
    migration rewrites.
 
-### Pending: script API rename `featherbase` (0124)
+### The baseline
 
-The object Server Scripts and Client Scripts call is now `featherbase`
-(`featherbase.throw(msg)`, `featherbase.ui.form.on(table, handlers)`); the
-runtimes no longer define `frappe`. Migration **0124** rewrites the stored
-`script` source of every Server Script and Client Script, replacing `frappe.`
-member access in the code with `featherbase.`. Text inside strings, template
-text, comments and regular expressions is left alone, so a URL such as
-`https://frappe.io` keeps its value. It rewrites the trial's data, so rehearse
-it as above. The rehearsal prints how many scripts of each kind changed, and
-names any script it could not read as JavaScript (left unchanged, to edit by
-hand) and any that still name `frappe` outside a member access, such as a
-`typeof frappe` guard, whose meaning may have changed. Check those by hand. Then compare each changed script before and after
-(`select row_id, script from server_script` / `client_script`). A script that
-still fails afterwards with "frappe is not defined" builds the name some other
-way (for example `var f = frappe`) and needs editing by hand too.
+Every instance is a fresh install: a new instance starts from
+`0001_baseline.sql`, the platform's schema and starting rows in one step. The
+two steps after it read the instance's own variables (`ADMIN_PASSWORD` for the
+first Administrator, `ALLOW_MOCK_OAUTH` for the local Google mock). Later
+changes ship as new numbered migrations and apply in order.
+
+The release refuses a database that has no Featherbase ledger
+(`featherbase.migration`) but is not empty, before anything changes: point it
+at a new database instead. There is no path from an older installation; one
+is wiped and installed fresh.
+
+The baseline is generated, never edited:
+`pnpm --filter server baseline:generate` migrates a scratch database and
+writes it again (`apps/server/scripts/generate-baseline.ts` says what it
+leaves out and why). Run on the same migrations, it writes the same file.
 
 ## Backups and rollback
 
@@ -373,7 +490,10 @@ Keep it until the release is signed off.
   values, roll the service back to its previous deployment, and check a
   sign-in. Anything written between the deploy and the restore is lost.
 
-After a **fresh or restored database**, apply the instance settings file once
+After a **fresh or restored database**, a client instance's next deploy does
+this by itself ([A client instance](#a-client-instance)). Otherwise, install the instance's apps
+(`pnpm --filter server cli install-app <name>`; an app's settings need the app
+installed), then apply the instance settings file once
 (see [Instance settings](#instance-settings)); until then the environment runs
 on defaults.
 
@@ -546,23 +666,38 @@ header, or unset the variable.
 
 ## Instance settings
 
-An instance's non-secret settings are kept in one reviewed file in the
-instance's own private repository, `featherbase/instance-settings.json`. It
+An instance's non-secret settings are kept in one reviewed file,
+`client-apps/<client>/instances/<instance>/instance-settings.json`, beside the
+`instance.json` that lists which apps it runs. It
 manages `System Settings` (any field, e.g. `app_name`, `time_zone`,
 `privacy_notice`, `invitation_email_intro`), `Sign In Method` rows by `row_id`,
 and `Scheduled Job` rows (`enabled` only), and installed apps' declared
-settings as `App Setting` rows (`row_id` `<app>.<setting>`, `value` only).
+settings as `App Setting` rows (`row_id` `<app>.<setting>`, `value` only), and
+`Data Source` rows by `row_id`, which name the variable holding the connection
+(`url_env`) and never the connection itself. A reflected Table comes back by
+reflecting from the restored source (the source's `reflect` action); the row does
+not create it.
 Values that differ by environment go in that environment's section; when the
 file has sections, every apply must name one. Secrets never go in it: an app's
 declared secrets are deployment variables, set like any other.
 
+A value can come from a variable: `{ "env": "DIVE_ID" }` wherever a value goes.
+It is read when the file is applied (by the `settings:apply` process, or sent in
+the API's `env` field; the server never reads its own environment for a file),
+saved into the Table and locked as usual. A missing or empty variable is a listed
+problem naming it, in a dry run too. Output, logs and the drift report never show
+the value, and the last apply remembers where it came from: `settings:export`
+writes `{ "env": "DIVE_ID" }` back, and replacing it with a plain value shows the
+old one as `[the value of DIVE_ID]`. A file that stops naming the field keeps it
+private until someone changes the value. A variable that holds a secret is refused.
+
 ```bash
-pnpm --filter server cli settings:apply --file featherbase/instance-settings.json --environment dev --dry-run
-pnpm --filter server cli settings:export --dir featherbase/   # start the file from a running environment
+F="$PWD/client-apps/<client>/instances/<instance>"   # absolute: the command runs inside apps/server
+pnpm --filter server cli settings:apply --file "$F/instance-settings.json" --environment dev --dry-run
+pnpm --filter server cli settings:export --dir "$F"   # start the file from a running environment
 ```
 
-The instance repository's workflow applies it on merge with a System Manager
-service account's token (`POST /api/instance-settings/apply`, same body
+A workflow can apply it with a System Manager service account's token (`POST /api/instance-settings/apply`, same body
 fields). An apply is one transaction: any problem lists every problem and
 changes nothing; `--dry-run` / `"dry_run": true` writes nothing.
 `pnpm --filter server cli settings:set <field> --stdin` is the break-glass
@@ -586,7 +721,7 @@ the default password.
 
 Dev and prod drift silently: a variable set on one and not the other, a
 secret shared where it must differ, or a settings file applied to one
-environment only. The instance repository's workflow compares them on each
+environment only. A workflow can compare them on each
 run. It picks a fresh key, asks every environment for its variable report
 with that key, and puts the reports side by side:
 
@@ -666,9 +801,7 @@ and remove it at the end of the trial.
 
 Until the roster feed (data-warehouse#4336) writes employee codes, a System
 Manager records them by hand on the Person's **Identifiers** panel, each with a
-note. Bulk employee-code to StyleHR record-number files go through
-`pnpm --filter server cli people:resolve <csv> --dry-run`, then again without
-`--dry-run` (one transaction; idempotent). Find a person with *Admin → Person
+note. Find a person with *Admin → Person
 →* **Find by code** (`/featherbase/admin/find-person`).
 
 - **Leaver.** Find them, turn **Enabled** off (ends every session and way in),

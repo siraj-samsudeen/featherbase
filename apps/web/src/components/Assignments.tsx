@@ -35,7 +35,6 @@ export function Assignments({ table, name }: { table: string; name: string }) {
 
   async function assign() {
     const to = assignTo.trim()
-    if (!to) return
     setBusy(true)
     setError(null)
     try {

@@ -1,5 +1,5 @@
 // The standard streams of a command-line entry point (cli.ts, migrate.ts,
-// release.ts, run-patches.ts, smoke.ts). Each exports `main(argv, io)`; run as
+// release.ts, pre-deploy.ts, smoke.ts). Each exports `main(argv, io)`; run as
 // a process it gets `processIO`, and a test passes its own streams to read what
 // the command printed and feed it stdin, in this process (ADR 0012).
 import type { Readable, Writable } from 'node:stream'

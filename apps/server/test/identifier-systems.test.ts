@@ -10,11 +10,93 @@ import { applySeedPack } from '../src/seed-packs'
 import { addIdentifier } from '../src/person-identifiers'
 import { CORE_PEOPLE_REVIEW } from '../src/person-identifiers'
 import { makePerson } from './fixtures'
-import { applyMigrationFile } from '../src/migrate'
 
 const system = async (key: string) => (await sql`select * from identifier_system where row_id = ${key}`)[0]
 
+async function identifierState() {
+  return {
+    systems: await sql`select * from identifier_system order by row_id`,
+    identifiers: await sql`select * from person_identifier order by id`,
+    versions: await sql`select * from version where ref_table = 'Identifier System' order by row_id`,
+  }
+}
+
 describe('identifier systems: presets and Sensitivity', () => {
+  test('a malformed nonempty system slug leaves the valid lowercase system unchanged', async ({ admin }) => {
+    const row = { label: 'Slug control', kind: 'contact' }
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { ...row, row_id: 'slug-control' } })
+    expect(await admin.get('/api/table/Identifier%20System/slug-control'))
+      .toMatchObject({ row_id: 'slug-control', ...row, match: 'Suggest', sensitivity: 'Normal' })
+    const before = await identifierState()
+    const response = await admin.fetch('/api/save_row', {
+      method: 'POST', body: JSON.stringify({ table: 'Identifier System', row: { ...row, row_id: 'Bad_Code' } }),
+    })
+    expect(response.status).toBe(417)
+    expect(await response.json()).toEqual({ error: {
+      type: 'ValidationError',
+      message: 'An identifier system key is a lowercase slug like "stylehr-employee-code"',
+      fields: { row_id: 'lowercase slug' },
+    } })
+    expect(await identifierState()).toEqual(before)
+  })
+
+  test('explicitly clearing Match refuses a stamped update without changing stored values', async ({ admin }) => {
+    const key = 'match-clear-control'
+    const path = `/api/table/Identifier%20System/${key}`
+    await admin.post('/api/save_row', { table: 'Identifier System', row: {
+      row_id: key, label: 'Match clear control', kind: 'contact', match: 'Off', edited_by: 'system-manager',
+    } })
+    const { row_id: person } = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person', row: { full_name: 'Match clear holder' },
+    })
+    await admin.post(`/api/people/${person}/identifiers`, { system: key, value: 'B-42' })
+    const before = await identifierState()
+    expect(before.identifiers).toContainEqual(expect.objectContaining({ person_id: person, system: key, value: 'b-42' }))
+    for (const match of [null, '']) {
+      const loaded = await admin.get<{ updated_at: string }>(path)
+      const response = await admin.fetch(path, {
+        method: 'PATCH', body: JSON.stringify({ match, updated_at: loaded.updated_at }),
+      })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toEqual({ error: {
+        type: 'ValidationError', message: 'match must be one of: Off, Suggest', fields: { match: 'Off, Suggest' },
+      } })
+      expect(await identifierState()).toEqual(before)
+    }
+    const loaded = await admin.get<{ updated_at: string }>(path)
+    const response = await admin.fetch(path, {
+      method: 'PATCH', body: JSON.stringify({ match: 'Suggest', updated_at: loaded.updated_at }),
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ row_id: key, match: 'Suggest' })
+    const after = await identifierState()
+    expect(after.systems).toEqual(before.systems.map((row) => row.row_id === key
+      ? { ...row, match: 'Suggest', updated_at: expect.any(Date) } : row))
+    expect(after.identifiers).toEqual(before.identifiers)
+  })
+
+  test('retention is cleared for a non-Secret system but retained for a Secret national ID', async ({ admin }) => {
+    const before = await identifierState()
+    for (const [row_id, kind] of [['retention-normal', 'contact'], ['retention-secret', 'national-id']]) {
+      await admin.post('/api/save_row', { table: 'Identifier System', row: {
+        row_id, label: row_id, kind, retain_after_leaving_days: 30,
+      } })
+    }
+    expect(await admin.get('/api/table/Identifier%20System/retention-normal')).toMatchObject({
+      kind: 'contact', sensitivity: 'Normal', retain_after_leaving_days: null,
+      storage: 'plain', display: 'full', tier: 'basic',
+    })
+    expect(await admin.get('/api/table/Identifier%20System/retention-secret')).toMatchObject({
+      kind: 'national-id', sensitivity: 'Secret', retain_after_leaving_days: 30,
+      storage: 'fingerprint', display: 'last4', tier: 'restricted',
+    })
+    const after = await identifierState()
+    expect(after.systems.filter((row) => !['retention-normal', 'retention-secret'].includes(row.row_id)))
+      .toEqual(before.systems)
+    expect(after.identifiers).toEqual(before.identifiers)
+    expect(after.versions).toEqual(before.versions)
+  })
+
   test('core ships phone and email; phone is Restricted, email Normal, both point out duplicates', async () => {
     expect(await system('phone')).toMatchObject({
       kind: 'contact', normalise: 'indian-mobile', match: 'Suggest', sensitivity: 'Restricted', one_holder_at_a_time: false,
@@ -177,24 +259,5 @@ describe('the Jeyarama seed pack', () => {
     const again = await applySeedPack('jeyarama')
     expect(again).toMatchObject({ added: [], methodsLinked: [], peopleReview: 'kept' })
     expect(again.kept.sort()).toEqual(['stylehr-employee-code', 'stylehr-employee-id'])
-  })
-})
-
-describe('migration 0127', () => {
-  test('migration 0127 clears the Off default on Match and leaves any other default as set', async () => {
-    const MIGRATION = '0127_identifier_system_match_from_kind.sql'
-    const matchDefault = async () =>
-      (await sql`select default_value from column_def where parent = 'Identifier System' and column_name = 'match'`)[0].default_value
-    expect(await matchDefault()).toBeNull()
-    const reapply = async () => {
-      await sql`delete from migration where name = ${MIGRATION}`
-      await sql.begin(() => applyMigrationFile(MIGRATION))
-    }
-    await sql`update column_def set default_value = 'Off' where parent = 'Identifier System' and column_name = 'match'`
-    await reapply()
-    expect(await matchDefault()).toBeNull()
-    await sql`update column_def set default_value = 'Suggest' where parent = 'Identifier System' and column_name = 'match'`
-    await reapply()
-    expect(await matchDefault()).toBe('Suggest')
   })
 })

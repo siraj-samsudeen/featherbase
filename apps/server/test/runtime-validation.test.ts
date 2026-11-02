@@ -7,7 +7,7 @@ import { discoverPackages } from '../src/runtime-packages'
 test('runtime validators inspect owned rows through caller permissions and abort invalid saves', async ({ admin }) => {
   const directory = await mkdtemp(resolve('test/.validation-'))
   try {
-    await cp(resolve('../..', 'runtime-apps/other'), directory, { recursive: true })
+    await cp(resolve('../..', 'test-apps/other'), directory, { recursive: true })
     await writeFile(resolve(directory, 'server.mjs'), `
       export const platformVersion = '2026-10'
       export const validators = {

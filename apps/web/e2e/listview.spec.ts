@@ -5,6 +5,9 @@ import { ensureListTableA, ensureTable, fillRows, LIST_DT_A as DT_A } from './fi
 const DT_B = 'UI List B'
 const RESPONSIVE_DT = 'List Toolbar Responsive'
 const RESPONSIVE_CHILD = 'List Toolbar Responsive Step'
+// #738: ten columns, the size the Show columns menu must fit at 1280×800.
+const TEN_DT = 'UI List Ten'
+const TEN_COLUMNS = ['title', 'stage', 'owner', 'region', 'amount', 'due', 'source', 'created_by_name', 'updated_by_name', 'notes']
 
 const HEADER_CONTROL_IDS = [
   'list-columns',
@@ -35,6 +38,10 @@ test.beforeAll(async ({ request }) => {
       { column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true },
       { column_name: 'active', column_type: 'Check', label: 'Active', in_list_view: true },
     ],
+  })
+  await ensureTable(request, auth, {
+    name: TEN_DT,
+    columns: TEN_COLUMNS.map((c, i) => ({ column_name: c, column_type: 'Data', in_list_view: i < 5 })),
   })
   await fillRows(request, auth, DT_B, 3, (i) => ({ city: `city-${i}`, active: i % 2 === 0 }))
   await ensureTable(request, auth, {
@@ -284,6 +291,21 @@ test.describe('ListView pop-ups on desktop', () => {
       const button = (await page.getByTestId('list-columns').boundingBox())!
       const popup = (await page.getByTestId('list-columns-popup').boundingBox())!
       expect(Math.abs(popup.x + popup.width - (button.x + button.width))).toBeLessThanOrEqual(1)
+    })
+  })
+
+  test('the Show columns menu of a ten-column Table fits without scrolling inside', async ({ session }) => {
+    await session.visit(`/admin/${encodeURIComponent(TEN_DT)}`).assertHas('[data-testid="list-columns"]')
+    await session.step('open Show columns, then measure it', async ({ page }) => {
+      await page.getByTestId('list-columns').click()
+      const popup = page.getByTestId('list-columns-popup')
+      await expect(popup).toBeVisible()
+      expect(
+        await popup.evaluate((el) => el.scrollHeight <= el.clientHeight),
+        'every row shows without scrolling the menu',
+      ).toBe(true)
+      const last = (await page.getByTestId('list-make-default').boundingBox())!
+      expect(last.y + last.height, 'the last row is on screen').toBeLessThanOrEqual(800)
     })
   })
 

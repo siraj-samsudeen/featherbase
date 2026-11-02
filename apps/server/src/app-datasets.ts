@@ -32,7 +32,7 @@ export const DATASET_GUARD_KINDS = ['min_rows', 'not_all_zero', 'max_drop_pct', 
 const GUARDABLE: readonly string[] = ['integer', 'number', 'money']
 
 const guardSchema = z.object({
-  kind: z.enum(DATASET_GUARD_KINDS, { errorMap: () => ({ message: `A dataset guard kind must be one of ${DATASET_GUARD_KINDS.join(', ')}` }) }),
+  kind: z.enum(DATASET_GUARD_KINDS, { error: `A dataset guard kind must be one of ${DATASET_GUARD_KINDS.join(', ')}` }),
   column: identifier.optional(),
   value: z.number().optional(),
   within: identifier.optional(),

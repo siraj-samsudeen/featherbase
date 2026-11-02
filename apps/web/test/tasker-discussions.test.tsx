@@ -5,14 +5,14 @@ import { resolve } from 'node:path'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { installApp } from 'server/src/apps'
 import { taskerClient } from '../../server/test/tasker-client'
-import { Attention } from '../../../runtime-apps/tasker/src/Attention'
-import { TaskManagementPage } from '../../../runtime-apps/tasker/src/TaskManagement'
-import { Discussion } from '../../../runtime-apps/tasker/src/Discussion'
+import { Attention } from '../../../example-apps/tasker/src/Attention'
+import { TaskManagementPage } from '../../../example-apps/tasker/src/TaskManagement'
+import { Discussion } from '../../../example-apps/tasker/src/Discussion'
 import { setSession } from '../src/lib/api'
 import { test, expect } from './pg-test'
 
 test('a reply needs review, reading does not resolve it, and reopening asks for a new reply', async ({ createUser }) => {
-  expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker')])).toEqual([])
+  expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
   await installApp('tasker')
   const asker = taskerClient(await createUser({ roles: ['Tasker Member'], fullName: 'Asha' }))
   const respondent = taskerClient(await createUser({ roles: ['Tasker Member'], fullName: 'Ravi' }))
@@ -41,7 +41,7 @@ test('a reply needs review, reading does not resolve it, and reopening asks for 
 
 
 test('Attention opens and focuses the exact question inside the task inspector', async ({ createUser }) => {
-  expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker')])).toEqual([])
+  expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
   await installApp('tasker')
   const asker = taskerClient(await createUser({ roles: ['Tasker Member'], fullName: 'Asha' }))
   const respondent = taskerClient(await createUser({ roles: ['Tasker Member'], fullName: 'Ravi' }))

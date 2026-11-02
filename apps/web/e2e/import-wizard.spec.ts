@@ -327,3 +327,33 @@ test('IMP-010: the list view Import button preselects that Table as the target',
   expect(rows.data).toHaveLength(1)
   expect(rows.data[0].restock_level).toBeNull()
 })
+
+// #738: on a phone the In list tick shows beside the Use tick, without
+// scrolling the new-Table grid sideways.
+test.describe('phone layout', () => {
+  test.use({ viewport: { width: 375, height: 812 } })
+
+  test('every In list tick of a new Table shows without scrolling sideways', async ({ session }) => {
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ['Phone Ref', 'Phone Amount', 'Phone Note'],
+      ['P-1', 1, 'a'],
+      ['P-2', 2, 'b'],
+    ])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, sheet, 'Phone Sheet')
+    await session.visit('/admin/import').assertHas('[data-testid="import-wizard"]')
+    await session.step('drop a one-sheet workbook, then measure each In list tick', async ({ page }) => {
+      await page.getByTestId('iw-file-input').setInputFiles({
+        name: 'phone.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        buffer: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+      })
+      const ticks = page.getByTestId('iw-new-grid-0').locator('[data-rowfield=in_list_view]')
+      await expect(ticks).toHaveCount(3)
+      for (const box of await ticks.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON()))) {
+        expect(box.x).toBeGreaterThanOrEqual(0)
+        expect(box.x + box.width).toBeLessThanOrEqual(375)
+      }
+    })
+  })
+})

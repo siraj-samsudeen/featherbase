@@ -336,7 +336,7 @@ describe('stylesheets are checked too, except their token declarations', () => {
   })
 })
 
-const files = [...sources(join(WEB, 'src')), ...sources(join(WEB, '../../packages/shop-floor/src')), ...sources(join(WEB, '../../runtime-apps/tasker/src'))]
+const files = [...sources(join(WEB, 'src')), ...sources(join(WEB, '../../packages/shop-floor/src')), ...sources(join(WEB, '../../example-apps/tasker/src'))]
 
 /** Each rule's hits in a file, by line, so a failure says where to look. */
 function hitsByRule(file: string): string[] {
@@ -398,8 +398,11 @@ describe('the Admin shell', () => {
   })
 
   test('the shell draws no native select arrow: it uses the design-system Select', () => {
+    const switcher = source('src/components/AppSwitcher.tsx')
     expect(shell).not.toMatch(/<select\b/)
-    expect(shell).toMatch(/<Select\s[^>]*id="admin-app-switcher"/)
+    expect(shell).toMatch(/<AppSwitcher\s*\/>/)
+    expect(switcher).not.toMatch(/<select\b/)
+    expect(switcher).toMatch(/<Select\s[^>]*aria-label="Switch application"/)
   })
 
   test('the sidebar group headings look exactly like "Recently opened": muted, sentence case, small icon', () => {

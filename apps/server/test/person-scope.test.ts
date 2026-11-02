@@ -1,7 +1,7 @@
 // #559 (design E1): the `person_scope` operation policy. An app declares the
 // provider that fills a person's scope; the platform calls it fresh on every
 // request, validates and freezes the answer, and fails closed. Fixtures:
-// runtime-apps/scope-proof consumes the scope, runtime-apps/fixtures/place-roster
+// test-apps/scope-proof consumes the scope, test-apps/fixtures/place-roster
 // provides it from its own roster Table.
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -15,8 +15,8 @@ import { expectApiError, tableRef } from './fixtures'
 import { newIdentifierId } from '../src/person-identifiers'
 import { runHealthChecks } from '../src/instance-health'
 
-const consumer = resolve('../..', 'runtime-apps/scope-proof')
-const provider = resolve('../..', 'runtime-apps/fixtures/place-roster')
+const consumer = resolve('../..', 'test-apps/scope-proof')
+const provider = resolve('../..', 'test-apps/fixtures/place-roster')
 const read = '/api/app_reads/scopeproof/'
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
   ...init, headers: { 'X-Featherbase-App-Version': 'scopeproof@1.0.0', ...init?.headers },
@@ -162,6 +162,42 @@ describe("the scope provider's read context", () => {
     roster.faults.parallel = true
     await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
     expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
+  })
+
+  test('an unawaited missing-row read invalidates an otherwise admitted provider result', async ({ admin, createUser }) => {
+    const copy = await mkdtemp(resolve('test/.pending-provider-'))
+    try {
+      await cp(provider, copy, { recursive: true })
+      const server = await readFile(resolve(copy, 'server.mjs'), 'utf8')
+      await writeFile(resolve(copy, 'server.mjs'), server.replace('export const scopeProviders =', 'const declaredProviders =') + `
+export const scopeProviders = {
+  async positions(context) {
+    const places = await declaredProviders.positions(context)
+    if (faults.leaveMissingReadPending)
+      void context.documents.get('placeroster.position', 'missing-position').catch(() => {})
+    return places
+  }
+}
+`)
+      const { user, roster, app } = await setup(admin, createUser, { providerAt: copy })
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      expect(await user.post(read + 'places', { payload: {} })).toMatchObject({
+        result: { places: [{ label: 'North / Kids', filters: { store: ['N1'], section: ['kids'] } }] },
+      })
+      const before = await sql`select * from placeroster.position order by row_id`
+      const handlerCalls = app.calls.handler
+      roster.faults.leaveMissingReadPending = true
+      const response = await user.fetch(read + 'places', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: {} }),
+      })
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
+      expect(app.calls.handler).toBe(handlerCalls)
+      expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
+      expect(await sql`select * from placeroster.position order by row_id`).toEqual(before)
+    } finally {
+      await rm(copy, { recursive: true, force: true })
+    }
   })
 
   // Codex round 1: a row read loads its Sub-table rows, which would hand the

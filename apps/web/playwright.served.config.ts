@@ -56,8 +56,8 @@ export default defineConfig({
       // (e2e-served/app-page-bar.spec.ts), and the app that gives its picker
       // its options.
       FEATHERBASE_APP_PATHS: JSON.stringify([
-        fileURLToPath(new URL('../../runtime-apps/fixtures/bar-proof', import.meta.url)),
-        fileURLToPath(new URL('../../runtime-apps/fixtures/place-roster', import.meta.url)),
+        fileURLToPath(new URL('../../test-apps/fixtures/bar-proof', import.meta.url)),
+        fileURLToPath(new URL('../../test-apps/fixtures/place-roster', import.meta.url)),
       ]),
       ALLOW_MOCK_OAUTH: '1',
       PREAUTH_LOGIN_MAX: '10000',

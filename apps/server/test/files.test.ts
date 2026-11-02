@@ -34,6 +34,88 @@ async function cleanupDisk(urls: string[]) {
 }
 
 describe('FILE-001: file upload + storage', () => {
+  for (const table of ['Workflow', 'Assignment Rule']) test(`#680 ${table} definitions cannot target an upload-managed path`, async ({ admin }) => {
+    const workflow = table === 'Workflow'
+    const response = await admin.fetch('/api/save_row', {
+      method: 'POST', body: JSON.stringify({ table, row: {
+        row_id: `URL ${table} 680`, ref_table: 'File',
+        ...(workflow ? {
+          state_field: 'file_url', is_active: false,
+          states: [{ state: '/files/original.txt', target_status: 'draft' }],
+        } : { assign_to_field: 'file_url', users: [{ user: 'Administrator' }] }),
+      } }),
+    })
+    expect(response.status).toBe(417)
+    expect(await response.json()).toMatchObject({ error: {
+      type: 'ValidationError',
+      message: `${workflow ? 'A workflow' : 'An assignment rule'} cannot write File.file_url: it is managed by uploads`,
+      fields: { [workflow ? 'state_field' : 'assign_to_field']: 'managed by uploads' },
+    } })
+  })
+
+  test('#680 a legacy workflow cannot change a stored path through its public action', async ({ admin }) => {
+    const original = await (await upload(admin, 'legacy-workflow.txt', 'original content', 'text/plain')).json() as Record<string, unknown>
+    try {
+      await sql`insert into workflow (row_id, ref_table, state_field, is_active)
+        values ('Legacy URL workflow 680', 'File', 'file_url', true)`
+      await sql`insert into workflow_transition (row_id, parent, parenttype, parentfield, state, action, next_state, allowed)
+        values ('legacy-url-transition-680', 'Legacy URL workflow 680', 'Workflow', 'transitions',
+          ${String(original.file_url)}, 'Replace path', '/files/claimed.txt', 'System Manager')`
+      const response = await admin.fetch(`/api/table/File/${original.row_id}:apply_workflow_action`, {
+        method: 'POST', body: JSON.stringify({ action: 'Replace path' }),
+      })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toMatchObject({ error: {
+        type: 'ValidationError', message: 'A workflow cannot write File.file_url: it is managed by uploads',
+      } })
+      expect(await sql`select file_url from file where row_id = ${String(original.row_id)}`).toEqual([{ file_url: original.file_url }])
+      expect(await sql`select action from workflow_action where ref_table = 'File' and ref_name = ${String(original.row_id)}`).toEqual([])
+      expect(await (await admin.fetch(String(original.file_url))).text()).toBe('original content')
+    } finally {
+      await cleanupDisk([String(original.file_url)])
+    }
+  })
+
+  test('#680 a legacy assignment rule is skipped when a public save would stamp a stored path', async ({ admin }) => {
+    await sql`insert into assignment_rule (row_id, ref_table, assign_to_field, disabled)
+      values ('Legacy URL assignment 680', 'File', 'file_url', false)`
+    await sql`insert into assignment_rule_user (row_id, parent, parenttype, parentfield, "user", position)
+      values ('legacy-url-assignee-680', 'Legacy URL assignment 680', 'Assignment Rule', 'users', 'Administrator', 1)`
+    const saved = await admin.post<{ row_id: string; file_url: string | null }>('/api/save_row', {
+      table: 'File', row: { file_name: 'metadata-only-legacy.txt' },
+    })
+    expect(saved.file_url).toBeNull()
+    expect(await sql`select file_url from file where row_id = ${saved.row_id}`).toEqual([{ file_url: null }])
+    expect(await sql`select row_id from todo where ref_table = 'File' and reference_name = ${saved.row_id}`).toEqual([])
+    expect(await sql`select last_user from assignment_rule where row_id = 'Legacy URL assignment 680'`).toEqual([{ last_user: null }])
+  })
+
+  test('#680 direct File saves cannot claim or replace stored content', async ({ admin, api }) => {
+    const original = await (await upload(admin, 'original.txt', 'private original', 'text/plain', { is_private: '1' })).json() as Record<string, unknown>
+    const other = await (await upload(admin, 'other.txt', 'other content', 'text/plain')).json() as Record<string, unknown>
+    const save = (row: Record<string, unknown>) => admin.fetch('/api/save_row', {
+      method: 'POST', body: JSON.stringify({ table: 'File', row }),
+    })
+    try {
+      const forged = await save({ file_name: 'forged.txt', file_url: original.file_url })
+      expect(forged.status).toBe(417)
+      expect(await forged.json()).toMatchObject({ error: { type: 'ValidationError', message: expect.stringContaining('file_url') } })
+      for (const file_url of [original.file_url, '/files/arbitrary.txt', '', null]) {
+        const replaced = await save({ ...other, file_url })
+        expect(replaced.status).toBe(417)
+      }
+      const edited = await save({ ...other, file_name: 'renamed.txt' })
+      expect(edited.status).toBe(201)
+      expect(await edited.json()).toMatchObject({ file_name: 'renamed.txt', file_url: other.file_url })
+      expect((await api.fetch(String(original.file_url))).status).toBe(401)
+      expect(await (await admin.fetch(String(original.file_url))).text()).toBe('private original')
+      expect(await (await api.fetch(String(other.file_url))).text()).toBe('other content')
+      expect(await sql`select count(*)::int as n from file where file_url = ${String(original.file_url)}`).toEqual([{ n: 1 }])
+    } finally {
+      await cleanupDisk([String(original.file_url), String(other.file_url)])
+    }
+  })
+
   test('creates a storage object and a File doc with size, type, and URL', async ({
     admin,
     api,

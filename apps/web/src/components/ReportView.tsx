@@ -184,7 +184,6 @@ export function ReportView({
   // choice, so the dashboard reproduces exactly this chart from live data.
   async function pinChart() {
     setPinMsg(null)
-    if (!report || !pinDashboard) return
     const chart = groupBy
       ? { label: report, report, group_by: groupBy }
       : { label: report, report, label_field: chartLabelField, value_field: effectiveChartValue }

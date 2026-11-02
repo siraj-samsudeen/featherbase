@@ -62,6 +62,15 @@ Fix silent truncation through real paging, not a larger limit. Resolve activity 
 
 Boot and smoke-test before implementation. Inventory installed versions and existing tasks; preserve identities, activity, relationships and settings. Add convergence migrations for legacy grants and new metadata, then explicitly configure membership. Prove fresh and upgraded local databases and rehearse changes on a restored target snapshot before any shared-instance rollout. Recovery must not restore broad grants or weaken private visibility. Follow docs/DEPLOY.md and seek the required production approval separately.
 
-## Decisions still needed before affected work
+## Confirmed migration and calendar decisions
 
-Audit existing data before deciding how to classify historically team-visible personal tasks. Before implementing recurrence, agree what cancellation does to a series, the schedule timezone, month-end rules and whether sharing an occurrence changes future occurrences. Before implementing parent reopening, agree how reopening a subtask behaves when the parent is already Done. These are explicit checkpoints, not permission to guess or blockers to independent work.
+The owner approved these rules on 30-Oct-2026:
+
+- Preserve every legacy task as shared, including former personal lists; newly captured tasks start private.
+- Use the instance timezone for recurrence.
+- Monthly dates beyond the end of a month run on its last day.
+- Cancelling an occurrence pauses the series until explicitly resumed.
+- Sharing an occurrence also shares future occurrences.
+- A completed parent must be reopened before its subtask can be reopened.
+
+Inspect the target installation and rehearse its migration before rollout; this inspection does not change the approved legacy classification.

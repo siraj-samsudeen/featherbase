@@ -4,7 +4,7 @@
 
 import { describe, afterAll, expect } from 'vitest'
 import { test } from './pg-test'
-import { _getRootSql } from '../src/db'
+import { _getRootSql, sql } from '../src/db'
 
 // Both tests create the SAME Table and the SAME document names. Without
 // sandbox isolation the second test would collide with the first's leftovers.
@@ -58,6 +58,11 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     // ...and the sandbox connection is still usable afterwards.
     const doc = await seed(DT, { title: 'after failure', qty: 2 })
     expect(doc.row_id).toMatch(/^[0-9a-f]{10}$/)
+    // An app closing its delegated client must not close the sandbox's
+    // borrowed connection (or commit the outer test transaction).
+    await sql.end()
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`))
+      .toMatchObject({ title: 'after failure', qty: 2 })
   })
 
   test('users created in a test are sandboxed too', async ({ client, admin }) => {

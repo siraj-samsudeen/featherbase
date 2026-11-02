@@ -21,25 +21,24 @@ async function noManagerEmails() {
 /** What the sign-in page leaves behind for the Administrator. */
 const justSignedIn = () => sessionStorage.setItem(OFFER_SETUP_KEY, '1')
 
-test('signing in lands the Administrator on the setup question while no System Manager has an address (items 18–21)', async ({ admin }) => {
+test('signing in welcomes the first administrator with optional next steps', async ({ admin }) => {
   await noManagerEmails()
   justSignedIn()
   await renderApp('/featherbase/admin', admin)
-  const setup = await screen.findByTestId('first-run-setup')
-  expect(within(setup).getByRole('heading', { level: 1 })).toHaveTextContent('Who looks after this instance?')
-  expect(within(setup).getByLabelText('Full name')).toBeInTheDocument()
-  expect(within(setup).getByLabelText('Email')).toBeInTheDocument()
-  expect(within(setup).getByRole('button', { name: 'Add another person' })).toBeInTheDocument()
-  expect(within(setup).getByRole('button', { name: 'Invite' })).toBeInTheDocument()
-  expect(within(setup).getByRole('button', { name: 'Not now' })).toBeInTheDocument()
+  const setup = await screen.findByTestId('welcome-setup')
+  expect(within(setup).getByRole('heading', { level: 1 })).toHaveTextContent('Welcome to Featherbase')
+  expect(within(setup).getByRole('link', { name: 'Browse apps' })).toBeInTheDocument()
+  expect(within(setup).getByRole('link', { name: 'Set up administrators' })).toBeInTheDocument()
+  expect(within(setup).getByRole('link', { name: 'Explore Featherbase' })).toBeInTheDocument()
 })
 
-test('Not now reaches the Admin at once, and the banner keeps showing the problem (item 25)', async ({ admin }) => {
+test('exploring past setup keeps a genuine job failure visible', async ({ admin }) => {
   await noManagerEmails()
+  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'disable_leavers'`
   justSignedIn()
   await renderApp('/featherbase/admin', admin)
-  await userEvent.click(await screen.findByRole('button', { name: 'Not now' }))
-  await waitFor(() => expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument())
+  await userEvent.click(await screen.findByRole('link', { name: 'Explore Featherbase' }))
+  await waitFor(() => expect(screen.queryByTestId('welcome-setup')).not.toBeInTheDocument())
   expect(await screen.findByTestId('health-banner')).toBeInTheDocument()
   // The offer is spent: going home again does not ask again.
   await userEvent.click(screen.getByTestId('all-tables-link'))
@@ -48,7 +47,7 @@ test('Not now reaches the Admin at once, and the banner keeps showing the proble
 
 test('with the email sink, Invite shows each person with their invitation to copy (items 21, 23, 24)', async ({ admin }) => {
   await noManagerEmails()
-  await renderApp('/featherbase/admin/setup', admin)
+  await renderApp('/featherbase/admin/setup/people', admin)
   const setup = await screen.findByTestId('first-run-setup')
   await userEvent.type(within(setup).getByLabelText('Full name'), 'Asha Keeper')
   await userEvent.type(within(setup).getByLabelText('Email'), 'asha@example.com')
@@ -75,7 +74,7 @@ test('with the email sink, Invite shows each person with their invitation to cop
 
 test('problems show beside their row and nothing is created (item 22)', async ({ admin }) => {
   await noManagerEmails()
-  await renderApp('/featherbase/admin/setup', admin)
+  await renderApp('/featherbase/admin/setup/people', admin)
   const setup = await screen.findByTestId('first-run-setup')
   await userEvent.click(within(setup).getByRole('button', { name: 'Invite' }))
   expect(await within(setup).findByText('Enter an email address')).toBeInTheDocument()
@@ -95,13 +94,14 @@ test('another System Manager is never offered the setup (item 18)', async ({ cre
   await renderApp('/featherbase/admin/all-tables', manager)
   await screen.findByTestId('all-tables-link')
   expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument()
-  await renderApp('/featherbase/admin/setup', manager)
+  const { router } = await renderApp('/featherbase/admin/setup/people', manager)
+  await waitFor(() => expect((router.state as { location: { pathname: string } }).location.pathname).toBe('/featherbase/admin'))
   await waitFor(() => expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument())
 })
 
 test('a row can be removed, and a server problem with no field of its own is still shown (Codex review)', async ({ admin }) => {
   await noManagerEmails()
-  await renderApp('/featherbase/admin/setup', admin)
+  await renderApp('/featherbase/admin/setup/people', admin)
   const setup = await screen.findByTestId('first-run-setup')
   await userEvent.click(within(setup).getByRole('button', { name: 'Add another person' }))
   expect(within(setup).getAllByLabelText('Email')).toHaveLength(2)
@@ -122,6 +122,7 @@ test('a row can be removed, and a server problem with no field of its own is sti
 
 test('a slow health answer never pulls the Administrator off a page they moved on to (Codex review)', async ({ admin }) => {
   await noManagerEmails()
+  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'disable_leavers'`
   justSignedIn()
   let release: () => void = () => {}
   const held = new Promise<void>((resolve) => { release = resolve })

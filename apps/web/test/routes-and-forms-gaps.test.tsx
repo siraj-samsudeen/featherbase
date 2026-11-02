@@ -21,6 +21,21 @@ test('/featherbase sends a signed-out visitor to sign in, and a signed-in one to
   await waitFor(() => expect((signedIn.router as Router).state.location.pathname).toMatch(/^\/featherbase\/admin/))
 })
 
+for (const path of [
+  '/featherbase/portal/Orders',
+  '/featherbase/portal/Orders/one',
+  '/featherbase/print/Orders/one',
+  '/featherbase/account/sign-in-methods',
+]) {
+  test(`signed-out deep link ${path} keeps its destination through the login guard`, async () => {
+    const { router } = await renderApp(path, anonymous)
+    await screen.findByTestId('login-form')
+    const location = (router as { state: { location: { pathname: string; search: { next?: string } } } }).state.location
+    expect(location.pathname).toBe('/featherbase/login')
+    expect(location.search.next).toBe(path)
+  })
+}
+
 test('someone with a Table but no Home Page is pointed at All tables', async ({ admin, createUser }) => {
   await admin.post('/api/table_def', { name: 'Rfg Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Rfg Clerk' } })

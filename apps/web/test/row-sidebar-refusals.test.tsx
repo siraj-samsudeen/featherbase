@@ -47,6 +47,10 @@ test('a tag typed and entered on a row deleted meanwhile is refused, and nothing
   await openRow(admin, rowId)
   const panel = await screen.findByTestId('tags-panel')
   await waitFor(() => expect(panel).toHaveTextContent('No tags'))
+  await user.type(within(panel).getByTestId('tag-input'), '   {Enter}')
+  expect(within(panel).queryAllByTestId('tag-chip')).toHaveLength(0)
+  expect(within(panel).queryByTestId('tag-error')).not.toBeInTheDocument()
+  await user.clear(within(panel).getByTestId('tag-input'))
   await admin.delete(`/api/table/${ENC}/${rowId}`)
   // Enter adds, the same as the Add button.
   await user.type(within(panel).getByTestId('tag-input'), 'urgent{Enter}')
@@ -71,7 +75,7 @@ test('removing an attachment someone else already removed says so', async ({ adm
   const rowId = await seedRow(admin)
   const file = (await admin.post('/api/save_row', {
     table: 'File',
-    row: { file_name: 'gone.txt', file_url: '/files/gone.txt', ref_table: DT, ref_name: rowId },
+    row: { file_name: 'gone.txt', ref_table: DT, ref_name: rowId },
   })) as { row_id: string }
   await openRow(admin, rowId)
   const panel = await screen.findByTestId('attachments-panel')

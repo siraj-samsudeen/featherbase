@@ -1,0 +1,175 @@
+'use strict';
+
+// Boots the app for the acceptance run and shuts it down after, on its OWN
+// database and ports, so a run never touches featherbase, featherbase_test or
+// featherbase_e2e, and never collides with ./init.sh (8000/5173) or the e2e
+// suite (8020/5193).
+//
+// It reuses the e2e isolated stack's reset and migration commands:
+// `pnpm --filter server e2e:reset` drops and recreates the database (refusing
+// any name that does not end in _e2e, or one stamped for another environment),
+// then `migrate` and `start` boot the API; `pnpm --filter web dev` serves the web app
+// pointed at that API. See apps/web/playwright.config.ts for why each
+// variable below is set.
+
+const { spawn, execFileSync } = require('node:child_process');
+const net = require('node:net');
+const path = require('node:path');
+const { BeforeAll, AfterAll } = require('@cucumber/cucumber');
+
+const REPO_ROOT = path.resolve(__dirname, '../..');
+const API_PORT = Number(process.env.ACCEPTANCE_API_PORT ?? 8030);
+const WEB_PORT = Number(process.env.ACCEPTANCE_WEB_PORT ?? 5203);
+const BASE_URL = `http://localhost:${WEB_PORT}`;
+const API_URL = `http://localhost:${API_PORT}`;
+const BOOT_TIMEOUT_MS = 240_000;
+
+// Same host and credentials as the developer's database, under its own name.
+function acceptanceDatabaseUrl() {
+  const url = new URL(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@127.0.0.1:5432/featherbase');
+  url.pathname = '/featherbase_acceptance_e2e';
+  return url.toString();
+}
+
+const children = [];
+const logs = [];
+let apiChild;
+let scenarioEnvironment;
+
+function isolatedEnvironment(overrides = {}) {
+  return {
+    ...process.env, DATABASE_URL: acceptanceDatabaseUrl(), PORT: String(API_PORT),
+    API_PORT: String(API_PORT), WEB_PORT: String(WEB_PORT), FEATHERBASE_ENV: 'test',
+    FEATHERBASE_INSTANCE: '', FEATHERBASE_APP_PATHS: '[]', MOTHERDUCK_TOKEN: '',
+    SMTP_HOST: '', SMTP_USER: '', SMTP_PASSWORD: '',
+    GOOGLE_CLIENT_SECRET: 'acceptance-private-secret',
+    ALLOW_MOCK_OAUTH: '1', PREAUTH_LOGIN_MAX: '10000', WEB_ORIGINS: BASE_URL,
+    ...overrides,
+  };
+}
+
+async function acceptanceSql(statement, parameters = []) {
+  const { default: postgres } = require(require.resolve('postgres', { paths: [path.join(REPO_ROOT, 'apps/server')] }));
+  const db = postgres(acceptanceDatabaseUrl(), { max: 1, prepare: false, onnotice() {} });
+  try { return await db.unsafe(statement, parameters); }
+  finally { await db.end(); }
+}
+
+async function stopApi() {
+  if (apiChild?.exitCode === null && apiChild.signalCode === null) {
+    process.kill(-apiChild.pid, 'SIGTERM');
+    await new Promise(resolve => apiChild.once('exit', resolve));
+  }
+  apiChild = undefined;
+}
+
+// Change host configuration without replacing the scenario's saved data/sessions.
+async function restartAcceptance(overrides = {}, root = REPO_ROOT) {
+  await stopApi();
+  scenarioEnvironment = { ...(scenarioEnvironment ?? isolatedEnvironment()), ...overrides };
+  apiChild = start('api', ['--filter', 'server', 'start'], scenarioEnvironment, root);
+  await waitFor(`${API_URL}/api/ping`, apiChild, 'The scenario API');
+}
+
+// Reset only our disposable DB, with the API stopped (its metadata is cached).
+// Local/hosted health scenarios need distinct real process environments. Restore
+// the test stamp before calling the existing guarded reset, never another DB.
+async function resetAcceptance(overrides = {}, root = REPO_ROOT) {
+  await stopApi();
+  await acceptanceSql("update featherbase.internal_metadata set value = 'test' where key = 'environment'");
+  const env = isolatedEnvironment();
+  for (const command of ['e2e:reset', 'migrate']) {
+    execFileSync('pnpm', ['--filter', 'server', command], { cwd: REPO_ROOT, env, timeout: 120_000, stdio: 'pipe' });
+  }
+  scenarioEnvironment = isolatedEnvironment(overrides);
+  await acceptanceSql("update featherbase.internal_metadata set value = $1 where key = 'environment'", [scenarioEnvironment.FEATHERBASE_ENV]);
+  await restartAcceptance({}, root);
+}
+
+function start(name, args, env, root = REPO_ROOT) {
+  const child = spawn('pnpm', args, {
+    cwd: root,
+    env: { ...process.env, ...env },
+    detached: true, // its own process group, so shutdown takes tsx/vite with it
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const keep = (chunk) => {
+    logs.push(`[${name}] ${chunk}`);
+    if (logs.length > 400) logs.shift();
+  };
+  child.stdout.on('data', keep);
+  child.stderr.on('data', keep);
+  children.push(child);
+  return child;
+}
+
+async function waitFor(url, child, label) {
+  const deadline = Date.now() + BOOT_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) break;
+    try {
+      const res = await fetch(url);
+      if (res.ok) return;
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`${label} did not come up at ${url}.\n--- last output ---\n${logs.slice(-60).join('')}`);
+}
+
+function stopAll() {
+  for (const child of children) {
+    if (child.exitCode !== null) continue;
+    try {
+      process.kill(-child.pid, 'SIGTERM');
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
+/** Whether something already answers on this localhost port. */
+function portTaken(port) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ port, host: 'localhost' });
+    socket.setTimeout(1_000);
+    socket.once('connect', () => (socket.destroy(), resolve(true)));
+    socket.once('timeout', () => (socket.destroy(), resolve(false)));
+    socket.once('error', () => resolve(false));
+  });
+}
+
+BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
+  // A second run started while one is going would answer its boot checks from
+  // the first run's servers, reset the database under them, and then lose
+  // them when the first run ends: both fail with lists that never show.
+  for (const [port, name] of [[API_PORT, 'ACCEPTANCE_API_PORT'], [WEB_PORT, 'ACCEPTANCE_WEB_PORT']]) {
+    if (await portTaken(port))
+      throw new Error(
+        `port ${port} is already in use, most likely by another acceptance run. ` +
+          `Wait for it to finish, or run on other ports (${name}).`,
+      );
+  }
+  const env = isolatedEnvironment();
+  for (const command of ['e2e:reset', 'migrate'])
+    execFileSync('pnpm', ['--filter', 'server', command], { cwd: REPO_ROOT, env, timeout: 120_000, stdio: 'pipe' });
+  // No watcher: tsx watch starts its own process group and can survive the
+  // scenario API's shutdown, retaining stale schema and environment state.
+  const api = apiChild = start('api', ['--filter', 'server', 'start'], env);
+  const web = start('web', ['--filter', 'web', 'dev'], {
+    WEB_PORT: String(WEB_PORT),
+    API_PORT: String(API_PORT),
+  });
+  await waitFor(`${API_URL}/api/ping`, api, 'The API');
+  await waitFor(BASE_URL, web, 'The web app');
+});
+
+AfterAll(async function () {
+  stopAll();
+  if (scenarioEnvironment) await acceptanceSql("update featherbase.internal_metadata set value = 'test' where key = 'environment'");
+});
+
+process.on('exit', stopAll);
+
+module.exports = { BASE_URL, API_URL, resetAcceptance, restartAcceptance, acceptanceSql, isolatedEnvironment, REPO_ROOT };

@@ -15,7 +15,7 @@ afterEach(async () => {
 async function otherApp(change: (manifest: Record<string, unknown>) => Record<string, unknown>) {
   const directory = await mkdtemp(resolve('test/.b5-642-frames-'))
   directories.push(directory)
-  await cp(resolve('../..', 'runtime-apps/other'), directory, { recursive: true })
+  await cp(resolve('../..', 'test-apps/other'), directory, { recursive: true })
   const file = resolve(directory, 'featherbase.json')
   await writeFile(file, JSON.stringify(change(JSON.parse(await readFile(file, 'utf8')))))
   return directory
@@ -57,7 +57,7 @@ describe('declared frame origins: the frame policy', () => {
   test("another app's page does not allow them", async ({ admin }) => {
     expect(await discoverPackages([
       await otherApp((manifest) => ({ ...manifest, frameOrigins: [FRAMED] })),
-      resolve('../..', 'runtime-apps/tasker'),
+      resolve('../..', 'example-apps/tasker'),
     ])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
     await admin.post('/api/install_app', { name: 'tasker' })

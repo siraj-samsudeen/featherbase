@@ -2,7 +2,7 @@ import { anonymousTest as test, adminAuth, loginAs, type APIRequestContext } fro
 
 // First-run setup (#465, task 6.1; checklist items 18–25 on #465). On an
 // instance where no System Manager has an email address, the built-in
-// Administrator is asked who looks after it as they sign in. The isolated
+// Administrator sees a resumable welcome guide as they sign in. The isolated
 // suite's database sends email to the sink, so each invitation comes back as
 // a link to copy. Anyone a spec before this one made a System Manager with an
 // address is switched off for the length of this file, and back on after.
@@ -10,13 +10,14 @@ import { anonymousTest as test, adminAuth, loginAs, type APIRequestContext } fro
 type Headers = { Authorization: string }
 let headers: Headers
 const switchedOff: string[] = []
+const pausedJobs: string[] = []
 const ASHA = 'asha.setup@example.com'
 
-async function patchPerson(request: APIRequestContext, id: string, values: Record<string, unknown>) {
-  const url = `/api/table/Person/${encodeURIComponent(id)}`
+async function patch(request: APIRequestContext, table: string, id: string, values: Record<string, unknown>) {
+  const url = `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(id)}`
   const current = (await (await request.get(url, { headers })).json()) as { updated_at: string }
   const res = await request.patch(url, { headers, data: { ...values, updated_at: current.updated_at } })
-  if (res.status() !== 200) throw new Error(`patch Person ${id}: ${res.status()} ${await res.text()}`)
+  if (res.status() !== 200) throw new Error(`patch ${table} ${id}: ${res.status()} ${await res.text()}`)
 }
 
 /** Enabled people other than the Administrator who are System Managers with an address. */
@@ -36,28 +37,46 @@ test.describe.configure({ mode: 'serial' })
 test.beforeAll(async ({ request }) => {
   headers = await adminAuth(request)
   for (const id of await managersWithEmail(request)) {
-    await patchPerson(request, id, { enabled: false })
+    await patch(request, 'Person', id, { enabled: false })
     switchedOff.push(id)
+  }
+  // Other files deliberately leave failing scheduled jobs. This scenario
+  // isolates ordinary unfinished setup, not those genuine operational faults.
+  const fields = encodeURIComponent(JSON.stringify(['row_id', 'enabled']))
+  const jobs = await request.get(`/api/table/Scheduled%20Job?limit_page_length=500&fields=${fields}`, { headers })
+  const { data } = await jobs.json() as { data: { row_id: string; enabled: boolean | number }[] }
+  for (const job of data.filter((job) => job.enabled)) {
+    await patch(request, 'Scheduled Job', job.row_id, { enabled: false })
+    pausedJobs.push(job.row_id)
   }
 })
 
 test.afterAll(async ({ request }) => {
   headers = await adminAuth(request)
-  for (const id of switchedOff) await patchPerson(request, id, { enabled: true })
+  for (const id of switchedOff) await patch(request, 'Person', id, { enabled: true })
   // The person this file made is left switched off, so later files start as they would have.
-  for (const id of await managersWithEmail(request)) if (!switchedOff.includes(id)) await patchPerson(request, id, { enabled: false })
+  for (const id of await managersWithEmail(request)) if (!switchedOff.includes(id)) await patch(request, 'Person', id, { enabled: false })
+  for (const id of pausedJobs) await patch(request, 'Scheduled Job', id, { enabled: true })
 })
 
-test('skipped: Not now reaches the Admin at once and the banner keeps showing the problem', async ({ session }) => {
+test('the welcome guide can be deferred and resumed without treating optional setup as a fault', async ({ session }) => {
   await session.step('sign in as Administrator', async ({ page }) => {
     await loginAs(page)
   })
   await session
+    .assertHas('[data-testid="welcome-setup"]')
+    .within('[data-testid="welcome-setup"] h1', (h) => h.assertExactText('Welcome to Featherbase'))
+    .clickLink('Explore Featherbase')
+    .assertHas('[data-testid="all-tables-link"]')
+    .refuteHas('[data-testid="welcome-setup"]')
+    .refuteHas('[data-testid="health-banner"]')
+    .clickLink('Welcome')
+    .assertHas('[data-testid="welcome-setup"]')
+    .clickLink('Set up administrators')
     .assertHas('[data-testid="first-run-setup"]')
-    .within('[data-testid="first-run-setup"] h1', (h) => h.assertExactText('Who looks after this instance?'))
     .clickButton('Not now')
     .refuteHas('[data-testid="first-run-setup"]')
-    .within('[data-testid="health-banner"]', (b) => b.assertText('need').assertAttribute('data-severity', 'error'))
+    .refuteHas('[data-testid="health-banner"]')
 })
 
 test('with the email sink: the person becomes a System Manager and their invitation is shown to copy', async ({ session }) => {
@@ -65,6 +84,8 @@ test('with the email sink: the person becomes a System Manager and their invitat
     await loginAs(page)
   })
   await session
+    .assertHas('[data-testid="welcome-setup"]')
+    .clickLink('Set up administrators')
     .assertHas('[data-testid="first-run-setup"]')
     .fillIn('Full name', 'Asha Keeper')
     .fillIn('Email', ASHA)

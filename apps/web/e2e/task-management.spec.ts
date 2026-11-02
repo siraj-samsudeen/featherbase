@@ -178,6 +178,198 @@ test('project_rename_conflict: a refetch cannot authorize an older rename', asyn
   expect(await persisted.json()).toMatchObject({ project_name: 'Newer shared name' })
 })
 
+test('offline_task_recovery: failed capture retains the draft and failed state changes do not persist', async ({ session, request }) => {
+  const headers = await ensureRuntimeApp(request, 'tasker')
+  const created = await request.post('/api/save_row', {
+    headers, data: { table: 'tasker.task', row: { task_title: 'Offline recovery existing count' } },
+  })
+  expect(created.status()).toBe(201)
+  const task = await created.json() as { row_id: string }
+  await session.visit('/tasker/').assertText('Offline recovery existing count')
+  try {
+    await session.step('disconnect the browser from the real server', async ({ page }) => {
+      await page.context().setOffline(true)
+    })
+    await session
+      .fillIn('Quick capture', 'Offline recovery captured 37 cartons')
+      .pressKey('Enter')
+      .assertHas('[role="alert"]', { text: 'Could not create task' })
+      .assertValue('Quick capture', 'Offline recovery captured 37 cartons')
+      .selectOption('State for Offline recovery existing count', 'In progress')
+      .assertHas('[role="alert"]', { text: 'Could not update task' })
+      .assertValue('State for Offline recovery existing count', 'Not started')
+    await session.step('reconnect before checking the persisted rows', async ({ page }) => {
+      await page.context().setOffline(false)
+    })
+    expect(await (await request.get(`/api/table/tasker.task/${task.row_id}`, { headers })).json()).toMatchObject({ task_state: 'Not started' })
+    const filters = encodeURIComponent(JSON.stringify([['task_title', '=', 'Offline recovery captured 37 cartons']]))
+    expect(await (await request.get(`/api/table/tasker.task?filters=${filters}`, { headers })).json()).toMatchObject({ data: [] })
+    await session
+      .clickButton('Add')
+      .assertText('Offline recovery captured 37 cartons')
+      .assertValue('Quick capture', '')
+      .selectOption('State for Offline recovery existing count', 'In progress')
+    await expect.poll(async () => (await (await request.get(`/api/table/tasker.task/${task.row_id}`, { headers })).json()).task_state).toBe('In progress')
+    const captured = await (await request.get(`/api/table/tasker.task?filters=${filters}&fields=%5B%22task_title%22%5D`, { headers })).json() as { data: { task_title: string }[] }
+    expect(captured.data).toHaveLength(1)
+    expect(captured.data[0]).toMatchObject({ task_title: 'Offline recovery captured 37 cartons' })
+  } finally {
+    await session.step('leave the browser connected', async ({ page }) => {
+      await page.context().setOffline(false)
+    })
+  }
+})
+
+test('offline_preference_recovery: private choices roll back until the server can save them', async ({ session, request }) => {
+  const headers = await ensureRuntimeApp(request, 'tasker')
+  for (const [name, settings] of [
+    ['tasker.projects', { project_ids: [] }],
+    ['tasker.preferences', { mode: 'inspector' }],
+    ['tasker.saved-views', { views: [] }],
+  ] as const) {
+    expect((await request.put(`/api/user_settings/${name}`, { headers, data: settings })).status()).toBe(200)
+  }
+  const created = await request.post('/api/save_row', {
+    headers, data: { table: 'tasker.project', row: { project_name: 'Offline private project' } },
+  })
+  expect(created.status()).toBe(201)
+  const project = await created.json() as { row_id: string }
+  expect((await request.post('/api/save_row', {
+    headers, data: { table: 'tasker.task', row: { task_title: 'Offline private detail task' } },
+  })).status()).toBe(201)
+  await session.visit('/tasker/').clickButton('Offline private project')
+  try {
+    await session.step('lose connectivity before starring a project', async ({ page }) => {
+      await page.context().setOffline(true)
+    })
+    await session
+      .clickButton('☆ Add to tabs')
+      .assertHas('[role="alert"]', { text: 'Could not update project tabs' })
+      .assertHas('button', { text: '☆ Add to tabs', exact: true })
+    await session.step('restore connectivity for the project retry', async ({ page }) => {
+      await page.context().setOffline(false)
+    })
+    expect(await (await request.get('/api/user_settings/tasker.projects', { headers })).json()).toEqual({ settings: { project_ids: [] } })
+    await session.clickButton('☆ Add to tabs').assertHas('button', { text: '★ Starred tab', exact: true })
+    await expect.poll(async () => (await (await request.get('/api/user_settings/tasker.projects', { headers })).json()).settings).toEqual({ project_ids: [project.row_id] })
+    await session
+      .within('.tasker-nav-inbox', tab => tab.click('Inbox'))
+      .clickLink('Offline private detail task')
+      .assertHas('button', { text: 'Edit task', exact: true })
+    await session.step('lose connectivity before changing the private detail layout', async ({ page }) => {
+      await page.context().setOffline(true)
+    })
+    await session
+      .clickButton('Focus')
+      .assertHas('[role="alert"]', { text: 'Could not save detail view' })
+      .assertHas('aside[aria-label="Task details"]')
+      .refuteHas('[role="dialog"][aria-label="Focused task details"]')
+    await session.step('restore connectivity for the layout retry', async ({ page }) => {
+      await page.context().setOffline(false)
+    })
+    expect(await (await request.get('/api/user_settings/tasker.preferences', { headers })).json()).toEqual({ settings: { mode: 'inspector' } })
+    await session.clickButton('Focus').assertHas('[role="dialog"][aria-label="Focused task details"]')
+    await expect.poll(async () => (await (await request.get('/api/user_settings/tasker.preferences', { headers })).json()).settings).toEqual({ mode: 'focus' })
+    await session.clickLink('Close').clickButton('Save view').fillIn('View name', 'Offline retained private view')
+    await session.step('lose connectivity before saving a named view', async ({ page }) => {
+      await page.context().setOffline(true)
+    })
+    await session
+      .clickButton('Save private view')
+      .assertHas('[role="alert"]', { text: 'Could not save task views' })
+      .assertValue('View name', 'Offline retained private view')
+    await session.step('restore connectivity for the saved view retry', async ({ page }) => {
+      await page.context().setOffline(false)
+    })
+    expect(await (await request.get('/api/user_settings/tasker.saved-views', { headers })).json()).toEqual({ settings: { views: [] } })
+    await session.clickButton('Save private view').within('#views-heading', heading => heading.assertExactText('Offline retained private view'))
+    const saved = await (await request.get('/api/user_settings/tasker.saved-views', { headers })).json() as { settings: { views: { name: string; scope: { kind: string } }[] } }
+    expect(saved.settings.views).toHaveLength(1)
+    expect(saved.settings.views[0]).toMatchObject({ name: 'Offline retained private view', scope: { kind: 'inbox' } })
+  } finally {
+    await session.step('leave the browser connected', async ({ page }) => {
+      await page.context().setOffline(false)
+    })
+  }
+})
+
+test('offline_project_recovery: shared project drafts survive failed writes', async ({ session, request }) => {
+  const headers = await ensureRuntimeApp(request, 'tasker')
+  const created = await request.post('/api/save_row', {
+    headers, data: { table: 'tasker.project', row: { project_name: 'Offline rename original' } },
+  })
+  expect(created.status()).toBe(201)
+  const project = await created.json() as { row_id: string }
+  await session.visit('/tasker/').clickButton('Offline rename original').clickButton('Rename').fillIn('Rename project', 'Offline rename retained')
+  try {
+    await session.step('disconnect before submitting the shared rename', async ({ page }) => {
+      await page.context().setOffline(true)
+    })
+    await session
+      .clickButton('Save')
+      .assertHas('[role="alert"]', { text: 'Could not rename project' })
+      .assertValue('Rename project', 'Offline rename retained')
+    await session.step('reconnect before checking the shared project', async ({ page }) => {
+      await page.context().setOffline(false)
+    })
+    expect(await (await request.get(`/api/table/tasker.project/${project.row_id}`, { headers })).json()).toMatchObject({ project_name: 'Offline rename original' })
+    await session.clickButton('Save').assertHas('h2', { text: 'Offline rename retained', exact: true })
+    expect(await (await request.get(`/api/table/tasker.project/${project.row_id}`, { headers })).json()).toMatchObject({ project_name: 'Offline rename retained' })
+    await session.clickButton('Projects').fillIn('New project', 'Offline creation retained')
+    await session.step('disconnect before creating another shared project', async ({ page }) => {
+      await page.context().setOffline(true)
+    })
+    await session
+      .clickButton('Create project')
+      .assertHas('[role="alert"]', { text: 'Could not create project' })
+      .assertValue('New project', 'Offline creation retained')
+    await session.step('reconnect before checking for an accidental project', async ({ page }) => {
+      await page.context().setOffline(false)
+    })
+    const filters = encodeURIComponent(JSON.stringify([['project_name', '=', 'Offline creation retained']]))
+    expect(await (await request.get(`/api/table/tasker.project?filters=${filters}`, { headers })).json()).toMatchObject({ data: [] })
+    await session.clickButton('Create project').assertHas('h2', { text: 'Offline creation retained', exact: true })
+    const projects = await (await request.get(`/api/table/tasker.project?filters=${filters}&fields=%5B%22project_name%22%5D`, { headers })).json() as { data: { project_name: string }[] }
+    expect(projects.data).toHaveLength(1)
+    expect(projects.data[0]).toMatchObject({ project_name: 'Offline creation retained' })
+  } finally {
+    await session.step('leave the browser connected', async ({ page }) => {
+      await page.context().setOffline(false)
+    })
+  }
+})
+
+test('tasker_keyboard_progression: ordinary Tab advances within task details and destructive confirmation', async ({ session, request }) => {
+  const headers = await ensureRuntimeApp(request, 'tasker')
+  expect((await request.put('/api/user_settings/tasker.preferences', { headers, data: { mode: 'focus' } })).status()).toBe(200)
+  const created = await request.post('/api/save_row', {
+    headers, data: { table: 'tasker.task', row: { task_title: 'Keyboard cancellation count' } },
+  })
+  expect(created.status()).toBe(201)
+  const task = await created.json() as { row_id: string }
+  await session.visit('/tasker/').clickLink('Keyboard cancellation count').assertHas('[role="dialog"][aria-label="Focused task details"]')
+  await session.step('Tab advances from Close rather than wrapping to the last detail control', async ({ page }) => {
+    const detail = page.getByRole('dialog', { name: 'Focused task details' })
+    await detail.getByRole('link', { name: 'Close', exact: true }).focus()
+    await page.keyboard.press('Tab')
+    await expect(detail.getByRole('button', { name: 'Compact', exact: true })).toBeFocused()
+    await detail.getByLabel('More task actions').click()
+  })
+  await session.clickButton('Delete accidental task').assertHas('[role="alertdialog"][aria-label="Delete accidental task"]')
+  await session.step('Tab advances to Delete and Shift Tab returns to Cancel without invoking either action', async ({ page }) => {
+    const confirmation = page.getByRole('alertdialog', { name: 'Delete accidental task' })
+    await expect(confirmation.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+    await page.keyboard.press('Tab')
+    await expect(confirmation.getByRole('button', { name: 'Delete permanently' })).toBeFocused()
+    await page.keyboard.press('Shift+Tab')
+    await expect(confirmation.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(page.getByLabel('More task actions')).toBeFocused()
+  })
+  await session.refuteHas('[role="alertdialog"]').assertHas('[role="dialog"][aria-label="Focused task details"]')
+  expect(await (await request.get(`/api/table/tasker.task/${task.row_id}`, { headers })).json()).toMatchObject({ task_title: 'Keyboard cancellation count', task_state: 'Not started', project: null })
+})
+
 test.describe('phone capture', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 

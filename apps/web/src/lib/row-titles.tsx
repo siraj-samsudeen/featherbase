@@ -24,7 +24,6 @@ function flush() {
       for (const [k, b] of batch) for (const r of b.resolvers) r(found.get(k) ?? null)
     })
     .catch(
-      /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; the batches pages send (a heading, a breadcrumb, up to three recents) are always within what the server accepts */
       () => {
         for (const b of batch.values()) for (const r of b.resolvers) r(null)
       },

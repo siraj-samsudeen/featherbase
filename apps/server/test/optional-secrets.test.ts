@@ -1,7 +1,7 @@
 // #666: an app can mark a secret optional, and each read or action can name
 // the secrets it needs. A missing optional secret holds up only what needs
 // it; a missing required secret still holds up everything (#620).
-// Fixture: runtime-apps/fixtures/optional-secret-proof, an app with an
+// Fixture: test-apps/fixtures/optional-secret-proof, an app with an
 // optional embed integration.
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -16,7 +16,7 @@ import { expectApiError } from './fixtures'
 import { sql } from '../src/db'
 import { declaredAppSecrets } from '../src/app-settings'
 
-const FIXTURE = resolve('../..', 'runtime-apps/fixtures/optional-secret-proof')
+const FIXTURE = resolve('../..', 'test-apps/fixtures/optional-secret-proof')
 const READ = '/api/app_reads/optproof/'
 const ACTION = '/api/app_actions/optproof/'
 const TOKEN = 'optproof-required-token-1'

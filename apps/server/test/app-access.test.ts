@@ -9,9 +9,9 @@ import { loadInstalledApps } from '../src/apps'
 import { sql, withTransaction } from '../src/db'
 import { actionDeclaration, readDeclaration, validateOperationFacts } from '../src/app-access'
 import { AppError } from '../src/errors'
-import { version as currentTaskerVersion } from '../../../runtime-apps/tasker/package.json'
+import { version as currentTaskerVersion } from '../../../example-apps/tasker/package.json'
 
-const directory = resolve('../..', 'runtime-apps/scope-proof')
+const directory = resolve('../..', 'test-apps/scope-proof')
 const read = '/api/app_reads/scopeproof/'
 const action = '/api/app_actions/scopeproof/'
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
@@ -21,20 +21,121 @@ const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
   createUser: async ({ createUser }, use) => use(async options => pinned(await createUser(options))),
 })
-async function setup(admin: TestClient, createUser: CreateUserFn, roles = ['Scope Planner'], stores = ['A', 'C']) {
-  expect(await discoverPackages([directory])).toEqual([])
+async function setup(admin: TestClient, createUser: CreateUserFn, roles = ['Scope Planner'], stores = ['A', 'C'], packageDirectory = directory) {
+  expect(await discoverPackages([packageDirectory])).toEqual([])
   await admin.post('/api/install_app', { name: 'scopeproof' })
   const user = await createUser({ email: 'scoped@example.test', roles })
   for (const code of ['A', 'B', 'C']) await admin.post('/api/save_row', { table: 'scopeproof.store', row: { row_id: code, label: `${code} private label` } })
   for (const code of stores) await admin.post('/api/save_row', { table: 'Data Scope', row: { person: user.user, allow_table: 'scopeproof.store', for_value: code } })
   const digest = availableRuntimeVersions().find(p => p.name === 'scopeproof')!.digest
-  const module = await import(`${pathToFileURL(resolve(directory, 'server.mjs')).href}?artifact=${digest}`)
+  const module = await import(`${pathToFileURL(resolve(packageDirectory, 'server.mjs')).href}?artifact=${digest}`)
   Object.assign(module.calls, { handler: 0, resolver: 0, authorizer: 0, upstream: 0 })
   for (const key of Object.keys(module.faults)) delete module.faults[key]
   return { user, module }
 }
 
 describe('fresh app roles and store access', () => {
+  for (const phase of ['resolver', 'authorizer']) {
+    for (const [behavior, mode, rowId] of [
+      ['empty fact identity', 'caught', ''],
+      ['nonstring fact identity', 'caught', 37],
+      ['missing fact row', 'caught', 'private-missing-37'],
+      ['unawaited rejecting fact read', 'pending', 'private-missing-37'],
+      ['overlapping fact reads', 'overlap', 'private-object-37'],
+      ...(phase === 'authorizer' ? [['closed resolver capability', 'closed', 'private-object-37']] : []),
+    ] as const) {
+      test(`${phase} ${behavior} refuses the HTTP operation despite a valid footprint`, async ({ admin, createUser }) => {
+        const copy = await mkdtemp(resolve('test/.scope-facts-'))
+        try {
+          await cp(directory, copy, { recursive: true })
+          const manifestPath = resolve(copy, 'featherbase.json')
+          const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+          for (const operation of [manifest.reads.operations.object, manifest.actions.operations.discard]) {
+            operation.authorization = { kind: 'product', name: 'pairs', facts: [{ table: 'scopeproof.object', columns: ['stores'] }] }
+          }
+          await writeFile(manifestPath, JSON.stringify(manifest))
+          const serverPath = resolve(copy, 'server.mjs')
+          const original = await readFile(serverPath, 'utf8')
+          await writeFile(serverPath, original
+            .replace('export const scopeResolvers =', 'const originalScopeResolvers =')
+            .replace('export const authorizers =', 'const originalAuthorizers =') + `
+export const observations = { rejected: 0 }
+let previousFacts
+async function exerciseFacts(facts, payload) {
+  if (payload.mode === 'closed') {
+    await previousFacts.get('scopeproof.object', payload.rowId)
+  } else if (payload.mode === 'pending') {
+    // Observe the rejection, but deliberately return without awaiting the read.
+    void facts.get('scopeproof.object', payload.rowId).catch(() => { observations.rejected++ })
+  } else if (payload.mode === 'overlap') {
+    const first = facts.get('scopeproof.object', payload.rowId)
+    const second = facts.get('scopeproof.object', payload.rowId)
+    const outcomes = await Promise.allSettled([first, second])
+    observations.rejected += outcomes.filter(outcome => outcome.status === 'rejected').length
+  } else if (payload.mode === 'caught') {
+    try { await facts.get('scopeproof.object', payload.rowId) }
+    catch { observations.rejected++ }
+  }
+}
+export const scopeResolvers = {
+  ...originalScopeResolvers,
+  async object({ facts, payload }) {
+    calls.resolver++
+    const row = await facts.get('scopeproof.object', payload.id)
+    previousFacts = facts
+    if (payload.phase === 'resolver') await exerciseFacts(facts, payload)
+    return { storeCodes: row.stores, productScope: { object: payload.id } }
+  },
+}
+export const authorizers = {
+  ...originalAuthorizers,
+  async pairs({ facts, payload }) {
+    calls.authorizer++
+    await facts.get('scopeproof.object', payload.id)
+    if (payload.phase === 'authorizer') await exerciseFacts(facts, payload)
+    return true
+  },
+}
+`)
+          const { user, module } = await setup(admin, createUser, ['Scope Planner'], ['A'], copy)
+          const draft = await admin.post<{ updated_at: string }>('/api/save_row', {
+            table: 'scopeproof.object', row: { row_id: 'private-object-37', stores: ['A'], secret: 'private-secret-37' },
+          })
+          const payload = { id: 'private-object-37', updatedAt: draft.updated_at, storeCodes: ['A'] }
+          // The same declared callbacks admit a normal request before the misuse.
+          expect(await user.post(read + 'object', { payload })).toEqual({ result: { stores: ['A'], marker: 37 } })
+          expect(await user.post(action + 'write', { idempotencyKey: 'preserved', payload: { storeCodes: ['A'], effect: 'preserved' } }))
+            .toEqual({ result: { stores: ['A'], marker: 37 } })
+          const beforeCalls = { ...module.calls }
+          const rows = await sql`select * from scopeproof.object order by row_id`
+          const effects = await sql`select * from scopeproof.effect order by row_id`
+          const receipts = await sql`select * from runtime_action_result order by caller, app, action, idempotency_key`
+          for (const path of [read + 'object', action + 'discard']) {
+            const response = await user.fetch(path, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...(path.startsWith(action) ? { idempotencyKey: 'must-not-exist' } : {}), payload: { ...payload, phase, mode, rowId } }),
+            })
+            expect(response.status).toBe(403)
+            expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
+            expect(module.calls.handler).toBe(beforeCalls.handler)
+            expect(await sql`select * from scopeproof.object order by row_id`).toEqual(rows)
+            expect(await sql`select * from scopeproof.effect order by row_id`).toEqual(effects)
+            expect(await sql`select * from runtime_action_result order by caller, app, action, idempotency_key`).toEqual(receipts)
+          }
+          expect(module.calls.resolver).toBe(beforeCalls.resolver + 2)
+          expect(module.calls.authorizer).toBe(beforeCalls.authorizer + (phase === 'authorizer' ? 2 : 0))
+          expect(module.observations.rejected).toBe(mode === 'closed' ? 0 : 2)
+          const reason = phase === 'resolver' ? 'scope' : 'product'
+          expect(await sql`select method, ref_table, reference_name from access_log
+            where "user" = ${user.user} and operation = 'app_access_denied' order by method`).toEqual([
+            { method: `scopeproof.discard:${reason}`, ref_table: null, reference_name: null },
+            { method: `scopeproof.object:${reason}`, ref_table: null, reference_name: null },
+          ])
+        } finally { await rm(copy, { recursive: true, force: true }) }
+      })
+    }
+  }
+
   test('policies cannot omit their scope, use foreign dimensions, or opt actions/table policies into discovery', async () => {
     const policy = { kind: 'stores', storeTable: 'foreign.store', readRoles: ['Reader'], actionRoles: ['Writer'] }
     const operation = { policy, scope: { kind: 'request' }, authorization: { kind: 'generic' } }
@@ -74,8 +175,8 @@ describe('fresh app roles and store access', () => {
   })
 
   test('historical exact Tasker refuses v1 actions, upgrades explicitly and can replay only table/generic legacy results', async ({ admin }) => {
-    const historical = resolve('../..', 'runtime-apps/fixtures/tasker-v2')
-    const current = resolve('../..', 'runtime-apps/tasker')
+    const historical = resolve('../..', 'test-apps/fixtures/tasker-v2')
+    const current = resolve('../..', 'example-apps/tasker')
     expect(await discoverPackages([historical])).toEqual([])
     await admin.post('/api/install_app', { name: 'tasker' })
     const invoke = (version: string) => admin.fetch('/api/app_actions/tasker/promote', { method: 'POST',
@@ -244,6 +345,47 @@ describe('fresh app roles and store access', () => {
     await expect(user.post(read + 'stores', { payload: { storeCodes: ['B'], roles: ['Administrator'], sql: 'all', filters: [] } })).rejects.toMatchObject({ status: 403 })
     expect(module.calls).toEqual(before)
     expect(await sql`select * from scopeproof.effect`).toEqual([])
+  })
+
+  test('non-record store payloads refuse without writes while asymmetric scopes remain usable', async ({ admin, createUser }) => {
+    const { user } = await setup(admin, createUser)
+    expect(await user.post(action + 'write', { idempotencyKey: 'valid-a', payload: { effect: 'only-a', storeCodes: ['A'] } }))
+      .toEqual({ result: { stores: ['A'], marker: 37 } })
+    const before = {
+      stores: await sql`select * from scopeproof.store order by row_id`,
+      objects: await sql`select * from scopeproof.object order by row_id`,
+      effects: await sql`select * from scopeproof.effect order by row_id`,
+      receipts: await sql`select * from runtime_action_result where caller = ${user.user} order by idempotency_key`,
+    }
+    for (const payload of [null, 42, ['A']]) {
+      for (const [path, body] of [
+        [read + 'stores', { payload }],
+        [action + 'write', { idempotencyKey: 'refused', payload }],
+      ] as const) {
+        const response = await user.fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        expect(response.status).toBe(403)
+        expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
+      }
+    }
+    expect({
+      stores: await sql`select * from scopeproof.store order by row_id`,
+      objects: await sql`select * from scopeproof.object order by row_id`,
+      effects: await sql`select * from scopeproof.effect order by row_id`,
+      receipts: await sql`select * from runtime_action_result where caller = ${user.user} order by idempotency_key`,
+    }).toEqual(before)
+    expect(await sql`select operation, method, ref_table, reference_name from access_log
+      where "user" = ${user.user} and operation = 'app_access_denied' order by method`).toEqual([
+      ...Array.from({ length: 3 }, () => ({ operation: 'app_access_denied', method: 'scopeproof.stores:scope', ref_table: null, reference_name: null })),
+      ...Array.from({ length: 3 }, () => ({ operation: 'app_access_denied', method: 'scopeproof.write:scope', ref_table: null, reference_name: null })),
+    ])
+    expect(await user.post(action + 'write', { idempotencyKey: 'valid-c', payload: { effect: 'only-c', storeCodes: ['C'] } }))
+      .toEqual({ result: { stores: ['C'], marker: 37 } })
+    expect(await user.post(read + 'stores', { payload: { storeCodes: ['A'] } })).toEqual({ result: { stores: ['A'], marker: 37 } })
+    expect(await sql`select row_id, value from scopeproof.effect order by row_id`).toEqual([
+      { row_id: 'only-a', value: 'A' }, { row_id: 'only-c', value: 'C' },
+    ])
+    expect(await sql`select idempotency_key from runtime_action_result where caller = ${user.user} order by idempotency_key`)
+      .toEqual([{ idempotency_key: 'valid-a' }, { idempotency_key: 'valid-c' }])
   })
 
   test('whole set admits A and C+A but refuses A+B, empty, missing and malformed scopes', async ({ admin, createUser }) => {

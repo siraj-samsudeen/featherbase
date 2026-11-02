@@ -9,9 +9,12 @@ import MarkdownIt from 'markdown-it'
 import { sql } from './db'
 
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false })
+// markdown-it 15's linkify-it 6 stopped linking a bare www.example.com; a
+// notice written for 14 still links it.
+markdown.linkify.set({ fuzzyLink: true })
 markdown.renderer.rules.image = (tokens, idx) => {
   const token = tokens[idx]
-  const src = token.attrGet('src') ?? ''
+  const src = String(token.attrGet('src') ?? '')
   const alt = markdown.utils.escapeHtml(token.content || src)
   return /^(https?|mailto):/i.test(src) ? `<a href="${markdown.utils.escapeHtml(src)}">${alt}</a>` : alt
 }

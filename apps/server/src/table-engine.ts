@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { inAppTransaction, sql } from './db'
+import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
@@ -54,7 +54,7 @@ const PG_TYPES: Record<string, string | null> = {
 // type to the cast that converts stored values (null when the stored type does
 // not change). Anything else is refused: add a new column, copy the data,
 // then drop the old one.
-export const SAFE_TYPE_CHANGES: Readonly<Record<string, Readonly<Record<string, string | null>>>> = {
+const SAFE_TYPE_CHANGES: Readonly<Record<string, Readonly<Record<string, string | null>>>> = {
   Int: { Float: 'double precision' },
   Data: { Text: 'text', 'Long Text': 'text', Choice: 'text' },
   Text: { 'Long Text': null },
@@ -84,6 +84,7 @@ const optionalString = z
   .string()
   .nullish()
   .transform((v) => v ?? undefined)
+  .optional()
 
 export const columnSchema = z.object({
   column_name: z
@@ -97,13 +98,13 @@ export const columnSchema = z.object({
   reference_table: optionalString,
   choices: optionalString,
   row_table: optionalString,
-  reqd: z.boolean().nullish().transform((v) => v ?? undefined),
-  unique: z.boolean().nullish().transform((v) => v ?? undefined),
+  reqd: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
+  unique: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   default_value: optionalString,
-  read_only: z.boolean().nullish().transform((v) => v ?? undefined),
-  hidden: z.boolean().nullish().transform((v) => v ?? undefined),
-  in_list_view: z.boolean().nullish().transform((v) => v ?? undefined),
-  tier: z.enum(['basic', 'restricted']).nullish().transform((v) => v ?? undefined),
+  read_only: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
+  hidden: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
+  in_list_view: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
+  tier: z.enum(['basic', 'restricted']).nullish().transform((v) => v ?? undefined).optional(),
   // #473: one plain line every form shows under the control.
   description: optionalString,
   // EDS-3: true column name on a bound Table's source when the legal
@@ -112,7 +113,7 @@ export const columnSchema = z.object({
 })
 
 export const tableDefSchema = z.object({
-  access_policy: accessPolicySchema.nullish().transform(value => value ?? undefined),
+  access_policy: accessPolicySchema.nullish().transform(value => value ?? undefined).optional(),
   name: z
     .string()
     .regex(/^(?:[A-Za-z][A-Za-z0-9 ]{0,60}|[a-z][a-z0-9_]{0,30}\.[a-z][a-z0-9_]{0,30})$/, 'invalid Table name'),
@@ -121,19 +122,19 @@ export const tableDefSchema = z.object({
   // Replaces the old istable/issingle booleans: 'table' = normal collection,
   // 'sub_table' = rows only ever nested inside a parent row, 'settings' = a
   // single-row Settings Table (no list, no collection table).
-  kind: z.enum(['table', 'sub_table', 'settings']).nullish().transform((v) => v ?? undefined),
-  is_submittable: z.boolean().nullish().transform((v) => v ?? undefined),
+  kind: z.enum(['table', 'sub_table', 'settings']).nullish().transform((v) => v ?? undefined).optional(),
+  is_submittable: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   id_pattern: optionalString,
   title_column: optionalString,
   description: optionalString,
   // #74: platform-table flag. Accepted here so migrations and seeds can set
   // it through createTable; the public /api/table_def routes REJECT it — a
   // user-created table can never claim system: true.
-  system: z.boolean().nullish().transform((v) => v ?? undefined),
+  system: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   // #559: the Table's rows decide which places people cover. Writing them is
   // System Manager work (security-tables.ts), and only a marked Table can be
   // read by an app's scope provider. Kept when an update leaves it out.
-  decides_scope: z.boolean().nullish().transform((v) => v ?? undefined),
+  decides_scope: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   // EDS-3: binding to an external Data Source. Set only at creation (BV3) —
   // updateTable never touches these. A bound Table gets no DDL and no RLS
   // (BV1): its rows live on the source.
@@ -476,13 +477,14 @@ export async function updateTable(
   if (Object.keys(errors).length)
     throw new AppError('ValidationError', 'Columns left out must be removed by name', errors)
   await sql.begin(async (tx) => {
+    await clearChangedListOverrides(tx, name, def.columns, before)
     await tx`update table_def set ${tx({
       module: def.module ?? existing.module,
       is_submittable: def.is_submittable ?? existing.is_submittable,
       id_pattern: def.id_pattern ?? existing.id_pattern,
       title_column: def.title_column ?? null,
       description: def.description ?? null,
-      // Only when given: migrations before 0131 update Tables without the column.
+      // Only when given: an update that leaves it out keeps the Table's choice.
       ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
       ...(def.access_policy !== undefined ? { access_policy: def.access_policy } : {}),
       updated_at: new Date(),
@@ -504,8 +506,7 @@ export async function updateTable(
         in_list_view: f.in_list_view ?? false,
         tier: f.tier ?? 'basic',
       }
-      // Only touch source_column when a value exists — pre-0064 migrations
-      // that call updateTable run before the column does (fresh databases).
+      // source_column is kept when the update leaves it out.
       const sourceColumn = f.source_column ?? (old ? old.source_column : null)
       if (sourceColumn != null) row.source_column = sourceColumn
       // Likewise a description (0121): kept when the update leaves it out,
@@ -562,6 +563,40 @@ export async function updateTable(
   })
   invalidateMeta(name)
   return getMeta(name)
+}
+
+// #738 (Decision 3): the list a Table shows for everyone is its columns'
+// in_list_view flags, so a save that changes a column's flag deletes that
+// column's in_list_view Metadata Override — otherwise the override would make
+// the "In list" tick do nothing. A flag "changes" when the one sent differs
+// from the stored definition's, or from what the column showed (definition
+// plus override, `shown`): the Edit columns page sends back the merged meta,
+// so an untouched column arrives with its override's value, and unticking a
+// column only an override put in the list arrives equal to the stored value.
+// Other properties' overrides, and the overrides of columns whose flag
+// matches both, stay.
+async function clearChangedListOverrides(
+  tx: TxSql,
+  name: string,
+  columns: { column_name: string; in_list_view?: boolean }[],
+  shown: Map<string, { in_list_view?: boolean | null }>,
+): Promise<void> {
+  const stored = new Map(
+    (
+      await tx<{ column_name: string; in_list_view: boolean }[]>`
+        select column_name, in_list_view from column_def where parent = ${name}`
+    ).map((r) => [r.column_name, Boolean(r.in_list_view)]),
+  )
+  const changed = columns
+    .filter((f) => stored.has(f.column_name))
+    .filter((f) => {
+      const sent = Boolean(f.in_list_view)
+      return sent !== stored.get(f.column_name) || sent !== Boolean(shown.get(f.column_name)?.in_list_view)
+    })
+    .map((f) => f.column_name)
+  if (!changed.length) return
+  await tx`delete from metadata_override
+    where table_name = ${name} and property = 'in_list_view' and column_name in ${tx(changed)}`
 }
 
 export async function createTable(
@@ -677,10 +712,6 @@ export async function createTable(
   }
 
   await sql.begin(async (tx) => {
-    // The binding keys exist only from migration 0064 on. Include them only
-    // when actually binding, so the pre-0064 migrations (0005…) that call
-    // createTable still work on a FRESH database mid-chain — omitting the
-    // keys entirely keeps the INSERT valid against the older shape.
     const tableRow: Record<string, unknown> = {
       name: def.name,
       module: def.module ?? 'Core',
@@ -691,7 +722,6 @@ export async function createTable(
       description: def.description ?? null,
       system: def.system ?? false,
     }
-    // Only when marked: migrations before 0131 create Tables without the column.
     if (def.decides_scope) tableRow.decides_scope = true
     if (def.access_policy) tableRow.access_policy = def.access_policy
     if (qualified) {
@@ -728,7 +758,6 @@ export async function createTable(
         tier: f.tier ?? 'basic',
       }
       if (f.source_column != null) columnRow.source_column = f.source_column
-      // Only when given: migrations before 0121 create Tables without it.
       if (f.description != null) columnRow.description = f.description
       await tx`insert into column_def ${tx(columnRow as Record<string, never>)}`
     }
@@ -849,7 +878,6 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
       const survivors = await sql.begin((tx) => tx`select 1 from file where file_url = ${url} limit 1`)
       if (!survivors.length) await deleteStored(url)
     } catch {
-      /* v8 ignore next 2 -- a database failure on the survivor check after the committed delete; deleteStored itself never throws, so only a mocked driver could reach it */
       console.warn('Table deleted; attachment cleanup could not complete')
     }
   }
@@ -945,6 +973,7 @@ export async function renameColumn(
     // #651: an Admin override (a relabel, a hidden flag) belongs to the
     // column, not to its old name.
     await tx`update metadata_override set column_name = ${target} where table_name = ${meta.name} and column_name = ${from}`
+    await renameInGlossary(tx, meta.name, { table: meta.name, column: from }, { table: meta.name, column: target })
     await tx`update table_def set updated_at = ${new Date()} where name = ${meta.name}`
   })
 
@@ -956,11 +985,29 @@ export async function renameColumn(
   return getMeta(meta.name)
 }
 
+// #629: a glossary term describes Tables and columns by name, in its links
+// and in the app's wording it keeps to tell a reworded term from one that is
+// not. A rename carries both, or every term naming the old name would lose
+// its "?" and refuse its next save.
+async function renameInGlossary(tx: TxSql, table: string, from: { table: string; column?: string }, to: { table: string; column?: string }) {
+  const key = from.column === undefined ? 'table' : 'column'
+  const before = from.column ?? from.table
+  const after = to.column ?? to.table
+  if (from.column === undefined) await tx`update glossary_link set link_table = ${after} where link_table = ${before}`
+  else await tx`update glossary_link set link_column = ${after} where link_table = ${table} and link_column = ${before}`
+  await tx`update glossary_term set app_wording = jsonb_set(app_wording, '{describes}', (
+      select jsonb_agg(case when d->>'table' = ${table} and d->>${key} = ${before}
+        then jsonb_set(d, array[${key}::text], to_jsonb(${after}::text)) else d end order by n)
+      from jsonb_array_elements(app_wording->'describes') with ordinality as e(d, n)))
+    where jsonb_typeof(app_wording->'describes') = 'array'
+      and app_wording->'describes' @> jsonb_build_array(jsonb_build_object('table', ${table}::text, ${key}::text, ${before}::text))`
+}
+
 // #651: where the platform keeps a Table's name outside its own definition,
 // beyond the link columns declared Reference -> Table (swept by metadata).
 const TABLE_NAME_COLUMNS: readonly [string, string][] = [
   ['custom_field', 'reference_table'], ['custom_field', 'row_table'], ['access_log', 'ref_table'],
-  ['saved_view', 'ref_table'], ['user_settings', 'table_name'], ['tag_link', 'ref_table'], ['import_log', 'table_created'],
+  ['saved_view', 'ref_table'], ['user_settings', 'table_name'], ['tag_link', 'ref_table'],
 ]
 
 // #651: rename one of an app's Tables, keeping its rows, its history, the
@@ -1034,6 +1081,7 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
       await tx.unsafe(`update ${relations.get(p.parent)} set ${quoteIdent(p.column_name)} = $1 where ${quoteIdent(p.column_name)} = $2`, [to, from])
     for (const [table, column] of TABLE_NAME_COLUMNS)
       await tx.unsafe(`update ${table} set ${quoteIdent(column)} = $1 where ${quoteIdent(column)} = $2`, [to, from])
+    await renameInGlossary(tx, from, { table: from }, { table: to })
     await tx`update home_page_link set label = ${to} where link_to = ${to} and label = ${from}`
     await tx`update installed_app set tables = (
         select jsonb_agg(case when value = to_jsonb(${from}::text) then to_jsonb(${to}::text) else value end order by ordinality)

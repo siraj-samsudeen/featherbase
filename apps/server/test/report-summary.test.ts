@@ -4,6 +4,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { createUserWithRole, expectApiError } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
+import { sql } from '../src/db'
 
 const T = 'Summary Test Sale'
 const ENC = encodeURIComponent(T)
@@ -36,6 +37,36 @@ async function setup(admin: TestClient) {
 const summaryPath = (params: Record<string, string>) => `/api/table/${ENC}:summary?${new URLSearchParams(params)}`
 
 describe('summary totals over every matching row', () => {
+  test('wrong-shaped JSON sums leave the summary data unchanged', async ({ admin }) => {
+    await setup(admin)
+    const metaPath = `/api/table/${ENC}:meta`
+    const before = await sql`select * from featherbase.summary_test_sale order by row_id`
+    const meta = await admin.get(metaPath)
+    for (const sums of [42, ['qty', 7]]) {
+      const response = await admin.fetch(summaryPath({ sums: JSON.stringify(sums) }))
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({ error: {
+        type: 'BadRequestError', message: 'sums must be a JSON list of column names',
+      } })
+      expect(await sql`select * from featherbase.summary_test_sale order by row_id`).toEqual(before)
+      expect(await admin.get(metaPath)).toEqual(meta)
+    }
+    const result = await admin.get<Summary>(summaryPath({
+      filters: JSON.stringify([['qty', '>=', 2]]), group_by: 'region',
+      sums: JSON.stringify(['qty', 'amount']),
+    }))
+    expect(result).toEqual({
+      count: 3, sums: { qty: '14', amount: '101.250000000' },
+      groups: [
+        { value: 'North', count: 1, sums: { qty: '2', amount: '0.250000000' } },
+        { value: 'South', count: 1, sums: { qty: '5', amount: '100.000000000' } },
+        { value: null, count: 1, sums: { qty: '7', amount: '1.000000000' } },
+      ],
+    })
+    expect(await sql`select * from featherbase.summary_test_sale order by row_id`).toEqual(before)
+    expect(await admin.get(metaPath)).toEqual(meta)
+  })
+
   test('the overall count and sums cover every matching row', async ({ admin }) => {
     await setup(admin)
     const res = await admin.get<Summary>(summaryPath({ sums: JSON.stringify(['qty', 'amount']) }))

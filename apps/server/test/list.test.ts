@@ -58,10 +58,41 @@ describe('DOC-010: get_list with filters, fields, order_by, pagination', () => {
     expect(body.data.map((r: { title: string }) => r.title)).toEqual(['delta', 'beta', 'gamma'])
   })
 
+  test('strict, inclusive and negative filters keep their distinct boundary semantics', async ({ admin }) => {
+    await setup(admin)
+    const cases: [unknown[], string[]][] = [
+      [['qty', '>', 3], ['beta', 'delta']],
+      [['qty', '<', 3], ['alpha']],
+      [['qty', '<=', 3], ['alpha', 'gamma']],
+      [['title', 'not like', '%ta'], ['alpha', 'gamma']],
+      [['qty', 'not in', [1, 9]], ['beta', 'gamma']],
+      [['qty', 'in', []], []],
+    ]
+    for (const [filter, expected] of cases) {
+      const result = await admin.get<{ total: number; data: { title: string }[] }>(listPath({
+        filters: JSON.stringify([filter]), fields: '["title"]', order_by: 'title asc',
+      }))
+      expect(result.total, JSON.stringify(filter)).toBe(expected.length)
+      expect(result.data, JSON.stringify(filter)).toEqual(expected.map(title => ({ title })))
+    }
+  })
+
+  test('a malformed filter tuple is refused rather than silently ignored', async ({ admin }) => {
+    await setup(admin)
+    for (const filter of [['qty', '>'], { field: 'qty', operator: '>', value: 3 }])
+      await expectApiError(admin.get(listPath({ filters: JSON.stringify([filter]) })), {
+        status: 417, type: 'ValidationError', message: expect.stringContaining('Each filter must be [field, operator, value]'),
+      })
+    expect(await admin.get(listPath({ fields: '["title"]', order_by: 'title asc' }))).toEqual({
+      total: 4, data: [{ title: 'alpha' }, { title: 'beta' }, { title: 'delta' }, { title: 'gamma' }],
+      limit_start: 0, limit_page_length: 20,
+    })
+  })
+
   test('paginates with stable ordering and reports total', async ({ admin }) => {
     await setup(admin)
     const page1 = await admin.get<{ total: number; data: { title: string }[] }>(
-      listPath({ order_by: 'qty asc', fields: JSON.stringify(['title']), limit_page_length: '2' }),
+      listPath({ order_by: 'qty', fields: JSON.stringify(['title']), limit_page_length: '2' }),
     )
     const page2 = await admin.get<{ total: number; data: { title: string }[] }>(
       listPath({

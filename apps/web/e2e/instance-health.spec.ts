@@ -1,8 +1,8 @@
-import { test, adminAuth, ensureAdminReaderRole, loginAs, type APIRequestContext } from './fixtures'
+import { test, expect, adminAuth, ensureAdminReaderRole, loginAs, type APIRequestContext } from './fixtures'
 
 // Instance health (#465, tasks 5.3 and 5.4; checklist on #465). The health
-// page on an instance whose settings file was never applied, and the banner
-// that only System Managers see, until every check passes.
+// page on an instance using UI-managed settings, and the operational fault
+// banner that only System Managers see until the fault is resolved.
 //
 // The isolated suite starts from a fresh database. Files signed in as
 // Administrator run first, alphabetically, so this one runs before
@@ -53,18 +53,17 @@ test.afterAll(async ({ request }) => {
   for (const { table, row } of switchedOff) await patch(request, table, row, { enabled: true })
 })
 
-test('a System Manager opens instance health where the settings were never applied (5.3)', async ({ session }) => {
+test('a System Manager sees that a settings file is optional when using UI-managed settings', async ({ session }) => {
   await session
     .visit('/admin/instance-health')
     .assertHas('[data-testid="instance-health"]')
     .within('[data-testid="instance-health"] h1', (h) => h.assertExactText('Instance health'))
     .within('[data-testid="health-check-settings-applied"]', (card) =>
       card
-        .within('[data-testid="health-state"]', (s) => s.assertExactText('Failing'))
-        .within('[data-testid="health-message"]', (m) => m.assertExactText('The settings were never applied.'))
-        .within('[data-testid="health-fix"]', (f) => f.assertText('cli settings:apply')))
-    // The banner sits on every Admin page, this one included.
-    .within('[data-testid="health-banner"]', (b) => b.assertText('need').assertAttribute('data-severity', 'error'))
+        .within('[data-testid="health-state"]', (s) => s.assertExactText('Optional'))
+        .within('[data-testid="health-message"]', (m) => m.assertExactText('Settings are managed in Featherbase. A managed settings file is optional.'))
+        .refuteHas('[data-testid="health-fix"]'))
+    .refuteHas('[data-testid="health-banner"]')
 })
 
 test('a person without the System Manager role does not see the banner (5.4)', async ({ session }) => {
@@ -90,7 +89,8 @@ test('the banner leads to the page, and disappears once every check passes (5.4)
   await patch(request, 'Person', keeperId, { enabled: true })
   const applied = await request.post('/api/instance-settings/apply', { headers, data: { file: { settings: {} } } })
   if (applied.status() !== 200) throw new Error(`apply: ${applied.status()} ${await applied.text()}`)
-  const jobs = (await (await request.get('/api/table/Scheduled%20Job?limit_page_length=100', { headers })).json()) as { data: { row_id: string; enabled: boolean | number }[] }
+  const fields = encodeURIComponent(JSON.stringify(['row_id', 'enabled']))
+  const jobs = (await (await request.get(`/api/table/Scheduled%20Job?limit_page_length=100&fields=${fields}`, { headers })).json()) as { data: { row_id: string; enabled: boolean | number }[] }
   for (const job of jobs.data.filter((j) => j.enabled)) {
     await patch(request, 'Scheduled Job', job.row_id, { enabled: false })
     switchedOff.push({ table: 'Scheduled Job', row: job.row_id })
@@ -100,22 +100,31 @@ test('the banner leads to the page, and disappears once every check passes (5.4)
     await patch(request, 'Sign In Method', 'google', { enabled: false })
     switchedOff.push({ table: 'Sign In Method', row: 'google' })
   }
-  // One problem left: the keeper is switched off, so no System Manager has an address.
-  await patch(request, 'Person', keeperId, { enabled: false })
-
-  await session
-    .visit('/admin/all-tables')
-    .within('[data-testid="health-banner"]', (b) =>
-      b.assertText('1 problem needs attention').assertAttribute('data-severity', 'error').refuteHas('button'))
-    .clickLink('Open instance health')
-    .assertHas('[data-testid="instance-health"]')
-    .within('[data-testid="health-check-system-manager-email"] [data-testid="health-state"]', (s) => s.assertExactText('Failing'))
-
-  await patch(request, 'Person', keeperId, { enabled: true })
+  // Unfinished notice-recipient setup is guidance, not a fault. Trigger a
+  // real worker failure to exercise the persistent operational banner.
+  const method = 'e2e_health_missing_handler'
+  const job = await save(request, 'Scheduled Job', { method, cadence: 'daily', enabled: true })
+  try {
+    const queued = await request.post('/api/enqueue_job', { headers, data: { method, max_attempts: 1 } })
+    expect(queued.status()).toBe(201)
+    await expect.poll(async () => {
+      const response = await request.get(`/api/table/Scheduled%20Job/${encodeURIComponent(job.row_id)}`, { headers })
+      return (await response.json()).last_outcome
+    }, { timeout: 15_000 }).toBe('error')
+    await session
+      .visit('/admin/all-tables')
+      .within('[data-testid="health-banner"]', (b) =>
+        b.assertText('1 problem needs attention').assertAttribute('data-severity', 'error').refuteHas('button'))
+      .clickLink('Open instance health')
+      .assertHas('[data-testid="instance-health"]')
+      .within(`[data-testid="health-check-scheduled-job:${method}"] [data-testid="health-state"]`, (s) => s.assertExactText('Failing'))
+  } finally {
+    await patch(request, 'Scheduled Job', job.row_id, { enabled: false })
+  }
   await session
     .visit('/admin/all-tables')
     .assertHas('[data-testid="all-tables-link"]')
     .refuteHas('[data-testid="health-banner"]')
     .visit('/admin/instance-health')
-    .within('[data-testid="instance-health-summary"]', (s) => s.assertExactText('Every check passes.'))
+    .within('[data-testid="instance-health-summary"]', (s) => s.assertExactText('Ready to explore. Optional next steps are listed separately.'))
 })
