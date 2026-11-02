@@ -256,6 +256,18 @@ test('A link with a value in the eighth box shows six plus the eighth, and says 
   expect(screen.getByTestId('std-filter-more')).toHaveTextContent('+1 more')
 })
 
+test('After opening, "Show fewer" folds the extra boxes away again, keeping a box that holds a value', async ({ admin }) => {
+  await seedEight(admin)
+  await openList(admin, `?filters=${enc(JSON.stringify([['owner_name', 'like', '%owner%']]))}`)
+  fireEvent.click(screen.getByTestId('std-filter-more'))
+  expect(boxes()).toEqual(EIGHT)
+  const fewer = screen.getByTestId('std-filter-more')
+  expect(fewer).toHaveTextContent('Show fewer')
+  fireEvent.click(fewer)
+  expect(boxes()).toEqual([...EIGHT.slice(0, 6), 'owner_name'])
+  expect(screen.getByTestId('std-filter-more')).toHaveTextContent('+1 more')
+})
+
 test('Six or fewer possible boxes show no "more" control', async ({ admin }) => {
   await seed(admin)
   await openList(admin)
