@@ -30,6 +30,9 @@ async function healthy(createUser: (o: { email: string; roles: string[] }) => Pr
 test('chosen file configuration shows the required setup without a fault banner', async ({ admin }) => {
   overrideVariable('FEATHERBASE_INSTANCE', 'client/instance')
   await sql`delete from instance_settings_apply`
+  // This is a setup-only instance. A preceding server suite can leave the
+  // seeded scheduler idle long enough for its real overdue-job check to fire.
+  await sql`update scheduled_job set enabled = false`
   await renderApp('/featherbase/admin/instance-health', admin)
   const page = await screen.findByTestId('instance-health')
   expect(within(page).getByRole('heading', { level: 1 })).toHaveTextContent('Instance health')

@@ -51,7 +51,7 @@ test('the Admin bar remains named and usable when its public brand endpoint fail
       // option, but the label the person sees is the selected destination.
       await expect.poll(() => page.getByTestId('top-bar-name').evaluate((element) =>
         element instanceof HTMLSelectElement ? element.selectedOptions[0]?.textContent : element.textContent,
-      )).toBe('Featherbase Admin')
+      )).toBe('Featherbase')
       await page.getByTestId('session-user').click()
       await expect(page.getByTestId('logout')).toBeVisible()
     })
@@ -134,9 +134,9 @@ test('the Sign-in methods page is served on the Admin address too', async ({ ses
     await page.getByTestId('session-user').click()
     await page.getByTestId('account-sign-in-methods').click()
   })
-  await session.step('it opens under a bar named Featherbase Admin, with no Admin menus', async () => {
+  await session.step('it opens under a bar named Featherbase, with no Admin menus', async () => {
     await expect(page).toHaveURL(`${ADMIN}/featherbase/account/sign-in-methods`)
-    await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase Admin')
+    await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase')
     await expect(page.getByTestId('admin-sidebar')).toHaveCount(0)
   })
 })
@@ -302,14 +302,14 @@ for (const width of [1280, 375]) {
   test.describe(`#501 at ${width}px`, () => {
     test.use({ viewport: { width, height: phone ? 812 : 800 }, colorScheme: 'light' })
 
-    test('the Admin screens are titled Featherbase Admin', async ({ session, page, request }) => {
+    test('the Admin screens are titled Featherbase', async ({ session, page, request }) => {
       const manager = await person(request, `Admin Title ${width}`, ['System Manager'])
       await signInAt(page, ADMIN, manager)
       await expect(page).toHaveURL(new RegExp(`^${ADMIN}/featherbase/admin`), { timeout: 15_000 })
       await expect(page.getByTestId('session-user')).toBeVisible()
-      await session.step('the tab and the logo say Featherbase Admin', async () => {
-        await expect(page).toHaveTitle('Featherbase Admin')
-        await expect(page.getByRole('link', { name: 'Featherbase Admin' })).toHaveAttribute('title', 'Featherbase Admin')
+      await session.step('the tab and the logo say Featherbase', async () => {
+        await expect(page).toHaveTitle('Featherbase')
+        await expect(page.getByRole('link', { name: 'Featherbase', exact: true })).toHaveAttribute('title', 'Featherbase')
       })
       await shot(page, 'item1-admin-address-admin')
     })
@@ -341,14 +341,14 @@ for (const width of [1280, 375]) {
       await shot(page, 'item3-dash-address-account')
     })
 
-    test('on the Admin address the account page is Featherbase Admin for someone who can use Admin', async ({ session, page, request }) => {
+    test('on the Admin address the account page is Featherbase for someone who can use Admin', async ({ session, page, request }) => {
       const manager = await person(request, `Account Admin ${width}`, ['System Manager'])
       await signInAt(page, ADMIN, manager)
       await expect(page).toHaveURL(new RegExp(`^${ADMIN}/featherbase/admin`), { timeout: 15_000 })
       await page.goto(`${ADMIN}/featherbase/account/sign-in-methods`)
-      await session.step('bar and tab say Featherbase Admin, with no Open Admin', async () => {
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase Admin')
-        await expect(page).toHaveTitle('Featherbase Admin')
+      await session.step('bar and tab say Featherbase, with no Open Admin', async () => {
+        await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase')
+        await expect(page).toHaveTitle('Featherbase')
         expect(await openAdminShown(page, phone)).toBe(0)
       })
       await shot(page, 'item3-admin-address-account-admin')

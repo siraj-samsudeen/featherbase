@@ -107,7 +107,7 @@ describe('Feather Dash against the real platform', () => {
     history.replaceState(null, '', '/feather_dash/?store=9901')
     await open()
     await waitForText('Sign in to open your report.')
-    expect(document.querySelector('a')?.getAttribute('href')).toBe('/featherbase/login?next=%2Ffeather_dash%2F%3Fstore%3D9901')
+    expect(document.querySelector('[data-testid=signed-out] a')?.getAttribute('href')).toBe('/featherbase/login?next=%2Ffeather_dash%2F%3Fstore%3D9901')
     expect(requests.filter(r => r.path.includes('/app_reads/')).every(r => r.status === 401)).toBe(true)
     expect(requests.length).toBeGreaterThanOrEqual(3)
   })
@@ -116,7 +116,7 @@ describe('Feather Dash against the real platform', () => {
     token = admin.token
     await open()
     await waitForText('your account covers no store')
-    expect(document.querySelector('a')?.getAttribute('href')).toBe('/featherbase/admin/instance-health')
+    expect(document.querySelector('[data-testid=manager-no-store] a')?.getAttribute('href')).toBe('/featherbase/admin/instance-health')
     expect(document.querySelector('code')?.textContent).toBe('pnpm dev jeyarama/dash --made-up-data')
     expect([...requests].sort((a, b) => a.path.localeCompare(b.path))).toEqual([
       { path: '/api/app_reads/feather_dash/embed_session', status: 403 },
@@ -138,7 +138,7 @@ describe('Feather Dash against the real platform', () => {
       expect(requests.find(r => r.path === path)?.status).toBe(200)
       expect(document.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('no_access')
       expect(document.body.textContent).toContain('Opening your report…')
-      expect(document.querySelector('a')).toBeNull()
+      expect(document.querySelector('[data-testid=feather-dash] a')).toBeNull()
       await act(async () => root!.unmount())
       root = undefined
       await act(async () => {
@@ -179,7 +179,7 @@ describe('Feather Dash against the real platform', () => {
     token = (await createUser({ email: 'dash-ui-reader@example.test' })).token
     await open()
     await waitForText('Ask your Store Manager')
-    expect(document.querySelector('a')).toBeNull()
+    expect(document.querySelector('[data-testid=feather-dash] a')).toBeNull()
     expect(requests.map(r => r.path).sort()).toEqual([
       '/api/app_reads/feather_dash/embed_session', '/api/app_reads/feather_dash/report', '/api/whoami',
     ])
@@ -363,7 +363,7 @@ describe('Feather Dash against the real platform', () => {
       expect(document.querySelector('[data-testid=setup-missing]')?.textContent).toContain('secret MOTHERDUCK_TOKEN')
       expect(document.body.textContent).toContain('Set each setting in the instance settings file')
       expect(document.querySelector('[data-testid=next-command]')?.textContent).toBe('pnpm dev jeyarama/dash --made-up-data')
-      expect(document.querySelector('a')?.getAttribute('href')).toBe('/featherbase/admin/instance-health')
+      expect(document.querySelector('[data-testid=not-set-up] a')?.getAttribute('href')).toBe('/featherbase/admin/instance-health')
     })
   })
 
@@ -466,7 +466,7 @@ describe('Feather Dash against the real platform', () => {
       expect(requests.filter(r => r.path.endsWith('/stores'))).toHaveLength(1)
       if (signedIn) expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
       else {
-        expect(document.querySelector('a')).toBeNull()
+        expect(document.querySelector('[data-testid=feather-dash] a')).toBeNull()
         expect(requests.filter(r => r.path.includes('/app_reads/')).map(r => r.status)).toEqual([403, 403, 403])
       }
     })
@@ -501,7 +501,7 @@ describe('Feather Dash against the real platform', () => {
         await waitForText(missing ? "Feather Dash isn't set up on this instance yet" : 'your account covers no store')
         expect(document.querySelector('code')).toBeNull()
         expect(document.body.textContent).not.toContain('this machine')
-        expect(document.querySelector('a')?.getAttribute('href')).toBe('/featherbase/admin/instance-health')
+        expect(document.querySelector('[data-testid=feather-dash] a')?.getAttribute('href')).toBe('/featherbase/admin/instance-health')
       })
     })
   }

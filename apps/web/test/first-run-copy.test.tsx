@@ -21,11 +21,15 @@ async function noManagerEmails() {
 }
 
 async function invite() {
+  await userEvent.click(await screen.findByRole('link', { name: 'Set up administrators' }))
   await userEvent.type(await screen.findByLabelText('Full name', {}, { timeout: 8000 }), 'Asha Keeper')
   await userEvent.type(screen.getByLabelText('Email'), 'asha@example.com')
   await userEvent.click(screen.getByRole('button', { name: 'Invite' }))
   const [result] = await screen.findAllByTestId('setup-result')
-  return within(result).getByTestId('setup-invitation')
+  expect(result).toHaveTextContent('Asha Keeper is invited as a System Manager')
+  const invitation = within(result).getByTestId('setup-invitation')
+  expect(invitation).toHaveTextContent('Sign in with Google using this address: asha@example.com')
+  return invitation
 }
 
 test('Copy puts the invitation on the clipboard and says so', async ({ admin }) => {
@@ -55,11 +59,17 @@ test('a browser that blocks site data is not offered the setup on sign-in', asyn
   sessionStorage.setItem(OFFER_SETUP_KEY, '1')
   // Session storage refuses to be read; the signed-in session (local storage) is untouched.
   const read = Storage.prototype.getItem
-  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+  const storageRead = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
     if (this === sessionStorage) throw new DOMException('blocked', 'SecurityError')
     return read.call(this, key)
   })
   await renderApp('/featherbase/admin', admin)
-  expect(await screen.findByTestId('health-banner', {}, { timeout: 8000 })).toBeInTheDocument()
+  // Await the signed-in shell and the setup decision, not a particular
+  // Home Page: the configured landing varies across full-suite fixtures.
+  expect(await screen.findByTestId('admin-sidebar', {}, { timeout: 8000 })).toBeInTheDocument()
+  await vi.waitFor(() => expect(storageRead).toHaveBeenCalledWith(OFFER_SETUP_KEY))
+  expect(screen.queryByTestId('welcome-setup')).not.toBeInTheDocument()
   expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('welcome-link'))
+  expect(await screen.findByRole('heading', { name: 'Welcome to Featherbase' })).toBeInTheDocument()
 })
