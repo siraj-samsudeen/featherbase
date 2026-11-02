@@ -67,3 +67,22 @@ Then('the {string} customization takes effect as {string}', async function (sett
 });
 Given('a hidden category customization is saved', async function () { await this.overrides.savedHiddenCategory(); });
 When('the user edits that customization to the text {string}', async function (value) { await this.overrides.edit({ value }); });
+
+When('the user saves a {string} customization with an unknown property', async function (target) {
+  await this.overrides.unknownProperty(target);
+});
+Then('the customization is refused with the permitted {string} properties', function (target) {
+  assert.equal(this.overrides.result.status, 417);
+  assert.equal(this.overrides.result.body.error.type, 'ValidationError');
+  // An independent baseline pins the existing allowlists; not expectations derived from production.
+  const expected = target === 'column'
+    ? ['label', 'hidden', 'reqd', 'read_only', 'in_list_view', 'default_value', 'choices']
+    : ['label', 'title_column', 'search_columns', 'sort_column', 'sort_direction'];
+  assert.deepEqual(this.overrides.permittedNames(), expected);
+});
+When('the user saves a category uniqueness customization with text {string}', async function (value) {
+  await this.overrides.uniqueness(value);
+});
+Then('uniqueness is absent from the permitted properties', function () {
+  assert.ok(!this.overrides.permittedNames().includes('unique'));
+});

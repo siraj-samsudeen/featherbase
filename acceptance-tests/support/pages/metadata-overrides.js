@@ -99,6 +99,18 @@ class MetadataOverrides {
     this.beforeMeta = await this.meta();
   }
 
+  async unknownProperty(target) {
+    await this.save({ column_name: target === 'column' ? 'category' : null, property: 'not_a_property', value: 'true' });
+  }
+
+  async uniqueness(value) {
+    await this.save({ column_name: 'category', property: 'unique', value });
+  }
+
+  permittedNames() {
+    return this.result.body.error.message.split('Permitted properties: ')[1]?.split(', ');
+  }
+
   savedRow() { return this.api.row('Metadata Override', this.id); }
 }
 
