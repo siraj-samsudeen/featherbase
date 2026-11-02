@@ -108,6 +108,62 @@ test('Number, money, long text, file and JSON columns get no box', async ({ admi
   expect(boxes()).toEqual(['section'])
 })
 
+test('Picking First narrows the rows and shows as in use; picking All brings them back', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  await waitFor(() => expect(sections()).toHaveLength(3))
+  fireEvent.change(screen.getByTestId('std-filter-floor'), { target: { value: 'First' } })
+  await waitFor(() => expect(sections()).toEqual(['Shirts']))
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('floor = First')
+  fireEvent.change(screen.getByTestId('std-filter-floor'), { target: { value: '' } })
+  await waitFor(() => expect(sections()).toHaveLength(3))
+  expect(screen.queryByTestId('filter-chip')).not.toBeInTheDocument()
+})
+
+test('Typing "asha" in the Owner box finds rows containing asha', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  await waitFor(() => expect(sections()).toHaveLength(3))
+  fireEvent.change(screen.getByTestId('std-filter-owner_name'), { target: { value: 'asha' } })
+  fireEvent.keyDown(screen.getByTestId('std-filter-owner_name'), { key: 'Enter' })
+  await waitFor(() => expect(sections()).toEqual(['Sarees']))
+})
+
+async function seedActive(admin: Admin) {
+  await admin.post('/api/table_def', {
+    name: T,
+    columns: [
+      { column_name: 'section', column_type: 'Data', label: 'Section', in_list_view: true },
+      { column_name: 'active', column_type: 'Check', label: 'Active', in_list_view: true },
+    ],
+  })
+  for (const [section, active] of [['Sarees', true], ['Shawls', true], ['Shirts', false]])
+    await admin.post('/api/save_row', { table: T, row: { section, active } })
+}
+
+test('The Active box offers All, Yes and No, and each finds the right rows', async ({ admin }) => {
+  await seedActive(admin)
+  await openList(admin)
+  await waitFor(() => expect(sections()).toHaveLength(3))
+  const box = screen.getByTestId('std-filter-active')
+  expect([...box.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['All', 'Yes', 'No'])
+
+  fireEvent.change(box, { target: { value: 'Yes' } })
+  await waitFor(() => expect(sections().sort()).toEqual(['Sarees', 'Shawls']))
+  fireEvent.change(screen.getByTestId('std-filter-active'), { target: { value: 'No' } })
+  await waitFor(() => expect(sections()).toEqual(['Shirts']))
+  fireEvent.change(screen.getByTestId('std-filter-active'), { target: { value: '' } })
+  await waitFor(() => expect(sections()).toHaveLength(3))
+})
+
+test('A Yes/No box stores the word Yes or No in the page address, as Choice does', async ({ admin }) => {
+  await seedActive(admin)
+  await openList(admin, `?filters=${enc(JSON.stringify([['active', '=', 'No']]))}`)
+  await waitFor(() => expect(sections()).toEqual(['Shirts']))
+  expect(screen.getByTestId('std-filter-active')).toHaveValue('No')
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('active = No')
+})
+
 test('Row ID gets no box and takes none of the six places, and can still get an added filter', async ({ admin }) => {
   await seed(admin)
   await openList(admin)
