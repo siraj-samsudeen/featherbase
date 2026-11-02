@@ -1,7 +1,4 @@
-// Recent actions (issue #101, Phase 1): a per-user localStorage ring buffer
-// of what the operator visited — rows, filtered lists, reports, searches —
-// feeding the awesomebar's recents groups. Client-side only by design; the
-// server-side `user_event` log is a later phase of the same issue.
+// Per-user warm history cache, reconciled with the server on app load.
 
 import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle } from 'shared'
 
@@ -47,8 +44,12 @@ function save(user: string, entries: RecentEntry[]): void {
   }
 }
 
-export function recordAction(user: string, action: RecentAction, now = Date.now()): void {
-  const entries = loadAll(user)
+// Unlike the transport queue this journal survives a flush, including failed
+// delivery and a summary captured before a successful POST. Only a summary
+// containing a visit confirms it. It has the same bounds as the visible cache.
+const unconfirmed = new Map<string, RecentEntry[]>()
+
+function remember(entries: RecentEntry[], action: RecentAction, now: number): void {
   const existing = entries.find((e) => e.key === action.key)
   if (existing) {
     Object.assign(existing, action)
@@ -60,7 +61,15 @@ export function recordAction(user: string, action: RecentAction, now = Date.now(
       entries.splice(0, entries.length - MAX_ENTRIES)
     }
   }
+}
+
+export function recordAction(user: string, action: RecentAction, now = Date.now()): void {
+  const entries = loadAll(user)
+  remember(entries, action, now)
   save(user, entries)
+  const pending = unconfirmed.get(user) ?? []
+  remember(pending, action, now)
+  unconfirmed.set(user, pending)
   enqueueServerEvent(user, action, now)
 }
 
@@ -94,8 +103,14 @@ function flush(useBeacon = false): void {
     clearTimeout(flushTimer)
     flushTimer = null
   }
-  if (!sink || queue.length === 0) return
+  if (!sink) return
   const current = sink.currentUser()
+  // A departing session's unconfirmed visits must not leak into a later
+  // sign-in. Its cache remains available only if that sign-in's summary fails.
+  for (const owner of unconfirmed.keys()) {
+    if (owner !== current) unconfirmed.delete(owner)
+  }
+  if (queue.length === 0) return
   // Fail closed: whatever does not belong to the authenticated session is
   // dropped — delivery is best-effort, attribution is not.
   const mine = current ? queue.filter((q) => q.owner === current) : []
@@ -152,11 +167,9 @@ export interface ServerRecentEntry {
   visits: number[]
 }
 
-/** Cross-device merge: union the server's per-key aggregates into the local
- *  buffer (visits merged, deduplicated, capped — same shape both sides). */
-export function mergeServerEntries(user: string, remote: ServerRecentEntry[]): void {
-  if (remote.length === 0) return
-  const entries = loadAll(user)
+/** Replace cached history, folding this document's unconfirmed visits on top. */
+export function replaceServerEntries(user: string, remote: ServerRecentEntry[]): void {
+  const entries: RecentEntry[] = []
   for (const r of remote) {
     if (!['row', 'list', 'page', 'search'].includes(r.kind) || !r.key) continue
     const existing = entries.find((e) => e.key === r.key)
@@ -170,12 +183,29 @@ export function mergeServerEntries(user: string, remote: ServerRecentEntry[]): v
         label: r.label || r.key,
         sub: r.sub,
         path: r.path,
-        visits: r.visits.slice(-MAX_VISITS),
+        visits: [...new Set(r.visits)].sort((a, b) => a - b).slice(-MAX_VISITS),
       })
     }
   }
-  entries.sort((a, b) => lastVisit(a) - lastVisit(b))
-  entries.splice(0, Math.max(0, entries.length - MAX_ENTRIES))
+  const pending: RecentEntry[] = []
+  for (const local of unconfirmed.get(user) ?? []) {
+    const confirmed = entries.find((e) => e.key === local.key)
+    const visits = local.visits.filter((at) => !confirmed?.visits.includes(at))
+    if (visits.length) pending.push({ ...local, visits })
+  }
+  unconfirmed.set(user, pending)
+  for (const local of pending) {
+    const existing = entries.find((e) => e.key === local.key)
+    if (existing) {
+      Object.assign(existing, local, { visits: [...new Set([...existing.visits, ...local.visits])].sort((a, b) => a - b).slice(-MAX_VISITS) })
+    } else {
+      entries.push(local)
+    }
+  }
+  if (entries.length > MAX_ENTRIES) {
+    entries.sort((a, b) => lastVisit(a) - lastVisit(b))
+    entries.splice(0, entries.length - MAX_ENTRIES)
+  }
   save(user, entries)
 }
 

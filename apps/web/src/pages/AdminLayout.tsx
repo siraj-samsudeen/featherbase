@@ -8,7 +8,7 @@ import {
   ago,
   connectEventSink,
   frequentActions,
-  mergeServerEntries,
+  replaceServerEntries,
   displayEntry,
   recentActions,
   recentSearches,
@@ -155,20 +155,25 @@ function AdminShell() {
   const [barFocused, setBarFocused] = useState(false)
   const [recentSel, setRecentSel] = useState(0)
 
-  // #101 Phase 3: once per signed-in user, pull the server's per-key
-  // aggregates and union them into the local buffer — recents follow the
-  // user across devices; the merge is idempotent.
-  const syncedFor = useRef<string | null>(null)
+  // Cached destinations are not offered until the initial summary settles.
+  // A failed request unlocks the untouched cache as a best-effort fallback.
+  const [historyReadyFor, setHistoryReadyFor] = useState<string | null>(null)
   useEffect(() => {
-    if (!user || syncedFor.current === user.row_id) return
-    syncedFor.current = user.row_id
+    if (!user) return
+    let active = true
+    setHistoryReadyFor(null)
     api
       .get<{ entries: ServerRecentEntry[] }>('/api/events/summary')
-      .then((res) => mergeServerEntries(user.row_id, res.entries))
-      .catch(
-        () => {},
-      )
+      .then((res) => {
+        if (active) replaceServerEntries(user.row_id, res.entries)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setHistoryReadyFor(user.row_id)
+      })
+    return () => { active = false }
   }, [user?.row_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const historyReady = Boolean(user && historyReadyFor === user.row_id)
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -294,22 +299,22 @@ function AdminShell() {
   // recency) and Frequent (frecency) groups; while typing it offers matching
   // past searches. All three read the per-user localStorage buffer.
   const trimmed = search.trim()
-  const showRecents = Boolean(barFocused && trimmed === '' && user)
+  const showRecents = Boolean(barFocused && trimmed === '' && historyReady)
   const recentItems = showRecents && user ? uniqueByDisplay(recentActions(user.row_id, 12)).slice(0, 6) : []
   const frequentItems =
     showRecents && user
       ? uniqueByDisplay([...recentItems, ...frequentActions(user.row_id, 8)]).slice(recentItems.length, recentItems.length + 4)
       : []
   const pick = [...recentItems, ...frequentItems]
-  const searchChips = user && trimmed ? recentSearches(user.row_id, trimmed, 3) : []
+  const searchChips = historyReady && user && trimmed ? recentSearches(user.row_id, trimmed, 3) : []
 
   // #101 Phase 2: the sidebar's zero-keystroke recall — destinations only
   // (searches stay in the command bar, where they can be re-run).
-  const sidebarCandidates = user
+  const sidebarCandidates = historyReady && user
     ? uniqueByDisplay(recentActions(user.row_id, 20).filter((e) => e.kind !== 'search')).slice(0, SIDEBAR_RECENT_CAP)
     : []
   const recentSlots = sidebarCandidates.slice(0, 3)
-  const sidebarFrequent = user
+  const sidebarFrequent = historyReady && user
     ? uniqueByDisplay([...recentSlots, ...frequentActions(user.row_id, 12)]).slice(recentSlots.length, recentSlots.length + 2)
     : []
   const sidebarRecent = sidebarFrequent.length ? recentSlots : sidebarCandidates
