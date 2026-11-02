@@ -8,7 +8,7 @@ import { ApiError, api } from '../lib/api'
 import { fmtCount } from '../lib/inr'
 import { formatValue, useSettings } from '../lib/settings'
 import { lastPlace, listTables, previewTable, refreshTables, rememberPlace, type WarehouseSource } from '../lib/warehouse'
-import { Button, Notice, SearchInput, Select, Skeleton, cardClasses } from '../components/ui'
+import { Button, Notice, SearchInput, Select, Skeleton, buttonClasses, cardClasses } from '../components/ui'
 import { ChevronDown } from '../components/ui/icons'
 
 export function WarehouseBrowser({ name, database, schema }: { name: string; database?: string; schema?: string }) {
@@ -238,9 +238,15 @@ function Preview({ name, database, schema, table }: { name: string; database: st
             {preview.data && ` · ${fmtCount(preview.data.rows)} rows · ${fmtCount(preview.data.columns.length)} columns`}
           </p>
         </div>
-        <Button variant="primary" disabled title="Copying a table in comes next (#772 part 2)" data-testid="preview-copy">
+        <Link
+          to="/featherbase/admin/source/$name/copy"
+          params={{ name }}
+          search={{ database, schema, table }}
+          className={buttonClasses({ variant: 'primary' })}
+          data-testid="preview-copy"
+        >
           Copy into Featherbase…
-        </Button>
+        </Link>
       </div>
       {preview.isPending && <div className="p-4"><Skeleton label="Reading the first rows" /></div>}
       {preview.error && <Notice tone="negative" className="m-4">{preview.error instanceof ApiError ? preview.error.message : 'The table could not be read'}</Notice>}

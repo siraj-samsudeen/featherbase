@@ -55,6 +55,8 @@ import SourceBrowser from './pages/SourceBrowser'
 import ConnectSource from './pages/ConnectSource'
 import WarehouseSource from './pages/WarehouseSource'
 import { WarehouseBrowser } from './pages/WarehouseBrowser'
+import { CopySetup } from './pages/CopySetup'
+import { CopyBar } from './components/CopyBar'
 import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { RelationMap } from './pages/RelationMap'
@@ -367,6 +369,8 @@ function TableListPage() {
   const parsed = parseFilters(filters)
   return (
     <div data-testid="table-page">
+      {/* #772: a table copied from a data source shows where from, and Copy again. */}
+      <CopyBar key={`copy-${table}`} table={table} />
       <ListView
         key={table}
         table={table}
@@ -668,6 +672,28 @@ function SourceBrowserPage() {
   )
 }
 
+// #772 part 2: set up the copy of one warehouse table (static segments).
+const copySetupRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'source/$name/copy',
+  validateSearch: (search: Record<string, unknown>) => ({
+    database: searchString(search.database),
+    schema: searchString(search.schema),
+    table: searchString(search.table),
+  }),
+  component: CopySetupPage,
+})
+
+function CopySetupPage() {
+  const { name } = copySetupRoute.useParams()
+  const { database, schema, table } = copySetupRoute.useSearch()
+  return (
+    <div data-testid="table-page">
+      <CopySetup key={`${name}/${database}/${schema}/${table}`} name={name} database={database ?? ''} schema={schema ?? ''} table={table ?? ''} />
+    </div>
+  )
+}
+
 // UI-026: a saved Dashboard renders number cards + charts (static segment).
 const dashboardRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -849,5 +875,5 @@ export const routeTree = rootRoute.addChildren([
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute]),
 ])
