@@ -347,6 +347,47 @@ export const authorizers = {
     expect(await sql`select * from scopeproof.effect`).toEqual([])
   })
 
+  test('non-record store payloads refuse without writes while asymmetric scopes remain usable', async ({ admin, createUser }) => {
+    const { user } = await setup(admin, createUser)
+    expect(await user.post(action + 'write', { idempotencyKey: 'valid-a', payload: { effect: 'only-a', storeCodes: ['A'] } }))
+      .toEqual({ result: { stores: ['A'], marker: 37 } })
+    const before = {
+      stores: await sql`select * from scopeproof.store order by row_id`,
+      objects: await sql`select * from scopeproof.object order by row_id`,
+      effects: await sql`select * from scopeproof.effect order by row_id`,
+      receipts: await sql`select * from runtime_action_result where caller = ${user.user} order by idempotency_key`,
+    }
+    for (const payload of [null, 42, ['A']]) {
+      for (const [path, body] of [
+        [read + 'stores', { payload }],
+        [action + 'write', { idempotencyKey: 'refused', payload }],
+      ] as const) {
+        const response = await user.fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        expect(response.status).toBe(403)
+        expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
+      }
+    }
+    expect({
+      stores: await sql`select * from scopeproof.store order by row_id`,
+      objects: await sql`select * from scopeproof.object order by row_id`,
+      effects: await sql`select * from scopeproof.effect order by row_id`,
+      receipts: await sql`select * from runtime_action_result where caller = ${user.user} order by idempotency_key`,
+    }).toEqual(before)
+    expect(await sql`select operation, method, ref_table, reference_name from access_log
+      where "user" = ${user.user} and operation = 'app_access_denied' order by method`).toEqual([
+      ...Array.from({ length: 3 }, () => ({ operation: 'app_access_denied', method: 'scopeproof.stores:scope', ref_table: null, reference_name: null })),
+      ...Array.from({ length: 3 }, () => ({ operation: 'app_access_denied', method: 'scopeproof.write:scope', ref_table: null, reference_name: null })),
+    ])
+    expect(await user.post(action + 'write', { idempotencyKey: 'valid-c', payload: { effect: 'only-c', storeCodes: ['C'] } }))
+      .toEqual({ result: { stores: ['C'], marker: 37 } })
+    expect(await user.post(read + 'stores', { payload: { storeCodes: ['A'] } })).toEqual({ result: { stores: ['A'], marker: 37 } })
+    expect(await sql`select row_id, value from scopeproof.effect order by row_id`).toEqual([
+      { row_id: 'only-a', value: 'A' }, { row_id: 'only-c', value: 'C' },
+    ])
+    expect(await sql`select idempotency_key from runtime_action_result where caller = ${user.user} order by idempotency_key`)
+      .toEqual([{ idempotency_key: 'valid-a' }, { idempotency_key: 'valid-c' }])
+  })
+
   test('whole set admits A and C+A but refuses A+B, empty, missing and malformed scopes', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser)
     for (const [effect, stores] of [['one', ['A']], ['two', ['C', 'A']]] as const)
