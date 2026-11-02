@@ -15,6 +15,72 @@ import { saveIdentifierSystem } from '../src/seed-packs'
 const ROSTER = { internal: { source: 'stylehr-roster-sync', verified: true } }
 
 describe('normalising', () => {
+  test('a digits-normalized public system refuses letters without mutations and keeps distinct numeric values searchable', async ({ admin }) => {
+    const system = 'coverage-digits'
+    await admin.post('/api/save_row', { table: 'Identifier System', row: {
+      row_id: system, label: 'Digits contact', kind: 'contact', normalise: 'digits', sensitivity: 'Normal', edited_by: 'system-manager',
+    } })
+    const { row_id: alpha } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Digits Alpha' } })
+    const { row_id: bravo } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Digits Bravo' } })
+    for (const [person, typed, value] of [[alpha, '12-03', '1203'], [bravo, '98 76', '9876']]) {
+      expect(await admin.post(`/api/people/${person}/identifiers`, { system, value: typed }))
+        .toMatchObject({ result: 'created', identifier: { person_id: person, system, value, verified: true } })
+    }
+    const snapshot = async () => ({
+      system: await sql`select * from identifier_system where row_id = ${system}`,
+      people: await sql`select * from person where row_id in (${alpha}, ${bravo}) order by row_id`,
+      identifiers: await sql`select * from person_identifier where system = ${system} order by id`,
+      audit: await sql`select * from activity_log where operation like 'identifier_%' order by row_id`,
+    })
+    const before = await snapshot()
+    const add = await admin.fetch(`/api/people/${alpha}/identifiers`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ system, value: '12A' }),
+    })
+    expect(add.status).toBe(417)
+    expect(await add.json()).toEqual({ error: { type: 'ValidationError', message: 'Digits only', fields: { value: 'invalid_format' } } })
+    expect(await snapshot()).toEqual(before)
+    const search = await admin.fetch(`/api/identifiers?${new URLSearchParams({ system, value: '12A' })}`)
+    expect(search.status).toBe(417)
+    expect(await search.json()).toEqual({ error: { type: 'ValidationError', message: 'Digits only', fields: { value: 'invalid_format' } } })
+    expect(await snapshot()).toEqual(before)
+    for (const [person, value] of [[alpha, '12 03'], [bravo, '98-76']]) {
+      expect(await admin.get(`/api/identifiers?${new URLSearchParams({ system, value })}`)).toEqual({ people: [{
+        person_id: person, resolved_to: person, replaced: false, current: true, assigner: '', pending_invite: false,
+      }] })
+    }
+    expect(await snapshot()).toEqual(before)
+  })
+
+  test('a public mobile system normalizes international 0091 and ordinary prefixes without conflating numbers', async ({ admin }) => {
+    const system = 'coverage-mobile'
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: system, label: 'Mobile contact', kind: 'contact' } })
+    expect(await admin.get(`/api/table/Identifier%20System/${system}`)).toMatchObject({
+      normalise: 'indian-mobile', sensitivity: 'Restricted', storage: 'plain', display: 'full', edited_by: 'self',
+    })
+    const { row_id: alpha } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Mobile Alpha' } })
+    const { row_id: bravo } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Mobile Bravo' } })
+    const first = await admin.post<{ identifier: { id: string } }>(`/api/people/${alpha}/identifiers`, { system, value: '00919847012345' })
+    expect(first).toMatchObject({ result: 'created', identifier: { person_id: alpha, system, value: '+919847012345', verified: true } })
+    expect(await admin.post(`/api/people/${bravo}/identifiers`, { system, value: '+91 98470-99999' }))
+      .toMatchObject({ result: 'created', identifier: { person_id: bravo, system, value: '+919847099999', verified: true } })
+    const stored = await sql`select * from person_identifier where system = ${system} order by id`
+    const people = await sql`select * from person where row_id in (${alpha}, ${bravo}) order by row_id`
+    const writes = await sql`select * from activity_log where operation like 'identifier_add%' order by row_id`
+    for (const typed of ['00919847012345', '+91 98470-12345', '09847012345', '919847012345']) {
+      expect(await admin.post(`/api/people/${alpha}/identifiers`, { system, value: typed }))
+        .toMatchObject({ result: 'unchanged', identifier: { id: first.identifier.id, value: '+919847012345' } })
+      expect(await admin.get(`/api/identifiers?${new URLSearchParams({ system, value: typed })}`)).toEqual({ people: [{
+        person_id: alpha, resolved_to: alpha, replaced: false, current: true, assigner: '', pending_invite: false,
+      }] })
+    }
+    expect(await admin.get(`/api/identifiers?${new URLSearchParams({ system, value: '00919847099999' })}`)).toEqual({ people: [{
+      person_id: bravo, resolved_to: bravo, replaced: false, current: true, assigner: '', pending_invite: false,
+    }] })
+    expect(await sql`select * from person_identifier where system = ${system} order by id`).toEqual(stored)
+    expect(await sql`select * from person where row_id in (${alpha}, ${bravo}) order by row_id`).toEqual(people)
+    expect(await sql`select * from activity_log where operation like 'identifier_add%' order by row_id`).toEqual(writes)
+  })
+
   test('codes are upper-cased, addresses lower-cased, Indian mobiles canonical; national IDs need a valid check digit', () => {
     expect(normaliseValue(' rr-0102 ', 'upper')).toBe('RR-0102')
     expect(normaliseValue(' Mixed Case ', 'none')).toBe(' Mixed Case ')
