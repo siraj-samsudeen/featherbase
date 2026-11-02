@@ -329,7 +329,7 @@ export const duckdbDriver: SourceDriver = {
   },
 }
 
-function mapDuckType(dataType: string): string {
+export function mapDuckType(dataType: string): string {
   const t = dataType.toUpperCase()
   if (t.startsWith('DECIMAL') || t === 'FLOAT' || t === 'DOUBLE' || t === 'REAL') return 'Float'
   if (

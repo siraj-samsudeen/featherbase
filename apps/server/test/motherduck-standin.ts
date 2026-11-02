@@ -58,3 +58,13 @@ export async function addStandinTable(dir: string, database: string, table: stri
   conn.closeSync()
   instance.closeSync()
 }
+
+/** Runs statements against one stand-in database file, as if the warehouse changed. */
+export async function changeStandin(dir: string, database: string, statements: string[]): Promise<void> {
+  const { DuckDBInstance } = await import('@duckdb/node-api')
+  const instance = await DuckDBInstance.create(path.join(dir, `${database}.duckdb`))
+  const conn = await instance.connect()
+  for (const s of statements) await conn.run(s)
+  conn.closeSync()
+  instance.closeSync()
+}

@@ -18,6 +18,7 @@ import { getSource, invalidateSources } from '../sources/registry'
 import { run, quoteIdentifier } from '../sources/duckdb-driver'
 import { inspectToken, type WarehouseDatabase } from '../sources/motherduck'
 import type { SourceConfig } from '../sources/types'
+import { checkKey, copyAgain, copyInfo, createCopy, type CopyColumn } from '../sources/table-copy'
 
 const DATA_SOURCE = 'Data Source'
 
@@ -186,5 +187,56 @@ registerRowAction('preview', {
       columns: columns.map((c) => ({ name: String(c.column_name), type: String(c.data_type) })),
       first_rows: firstRows,
     }
+  },
+})
+
+// #772 part 2: copy a warehouse table into Featherbase, and copy it again.
+//   GET  /api/table/Data Source/<name>:copy_check_key?database=&schema=&table=&column=
+//   POST /api/table/Data Source/<name>:copy_create { database, schema, table, name, key, columns }
+//   GET  /api/table/<copied table>:copy_info
+//   POST /api/table/<copied table>:copy_again
+registerRowAction('copy_check_key', {
+  effect: 'read',
+  description: 'Say whether a warehouse column can match rows: every value different, none empty.',
+  handler: async ({ table, name, args, user }) => {
+    assertDataSource(table)
+    await assertSystemManager(user.row_id)
+    const db = chosen(await warehouseSource(name), args.database)
+    return checkKey(name, db.name, String(args.schema ?? ''), String(args.table ?? ''), String(args.column ?? ''))
+  },
+})
+
+registerRowAction('copy_create', {
+  effect: 'write',
+  description: 'Create a Featherbase table from a warehouse table and copy its rows in.',
+  handler: async ({ table, name, args, user }) => {
+    assertDataSource(table)
+    await assertSystemManager(user.row_id)
+    const db = chosen(await warehouseSource(name), args.database)
+    const columns = (Array.isArray(args.columns) ? args.columns : []) as CopyColumn[]
+    return createCopy(user, {
+      source: name, database: db.name, schema: String(args.schema ?? ''), table: String(args.table ?? ''),
+      name: String(args.name ?? '').trim(), key: String(args.key ?? ''), columns,
+    })
+  },
+})
+
+registerCollectionAction('copy_info', {
+  effect: 'read',
+  description: 'Where a copied table was copied from, and when.',
+  handler: async ({ table, user }) => {
+    await assertSystemManager(user.row_id)
+    const copy = await copyInfo(table)
+    if (!copy) throw new AppError('NotFoundError', `${table} was not copied from a data source`)
+    return copy
+  },
+})
+
+registerCollectionAction('copy_again', {
+  effect: 'write',
+  description: 'Read the source table again and import it as one run.',
+  handler: async ({ table, user }) => {
+    await assertSystemManager(user.row_id)
+    return copyAgain(user, table)
   },
 })
