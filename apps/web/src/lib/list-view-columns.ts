@@ -52,13 +52,16 @@ export function isShown(name: string, defaults: Set<string>, arrangement: Column
   return defaults.has(name) || Boolean(arrangement.shownCols?.includes(name))
 }
 
-/** What this person's list shows: Row ID first, then each shown data column. */
+/** What this person's list shows: the row's title column first (the link to
+ *  the row), or Row ID when the Table has none, then each shown data column. */
 export function viewColumns(meta: TableMeta, arrangement: ColumnArrangement): ListColumn[] {
   const defaults = defaultColumnNames(meta)
+  const data = dataColumns(meta)
+  const title = data.find((c) => c.column_name === meta.title_column)
   return [
-    ROW_ID_COLUMN,
-    ...dataColumns(meta)
-      .filter((c) => isShown(c.column_name, defaults, arrangement))
+    title ? toListColumn(title) : ROW_ID_COLUMN,
+    ...data
+      .filter((c) => c !== title && isShown(c.column_name, defaults, arrangement))
       .map(toListColumn),
   ]
 }

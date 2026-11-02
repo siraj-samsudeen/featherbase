@@ -9,6 +9,7 @@ import { RowTitle } from '../lib/row-titles'
 import { useRealtime } from '../lib/realtime'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
+import { ArrangeBar, BookkeepingLine, FieldGroupView, ValueField, arrangeFields, useFormArrangement } from './FormArrangement'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
 import { Attachments } from './Attachments'
@@ -70,6 +71,8 @@ export function FormView({
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { t } = useI18n()
+  const formSettings = useSettings()
+  const arrangement = useFormArrangement(table, Boolean(meta.data?.columns.some((c) => c.column_type === 'Section Break')))
 
   const doc = useQuery({
     queryKey: ['doc', table, name],
@@ -654,12 +657,45 @@ export function FormView({
         </div>
       )}
       <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="min-w-0 max-w-3xl flex-1">
-          {sections.map((fields, si) => (
+        <div className={`min-w-0 flex-1 ${arrangement.columns === 1 ? 'max-w-2xl' : 'max-w-3xl'}`}>
+          {!isNew && (
+            <ArrangeBar mode={arrangement.mode} columns={arrangement.columns}
+              onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
+          )}
+          {!isNew && arrangement.mode !== 'source' ? (() => {
+            const { groups, bookkeeping } = arrangeFields(
+              sections.flat().filter((f) => f.column_type !== 'Column Break'), values, m, arrangement.mode, rowsReadOnly)
+            const control = (f: ColumnDef) => rowsReadOnly
+              ? <ValueField key={f.column_name} field={f} value={values[f.column_name]} settings={formSettings} />
+              : (
+                <FieldControl
+                  key={f.column_name}
+                  field={(submittable && status !== 'draft') || managedFields.has(f.column_name) ? { ...f, read_only: true } : f}
+                  managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
+                  value={values[f.column_name]}
+                  error={errors[f.column_name]}
+                  onChange={(v) => {
+                    setField(f.column_name, v)
+                    if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
+                  }}
+                  meta={m}
+                  values={values}
+                  setField={setField}
+                />
+              )
+            return (
+              <div className={cardClasses('mb-4 p-5')} data-testid="form-arranged">
+                {groups.map((g, gi) => (
+                  <FieldGroupView key={`${arrangement.mode}-${gi}`} group={g} columns={arrangement.columns}>{control}</FieldGroupView>
+                ))}
+                <BookkeepingLine fields={bookkeeping} values={values} settings={formSettings} />
+              </div>
+            )
+          })() : sections.map((fields, si) => (
             <div
               key={si}
               data-testid={`form-section-${si}`}
-              className={cardClasses('mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2')}
+              className={cardClasses(`mb-4 grid grid-cols-1 gap-4 p-5 ${arrangement.columns === 2 ? 'md:grid-cols-2' : ''}`)}
             >
               {fields.map((f) =>
                 f.column_type === 'Column Break' ? (
@@ -1079,21 +1115,31 @@ function ChildGrid({
 
 
 // UI-006: debounced autocomplete over the permission-filtered list API.
-function LinkControl({
+export function LinkControl({
   field,
   value,
   onChange,
   className,
   common,
+  forFilter = false,
 }: {
   field: ColumnDef
   value: unknown
   onChange: (value: unknown) => void
   className: string
   common: Record<string, unknown>
+  /** A list filter: no creating a row from here. */
+  forFilter?: boolean
 }) {
   const target = field.reference_table ?? ''
-  const picker = pickerFor(target)
+  // A Table with no picker of its own is searched and shown by its title
+  // column, never by its row id.
+  const targetMeta = useMeta(target)
+  const own = pickerFor(target)
+  const title = targetMeta.data?.title_column
+  const picker = own.labelField === null && own.searchField === 'row_id' && !own.peopleSearch && title
+    ? { ...own, searchField: title, labelField: title }
+    : own
   const [query, setQuery] = useState<string | null>(null) // null = not searching
   const [open, setOpen] = useState(false)
   const [options, setOptions] = useState<{ value: string; label: string }[]>([])
@@ -1217,15 +1263,17 @@ function LinkControl({
           {!options.length && (
             <p className="px-3 py-1.5 text-sm text-ink-subtle">No matches</p>
           )}
-          <RouterLink
-            to="/featherbase/admin/$table/$name"
-            params={{ table: target, name: 'new' }}
-            search={{ prefill: undefined }}
-            className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
-            data-testid="link-create-new"
-          >
-            + Create new {target}
-          </RouterLink>
+          {!forFilter && (
+            <RouterLink
+              to="/featherbase/admin/$table/$name"
+              params={{ table: target, name: 'new' }}
+              search={{ prefill: undefined }}
+              className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
+              data-testid="link-create-new"
+            >
+              + Create new {target}
+            </RouterLink>
+          )}
         </div>
       )}
     </div>

@@ -5,6 +5,7 @@ import { rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
+import { LinkControl } from './FormView'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
 import { dataColumns, defaultColumnNames, isShown, listFlagsFromView, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
 import { useRealtime } from '../lib/realtime'
@@ -283,7 +284,7 @@ export function ListView({
     queryFn: () =>
       listResource(table, {
         filters,
-        fields: columns.map((c) => c.column_name),
+        fields: ['row_id', ...columns.map((c) => c.column_name).filter((n) => n !== 'row_id')],
         order_by: orderBy,
         limit_start: start,
         limit_page_length: PAGE,
@@ -1174,6 +1175,17 @@ function ListCell({
         <Indicator value={String(value)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
         <PrincipalName id={String(value)} />
+      ) : col.column_type === 'Reference' && col.reference_table && value != null && value !== '' ? (
+        // A link reads as the linked row's title and opens it.
+        <Link
+          to="/featherbase/admin/$table/$name"
+          search={{ prefill: undefined }}
+          params={{ table: col.reference_table, name: String(value) }}
+          onClick={(e) => e.stopPropagation()}
+          className="text-action hover:underline"
+        >
+          <RowTitle table={col.reference_table} rowId={String(value)} />
+        </Link>
       ) : (
         cell(value, col.column_type, settings)
       )}
@@ -1477,7 +1489,34 @@ function StandardFilters({
   return (
     <div className="mb-3 flex flex-wrap items-end gap-2" data-testid="standard-filters">
       {columns.map((f) =>
-        f.column_type === 'Choice' ? (
+        f.column_type === 'Reference' && f.reference_table ? (
+          // A link filters by picking a row by its name, not by typing its id.
+          <label key={f.column_name} className="flex flex-col gap-0.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+              {f.label ?? f.column_name}
+            </span>
+            <span className="flex items-center gap-1">
+              <LinkControl
+                field={f}
+                value={current(f.column_name, '=')}
+                onChange={(v) => apply(f.column_name, '=', String(v ?? ''))}
+                className={inputClasses('max-w-[12rem]')}
+                common={{ 'data-testid': `std-filter-${f.column_name}` }}
+                forFilter
+              />
+              {current(f.column_name, '=') && (
+                <button
+                  type="button"
+                  onClick={() => apply(f.column_name, '=', '')}
+                  aria-label={`Clear the ${f.label ?? f.column_name} filter`}
+                  className="px-1 text-ink-subtle hover:text-action"
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          </label>
+        ) : f.column_type === 'Choice' ? (
           <label key={f.column_name} className="flex flex-col gap-0.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
               {f.label ?? f.column_name}

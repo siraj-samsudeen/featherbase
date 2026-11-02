@@ -45,6 +45,12 @@ function titleWords(raw: string): string {
   )
 }
 
+// Source columns a row is read by, in order of preference; the first present
+// becomes the Table's title column.
+const TITLE_COLUMNS = ['name', 'title', 'label', 'full_name', 'display_name', 'first_name']
+// Bookkeeping a source keeps about a row rather than facts about it.
+const BOOKKEEPING = /^(created|updated|modified|deleted)_(on|at|by|by_id|date)$/i
+
 // Proposed Admin name: "<Prefix> <Table>", legal per the Table name rule.
 function proposeName(cfg: SourceConfig, t: IntrospectedTable, prefix?: string): string {
   const defaultPrefix =
@@ -199,7 +205,8 @@ interface ReflectResult {
 // EDS-3: generate one bound Table per requested source table.
 export async function reflectTables(
   sourceName: string,
-  opts: { schema?: string; tables: string[]; module?: string; prefix?: string },
+  // names: the Table name to use per source table, in place of the proposal.
+  opts: { schema?: string; tables: string[]; module?: string; prefix?: string; names?: Record<string, string> },
 ): Promise<ReflectResult> {
   const cfg = await getSource(sourceName)
   const driver = getDriver(cfg)
@@ -257,7 +264,9 @@ export async function reflectTables(
       result.skipped.push({ table: tableName, reason: skip! })
       continue
     }
-    const candidate = await candidateFor(cfg, t, opts.prefix, reflected)
+    const proposed = await candidateFor(cfg, t, opts.prefix, reflected)
+    const chosen = opts.names?.[tableName] ?? opts.names?.[t.table]
+    const candidate = chosen ? { ...proposed, proposed_name: chosen } : proposed
     if (!candidate.bindable) {
       result.skipped.push({ table: tableName, reason: candidate.reason! })
       continue
@@ -327,6 +336,14 @@ async function buildBoundTable(
     const key = `${b.external_schema ?? ''}\u0000${b.external_table ?? ''}`
     if (!boundByRelation.has(key)) boundByRelation.set(key, b)
   }
+  // The list leads with what a person reads a row by, then a few data columns
+  // in source order: never the key or the bookkeeping columns a source puts
+  // first (created_on, updated_by_id, ...).
+  const titleIndex = TITLE_COLUMNS.map((n) => dataColumns.findIndex((c) => c.name.toLowerCase() === n && c.name !== pk))
+    .find((i) => i >= 0)
+  const listed = new Set<number>(titleIndex === undefined ? [] : [titleIndex])
+  for (const [i, c] of dataColumns.entries())
+    if (listed.size < 5 && c.name !== pk && !BOOKKEEPING.test(c.name)) listed.add(i)
   const columns = dataColumns.map((c, i) => {
     const target = c.references
       ? boundByRelation.get(`${c.references.schema}\u0000${c.references.table}`)
@@ -335,13 +352,14 @@ async function buildBoundTable(
     return {
       column_name: legalNames[i],
       source_column: c.name,
-      label: prettifyLabel(c.name),
+      // A foreign key reads as what it points at: "Reported To", not "Reported To Id".
+      label: prettifyLabel(c.references ? c.name.replace(/_?id$/i, '') || c.name : c.name),
       column_type: isRef ? 'Reference' : c.column_type,
       ...(isRef ? { reference_table: target!.name } : {}),
       // Write-relevant only on engines with a write path; keeps forms honest
       // about what the source will reject.
       reqd: (cfg.engine === 'postgres' || cfg.engine === 'mysql') && !c.nullable && !c.has_default,
-      in_list_view: i < 4,
+      in_list_view: listed.has(i),
     }
   })
   const name = candidate.proposed_name
@@ -357,6 +375,7 @@ async function buildBoundTable(
     external_table: t.table,
     external_pk: pk,
     ...(modified ? { external_modified: modified } : {}),
+    ...(titleIndex === undefined ? {} : { title_column: legalNames[titleIndex] }),
     columns,
   })
   // Without a modified mapping the table has no updated_at, so the DB-default
