@@ -8,6 +8,8 @@ import { installedAppsAtStart } from '../src/release-preflight'
 import { sql } from '../src/db'
 import { withNamedVariable } from '../src/env'
 import { makeClient } from 'feather-testing-postgres'
+import { main } from '../src/cli'
+import { runMain } from './command-io'
 
 async function sourceRepository(build = `node -e "require('fs').copyFileSync('server.mjs', 'built.mjs')"`) {
   const root = await mkdtemp(resolve('test/.app-library-'))
@@ -27,6 +29,49 @@ test('the manager catalog offers repository apps without registering their code'
   expect(result.catalog).toContainEqual(expect.objectContaining({ name: 'feather_dash', title: 'Feather Dash', installed: false }))
   expect(result.catalog.map(app => app.name)).not.toContain('other')
   expect(result.available).not.toContain('tasker')
+})
+
+test('a packaged server installs an explicitly supplied artifact without a checkout', async ({ admin }) => {
+  const root = await sourceRepository('node -e "process.exit(1)"')
+  const source = resolve(root, 'example-apps/other')
+  await cp(resolve(source, 'server.mjs'), resolve(source, 'built.mjs'))
+  await rm(resolve(root, '.git'), { recursive: true })
+  try {
+    await discoverAppLibrary([source], root)
+    expect(await admin.get('/api/apps')).toMatchObject({ catalog: [expect.objectContaining({ name: 'other', installed: false, preparation: { state: 'ready' } })] })
+    expect(await admin.post('/api/apps/prepare-install', { name: 'other' })).toEqual({ name: 'other', installed: true })
+    expect(await admin.get('/api/apps')).toMatchObject({ catalog: [expect.objectContaining({ name: 'other', installed: true, active: true })] })
+    expect(await sql`select name, package_version from installed_app where name = 'other'`).toEqual([{ name: 'other', package_version: '0.0.1' }])
+  } finally {
+    await discoverAppLibrary([], null)
+    await loadInstalledApps()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('ambiguous source names cannot be chosen from the catalog', async ({ admin }) => {
+  const root = await sourceRepository()
+  const source = resolve(root, 'example-apps/other')
+  const second = resolve(root, 'client-apps/customer/second')
+  await cp(source, resolve(root, 'example-apps/duplicate'), { recursive: true })
+  await cp(source, resolve(root, 'client-apps/customer/third'), { recursive: true })
+  await cp(source, second, { recursive: true })
+  for (const file of ['featherbase.json', 'server.mjs']) {
+    const path = resolve(second, file)
+    await writeFile(path, (await readFile(path, 'utf8')).replaceAll('other', 'second'))
+  }
+  try {
+    await discoverAppLibrary([], root)
+    const result = await admin.get<{ catalog: { name: string }[] }>('/api/apps')
+    expect(result.catalog.map(app => app.name)).toEqual(['second'])
+    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Unknown trusted app name') })
+    expect(await sql`select name from installed_app where name in ('other', 'second')`).toEqual([])
+    await expect(readFile(resolve(source, 'built.mjs'))).rejects.toMatchObject({ code: 'ENOENT' })
+  } finally {
+    await discoverAppLibrary([], null)
+    await loadInstalledApps()
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('an explicit choice builds a trusted source app before installing it', async ({ admin }) => {
@@ -139,6 +184,12 @@ test('a colleague cannot prepare a trusted app', async ({ createUser }) => {
 test('preparation accepts catalog names rather than paths or build commands', async ({ admin }) => {
   for (const body of [{ name: '../other' }, { name: 'unknown' }, { name: 'other', path: '/tmp' }, { name: 'other', command: 'echo unsafe' }, {}, null])
     await expect(admin.post('/api/apps/prepare-install', body)).rejects.toMatchObject({ status: 417 })
+  const malformed = await admin.fetch('/api/apps/prepare-install', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{',
+  })
+  expect(malformed.status).toBe(417)
+  expect(await malformed.json()).toMatchObject({ error: { type: 'ValidationError', message: 'Expected { name } naming an app in the catalog; paths and commands are not accepted' } })
+  expect(await sql`select name from installed_app`).toEqual([])
 })
 
 test('restart reactivates an installed repository app without explicit paths', async ({ admin }) => {
@@ -236,6 +287,11 @@ for (const { stamp, edit, active } of [
       expect(await client.post('/api/save_row', { table: 'other.task', row: { row_id: 'after-edit', quantity: 8 } })).toMatchObject({ validation_runs: 1 })
     } else {
       expect(after.artifact_digest).toBe(before.artifact_digest)
+      expect(await sql`select quantity from other.task where row_id = 'edited-survivor'`).toEqual([{ quantity: 34 }])
+      const refused = await withNamedVariable('FEATHERBASE_APP_PATHS', '[]', () => runMain(main, ['install-app', 'other']))
+      expect(refused.code).toBe(1)
+      expect(refused.stderr).toContain('other on this database is not the other in its folder')
+      expect(await sql`select artifact_digest from installed_app where name = 'other'`).toEqual([before])
       expect(await sql`select quantity from other.task where row_id = 'edited-survivor'`).toEqual([{ quantity: 34 }])
     }
   } finally {
