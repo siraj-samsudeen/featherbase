@@ -9,31 +9,19 @@ further; each filter in use is shown and can be removed on its own.
 
 #### Scenario: Add and remove a filter
 
-```gherkin
-Given the list of "Section Mapping"
-When the user filters "Status" to "Open"
-Then only Open rows show
-When the user removes that filter
-Then every row shows again
-```
+- **WHEN** the user filters "Status" to "Open" in the list of "Section Mapping", and later removes that filter
+- **THEN** only Open rows show while the filter is on, and removing it brings back every row
 
 #### Scenario: Adding a filter on Status offers its choices
 
-```gherkin
-Given the list of "Section Mapping"
-When the user adds a filter on Status
-Then the user picks Open or Closed from its choices, without typing
-```
+- **WHEN** the user adds a filter on Status in the list of "Section Mapping"
+- **THEN** the user picks Open or Closed from its choices, without typing
 
 #### Scenario: Use a quick filter
 
-```gherkin
-Given the list of "Section Mapping" with Status showing
-When the user picks "Closed" in the quick filter for Status
-Then only Closed rows show, and the filter shows as in use
-When the user picks "All"
-Then every row shows again
-```
+- **WHEN** the user picks "Closed" in the quick filter for Status, and later picks "All"
+- **THEN** only Closed rows show while "Closed" is picked, with the filter shown as in use, and picking "All" brings
+  back every row
 
 ## ADDED Requirements
 
@@ -44,37 +32,25 @@ if its kind of value can take one, in the same order as the list's columns.
 
 #### Scenario: Remarks gets a quick filter when it is switched on
 
-```gherkin
-Given the list of "Section Mapping" with Remarks not showing
-When the user switches on Remarks
-Then a quick filter for Remarks appears, in Remarks' place among the columns
-```
+- **WHEN** the user switches on Remarks in the list of "Section Mapping"
+- **THEN** a quick filter for Remarks appears, in Remarks' place among the columns
 
 #### Scenario: Floor's quick filter goes when Floor is switched off
 
-```gherkin
-Given the list of "Section Mapping" with Floor showing
-When the user switches off Floor
-Then the quick filter for Floor is gone
-```
+- **WHEN** the user switches off Floor in the list of "Section Mapping"
+- **THEN** the quick filter for Floor is gone
 
 #### Scenario: A filter on a hidden column stays on
 
-```gherkin
-Given the user has filtered Floor to "Ground" in the list of "Section Mapping"
-When the user switches off Floor
-Then the list still shows only Ground rows
-And the filter still shows as in use, and removing it brings every row back
-```
+- **WHEN** the user has filtered Floor to "Ground" and then switches off Floor
+- **THEN** the list still shows only Ground rows
+- **AND** the filter still shows as in use, and removing it brings every row back
 
 #### Scenario: A date column has no quick filter
 
-```gherkin
-Given the list of "Section Mapping" with its Audited On date showing
-When the user looks above the list
-Then there is no quick filter for Audited On
-And the user can still add a filter on it
-```
+- **WHEN** the user's view of "Section Mapping" shows its Audited On date
+- **THEN** there is no quick filter for Audited On
+- **AND** the user can still add a filter on it
 
 ### Requirement: A quick filter suits its column
 
@@ -83,21 +59,13 @@ yes or no answer offers those to pick from.
 
 #### Scenario: Typing part of a word finds the Owner
 
-```gherkin
-Given the list of "Section Mapping" with Owner showing
-When the user types "asha" in the quick filter for Owner
-Then only rows whose Owner contains "asha" show
-```
+- **WHEN** the user types "asha" in the quick filter for Owner
+- **THEN** only rows whose Owner contains "asha" show
 
 #### Scenario: A yes or no column offers yes and no
 
-```gherkin
-Given the list of "Section Mapping" with its Active column showing
-When the user picks yes in the quick filter for Active
-Then only active rows show
-When the user picks no
-Then only inactive rows show
-```
+- **WHEN** the user picks yes in the quick filter for Active, and later picks no
+- **THEN** only active rows show while yes is picked, and only inactive rows show while no is picked
 
 ### Requirement: Filtering a yes or no column finds its rows
 
@@ -106,28 +74,21 @@ typing it. A value that is neither SHALL find no rows, as an unknown choice does
 
 #### Scenario: An added filter on Active finds the active rows
 
-```gherkin
-Given the list of "Section Mapping" with active and inactive rows
-When the user adds a filter on Active and picks yes
-Then only active rows show
-And the filter in use reads yes
-```
+- **WHEN** the user adds a filter on Active and picks yes
+- **THEN** only active rows show
+- **AND** the filter in use reads yes
 
 #### Scenario: A link changed by hand to say Active is true finds the active rows
 
-```gherkin
-Given someone has changed a link to the list of "Section Mapping" by hand, so its filter says Active is "true"
-When the user opens that link
-Then only active rows show
-```
+- **WHEN** someone has changed a link to the list of "Section Mapping" by hand so its filter says Active is "true", and
+  the user opens that link
+- **THEN** only active rows show
 
 #### Scenario: A link changed by hand to say Active is maybe finds no rows
 
-```gherkin
-Given someone has changed a link to the list of "Section Mapping" by hand, so its filter says Active is "maybe"
-When the user opens that link
-Then no rows show, as for a Status that doesn't exist
-```
+- **WHEN** someone has changed a link to the list of "Section Mapping" by hand so its filter says Active is "maybe", and
+  the user opens that link
+- **THEN** no rows show, as for a Status that doesn't exist
 
 ### Requirement: Many quick filters stay out of the way
 
@@ -136,20 +97,14 @@ filter holding a value SHALL never fold away, even if that means showing more th
 
 #### Scenario: Six quick filters show and two more wait
 
-```gherkin
-Given the user's view of "Section Mapping" has eight columns that can take a quick filter
-When the user opens the list
-Then six quick filters show, and the list says there are 2 more
-When the user asks to see them
-Then all eight show without leaving the list
-```
+- **WHEN** the user's view of "Section Mapping" has eight columns that can take a quick filter, and the user opens the
+  list
+- **THEN** six quick filters show, and the list says there are 2 more
+- **AND** asking to see them shows all eight without leaving the list
 
 #### Scenario: The eighth quick filter stays showing while it holds a value
 
-```gherkin
-Given the user's view of "Section Mapping" has eight columns that can take a quick filter
-And a link to the list has a value in the eighth quick filter
-When the user opens that link
-Then the first six quick filters show, and so does the eighth, holding that value
-And the list says there is 1 more
-```
+- **WHEN** the user's view of "Section Mapping" has eight columns that can take a quick filter, and the user opens a
+  link with a value in the eighth
+- **THEN** the first six quick filters show, and so does the eighth, holding that value
+- **AND** the list says there is 1 more
