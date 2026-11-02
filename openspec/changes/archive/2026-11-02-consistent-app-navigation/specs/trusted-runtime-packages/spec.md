@@ -12,11 +12,7 @@
 
 ### Requirement: An app owns its screen under the shared top bar
 
-An app that brings its own screen SHALL control its address, document, inner navigation state, content and styling outside Featherbase's shared navigation presentation. Featherbase SHALL serve only that app's declared client files, preserve its deep path, query and fragment across sign-in and refresh, and never substitute another screen for a missing piece.
-
-Featherbase SHALL draw the shared top bar above every app screen, including the app's declared bar controls, the theme choice and account menu. Shared navigation styling and theme SHALL remain isolated from the app's content, which SHALL start below the bar without being covered by it.
-
-An app with its own screen SHALL NOT also create a competing generated Home Page; its data remains available to authorized administrators in Featherbase.
+An app SHALL own its address, document, state, content and styling outside shared navigation. Featherbase SHALL serve only declared client files, preserve deep paths, queries and fragments across sign-in and refresh, and never replace missing content. The shared bar SHALL include app controls, theme and account, without styling or covering app content. An app screen SHALL NOT compete with a generated Home Page; authorized administrators retain access to its data.
 
 #### Scenario: A missing piece stays missing
 

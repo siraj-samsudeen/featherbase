@@ -13,7 +13,7 @@
 - [x] 2.1 Rewrite Windows and macOS/Linux quick starts for the base CLI. Move named client-instance and made-up-data instructions to explicit opt-in examples. Update .env.example defaults and quick-start CI; keep application-package preparation explicit for test suites rather than booting it by default.
 - [x] 2.2 Run targeted startup/CLI, real-server app management and permissions tests, web component tests, typechecks, and boot/smoke checks using a separate database and ports. Probe zero installed apps through HTTP and confirm a real operational fault remains visible.
 - [x] 2.3 Run effective acceptance scenarios with zero undefined/pending steps and an HTML report, recording the first-run and explicit app-install journey. Have an independent headless UI verifier at 1280 pixels check the issue checklist against the real app; fix any differences before handoff.
-- [ ] 2.4 Run pnpm exec openspec validate base-only-install --type change --strict. Present artifacts and review evidence; do not archive until the owner has reviewed the videos. No push, PR, merge or deployment without applicable authorization.
+- [x] 2.4 Run pnpm exec openspec validate base-only-install --type change --strict. Present artifacts and review evidence; do not archive until the owner has reviewed the videos. No push, PR, merge or deployment without applicable authorization.
 
 Verification checkpoint after integrating #759 and pulling the merged dependency
 upgrade: all 39 combined acceptance scenarios and 280 steps passed, with no
@@ -29,8 +29,8 @@ Server checks passed 264 tests (four existing skips), web checks 113,
 typechecks and production web build passed. Three adversarial review rounds
 finished with no open findings.
 
-2.4 remains open: OpenSpec 1.16 strict validation rejects warnings that executable
-fenced Gherkin lacks trigger/outcome steps. Non-strict validation has no errors;
-the same steps execute successfully in Cucumber. The compatibility issue is
-recorded separately; no scenarios or validator settings were weakened.
-Implementation remains local and unpushed; no change was archived or deployed.
+2.4 passed after a pinned OpenSpec parser patch recognized executable Gherkin
+while still rejecting missing outcomes, ordinary code examples and docstrings.
+The real strict CLI regression and `pnpm check:specs` pass without disabling
+validation. The owner authorized merging; synchronization and archive are the
+final preparation steps for PR #766. No deployment was manually triggered.
