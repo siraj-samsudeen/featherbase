@@ -1,34 +1,42 @@
-## 1. Reviewable design and prototype
+## 1. Handoff and acceptance examples
 
-- [ ] 1.1 Review the planning PR with the owner, preserving the distinction between agreed rules and prototype defaults. Verify the decision trail links and ID — Name sample references are readable and internally consistent.
-- [ ] 1.2 Build the disposable local HTML prototype from design.md sections A–G: responsibility grant, employee edit, approval and inspectable sample rows. Verify Meera can grant RA6, Arun can propose CP1 and Meera can apply it without a live API or production data.
-- [ ] 1.3 Add isolated scenario controls for section/department scope, direct reports, date transfer, revocation, conflict, handover and acting-manager escalation. Verify each branch in design.md section H produces its stated result and reset restores the original seed.
-- [ ] 1.4 Use an independent UI verifier for the prototype at 1280px and 375px; return screenshots and a spec-versus-built table before owner review. Verify keyboard use, readable controls and no overflow.
-- [ ] 1.5 Walk the prototype with the owner and record accepted changes in these artifacts. Verify explicit decisions on the employee field set, bulk request behaviour, shared personal-record footprint and approver-only authority before enabling production implementation tasks.
+The owner requests backend/data verification, not more simulation UI. The browser
+prototype is preserved on `codex/462-permissions-prototype`; completed UI work is
+historical evidence only. It does not count as production permission coverage.
+
+- [x] 1.1 Record the agreed rules, logical data model and synthetic bootstrap-to-approval examples in the OpenSpec artifacts. Preserve prototype defaults separately from agreed requirements.
+- [x] 1.2 Preserve the disposable prototype on its separate branch and capture the current done/pending state in design.md. Do not include the HTML in this PR or require owner UI review to proceed with the handoff.
+- [x] 1.3 Supply sample-data.json with initial records, scenario-specific rows and expected outcomes. Mark unresolved defaults; check IDs, foreign keys, permission-column ownership and case references. This is design data, not a runtime fixture or import contract.
+- [ ] 1.4 Reconcile this proposal against current main and #246, #392, #449, #617 and #627. The source audit was at 40151182. Record overlaps, superseded assumptions and existing reusable implementation before writing code.
 
 ## 2. Production design gate
 
-These tasks refine the implementation contract after prototype review. Do not
-interpret the later implementation outline as permission to skip this gate.
+The owner did not finish the simulation review. Dropping UI review does not
+approve unresolved policy. Use concrete records and expected outcomes to settle
+these questions, not another UI prototype.
 
-- [ ] 2.1 Define the versioned membership and job-capability contracts under #617, including correlated scope tuples, missing/ambiguous results, temporal activation, cycles and locking. Verify contract examples cover JA3/JA6, acting JA8 and multi-membership without a cross-product.
-- [ ] 2.2 Specify protected grant operations, role-definition and binding-change checks, successor-office resolution and delegation descendant limits. Verify there is no route to confer a capability beyond the same delegation boundary, including modifying an existing role's permissions.
-- [ ] 2.3 Reconcile approval application, proposal versioning, workflow notifications and multi-rule combination with #627. Verify the owner-approved conflict example and maker/approver scope checks have explicit acceptance scenarios.
-- [ ] 2.4 Finalise migration mapping for existing flags/tiers, creator-only grants, shares, Data Scope, app entry policies and Platform Admin naming across affected specs. Verify no existing permission is widened by omission or a missing scope; record the migration rehearsal and rollback procedure under docs/DEPLOY.md.
-- [ ] 2.5 Obtain owner approval of the production schema/contracts and split the implementation outline below into bounded executable changes where needed. Verify all gates in design.md are resolved before production code work begins.
+- [ ] 2.1 Confirm Employee/Person storage and the initial field set; resolve bulk atomicity, cross-store shared Employee membership and approver-only application. V22–V24 are provisional examples, not approved assertions.
+- [ ] 2.2 Define the membership and job-capability contracts with #617: correlated scope tuples, missing/ambiguous results, temporal activation, cycles and locking. Cover JA3/JA6, acting JA8 and multi-membership without a cross-product.
+- [ ] 2.3 Specify protected grant operations, shared-role/binding-change checks, successor-office resolution and delegation descendant limits. No direct grant, role edit or appointment may exceed the same delegation boundary.
+- [ ] 2.4 Reconcile approval application, proposal versioning and rule combination with #627. Specify fresh review and maker/approver/scope revalidation through the normal save path.
+- [ ] 2.5 Finalise migration mapping for flags/tiers, creator-only access, shares, Data Scope, app entry policy and Platform Admin naming. Preserve submit/cancel/amend behaviour and system-written protections. Obtain decisions on unresolved policies, then split implementation into bounded changes.
 
-## 3. Implementation outline after the gate
+## 3. Server implementation and sample-data verification
 
-- [ ] 3.1 Using tdd, add metadata and converging migrations for per-operation/column permissions, scoped assignments and provenance after claiming migration numbers under #566. Verify fresh and restored-database migration tests and the preserved submit/cancel/amend and creator-only cases.
-- [ ] 3.2 Implement complete-grant evaluation and app-declared row membership with transactional freshness. Verify create/read/update/delete, all column sets, self/direct/subtree/named scopes, correlated tuples, transfers and concurrent revocation through real Postgres tests.
-- [ ] 3.3 Implement bounded delegation, office continuity and job-derived authority checks. Verify direct grants, changed/acting/future jobs, binding changes, shared-role edits and successor handover cannot exceed the original boundaries.
-- [ ] 3.4 Implement held proposals and conflict-safe application through normal save/automation paths. Verify maker/approver revalidation, no self-approval, mandatory-rule composition, rejection, fresh review, replay protection and history.
-- [ ] 3.5 Apply the same checks across imports, bulk changes, workflows, hooks and app actions; replace app decides_scope guards only after coverage passes. Verify platform configuration and system-written audit protections still refuse forbidden writes, including through trusted save paths.
-- [ ] 3.6 Build the approved business-facing configuration and review screens using shared components. Verify them through an independent Playwright agent at 1280px and 375px with screenshots before owner acceptance.
+Use tdd and the repository's existing real Postgres rollback sandbox. Construct
+sample values inline per test; do not load the design JSON as a test fixture.
+Declare app models through Table metadata. No new frontend or simulation UI work.
+
+- [ ] 3.1 Add approved metadata and converging migrations for per-operation/column permissions, scope and provenance, claiming migration numbers under #566. Verify fresh/local restored-database migrations and legacy access mapping.
+- [ ] 3.2 Implement complete-grant evaluation and current membership. Through public server operations, verify independent create/read/update column sets, delete, self/direct/subtree/named scopes, fail-closed missing scope and correlated tuples; assert forbidden fields never save partially.
+- [ ] 3.3 Implement bounded delegation and checked job-derived authority. Use Meera/Arun/Ravi and RA6/JA6/JA7/JA8 to verify grant boundaries, transfer, revoked authority, successor continuity and direct/indirect escalation refusal. Include shared-role edits and future appointments.
+- [ ] 3.4 Implement held proposals through existing approval/save machinery. Exercise Arun proposal CP1 and Meera approval, rejection reason, no self-approval, mandatory rule composition, original/current/proposed conflicts, replay protection and current maker/approver authority.
+- [ ] 3.5 Run the sample verification cases as independent server integration scenarios, asserting returned data and persisted rows, proposals, decisions and history. Cover list/report reads, imports/bulk/API paths and concurrency beyond the illustrative dataset. Convert unresolved cases only after their policies are decided.
+- [ ] 3.6 Replace app decides_scope protection only after equivalent domain/scope/approval checks pass across public and trusted write paths. Keep platform access configuration and system-written audit protection separate. Verify direct data maintenance cannot self-widen authority.
 
 ## 4. Integration and delivery
 
-- [ ] 4.1 Run proportionate checks from docs/TESTING.md, including pnpm --filter server typecheck, pnpm smoke and pnpm check:specs; exercise grant → edit → approve and refusal journeys against the running server and browser. Record exact commands and results in the implementation PR.
-- [ ] 4.2 Use feather-code-review for hidden permission, transaction and migration logic, at most two Codex rounds during the Feather Dash rollout. Verify real blockers are fixed and the remaining findings have explicit dispositions.
-- [ ] 4.3 Rehearse any trial-data rewrite on a restored snapshot with target environment settings and follow docs/DEPLOY.md for release approval. Verify before/after grants and report coverage, including job-derived powers.
-- [ ] 4.4 Only when all implementation and owner-verification work is complete, sync/archive this change in the finishing PR and update #462 and related issue boundaries. Verify pnpm check:specs and a clean working tree; do not archive this planning-only PR as delivered behaviour.
+- [ ] 4.1 Run applicable commands from docs/TESTING.md, server typecheck, smoke and check:specs. Exercise the complete grant → edit → approve and refusal cases through actual server APIs with the synthetic data. Record exact reproducible commands and results in the implementation PR; browser simulation checks do not satisfy this task.
+- [ ] 4.2 Use feather-code-review for hidden permission, transaction and migration logic. Respect the repository's review-round limits; fix real blockers and record remaining findings with explicit dispositions.
+- [ ] 4.3 Rehearse any trial-data migration on a restored snapshot with target settings and follow docs/DEPLOY.md for release approval. Do not deploy as part of this handoff.
+- [ ] 4.4 Only after implementation and server verification are complete, sync/archive this change in the finishing PR and update #462. Keep this change active while backend work remains; do not close #462 based on design examples alone.

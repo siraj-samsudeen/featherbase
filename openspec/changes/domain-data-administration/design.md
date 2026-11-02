@@ -1,3 +1,58 @@
+## Agent handoff — 2 November 2026
+
+The owner has not completed the simulation review and now requests a data-led
+handoff with **no new UI work**. Do not treat that as approval of the unresolved
+production choices below. Continue with server/API verification and synthetic
+records; the UI is not a prerequisite.
+
+**Done:** proposed permission/approval behaviour in the delta specs; the logical
+model and bootstrap-to-approval examples below; a disposable browser simulation
+on branch `codex/462-permissions-prototype` (last captured commit `f4f3bc5c`);
+and the structured design examples in `sample-data.json`. The prototype is a
+reference experiment, not a permission implementation or an enforcement oracle.
+Its UI checks were performed during this discussion; the temporary browser scripts
+are not a portable verification suite and are not required for takeover.
+
+**Not done:** production metadata, migrations, server-side checks, approval
+application, transactional integration tests, preflight, or deployment. No claim
+is made that these proposed permissions work in the running platform. Evidence
+about the existing code in this document was gathered on the old checkout base
+`40151182`; recheck it against current main before coding. Related #246, #392,
+#449, #617 and #627 may have progressed independently.
+
+**First step for the next agent:** read the delta specs, this document's agreed
+rules and provisional choices, and `tasks.md`. Compare current main and linked
+issues to the design, record what is already supplied elsewhere, then resolve
+only the remaining production decisions. Implement one bounded server slice at
+a time, starting with per-operation/column permissions and fail-closed scope.
+Use existing metadata and save paths, not a parallel hard-coded permission engine.
+
+### Sample data and verification without the UI
+
+`sample-data.json` is a logical design companion, not an import format or runtime
+test fixture. `rows` supplies the initial named records; `examples` supplies RA6,
+CP1, transfer JA6, successor JA7, forbidden acting JA8 and a phone-only role.
+Foreign keys contain IDs, while people should see ID — Name. The readable
+bootstrap sequence below explains their purpose and ordering.
+
+`verification_cases` supplies independent actions and expected outcomes. Start
+with V01–V09: no delegation, bounded grant, held edit, approval, self-approval
+refusal, column refusal, department/store boundaries and self-service. Then add
+revocation, transfer, continuity, conflict, escalation and complete-grant cases.
+V22–V24 are explicitly labelled **unresolved defaults**; do not turn them into
+production assertions until the policy is decided. This list is a starting
+acceptance dataset, not exhaustive concurrency or legacy-permission coverage.
+
+Translate these values into inline setup inside the repository's real Postgres
+rollback-sandbox tests, with no fixture loader or persistent test database seed.
+Exercise public server operations as the named actors and assert both responses
+and stored rows/proposals/history. Verify list/report reads as well as writes;
+checking a pure permission helper or trusting the browser model is insufficient.
+Keep each case isolated. Trusted bootstrap creates initial authority; subsequent
+grants and edits must pass the normal checked operations. Document the eventual
+commands here or in the implementation PR once they exist—there is no working
+backend verification command for this proposal today.
+
 ## Context
 
 See [proposal.md](proposal.md) for why this change is needed and the delta specs
@@ -166,8 +221,9 @@ production architecture:
   prototype requires the complete footprint to be covered. Do not fabricate a
   store/department pair by mixing two different assignments. The broader policy
   for cross-store personal data must be confirmed before production.
-- The prototype uses in-memory state with optional local reset and no real API,
-  notifications, credentials or database writes. It is an interaction experiment.
+- The prototype evaluates synthetic state in the browser and saves progress and
+  form drafts to browser local storage. Reset clears that progress. There is no
+  real API, notification, credential or database write; it is an interaction experiment.
 
 ## Proposed logical records
 
@@ -227,7 +283,7 @@ themselves platform authority.
 
 | ID | Name | Enabled |
 |---|---|---|
-| P0 | Bootstrap Administrator | Yes |
+| P0 | Asha | Yes |
 | P1 | Meera | Yes |
 | P2 | Arun | Yes |
 | P3 | Priya | Yes |
@@ -244,7 +300,7 @@ contact information are part of this sample.
 | Role | R0 | Platform Admin; platform-owned; administer platform configuration |
 | Scope Definition | SD0 | Explicit unrestricted platform scope |
 | Scope | SC0 | SD0 — Explicit unrestricted platform scope |
-| Role Assignment | RA0 | P0 — Bootstrap Administrator; R0 — Platform Admin; SC0 — Platform scope; trusted bootstrap source |
+| Role Assignment | RA0 | P0 — Asha; R0 — Platform Admin; SC0 — Platform scope; trusted bootstrap source |
 
 R0's protected bootstrap capabilities are a platform primitive, not ordinary
 app Permission rows granting write access to the security configuration. This
@@ -416,11 +472,11 @@ bounded grant operation, not ordinary writes to this protected configuration.
 
 | ID | Person | Role | Scope | Source | Recorded issuer |
 |---|---|---|---|---|---|
-| RA1 | P1 — Meera | R1 — Employee Contact Admin | SC1 — Store A | JA1 + JC1 | P0 — Bootstrap Administrator |
-| RA2 | P1 — Meera | R2 — Employee Contact Approver | SC1 — Store A | JA1 + JC2 | P0 — Bootstrap Administrator |
-| RA3 | P1 — Meera | R3 — Employee Contact Access Admin | SC1 — Store A | JA1 + JC3 | P0 — Bootstrap Administrator |
-| RA4 | P1 — Meera | R4 — Store Staffing Admin | SC1 — Store A | JA1 + JC4 | P0 — Bootstrap Administrator |
-| RA5 | P2 — Arun | R6 — Employee Self-Service | SC3 — Own employee | Explicit setup grant | P0 — Bootstrap Administrator |
+| RA1 | P1 — Meera | R1 — Employee Contact Admin | SC1 — Store A | JA1 + JC1 | P0 — Asha |
+| RA2 | P1 — Meera | R2 — Employee Contact Approver | SC1 — Store A | JA1 + JC2 | P0 — Asha |
+| RA3 | P1 — Meera | R3 — Employee Contact Access Admin | SC1 — Store A | JA1 + JC3 | P0 — Asha |
+| RA4 | P1 — Meera | R4 — Store Staffing Admin | SC1 — Store A | JA1 + JC4 | P0 — Asha |
+| RA5 | P2 — Arun | R6 — Employee Self-Service | SC3 — Own employee | Explicit setup grant | P0 — Asha |
 
 These job-derived assignments may be computed views rather than persisted rows;
 the prototype shows stable IDs to make the explanation inspectable. Do not persist
@@ -500,26 +556,18 @@ once. Do not mix an already approved CP1 with a test that requires it pending.
 | Self + department | Arun reads his employee number and changes his own phone | Read succeeds; AR3 permits phone update; no authority to change another employee number |
 | Direct-report mode | Replace RA6 scope with SC4 | Members follow reports_to within S1; missing JA3 reports_to excludes Priya |
 
-## Prototype interaction plan
+## Prototype status and current verification direction
 
-Default to a business-facing flow, with an optional inspectable data view:
+The one-table-at-a-time bootstrap and hands-on delegation simulation is preserved
+on `codex/462-permissions-prototype`, outside this PR. It was useful for explaining
+records, but the owner did not finish reviewing it. No further UI development or
+UI acceptance is required for this handoff. Presentation experiments do not amend
+production behaviour or settle the defaults listed above.
 
-1. **Responsibilities:** as Meera, select Arun, contact maintenance, Store A and
-   Homeware; show the resulting plain-language authority statement before saving.
-2. **Employees:** switch to Arun, see only authorised records and readable details;
-   permitted edits create proposals; read-only details remain visibly read-only.
-3. **Approvals:** switch to Meera; review original/proposed values, approve or
-   reject with a reason. Show that live data stays unchanged until approval.
-4. **Try a situation:** isolated controls for transfer date, revocation, conflict,
-   handover and the acting-manager escalation. Explanations identify the rule,
-   without implying inaccessible data is visible in the real user's screen.
-5. **Behind the scenes:** read-only sample records using ID — Name links, grouped
-   in bootstrap/install/setup/delegate/propose/decide order. This is a prototype
-   teaching aid, not a required business workflow.
-
-Use synthetic data, clear local-only labelling and a reset. Follow Shop Floor
-visual direction. Owner edits to these artifacts drive the next version. No
-production implementation starts merely because the prototype feels plausible.
+The next deliverable is backend verification with the named sample data, following
+the handoff section and tasks. Keep business-facing UI work outside this change
+unless the owner later requests it. Generic existing screens may still be used
+for a smoke check; they are not the primary proof of permission enforcement.
 
 ## Production admission and migration plan
 
@@ -573,7 +621,7 @@ retaining protections against ordinary account/role edits and automation bypass.
 
 ## Open Questions
 
-Non-blocking presentation details for prototype review: whether the permissions
-matrix appears inline or as an expandable section, and the most understandable
-wording for the responsibility summary. Production policy and contract gates are
-listed above rather than disguised as minor unanswered implementation details.
+Resolve the production gates above: Employee/Person field ownership, resolver
+and capability contracts, approver-only application, bulk atomicity, shared-record
+membership and migration mapping. UI presentation questions are no longer part of
+this handoff. Owner review of the simulation was not completed.

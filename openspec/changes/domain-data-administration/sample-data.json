@@ -1,0 +1,1238 @@
+{
+  "format": "logical-design-examples-v1",
+  "purpose": "Synthetic logical reference data and expected outcomes for #462. Not a production seed, migration, import file, or executable proof of permissions.",
+  "business_date": "2026-10-28",
+  "date_semantics": "Starts inclusive; ends exclusive. Business-date semantics remain a prototype default.",
+  "instructions": [
+    "Read design.md and tasks.md first; reconcile with current main and linked issues before implementing.",
+    "FK values below are IDs. Display ID \u2014 Name to people.",
+    "Each verification case starts fresh unless it explicitly references a prior case.",
+    "Map logical records to approved Table metadata; create test data inline in existing Postgres rollback sandbox tests, not by loading this file as a test fixture.",
+    "Trusted bootstrap is separate from ordinary authorised grant/save operations.",
+    "Expected outcomes labelled unresolved_default are decision examples, not approved production assertions."
+  ],
+  "rows": {
+    "installed_app": [
+      {
+        "id": "APP1",
+        "name": "Example Store App"
+      }
+    ],
+    "person": [
+      {
+        "id": "P0",
+        "name": "Asha"
+      },
+      {
+        "id": "P1",
+        "name": "Meera"
+      },
+      {
+        "id": "P2",
+        "name": "Arun"
+      },
+      {
+        "id": "P3",
+        "name": "Priya"
+      },
+      {
+        "id": "P4",
+        "name": "Ravi"
+      },
+      {
+        "id": "P5",
+        "name": "Leela"
+      }
+    ],
+    "role": [
+      {
+        "id": "R0",
+        "name": "Platform Admin",
+        "owner_app": null
+      },
+      {
+        "id": "R1",
+        "name": "Employee Contact Admin",
+        "owner_app": "APP1"
+      },
+      {
+        "id": "R2",
+        "name": "Employee Contact Approver",
+        "owner_app": "APP1"
+      },
+      {
+        "id": "R3",
+        "name": "Employee Contact Access Admin",
+        "owner_app": "APP1"
+      },
+      {
+        "id": "R4",
+        "name": "Store Staffing Admin",
+        "owner_app": "APP1"
+      },
+      {
+        "id": "R5",
+        "name": "Store Staffing Access Admin",
+        "owner_app": "APP1"
+      },
+      {
+        "id": "R6",
+        "name": "Employee Self-Service",
+        "owner_app": "APP1"
+      }
+    ],
+    "table_metadata": [
+      {
+        "id": "T1",
+        "name": "Employee",
+        "owner_app": "APP1"
+      },
+      {
+        "id": "T2",
+        "name": "Job Assignment",
+        "owner_app": "APP1"
+      },
+      {
+        "id": "T3",
+        "name": "Store",
+        "owner_app": "APP1"
+      },
+      {
+        "id": "T4",
+        "name": "Department",
+        "owner_app": "APP1"
+      },
+      {
+        "id": "T5",
+        "name": "Section",
+        "owner_app": "APP1"
+      }
+    ],
+    "column_metadata": [
+      {
+        "id": "C1",
+        "name": "person",
+        "table": "T1"
+      },
+      {
+        "id": "C2",
+        "name": "name",
+        "table": "T1"
+      },
+      {
+        "id": "C3",
+        "name": "employee_number",
+        "table": "T1"
+      },
+      {
+        "id": "C4",
+        "name": "phone",
+        "table": "T1"
+      },
+      {
+        "id": "C5",
+        "name": "emergency_contact",
+        "table": "T1"
+      },
+      {
+        "id": "C6",
+        "name": "person",
+        "table": "T2"
+      },
+      {
+        "id": "C7",
+        "name": "job",
+        "table": "T2"
+      },
+      {
+        "id": "C8",
+        "name": "store",
+        "table": "T2"
+      },
+      {
+        "id": "C9",
+        "name": "department",
+        "table": "T2"
+      },
+      {
+        "id": "C10",
+        "name": "section",
+        "table": "T2"
+      },
+      {
+        "id": "C11",
+        "name": "reports_to",
+        "table": "T2"
+      },
+      {
+        "id": "C12",
+        "name": "acting",
+        "table": "T2"
+      },
+      {
+        "id": "C13",
+        "name": "starts_on",
+        "table": "T2"
+      },
+      {
+        "id": "C14",
+        "name": "ends_on",
+        "table": "T2"
+      },
+      {
+        "id": "C15",
+        "name": "name",
+        "table": "T3"
+      },
+      {
+        "id": "C16",
+        "name": "store",
+        "table": "T4"
+      },
+      {
+        "id": "C17",
+        "name": "name",
+        "table": "T4"
+      },
+      {
+        "id": "C18",
+        "name": "store",
+        "table": "T5"
+      },
+      {
+        "id": "C19",
+        "name": "department",
+        "table": "T5"
+      },
+      {
+        "id": "C20",
+        "name": "name",
+        "table": "T5"
+      }
+    ],
+    "permission": [
+      {
+        "id": "PM1",
+        "role": "R1",
+        "target_table": "T1",
+        "operation": "read"
+      },
+      {
+        "id": "PM2",
+        "role": "R1",
+        "target_table": "T1",
+        "operation": "update"
+      },
+      {
+        "id": "PM3",
+        "role": "R4",
+        "target_table": "T2",
+        "operation": "read"
+      },
+      {
+        "id": "PM4",
+        "role": "R4",
+        "target_table": "T2",
+        "operation": "create"
+      },
+      {
+        "id": "PM5",
+        "role": "R4",
+        "target_table": "T2",
+        "operation": "update"
+      },
+      {
+        "id": "PM6",
+        "role": "R6",
+        "target_table": "T1",
+        "operation": "read"
+      },
+      {
+        "id": "PM7",
+        "role": "R6",
+        "target_table": "T1",
+        "operation": "update"
+      }
+    ],
+    "permission_column": [
+      {
+        "permission": "PM1",
+        "column": "C2"
+      },
+      {
+        "permission": "PM1",
+        "column": "C3"
+      },
+      {
+        "permission": "PM1",
+        "column": "C4"
+      },
+      {
+        "permission": "PM1",
+        "column": "C5"
+      },
+      {
+        "permission": "PM2",
+        "column": "C4"
+      },
+      {
+        "permission": "PM2",
+        "column": "C5"
+      },
+      {
+        "permission": "PM3",
+        "column": "C6"
+      },
+      {
+        "permission": "PM3",
+        "column": "C7"
+      },
+      {
+        "permission": "PM3",
+        "column": "C8"
+      },
+      {
+        "permission": "PM3",
+        "column": "C9"
+      },
+      {
+        "permission": "PM3",
+        "column": "C10"
+      },
+      {
+        "permission": "PM3",
+        "column": "C11"
+      },
+      {
+        "permission": "PM3",
+        "column": "C12"
+      },
+      {
+        "permission": "PM3",
+        "column": "C13"
+      },
+      {
+        "permission": "PM3",
+        "column": "C14"
+      },
+      {
+        "permission": "PM4",
+        "column": "C6"
+      },
+      {
+        "permission": "PM4",
+        "column": "C7"
+      },
+      {
+        "permission": "PM4",
+        "column": "C8"
+      },
+      {
+        "permission": "PM4",
+        "column": "C9"
+      },
+      {
+        "permission": "PM4",
+        "column": "C10"
+      },
+      {
+        "permission": "PM4",
+        "column": "C11"
+      },
+      {
+        "permission": "PM4",
+        "column": "C12"
+      },
+      {
+        "permission": "PM4",
+        "column": "C13"
+      },
+      {
+        "permission": "PM4",
+        "column": "C14"
+      },
+      {
+        "permission": "PM5",
+        "column": "C6"
+      },
+      {
+        "permission": "PM5",
+        "column": "C7"
+      },
+      {
+        "permission": "PM5",
+        "column": "C8"
+      },
+      {
+        "permission": "PM5",
+        "column": "C9"
+      },
+      {
+        "permission": "PM5",
+        "column": "C10"
+      },
+      {
+        "permission": "PM5",
+        "column": "C11"
+      },
+      {
+        "permission": "PM5",
+        "column": "C12"
+      },
+      {
+        "permission": "PM5",
+        "column": "C13"
+      },
+      {
+        "permission": "PM5",
+        "column": "C14"
+      },
+      {
+        "permission": "PM6",
+        "column": "C2"
+      },
+      {
+        "permission": "PM6",
+        "column": "C3"
+      },
+      {
+        "permission": "PM6",
+        "column": "C4"
+      },
+      {
+        "permission": "PM6",
+        "column": "C5"
+      },
+      {
+        "permission": "PM7",
+        "column": "C4"
+      }
+    ],
+    "store": [
+      {
+        "id": "S1",
+        "name": "Store A"
+      },
+      {
+        "id": "S2",
+        "name": "Store B"
+      }
+    ],
+    "department": [
+      {
+        "id": "D1",
+        "name": "Homeware",
+        "store": "S1"
+      },
+      {
+        "id": "D2",
+        "name": "Clothing",
+        "store": "S1"
+      },
+      {
+        "id": "D3",
+        "name": "Homeware",
+        "store": "S2"
+      }
+    ],
+    "section": [
+      {
+        "id": "SEC1",
+        "name": "Homeware Essentials",
+        "store": "S1",
+        "department": "D1"
+      },
+      {
+        "id": "SEC2",
+        "name": "Clothing Essentials",
+        "store": "S1",
+        "department": "D2"
+      },
+      {
+        "id": "SEC3",
+        "name": "Homeware Essentials",
+        "store": "S2",
+        "department": "D3"
+      }
+    ],
+    "job": [
+      {
+        "id": "JOB1",
+        "name": "Store Manager"
+      },
+      {
+        "id": "JOB2",
+        "name": "Department Manager"
+      },
+      {
+        "id": "JOB3",
+        "name": "Team Leader"
+      }
+    ],
+    "employee": [
+      {
+        "id": "E1",
+        "person": "P1",
+        "name": "Meera",
+        "employee_number": "DEMO-001",
+        "phone": "demo-phone-meera",
+        "emergency_contact": "demo-contact-meera"
+      },
+      {
+        "id": "E2",
+        "person": "P2",
+        "name": "Arun",
+        "employee_number": "DEMO-002",
+        "phone": "demo-phone-arun",
+        "emergency_contact": "demo-contact-arun"
+      },
+      {
+        "id": "E3",
+        "person": "P3",
+        "name": "Priya",
+        "employee_number": "DEMO-003",
+        "phone": "demo-phone-priya-old",
+        "emergency_contact": "demo-contact-priya"
+      },
+      {
+        "id": "E4",
+        "person": "P4",
+        "name": "Ravi",
+        "employee_number": "DEMO-004",
+        "phone": "demo-phone-ravi",
+        "emergency_contact": "demo-contact-ravi"
+      },
+      {
+        "id": "E5",
+        "person": "P5",
+        "name": "Leela",
+        "employee_number": "DEMO-005",
+        "phone": "demo-phone-leela",
+        "emergency_contact": "demo-contact-leela"
+      }
+    ],
+    "job_assignment": [
+      {
+        "id": "JA1",
+        "person": "P1",
+        "job": "JOB1",
+        "store": "S1",
+        "department": null,
+        "section": null,
+        "reports_to": null,
+        "acting": false,
+        "starts": "2026-10-01",
+        "ends": null
+      },
+      {
+        "id": "JA2",
+        "person": "P2",
+        "job": "JOB2",
+        "store": "S1",
+        "department": "D1",
+        "section": null,
+        "reports_to": "P1",
+        "acting": false,
+        "starts": "2026-10-01",
+        "ends": null
+      },
+      {
+        "id": "JA3",
+        "person": "P3",
+        "job": "JOB3",
+        "store": "S1",
+        "department": null,
+        "section": "SEC1",
+        "reports_to": "P2",
+        "acting": false,
+        "starts": "2026-10-01",
+        "ends": null
+      },
+      {
+        "id": "JA4",
+        "person": "P4",
+        "job": "JOB3",
+        "store": "S1",
+        "department": null,
+        "section": "SEC2",
+        "reports_to": "P1",
+        "acting": false,
+        "starts": "2026-10-01",
+        "ends": null
+      },
+      {
+        "id": "JA5",
+        "person": "P5",
+        "job": "JOB3",
+        "store": "S2",
+        "department": null,
+        "section": "SEC3",
+        "reports_to": null,
+        "acting": false,
+        "starts": "2026-10-01",
+        "ends": null
+      }
+    ],
+    "resolver_declaration": [
+      {
+        "id": "RES1",
+        "app": "APP1",
+        "target_table": "T1",
+        "name": "Current employee memberships"
+      },
+      {
+        "id": "RES2",
+        "app": "APP1",
+        "target_table": "T2",
+        "name": "Assignment footprint"
+      },
+      {
+        "id": "RES3",
+        "app": "APP1",
+        "target_table": "T2",
+        "name": "Conferred job capabilities"
+      }
+    ],
+    "scope_definition": [
+      {
+        "id": "SD0",
+        "mode": "platform"
+      },
+      {
+        "id": "SD1",
+        "mode": "named_organisation"
+      },
+      {
+        "id": "SD2",
+        "mode": "self"
+      },
+      {
+        "id": "SD3",
+        "mode": "direct_reports"
+      },
+      {
+        "id": "SD4",
+        "mode": "reporting_subtree_excluding_self"
+      }
+    ],
+    "scope": [
+      {
+        "id": "SC0",
+        "name": "Platform scope",
+        "definition": "SD0"
+      },
+      {
+        "id": "SC1",
+        "name": "Store A",
+        "definition": "SD1"
+      },
+      {
+        "id": "SC2",
+        "name": "Store A Homeware",
+        "definition": "SD1"
+      },
+      {
+        "id": "SC3",
+        "name": "Own employee",
+        "definition": "SD2"
+      },
+      {
+        "id": "SC4",
+        "name": "Store A direct reports",
+        "definition": "SD3"
+      },
+      {
+        "id": "SC5",
+        "name": "Store A reporting subtree",
+        "definition": "SD4"
+      }
+    ],
+    "scope_tuple": [
+      {
+        "id": "ST1",
+        "scope": "SC1"
+      },
+      {
+        "id": "ST2",
+        "scope": "SC2"
+      },
+      {
+        "id": "ST4",
+        "scope": "SC4"
+      },
+      {
+        "id": "ST5",
+        "scope": "SC5"
+      }
+    ],
+    "scope_condition": [
+      {
+        "tuple": "ST1",
+        "dimension": "store",
+        "value": "S1"
+      },
+      {
+        "tuple": "ST2",
+        "dimension": "store",
+        "value": "S1"
+      },
+      {
+        "tuple": "ST4",
+        "dimension": "store",
+        "value": "S1"
+      },
+      {
+        "tuple": "ST5",
+        "dimension": "store",
+        "value": "S1"
+      },
+      {
+        "tuple": "ST2",
+        "dimension": "department",
+        "value": "D1"
+      }
+    ],
+    "job_capability": [
+      {
+        "id": "JC1",
+        "job": "JOB1",
+        "role": "R1",
+        "scope_projection": "assignment_store"
+      },
+      {
+        "id": "JC2",
+        "job": "JOB1",
+        "role": "R2",
+        "scope_projection": "assignment_store"
+      },
+      {
+        "id": "JC3",
+        "job": "JOB1",
+        "role": "R3",
+        "scope_projection": "assignment_store"
+      },
+      {
+        "id": "JC4",
+        "job": "JOB1",
+        "role": "R4",
+        "scope_projection": "assignment_store"
+      }
+    ],
+    "authority": [
+      {
+        "id": "AU1",
+        "name": "Store A management",
+        "office_job": "JOB1",
+        "office_scope": "SC1",
+        "status": "active"
+      }
+    ],
+    "delegation_boundary": [
+      {
+        "id": "DB1",
+        "authority": "AU1",
+        "required_access_role": "R3",
+        "grantable_role": "R1",
+        "max_scope": "SC1",
+        "recipient_rule": "currently_assigned_to_Store_A",
+        "allow_further_delegation": false
+      }
+    ],
+    "role_assignment": [
+      {
+        "id": "RA0",
+        "person": "P0",
+        "role": "R0",
+        "scope": "SC0",
+        "source": "trusted_bootstrap",
+        "grantor": "P0"
+      },
+      {
+        "id": "RA1",
+        "person": "P1",
+        "role": "R1",
+        "scope": "SC1",
+        "source_job_assignment": "JA1",
+        "source_job_capability": "JC1",
+        "grantor": "P0",
+        "representation": "derived_view_not_required_persisted_row"
+      },
+      {
+        "id": "RA2",
+        "person": "P1",
+        "role": "R2",
+        "scope": "SC1",
+        "source_job_assignment": "JA1",
+        "source_job_capability": "JC2",
+        "grantor": "P0",
+        "representation": "derived_view_not_required_persisted_row"
+      },
+      {
+        "id": "RA3",
+        "person": "P1",
+        "role": "R3",
+        "scope": "SC1",
+        "source_job_assignment": "JA1",
+        "source_job_capability": "JC3",
+        "grantor": "P0",
+        "representation": "derived_view_not_required_persisted_row"
+      },
+      {
+        "id": "RA4",
+        "person": "P1",
+        "role": "R4",
+        "scope": "SC1",
+        "source_job_assignment": "JA1",
+        "source_job_capability": "JC4",
+        "grantor": "P0",
+        "representation": "derived_view_not_required_persisted_row"
+      },
+      {
+        "id": "RA5",
+        "person": "P2",
+        "role": "R6",
+        "scope": "SC3",
+        "grantor": "P0",
+        "source": "explicit_setup"
+      }
+    ],
+    "approval_rule": [
+      {
+        "id": "AR1",
+        "target_table": "T1",
+        "operation": "update",
+        "maker_condition": "current_store_manager",
+        "outcome": "apply_and_log"
+      },
+      {
+        "id": "AR2",
+        "target_table": "T1",
+        "operation": "update",
+        "maker_condition": "authorised_delegate_editing_someone_else",
+        "outcome": "hold",
+        "approver_authority": "AU1",
+        "approver_role": "R2"
+      },
+      {
+        "id": "AR3",
+        "target_table": "T1",
+        "operation": "update",
+        "maker_condition": "self_with_self_service_grant",
+        "outcome": "apply_and_log"
+      }
+    ],
+    "approval_rule_column": [
+      {
+        "rule": "AR1",
+        "column": "C4"
+      },
+      {
+        "rule": "AR1",
+        "column": "C5"
+      },
+      {
+        "rule": "AR2",
+        "column": "C4"
+      },
+      {
+        "rule": "AR2",
+        "column": "C5"
+      },
+      {
+        "rule": "AR3",
+        "column": "C4"
+      }
+    ],
+    "proposal": [],
+    "proposal_change": [],
+    "decision": [],
+    "history": []
+  },
+  "examples": {
+    "delegated_assignment": {
+      "id": "RA6",
+      "person": "P2",
+      "role": "R1",
+      "scope": "SC2",
+      "source_authority": "AU1",
+      "delegation_boundary": "DB1",
+      "grantor": "P1",
+      "allow_further_delegation": false,
+      "status": "active"
+    },
+    "narrower_role": {
+      "id": "R7",
+      "name": "Employee Contact Admin \u2014 phone only",
+      "owner_app": "APP1",
+      "permissions": [
+        {
+          "operation": "read",
+          "target_table": "T1",
+          "columns": [
+            "C2",
+            "C3",
+            "C4",
+            "C5"
+          ]
+        },
+        {
+          "operation": "update",
+          "target_table": "T1",
+          "columns": [
+            "C4"
+          ]
+        }
+      ]
+    },
+    "transfer_assignment": {
+      "id": "JA6",
+      "person": "P3",
+      "job": "JOB3",
+      "store": "S1",
+      "department": null,
+      "section": "SEC2",
+      "reports_to": "P2",
+      "acting": false,
+      "starts": "2026-11-01",
+      "ends": null
+    },
+    "successor_assignment": {
+      "id": "JA7",
+      "person": "P4",
+      "job": "JOB1",
+      "store": "S1",
+      "department": null,
+      "section": null,
+      "reports_to": null,
+      "acting": false,
+      "starts": "2026-11-01",
+      "ends": null
+    },
+    "forbidden_acting_assignment": {
+      "id": "JA8",
+      "person": "P4",
+      "job": "JOB1",
+      "store": "S1",
+      "department": null,
+      "section": null,
+      "reports_to": null,
+      "acting": true,
+      "starts": "2026-10-01",
+      "ends": null
+    },
+    "pending_proposal": {
+      "id": "CP1",
+      "target_table": "T1",
+      "record": "E3",
+      "maker": "P2",
+      "status": "pending",
+      "version": 1
+    },
+    "proposal_change": {
+      "proposal": "CP1",
+      "column": "C4",
+      "original_value": "demo-phone-priya-old",
+      "proposed_value": "demo-phone-priya-new",
+      "review_base_value": "demo-phone-priya-old"
+    }
+  },
+  "verification_cases": [
+    {
+      "id": "V01",
+      "name": "No delegated access yet",
+      "setup": "base",
+      "action": "Arun reads or changes Priya",
+      "expected": "Refuse; Arun retains own-record self service.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V02",
+      "name": "Bounded grant",
+      "setup": "base",
+      "action": "Meera grants RA6 as shown in examples",
+      "expected": "Allow; Arun receives R1 only within SC2. Record grantor and continuing authority.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V03",
+      "name": "Delegated edit is held",
+      "setup": "base + RA6",
+      "action": "Arun updates E3.phone to demo-phone-priya-new",
+      "expected": "Create pending CP1 and proposal change; E3.phone stays demo-phone-priya-old.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V04",
+      "name": "Approve current proposal",
+      "setup": "V03",
+      "action": "Meera approves CP1",
+      "expected": "Apply E3.phone; CP1 applied; decision/history identify maker Arun and approver Meera.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V05",
+      "name": "No self approval",
+      "setup": "V03",
+      "action": "Arun approves CP1",
+      "expected": "Refuse; proposal pending and live phone unchanged.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V06",
+      "name": "Read does not imply write",
+      "setup": "base + RA6",
+      "action": "Arun changes E3.employee_number, alone or alongside phone",
+      "expected": "Refuse entire row change; no partial phone change or accepted forbidden column.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V07",
+      "name": "Other department",
+      "setup": "base + RA6",
+      "action": "Arun reads/updates E4 Ravi in Clothing",
+      "expected": "Refuse; no broader employee data disclosure.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V08",
+      "name": "Other store",
+      "setup": "base + RA6",
+      "action": "Arun reads/updates E5 Leela in Store B",
+      "expected": "Refuse.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V09",
+      "name": "Own phone",
+      "setup": "base",
+      "action": "Arun edits E2.phone",
+      "expected": "Apply under separate RA5/AR3, not delegated authority.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V10",
+      "name": "Missing scope",
+      "setup": "base + an attempted R1 assignment without a Scope",
+      "action": "Arun reads or updates another employee",
+      "expected": "Refuse; missing scope never means unrestricted.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V11",
+      "name": "Revoked maker",
+      "setup": "V03, then revoke RA6",
+      "action": "Meera approves CP1",
+      "expected": "Refuse application; live record unchanged.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V12",
+      "name": "Transfer",
+      "setup": "base + RA6; end JA3 at 2026-11-01 and start JA6 (examples)",
+      "action": "Compare Arun access to E3 on 2026-10-28 and 2026-11-01",
+      "expected": "Before: access through Homeware; on transfer: no delegated access. Any pending proposal rechecks membership.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V13",
+      "name": "Department is not direct reports",
+      "setup": "base + RA6; remove JA3.reports_to",
+      "action": "Arun accesses Priya; repeat with RA6.scope=SC4",
+      "expected": "SC2 allows department membership; SC4 does not match Priya without reporting link.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V14",
+      "name": "Successor continuity",
+      "setup": "V03; end JA1 at 2026-11-01 and start trusted JA7 (examples)",
+      "action": "On 2026-11-01 Meera and Ravi separately try approval",
+      "expected": "Meera refused; Ravi may approve as current AU1 holder. RA6 issuer stays Meera and scope stays bounded.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V15",
+      "name": "Acting appointment escalation",
+      "setup": "base",
+      "action": "Meera attempts JA8 (examples), conferring Store Manager roles on Ravi",
+      "expected": "Refuse atomically: DB1 cannot confer R2/R3/R4 indirectly through a job row.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V16",
+      "name": "Direct grant escalation",
+      "setup": "base",
+      "action": "Meera tries granting R3 rather than R1 under DB1, or allowing further delegation",
+      "expected": "Refuse; maintenance and Access Admin are different capabilities.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V17",
+      "name": "Conflict",
+      "setup": "V03; Meera changes live E3.phone to demo-phone-priya-current",
+      "action": "Meera attempts old approval",
+      "expected": "No overwrite; show original/current/proposed and require a fresh decision.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V18",
+      "name": "No Employee create/delete",
+      "setup": "base + RA6",
+      "action": "Arun creates or deletes an Employee",
+      "expected": "Refuse; read/update permissions do not grant either operation.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V19",
+      "name": "Column-specific narrower grant",
+      "setup": "Replace RA6.role with narrower R7 defined in examples",
+      "action": "Arun edits E3.phone and E3.emergency_contact separately",
+      "expected": "Phone may be proposed; emergency contact remains readable but cannot be changed.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V20",
+      "name": "Reject proposal",
+      "setup": "V03",
+      "action": "Meera rejects CP1 with a reason",
+      "expected": "Live data unchanged; decision and reason recorded.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V21",
+      "name": "Mandatory approval overrides immediate",
+      "setup": "base + explicit mandatory phone approval rule for everyone",
+      "action": "Arun edits own phone and tries self approval",
+      "expected": "Held despite AR3; self approval refused; authorised other approver required.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V22",
+      "name": "Whole shared-record footprint",
+      "setup": "Employee has simultaneous Store A and Store B memberships; Arun only Store A scope",
+      "action": "Arun changes shared Employee contact",
+      "expected": "Prototype default refuses unless all memberships covered; resolve policy before production assertions.",
+      "policy": "unresolved_default"
+    },
+    {
+      "id": "V23",
+      "name": "Mixed-scope bulk request",
+      "setup": "One permitted employee and one forbidden employee",
+      "action": "Arun bulk-updates both",
+      "expected": "Prototype default rejects whole request; final generic bulk semantics need decision.",
+      "policy": "unresolved_default"
+    },
+    {
+      "id": "V24",
+      "name": "Approver-only authority",
+      "setup": "Approver holds R2 but no R1 update authority",
+      "action": "Approve a valid pending contact correction",
+      "expected": "Prototype default refuses; final approver-only application contract needs decision.",
+      "policy": "unresolved_default"
+    },
+    {
+      "id": "V25",
+      "name": "Complete grants cannot cross-multiply",
+      "setup": "One narrow grant permits phone; another broader grant permits emergency contact",
+      "action": "Attempt phone update only covered by the broader grant\u2019s rows",
+      "expected": "Refuse unless one complete grant covers both target and phone.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V26",
+      "name": "Correlated scope tuples",
+      "setup": "Add D4 \u2014 Clothing in S2. Scope tuples permit (S1,D1) OR (S2,D4). Existing D2 is Clothing in S1; D3 is Homeware in S2.",
+      "action": "Try records in (S1,D2) and (S2,D3), which are valid organisation combinations but unlisted in the grant",
+      "expected": "Refuse; never produce the cross-product of allowed stores and departments.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V27",
+      "name": "Platform protection separate",
+      "setup": "base + RA6",
+      "action": "Arun directly edits platform access holdings or system-written audit history",
+      "expected": "Refuse; removing app decides_scope does not unlock either platform access or system-written tables.",
+      "policy": "agreed"
+    }
+  ],
+  "reference_checks": {
+    "role": {
+      "owner_app": "installed_app"
+    },
+    "table_metadata": {
+      "owner_app": "installed_app"
+    },
+    "column_metadata": {
+      "table": "table_metadata"
+    },
+    "permission": {
+      "role": "role",
+      "target_table": "table_metadata"
+    },
+    "permission_column": {
+      "permission": "permission",
+      "column": "column_metadata"
+    },
+    "department": {
+      "store": "store"
+    },
+    "section": {
+      "store": "store",
+      "department": "department"
+    },
+    "employee": {
+      "person": "person"
+    },
+    "job_assignment": {
+      "person": "person",
+      "job": "job",
+      "store": "store",
+      "department": "department",
+      "section": "section",
+      "reports_to": "person"
+    },
+    "resolver_declaration": {
+      "app": "installed_app",
+      "target_table": "table_metadata"
+    },
+    "scope": {
+      "definition": "scope_definition"
+    },
+    "scope_tuple": {
+      "scope": "scope"
+    },
+    "scope_condition": {
+      "tuple": "scope_tuple"
+    },
+    "job_capability": {
+      "job": "job",
+      "role": "role"
+    },
+    "authority": {
+      "office_job": "job",
+      "office_scope": "scope"
+    },
+    "delegation_boundary": {
+      "authority": "authority",
+      "required_access_role": "role",
+      "grantable_role": "role",
+      "max_scope": "scope"
+    },
+    "role_assignment": {
+      "person": "person",
+      "role": "role",
+      "scope": "scope",
+      "source_job_assignment": "job_assignment",
+      "source_job_capability": "job_capability",
+      "grantor": "person"
+    },
+    "approval_rule": {
+      "target_table": "table_metadata",
+      "approver_authority": "authority",
+      "approver_role": "role"
+    },
+    "approval_rule_column": {
+      "rule": "approval_rule",
+      "column": "column_metadata"
+    }
+  }
+}

@@ -37,9 +37,13 @@ None. This extends the existing permission and approval capabilities.
 
 ## Impact
 
-This PR contains planning artifacts only. It does not change running permissions,
-rename stored roles, migrate data or implement the prototype. The next deliverable
-is a disposable HTML prototype based on these artifacts, followed by owner review.
+This PR is a design and sample-data handoff. It includes no runtime permission
+implementation, schema migration or UI. The disposable simulation is preserved
+on a separate branch; the owner no longer needs UI work. The next agent should
+reconcile the design with current main, resolve the remaining policy/contract
+gates, then implement and verify the server model using synthetic data through
+real public operations and Postgres sandbox tests. The examples are not a
+production import format or proof that the proposed rules already work.
 
 Implementation will affect metadata, permission evaluation, app role bindings,
 save paths, imports, workflows, preflight and their tests. Coordinate with #246
