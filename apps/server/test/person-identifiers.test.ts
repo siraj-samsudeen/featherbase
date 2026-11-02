@@ -248,6 +248,62 @@ describe('who sees what', () => {
 })
 
 describe('search respects who may read people (Codex review on #385)', () => {
+  test('a Secret-system search refuses unavailable fingerprinting without changing identifier data', async ({ admin, createUser }) => {
+    const secret = 'search-national-id'
+    const normal = 'search-normal-code'
+    for (const row of [
+      { row_id: secret, label: 'Search national ID', kind: 'national-id' },
+      { row_id: normal, label: 'Search normal code', kind: 'contact', normalise: 'upper', sensitivity: 'Normal', edited_by: 'system-manager' },
+    ]) await admin.post('/api/save_row', { table: 'Identifier System', row })
+    const { row_id: person } = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person', row: { full_name: 'Search target' },
+    })
+    const { row_id: other } = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person', row: { full_name: 'Search other' },
+    })
+    await admin.post(`/api/people/${person}/identifiers`, { system: normal, value: 'Alpha-42' })
+    await admin.post(`/api/people/${other}/identifiers`, { system: normal, value: 'Bravo-81' })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Boundary Person Reader' } })
+    await admin.post('/api/save_row', {
+      table: 'Permission', row: { ref_table: 'Person', role: 'Boundary Person Reader', can_read: true },
+    })
+    const reader = await createUser({ roles: ['Boundary Person Reader'] })
+    const denied = await createUser()
+    const snapshot = async () => ({
+      systems: await sql`select * from identifier_system where row_id in (${secret}, ${normal}) order by row_id`,
+      identifiers: await sql`select * from person_identifier where person_id in (${person}, ${other}) or system = ${secret} order by id`,
+      people: await sql`select * from person where row_id in (${person}, ${other}) order by row_id`,
+    })
+    const before = await snapshot()
+    expect(before.systems.find((row) => row.row_id === secret)).toMatchObject({
+      kind: 'national-id', sensitivity: 'Secret', storage: 'fingerprint', display: 'last4', tier: 'restricted',
+    })
+    expect(before.identifiers.map((row) => [row.person_id, row.system, row.value]))
+      .toEqual(expect.arrayContaining([[person, normal, 'ALPHA-42'], [other, normal, 'BRAVO-81']]))
+    expect(before.identifiers.filter((row) => row.system === secret)).toEqual([])
+    const secretPath = `/api/identifiers?${new URLSearchParams({ system: secret, value: '234123412346' })}`
+    const normalPath = `/api/identifiers?${new URLSearchParams({ system: normal, value: 'alpha-42' })}`
+    const refused = await admin.fetch(secretPath)
+    expect(refused.status).toBe(417)
+    expect(await refused.json()).toEqual({ error: {
+      type: 'ValidationError',
+      message: 'Searching this identifier needs fingerprinting, which is not switched on',
+      fields: { code: 'fingerprint_unavailable' },
+    } })
+    expect(await snapshot()).toEqual(before)
+    expect(await reader.get(normalPath)).toEqual({ people: [{
+      person_id: person, resolved_to: person, replaced: false, current: true, assigner: '', pending_invite: false,
+    }] })
+    for (const path of [normalPath, secretPath]) {
+      const response = await denied.fetch(path)
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ error: {
+        type: 'PermissionError', message: 'You may not search people',
+      } })
+      expect(await snapshot()).toEqual(before)
+    }
+  })
+
   test('no Person read, no search; a Data Scope narrows the results', async ({ admin, createUser }) => {
     const p = await makePerson({ full_name: 'In scope', email: 'scoped.search@x.test' })
     const q = await makePerson({ full_name: 'Out of scope', email: 'other.search@x.test' })

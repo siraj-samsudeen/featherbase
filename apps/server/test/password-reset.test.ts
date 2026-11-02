@@ -24,6 +24,66 @@ async function setup(admin: TestClient) {
 }
 
 describe('SET-002: password reset', () => {
+  test('a short password preserves the issued reset link until an accepted password consumes it', async ({ admin, api }) => {
+    const email = 'reset-boundary@x.test'
+    const person = await save(admin, { email, full_name: 'Reset boundary', enabled: true })
+    await admin.post('/api/set_password', { user: person, password: 'before123' })
+    const signIn = (pwd: string) => api.fetch('/api/login', {
+      method: 'POST', body: JSON.stringify({ usr: email, pwd }),
+    })
+    const original = await signIn('before123')
+    expect(original.status).toBe(200)
+    expect(await original.json()).toMatchObject({ user: { row_id: person }, token: expect.any(String) })
+    const request = await api.fetch('/api/reset_password_request', {
+      method: 'POST', body: JSON.stringify({ usr: email }),
+    })
+    expect(request.status).toBe(200)
+    expect(await request.json()).toEqual({ ok: true })
+    const mail = await sql`select * from email_sink where mail_to = ${email} order by row_id`
+    expect(mail).toHaveLength(1)
+    const match = /Reset it here: (\S+)/.exec(String(mail[0].body))
+    expect(match).not.toBeNull()
+    const link = new URL(match![1])
+    expect(link.pathname).toBe('/featherbase/reset-password')
+    const key = link.searchParams.get('key')
+    expect(key).toMatch(/^[0-9a-f]{48}$/)
+    const tokens = await sql`select * from password_reset where "user" = ${person} order by token`
+    expect(tokens).toHaveLength(1)
+    expect(tokens[0]).toMatchObject({ token: key, user: person, expires_at: expect.any(Date) })
+    const account = await sql`select * from person where row_id = ${person}`
+    const response = await api.fetch('/api/reset_password', {
+      method: 'POST', body: JSON.stringify({ key, new_password: 'abcde' }),
+    })
+    expect(response.status).toBe(417)
+    expect(await response.json()).toEqual({ error: {
+      type: 'ValidationError', message: 'Password must be at least 6 characters',
+    } })
+    expect(await sql`select * from password_reset where "user" = ${person} order by token`).toEqual(tokens)
+    expect(await sql`select * from person where row_id = ${person}`).toEqual(account)
+    expect(await sql`select * from email_sink where mail_to = ${email} order by row_id`).toEqual(mail)
+    const stillOriginal = await signIn('before123')
+    expect(stillOriginal.status).toBe(200)
+    expect(await stillOriginal.json()).toMatchObject({ user: { row_id: person }, token: expect.any(String) })
+    expect(await sql`select * from password_reset where "user" = ${person} order by token`).toEqual(tokens)
+    const accepted = await api.fetch('/api/reset_password', {
+      method: 'POST', body: JSON.stringify({ key, new_password: 'abcdef' }),
+    })
+    expect(accepted.status).toBe(200)
+    expect(await accepted.json()).toEqual({ ok: true })
+    expect(await sql`select * from password_reset where "user" = ${person}`).toEqual([])
+    const [changed] = await sql`select * from person where row_id = ${person}`
+    expect(changed.password_hash).not.toBe(account[0].password_hash)
+    expect(changed).toEqual({ ...account[0], password_hash: expect.any(String) })
+    const oldLogin = await signIn('before123')
+    expect(oldLogin.status).toBe(401)
+    expect(await oldLogin.json()).toEqual({ error: {
+      type: 'AuthenticationError', message: 'Invalid login credentials',
+    } })
+    const newLogin = await signIn('abcdef')
+    expect(newLogin.status).toBe(200)
+    expect(await newLogin.json()).toMatchObject({ user: { row_id: person }, token: expect.any(String) })
+  })
+
   test('mails a reset link with a token and resets the password', async ({ admin }) => {
     await setup(admin)
     const token = await requestPasswordReset(USER)
