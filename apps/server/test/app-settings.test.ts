@@ -45,6 +45,32 @@ const setting = (admin: TestClient, name: string, value: string) =>
   admin.post('/api/save_row', { table: 'App Setting', row: { row_id: `setupproof.${name}`, value } })
 
 describe('declared app settings', () => {
+  test('an App Setting key without app.setting syntax preserves the declared setting', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await setting(admin, 'report_id', 'R-17')
+    const state = async () => ({
+      settings: await sql`select * from app_setting order by row_id`,
+      installed: await sql`select * from installed_app order by name`,
+      versions: await sql`select * from version where ref_table = 'App Setting' order by row_id`,
+      managed: await sql`select * from instance_settings_apply order by id`,
+      activity: await sql`select * from activity_log order by row_id`,
+    })
+    const before = await state()
+    const response = await admin.fetch('/api/save_row', {
+      method: 'POST', body: JSON.stringify({ table: 'App Setting', row: { row_id: 'setupproof-report_id', value: 'R-99' } }),
+    })
+    expect(response.status).toBe(417)
+    expect(await response.json()).toEqual({ error: {
+      type: 'ValidationError', message: 'An app setting is named <app>.<setting>, like tasker.report_id',
+      fields: { row_id: 'app.setting' },
+    } })
+    expect(await state()).toEqual(before)
+    expect(await admin.get('/api/table/App%20Setting/setupproof.report_id'))
+      .toMatchObject({ row_id: 'setupproof.report_id', app: 'setupproof', setting: 'report_id', value: 'R-17' })
+    expect(await withNamedVariable('SETUPPROOF_TOKEN', TOKEN, () => reader.post(read + 'config', { payload: {} })))
+      .toEqual({ result: { settings: { report_id: 'R-17' }, secrets: ['SETUPPROOF_TOKEN'] } })
+  })
+
   test('the handler gets the declared settings that hold a value', async ({ admin, createUser }) => {
     const { reader } = await setup(admin, createUser)
     await setting(admin, 'report_id', 'R-1')

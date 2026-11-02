@@ -1,4 +1,5 @@
 import { describe, expect } from 'vitest'
+import { resolve } from 'node:path'
 import { test } from './pg-test'
 import {
   registerApp,
@@ -14,6 +15,7 @@ import { saveDoc } from '../src/document'
 import { sql } from '../src/db'
 import type { TestClient } from 'feather-testing-postgres'
 import type { AppManifest } from '../src/apps'
+import { discoverPackages } from '../src/runtime-packages'
 
 // PLAT-001: an app installs its Tables + doc_events and uninstall tears the
 // Tables down. PLAT-002: an app's hook on a Table it does NOT own fires
@@ -191,6 +193,61 @@ async function makeSimpleTable(admin: TestClient, name: string) {
 }
 
 describe('app registry: install lifecycle', () => {
+  test('enable requests for unknown or declarative apps preserve real installed state', async ({ admin }) => {
+    const declarative = 'enable-declarative'
+    await admin.post('/api/install_app', { manifest: { name: declarative, tables: noteApp.tables } })
+    await admin.post('/api/save_row', { table: APP1_DT, row: { row_id: 'declared-note', title: 'keep me' } })
+    expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
+    await admin.post('/api/install_app', { name: 'other' })
+    const row = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'other.task', row: { row_id: 'toggle-control', quantity: 37 },
+    })
+    expect(row).toMatchObject({ row_id: 'toggle-control', quantity: 37, validation_runs: 1 })
+    const state = async () => ({
+      installed: await sql`select * from installed_app order by name`,
+      tables: await sql`select * from table_def where name in (${APP1_DT}, 'other.task') order by name`,
+      columns: await sql`select * from column_def where parent in (${APP1_DT}, 'other.task') order by row_id`,
+      declared: await sql`select * from featherbase.app_test_note order by row_id`,
+      runtime: await sql`select * from other.task order by row_id`,
+      settings: await sql`select * from app_setting order by row_id`,
+      jobs: await sql`select * from scheduled_job order by row_id`,
+      queued: await sql`select * from background_job order by row_id`,
+      versions: await sql`select * from version order by row_id`,
+      activity: await sql`select * from activity_log order by row_id`,
+    })
+    const before = await state()
+    expect(before.installed.find((app) => app.name === declarative)).toMatchObject({ runtime_package: false })
+    expect(before.installed.find((app) => app.name === 'other')).toMatchObject({ runtime_package: true, enabled: true })
+    for (const name of ['never-installed-toggle', declarative]) {
+      for (const enabled of [false, true]) {
+        const response = await admin.fetch('/api/set_app_enabled', {
+          method: 'POST', body: JSON.stringify({ name, enabled }),
+        })
+        expect(response.status).toBe(417)
+        expect(await response.json()).toEqual({ error: {
+          type: 'ValidationError', message: 'Enable/disable requires an installed runtime package',
+        } })
+        expect(await state()).toEqual(before)
+      }
+    }
+    expect(await admin.post('/api/set_app_enabled', { name: 'other', enabled: false }))
+      .toEqual({ name: 'other', enabled: false })
+    const disabled = { ...before, installed: before.installed.map((app) => app.name === 'other' ? { ...app, enabled: false } : app) }
+    expect(await state()).toEqual(disabled)
+    const blocked = await admin.fetch('/api/save_row', {
+      method: 'POST', body: JSON.stringify({ table: 'other.task', row: { ...row, quantity: 11 } }),
+    })
+    expect(blocked.status).toBe(403)
+    expect(await blocked.json()).toEqual({ error: { type: 'PermissionError', message: 'App other is disabled or unavailable' } })
+    expect(await state()).toEqual(disabled)
+    expect(await admin.post('/api/set_app_enabled', { name: 'other', enabled: true }))
+      .toEqual({ name: 'other', enabled: true })
+    expect(await state()).toEqual(before)
+    expect(await admin.post('/api/save_row', { table: 'other.task', row: { ...row, quantity: 11 } }))
+      .toMatchObject({ row_id: 'toggle-control', quantity: 11, validation_runs: 2 })
+    expect(await sql`select * from featherbase.app_test_note order by row_id`).toEqual(before.declared)
+  })
+
   test('install/list/uninstall round-trip, including app-owned table_defs', async () => {
     const APP = `cov-app-${Date.now()}`
     const DT = `Cov App Note ${Date.now() % 100000}`
