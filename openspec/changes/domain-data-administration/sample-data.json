@@ -1116,10 +1116,10 @@
     {
       "id": "V23",
       "name": "Mixed-scope bulk request",
-      "setup": "One permitted employee and one forbidden employee",
-      "action": "Arun bulk-updates both",
-      "expected": "Prototype default rejects whole request; final generic bulk semantics need decision.",
-      "policy": "unresolved_default"
+      "setup": "Base + RA6. Priya (E3) is permitted; Ravi (E4, Clothing) is outside Arun\u2019s department scope.",
+      "action": "Arun submits one bulk request to correct E3.phone and E4.phone.",
+      "expected": "Accept the E3 correction as pending approval under AR2; reject E4 with a row-specific reason. Both live phone values remain unchanged at submission: E3 waits for approval and E4 is forbidden. Return distinct per-row outcomes; do not claim both applied or reject the permitted correction solely because E4 failed.",
+      "policy": "agreed"
     },
     {
       "id": "V24",

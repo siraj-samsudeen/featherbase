@@ -37,8 +37,8 @@ bootstrap sequence below explains their purpose and ordering.
 with V01–V09: no delegation, bounded grant, held edit, approval, self-approval
 refusal, column refusal, department/store boundaries and self-service. Then add
 revocation, transfer, continuity, conflict, escalation and complete-grant cases.
-V23–V24 are explicitly labelled **unresolved defaults**; do not turn them into
-production assertions until the policy is decided. This list is a starting
+V24 is explicitly labelled an **unresolved default**; do not turn it into
+a production assertion until the policy is decided. This list is a starting
 acceptance dataset, not exhaustive concurrency or legacy-permission coverage.
 
 Translate these values into inline setup inside the repository's real Postgres
@@ -152,6 +152,16 @@ organisation or permit changes to job assignments outside the writer's scope.
 Assignment changes still check both stored and proposed scope. Match an actual
 membership tuple; never fabricate a store/department pair across assignments.
 
+Owner decision (2 November 2026): a bulk submission of independent record changes
+processes permitted rows and refuses forbidden rows, reporting each row's outcome.
+For ten employee corrections with one outside scope, the nine permitted changes
+proceed under their approval rules and the forbidden one stays unchanged. Report
+applied, pending approval or rejected explicitly; acceptance is not application.
+An individual row change remains atomic: a forbidden column cannot cause a partial
+save of that row. This does not split an indivisible business operation into
+independent writes. Define transaction/savepoint and retry mechanics during
+implementation; no aggregate success response may hide partial refusal.
+
 Scope modes: self (linked identity, not creator), direct reports, reporting
 subtree (excluding self), named stores, named departments, and explicit all.
 Named department grants do not follow their holder to a new department. Relative
@@ -219,9 +229,6 @@ production architecture:
 - Approval requires both an Approver assignment and authority to apply the
   affected update. The example gives Meera both. Approver-only application needs
   an explicit production decision, not a hidden privileged writer.
-- Reject an entire bulk request containing an unauthorised target. This is a
-  conservative prototype default; the owner has not separately approved generic
-  CRUD bulk semantics (existing app store operations already refuse mixed scopes).
 - Current membership uses the instance business date with exclusive end dates.
   Historical reporting uses its requested date but cannot rewrite past authority.
 - The prototype evaluates synthetic state in the browser and saves progress and
@@ -576,7 +583,7 @@ for a smoke check; they are not the primary proof of permission enforcement.
 This is a staged design, with explicit gates before implementation tasks below:
 
 1. Validate the sample-data cases against the business example and revise these artifacts.
-   Confirm the HR field set and generic bulk semantics. Apply the agreed shared
+   Confirm the HR field set. Apply the agreed per-row bulk outcomes and shared
    contact policy (one authorised membership is sufficient). Resolve approver-only authority, role-definition changes,
    binding changes and multi-level delegation termination under #617/#627.
 2. Finish the app contracts and a concrete schema migration plan. Job binding
@@ -624,5 +631,5 @@ retaining protections against ordinary account/role edits and automation bypass.
 ## Open Questions
 
 Resolve the production gates above: Employee/Person field ownership, resolver
-and capability contracts, approver-only application, bulk atomicity and migration mapping. UI presentation questions are no longer part of
+and capability contracts, approver-only application and migration mapping. UI presentation questions are no longer part of
 this handoff. Owner review of the simulation was not completed.

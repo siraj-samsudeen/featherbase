@@ -157,6 +157,16 @@ A user authorised to maintain an employee's contact details through one current 
 - **THEN** the user may make the phone correction under the applicable approval rules, and the shared contact details reflect the correction for both stores
 - **AND** that permission does not allow the user to change assignments in the other store
 
+### Requirement: Bulk changes report an outcome for each record
+
+For a bulk submission of independent changes, the system SHALL process permitted records and reject forbidden records, reporting each as applied, pending approval or rejected. A rejected record SHALL remain unchanged, and permitted records SHALL still follow their approval rules.
+
+#### Scenario: One employee is outside the user's scope
+
+- **WHEN** the user submits contact corrections for ten employees and one is outside the user's permitted scope
+- **THEN** the nine permitted corrections proceed under their approval rules and the other correction is rejected
+- **AND** the result identifies each correction's outcome without claiming pending corrections have already been applied
+
 ## MODIFIED Requirements
 
 ### Requirement: Only a System Manager changes who can do what
