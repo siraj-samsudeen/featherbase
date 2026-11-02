@@ -52,3 +52,24 @@ describe('secret store', () => {
     expect(lastFour('ab')).toBe('ab')
   })
 })
+
+describe('secret store outside development', () => {
+  it('a stored token cannot be read on a server with no master key, and the refusal names the variable', () => {
+    overrideVariable('SECRET_STORE_KEY', 'a-long-random-master-key')
+    const stored = encryptSecret(TOKEN)
+    overrideVariable('SECRET_STORE_KEY', undefined)
+    overrideVariable('FEATHERBASE_ENV', 'production')
+    expect(() => decryptSecret(stored)).toThrow(/SECRET_STORE_KEY is not set/)
+  })
+})
+
+describe('secret store hardening (#772 security review)', () => {
+  it('refuses a short master key outside development, and a stored value too short to hold a full tag', () => {
+    overrideVariable('SECRET_STORE_KEY', 'a-long-random-master-key-of-40-characters')
+    const stored = encryptSecret(TOKEN)
+    expect(() => decryptSecret(stored.slice(0, 20))).toThrow(/cannot be read/)
+    overrideVariable('SECRET_STORE_KEY', 'too-short')
+    overrideVariable('FEATHERBASE_ENV', 'production')
+    expect(() => encryptSecret(TOKEN)).toThrow(/shorter than 32 characters/)
+  })
+})

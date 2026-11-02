@@ -15,7 +15,8 @@ export const STANDIN_TOKENS = {
 const OWNED = ['sales', 'stock']
 const SHARED: [string, string][] = [['finance', 'finance-team'], ['people', 'people-team'], ['planning', 'planning-team']]
 
-export async function buildStandin(): Promise<string> {
+/** `owned`: the databases the stand-in account owns (an account can have none). */
+export async function buildStandin(owned: string[] = OWNED): Promise<string> {
   const dir = mkdtempSync(path.join(tmpdir(), 'fb-motherduck-'))
   const { DuckDBInstance } = await import('@duckdb/node-api')
   const write = async (file: string, statements: string[]) => {
@@ -27,7 +28,7 @@ export async function buildStandin(): Promise<string> {
   }
   await write('md_information_schema.duckdb', [
     `create table databases (name varchar)`,
-    `insert into databases values ${OWNED.map((n) => `('${n}')`).join(', ')}`,
+    ...owned.map((n) => `insert into databases values ('${n}')`),
     `create table shared_with_me (name varchar, url varchar, owner varchar)`,
     `insert into shared_with_me values ${SHARED.map(([n, o]) => `('${n}', '${path.join(dir, `${n}.duckdb`)}', '${o}')`).join(', ')}`,
     `create table tokens (token varchar, user_name varchar, can_write boolean)`,
@@ -36,6 +37,10 @@ export async function buildStandin(): Promise<string> {
   await write('sales.duckdb', [
     `create table stores (code varchar, name varchar, city varchar, state_code varchar)`,
     `insert into stores values ('S001', 'Harbour Road', 'Port Town', '32'), ('S002', 'Hill Street', 'Upton', '33'), ('S003', 'Market Lane', 'Port Town', '32')`,
+    // A view whose table is gone: it lists its columns but fails when read.
+    `create table gone_soon (a integer)`,
+    `create view broken_view as select a from gone_soon`,
+    `drop table gone_soon`,
     `create schema history`,
     `create table history.closed_stores (code varchar, closed_on date)`,
   ])

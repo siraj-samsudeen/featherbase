@@ -8,16 +8,16 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { DuckDBConnection, DuckDBInstance } from '@duckdb/node-api'
 import { AppError } from '../errors'
-import { readVariable } from '../env'
-import { openHostedMotherDuck } from '../motherduck-hosted'
+import { openMotherDuck } from '../motherduck-hosted'
 
 export interface WarehouseDatabase { name: string; address: string; owner: string }
 export interface TokenReport { user: string; can_write: boolean; databases: WarehouseDatabase[] }
 
-/** One open MotherDuck session; `attach` opens one database under `alias`. */
+/** One open MotherDuck session; `attach` opens one database under `alias`,
+ *  read-only unless `readOnly` is false (only Test's write probe does that). */
 export interface MotherDuckSession {
   instance: DuckDBInstance
-  attach(address: string, alias: string): Promise<void>
+  attach(address: string, alias: string, readOnly?: boolean): Promise<void>
   user(conn: DuckDBConnection): Promise<string>
   ownedAddress(name: string): string
   close(): void
@@ -45,12 +45,12 @@ async function openStandin(dir: string, token: string): Promise<MotherDuckSessio
     const canWrite = rows[0].can_write === true
     return {
       instance,
-      async attach(address, alias) {
+      async attach(address, alias, readOnly = true) {
         const c = await instance.connect()
         try {
-          const owned = path.dirname(address) === dir && !canWrite
-          const shared = path.dirname(address) !== dir
-          await c.run(`attach ${sqlText(copyOf(address))} as ${quoteAlias(alias)}${owned || shared ? ' (read_only)' : ''}`)
+          // A share is always read-only; the account's own databases only for a read scaling token.
+          const writable = !readOnly && canWrite && path.dirname(address) === dir
+          await c.run(`attach ${sqlText(copyOf(address))} as ${quoteAlias(alias)}${writable ? '' : ' (read_only)'}`)
         } finally { c.closeSync() }
       },
       user: async () => String(rows[0].user_name),
@@ -66,15 +66,12 @@ async function openStandin(dir: string, token: string): Promise<MotherDuckSessio
   }
 }
 
-export function openSession(token: string): Promise<MotherDuckSession> {
-  const standin = readVariable('MOTHERDUCK_STANDIN')?.trim()
-  return standin ? openStandin(standin, token) : openHostedMotherDuck(token)
-}
+// Live MotherDuck or the stand-in: the hosted-service module decides (ADR 0012).
+export const openSession = (token: string): Promise<MotherDuckSession> => openMotherDuck(token, openStandin)
 
 /** The plain reason a MotherDuck call failed, with the token scrubbed out. */
 export function motherDuckError(err: unknown, token: string): AppError {
-  if (err instanceof AppError) return err
-  const raw = (err instanceof Error ? err.message : String(err)).split(token).join('[token]')
+  const raw = String(err).replace(/^Error: /, '').split(token).join('[token]')
   if (/token|auth|unauthori[sz]ed|forbidden|credential/i.test(raw))
     return new AppError('ValidationError', 'MotherDuck refused the token. Check that all of it was copied and that it has not been revoked.')
   return new AppError('DataSourceError', `MotherDuck could not be reached: ${raw}`)
@@ -102,7 +99,7 @@ export async function inspectToken(token: string): Promise<TokenReport> {
       // so attaching one answers "can it write?" without attempting a write.
       let canWrite = false
       if (owned.length) {
-        await session.attach(session.ownedAddress(String(owned[0].name)), 'featherbase_probe')
+        await session.attach(session.ownedAddress(String(owned[0].name)), 'featherbase_probe', false)
         const [probe] = await rows(conn, "select readonly from duckdb_databases() where database_name = 'featherbase_probe'")
         canWrite = probe?.readonly === false
       }

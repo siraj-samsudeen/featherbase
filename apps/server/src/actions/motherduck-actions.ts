@@ -46,7 +46,7 @@ async function warehouseSource(name: string): Promise<SourceConfig> {
 
 /** The chosen database `database`, or a refusal: a source reads only its chosen databases. */
 function chosen(cfg: SourceConfig, database: unknown): WarehouseDatabase {
-  const db = (cfg.databases ?? []).find((d) => d.name === database)
+  const db = cfg.databases.find((d) => d.name === database)
   if (!db) throw new AppError('PermissionError', `Data source ${cfg.name} does not read the database ${String(database)}`)
   return db
 }
@@ -80,7 +80,7 @@ registerCollectionAction('motherduck_test', {
     assertDataSource(table)
     await assertSystemManager(user.row_id)
     const report = await inspectToken(tokenArg(args))
-    // Addresses stay on the server; the page needs names and owners only.
+    // The page needs names and owners only; addresses are kept on the source.
     return { user: report.user, can_write: report.can_write, databases: report.databases.map(({ name, owner }) => ({ name, owner })) }
   },
 })
@@ -97,9 +97,13 @@ registerCollectionAction('motherduck_connect', {
     // Addresses come from MotherDuck's own listing, never from the request.
     const report = await inspectToken(token)
     const databases = names.map((n) => {
-      const db = report.databases.find((d) => d.name === n)
-      if (!db) throw new AppError('ValidationError', `The token cannot read the database ${n}`, { databases: `The token cannot read ${n}` })
-      return db
+      const matches = report.databases.filter((d) => d.name === n)
+      if (!matches.length) throw new AppError('ValidationError', `The token cannot read the database ${n}`, { databases: `The token cannot read ${n}` })
+      // Two databases of one name (say, two people share a "gold") would be
+      // told apart only by the order MotherDuck lists them in: refuse instead.
+      if (matches.length > 1)
+        throw new AppError('ValidationError', `Two databases the token can read are called ${n} (from ${matches.map((d) => d.owner).join(' and ')}); Featherbase cannot tell them apart`, { databases: `Two databases are called ${n}` })
+      return matches[0]
     })
     const name = String(args.name ?? '')
     await actionTransaction(async () => {
@@ -121,7 +125,9 @@ registerRowAction('replace_token', {
     const cfg = await warehouseSource(name)
     const token = tokenArg(args)
     const report = await inspectToken(token)
-    const missing = (cfg.databases ?? []).filter((d) => !report.databases.some((r) => r.name === d.name)).map((d) => d.name)
+    // The same database, not just one of the same name: another account's
+    // "gold" must not quietly stand in for this source's.
+    const missing = cfg.databases.filter((d) => !report.databases.some((r) => r.name === d.name && r.address === d.address)).map((d) => d.name)
     if (missing.length) throw new AppError('ValidationError', `The new token cannot read ${missing.join(', ')}`, { token: `The new token cannot read ${missing.join(', ')}` })
     await actionTransaction(() => storeToken(name, token))
     invalidateSources(name)

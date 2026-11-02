@@ -11,9 +11,13 @@ const DEV_KEY = 'dev-secret-store-key-change-me'
 
 function masterKey(): Buffer {
   const configured = readVariable('SECRET_STORE_KEY')?.trim()
-  if (!configured && !DEV_ENVIRONMENTS.includes(currentEnvironment()))
+  const dev = DEV_ENVIRONMENTS.includes(currentEnvironment())
+  if (!configured && !dev)
     throw new AppError('ValidationError',
       `SECRET_STORE_KEY is not set on a "${currentEnvironment()}" server, so a pasted token cannot be stored. Set it (docs/DEPLOY.md) and paste the token again.`)
+  // The key is hashed into an AES key, so its strength is the value's own.
+  if (configured && configured.length < 32 && !dev)
+    throw new AppError('ValidationError', 'SECRET_STORE_KEY is shorter than 32 characters; set a long random value (docs/DEPLOY.md)')
   return createHash('sha256').update(configured || DEV_KEY).digest()
 }
 
@@ -27,8 +31,10 @@ export function encryptSecret(plain: string): string {
 export function decryptSecret(stored: string): string {
   if (!stored.startsWith(VERSION)) throw new AppError('ValidationError', 'The stored token cannot be read; paste it again')
   const raw = Buffer.from(stored.slice(VERSION.length), 'base64url')
+  // iv (12) + tag (16): a shorter value would let a truncated tag be accepted.
+  if (raw.length < 28) throw new AppError('ValidationError', 'The stored token cannot be read; paste it again')
   try {
-    const decipher = createDecipheriv('aes-256-gcm', masterKey(), raw.subarray(0, 12))
+    const decipher = createDecipheriv('aes-256-gcm', masterKey(), raw.subarray(0, 12), { authTagLength: 16 })
     decipher.setAuthTag(raw.subarray(12, 28))
     return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString('utf8')
   } catch (err) {

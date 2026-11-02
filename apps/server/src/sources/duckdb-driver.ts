@@ -70,15 +70,19 @@ async function storedToken(cfg: SourceConfig): Promise<{ token: string; key: str
   const [row] = await sql`select token_ciphertext from featherbase.data_source_secret where data_source = ${cfg.name}`
   if (!row) throw new AppError('ValidationError', `Data source ${cfg.name} has no token saved; paste one`)
   const ciphertext = String(row.token_ciphertext)
-  return { token: decryptSecret(ciphertext), key: `${ciphertext}|${JSON.stringify(cfg.databases ?? [])}` }
+  return { token: decryptSecret(ciphertext), key: `${ciphertext}|${JSON.stringify(cfg.databases)}` }
 }
+
+// The token each open session was made with, so a query's error is scrubbed of it.
+const sessionTokens = new Map<string, string>()
 
 async function motherDuckInstanceFor(cfg: SourceConfig): Promise<InstanceEntry> {
   const { token, key } = await storedToken(cfg)
+  sessionTokens.set(cfg.name, token)
   const cached = await instances.get(cfg.name)?.catch(() => null)
   if (cached && cached.url === key) return cached
   cached?.close?.()
-  const entry = openSourceSession(token, cfg.databases ?? [])
+  const entry = openSourceSession(token, cfg.databases)
     .then((session) => ({ instance: session.instance, url: key, close: () => session.close() }))
   instances.set(cfg.name, entry)
   return entry
@@ -101,10 +105,10 @@ async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry> {
 function wrapError(cfg: SourceConfig, err: unknown): never {
   if (err instanceof AppError) throw err
   const message = err instanceof Error ? err.message : String(err)
-  const secret = cfg.url_env ? readNamedVariable(cfg.url_env) : undefined
+  const secret = cfg.engine === 'motherduck' ? sessionTokens.get(cfg.name) : cfg.url_env ? readNamedVariable(cfg.url_env) : undefined
   throw new AppError(
     'DataSourceError',
-    `Data source ${cfg.name} failed: ${secret ? message.split(secret).join(`$${cfg.url_env}`) : message}`,
+    `Data source ${cfg.name} failed: ${secret ? message.split(secret).join(cfg.engine === 'motherduck' ? '[token]' : `$${cfg.url_env}`) : message}`,
   )
 }
 
@@ -320,6 +324,7 @@ export const duckdbDriver: SourceDriver = {
   dispose(sourceName) {
     const entry = instances.get(sourceName)
     instances.delete(sourceName)
+    sessionTokens.delete(sourceName)
     void entry?.then((e) => (e.close ? e.close() : e.instance.closeSync())).catch(() => {})
   },
 }
