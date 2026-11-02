@@ -10,7 +10,7 @@ import {
   flushPendingEvents,
   frecency,
   frequentActions,
-  mergeServerEntries,
+  replaceServerEntries,
   recentActions,
   recentSearches,
   recordAction,
@@ -35,13 +35,13 @@ beforeEach(() => localStorage.clear())
 describe('recordAction / recentActions', () => {
   it('clears cached destinations when the server history is empty', () => {
     localStorage.setItem(`fc-recents:${USER}`, JSON.stringify([{ ...row('STALE'), visits: [NOW] }]))
-    mergeServerEntries(USER, [])
+    replaceServerEntries(USER, [])
     expect(recentActions(USER, 10)).toEqual([])
   })
 
   it('skips unknown kinds and missing identities in a server merge without losing valid destinations', () => {
     recordAction(USER, row('LOCAL'), NOW)
-    mergeServerEntries(USER, [
+    replaceServerEntries(USER, [
       { ...row('UNKNOWN'), kind: 'future-kind', visits: [NOW + 1] },
       { ...row('NO-KEY'), key: '', visits: [NOW + 2] },
       { ...row('REMOTE'), visits: [NOW + 3] },
@@ -72,6 +72,66 @@ describe('recordAction / recentActions', () => {
     expect(recents).toHaveLength(80)
     expect(recents[0].label).toBe('CUST-89')
     expect(recents.some((r) => r.label === 'CUST-0')).toBe(false)
+  })
+})
+
+describe('authoritative history during delivery', () => {
+  it.each(['queued', 'in-flight', 'failed', 'delivered'] as const)('keeps a %s visit missing from a stale summary', async (delivery) => {
+    const owner = `history-${delivery}`
+    let finish!: () => void
+    const delivered = new Promise<void>((resolve) => { finish = resolve })
+    connectEventSink({
+      currentUser: () => owner,
+      post: () => delivered.then(() => {
+        if (delivery === 'failed') throw new Error('offline')
+      }).catch(() => {}),
+      beacon: () => {},
+    })
+    localStorage.setItem(`fc-recents:${owner}`, JSON.stringify([{ ...row('STALE'), visits: [NOW - DAY] }]))
+    recordAction(owner, row('NEW'), NOW)
+    if (delivery !== 'queued') flushPendingEvents()
+    if (delivery === 'failed' || delivery === 'delivered') {
+      finish()
+      await delivered
+      await Promise.resolve()
+    }
+    replaceServerEntries(owner, [{ ...row('SERVER'), visits: [NOW - 1000] }])
+    expect(recentActions(owner, 10)).toEqual([
+      { ...row('NEW'), visits: [NOW] },
+      { ...row('SERVER'), visits: [NOW - 1000] },
+    ])
+    finish()
+  })
+
+  it('folds a retried visit only once when the summary confirms delivery', () => {
+    const owner = 'history-retry'
+    recordAction(owner, row('NEW'), NOW)
+    replaceServerEntries(owner, [])
+    expect(recentActions(owner, 10)).toEqual([{ ...row('NEW'), visits: [NOW] }])
+    replaceServerEntries(owner, [{ ...row('NEW'), visits: [NOW, NOW] }])
+    expect(recentActions(owner, 10)).toEqual([{ ...row('NEW'), visits: [NOW] }])
+    // Once confirmed by server history, a later authoritative clear wins.
+    replaceServerEntries(owner, [])
+    expect(recentActions(owner, 10)).toEqual([])
+  })
+
+  it('replaces cached visit counts beneath a new visit to the same destination', () => {
+    const owner = 'history-same-key'
+    localStorage.setItem(`fc-recents:${owner}`, JSON.stringify([{ ...row('NEW'), visits: [NOW - DAY, NOW - 1000] }]))
+    recordAction(owner, row('NEW'), NOW)
+    replaceServerEntries(owner, [{ ...row('NEW'), label: 'Server title', visits: [NOW - 1000] }])
+    expect(recentActions(owner, 10)).toEqual([{ ...row('NEW'), visits: [NOW - 1000, NOW] }])
+  })
+
+  it('discards a departed session journal even after its queue was drained', () => {
+    const owner = 'history-departed'
+    connectEventSink({ currentUser: () => owner, post: () => {}, beacon: () => {} })
+    recordAction(owner, row('OLD-SESSION'), NOW)
+    flushPendingEvents()
+    connectEventSink({ currentUser: () => null, post: () => {}, beacon: () => {} })
+    flushPendingEvents()
+    replaceServerEntries(owner, [])
+    expect(recentActions(owner, 10)).toEqual([])
   })
 })
 
