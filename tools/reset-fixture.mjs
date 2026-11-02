@@ -11,7 +11,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { assertLocal } from './dev.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const { default: postgres } = createRequire(join(root, 'apps/server/package.json'))('postgres')
+const serverRequire = createRequire(join(root, 'apps/server/package.json'))
+const { default: postgres } = serverRequire('postgres')
 
 export async function resetFixture() {
   const url = new URL(process.env.DATABASE_URL || 'postgres://postgres:postgres@127.0.0.1:5432/postgres')
@@ -25,10 +26,12 @@ export async function resetFixture() {
   const urls = names.map((name) => { const u = new URL(url); u.pathname = `/${name}`; return u.toString() })
   const clients = []
   const env = { ...process.env, NODE_ENV: 'development', FEATHERBASE_ENV: 'development', FILE_STORAGE_DIR: '', DATABASE_URL: urls[0] }
-  for (const folder of ['tools', 'apps/server', 'client-apps/acme/instances/shop', 'client-apps/acme/shop']) mkdirSync(join(base, folder), { recursive: true })
+  for (const folder of ['tools', 'apps/server/node_modules', 'client-apps/acme/instances/shop', 'client-apps/acme/shop']) mkdirSync(join(base, folder), { recursive: true })
   for (const file of ['dev.mjs', 'featherbase.mjs']) copyFileSync(join(root, 'tools', file), join(base, 'tools', file))
   copyFileSync(join(root, 'apps/server/package.json'), join(base, 'apps/server/package.json'))
-  symlinkSync(join(root, 'apps/server/node_modules'), join(base, 'apps/server/node_modules'), 'junction')
+  // Resolve the real package (whose entry is src/index.js), not a workspace
+  // node_modules tree with pnpm links whose layout differs on Windows.
+  symlinkSync(resolve(dirname(serverRequire.resolve('postgres')), '..'), join(base, 'apps/server/node_modules/postgres'), 'junction')
   writeFileSync(join(base, 'client-apps/acme/instances/shop/instance.json'), JSON.stringify({ apps: ['client-apps/acme/shop'] }))
   writeFileSync(join(base, 'client-apps/acme/shop/featherbase.json'), JSON.stringify({ name: 'shop' }))
   function run(args, overrides = {}) {
