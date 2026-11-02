@@ -119,6 +119,44 @@ describe('WF-001: workflow definition', () => {
 })
 
 describe('WF-002/003: execution + server-side enforcement', () => {
+  test('malformed transition actions preserve the existing workflow state', async ({ admin }) => {
+    await setup(admin)
+    await makeFlow(admin)
+    await makeDoc(admin)
+    const base = `/api/table/${encodeURIComponent(DT)}`
+    await admin.post(base, { row_id: 'wf-srv-control', title: 'untouched' })
+    const snapshot = async () => ({
+      rows: await sql`select * from featherbase.wf_srv_task order by row_id`,
+      flow: await admin.get(`/api/table/Workflow/${encodeURIComponent(FLOW)}`),
+      meta: await admin.get(`${base}:meta`),
+      trail: await sql`select * from workflow_action where ref_table = ${DT} order by row_id`,
+      versions: await sql`select * from version where ref_table = ${DT} order by row_id`,
+    })
+    const before = await snapshot()
+    for (const action of [42, '']) {
+      const response = await admin.fetch(`${base}/wf-srv-1:apply_workflow_action`, {
+        method: 'POST', body: JSON.stringify({ action }),
+      })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toEqual({ error: {
+        type: 'ValidationError', message: 'Expected { action }',
+      } })
+      expect(await snapshot()).toEqual(before)
+    }
+    expect(await admin.post(`${base}/wf-srv-1:apply_workflow_action`, { action: 'Submit' }))
+      .toMatchObject({ row_id: 'wf-srv-1', title: 'x', workflow_state: 'Pending', status: 'draft' })
+    const after = await snapshot()
+    expect(after.rows).toEqual(before.rows.map((row) => row.row_id === 'wf-srv-1'
+      ? { ...row, workflow_state: 'Pending', updated_at: expect.any(Date) } : row))
+    expect(after.flow).toEqual(before.flow)
+    expect(after.meta).toEqual(before.meta)
+    expect(after.trail).toHaveLength(1)
+    expect(after.trail[0]).toMatchObject({
+      ref_table: DT, ref_name: 'wf-srv-1', action: 'Submit',
+      from_state: 'Draft', to_state: 'Pending', actor: 'Administrator',
+    })
+  })
+
   test('a role-less user is refused (403) and the state is unchanged', async ({
     admin,
     createUser,

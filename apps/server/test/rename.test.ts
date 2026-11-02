@@ -33,6 +33,50 @@ async function setup(admin: TestClient) {
 }
 
 describe('DOC-012: rename document + cascade Link references', () => {
+  test('malformed rename targets preserve the row and its real references', async ({ admin }) => {
+    await setup(admin)
+    const base = `/api/table/${encodeURIComponent(CUST)}`
+    await admin.post(base, { row_id: 'Acme', city: 'NYC' })
+    await admin.post(base, { row_id: 'Globex', city: 'LA' })
+    await admin.post('/api/save_row', {
+      table: ORDER,
+      row: { row_id: 'ORD-1', customer: 'Acme', lines: [{ supplier: 'Acme' }, { supplier: 'Globex' }] },
+    })
+    await admin.post('/api/save_row', {
+      table: ORDER, row: { row_id: 'ORD-2', customer: 'Globex', lines: [{ supplier: 'Globex' }] },
+    })
+    const snapshot = async () => ({
+      customers: await sql`select * from featherbase.rn_customer order by row_id`,
+      orders: await sql`select * from featherbase.rn_order order by row_id`,
+      items: await sql`select * from featherbase.rn_order_item order by row_id`,
+      meta: await Promise.all([CUST, ORDER, ITEM].map((table) =>
+        admin.get(`/api/table/${encodeURIComponent(table)}:meta`))),
+      versions: await sql`select * from version where ref_table in (${CUST}, ${ORDER}, ${ITEM}) order by row_id`,
+    })
+    const before = await snapshot()
+    for (const new_name of [42, '']) {
+      const response = await admin.fetch(`${base}/Acme:rename`, {
+        method: 'POST', body: JSON.stringify({ new_name }),
+      })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toEqual({ error: {
+        type: 'ValidationError', message: 'Expected { new_name }',
+      } })
+      expect(await snapshot()).toEqual(before)
+    }
+    expect(await admin.post(`${base}/Acme:rename`, { new_name: 'Acme Corp' }))
+      .toMatchObject({ row_id: 'Acme Corp', city: 'NYC' })
+    const after = await snapshot()
+    expect(after.customers).toEqual(before.customers.map((row) => row.row_id === 'Acme'
+      ? { ...row, row_id: 'Acme Corp', updated_at: expect.any(Date) } : row))
+    expect(after.orders).toEqual(before.orders.map((row) => row.customer === 'Acme'
+      ? { ...row, customer: 'Acme Corp' } : row))
+    expect(after.items).toEqual(before.items.map((row) => row.supplier === 'Acme'
+      ? { ...row, supplier: 'Acme Corp' } : row))
+    expect(after.meta).toEqual(before.meta)
+    expect(after.versions).toEqual(before.versions)
+  })
+
   test('updates the primary key and every Link that referenced the old name', async ({
     admin,
   }) => {
