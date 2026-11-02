@@ -234,7 +234,7 @@ export function assertMetadataOverride(property: unknown, column: unknown): 'tex
     ? METADATA_OVERRIDE_PROPERTIES.column
     : METADATA_OVERRIDE_PROPERTIES.table
   if (typeof property !== 'string' || !Object.hasOwn(allowed, property))
-    throw new AppError('ValidationError', `Metadata property ${String(property)} cannot be overridden`)
+    throw new AppError('ValidationError', `Metadata property ${String(property)} cannot be overridden. Permitted properties: ${Object.keys(allowed).join(', ')}`)
   return allowed[property]
 }
 

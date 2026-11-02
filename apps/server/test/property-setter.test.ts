@@ -87,6 +87,19 @@ describe('CUST-002: metadata overrides', () => {
     })
   }
 
+  for (const column of [null, 'title']) {
+    test(`lists permitted properties for ${column ? 'column' : 'Table'} overrides`, async ({ admin }) => {
+      await makeDT(admin)
+      const error = await expectApiError(admin.post('/api/save_row', {
+        table: 'Metadata Override',
+        row: { row_id: 'ps-invalid-property', table_name: DT, column_name: column, property: 'unique', value: 'true' },
+      }), { status: 417, type: 'ValidationError' })
+      expect(error.message.split('Permitted properties: ')[1]).toBe(column
+        ? 'label, hidden, reqd, read_only, in_list_view, default_value, choices'
+        : 'label, title_column, search_columns, sort_column, sort_direction')
+    })
+  }
+
   test('removing the setter restores the original property', async ({ admin }) => {
     await makeDT(admin)
     await addLabelSetter(admin)
