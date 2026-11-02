@@ -1585,6 +1585,14 @@ function InlineChildGrid({
 // list the advanced FilterBar manages, so chips stay in sync.
 const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference'])
 
+/** The values a column offers to pick from, or null when it is typed. A Yes/No
+ *  column offers the words Yes and No, which the server reads (#742). */
+function choicesOf(f: { column_type: string; choices?: string | null }): string[] | null {
+  if (f.column_type === 'Check') return ['Yes', 'No']
+  if (f.column_type === 'Choice') return (f.choices ?? '').split('\n').filter(Boolean)
+  return null
+}
+
 function StandardFilters({
   meta,
   view,
@@ -1602,7 +1610,7 @@ function StandardFilters({
   const columns = dataColumns(meta).filter(
     (f) =>
       seen.has(f.column_name) &&
-      (f.column_type === 'Choice' || STANDARD_TEXT_TYPES.has(f.column_type)),
+      (choicesOf(f) !== null || STANDARD_TEXT_TYPES.has(f.column_type)),
   )
   // Drafts for the text inputs (applied on Enter/blur); choices apply at once.
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -1651,7 +1659,7 @@ function StandardFilters({
               )}
             </span>
           </label>
-        ) : f.column_type === 'Choice' ? (
+        ) : choicesOf(f) ? (
           <label key={f.column_name} className="flex flex-col gap-0.5">
             <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
@@ -1663,10 +1671,7 @@ function StandardFilters({
               className={inputClasses('max-w-[20rem]')}
             >
               <option value="">All</option>
-              {(f.choices ?? '')
-                .split('\n')
-                .filter(Boolean)
-                .map((o) => (
+              {choicesOf(f)!.map((o) => (
                   <option key={o} value={o}>
                     {choiceLabel(o, f.choice_labels, t)}
                   </option>
