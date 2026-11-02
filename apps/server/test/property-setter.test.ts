@@ -58,25 +58,34 @@ describe('CUST-002: metadata overrides', () => {
     expect(row.label).toBe('Title')
   })
 
-  test('coerces boolean properties (hidden/reqd)', async ({ admin }) => {
-    await makeDT(admin)
-    await admin.post('/api/save_row', {
-      table: 'Metadata Override',
-      row: {
-        row_id: `${DT}-title-reqd`,
-        table_name: DT,
-        column_name: 'title',
-        property: 'reqd',
-        value: '1',
-      },
+  for (const [value, expected] of [['true', true], ['false', false], ['1', true], ['0', false]] as const) {
+    test(`applies boolean text ${value}`, async ({ admin }) => {
+      await makeDT(admin)
+      await admin.post('/api/save_row', {
+        table: 'Metadata Override',
+        row: { row_id: `${DT}-title-reqd`, table_name: DT, column_name: 'title', property: 'reqd', value },
+      })
+      const meta = await getMeta(DT)
+      expect(meta.columns.find((column) => column.column_name === 'title')?.reqd).toBe(expected)
+      const [row] = await sql`select reqd from column_def where parent = ${DT} and column_name = 'title'`
+      expect(row.reqd).toBe(false)
     })
-    const meta = await getMeta(DT)
-    const f = meta.columns.find((x) => x.column_name === 'title')!
-    expect(f.reqd).toBe(true)
-    // Base row still false.
-    const [row] = await sql`select reqd from column_def where parent = ${DT} and column_name = 'title'`
-    expect(row.reqd).toBe(false)
-  })
+  }
+
+  for (const [property, value] of [
+    ['hidden', 'truetrue'], ['reqd', 'yes'], ['read_only', '2'], ['in_list_view', ''],
+    ['hidden', undefined], ['hidden', null], ['hidden', 'constructor'],
+  ]) {
+    test(`refuses invalid ${property} value ${String(value)}`, async ({ admin }) => {
+      await makeDT(admin)
+      const error = await expectApiError(admin.post('/api/save_row', {
+        table: 'Metadata Override',
+        row: { row_id: 'ps-invalid-boolean', table_name: DT, column_name: 'title', property, value },
+      }), { status: 417, type: 'ValidationError' })
+      for (const allowed of ['true', 'false', '1', '0']) expect(error.message).toContain(allowed)
+      await expectApiError(admin.get('/api/table/Metadata%20Override/ps-invalid-boolean'), { status: 404 })
+    })
+  }
 
   test('removing the setter restores the original property', async ({ admin }) => {
     await makeDT(admin)

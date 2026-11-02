@@ -54,7 +54,8 @@ When('the user saves a visibility customization with no value', async function (
 Then('the customization is refused with the permitted boolean values', function () {
   assert.equal(this.overrides.result.status, 417);
   assert.equal(this.overrides.result.body.error.type, 'ValidationError');
-  assert.ok(this.overrides.result.body.error.message.includes('true, false, 1, 0'));
+  for (const value of ['true', 'false', '1', '0'])
+    assert.ok(this.overrides.result.body.error.message.includes(value));
 });
 When('the user saves the {string} customization with text {string}', async function (setting, value) {
   await this.overrides.booleanSetting(setting, value);
