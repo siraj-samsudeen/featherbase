@@ -14,6 +14,42 @@ const readerCapabilities = {
 }
 
 describe('#800 row action capabilities', () => {
+  test('settings advertise saving only with a settings write grant, never row lifecycle actions', async ({ admin, createUser }) => {
+    const settings = await makeTable(admin, { name: 'Cap800 Settings', kind: 'settings', columns: ['title'] })
+    const url = settings.rowUrl(settings.name)
+    await grantRole(admin, { role: 'Cap800 Settings Reader', table: settings.name, tier: 'basic', can_read: true })
+    const user = await createUser({ roles: ['Cap800 Settings Reader'] })
+    expect(await user.get(`${url}:capabilities`)).toEqual(readerCapabilities)
+    const [write] = await grantRole(admin, { role: 'Cap800 Settings Reader', table: settings.name, tier: 'basic', can_write: true })
+    expect(await user.get(`${url}:capabilities`)).toEqual({ ...readerCapabilities, write: true })
+    await user.post('/api/save_row', { table: settings.name, row: { title: 'Saved settings' } })
+    expect(await admin.get(url)).toMatchObject({ title: 'Saved settings' })
+    await admin.delete(tableRef('Permission').rowUrl(write))
+    expect(await user.get(`${url}:capabilities`)).toEqual(readerCapabilities)
+    await expectApiError(user.post('/api/save_row', { table: settings.name, row: { title: 'Forbidden' } }), { status: 403 })
+  })
+
+  test('attached comment deletion advice requires its grant and retains parent access checks', async ({ admin, createUser }) => {
+    await makeTable(admin, { name: DT, columns: ['title'] })
+    const [parentRead] = await grantRole(admin, { role: 'Cap800 Attached Reader', table: DT, tier: 'basic', can_read: true })
+    await grantRole(admin, { role: 'Cap800 Attached Reader', table: 'Comment', tier: 'basic', can_read: true })
+    const user = await createUser({ roles: ['Cap800 Attached Reader'] })
+    const row = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'Parent' } })
+    const comment = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Comment', row: { ref_table: DT, ref_name: row.row_id, content: 'Attached note' },
+    })
+    const url = tableRef('Comment').rowUrl(comment.row_id)
+    expect(await user.get(`${url}:capabilities`)).toMatchObject({ delete: false })
+    await grantRole(admin, { role: 'Cap800 Attached Reader', table: 'Comment', tier: 'basic', can_delete: true })
+    expect(await user.get(`${url}:capabilities`)).toMatchObject({ delete: true })
+    await admin.delete(tableRef('Permission').rowUrl(parentRead))
+    await expectApiError(user.get(`${url}:capabilities`), { status: 403 })
+    await expectApiError(user.delete(url), { status: 403 })
+    await grantRole(admin, { role: 'Cap800 Attached Reader', table: DT, tier: 'basic', can_read: true })
+    await user.delete(url)
+    await expectApiError(admin.get(url), { status: 404 })
+  })
+
   test('a reader receives only actions their explicit grants allow', async ({ admin, createUser }) => {
     await makeTable(admin, { name: DT, columns: ['title'] })
     await grantRole(admin, { role: 'Cap800 Reader', table: DT, tier: 'basic', can_read: true })
@@ -91,6 +127,28 @@ describe('#800 row action capabilities', () => {
     expect(await user.get(capabilities(row.row_id))).toEqual({ ...readerCapabilities, write: true, rename: true, delete: true })
     await admin.delete(tableRef('Permission').rowUrl(grant))
     expect(await user.get(capabilities(row.row_id))).toEqual(readerCapabilities)
+  })
+
+  test('a read share does not turn an out-of-scope restricted reference into mutation rights', async ({ admin, createUser }) => {
+    const regions = await makeTable(admin, { name: 'Cap800 Region', id_pattern: 'prompt', columns: ['title'] })
+    for (const id of ['north', 'south']) await admin.post('/api/save_row', { table: regions.name, row: { row_id: id } })
+    await makeTable(admin, { name: DT, columns: [
+      'title', { column_name: 'region', column_type: 'Reference', reference_table: regions.name, tier: 'restricted' },
+    ] })
+    await grantRole(admin, { role: 'Cap800 Scoped Writer', table: DT, tier: 'basic', can_read: true, can_write: true, can_delete: true })
+    const user = await createUser({ roles: ['Cap800 Scoped Writer'] })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: user.user, allow_table: regions.name, for_value: 'north' } })
+    const row = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'Southern row', region: 'south' } })
+    const share = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Share', row: { share_table: DT, share_name: row.row_id, person: user.user, read: true },
+    })
+    expect(await user.get(capabilities(row.row_id))).toEqual(readerCapabilities)
+    await expectApiError(patchDoc(user, rows.rowUrl(row.row_id), { ...await user.get(rows.rowUrl(row.row_id)), title: 'Forbidden' }), { status: 403 })
+    const shareUrl = tableRef('Share').rowUrl(share.row_id)
+    await patchDoc(admin, shareUrl, { ...await admin.get(shareUrl), write: true })
+    expect(await user.get(capabilities(row.row_id))).toEqual({ ...readerCapabilities, write: true })
+    await patchDoc(user, rows.rowUrl(row.row_id), { ...await user.get(rows.rowUrl(row.row_id)), title: 'Shared edit' })
+    expect(await admin.get(rows.rowUrl(row.row_id))).toMatchObject({ title: 'Shared edit', region: 'south' })
   })
 
   for (const [table, key] of [['ToDo', 'assign'], ['Comment', 'comment'], ['File', 'upload']] as const) {
