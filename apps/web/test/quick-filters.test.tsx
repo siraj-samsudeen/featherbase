@@ -245,7 +245,7 @@ test('Eight possible boxes show six and say 2 more, and asking shows all eight w
   expect(more).toHaveTextContent('+2 more')
   fireEvent.click(more)
   expect(boxes()).toEqual(EIGHT)
-  expect(screen.queryByTestId('std-filter-more')).not.toBeInTheDocument()
+  expect(screen.getByTestId('std-filter-more')).toHaveTextContent('Show fewer')
 })
 
 test('A link with a value in the eighth box shows six plus the eighth, and says 1 more', async ({ admin }) => {
