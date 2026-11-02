@@ -1809,6 +1809,9 @@ function SavedViewsBar({
       setNudgeGone(true)
       setNaming(false)
       setNudgeName('')
+      // Invalidation reuses a pending initial read with no cached data. Cancel
+      // it first so its pre-save result cannot hide the newly saved view.
+      await queryClient.cancelQueries({ queryKey: ['saved-views', table] })
       void queryClient.invalidateQueries({ queryKey: ['saved-views', table] })
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Couldn't save this view. Try again.")

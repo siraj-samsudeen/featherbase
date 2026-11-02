@@ -4,7 +4,7 @@
 // in apps/server/test/saved-views.test.ts; this file proves what the person
 // sees and can do on the list.
 
-import { cleanup, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { getToken } from '../src/lib/api'
 import { test, expect, renderApp } from './pg-test'
@@ -195,6 +195,56 @@ test('Featherbase offers to save a filter you keep reusing: the third applicatio
   expect(await screen.findByTestId('saved-view-chip')).toHaveTextContent('Open stuff')
   const list = await admin.get<{ views: { label: string; filters: unknown }[] }>(`/api/saved_views?table=${enc('Sv Nudge')}`)
   expect(list.views).toMatchObject([{ label: 'Open stuff', filters: OPEN }])
+})
+
+test('a saved view stays visible when the initial empty read arrives after saving (#763)', async ({ admin }) => {
+  await seed(admin, 'Sv Pending')
+  seedApplications(admin.user!, 'Sv Pending', OPEN, 2)
+
+  const originalFetch = globalThis.fetch
+  let release!: () => void
+  const held = new Promise<void>((resolve) => { release = resolve })
+  let ready!: (response: Response) => void
+  const initialResponse = new Promise<Response>((resolve) => { ready = resolve })
+  let initialDelivery: Promise<Response> | undefined
+  globalThis.fetch = (input, init) => {
+    const response = originalFetch(input, init)
+    if (String(input) === '/api/saved_views?table=Sv%20Pending' && !initialDelivery) {
+      // The real server has already read the empty list. Delay only delivery
+      // to the browser, so the save races a genuine stale initial response.
+      initialDelivery = response.then(async (res) => {
+        ready(res)
+        await held
+        return res
+      })
+      return initialDelivery
+    }
+    return response
+  }
+  try {
+    await open(admin, 'Sv Pending', OPEN)
+    expect(await (await initialResponse).clone().json()).toEqual({ views: [] })
+    expect(await screen.findByTestId('filter-nudge')).toHaveTextContent('3×')
+    fireEvent.change(screen.getByRole('textbox', { name: 'View name' }), { target: { value: 'Pending open items' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
+
+    await waitFor(() => expect(screen.queryByTestId('filter-nudge')).not.toBeInTheDocument())
+    const saved = await admin.get<{ views: { label: string; filters: unknown }[] }>('/api/saved_views?table=Sv%20Pending')
+    expect(saved.views).toMatchObject([{ label: 'Pending open items', filters: OPEN }])
+    expect(await screen.findByRole('button', { name: '★ Pending open items' })).toHaveAttribute('aria-pressed', 'true')
+
+    await act(async () => {
+      release()
+      await initialDelivery
+    })
+    expect(screen.getByTestId('saved-view-chip')).toHaveTextContent('Pending open items')
+    expect(screen.queryByRole('textbox', { name: 'View name' })).not.toBeInTheDocument()
+    expect(cellTexts()).toEqual(['Open', 'Open'])
+  } finally {
+    release()
+    await initialDelivery
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('Featherbase offers to save a filter you keep reusing: it stays quiet before the third time, and "not now" silences it for that combination', async ({ admin }) => {
