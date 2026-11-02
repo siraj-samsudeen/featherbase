@@ -384,9 +384,28 @@ HTML beside it. This is frontend coverage only, not backend coverage or
 evidence of hosted warehouse or embedded-frame integration. There is no
 100% frontend gate yet: add it only when the actual report reaches 100%,
 without excluding executable source or weakening existing gates.
-Dash backend profiles currently have incompatible remapping and cannot be
-merged honestly; their separate measurements are not a combined backend total
-or evidence of meeting the backend policy.
+
+### Dash backend coverage
+
+Both backend profiles use the same per-source Istanbul instrumentation.
+The platform profile instruments the original modules before bundling only
+the disposable copied app; the packageable app artifact stays unchanged.
+The denominator is the actual `src/server.ts` esbuild import closure, not
+the platform server's source or Dash's frontend.
+
+```bash
+npm run test:coverage:backend --prefix client-apps/jeyarama/dash
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/featherbase_dash_backend_test \
+  npm run test:coverage:backend:platform --prefix client-apps/jeyarama/dash
+npm run coverage:backend:merged --prefix client-apps/jeyarama/dash
+```
+
+The merger requires both complete source inventories and identical statement,
+function and branch maps before adding counters. It writes exact covered/total
+counts under `coverage/dash-backend/merged/` and fails below 100% in any metric.
+These commands do not prove hosted MotherDuck behavior. Old V8 profiles have
+incompatible remapping: regenerate both profiles rather than mixing them with
+these reports. A valid merge is not a claim that its coverage gate passes.
 
 ### Mutation testing
 
