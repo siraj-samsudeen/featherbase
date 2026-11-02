@@ -38,6 +38,10 @@ test('local upload selection follows the actual Postgres port', () => {
     const other = instanceEnvironment()
     assert.equal(implicit.FILE_STORAGE_DIR, explicit.FILE_STORAGE_DIR)
     assert.notEqual(explicit.FILE_STORAGE_DIR, other.FILE_STORAGE_DIR)
+    process.env.DATABASE_URL = 'postgres://postgres@127.0.0.1:5432/port_selection?sslmode=require'
+    const tls = instanceEnvironment()
+    assert.equal(tls.FILE_STORAGE_DIR, other.FILE_STORAGE_DIR)
+    assert.equal(new URL(tls.DATABASE_URL).searchParams.get('sslmode'), 'require')
   } finally {
     for (const key of Object.keys(process.env)) if (!(key in before)) delete process.env[key]
     Object.assign(process.env, before)

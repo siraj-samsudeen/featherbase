@@ -116,3 +116,18 @@ test('reset refuses aliased upload storage', async () => {
     await fixture.assertPreserved()
   } finally { await fixture.close() }
 })
+
+test('local commands refuse routing ambiguity before selecting uploads', async () => {
+  const fixture = await resetFixture()
+  try {
+    for (const query of ['port=1', 'host=remote.example.com', `database=${fixture.names[1]}`]) {
+      for (const args of [['setup'], ['start'], ['health'], ['advanced', 'operations', 'boot-check'], ['reset', '--yes']]) {
+        const result = fixture.run(args, { DATABASE_URL: `${fixture.urls[0]}?${query}` })
+        assert.equal(result.status, 1, result.stdout + result.stderr)
+        assert.match(result.stderr, /routing query options/)
+        assert.doesNotMatch(result.stdout, /Uploads:|Storage:|Preparing/)
+        await fixture.assertPreserved()
+      }
+    }
+  } finally { await fixture.close() }
+})
