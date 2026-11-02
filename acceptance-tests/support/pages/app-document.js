@@ -34,7 +34,10 @@ class AppDocument extends AppNavigation {
     await this.page.getByRole('region', { name: 'Task detail content' }).filter({ hasText: 'Selected nested task' }).waitFor();
     assert.equal(new URL(this.page.url()).pathname + new URL(this.page.url()).search + new URL(this.page.url()).hash, this.deepPath);
   }
-  static async builtCore() { await access(path.join(ROOT, 'apps/web/dist/index.html')); }
+  static async builtCore() {
+    await promisify(execFile)('pnpm', ['--filter', 'web', 'build'], { cwd: ROOT, maxBuffer: 8 * 1024 * 1024, timeout: 120_000 });
+    await access(path.join(ROOT, 'apps/web/dist/index.html'));
+  }
   static async deliveredApp() {
     // Reuse the repository's literal build-core-first/package-later proof,
     // which copies the core apart from the app and serves the built artifacts.
