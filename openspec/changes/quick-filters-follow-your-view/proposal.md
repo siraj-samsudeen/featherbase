@@ -21,9 +21,10 @@ switched off keeps one. On a phone the boxes fill the first screen before any ro
 - Quick filters keep writing the same filters into the page address as "Add filter", so they
   show as chips and survive a shared link.
 - **A Yes/No filter matches by yes or no, not by text**, in the quick box and in "Add filter".
-  Found while writing this: "Add filter" sends what is typed as text, and any text on a Yes/No
-  column finds the No rows, with no error (checked on 01-Nov-2026 on the Table list of 83 rows:
-  `system = true` gave 63, and `system = "true"`, `"yes"` and `"maybe"` each gave the other 20).
+  Found while writing this: "Add filter" sends what is typed as text. Checked again on 02-Nov-2026
+  on the Table list of 83 rows: `system = "true"` and `"yes"` gave the right 63, but `"maybe"`
+  gave a server error, and words like "on" were read as yes. (The 01-Nov-2026 check, where text
+  found the No rows, was before the database connection changed.)
 
 - **"Add filter" offers a dropdown for Choice and Yes/No columns**, so nobody has to type those values.
 

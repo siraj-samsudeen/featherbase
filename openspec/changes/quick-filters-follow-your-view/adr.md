@@ -9,9 +9,9 @@ ADR review completed for this change. Neither design decision is a long-term arc
 feature: how the server reads a Yes/No filter value, and that a Yes/No filter's address value works like a Choice
 filter's. Each is recorded in this change's `design.md`.
 
-One in-force ADR does not match this change: ADR 0014 says every mode's scenarios are fenced Gherkin that cucumber-js
-runs, but OpenSpec 1.16.0 under `--strict` fails on fenced Gherkin in a change, so this change uses `WHEN/THEN` scenarios
-with hand-written tests. That is a project-wide decision for the owner of ADR 0014, not one this change records.
+This change was written with `WHEN/THEN` scenarios and hand-written tests because OpenSpec 1.16.0 under `--strict`
+rejected fenced Gherkin in a change, against ADR 0014. Main fixed that on 02-Nov-2026 (`e242b647` patches the pinned
+parser), so the conflict with ADR 0014 no longer exists.
 
 ## In-Force ADRs Reviewed
 
@@ -25,7 +25,8 @@ with hand-written tests. That is a project-wide decision for the owner of ADR 00
 - 0013 client-apps-and-product-apps
 - 0014 one-repo-for-platform-and-apps
 - 0015 adrs-are-never-edited
-- 0016 backend-coverage-includes-branches
+- 0016 backend-coverage-includes-branches (superseded by ADR 0017's non-regression baselines)
+- 0017 backend-coverage-non-regression-baselines
 
 ## New Durable ADRs Created
 
