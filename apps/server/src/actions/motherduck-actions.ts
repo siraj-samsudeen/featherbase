@@ -110,6 +110,7 @@ registerCollectionAction('motherduck_connect', {
       await saveDoc(DATA_SOURCE, { row_id: name, engine: 'motherduck', access: 'read_only' }, user.row_id, 'insert')
       await sql`update featherbase.data_source set databases = ${sql.json(databases)} where row_id = ${name}`
       await storeToken(name, token)
+      await sql`update featherbase.data_source set conn_status = 'ok', last_checked_at = now(), last_error = null where row_id = ${name}`
     })
     invalidateSources(name)
     return { name }
@@ -131,7 +132,7 @@ registerRowAction('replace_token', {
     if (missing.length) throw new AppError('ValidationError', `The new token cannot read ${missing.join(', ')}`, { token: `The new token cannot read ${missing.join(', ')}` })
     await actionTransaction(() => storeToken(name, token))
     invalidateSources(name)
-    return { token_last_four: lastFour(token) }
+    return { token_last_four: lastFour(token), can_write: report.can_write }
   },
 })
 

@@ -27,11 +27,11 @@ update featherbase.column_def set choices = E'postgres\nmysql\nduckdb\nmotherduc
   where parent = 'Data Source' and column_name = 'engine';
 
 insert into featherbase.column_def ("row_id", "parent", "position", "column_name", "label", "column_type", "choices", "reqd", "unique", "read_only", "hidden", "in_list_view", "tier", "parenttype", "parentfield", "custom", "description")
-select gen_random_uuid()::text, 'Data Source', 13, 'token_last_four', 'Token ends in', 'Data', null, false, false, true, false, false, 'basic', 'Table', 'columns', false,
+select gen_random_uuid()::text, 'Data Source', 13, 'token_last_four', 'Token ends in', 'Data', null, false, false, true, true, false, 'basic', 'Table', 'columns', false,
        'The last four characters of a pasted MotherDuck token; the token itself is stored encrypted and never shown'
 where not exists (select 1 from featherbase.column_def where parent = 'Data Source' and column_name = 'token_last_four');
 
 insert into featherbase.column_def ("row_id", "parent", "position", "column_name", "label", "column_type", "choices", "reqd", "unique", "read_only", "hidden", "in_list_view", "tier", "parenttype", "parentfield", "custom", "description")
-select gen_random_uuid()::text, 'Data Source', 14, 'databases', 'Databases', 'JSON', null, false, false, true, false, false, 'basic', 'Table', 'columns', false,
+select gen_random_uuid()::text, 'Data Source', 14, 'databases', 'Databases', 'JSON', null, false, false, true, true, false, 'basic', 'Table', 'columns', false,
        'The MotherDuck databases this source reads; only these are ever opened'
 where not exists (select 1 from featherbase.column_def where parent = 'Data Source' and column_name = 'databases');

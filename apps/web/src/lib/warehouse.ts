@@ -15,7 +15,7 @@ export const testToken = (token: string) => api.post<TokenReport>(`${SOURCES}:mo
 export const connectWarehouse = (name: string, token: string, databases: string[]) =>
   api.post<{ name: string }>(`${SOURCES}:motherduck_connect`, { name, token, databases })
 export const replaceToken = (name: string, token: string) =>
-  api.post<{ token_last_four: string }>(`${SOURCES}/${enc(name)}:replace_token`, { token })
+  api.post<{ token_last_four: string; can_write: boolean }>(`${SOURCES}/${enc(name)}:replace_token`, { token })
 export const listTables = (name: string, database: string) =>
   api.get<TableListing>(`${SOURCES}/${enc(name)}:tables?database=${enc(database)}`)
 export const refreshTables = (name: string, database: string) =>

@@ -652,7 +652,9 @@ function SourceBrowserPage() {
       <div data-testid="table-page">
         <div data-testid="source-refused" className="max-w-3xl">
           <Notice tone="negative">
-            {source.error instanceof ApiError ? source.error.message : 'This data source cannot be opened'}
+            {source.error instanceof ApiError && source.error.status === 403
+              ? 'Only a System Manager can open a data source.'
+              : 'This data source cannot be opened.'}
           </Notice>
         </div>
       </div>

@@ -25,13 +25,14 @@ function TokenSource({ source }: { source: Source }) {
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [writable, setWritable] = useState(false)
   const databases = source.databases ?? []
 
   async function replace() {
     setBusy(true)
     setError(null)
     try {
-      await replaceToken(source.row_id, token)
+      setWritable((await replaceToken(source.row_id, token)).can_write)
       setReplacing(false)
       setToken('')
       await queryClient.invalidateQueries({ queryKey: ['data-source', source.row_id] })
@@ -108,6 +109,11 @@ function TokenSource({ source }: { source: Source }) {
           </dd>
         </dl>
         {error && <Notice tone="negative" className="mt-4">{error}</Notice>}
+        {writable && (
+          <div className="mt-4" data-testid="replace-token-writable">
+            <Notice tone="caution">The new token can also write to MotherDuck. Featherbase only reads, yet anyone who got the token could write. Replace it with a read scaling token.</Notice>
+          </div>
+        )}
       </section>
     </div>
   )

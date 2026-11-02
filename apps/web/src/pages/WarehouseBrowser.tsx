@@ -20,6 +20,7 @@ export function WarehouseBrowser({ name, database, schema }: { name: string; dat
   const databases = source.data?.databases ?? []
   const [table, setTable] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [showLists, setShowLists] = useState(false)
   const settings = useSettings()
 
   // Checklist 13: with no place in the address, reopen where this person left off.
@@ -101,7 +102,27 @@ export function WarehouseBrowser({ name, database, schema }: { name: string; dat
       )}
       {listing.error && <Notice tone="negative">{listing.error instanceof ApiError ? listing.error.message : 'The table list could not be read'}</Notice>}
 
-      {listing.data && (
+      {/* Once a table is picked the panes fold into one bar, so the preview gets the full width. */}
+      {listing.data && table && activeSchema && !showLists && (
+        <div className="space-y-3">
+          <div className={cardClasses('flex flex-wrap items-end gap-3 px-4 py-3')} data-testid="browser-path">
+            <div className="w-52">
+              <Select aria-label="Schema" value={activeSchema.schema} onChange={(e) => go({ database, schema: e.target.value })} data-testid="path-schema">
+                {schemas.map((s) => <option key={s.schema} value={s.schema}>{s.schema} · {fmtCount(s.tables.length)}</option>)}
+              </Select>
+            </div>
+            <span aria-hidden="true" className="pb-2 text-ink-subtle">/</span>
+            <div className="w-72">
+              <Select aria-label="Table" value={table} onChange={(e) => setTable(e.target.value)} data-testid="path-table">
+                {tables.map((t) => <option key={t.name} value={t.name}>{t.name} · {fmtCount(t.rows)} rows</option>)}
+              </Select>
+            </div>
+            <Button variant="quiet" onClick={() => setShowLists(true)} data-testid="path-show-lists">Show lists</Button>
+          </div>
+          <Preview name={name} database={database!} schema={activeSchema.schema} table={table} />
+        </div>
+      )}
+      {listing.data && (!table || showLists) && (
         <div className="grid items-start gap-3 lg:grid-cols-[13rem_17rem_minmax(0,1fr)]">
           <Pane title="Schema" count={`${fmtCount(schemas.length)}`} testid="pane-schema">
             {schemas.map((s) => (
@@ -113,20 +134,16 @@ export function WarehouseBrowser({ name, database, schema }: { name: string; dat
           </Pane>
           <Pane title="Table" count={`${fmtCount(tables.length)}`} testid="pane-table">
             {tables.map((t) => (
-              <PaneRow key={t.name} selected={t.name === table} onPick={() => setTable(t.name)} testid="table-row">
+              <PaneRow key={t.name} selected={t.name === table} onPick={() => { setTable(t.name); setShowLists(false) }} testid="table-row">
                 <span className="truncate font-mono text-sm text-ink">{t.name}</span>
                 <span className="whitespace-nowrap text-xs text-ink-subtle">{fmtCount(t.rows)} rows</span>
               </PaneRow>
             ))}
             {!tables.length && <p className="px-3 py-6 text-center text-sm text-ink-subtle">No tables</p>}
           </Pane>
-          {table && activeSchema ? (
-            <Preview name={name} database={database!} schema={activeSchema.schema} table={table} />
-          ) : (
-            <div className={cardClasses('px-3 py-10 text-center text-sm text-ink-subtle')} data-testid="pane-preview-empty">
-              Pick a table to see its size, first rows and columns.
-            </div>
-          )}
+          <div className={cardClasses('px-3 py-10 text-center text-sm text-ink-subtle')} data-testid="pane-preview-empty">
+            Pick a table to see its size, first rows and columns.
+          </div>
         </div>
       )}
     </div>
@@ -170,7 +187,7 @@ function Preview({ name, database, schema, table }: { name: string; database: st
     queryKey: ['warehouse-preview', name, database, schema, table],
     queryFn: () => previewTable(name, database, schema, table),
   })
-  const shown = (preview.data?.columns ?? []).filter((c) => !bookkeeping(c.name)).slice(0, 6)
+  const shown = (preview.data?.columns ?? []).filter((c) => !bookkeeping(c.name)).slice(0, 12)
   return (
     <div className={cardClasses('overflow-hidden')} data-testid="pane-preview">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
