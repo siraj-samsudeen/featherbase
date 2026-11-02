@@ -78,7 +78,7 @@ for (const scheme of ['light', 'dark'] as const) {
     test("the app's page carries the shared bar: the app's name, its picker, the theme and the Account menu", async ({ session, page, request }) => {
       await onAppPage(page, await reader(request, `Bar Page ${scheme}`))
       await session.step('left to right: name, picker, then theme, Account', async () => {
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Bar proof')
+        await expect(page.getByTestId('top-bar-name')).toHaveValue('/barproof/')
         const order = [
           (await box(page, 'top-bar-name')).x,
           (await picker(page).boundingBox())!.x,
@@ -92,8 +92,8 @@ for (const scheme of ['light', 'dark'] as const) {
       await session.step('no Open Admin for a person who only reads the app', async () => {
         await expect(bar(page).getByTestId('open-admin')).toHaveCount(0)
       })
-      await session.step('no app switcher, and nothing left of the old header', async () => {
-        await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveCount(0)
+      await session.step('the application-name dropdown replaces the old header', async () => {
+        await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveValue('/barproof/')
         await expect(page.locator('[data-testid="runtime-shell"]')).toHaveCount(0)
       })
       await session.step('the Account menu holds Sign-in methods and Log out', async () => {

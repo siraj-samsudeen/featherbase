@@ -1,5 +1,5 @@
 // Feather Dash's report page (rendered by main.tsx).
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { accessFacts, read } from './api'
 import { MEASURE_LINE, TOTALS_NOTE, noAccessHelp, type NoAccessHelp, headingTitle, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
 import type { Heading, Report, ReportRow, Totals } from './report'
@@ -72,6 +72,12 @@ export function FeatherDash() {
   const frameAttempt = loader.current()
 
   return (
+    <div className="fd-shell">
+    {createElement('featherbase-sidebar', { 'aria-label': 'Feather Dash navigation' },
+      <a href={`${window.location.pathname}${window.location.search}`} aria-current="page">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18M7 14v3m5-8v8m5-12v12" /></svg>
+        <span>Sales report</span>
+      </a>)}
     <main className="fd-page" data-testid="feather-dash" data-view={view.kind}>
       {/* The header, in every state with a store on show (#4486): the Dive, the quick view, and each empty state. */}
       {(view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty') && report?.ok && report.value.heading && (
@@ -113,6 +119,7 @@ export function FeatherDash() {
         </Notice>
       )}
     </main>
+    </div>
   )
 }
 

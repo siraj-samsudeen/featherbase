@@ -4,6 +4,7 @@ import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
+import { getBrowser } from '../src/print'
 import { makePerson } from './fixtures'
 import { mockConsentHtml } from '../src/oauth'
 import type { TestClient } from 'feather-testing-postgres'
@@ -90,6 +91,40 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   test('the mock consent page begins with a standards-mode doctype', () => {
     expect(mockConsentHtml('state', '/api/oauth/google/callback', 'person@example.com', 'Test User'))
       .toMatch(/^<!DOCTYPE html>/)
+  })
+
+  test('the dev consent endpoint keeps special characters inside form values', async ({ api }) => {
+    await setClientId('')
+    const { state } = await beginLogin(api)
+    const values = {
+      state,
+      redirect_uri: '/api/oauth/google/callback',
+      email: 'a&b@example.test',
+      name: 'Ada "><img id="consent-injected">& O\'Neil',
+      subject: 'acct<&>"\'',
+      hd: 'workspace.example.test',
+    }
+    const response = await api.fetch(`/api/oauth/mock/consent?${new URLSearchParams(values)}`)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/html')
+    const html = await response.text()
+    expect(html).toContain('value="a&amp;b@example.test"')
+    expect(html).toContain('value="Ada &quot;&gt;&lt;img id=&quot;consent-injected&quot;&gt;&amp; O&#39;Neil"')
+    expect(html).toContain('value="acct&lt;&amp;&gt;&quot;&#39;"')
+
+    const page = await (await getBrowser()).newPage({ javaScriptEnabled: false })
+    try {
+      await page.setContent(html)
+      expect(await page.locator('form').count()).toBe(1)
+      expect(await page.locator('form').getAttribute('method')).toBe('get')
+      expect(await page.locator('form').getAttribute('action')).toBe('/api/oauth/mock/approve')
+      expect(await page.locator('form input').evaluateAll(inputs =>
+        Object.fromEntries(inputs.map(input => [(input as HTMLInputElement).name, (input as HTMLInputElement).value])),
+      )).toEqual(values)
+      expect(await page.locator('#consent-injected, img, script').count()).toBe(0)
+    } finally {
+      await page.close()
+    }
   })
 
   test('full mock flow provisions a user and hands the SPA a session', async ({ api }) => {
@@ -294,6 +329,59 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const genuine = await api.fetch(callbackUrl, { headers: { cookie } })
     expect(genuine.status).toBe(302)
     expect(genuine.headers.get('location')).toContain('/oauth-callback?code=')
+  })
+
+  test('a dev authorization code with one altered signature character cannot create an account or session', async ({ api }) => {
+    await setClientId('')
+    await setAllowedDomains('*')
+    const email = 'signed-code-control@example.test'
+    const { state, cookie } = await beginLogin(api)
+    expect(cookie).toContain('oauth_state=')
+    expect(cookie).toContain('oauth_verifier=')
+    const approved = await api.fetch(approveUrl(state, email, 'Signed Code Control'), { headers: { cookie } })
+    expect(approved.status).toBe(302)
+    const callback = new URL(approved.headers.get('location')!, 'http://localhost')
+    expect(callback.pathname).toBe('/api/oauth/google/callback')
+    expect(callback.searchParams.get('state')).toBe(state)
+    const code = callback.searchParams.get('code')!
+    expect(code).toMatch(/^[\w-]+\.[\w-]+$/)
+    const signatureStart = code.indexOf('.') + 1
+    const tampered = code.slice(0, signatureStart) + (code[signatureStart] === 'A' ? 'B' : 'A') + code.slice(signatureStart + 1)
+    const stateOfAccounts = async () => ({
+      people: await sql`select * from person order by row_id`,
+      roles: await sql`select * from has_role order by row_id`,
+      identities: await sql`select * from sign_in_identity order by id`,
+      revoked: await sql`select * from revoked_session order by jti`,
+      activity: await sql`select * from activity_log order by row_id`,
+    })
+    const before = await stateOfAccounts()
+    expect(before.people.some((person) => person.email === email)).toBe(false)
+    callback.searchParams.set('code', tampered)
+    const refused = await api.fetch(callback.pathname + callback.search, { headers: { cookie } })
+    expect(refused.status).toBe(401)
+    expect(await refused.json()).toEqual({ error: { type: 'AuthenticationError', message: 'Bad signature' } })
+    expect(refused.headers.get('location')).toBeNull()
+    expect(sidCookie(refused)).toBe('')
+    expect(await stateOfAccounts()).toEqual(before)
+    expect((await api.fetch('/api/whoami', { headers: { cookie } })).status).toBe(401)
+
+    // Retain the original producer-issued challenge and code, as in the state-cookie control above.
+    callback.searchParams.set('code', code)
+    const genuine = await api.fetch(callback.pathname + callback.search, { headers: { cookie } })
+    expect(genuine.status).toBe(302)
+    expect(genuine.headers.get('location')).toContain('/oauth-callback?code=')
+    expect(sidCookie(genuine)).not.toBe('')
+    const redeemed = await redeem(api, handoffCode(genuine), sidCookie(genuine))
+    expect(redeemed.status).toBe(200)
+    const session = await redeemed.json() as { token: string; user: { row_id: string; email: string } }
+    expect(session.user.email).toBe(email)
+    const whoami = await api.fetch('/api/whoami', { headers: { authorization: `Bearer ${session.token}` } })
+    expect(whoami.status).toBe(200)
+    expect(await whoami.json()).toMatchObject({ row_id: session.user.row_id, email })
+    expect(await sql`select person_id, method, subject from sign_in_identity where person_id = ${session.user.row_id}`)
+      .toEqual([{ person_id: session.user.row_id, method: 'google', subject: email }])
+    expect(await sql`select operation, sign_in_method from activity_log where "user" = ${session.user.row_id} and operation = 'login'`)
+      .toEqual([{ operation: 'login', sign_in_method: 'google' }])
   })
 
   test('the approve step also requires the state cookie', async ({ api }) => {

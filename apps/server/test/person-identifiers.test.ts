@@ -15,6 +15,72 @@ import { saveIdentifierSystem } from '../src/seed-packs'
 const ROSTER = { internal: { source: 'stylehr-roster-sync', verified: true } }
 
 describe('normalising', () => {
+  test('a digits-normalized public system refuses letters without mutations and keeps distinct numeric values searchable', async ({ admin }) => {
+    const system = 'coverage-digits'
+    await admin.post('/api/save_row', { table: 'Identifier System', row: {
+      row_id: system, label: 'Digits contact', kind: 'contact', normalise: 'digits', sensitivity: 'Normal', edited_by: 'system-manager',
+    } })
+    const { row_id: alpha } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Digits Alpha' } })
+    const { row_id: bravo } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Digits Bravo' } })
+    for (const [person, typed, value] of [[alpha, '12-03', '1203'], [bravo, '98 76', '9876']]) {
+      expect(await admin.post(`/api/people/${person}/identifiers`, { system, value: typed }))
+        .toMatchObject({ result: 'created', identifier: { person_id: person, system, value, verified: true } })
+    }
+    const snapshot = async () => ({
+      system: await sql`select * from identifier_system where row_id = ${system}`,
+      people: await sql`select * from person where row_id in (${alpha}, ${bravo}) order by row_id`,
+      identifiers: await sql`select * from person_identifier where system = ${system} order by id`,
+      audit: await sql`select * from activity_log where operation like 'identifier_%' order by row_id`,
+    })
+    const before = await snapshot()
+    const add = await admin.fetch(`/api/people/${alpha}/identifiers`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ system, value: '12A' }),
+    })
+    expect(add.status).toBe(417)
+    expect(await add.json()).toEqual({ error: { type: 'ValidationError', message: 'Digits only', fields: { value: 'invalid_format' } } })
+    expect(await snapshot()).toEqual(before)
+    const search = await admin.fetch(`/api/identifiers?${new URLSearchParams({ system, value: '12A' })}`)
+    expect(search.status).toBe(417)
+    expect(await search.json()).toEqual({ error: { type: 'ValidationError', message: 'Digits only', fields: { value: 'invalid_format' } } })
+    expect(await snapshot()).toEqual(before)
+    for (const [person, value] of [[alpha, '12 03'], [bravo, '98-76']]) {
+      expect(await admin.get(`/api/identifiers?${new URLSearchParams({ system, value })}`)).toEqual({ people: [{
+        person_id: person, resolved_to: person, replaced: false, current: true, assigner: '', pending_invite: false,
+      }] })
+    }
+    expect(await snapshot()).toEqual(before)
+  })
+
+  test('a public mobile system normalizes international 0091 and ordinary prefixes without conflating numbers', async ({ admin }) => {
+    const system = 'coverage-mobile'
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: system, label: 'Mobile contact', kind: 'contact' } })
+    expect(await admin.get(`/api/table/Identifier%20System/${system}`)).toMatchObject({
+      normalise: 'indian-mobile', sensitivity: 'Restricted', storage: 'plain', display: 'full', edited_by: 'self',
+    })
+    const { row_id: alpha } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Mobile Alpha' } })
+    const { row_id: bravo } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Mobile Bravo' } })
+    const first = await admin.post<{ identifier: { id: string } }>(`/api/people/${alpha}/identifiers`, { system, value: '00919847012345' })
+    expect(first).toMatchObject({ result: 'created', identifier: { person_id: alpha, system, value: '+919847012345', verified: true } })
+    expect(await admin.post(`/api/people/${bravo}/identifiers`, { system, value: '+91 98470-99999' }))
+      .toMatchObject({ result: 'created', identifier: { person_id: bravo, system, value: '+919847099999', verified: true } })
+    const stored = await sql`select * from person_identifier where system = ${system} order by id`
+    const people = await sql`select * from person where row_id in (${alpha}, ${bravo}) order by row_id`
+    const writes = await sql`select * from activity_log where operation like 'identifier_add%' order by row_id`
+    for (const typed of ['00919847012345', '+91 98470-12345', '09847012345', '919847012345']) {
+      expect(await admin.post(`/api/people/${alpha}/identifiers`, { system, value: typed }))
+        .toMatchObject({ result: 'unchanged', identifier: { id: first.identifier.id, value: '+919847012345' } })
+      expect(await admin.get(`/api/identifiers?${new URLSearchParams({ system, value: typed })}`)).toEqual({ people: [{
+        person_id: alpha, resolved_to: alpha, replaced: false, current: true, assigner: '', pending_invite: false,
+      }] })
+    }
+    expect(await admin.get(`/api/identifiers?${new URLSearchParams({ system, value: '00919847099999' })}`)).toEqual({ people: [{
+      person_id: bravo, resolved_to: bravo, replaced: false, current: true, assigner: '', pending_invite: false,
+    }] })
+    expect(await sql`select * from person_identifier where system = ${system} order by id`).toEqual(stored)
+    expect(await sql`select * from person where row_id in (${alpha}, ${bravo}) order by row_id`).toEqual(people)
+    expect(await sql`select * from activity_log where operation like 'identifier_add%' order by row_id`).toEqual(writes)
+  })
+
   test('codes are upper-cased, addresses lower-cased, Indian mobiles canonical; national IDs need a valid check digit', () => {
     expect(normaliseValue(' rr-0102 ', 'upper')).toBe('RR-0102')
     expect(normaliseValue(' Mixed Case ', 'none')).toBe(' Mixed Case ')
@@ -248,6 +314,62 @@ describe('who sees what', () => {
 })
 
 describe('search respects who may read people (Codex review on #385)', () => {
+  test('a Secret-system search refuses unavailable fingerprinting without changing identifier data', async ({ admin, createUser }) => {
+    const secret = 'search-national-id'
+    const normal = 'search-normal-code'
+    for (const row of [
+      { row_id: secret, label: 'Search national ID', kind: 'national-id' },
+      { row_id: normal, label: 'Search normal code', kind: 'contact', normalise: 'upper', sensitivity: 'Normal', edited_by: 'system-manager' },
+    ]) await admin.post('/api/save_row', { table: 'Identifier System', row })
+    const { row_id: person } = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person', row: { full_name: 'Search target' },
+    })
+    const { row_id: other } = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person', row: { full_name: 'Search other' },
+    })
+    await admin.post(`/api/people/${person}/identifiers`, { system: normal, value: 'Alpha-42' })
+    await admin.post(`/api/people/${other}/identifiers`, { system: normal, value: 'Bravo-81' })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Boundary Person Reader' } })
+    await admin.post('/api/save_row', {
+      table: 'Permission', row: { ref_table: 'Person', role: 'Boundary Person Reader', can_read: true },
+    })
+    const reader = await createUser({ roles: ['Boundary Person Reader'] })
+    const denied = await createUser()
+    const snapshot = async () => ({
+      systems: await sql`select * from identifier_system where row_id in (${secret}, ${normal}) order by row_id`,
+      identifiers: await sql`select * from person_identifier where person_id in (${person}, ${other}) or system = ${secret} order by id`,
+      people: await sql`select * from person where row_id in (${person}, ${other}) order by row_id`,
+    })
+    const before = await snapshot()
+    expect(before.systems.find((row) => row.row_id === secret)).toMatchObject({
+      kind: 'national-id', sensitivity: 'Secret', storage: 'fingerprint', display: 'last4', tier: 'restricted',
+    })
+    expect(before.identifiers.map((row) => [row.person_id, row.system, row.value]))
+      .toEqual(expect.arrayContaining([[person, normal, 'ALPHA-42'], [other, normal, 'BRAVO-81']]))
+    expect(before.identifiers.filter((row) => row.system === secret)).toEqual([])
+    const secretPath = `/api/identifiers?${new URLSearchParams({ system: secret, value: '234123412346' })}`
+    const normalPath = `/api/identifiers?${new URLSearchParams({ system: normal, value: 'alpha-42' })}`
+    const refused = await admin.fetch(secretPath)
+    expect(refused.status).toBe(417)
+    expect(await refused.json()).toEqual({ error: {
+      type: 'ValidationError',
+      message: 'Searching this identifier needs fingerprinting, which is not switched on',
+      fields: { code: 'fingerprint_unavailable' },
+    } })
+    expect(await snapshot()).toEqual(before)
+    expect(await reader.get(normalPath)).toEqual({ people: [{
+      person_id: person, resolved_to: person, replaced: false, current: true, assigner: '', pending_invite: false,
+    }] })
+    for (const path of [normalPath, secretPath]) {
+      const response = await denied.fetch(path)
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ error: {
+        type: 'PermissionError', message: 'You may not search people',
+      } })
+      expect(await snapshot()).toEqual(before)
+    }
+  })
+
   test('no Person read, no search; a Data Scope narrows the results', async ({ admin, createUser }) => {
     const p = await makePerson({ full_name: 'In scope', email: 'scoped.search@x.test' })
     const q = await makePerson({ full_name: 'Out of scope', email: 'other.search@x.test' })

@@ -140,78 +140,6 @@ While an installed app is on, a dashboard number card or chart SHALL be able to 
 - **WHEN** an administrator turns the app off and someone opens that card or a chart of the same tasks
 - **THEN** it's refused, and the tasks themselves are kept
 
-### Requirement: An app owns its own screen
-
-An app that brings its own screen SHALL fully control its address, document,
-inner navigation and styling.
-
-#### Normative details for the whole requirement
-
-Featherbase SHALL serve only that app's declared
-client files, SHALL NOT show one app's screen or its own in place of a missing
-piece, and SHALL preserve an app-owned deep path, query and fragment across
-sign-in and refresh while loading the app's entry document.
-
-Featherbase SHALL render every app screen inside its responsive host shell on
-desktop and touch/mobile. The shell SHALL keep a persistent Featherbase Admin
-icon immediately followed by one keyboard-operable app switcher. The switcher
-SHALL identify the current destination and contain Featherbase Admin plus every
-active installed app the current member is allowed to open. It SHALL refresh
-after the document regains focus or visibility, omit unavailable destinations,
-and return to Featherbase Admin if the current destination becomes unavailable.
-
-The Home destination SHALL be the single responsive route to Featherbase's
-ordinary host controls; neither the shell nor an app SHALL create a second app
-list. Shell controls SHALL have accessible names, visible keyboard focus and
-usable touch targets without obscuring or replacing app-owned content. An app
-with its own screen SHALL NOT also create a competing generated Home Page; its
-tables remain available to administrators.
-
-#### Scenario: A missing piece stays missing
-
-- **WHEN** something inside Tasker's screen fails to load
-- **THEN** it shows as missing
-- **AND** neither Tasker's own home screen nor Featherbase's is shown instead
-
-#### Scenario: Signing in returns to the app that was opened
-
-- **WHEN** a signed-out person opens a nested Tasker address with query state
-  and a selected task in its fragment
-- **THEN** after signing in and refreshing they remain at that exact address
-  with the selected task open
-
-#### Scenario: Every app opens in the host shell
-
-- **WHEN** an authorized member opens an app on desktop or touch/mobile
-- **THEN** the Home icon and unified app switcher remain available while the
-  app's own navigation and content render unchanged below them
-
-#### Scenario: The switcher follows current access
-
-- **WHEN** app access is granted, removed, disabled, made unavailable or
-  restored before the document regains focus or visibility
-- **THEN** the refreshed switcher contains Featherbase Admin plus exactly the
-  active installed apps that member can open
-- **AND** if the current app disappeared, the member returns to Featherbase Admin
-
-#### Scenario: Host controls work with keyboard and touch
-
-- **WHEN** a member uses the shell on desktop or a touch/mobile viewport
-- **THEN** Home and the switcher have accessible names, visible focus and
-  usable targets, and app-owned controls remain operable
-
-#### Scenario: Home restores Featherbase controls
-
-- **WHEN** a member activates the Home icon or chooses Featherbase Admin
-- **THEN** they reach Featherbase's responsive navigation, command, account,
-  appearance, language, notification and permitted administration controls
-
-#### Scenario: An app can be delivered without rebuilding core
-
-- **WHEN** built Tasker is staged after Featherbase core was built
-- **THEN** Tasker opens inside the host shell without a core rebuild or a
-  Tasker-specific core route
-
 ### Requirement: Featherbase and every app keep one working address
 
 An older link to a Featherbase screen SHALL still work, redirecting to its
@@ -636,6 +564,57 @@ app already has; installing it SHALL be refused and leave nothing behind.
   existing scheduled job
 - **THEN** the install is refused, naming who has the job, and the existing
   job is unchanged
+
+### Requirement: The platform is named Featherbase
+
+The platform destination SHALL be named Featherbase wherever the user switches
+between the platform and installed apps.
+
+#### Scenario: A clean instance identifies the platform
+
+```gherkin
+Given the user is a System Manager on an instance with no installed apps
+When the user inspects the destination switcher
+Then the platform destination is named "Featherbase"
+```
+
+#### Scenario: An installed app preserves the platform name
+
+```gherkin
+Given the user is a System Manager with Tasker installed
+When the user inspects the destination switcher while using Tasker
+Then the platform destination is named "Featherbase"
+And Tasker retains its own app name
+```
+
+### Requirement: An app owns its screen under the shared top bar
+
+An app SHALL own its address, document, state, content and styling outside shared navigation. Featherbase SHALL serve only declared client files, preserve deep paths, queries and fragments across sign-in and refresh, and never replace missing content. The shared bar SHALL include app controls, theme and account, without styling or covering app content. An app screen SHALL NOT compete with a generated Home Page; authorized administrators retain access to its data.
+
+#### Scenario: A missing piece stays missing
+
+```gherkin
+Given the user is using Tasker
+When a piece of Tasker's content cannot load
+Then that piece is shown as missing
+And neither Tasker's home nor Featherbase replaces it
+```
+
+#### Scenario: Signing in returns to the app that was opened
+
+```gherkin
+Given the user is signed out
+When the user opens a nested Tasker address with a selected task and signs in
+Then the same address and selected task survive refreshing the page
+```
+
+#### Scenario: An app can be delivered without rebuilding core
+
+```gherkin
+Given Featherbase has been built without Tasker's client files
+When built Tasker is installed
+Then Tasker opens with the shared navigation without rebuilding Featherbase or adding an app-specific platform route
+```
 
 ## Deferred
 

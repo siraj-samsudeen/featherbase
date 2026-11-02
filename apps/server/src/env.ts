@@ -231,9 +231,10 @@ export async function withNamedVariable<T>(name: string, value: string | undefin
   }
 }
 
-/** The environment a child process inherits, with `extra` on top. */
-export function childEnvironment(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
-  return { ...process.env, ...extra }
+/** The environment a child process inherits, optionally restricted to named
+ * execution variables, with `extra` on top. Names are case-insensitive on Windows. */
+export function childEnvironment(extra: Record<string, string> = {}, inherit?: readonly string[]): NodeJS.ProcessEnv {
+  return { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !inherit || inherit.includes(name.toUpperCase()))), ...extra }
 }
 
 /** The whole environment, for functions that take one as a parameter so a

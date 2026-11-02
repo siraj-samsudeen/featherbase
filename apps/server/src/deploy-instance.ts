@@ -55,7 +55,8 @@ export async function repinChangedApps(io: CommandIO): Promise<void> {
   if (environment === 'production' || (stamp !== 'development' && stamp !== 'staging'))
     throw new Error(`This is a "${environment}" server on a database labelled "${stamp ?? 'nothing'}". Re-pinning is for a development or dev (staging) database; production needs a new version.`)
   const { discoverPackages, repinToFolder, whyUnshipped } = await import('./runtime-packages')
-  const paths = JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[]
+  const { appLibraryPaths } = await import('./app-library')
+  const paths = await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
   await discoverPackages(paths)
   const rows = await sql`select name, package_version, artifact_digest, manifest from installed_app
     where runtime_package and enabled and package_version is not null order by name`

@@ -68,6 +68,39 @@ env:
   ALLOW_MOCK_OAUTH: '1'
 
 jobs:
+  # No apps:prepare here: the newcomer path must work without any app build.
+  base-quick-start:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: featherbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:dev
+      - run: node --test tools/featherbase.integration.test.mjs tools/orb-service.integration.test.mjs
+      - run: pnpm featherbase setup
+      - run: pnpm featherbase setup
+      - run: pnpm featherbase start --check
+      - run: pnpm --silent featherbase health --json
+
   # Decides what runs: tools/ci-scope.mjs holds the rules and their tests.
   changes:
     runs-on: ubuntu-latest
@@ -577,15 +610,15 @@ jobs:
           NODE_ENV: test
         run: pnpm --filter server migrate
 
-      - name: Run Feather Dash's tests (client-apps/jeyarama/dash)
+      - name: Run Feather Dash's tests with backend coverage
         if: ${{ needs.changes.outputs.client_apps != 'false' }}
-        run: npm test --prefix client-apps/jeyarama/dash
+        run: npm run test:coverage:backend --prefix client-apps/jeyarama/dash
 
-      - name: Run Feather Dash's platform tests (client-apps/jeyarama/dash)
+      - name: Run Feather Dash's platform tests with backend coverage
         if: ${{ needs.changes.outputs.client_apps != 'false' }}
         env:
           NODE_ENV: test
-        run: npm run test:platform --prefix client-apps/jeyarama/dash
+        run: npm run test:coverage:backend:platform --prefix client-apps/jeyarama/dash
 
       - name: Run Tasker's unit tests with coverage
         if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
@@ -631,6 +664,18 @@ jobs:
         env:
           RUNTIME_PROOF_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/featherbase_runtime_proof_e2e
         run: pnpm apps:prove
+
+      - name: Merge and enforce Dash backend coverage
+        if: ${{ needs.changes.outputs.client_apps != 'false' }}
+        run: npm run coverage:backend:merged --prefix client-apps/jeyarama/dash
+
+      - name: Upload Dash backend coverage
+        if: ${{ always() && needs.changes.outputs.client_apps != 'false' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dash-backend-coverage
+          path: coverage/dash-backend/
+          if-no-files-found: error
 
   # Fails closed: if `changes` itself failed, e2e runs rather than reporting
   # a passing `skipped`.
@@ -684,10 +729,29 @@ jobs:
       - name: Run e2e suite with coverage
         run: pnpm --filter web coverage:e2e --trace retain-on-failure
 
+      # Reuse the instrumented Tasker build before acceptance's packaged proof
+      # replaces it with a normal build.
+      - name: Collect runtime HTTP coverage
+        run: >-
+          pnpm --filter server exec vitest run
+          --config ../../example-apps/tasker/vitest.integration.config.ts
+
+      # Acceptance also runs the packaged delivery proof. Its development seed
+      # checks PostgreSQL's actual server address; Docker forwarding is not local.
+      - name: Start loopback PostgreSQL for the packaged seed proof
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql
+          PG_BIN=$(dirname "$(find /usr/lib/postgresql -name initdb | sort -V | tail -1)")
+          "$PG_BIN/initdb" -D "$RUNNER_TEMP/runtime-proof-pg" -U postgres --auth=trust
+          "$PG_BIN/pg_ctl" -D "$RUNNER_TEMP/runtime-proof-pg" -l "$RUNNER_TEMP/runtime-proof-pg.log" -o "-h 127.0.0.1 -p 5433 -k $RUNNER_TEMP" -w start
+
       # The specs' fenced Gherkin, run by cucumber-js (#738). It boots its own
       # stack on its own database and ports (acceptance-tests/support/stack.js),
       # so it runs after the e2e suite rather than beside it.
       - name: Run acceptance suite
+        env:
+          RUNTIME_PROOF_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/featherbase_runtime_proof_e2e
         run: |
           npm --prefix acceptance-tests ci
           npm --prefix acceptance-tests test
@@ -699,21 +763,6 @@ jobs:
           name: acceptance-report
           path: acceptance-tests/reports/
           if-no-files-found: ignore
-
-      - name: Collect runtime HTTP coverage
-        run: >-
-          pnpm --filter server exec vitest run
-          --config ../../example-apps/tasker/vitest.integration.config.ts
-
-      # The development seed checks PostgreSQL's actual server address.
-      # Docker port forwarding is not loopback from PostgreSQL's perspective.
-      - name: Start loopback PostgreSQL for the packaged seed proof
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y postgresql
-          PG_BIN=$(dirname "$(find /usr/lib/postgresql -name initdb | sort -V | tail -1)")
-          "$PG_BIN/initdb" -D "$RUNNER_TEMP/runtime-proof-pg" -U postgres --auth=trust
-          "$PG_BIN/pg_ctl" -D "$RUNNER_TEMP/runtime-proof-pg" -l "$RUNNER_TEMP/runtime-proof-pg.log" -o "-h 127.0.0.1 -p 5433 -k $RUNNER_TEMP" -w start
 
       - name: Prove packaged runtime journeys with coverage
         env:

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { DevError, assertLocal, assertMadeUpDataAllowed, listInstances, localStatus, madeUpSecrets, parseCommand, postgresHelp, resolveInstance } from './dev.mjs'
+import { DevError, assertLocal, assertMadeUpDataAllowed, instanceEnvironment, listInstances, localStatus, madeUpSecrets, parseCommand, postgresHelp, resolveInstance } from './dev.mjs'
 
 function repoWith(instanceJson) {
   const base = mkdtempSync(join(tmpdir(), 'dev-test-'))
@@ -20,15 +20,23 @@ test('an instance declares its apps, by folder', () => {
   assert.deepEqual(instance.apps.map((a) => a.name), ['store_app'])
 })
 
+test('a named instance explicitly selects file-managed settings', () => {
+  const instance = resolveInstance('acme/shop', repoWith({ apps: ['client-apps/acme/store'] }))
+  assert.equal(instanceEnvironment(instance).FEATHERBASE_INSTANCE, 'acme/shop')
+})
+
 test('an unknown instance fails naming those that exist', () => {
   const base = repoWith({ apps: ['client-apps/acme/store'] })
   assert.deepEqual(listInstances(base), ['acme/shop'])
   assert.throws(() => resolveInstance('acme/nope', base), /No instance "acme\/nope"\. Name one of: acme\/shop/)
 })
 
-test('no instance named says one is needed and lists them, not `No instance ""`', () => {
+test('no instance named selects only Featherbase', () => {
   const base = repoWith({ apps: ['client-apps/acme/store'] })
-  assert.throws(() => resolveInstance(undefined, base), (e) => /needs an instance name.*acme\/shop.*pnpm dev acme\/shop/.test(e.message) && !e.message.includes('No instance'))
+  const instance = resolveInstance(undefined, base)
+  assert.equal(instance.name, 'Featherbase')
+  assert.deepEqual(instance.apps, [])
+  assert.equal(instance.settingsFile, undefined)
 })
 
 test('an app folder without a manifest is named', () => {

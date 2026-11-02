@@ -196,9 +196,9 @@ test('Recently opened holds at most five items, Frequent included', async ({ adm
 })
 
 // #489 items 2 and 9 replace #476's phone label ("Home"): the selector's
-// current entry is the shared top bar's name, "Featherbase Admin", at every
+// current entry is the shared top bar's name, "Featherbase", at every
 // width; a phone cuts it with an ellipsis rather than dropping words.
-test('the app selector reads Featherbase Admin, on a phone as on a wide screen', async ({ admin }) => {
+test('the app selector reads Featherbase, on a phone as on a wide screen', async ({ admin }) => {
   const { PHONE_QUERY } = await import('../src/components/TopBar')
   const phone = (matches: boolean) =>
     vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({
@@ -208,13 +208,13 @@ test('the app selector reads Featherbase Admin, on a phone as on a wide screen',
   phone(true)
   const first = await renderApp('/featherbase/admin', admin)
   const select = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
-  expect(select.selectedOptions[0].textContent).toBe('Featherbase Admin')
+  expect(select.selectedOptions[0].textContent).toBe('Featherbase')
   first.unmount()
   vi.restoreAllMocks()
   phone(false)
   await renderApp('/featherbase/admin', admin)
   const wide = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
-  expect(wide.selectedOptions[0].textContent).toBe('Featherbase Admin')
+  expect(wide.selectedOptions[0].textContent).toBe('Featherbase')
   vi.restoreAllMocks()
 })
 

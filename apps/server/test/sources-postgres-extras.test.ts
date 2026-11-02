@@ -288,6 +288,51 @@ describe('Writing to a Postgres table that has only defaults', () => {
     expect(missing.status).toBe(404)
   })
 
+  test('group counts retain the rows whose grouping value is NULL', async () => {
+    const bind: Binding = {
+      source: {
+        name: 'ext-extra-null-groups', engine: 'postgres', url_env: URL_ENV, root_path: null,
+        default_schema: null, access: 'read_only', pool_max: 2,
+        statement_timeout_ms: 10000, allowlist: null,
+      },
+      schema: 'ext_extra', table: 'nullable_groups', pk: 'id', modified: null, columns: [],
+    }
+    await cli.unsafe(`create table ext_extra.nullable_groups (id integer primary key, qty integer)`)
+    try {
+      await cli.unsafe(`insert into ext_extra.nullable_groups values (1, null), (2, null), (3, null), (4, 7), (5, 7), (6, 12)`)
+      expect(await postgresDriver.groupCount(bind, 'qty', [])).toEqual([
+        { label: '', value: 3 }, { label: '7', value: 2 }, { label: '12', value: 1 },
+      ])
+    } finally {
+      postgresDriver.dispose(bind.source.name)
+      await cli.unsafe(`drop table ext_extra.nullable_groups`)
+    }
+  })
+
+  test('updates return only existing source rows', async () => {
+    const bind: Binding = {
+      source: {
+        name: 'ext-extra-missing-update', engine: 'postgres', url_env: URL_ENV, root_path: null,
+        default_schema: null, access: 'read_write', pool_max: 2,
+        statement_timeout_ms: 10000, allowlist: null,
+      },
+      schema: 'ext_extra', table: 'missing_update', pk: 'id', modified: null, columns: [],
+    }
+    await cli.unsafe(`create table ext_extra.missing_update (id integer primary key, note text)`)
+    try {
+      await cli.unsafe(`insert into ext_extra.missing_update values (3, 'kept')`)
+      expect(await postgresDriver.update(bind, '3', {}, null)).toEqual({ id: 3, note: 'kept' })
+      expect(await postgresDriver.update(bind, '10', {}, null)).toBe('missing')
+      expect(await postgresDriver.update(bind, '11', { note: 'must not be inserted' }, null)).toBe('missing')
+      expect(await cli`select * from ext_extra.missing_update`).toEqual([{ id: 3, note: 'kept' }])
+      expect(await postgresDriver.update(bind, '3', { note: 'changed' }, null)).toEqual({ id: 3, note: 'changed' })
+      expect(await cli`select * from ext_extra.missing_update`).toEqual([{ id: 3, note: 'changed' }])
+    } finally {
+      postgresDriver.dispose(bind.source.name)
+      await cli.unsafe(`drop table ext_extra.missing_update`)
+    }
+  })
+
   test('the driver distinguishes a stale delete from a missing row and permits a delete without a revision', async () => {
     const bind: Binding = {
       source: {

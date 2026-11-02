@@ -23,3 +23,6 @@ minimumReleaseAgeExclude:
 overrides:
   glob@<14.0.2: ^14.0.2
   minimatch@<11.0.1: ^11.0.1
+
+patchedDependencies:
+  '@fission-ai/openspec@1.16.0': patches/@fission-ai__openspec@1.16.0.patch

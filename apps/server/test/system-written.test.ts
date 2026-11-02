@@ -364,6 +364,7 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/activate_app_upgrade': 'app lifecycle',
     'POST /api/set_app_enabled': 'app lifecycle',
     'POST /api/install_app': 'app lifecycle',
+    'POST /api/apps/prepare-install': 'app lifecycle; builds a trusted package and installs through the guarded lifecycle',
     'POST /api/uninstall_app': 'app lifecycle',
     'POST /api/run_auto_email_report': 'internal writer: queues email',
     'POST /api/run_script_report': 'read',

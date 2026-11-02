@@ -1,0 +1,55 @@
+diff --git a/dist/core/parsers/requirement-text.js b/dist/core/parsers/requirement-text.js
+index e41f930f01780048c8cc27def7beab5eff3b75a5..edde99b9ba38c83517a643892702547df4b9d130 100644
+--- a/dist/core/parsers/requirement-text.js
++++ b/dist/core/parsers/requirement-text.js
+@@ -117,22 +117,45 @@ const BARE_OUTCOME_STEP = /\bTHEN\b/;
+ /**
+  * Whether a scenario block (header line included, as `parseScenarioBlocks`
+  * returns it) carries a trigger step (**WHEN** or **GIVEN**) and an outcome
+- * step (**THEN**) outside fenced examples. `AND` only continues a step that is
+- * already there, so neither half can be carried by an `AND` line; a keyword
+- * inside a fenced block is documentation, not a step — the same masking
+- * `extractRequirementBody` applies to requirement text.
++ * step (**THEN**) outside fenced examples or as executable Gherkin steps.
++ * `AND` only continues an existing step. Other code fences and Gherkin doc
++ * strings remain documentation, not steps.
+  */
+ export function scenarioStepCoverage(scenarioRaw) {
+     const lines = scenarioRaw.replace(/\r\n?/g, '\n').split('\n');
+     const mask = buildCodeFenceMask(lines);
+     let hasTrigger = false;
+     let hasOutcome = false;
++    let fence = null;
++    let docString = false;
+     // Line 0 is the scenario's own header: a keyword in the title
+     // (`#### Scenario: What happens THEN`) is a name, not a step.
+     for (let i = 1; i < lines.length; i++) {
++        const line = lines[i];
++        const marker = line.match(/^\s*(`{3,}|~{3,})(.*)$/);
++        if (fence) {
++            if (marker && marker[1][0] === fence.marker && marker[1].length >= fence.length && !marker[2].trim()) {
++                fence = null;
++                docString = false;
++            }
++            else if (fence.gherkin) {
++                if (/^\s*"""/.test(line))
++                    docString = !docString;
++                else if (!docString) {
++                    if (/^\s*(?:Given|When)\s+\S/.test(line))
++                        hasTrigger = true;
++                    if (/^\s*Then\s+\S/.test(line))
++                        hasOutcome = true;
++                }
++            }
++            continue;
++        }
++        if (marker && !(marker[1][0] === '`' && marker[2].includes('`'))) {
++            fence = { marker: marker[1][0], length: marker[1].length, gherkin: marker[2].trim() === 'gherkin' };
++            continue;
++        }
+         if (mask[i])
+             continue;
+-        const line = lines[i];
+         if (BOLD_TRIGGER_STEP.test(line) || BARE_TRIGGER_STEP.test(line))
+             hasTrigger = true;
+         if (BOLD_OUTCOME_STEP.test(line) || BARE_OUTCOME_STEP.test(line))

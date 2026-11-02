@@ -178,6 +178,26 @@ describe('NAV-002: related filters', () => {
     await bad([['supplier', 'related', { table: PART }]]) // wrong target
     await bad([['row_id', 'related', { via: LINE, column: 'qty', table: PART }]]) // via col not a Reference
 
+    // Keep the target and via Reference valid so only the owner/field guard
+    // can reject these requests, not target scoping or column validation.
+    const viaPart = {
+      via: LINE, column: 'part', table: PART, filters: [['row_id', '=', 'P-1']],
+    }
+    await expect(list(admin, ORDER, [['total', 'related', viaPart]])).rejects.toMatchObject({
+      status: 417,
+      type: 'ValidationError',
+      message: "417 ValidationError: A via-related filter applies to 'row_id'",
+    })
+    await expect(list(admin, SUP, [['row_id', 'related', viaPart]])).rejects.toMatchObject({
+      status: 417,
+      type: 'ValidationError',
+      message: `417 ValidationError: ${SUP} has no sub-table ${LINE}`,
+    })
+    await expect(list(admin, ORDER, [['row_id', 'related', viaPart]])).resolves.toEqual({
+      names: ['O-1', 'O-3'],
+      total: 2,
+    })
+
     // depth cap: a 4th nested hop is rejected (3 is the maximum)
     const supHop = (filters: unknown[]) => ({ table: SUP, filters })
     const deep = [

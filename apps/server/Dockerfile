@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && rm -rf /var/lib/apt/lists/*
 
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY patches patches
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
@@ -74,6 +75,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY patches patches
 COPY apps/server/package.json apps/server/
 COPY packages/shared/package.json packages/shared/
 RUN pnpm install --frozen-lockfile --filter server... --prod

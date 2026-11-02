@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { registerController, unregisterController } from '../src/controllers'
+import { grantRole, tableRef } from './fixtures'
 
 const CHILD = 'Chd Item Row'
 const PARENT = 'Chd Order'
@@ -71,6 +72,69 @@ describe('META-007: child table linkage', () => {
     ).rejects.toMatchObject({
       status: 417,
       message: expect.stringMatching(/through its parent/),
+    })
+  })
+
+  test('a shared child list unions its parent read scopes within the caller filter', async ({
+    admin,
+    createUser,
+  }) => {
+    await setup(admin)
+    const ownParent = 'Chd Own Order'
+    await admin.post('/api/table_def', {
+      name: ownParent,
+      columns: [{ column_name: 'items', column_type: 'Sub-table', row_table: CHILD }],
+    })
+    const role = 'Chd Scoped Reader'
+    await grantRole(admin, { role, table: [CHILD, PARENT], can_read: true })
+    await grantRole(admin, {
+      role, table: ownParent, can_read: true, can_create: true, own_rows_only: true,
+    })
+    const user = await createUser({ roles: [role] })
+    type ChildRow = { row_id: string; item: string; qty: number }
+    type ParentRow = { row_id: string; created_by: string; items: ChildRow[] }
+    // Both readable branches have a row excluded by the caller filter. That
+    // detects an unparenthesized OR regardless of metadata iteration order.
+    const all = await admin.post<ParentRow>('/api/save_row', {
+      table: PARENT,
+      row: { items: [{ item: 'all-match', qty: 2 }, { item: 'all-filtered', qty: 1 }] },
+    })
+    const own = await user.post<ParentRow>('/api/save_row', {
+      table: ownParent,
+      row: { items: [{ item: 'own-match', qty: 3 }, { item: 'own-filtered', qty: 1 }] },
+    })
+    const denied = await admin.post<ParentRow>('/api/save_row', {
+      table: ownParent,
+      row: { items: [{ item: 'other-owner', qty: 4 }] },
+    })
+    expect(own.created_by).toBe(user.user)
+    expect(all.created_by).not.toBe(user.user)
+    expect(denied.created_by).not.toBe(user.user)
+
+    const child = tableRef(CHILD)
+    const query = {
+      fields: ['row_id', 'item', 'qty'],
+      filters: [['qty', '>=', 2]],
+      order_by: 'item asc',
+    }
+    // The denied child genuinely exists and satisfies the caller filter.
+    // Only its parent's own-rows scope should remove it from the user's list.
+    const control = await admin.get<{ data: ChildRow[]; total: number }>(child.listUrl(query))
+    expect({ data: control.data, total: control.total }).toEqual({
+      data: [
+        { row_id: all.items[0].row_id, item: 'all-match', qty: 2 },
+        { row_id: denied.items[0].row_id, item: 'other-owner', qty: 4 },
+        { row_id: own.items[0].row_id, item: 'own-match', qty: 3 },
+      ],
+      total: 3,
+    })
+    const result = await user.get<{ data: ChildRow[]; total: number }>(child.listUrl(query))
+    expect({ data: result.data, total: result.total }).toEqual({
+      data: [
+        { row_id: all.items[0].row_id, item: 'all-match', qty: 2 },
+        { row_id: own.items[0].row_id, item: 'own-match', qty: 3 },
+      ],
+      total: 2,
     })
   })
 })

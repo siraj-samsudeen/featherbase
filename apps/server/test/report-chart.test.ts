@@ -59,6 +59,27 @@ describe('RPT-006: report charts', () => {
     expect(byLabel).toEqual({ North: 2, South: 1 })
   })
 
+  test('counts rows without a region as one blank-labelled group', async ({ admin }) => {
+    await setup(admin)
+    for (const row_id of ['s4', 's5'])
+      await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id, region: null, amount: 7 })
+    const { data } = await admin.post<{ data: { label: string; value: number }[] }>('/api/report_chart', {
+      report: REPORT, group_by: 'region',
+    })
+    expect(data.sort((a, b) => a.label.localeCompare(b.label))).toEqual([
+      { label: '', value: 2 }, { label: 'North', value: 2 }, { label: 'South', value: 1 },
+    ])
+  })
+
+  test('keeps a row without a label in a per-row chart', async ({ admin }) => {
+    await setup(admin)
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 's4', region: null, amount: 7 })
+    const { data } = await admin.post<{ data: { label: string; value: number }[] }>('/api/report_chart', {
+      report: REPORT, label_field: 'region', value_field: 'amount',
+    })
+    expect(data.map((d) => `${d.label}:${d.value}`).sort()).toEqual([':7', 'North:100', 'North:25', 'South:50'])
+  })
+
   test('picks sensible default fields when none are given', async ({ admin }) => {
     await setup(admin)
     const { data } = await runReportChart({ report: REPORT }, 'Administrator')
@@ -108,6 +129,30 @@ describe('RPT-006: report charts', () => {
     await expectApiError(admin.post('/api/pin_chart_to_dashboard', { dashboard: DASH }), {
       status: 417, type: 'ValidationError', message: expect.stringContaining('Expected { dashboard, chart }'),
     })
+  })
+
+  for (const [missing, chart] of [
+    ['report', { label: 'Missing report' }],
+    ['label', { report: REPORT }],
+  ] as const) {
+    test(`refuses a pinned chart without its ${missing}`, async ({ admin }) => {
+      await setup(admin)
+      const before = await admin.get(`/api/table/Dashboard/${encodeURIComponent(DASH)}`)
+      await expectApiError(admin.post('/api/pin_chart_to_dashboard', { dashboard: DASH, chart }), {
+        status: 417, type: 'ValidationError', message: '417 ValidationError: Expected chart { label, report }',
+      })
+      expect(await admin.get(`/api/table/Dashboard/${encodeURIComponent(DASH)}`)).toEqual(before)
+    })
+  }
+
+  test('initializes the chart list of a dashboard without configuration', async ({ admin }) => {
+    await setup(admin)
+    const dashboard = 'Rc Srv Empty Dashboard'
+    await admin.post('/api/save_row', { table: 'Dashboard', row: { row_id: dashboard, label: 'Empty Dash' } })
+    const chart = { label: 'Sales by region', report: REPORT, group_by: 'region' }
+    await admin.post('/api/pin_chart_to_dashboard', { dashboard, chart })
+    const saved = await admin.get<{ config: unknown }>(`/api/table/Dashboard/${encodeURIComponent(dashboard)}`)
+    expect(saved.config).toEqual({ charts: [chart] })
   })
 
   test('a pinned chart recomputes from live rows: a new row shows the next time it is drawn', async ({ admin }) => {

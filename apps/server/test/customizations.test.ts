@@ -4,6 +4,7 @@ import { sql } from '../src/db'
 import { getMeta } from '../src/meta'
 import { exportCustomizations, importCustomizations } from '../src/customizations'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectApiError } from './fixtures'
 
 // CUST-005: customizations (Custom Fields + Metadata Overrides) round-trip
 // through export → import, recreating the column and re-applying the property.
@@ -76,6 +77,65 @@ describe('CUST-005: export/import customizations', () => {
     const bundle = await exportCustomizations(DT)
     const counts = await importCustomizations(bundle, 'Administrator')
     expect(counts).toEqual({ custom_fields: 0, property_setters: 0 })
+  })
+
+  test('an imported field with omitted options becomes an optional Data column', async ({ admin }) => {
+    await admin.post('/api/table_def', {
+      name: DT, columns: [{ column_name: 'title', column_type: 'Data' }],
+    })
+    expect(await admin.post('/api/import_customizations', {
+      custom_fields: [{ dt: DT, column_name: 'customer_note' }],
+    })).toEqual({ custom_fields: 1, property_setters: 0 })
+    const meta = await admin.get<{ columns: Record<string, unknown>[] }>(`/api/table/${encodeURIComponent(DT)}:meta`)
+    expect(meta.columns.find((f) => f.column_name === 'customer_note')).toMatchObject({
+      label: 'customer_note', column_type: 'Data', reqd: false, in_list_view: false, custom: true,
+    })
+    const created = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: DT, row: { title: 'With note', customer_note: 'Call after 4pm' },
+    })
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`))
+      .toMatchObject({ title: 'With note', customer_note: 'Call after 4pm' })
+    const without = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'No note' } })
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/${without.row_id}`))
+      .toMatchObject({ title: 'No note', customer_note: null })
+    expect(await admin.get(`/api/export_customizations/${encodeURIComponent(DT)}`)).toEqual({
+      table: DT,
+      custom_fields: [{
+        dt: DT, column_name: 'customer_note', label: null, column_type: 'Data',
+        reference_table: null, choices: null, row_table: null, reqd: false, in_list_view: false,
+      }],
+      property_setters: [],
+    })
+  })
+
+  test('re-importing a Table-level label override does not duplicate it', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    const bundle = { property_setters: [{ table_name: DT, property: 'label', value: 'Customer requests' }] }
+    expect(await admin.post('/api/import_customizations', bundle)).toEqual({ custom_fields: 0, property_setters: 1 })
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}:meta`)).toMatchObject({ label: 'Customer requests' })
+    const exported = {
+      table: DT, custom_fields: [],
+      property_setters: [{ table_name: DT, column_name: null, property: 'label', value: 'Customer requests' }],
+    }
+    expect(await admin.get(`/api/export_customizations/${encodeURIComponent(DT)}`)).toEqual(exported)
+    expect(await admin.post('/api/import_customizations', bundle)).toEqual({ custom_fields: 0, property_setters: 0 })
+    expect(await admin.get(`/api/export_customizations/${encodeURIComponent(DT)}`)).toEqual(exported)
+  })
+
+  test('an imported field cannot replace an existing base column', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    const saved = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'Keep this value' } })
+    const rowPath = `/api/table/${encodeURIComponent(DT)}/${saved.row_id}`
+    const before = await admin.get(rowPath)
+    const metaPath = `/api/table/${encodeURIComponent(DT)}:meta`
+    const meta = await admin.get(metaPath)
+    await expectApiError(admin.post('/api/import_customizations', {
+      custom_fields: [{ dt: DT, column_name: 'title', column_type: 'Choice', choices: 'Low\nHigh' }],
+    }), { status: 409, type: 'ConflictError', message: `409 ConflictError: title already exists on ${DT}` })
+    expect(await admin.get(rowPath)).toEqual(before)
+    expect(await admin.get(metaPath)).toEqual(meta)
+    expect(await admin.get(`/api/export_customizations/${encodeURIComponent(DT)}`))
+      .toEqual({ table: DT, custom_fields: [], property_setters: [] })
   })
 
   test('exposes export/import over HTTP, gated to System Managers', async ({ admin }) => {

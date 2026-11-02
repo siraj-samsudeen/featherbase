@@ -61,9 +61,9 @@ const openAccountMenu = async () => {
 
 // ---- 2. the name ---------------------------------------------------------------
 
-test('on the Admin screens the bar is named Featherbase Admin', async ({ admin }) => {
+test('on the Admin screens the bar is named Featherbase', async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
-  expect(await barName()).toHaveTextContent('Featherbase Admin')
+  expect(await barName()).toHaveTextContent('Featherbase')
 })
 
 test('on the Sales Target page the bar is named for the app, Feather Dash', async ({ admin }) => {
@@ -77,10 +77,10 @@ test("on an app's address the account page is named for the app", async ({ admin
   await waitFor(async () => expect(await barName()).toHaveTextContent('Feather Dash'))
 })
 
-test('on the Admin address the account page is named Featherbase Admin', async ({ admin }) => {
+test('on the Admin address the account page is named Featherbase', async ({ admin }) => {
   onAddressThatOpens('admin')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  await waitFor(async () => expect(await barName()).toHaveTextContent('Featherbase Admin'))
+  await waitFor(async () => expect(await barName()).toHaveTextContent('Featherbase'))
 })
 
 // Verifier, round 2 on #495: on an app's address every page's tab says the
@@ -107,26 +107,26 @@ test("the Sales Target page on the Admin address has Feather Dash as its tab tit
   await waitFor(() => expect(document.title).toBe('Feather Dash'))
 })
 
-// #501 item 1: the Admin's browser tab and its logo say "Featherbase Admin".
-test('on the Admin screens the tab title is Featherbase Admin', async ({ admin }) => {
+// #758: the platform destination has one name, Featherbase.
+test('on the Admin screens the tab title is Featherbase', async ({ admin }) => {
   document.title = 'Featherbase'
   await renderApp('/featherbase/admin', admin)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Featherbase Admin'))
+  await waitFor(() => expect(document.title).toBe('Featherbase'))
 })
 
-test("the Admin logo's tooltip is Featherbase Admin", async ({ admin }) => {
+test("the Admin logo's tooltip is Featherbase", async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
-  const logo = await within(await settledBar()).findByRole('link', { name: 'Featherbase Admin' })
-  expect(logo).toHaveAttribute('title', 'Featherbase Admin')
+  const logo = await within(await settledBar()).findByRole('link', { name: 'Featherbase' })
+  expect(logo).toHaveAttribute('title', 'Featherbase')
 })
 
-test('on the Admin address the account page tab title is Featherbase Admin for someone who can use Admin', async ({ admin }) => {
+test('on the Admin address the account page tab title is Featherbase for someone who can use Admin', async ({ admin }) => {
   document.title = 'Featherbase'
   onAddressThatOpens('admin')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Featherbase Admin'))
+  await waitFor(() => expect(document.title).toBe('Featherbase'))
 })
 
 // #501 item 3: on the Admin address the account page is named for where the
@@ -302,7 +302,7 @@ test('Open Admin is not offered on the Sales Target page opened on the Admin add
 test('Open Admin is not offered on the account page on the Admin address', async ({ admin }) => {
   onAddressThatOpens('admin')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  expect(within(await settledName('Featherbase Admin')).queryByTestId('open-admin')).not.toBeInTheDocument()
+  expect(within(await settledName('Featherbase')).queryByTestId('open-admin')).not.toBeInTheDocument()
 })
 
 test('Open Admin is not offered on a host the list does not name, which holds the Admin', async ({ admin }) => {

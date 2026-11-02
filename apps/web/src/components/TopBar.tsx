@@ -10,6 +10,7 @@ import { THEMES, THEME_LABEL, type Theme } from '../lib/theme'
 import { useThemeChoice } from '../lib/theme-choice'
 import { useI18n } from '../lib/i18n'
 import { BarControls } from './BarControls'
+import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
 import { TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from './ui'
 import { CalendarDays, ChartColumn, House, Inbox, List, ListChecks, Monitor, Moon, Sun, Target, UserRound, type LucideIcon } from './ui/icons'
@@ -18,12 +19,11 @@ import { CalendarDays, ChartColumn, House, Inbox, List, ListChecks, Monitor, Moo
 // platform, on every address and every shell — the Admin screens, an app's
 // pages, the Portal, the no-access page and the account pages.
 //
-//   left    the Featherbase mark and the name: "Featherbase Admin" on the
-//           Admin address, the app's title on an app's address. The browser
-//           tab carries the same name.
+//   left    the Featherbase mark and the name. Admin screens and installed
+//           app pages share the native application dropdown (#759).
 //   middle  the Admin menus, on the Admin screens only (passed in)
-//   right   "Open Admin" (app addresses only, people who can use Admin), the
-//           theme toggle, the Account menu
+//   right   the theme toggle and Account menu. Legacy interim app addresses
+//           still offer Open Admin; installed apps use the dropdown instead.
 //
 // #501: a page is named for where the person belongs, and the bar never
 // offers to go where the person already is.
@@ -196,7 +196,7 @@ export function TopBar({
   // list does not name (which holds the Admin), are where Admin already is.
   // An app's own page is never in the Admin, on any address (#650).
   const onAppAddress = Boolean(brand?.opens && brand.opens !== ADMIN)
-  const offerAdmin = (onAppAddress || Boolean(app)) && canUseAdmin
+  const offerAdmin = !app && onAppAddress && canUseAdmin
   // The app whose declared controls the bar draws (#642): the page's own app,
   // else the app this address opens.
   const controlsOf = app?.name ?? (onAppAddress ? brand?.opens : undefined)
@@ -216,15 +216,13 @@ export function TopBar({
         className={`${controlsOf ? 'relative ' : ''}flex shrink-0 items-center gap-x-1 border-b border-border bg-surface px-2 py-1 sm:gap-4 sm:px-4 md:pl-0`}
         data-testid="top-bar"
       >
-        {/* The name's block lines up with the Admin sidebar and, on a phone,
-            fills the row. An app's address or page has no sidebar, so there it keeps
-            to the name's width and the declared controls follow it, with the
-            free space after them (#642). */}
+        {/* The shared name dropdown lines up with the sidebar. App-declared
+            controls follow it; content keeps its own document and state. */}
         <div
-          className={`flex min-w-0 items-center gap-1 md:px-3 ${controlsOf ? 'md:shrink-0' : 'flex-1 sm:flex-none md:w-60 md:shrink-0'}`}
+          className={`flex min-w-0 items-center gap-1 md:px-3 ${controlsOf && !app ? 'md:shrink-0' : 'flex-1 sm:flex-none md:w-60 md:shrink-0'}`}
           data-testid="top-bar-left"
         >
-          {left ?? (context && name && <BarName href={homeHref(context, installed)} name={name} />)}
+          {left ?? (app ? <AppSwitcher app={app} /> : context && name && <BarName href={homeHref(context, installed)} name={name} />)}
         </div>
         {caps && controlsOf && <BarControls app={controlsOf} />}
         {children ?? <div className="hidden flex-1 sm:block" aria-hidden="true" />}
@@ -278,24 +276,6 @@ function BarName({ href, name }: { href: string; name: string }) {
       <span className="truncate text-sm font-semibold text-ink">{name}</span>
     </a>
   )
-}
-
-/** #489: Admin is reached through the server's hand-off (#488), which signs
- *  the person in on the Admin address — never a URL guessed here. */
-function useOpenAdmin() {
-  const navigate = useNavigate()
-  const [busy, setBusy] = useState(false)
-  async function open() {
-    setBusy(true)
-    try {
-      const to = await api.post<{ handoff?: string; landing?: string }>('/api/open_admin', {})
-      if (to.handoff) window.location.assign(to.handoff)
-      else await navigate({ to: to.landing ?? FEATHERBASE_ADMIN_DESTINATION.href })
-    } catch {
-      setBusy(false)
-    }
-  }
-  return { open, busy }
 }
 
 function OpenAdminButton({ role }: { role?: 'menuitem' }) {
