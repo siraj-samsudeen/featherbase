@@ -109,6 +109,40 @@ Behaviour changes go through OpenSpec; every change starts from an issue. Run
 OpenSpec as `pnpm exec openspec`. `pnpm check:specs` reports a finished change
 that hasn't been archived yet.
 
+### Issue ownership
+
+- The GitHub assignee is the responsible person. Before starting an issue,
+  assign it to that person (yourself for human work; the person you act for
+  when using an agent).
+- The issue body identifies the worker with one `Claimed by: <person> / <agent>`
+  line, for example `Claimed by: Siraj / Claude Code` or
+  `Claimed by: Siraj / Amp`. For direct human work, use `Claimed by: Mohammad`.
+  Add the working thread and branch links when available.
+- Before pickup, read the current body, comments, assignees, dependencies and
+  linked/open PRs. An existing assignment, unreleased claim or active PR means
+  the issue is owned: do not start competing work, even if the assignee is the
+  same person you act for. Require an explicit handoff. Never expire a claim
+  merely because it is old.
+- Claim before building, then re-read the issue to detect competing claims;
+  GitHub assignment and body edits are not an atomic lock. Stop and resolve
+  conflicting ownership rather than proceeding in parallel.
+- On handoff, update the claim in place. On release, mark it released and
+  record unfinished work. Preserve the rest of the issue body and never clear
+  another person's assignment or claim without authorization.
+
+### Amp issue watcher
+
+The manager queue and owner-approved operating process live in
+[#770](https://github.com/siraj-samsudeen/featherbase/issues/770). New-issue events
+go to its manager thread, not directly to unlimited workers. The manager may
+dispatch at most three active issue workers and presents only one unresolved
+design question to the owner at a time. Other questions wait in the durable
+queue; workers report to the manager rather than prompting the owner directly.
+This watcher-specific reporting route overrides the task-session route in the
+`issue-workflow` skill. Clear requirements may proceed through implementation,
+testing and a PR; merge and deployment still require explicit approval. Existing
+backlog is excluded unless the owner opts it in.
+
 ### Hard rules
 
 - **Nothing is done on an agent's word.** It is done when a command someone
