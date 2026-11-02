@@ -1,11 +1,11 @@
 # ADR Review Manifest
 
-- Status: completed for separable chrome phase
+- Status: completed for owner-approved chrome and optional collaboration
 - Review date: 2026-11-02
 
 ## Review Summary
 
-No major durable architectural decisions are introduced by regrouping existing generic UI controls. No new repository-level ADR files were created. Collaboration metadata and migration policy are not decided here.
+No major durable architectural decisions are introduced by regrouping existing generic UI controls. No new repository-level ADR files were created. The 02-Nov-2026 owner choice defaults collaboration off everywhere while preserving readable content. Existing Metadata Overrides carry the four UI flags; no content or physical schema migration is needed. The canonical shared property contract is reused from PR #774, with integration ordering recorded in the PR.
 
 ## In-Force ADR Context
 

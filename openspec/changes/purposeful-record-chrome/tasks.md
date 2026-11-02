@@ -13,5 +13,6 @@
 
 ## 3. Gated collaboration policy
 
-- [ ] 3.1 Obtain manager relay of owner decision before specifying or implementing optional collaboration metadata, defaults, migration or disabled-feature behavior. Extend this change's artifacts and tests to the approved contract; ordinary hidden-logic review required if server/metadata changes.
-- [ ] 3.2 Owner reviews media before spec sync/archive; hold merge and deployment until explicitly authorized.
+- [x] 3.1 Obtain manager relay of owner decision: 02-Nov-2026 defaults OFF everywhere, preserve readable content. Updated planning contract.
+- [ ] 3.2 Bind disabled/populated, enabled/empty and single discussion acceptance examples red; implement explicit effective metadata defaults and read-only retained content, then rerun green. Ordinary hidden-logic review required.
+- [ ] 3.3 Owner reviews media before spec sync/archive; hold merge and deployment until explicitly authorized.
