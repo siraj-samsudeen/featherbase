@@ -14,6 +14,7 @@ import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import { invalidateSources } from '../src/sources/registry'
 import { tableRelation } from '../src/table-engine'
+import { registerController, unregisterController, type TableController } from '../src/controllers'
 
 const EXT_URL_ENV = 'SEC_FIXTURE_URL'
 process.env[EXT_URL_ENV] = EXTERNAL_DATABASE_URL
@@ -669,6 +670,20 @@ describe('main-merge interactions: related filters and :aggregate vs bound Table
       ],
     })
     expect(await cli`select * from sec_fixture.account order by id`).toEqual(before)
+
+    // Put NULL first in the driver's frequency order, so the summary must
+    // move it behind every named group rather than merely leaving it last.
+    for (const id of ['N-3', 'N-4', 'N-5', 'N-6'])
+      await cli`insert into sec_fixture.account (id, label) values (${id}, null)`
+    expect(await admin.get(`/api/table/${encodeURIComponent(BOUND)}:summary?group_by=label`)).toEqual({
+      count: 15, sums: {}, groups: [
+        { value: 'Aardvark', count: 4, sums: {} },
+        { value: 'Alpha', count: 1, sums: {} },
+        { value: 'Beta', count: 1, sums: {} },
+        { value: 'Zulu', count: 3, sums: {} },
+        { value: null, count: 6, sums: {} },
+      ],
+    })
   })
 
   test(':summary counts bound rows overall and per group, and rejects sums', async ({ admin }) => {
@@ -688,6 +703,34 @@ describe('main-merge interactions: related filters and :aggregate vs bound Table
 })
 
 describe('a bound Table keeps its binding', () => {
+  test('a bound edit persists hook-derived columns without overwriting omitted source values', async ({ admin }) => {
+    await bindAccount(admin)
+    const path = `/api/table/${encodeURIComponent(BOUND)}/ACC-A`
+    const meta = await admin.get<{ columns: Record<string, unknown>[] }>(`/api/table/${encodeURIComponent(BOUND)}:meta`)
+    const definition = await admin.fetch(`/api/table_def/${encodeURIComponent(BOUND)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ columns: [...meta.columns, { column_name: 'details', column_type: 'Section Break' }] }),
+    })
+    expect(definition.status).toBe(200)
+    const before = await cli`select * from sec_fixture.account order by id`
+    const loaded = await admin.get<{ updated_at: string }>(path)
+    const controller: TableController = {
+      table: BOUND,
+      hooks: { before_save: ({ row }) => { row.region = String(row.label).toLowerCase() } },
+    }
+    registerController(controller)
+    try {
+      const saved = await patchDoc(admin, path, { label: 'WEST', updated_at: loaded.updated_at })
+      expect(saved).toMatchObject({ row_id: 'ACC-A', label: 'WEST', region: 'west' })
+      expect(await admin.get(path)).toMatchObject({ row_id: 'ACC-A', label: 'WEST', region: 'west' })
+      const after = await cli`select * from sec_fixture.account order by id`
+      expect(after[0]).toEqual({ ...before[0], label: 'WEST', region: 'west', updated_at: after[0].updated_at })
+      expect(after[1]).toEqual(before[1])
+    } finally {
+      unregisterController(controller)
+    }
+  })
+
   test('a definition edit cannot move the binding, and a column is renamed at the source, not here', async ({ admin }) => {
     await bindAccount(admin)
     const meta = await admin.get<{ columns: Record<string, unknown>[]; external_table: string }>(`/api/table/${encodeURIComponent(BOUND)}:meta`)
