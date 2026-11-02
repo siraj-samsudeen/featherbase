@@ -9,19 +9,11 @@ folded control SHALL say how many filters are in use.
 
 #### Scenario: Section Mapping's rows come straight after the folded filters
 
-```gherkin
-Given the user is on a phone
-When the user opens the list of "Section Mapping"
-Then no filter control shows, and the rows come straight after the folded filters
-When the user opens the filters
-Then every quick filter shows, one above the other, and the user can add a filter
-```
+- **WHEN** the user opens the list of "Section Mapping" on a phone
+- **THEN** no filter control shows, and the rows come straight after the folded filters
+- **AND** opening the filters shows every quick filter, one above the other, and lets the user add a filter
 
 #### Scenario: The folded control says 2 filters are in use
 
-```gherkin
-Given the user is on a phone
-And the user has filtered "Section Mapping" by Floor and by Owner
-When the filters are folded
-Then the user can see that 2 filters are in use
-```
+- **WHEN** the user on a phone has filtered "Section Mapping" by Floor and by Owner, and the filters are folded
+- **THEN** the user can see that 2 filters are in use
