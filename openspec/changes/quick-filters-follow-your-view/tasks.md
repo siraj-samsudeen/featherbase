@@ -19,13 +19,13 @@ Test file: `apps/server/test/filter-yes-no.test.ts`, with the connected-Table te
 
 Test file: `apps/web/test/quick-filters.test.tsx`, against the real in-process server.
 
-- [ ] 2.1 S4: `Remarks gets a quick filter when it is switched on, in its place among the columns`
-- [ ] 2.2 S5: `Floor's quick filter goes when Floor is switched off`
-- [ ] 2.3 S6: `A filter on a hidden column stays on, shows as in use, and can be removed`
-- [ ] 2.4 S7: `A date column has no quick filter, and can still get an added filter`
-- [ ] 2.5 Test: `Number, money, long text, file and JSON columns get no box`
-- [ ] 2.6 Test: `Row ID gets no box and takes none of the six places, and can still get an added filter`
-- [ ] 2.7 Drop `Email` and `Small Text` from `STANDARD_TEXT_TYPES`, the types Featherbase no longer has
+- [x] 2.1 S4: `Remarks gets a quick filter when it is switched on, in its place among the columns`
+- [x] 2.2 S5: `Floor's quick filter goes when Floor is switched off`
+- [x] 2.3 S6: `A filter on a hidden column stays on, shows as in use, and can be removed`
+- [x] 2.4 S7: `A date column has no quick filter, and can still get an added filter`
+- [x] 2.5 Test: `Number, money, long text, file and JSON columns get no box`
+- [x] 2.6 Test: `Row ID gets no box and takes none of the six places, and can still get an added filter`
+- [x] 2.7 Drop `Email` and `Small Text` from `STANDARD_TEXT_TYPES`, the types Featherbase no longer has
 
 ## 3. Each box suits its column
 

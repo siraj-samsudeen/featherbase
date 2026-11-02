@@ -1583,7 +1583,7 @@ function InlineChildGrid({
 // inputs for the list's visible columns — Choices become dropdowns, text-ish
 // columns match with contains. They read and write the same URL-driven filter
 // list the advanced FilterBar manages, so chips stay in sync.
-const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference', 'Email', 'Small Text'])
+const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference'])
 
 function StandardFilters({
   meta,
