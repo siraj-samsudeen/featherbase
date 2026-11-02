@@ -302,13 +302,14 @@ test('On a phone, the folded filters say 2 filters are in use', async ({ admin }
   expect(screen.queryByTestId('filter-field')).not.toBeInTheDocument()
 })
 
-test('On a phone, opening the filters shows up to six quick filters, says how many more, and lets the user add one', async ({ admin }) => {
+test('On a phone, opening the filters shows up to four quick filters, says how many more, and lets the user add one', async ({ admin }) => {
   onPhone()
   await seedEight(admin)
   await openList(admin)
   expect(screen.getByTestId('filters-toggle')).toHaveTextContent('Filters')
   fireEvent.click(screen.getByTestId('filters-toggle'))
-  expect(boxes()).toEqual(EIGHT.slice(0, 6))
+  expect(boxes()).toEqual(EIGHT.slice(0, 4))
+  expect(screen.getByTestId('std-filter-more')).toHaveTextContent('+4 more')
   fireEvent.click(screen.getByTestId('std-filter-more'))
   expect(boxes()).toEqual(EIGHT)
   expect(screen.getByTestId('filter-field')).toBeInTheDocument()
