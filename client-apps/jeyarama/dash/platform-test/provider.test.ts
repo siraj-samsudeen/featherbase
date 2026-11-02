@@ -134,6 +134,31 @@ describe('the org_chart scope provider on the platform', () => {
     }])
   })
 
+  test('a redundant section alias leaves the current legacy leader scope unchanged', async ({ admin, createUser }) => {
+    const { people } = await setup(admin, createUser)
+    // The existing unshared employee code may also lead a legacy section.
+    // Remove its separate manager route through the ordinary delete API so
+    // the roster and alias, not a whole-store grant, determine this result.
+    const managers = await admin.get<{ data: { row_id: string }[] }>(`/api/table/Store%20Manager?${new URLSearchParams({
+      filters: JSON.stringify([['employee_code', '=', 'EMP-0131']]), fields: '["row_id"]',
+    })}`)
+    expect(managers.data).toHaveLength(1)
+    await admin.delete(`/api/table/Store%20Manager/${encodeURIComponent(managers.data[0].row_id)}`)
+    await saveRow(admin, 'Section Ownership', {
+      store_code: '9902', section_name: 'Accessories', tl_employee_code: 'EMP-0131', effective_from: '2026-01-01',
+    })
+    const expected = [{
+      label: '9902 / Section: Accessories', filters: { store: ['9902'], subcategory: ['010404001', '010404002'] },
+      basis: 'assignment, team_leader',
+      confirmation: { store: { '9902': 'assumed' }, subcategory: { '010404001': 'assumed', '010404002': 'assumed' } },
+    }]
+    expect(await resolvePersonScope(people['p-131'], await binding())).toEqual(expected)
+    await saveRow(admin, 'Section Name Alias', {
+      store_code: '9902', roster_section_name: 'Accessories', merch_section_name: ' accessories ',
+    })
+    expect(await resolvePersonScope(people['p-131'], await binding())).toEqual(expected)
+  })
+
   test('gives a person who alone holds their employee code what it derives plus their explicit rows', async ({ admin, createUser }) => {
     const { people } = await setup(admin, createUser)
     await saveRow(admin, 'Section Merchandise Map', {

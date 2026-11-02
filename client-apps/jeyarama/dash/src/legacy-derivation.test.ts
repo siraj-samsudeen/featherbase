@@ -66,6 +66,40 @@ describe("today's derivation", () => {
     expect(groupsOf(legacyCoverage(person(['EMP-0202']), data, TODAY))).toEqual([])
   })
 
+  it('keeps the newest roster when an older row arrives last', () => {
+    const data = tables({ ownership: [
+      { store_code: '9901', section_name: 'Kurti', tl_employee_code: 'EMP-0203', effective_from: '2026-08-06' },
+      { store_code: '9901', section_name: 'Kurti', tl_employee_code: 'EMP-0202', effective_from: '2026-07-01' },
+    ] })
+    expect(legacyCoverage(person(['EMP-0202']), data, TODAY)).toEqual([])
+    expect(legacyCoverage(person(['EMP-0203']), data, TODAY)).toEqual([{
+      plant_code: '9901', store_label: null,
+      material_groups: ['010101001', '010101002'],
+      section_by_material_group: { '010101001': 'Kurti', '010101002': 'Kurti' },
+      scope_basis: ['team_leader'],
+      basis_by_material_group: { '010101001': ['team_leader'], '010101002': ['team_leader'] },
+    }])
+  })
+
+  it('counts a subcategory reached through two merchandise Sections once', () => {
+    const data = tables({
+      ownership: [{ store_code: '9901', section_name: 'Boys Top', tl_employee_code: 'EMP-0202', effective_from: '2026-07-01' }],
+      aliases: [
+        { store_code: '9901', roster_section_name: 'Boys Top', merch_section_name: 'Boys Tops' },
+        { store_code: '9901', roster_section_name: 'Boys Top', merch_section_name: 'Boys Shirts' },
+      ],
+      merchandise: [
+        { store_code: '9901', material_group: '010202001', mch_subcategory: 'Boys Tee', section_name: 'Boys Tops' },
+        { store_code: '9901', material_group: '010202001', mch_subcategory: 'Boys Tee', section_name: 'Boys Shirts' },
+      ],
+    })
+    expect(legacyCoverage(person(['EMP-0202']), data, TODAY)).toEqual([{
+      plant_code: '9901', store_label: null, material_groups: ['010202001'],
+      section_by_material_group: { '010202001': 'Boys Shirts' },
+      scope_basis: ['team_leader'], basis_by_material_group: { '010202001': ['team_leader'] },
+    }])
+  })
+
   it('gives two Team Leaders rostered from the same day the same Section', () => {
     const rows = ['EMP-0202', 'EMP-0203'].map(code => ({ store_code: '9901', section_name: 'Kurti', tl_employee_code: code, effective_from: '2026-07-01' }))
     const data = tables({ ownership: rows })
@@ -106,6 +140,28 @@ describe("today's derivation", () => {
     expect(legacyCoverage(person(['EMP-0101']), data, TODAY).map(s => s.plant_code)).toEqual(['9901', '9902'])
   })
 
+  it('takes the store label from its lowest assigned subcategory', () => {
+    const data = tables({ assignments: [
+      { employee: 'psn_201', plant_code: '9901', store_label: null, material_group: '010101002' },
+      { employee: 'psn_201', plant_code: '9901', store_label: null, material_group: '010202001' },
+      { employee: 'psn_201', plant_code: '9901', store_label: 'Central', material_group: '010101001' },
+      { employee: 'psn_201', plant_code: '9902', store_label: 'Hillview', material_group: '010101001' },
+    ] })
+    expect(legacyCoverage(person([]), data, TODAY)).toEqual([
+      {
+        plant_code: '9901', store_label: 'Central', material_groups: ['010101001', '010101002', '010202001'],
+        section_by_material_group: { '010101001': 'Kurti', '010101002': 'Kurti', '010202001': 'Boys Tops' },
+        scope_basis: ['assignment'],
+        basis_by_material_group: { '010101001': ['assignment'], '010101002': ['assignment'], '010202001': ['assignment'] },
+      },
+      {
+        plant_code: '9902', store_label: 'Hillview', material_groups: ['010101001'],
+        section_by_material_group: {}, scope_basis: ['assignment'],
+        basis_by_material_group: { '010101001': ['assignment'] },
+      },
+    ])
+  })
+
   it('names every reason once, sorted', () => {
     const data = tables({
       employeeSections: [{ store_code: '9901', employee_code: 'EMP-0202', subcategory: 'Kurti', section_name: 'Kurti' }],
@@ -126,6 +182,28 @@ describe("today's derivation", () => {
   it("carries each subcategory's merchandise Section", () => {
     const data = tables({ storeManagers: [{ store_code: '9902', employee_code: 'EMP-0401' }] })
     expect(legacyCoverage(person(['EMP-0401']), data, TODAY)[0].section_by_material_group).toEqual({ '010303001': 'Sarees' })
+  })
+
+  it('keeps the minimum merchandise Section rather than the last mapping', () => {
+    const data = tables({
+      assignments: [{ employee: 'psn_201', plant_code: '9901', material_group: '010202001' }],
+      merchandise: ['Boys Tops', 'Boys Shirts', 'Boys Shirts', 'Boys Wear'].map(section_name => ({
+        store_code: '9901', material_group: '010202001', mch_subcategory: 'Boys Tee', section_name,
+      })),
+    })
+    expect(legacyCoverage(person([]), data, TODAY)).toEqual([{
+      plant_code: '9901', store_label: null, material_groups: ['010202001'],
+      section_by_material_group: { '010202001': 'Boys Shirts' },
+      scope_basis: ['assignment'], basis_by_material_group: { '010202001': ['assignment'] },
+    }])
+  })
+
+  it.each([null, ''])('ignores a merchandise row with subcategory code %j', material_group => {
+    const data = tables({
+      employeeSections: [{ store_code: '9901', employee_code: 'EMP-0101', subcategory: 'Kurti' }],
+      merchandise: [{ store_code: '9901', material_group, mch_subcategory: 'Kurti', section_name: 'Kurti' }],
+    })
+    expect(legacyCoverage(person(['EMP-0101']), data, TODAY)).toEqual([])
   })
 
   it('leaves out a subcategory code that is not nine digits', () => {
@@ -218,4 +296,3 @@ describe("today's derivation", () => {
     })
   })
 })
-
