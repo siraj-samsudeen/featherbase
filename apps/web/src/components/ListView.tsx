@@ -1604,8 +1604,10 @@ function InlineChildGrid({
 // columns match with contains. They read and write the same URL-driven filter
 // list the advanced FilterBar manages, so chips stay in sync.
 const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference'])
-// How many quick filter boxes show before the rest fold behind "+N more".
+// How many quick filter boxes show before the rest fold behind "+N more":
+// six in a desktop row, four stacked on a phone.
 const QUICK_FILTER_ROW = 6
+const QUICK_FILTER_STACK = 4
 
 /** The values a column offers to pick from, or null when it is typed. A Yes/No
  *  column offers the words Yes and No, which the server reads (#742). */
@@ -1643,7 +1645,9 @@ function StandardFilters({
   if (!columns.length) return null
   // #742: the first six show; past them, only a box holding a value, until
   // the person asks for the rest.
-  const inRow = columns.filter((f, i) => i < QUICK_FILTER_ROW || current(f.column_name, boxOp(f)) !== '')
+  const inRow = columns.filter(
+    (f, i) => i < (stacked ? QUICK_FILTER_STACK : QUICK_FILTER_ROW) || current(f.column_name, boxOp(f)) !== '',
+  )
   const shown = showAll ? columns : inRow
   const folded = columns.length - inRow.length
 
