@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from '../pg-test'
-import { makeTable, patchDoc } from '../fixtures'
+import { expectApiError, makeTable, patchDoc } from '../fixtures'
 
 const table = 'Import Corrections'
 const path = `/api/table/${encodeURIComponent(table)}`
@@ -76,6 +76,71 @@ test('6: adopting the source gives future imports ownership while recording the 
   expect((await admin.get<Record<string, unknown>>(`${path}/A`)).city).toBe('West')
   expect((await conflicts(admin)).conflicts).toEqual([])
 })
+
+for (const { decision, retry, city } of [
+  { decision: 'keep', retry: 'source', city: 'South' },
+  { decision: 'source', retry: 'keep', city: 'East' },
+]) {
+  test(`a resolved ${decision} decision cannot be replaced using its closed conflict ID`, async ({ admin }) => {
+    await correction(admin)
+    await load(admin, 'East', 'second')
+    const [conflict] = (await conflicts(admin)).conflicts
+    expect(await admin.post(`${path}:resolve-import-conflict`, { conflict_id: conflict.id, decision }))
+      .toEqual({ resolved: true })
+    const before = await admin.get(`${path}/A`)
+    expect(before).toMatchObject({ city })
+    const historyPath = `/api/activity/${encodeURIComponent(table)}/A`
+    const history = await admin.get(historyPath)
+    await expectApiError(admin.post(`${path}:resolve-import-conflict`, { conflict_id: conflict.id, decision: retry }), {
+      status: 409, type: 'ConflictError', message: '409 ConflictError: This import conflict is already closed',
+    })
+    expect(await admin.get(`${path}/A`)).toEqual(before)
+    expect(await admin.get(historyPath)).toEqual(history)
+    expect((await conflicts(admin)).conflicts).toEqual([])
+  })
+}
+
+test('invalid resolution arguments leave the current conflict unchanged', async ({ admin }) => {
+  await correction(admin)
+  await load(admin, 'East', 'second')
+  const before = await admin.get(`${path}/A`)
+  const open = await conflicts(admin)
+  const [conflict] = open.conflicts
+  for (const args of [
+    { conflict_id: conflict.id, decision: 'SOURCE' },
+    { conflict_id: conflict.id, decision: 1 },
+    { conflict_id: 1, decision: 'source' },
+    { decision: 'source' },
+  ]) {
+    await expectApiError(admin.post(`${path}:resolve-import-conflict`, args), {
+      status: 417, type: 'ValidationError', message: '417 ValidationError: Choose keep or source for an import conflict',
+    })
+    expect(await admin.get(`${path}/A`)).toEqual(before)
+    expect(await conflicts(admin)).toEqual(open)
+  }
+})
+
+test('an import without any match keys cannot overwrite a correction', async ({ admin }) => {
+  await correction(admin)
+  const listPath = `${path}?fields=${encodeURIComponent('["row_id","code","city","phone","updated_at"]')}`
+  const before = await admin.get(listPath)
+  expect(before).toMatchObject({ total: 1, data: [{ row_id: 'A', code: 'A', city: 'South', phone: '111' }] })
+  for (const dry_run of [true, false]) {
+    const result = await admin.post(`${path}:import`, {
+      key_column: 'code', dry_run, rows: [{ code: ' \t ', city: 'East' }, { city: 'West' }],
+    })
+    expect(result).toMatchObject({
+      inserted: 0, updated: 0,
+      failed: [
+        { index: 0, message: 'row has no value in the match key column code' },
+        { index: 1, message: 'row has no value in the match key column code' },
+      ],
+    })
+    expect(await admin.get(listPath)).toEqual(before)
+    expect((await conflicts(admin)).conflicts).toEqual([])
+  }
+})
+
 test('7: preview counts protected and updated fields without writing', async ({ admin }) => {
   await correction(admin)
   const before = await admin.get<Record<string, unknown>>(`${path}/A`)

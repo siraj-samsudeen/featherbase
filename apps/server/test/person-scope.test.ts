@@ -164,6 +164,42 @@ describe("the scope provider's read context", () => {
     expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
   })
 
+  test('an unawaited missing-row read invalidates an otherwise admitted provider result', async ({ admin, createUser }) => {
+    const copy = await mkdtemp(resolve('test/.pending-provider-'))
+    try {
+      await cp(provider, copy, { recursive: true })
+      const server = await readFile(resolve(copy, 'server.mjs'), 'utf8')
+      await writeFile(resolve(copy, 'server.mjs'), server.replace('export const scopeProviders =', 'const declaredProviders =') + `
+export const scopeProviders = {
+  async positions(context) {
+    const places = await declaredProviders.positions(context)
+    if (faults.leaveMissingReadPending)
+      void context.documents.get('placeroster.position', 'missing-position').catch(() => {})
+    return places
+  }
+}
+`)
+      const { user, roster, app } = await setup(admin, createUser, { providerAt: copy })
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      expect(await user.post(read + 'places', { payload: {} })).toMatchObject({
+        result: { places: [{ label: 'North / Kids', filters: { store: ['N1'], section: ['kids'] } }] },
+      })
+      const before = await sql`select * from placeroster.position order by row_id`
+      const handlerCalls = app.calls.handler
+      roster.faults.leaveMissingReadPending = true
+      const response = await user.fetch(read + 'places', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: {} }),
+      })
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
+      expect(app.calls.handler).toBe(handlerCalls)
+      expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
+      expect(await sql`select * from placeroster.position order by row_id`).toEqual(before)
+    } finally {
+      await rm(copy, { recursive: true, force: true })
+    }
+  })
+
   // Codex round 1: a row read loads its Sub-table rows, which would hand the
   // provider an undeclared, unmarked child Table. Such a Table is refused.
   test('refuses a marked Table with a Sub-table, so its child rows never reach the provider', async ({ admin, createUser }) => {

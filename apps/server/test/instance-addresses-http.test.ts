@@ -285,6 +285,81 @@ describe('landing after sign-in', () => {
 })
 
 describe('the hand-off between addresses', () => {
+  test('missing unknown wrong-address and spent tickets refuse without account changes while a genuine transfer succeeds', async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.ticket.refusals', ['Sales Target Viewer'])
+    const source = await signIn(api, ADMIN, viewer.usr)
+    expect(source.res.status).toBe(200)
+    const handoff = new URL(source.body.handoff!)
+    expect(handoff.origin).toBe(DASH)
+    const accounts = async () => ({
+      people: await sql`select * from person order by row_id`,
+      identities: await sql`select * from sign_in_identity order by id`,
+      revoked: await sql`select * from revoked_session order by jti`,
+      activity: await sql`select * from activity_log order by row_id`,
+    })
+    const refused = async (response: Response) => {
+      expect(response.status).toBe(401)
+      expect(await response.json()).toEqual({ error: { type: 'AuthenticationError', message: 'Invalid or expired sign-in code' } })
+      expect(response.headers.get('location')).toBeNull()
+      expect(response.headers.getSetCookie()).toEqual([])
+    }
+    const before = await accounts()
+    for (const suffix of ['', '?ticket=never-issued-ticket'])
+      await refused(await api.fetch(`${DASH}/api/handoff/start${suffix}`))
+    const wrongTarget = new URL(handoff.pathname + handoff.search, ADMIN)
+    await refused(await api.fetch(wrongTarget.href))
+    expect(await accounts()).toEqual(before)
+
+    const start = await api.fetch(handoff.href)
+    expect(start.status).toBe(302)
+    const bind = new URL(start.headers.get('location')!)
+    expect(bind.origin).toBe(ADMIN)
+    expect(bind.searchParams.get('ticket')).toBe(handoff.searchParams.get('ticket'))
+    expect(cookieOf(start, 'handoff_nonce')).not.toBe('')
+    // Keep the producer's nonce hash and source cookie intact: only the
+    // untrusted ticket value (or the receiving address) differs.
+    for (const ticket of [undefined, 'never-issued-ticket']) {
+      const invalid = new URL(bind)
+      if (ticket === undefined) invalid.searchParams.delete('ticket')
+      else invalid.searchParams.set('ticket', ticket)
+      await refused(await api.fetch(invalid.href, { headers: { cookie: source.sid } }))
+    }
+    const wrongSource = new URL(bind.pathname + bind.search, DASH)
+    await refused(await api.fetch(wrongSource.href, { headers: { cookie: source.sid } }))
+    expect(await accounts()).toEqual(before)
+
+    // A separate genuine login supplies an unspent control ticket; do not
+    // invent or re-sign a ticket after the rejected bind.
+    const control = await signIn(api, ADMIN, viewer.usr)
+    expect(control.res.status).toBe(200)
+    const started = await api.fetch(control.body.handoff!)
+    expect(started.status).toBe(302)
+    const bound = await api.fetch(started.headers.get('location')!, { headers: { cookie: control.sid } })
+    expect(bound.status).toBe(302)
+    const callback = new URL(bound.headers.get('location')!)
+    expect(callback.origin).toBe(DASH)
+    const completed = await redeemOn(api, DASH, callback.searchParams.get('code'), cookieOf(started, 'handoff_nonce'))
+    expect(completed.status).toBe(200)
+    const target = await completed.json() as SignedIn
+    expect(target.user.row_id).toBe(viewer.id)
+    expect(target.token).not.toBe(control.body.token)
+    expect(target.landing).toBe(ROOT)
+    expect(cookieOf(completed, 'sid')).toBe(`sid=${target.token}`)
+    const who = await api.fetch(`${DASH}/api/whoami`, { headers: { cookie: cookieOf(completed, 'sid') } })
+    expect(who.status).toBe(200)
+    expect(await who.json()).toMatchObject({ row_id: viewer.id })
+    const after = await accounts()
+    expect(after.people).toEqual(before.people)
+    expect(after.identities).toEqual(before.identities)
+    expect(after.revoked).toEqual(before.revoked)
+    expect(await sql`select operation from activity_log where "user" = ${viewer.id} and operation = 'login'`)
+      .toEqual([{ operation: 'login' }, { operation: 'login' }, { operation: 'login' }])
+    await refused(await api.fetch(started.headers.get('location')!, { headers: { cookie: control.sid } }))
+    await refused(await api.fetch(control.body.handoff!))
+    await refused(await redeemOn(api, DASH, callback.searchParams.get('code'), cookieOf(started, 'handoff_nonce')))
+    expect(await accounts()).toEqual(after)
+  })
+
   test('the target sets a host-only, HttpOnly nonce cookie and sends the browser back to the source', async ({ api, admin }) => {
     const viewer = await personWith(admin, 'viewer.round.trip', ['Sales Target Viewer'])
     const { body } = await signIn(api, ADMIN, viewer.usr)

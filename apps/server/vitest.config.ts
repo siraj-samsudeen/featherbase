@@ -93,15 +93,15 @@ export default defineConfig({
       // (v8's default), which hides the numbers exactly when they are most
       // useful for diagnosing what a broken run stopped exercising.
       reportOnFailure: true,
-      // ADR 0016: require 100% in all four metrics now, even while coverage
-      // work is unfinished. These gates are policy, not a claim of coverage.
-      // CI merges the shards and PostgreSQL 18 release checks before applying
-      // them, with MYSQL_TEST_URL set to keep MySQL in the denominator.
+      // ADR 0017: negative thresholds cap uncovered counts, not percentages.
+      // Fresh CI run 41391014265 merged all three shards and PG18 with MySQL
+      // enabled. Tighten these caps as coverage improves; never exclude code
+      // to meet them. An additional uncovered item fails even if % rounds up.
       thresholds: {
-        lines: 100,
-        statements: 100,
-        functions: 100,
-        branches: 100,
+        lines: -25,
+        statements: -232,
+        functions: -22,
+        branches: -870,
       },
     },
   },

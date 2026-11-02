@@ -270,11 +270,14 @@ gates. Floors only rise. The server suite's three CI shards run with thresholds
 zeroed and the `unit` job enforces the floor on the merged shard reports, only
 when the server suite ran; locally each suite runs whole against its floor.
 
-[ADR 0016](../adr/0016-backend-coverage-includes-branches.md) requires the
-backend gates to be 100% for statements, functions, lines **and branches now**,
-even while coverage work is unfinished; a failing gate must not be lowered to
-the current result. Frontend coverage strives for 100%, with genuine exceptions
-requiring an owner proposal and approval. No new exclusions are authorized.
+[ADR 0017](../adr/0017-backend-coverage-non-regression-baselines.md) supersedes
+ADR 0016's immediate 100% gates with owner-approved maximum uncovered counts:
+core 232 statements, 870 branch arms, 22 functions and 25 lines; Dash 2
+statements, 17 branch arms, 2 functions and 0 lines. Tasker remains at 100%.
+These are exact counts, not rounded percentage floors; one additional uncovered
+item fails. Tighten the caps as coverage improves. Keep every measured source
+and existing exclusion unchanged. The goal remains 100%, not a claim that it
+has been achieved. Frontend coverage policy is unchanged.
 
 CI merges the PostgreSQL 18 release-preflight coverage with the server's
 three shards before enforcing the server gate. `src/sources/mysql-driver.ts`
@@ -384,9 +387,29 @@ HTML beside it. This is frontend coverage only, not backend coverage or
 evidence of hosted warehouse or embedded-frame integration. There is no
 100% frontend gate yet: add it only when the actual report reaches 100%,
 without excluding executable source or weakening existing gates.
-Dash backend profiles currently have incompatible remapping and cannot be
-merged honestly; their separate measurements are not a combined backend total
-or evidence of meeting the backend policy.
+
+### Dash backend coverage
+
+Both backend profiles use the same per-source Istanbul instrumentation.
+The platform profile instruments the original modules before bundling only
+the disposable copied app; the packageable app artifact stays unchanged.
+The denominator is the actual `src/server.ts` esbuild import closure, not
+the platform server's source or Dash's frontend.
+
+```bash
+npm run test:coverage:backend --prefix client-apps/jeyarama/dash
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/featherbase_dash_backend_test \
+  npm run test:coverage:backend:platform --prefix client-apps/jeyarama/dash
+npm run coverage:backend:merged --prefix client-apps/jeyarama/dash
+```
+
+The merger requires both complete source inventories and identical statement,
+function and branch maps before adding counters. It writes exact covered/total
+counts under `coverage/dash-backend/merged/` and fails if any uncovered count
+exceeds its ADR 0017 baseline, or any metric is empty.
+These commands do not prove hosted MotherDuck behavior. Old V8 profiles have
+incompatible remapping: regenerate both profiles rather than mixing them with
+these reports. A valid merge is not a claim that its coverage gate passes.
 
 ### Mutation testing
 

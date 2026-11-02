@@ -92,7 +92,7 @@ describe('DOC-010: get_list with filters, fields, order_by, pagination', () => {
   test('paginates with stable ordering and reports total', async ({ admin }) => {
     await setup(admin)
     const page1 = await admin.get<{ total: number; data: { title: string }[] }>(
-      listPath({ order_by: 'qty asc', fields: JSON.stringify(['title']), limit_page_length: '2' }),
+      listPath({ order_by: 'qty', fields: JSON.stringify(['title']), limit_page_length: '2' }),
     )
     const page2 = await admin.get<{ total: number; data: { title: string }[] }>(
       listPath({

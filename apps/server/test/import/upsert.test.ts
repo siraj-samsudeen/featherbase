@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import fc from 'fast-check'
 import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { sql } from '../../src/db'
 
 // Spec 0004 (import upsert) — the contract, rule, and invariant layers.
 // UPS-R1: the import boundary learns update (key_column, permissions,
@@ -53,6 +54,15 @@ async function listRows(admin: TestClient) {
 
 async function rowsByZone(admin: TestClient) {
   return Object.fromEntries((await listRows(admin)).map((r) => [String(r.zone), r]))
+}
+
+async function importState() {
+  return {
+    rows: await sql`select * from featherbase.upsert_target order by zone`,
+    logs: await sql`select * from featherbase.import_log where ref_table = ${DT} order by row_id`,
+    versions: await sql`select * from featherbase.version where ref_table = ${DT} order by row_id`,
+    indexes: await sql`select * from pg_indexes where schemaname = 'featherbase' and tablename = 'upsert_target' order by indexname`,
+  }
 }
 
 describe('UPS-R1: the import boundary learns update', () => {
@@ -280,6 +290,73 @@ describe('UPS-R1: the import boundary learns update', () => {
       )}`,
     )
     expect(logs.data).toHaveLength(1) // the seed's — the dry run logged nothing (IMP-I3)
+  })
+
+  test('UPS-R1: typed option rejection leaves import state unchanged', async ({ admin }) => {
+    await setup(admin)
+    await seed(admin)
+    const before = await importState()
+    const rows = [{ zone: 'Alpha', pop: 13 }, { zone: 'Charlie', pop: 21 }]
+    for (const [options, message] of [
+      [{ key_column: 42 }, 'key_column must be a column name'],
+      [{ key_column: 'zone', columns: ['zone', 7] }, 'columns must be an array of column names'],
+    ] as const) {
+      const response = await admin.fetch(PATH, {
+        method: 'POST', body: JSON.stringify({ ...options, rows }),
+      })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toEqual({ error: { type: 'ValidationError', message } })
+      expect(await importState()).toEqual(before)
+    }
+    expect(await admin.post(PATH, { key_column: 'zone', rows, dry_run: true })).toEqual({
+      dry_run: true, valid: 2, updated: 1, inserted: 1, failed: [],
+      actions: ['update', 'insert'], fields_updated: 1, fields_kept: 0, tracks_changes: true,
+    })
+    expect(await importState()).toEqual(before)
+  })
+
+  test('UPS-R1: malformed row entries fail independently of valid upserts', async ({ admin }) => {
+    await setup(admin)
+    await seed(admin)
+    const before = await importState()
+    const body = {
+      key_column: 'zone',
+      rows: [{ zone: 'Alpha', pop: 13 }, null, ['not-a-row'], { zone: 'Charlie', pop: 21 }],
+    }
+    const failed = [
+      { index: 1, message: 'row must be an object' },
+      { index: 2, message: 'row must be an object' },
+    ]
+    expect(await admin.post(PATH, { ...body, dry_run: true })).toEqual({
+      dry_run: true, valid: 2, updated: 1, inserted: 1, failed,
+      actions: ['update', 'fail', 'fail', 'insert'], fields_updated: 1, fields_kept: 0,
+      tracks_changes: true,
+    })
+    expect(await importState()).toEqual(before)
+    const result = await admin.post<{ run_id: string }>(PATH, body)
+    expect(result).toEqual({ updated: 1, inserted: 1, failed, run_id: expect.any(String) })
+    const after = await importState()
+    expect(after.rows).toHaveLength(3)
+    const [alpha, bravo, charlie] = after.rows
+    expect(alpha).toEqual({ ...before.rows[0], pop: 13, updated_at: expect.any(Date) })
+    expect(bravo).toEqual(before.rows[1])
+    expect(charlie).toMatchObject({ row_id: 'UPST-003', zone: 'Charlie', pop: 21, note: null, stage: null })
+    expect(after.versions).toHaveLength(before.versions.length + 1)
+    const version = after.versions.find((row) => !before.versions.some((old) => old.row_id === row.row_id))!
+    expect(version).toMatchObject({ ref_table: DT, ref_name: alpha.row_id })
+    expect(version.data).toMatchObject({ changed: [['pop', 12000, 13]], import_run: result.run_id })
+    expect(after.logs).toHaveLength(before.logs.length + 1)
+    for (const old of before.logs) expect(after.logs).toContainEqual(old)
+    for (const old of before.versions) expect(after.versions).toContainEqual(old)
+    const log = after.logs.find((row) => row.run_id === result.run_id)!
+    expect(log).toMatchObject({
+      ref_table: DT, updated: 1, inserted: 1, failed: 2, key_column: 'zone', empty_cells: 'keep',
+      error_summary: '#1: row must be an object\n#2: row must be an object',
+    })
+    expect(log.touched).toEqual([
+      { row_id: alpha.row_id, action: 'updated', stamp: alpha.updated_at.toISOString(), version: version.row_id },
+      { row_id: charlie.row_id, action: 'inserted', stamp: charlie.updated_at.toISOString() },
+    ])
   })
 
   test('UPS-R1: argument validation — bad key, orphan empty_cells, clear without columns', async ({

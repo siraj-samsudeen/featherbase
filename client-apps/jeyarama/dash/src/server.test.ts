@@ -3,7 +3,7 @@
 // recordView), and a stand-in for MotherDuck's embed API (the network
 // boundary). Made-up stores, people and figures.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { COMPACT_DIVES, EMBED_API_TIMEOUT_MS, MONTH_DATASET, STORE_NAMES_TIMEOUT_MS, reads, setCompactDives, setEmbedFetch, SALES_DATASET, stateFormat } from './server'
+import { COMPACT_DIVES, EMBED_API_TIMEOUT_MS, MONTH_DATASET, STORE_NAMES_TIMEOUT_MS, appOrigin, reads, setCompactDives, setEmbedFetch, SALES_DATASET, stateFormat } from './server'
 import type { Place } from './provider.ts'
 import { EMBED_STATE_LIMIT_BYTES, type SalesRow } from './report.ts'
 
@@ -85,6 +85,14 @@ afterEach(() => {
 describe('the me read', () => {
   it("answers the caller's user name", () => {
     expect(reads.me({ user: 'manager@example.com' })).toEqual({ user: 'manager@example.com' })
+  })
+})
+
+describe('the ready-message origin', () => {
+  it('refuses malformed origins', () => {
+    expect(appOrigin('not an origin')).toBeNull()
+    expect(appOrigin('https://dash.example.test')).toBe('https://dash.example.test')
+    expect(appOrigin('https://dash.example.test/report')).toBeNull()
   })
 })
 

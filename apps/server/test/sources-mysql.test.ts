@@ -668,6 +668,21 @@ describe.skipIf(!MYSQL_URL)('mysql: column types and browsing', () => {
     })
   })
 
+  test('an unqualified binding uses the URL database for generated-key writes', async () => {
+    const bind = { ...bindFor('plain', 'id'), schema: '' }
+    expect(await mysqlDriver.getDoc(bind, '1')).toMatchObject({ note: 'alpha', qty: 1 })
+    const row = await mysqlDriver.insert(bind, { note: 'unqualified', qty: 17 }, null)
+    try {
+      expect(row).toMatchObject({ note: 'unqualified', qty: 17 })
+      expect(await mysqlDriver.getDoc(bind, String(row.id))).toEqual(row)
+      expect(await mysqlDriver.getDoc(bindFor('plain', 'id'), String(row.id))).toEqual(row)
+      const [persisted] = await cli.query('select * from ext_mysql.plain where id = ?', [row.id])
+      expect(persisted).toEqual([row])
+    } finally {
+      await cli.query('delete from ext_mysql.plain where id = ?', [row.id])
+    }
+  })
+
   test('with no default schema, introspection covers every user database', async ({ admin }) => {
     await makeSource(admin, { default_schema: undefined })
     const res = (await admin.get('/api/table/Data%20Source/ext-mysql:introspect')) as {

@@ -577,15 +577,15 @@ jobs:
           NODE_ENV: test
         run: pnpm --filter server migrate
 
-      - name: Run Feather Dash's tests (client-apps/jeyarama/dash)
+      - name: Run Feather Dash's tests with backend coverage
         if: ${{ needs.changes.outputs.client_apps != 'false' }}
-        run: npm test --prefix client-apps/jeyarama/dash
+        run: npm run test:coverage:backend --prefix client-apps/jeyarama/dash
 
-      - name: Run Feather Dash's platform tests (client-apps/jeyarama/dash)
+      - name: Run Feather Dash's platform tests with backend coverage
         if: ${{ needs.changes.outputs.client_apps != 'false' }}
         env:
           NODE_ENV: test
-        run: npm run test:platform --prefix client-apps/jeyarama/dash
+        run: npm run test:coverage:backend:platform --prefix client-apps/jeyarama/dash
 
       - name: Run Tasker's unit tests with coverage
         if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
@@ -631,6 +631,18 @@ jobs:
         env:
           RUNTIME_PROOF_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/featherbase_runtime_proof_e2e
         run: pnpm apps:prove
+
+      - name: Merge and enforce Dash backend coverage
+        if: ${{ needs.changes.outputs.client_apps != 'false' }}
+        run: npm run coverage:backend:merged --prefix client-apps/jeyarama/dash
+
+      - name: Upload Dash backend coverage
+        if: ${{ always() && needs.changes.outputs.client_apps != 'false' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dash-backend-coverage
+          path: coverage/dash-backend/
+          if-no-files-found: error
 
   # Fails closed: if `changes` itself failed, e2e runs rather than reporting
   # a passing `skipped`.

@@ -444,6 +444,63 @@ const row = (plant_code: string, section_code: string, business_day: string, amo
   ({ plant_code, section_code, business_day, amount, units, note })
 
 describe('a cached dataset read', () => {
+  test('non-record person-scope payloads refuse without writes while North and South remain distinct', async ({ admin, createUser }) => {
+    const scopeFixture = resolve('../..', 'test-apps/scope-proof')
+    expect(await discoverPackages([scopeFixture, provider])).toEqual([])
+    await admin.post('/api/install_app', { name: 'scopeproof' })
+    await admin.post('/api/install_app', { name: 'placeroster' })
+    const reader = await createUser({ email: 'places@example.test', roles: ['Scope Planner'] })
+    const user = makeClient({ request: (path, init) => reader.fetch(String(path), {
+      ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'scopeproof@1.0.0' },
+    }) }, reader.token, reader.user)
+    await position(admin, user.user!, 'North', 'N1', 'kids')
+    await position(admin, user.user!, 'South', 'S1', 'mens')
+    expect(await user.post('/api/app_actions/scopeproof/place', {
+      idempotencyKey: 'valid-north', payload: { effect: 'only-north', scope: { places: ['North'] } },
+    })).toEqual({ result: { places: 'North' } })
+    const before = {
+      positions: await sql`select * from placeroster.position order by row_id`,
+      stores: await sql`select * from scopeproof.store order by row_id`,
+      objects: await sql`select * from scopeproof.object order by row_id`,
+      effects: await sql`select * from scopeproof.effect order by row_id`,
+      receipts: await sql`select * from runtime_action_result where caller = ${user.user} order by idempotency_key`,
+    }
+    for (const payload of [null, 42, ['North']]) {
+      for (const [path, body] of [
+        ['/api/app_reads/scopeproof/places', { payload }],
+        ['/api/app_actions/scopeproof/place', { idempotencyKey: 'refused', payload }],
+      ] as const) {
+        const response = await user.fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        expect(response.status).toBe(403)
+        expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
+      }
+    }
+    expect({
+      positions: await sql`select * from placeroster.position order by row_id`,
+      stores: await sql`select * from scopeproof.store order by row_id`,
+      objects: await sql`select * from scopeproof.object order by row_id`,
+      effects: await sql`select * from scopeproof.effect order by row_id`,
+      receipts: await sql`select * from runtime_action_result where caller = ${user.user} order by idempotency_key`,
+    }).toEqual(before)
+    expect(await sql`select operation, method, ref_table, reference_name from access_log
+      where "user" = ${user.user} and operation = 'app_access_denied' order by method`).toEqual([
+      ...Array.from({ length: 3 }, () => ({ operation: 'app_access_denied', method: 'scopeproof.place:scope', ref_table: null, reference_name: null })),
+      ...Array.from({ length: 3 }, () => ({ operation: 'app_access_denied', method: 'scopeproof.places:scope', ref_table: null, reference_name: null })),
+    ])
+    for (const [place, store, section] of [['North', 'N1', 'kids'], ['South', 'S1', 'mens']]) {
+      expect(await user.post('/api/app_reads/scopeproof/places', { payload: { scope: { places: [place] } } }))
+        .toEqual({ result: { places: [{ label: place, filters: { store: [store], section: [section] }, confirmation: { section: { [section]: 'confirmed' } } }] } })
+    }
+    expect(await user.post('/api/app_actions/scopeproof/place', {
+      idempotencyKey: 'valid-south', payload: { effect: 'only-south', scope: { places: ['South'] } },
+    })).toEqual({ result: { places: 'South' } })
+    expect(await sql`select row_id, value from scopeproof.effect order by row_id`).toEqual([
+      { row_id: 'only-north', value: 'North' }, { row_id: 'only-south', value: 'South' },
+    ])
+    expect(await sql`select idempotency_key from runtime_action_result where caller = ${user.user} order by idempotency_key`)
+      .toEqual([{ idempotency_key: 'valid-north' }, { idempotency_key: 'valid-south' }])
+  })
+
   test('returns only the rows the caller\'s places cover', async ({ admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
     await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
