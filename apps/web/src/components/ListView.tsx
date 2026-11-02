@@ -1584,6 +1584,8 @@ function InlineChildGrid({
 // columns match with contains. They read and write the same URL-driven filter
 // list the advanced FilterBar manages, so chips stay in sync.
 const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference'])
+// How many quick filter boxes show before the rest fold behind "+N more".
+const QUICK_FILTER_ROW = 6
 
 /** The values a column offers to pick from, or null when it is typed. A Yes/No
  *  column offers the words Yes and No, which the server reads (#742). */
@@ -1614,13 +1616,26 @@ function StandardFilters({
   )
   // Drafts for the text inputs (applied on Enter/blur); choices apply at once.
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [showAll, setShowAll] = useState(false)
   if (!columns.length) return null
+  // #742: the first six show; past them, only a box holding a value, until
+  // the person asks for the rest.
+  const shown = showAll
+    ? columns
+    : columns.filter((f, i) => i < QUICK_FILTER_ROW || current(f.column_name, boxOp(f)) !== '')
+  const folded = columns.length - shown.length
 
   function current(columnName: string, op: string): string {
     const hit = filters.find((f) => f[0] === columnName && f[1] === op)
     if (!hit) return ''
     const v = String(hit[2] ?? '')
     return op === 'like' ? v.replace(/^%|%$/g, '') : v
+  }
+
+  // The operator a column's box filters with: a link (picked row) and a
+  // dropdown match exactly; a text box searches.
+  function boxOp(f: { column_type: string; reference_table?: string | null; choices?: string | null }): string {
+    return (f.column_type === 'Reference' && f.reference_table) || choicesOf(f) ? '=' : 'like'
   }
 
   function apply(columnName: string, op: string, value: string) {
@@ -1630,7 +1645,7 @@ function StandardFilters({
 
   return (
     <div className="mb-3 flex flex-wrap items-end gap-2" data-testid="standard-filters">
-      {columns.map((f) =>
+      {shown.map((f) =>
         f.column_type === 'Reference' && f.reference_table ? (
           // #793: a link filters by picking a row by its name, not by typing its id.
           <label key={f.column_name} className="flex flex-col gap-0.5">
@@ -1699,6 +1714,16 @@ function StandardFilters({
             />
           </label>
         ),
+      )}
+      {folded > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          data-testid="std-filter-more"
+          className={buttonClasses()}
+        >
+          +{folded} more
+        </button>
       )}
     </div>
   )
