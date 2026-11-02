@@ -4,7 +4,7 @@
 // instead of the control database. Drivers receive source-column names only;
 // the column_name<->source_column mapping is the dispatcher's job.
 
-export type SourceEngine = 'postgres' | 'mysql' | 'duckdb' | 'csv-folder'
+export type SourceEngine = 'postgres' | 'mysql' | 'duckdb' | 'motherduck' | 'csv-folder'
 export type SourceAccess = 'read_only' | 'read_write'
 
 // Hard per-engine write capability (mirrors each driver's `writable` flag,
@@ -15,6 +15,7 @@ export const ENGINE_WRITABLE: Record<SourceEngine, boolean> = {
   postgres: true,
   mysql: true,
   duckdb: false,
+  motherduck: false,
   'csv-folder': true,
 }
 
@@ -35,6 +36,8 @@ export interface SourceConfig {
   // #625: the administrator says the token is a MotherDuck read-scaling
   // (read-only) token, so an app's dataset query may run on it.
   read_scaling_token?: boolean
+  // #772: a pasted-token MotherDuck source attaches only these databases.
+  databases?: { name: string; address: string; owner: string }[]
 }
 
 // EDS-6: the shape of a write the data source refused for a constraint

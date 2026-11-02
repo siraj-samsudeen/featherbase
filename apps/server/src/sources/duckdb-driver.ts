@@ -2,6 +2,9 @@ import { AppError } from '../errors'
 import { datasetQueryText } from './dataset-query'
 import { datasetSourceReadOnly } from './read-only'
 import { readNamedVariable } from '../env'
+import { sql } from '../db'
+import { decryptSecret } from '../secret-store'
+import { openSourceSession } from './motherduck'
 import type {
   Binding,
   IntrospectedTable,
@@ -35,6 +38,7 @@ function loadDuckdb(): Promise<DuckDBModule> {
 interface InstanceEntry {
   instance: import('@duckdb/node-api').DuckDBInstance
   url: string
+  close?: () => void
 }
 const instances = new Map<string, Promise<InstanceEntry>>()
 
@@ -59,7 +63,29 @@ function requireUrl(cfg: SourceConfig): string {
 // read-only; its guarantee is a read-scaling token (read-only.ts).
 const isMotherDuck = (url: string) => url.startsWith('md:')
 
+// #772: a pasted-token MotherDuck source decrypts its token only to open its
+// session; the cache key is the stored ciphertext plus the chosen databases, so
+// replacing the token or the databases opens a fresh session.
+async function storedToken(cfg: SourceConfig): Promise<{ token: string; key: string }> {
+  const [row] = await sql`select token_ciphertext from featherbase.data_source_secret where data_source = ${cfg.name}`
+  if (!row) throw new AppError('ValidationError', `Data source ${cfg.name} has no token saved; paste one`)
+  const ciphertext = String(row.token_ciphertext)
+  return { token: decryptSecret(ciphertext), key: `${ciphertext}|${JSON.stringify(cfg.databases ?? [])}` }
+}
+
+async function motherDuckInstanceFor(cfg: SourceConfig): Promise<InstanceEntry> {
+  const { token, key } = await storedToken(cfg)
+  const cached = await instances.get(cfg.name)?.catch(() => null)
+  if (cached && cached.url === key) return cached
+  cached?.close?.()
+  const entry = openSourceSession(token, cfg.databases ?? [])
+    .then((session) => ({ instance: session.instance, url: key, close: () => session.close() }))
+  instances.set(cfg.name, entry)
+  return entry
+}
+
 async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry> {
+  if (cfg.engine === 'motherduck') return motherDuckInstanceFor(cfg)
   const url = requireUrl(cfg)
   const cached = await instances.get(cfg.name)?.catch(() => null)
   if (cached && cached.url === url) return cached
@@ -84,7 +110,7 @@ function wrapError(cfg: SourceConfig, err: unknown): never {
 
 // JSON-safe rows: getRowObjectsJson() renders BIGINT/DECIMAL as strings and
 // DATE/TIMESTAMP as ISO-ish strings — exactly what the read-only Admin needs.
-async function run(cfg: SourceConfig, text: string, params: unknown[]): Promise<SourceRow[]> {
+export async function run(cfg: SourceConfig, text: string, params: unknown[]): Promise<SourceRow[]> {
   try {
     const { instance } = await instanceFor(cfg)
     const conn = await instance.connect()
@@ -102,6 +128,7 @@ async function run(cfg: SourceConfig, text: string, params: unknown[]): Promise<
 function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`
 }
+export const quoteIdentifier = quoteIdent
 
 // "gold.main" → "gold"."main" — quoted part by part.
 function quoteSchema(schema: string): string {
@@ -293,7 +320,7 @@ export const duckdbDriver: SourceDriver = {
   dispose(sourceName) {
     const entry = instances.get(sourceName)
     instances.delete(sourceName)
-    void entry?.then((e) => e.instance.closeSync()).catch(() => {})
+    void entry?.then((e) => (e.close ? e.close() : e.instance.closeSync())).catch(() => {})
   },
 }
 

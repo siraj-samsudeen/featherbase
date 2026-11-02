@@ -19,6 +19,7 @@ const DRIVERS: Record<SourceEngine, SourceDriver> = {
   postgres: postgresDriver,
   mysql: mysqlDriver,
   duckdb: duckdbDriver,
+  motherduck: duckdbDriver,
   'csv-folder': csvFolderDriver,
 }
 
@@ -66,6 +67,7 @@ export async function getSource(name: string): Promise<SourceConfig> {
     ),
     allowlist: parseAllowlist(row.table_allowlist),
     read_scaling_token: row.read_scaling_token === true,
+    databases: Array.isArray(row.databases) ? (row.databases as SourceConfig['databases']) : [],
   }
   cache.set(name, cfg)
   return cfg
