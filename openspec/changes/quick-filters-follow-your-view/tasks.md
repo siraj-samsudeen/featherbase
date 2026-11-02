@@ -60,7 +60,7 @@ Same test file.
 ## 6. Filters fold away on a phone
 
 - [x] 6.1 S16, component test: `The folded control says 2 filters are in use`
-- [x] 6.2 Component test: `Opening the filters shows up to six quick filters, says how many more, and lets the user add one` (changed by the owner on 02-Nov-2026: was every quick filter)
+- [ ] 6.2 Component test: `Opening the filters shows up to four quick filters, says how many more, and lets the user add one` (changed by the owner on 02-Nov-2026: was every quick filter, then six)
 - [x] 6.3 Component test: `While folded only the count shows; opening the filters shows the filters in use, each removable`
 - [ ] 6.4 S15, browser test in 7.7: `The rows come straight after the folded filters on a phone`
 - [x] 6.5 Component test: `On a phone, Recent folds behind the Filters button; Save view stays showing` (owner's addition)
@@ -102,7 +102,7 @@ The owner's additions:
 - [ ] 8.13 Add filter offers a dropdown for Yes/No columns, with only `=` and `!=`
 - [ ] 8.14 Yes/No stores the word "Yes" or "No" in the page address, like Choice
 - [ ] 8.14a After "+N more" opens the rest, a "Show fewer" button folds them away again; a box holding a value stays
-- [ ] 8.14b At 375, opening Filters shows up to 6 boxes stacked, then "+N more" and "Show fewer", as on desktop
+- [ ] 8.14b At 375, opening Filters shows up to 4 boxes stacked, then "+N more" and "Show fewer", as on desktop
 - [ ] 8.14c At 375, Recent folds behind the Filters button; Save view stays showing
 - [ ] 8.14d At 375, Add filter's column, operator, value and button sit on one line
 - [ ] 8.14e The Filters button shows a dropdown arrow that turns over when opened
