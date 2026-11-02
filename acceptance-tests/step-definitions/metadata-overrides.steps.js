@@ -45,3 +45,24 @@ Then('the saved category customization is unchanged', async function () {
   assert.deepEqual(await this.overrides.savedRow(), this.overrides.beforeRow);
   assert.deepEqual(await this.overrides.meta(), this.overrides.beforeMeta);
 });
+
+When('the user saves a visibility customization with the text {string}', async function (value) {
+  await this.overrides.invalidBoolean(value);
+});
+When('the user saves a visibility customization with empty text', async function () { await this.overrides.invalidBoolean(''); });
+When('the user saves a visibility customization with no value', async function () { await this.overrides.invalidBoolean(undefined); });
+Then('the customization is refused with the permitted boolean values', function () {
+  assert.equal(this.overrides.result.status, 417);
+  assert.equal(this.overrides.result.body.error.type, 'ValidationError');
+  assert.ok(this.overrides.result.body.error.message.includes('true, false, 1, 0'));
+});
+When('the user saves the {string} customization with text {string}', async function (setting, value) {
+  await this.overrides.booleanSetting(setting, value);
+});
+Then('the {string} customization takes effect as {string}', async function (setting, effect) {
+  assert.equal(this.overrides.result.status, 200);
+  const category = (await this.overrides.meta()).columns.find(column => column.column_name === 'category');
+  assert.equal(category[this.overrides.setting(setting)], effect === 'yes');
+});
+Given('a hidden category customization is saved', async function () { await this.overrides.savedHiddenCategory(); });
+When('the user edits that customization to the text {string}', async function (value) { await this.overrides.edit({ value }); });

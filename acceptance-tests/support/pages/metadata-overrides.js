@@ -77,6 +77,28 @@ class MetadataOverrides {
     await this.edit({ column_name: this.missing });
   }
 
+  async invalidBoolean(value) {
+    await this.save({ column_name: 'category', property: 'hidden', value });
+  }
+
+  setting(name) {
+    return { hidden: 'hidden', required: 'reqd', 'read-only': 'read_only', 'list visibility': 'in_list_view' }[name];
+  }
+
+  async booleanSetting(name, value) {
+    const property = this.setting(name);
+    // Start at the opposite value so a no-op edit cannot satisfy either side.
+    await this.save({ column_name: 'category', property, value: ['false', '0'].includes(value) ? 'true' : 'false' });
+    this.beforeRow = await this.savedRow();
+    await this.edit({ value });
+  }
+
+  async savedHiddenCategory() {
+    await this.save({ column_name: 'category', property: 'hidden', value: 'true' });
+    this.beforeRow = await this.savedRow();
+    this.beforeMeta = await this.meta();
+  }
+
   savedRow() { return this.api.row('Metadata Override', this.id); }
 }
 
