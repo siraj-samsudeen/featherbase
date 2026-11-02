@@ -21,12 +21,13 @@ switched off keeps one. On a phone the boxes fill the first screen before any ro
 - Quick filters keep writing the same filters into the page address as "Add filter", so they
   show as chips and survive a shared link.
 - **A Yes/No filter matches by yes or no, not by text**, in the quick box and in "Add filter".
-  Found while writing this: "Add filter" sends what is typed as text, and the server compares
-  a Yes/No column with the text `"true"` without converting it, so the filter matches no row
-  and shows no error (checked on 31-Oct-2026: `system = "true"` on the Table list gave 0 of 63
-  rows, `system = true` gave all 63).
+  Found while writing this: "Add filter" sends what is typed as text, and any text on a Yes/No
+  column finds the No rows, with no error (checked on 01-Nov-2026 on the Table list of 83 rows:
+  `system = true` gave 63, and `system = "true"`, `"yes"` and `"maybe"` each gave the other 20).
 
-Not in this change: date and number range filters.
+- **"Add filter" offers a dropdown for Choice and Yes/No columns**, so nobody has to type those values.
+
+Not in this change: date and number range filters, and picking more than one choice in a filter.
 
 ## Capabilities
 

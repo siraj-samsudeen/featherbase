@@ -17,6 +17,14 @@ When the user removes that filter
 Then every row shows again
 ```
 
+#### Scenario: Adding a filter on Status offers its choices
+
+```gherkin
+Given the list of "Section Mapping"
+When the user adds a filter on Status
+Then the user picks Open or Closed from its choices, without typing
+```
+
 #### Scenario: Use a quick filter
 
 ```gherkin
@@ -94,7 +102,7 @@ Then only inactive rows show
 ### Requirement: Filtering a yes or no column finds its rows
 
 A filter on a yes or no column SHALL match by yes or no however it was added, and the user picks yes or no rather than
-typing it. A value that is neither SHALL be refused with a clear message, so a filter never quietly finds nothing.
+typing it. A value that is neither SHALL find no rows, as an unknown choice does.
 
 #### Scenario: An added filter on Active finds the active rows
 
@@ -105,20 +113,20 @@ Then only active rows show
 And the filter in use reads yes
 ```
 
-#### Scenario: A link saying Active is true finds the active rows
+#### Scenario: A link changed by hand to say Active is true finds the active rows
 
 ```gherkin
-Given a link to the list of "Section Mapping" whose filter says Active is "true"
-When the user opens it
+Given someone has changed a link to the list of "Section Mapping" by hand, so its filter says Active is "true"
+When the user opens that link
 Then only active rows show
 ```
 
-#### Scenario: A link saying Active is maybe is refused
+#### Scenario: A link changed by hand to say Active is maybe finds no rows
 
 ```gherkin
-Given a link to the list of "Section Mapping" whose filter says Active is "maybe"
-When the user opens it
-Then the user is told that filter's value is not yes or no
+Given someone has changed a link to the list of "Section Mapping" by hand, so its filter says Active is "maybe"
+When the user opens that link
+Then no rows show, as for a Status that doesn't exist
 ```
 
 ### Requirement: Many quick filters stay out of the way
