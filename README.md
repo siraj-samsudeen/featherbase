@@ -171,7 +171,10 @@ first: refusal lists PostgreSQL backend PIDs and application names, and kills no
 
 Local commands now select uploads under `apps/server/storage/instances/<identity>`,
 where identity derives from the selected host, port and database, not the login
-password. Setup prints the absolute path. Different local databases no longer share
+password. Routing query overrides (`host`, `port`, `database`) are refused by every
+local command before assigning storage; put these in the URL authority/path.
+Non-routing options such as `sslmode` retain their setup/start/health semantics.
+Setup prints the absolute path. Different local databases no longer share
 uploads. **Existing uploads under `apps/server/storage/public` and `private` are
 not moved, copied or deleted**: another database may still use them. Existing File
 records will not find those old files in the new isolated directory. To continue

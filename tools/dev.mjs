@@ -343,6 +343,11 @@ export function instanceEnvironment(instance = resolveInstance()) {
   // postgres falls back to PGPORT when a supplied URL omits the port. Make
   // that selection explicit so upload identity and printed targets agree.
   const target = new URL(env.DATABASE_URL)
+  // The driver lets these query keys override the authority/path (database
+  // is also a startup parameter). Refuse before ANY command assigns uploads,
+  // not just reset: another target must never write into a resettable folder.
+  if (['host', 'port', 'database'].some((key) => target.searchParams.has(key)))
+    throw new DevError('Refusing local command: DATABASE_URL routing query options are ambiguous. Put the host, port and database in the URL authority/path instead.')
   if (!target.port) target.port = env.PGPORT || '5432'
   env.DATABASE_URL = target.toString()
   env.PORT = env.API_PORT
