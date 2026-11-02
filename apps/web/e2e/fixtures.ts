@@ -394,12 +394,14 @@ export function signIn<
     assertHas(selector: string): S
   },
 >(session: S): S {
-  // The post-login landing path varies with home-recall state
-  // (/admin/home/home, a recent Table, …) — assert the admin shell instead.
+  // Ordinary journey setup, not a test of the sign-in landing. Use an
+  // explicit destination: on a fresh shard the welcome offer can still be
+  // pending when the sidebar appears. The login/first-run specs exercise
+  // the default landing independently rather than relying on earlier files.
   return session
-    .visit('/login')
+    .visit('/login?next=/featherbase/admin/all-tables')
     .fillIn('Email or username', ADMIN_USER)
     .fillIn('Password', ADMIN_PWD)
     .clickButton('Sign in')
-    .assertHas('[data-testid="import-data-link"]')
+    .assertHas('[data-testid="table-nav"]')
 }
