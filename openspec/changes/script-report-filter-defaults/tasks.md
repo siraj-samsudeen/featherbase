@@ -8,4 +8,4 @@
 - [x] 2.1 Initialize defaults before the first run without reapplying them over user choices; keep existing control semantics.
 - [x] 2.2 Run targeted and broad web tests, typecheck, effective acceptance suite, spec guards and stack smoke. Full web run: 1,408 pass, two expected failures, one unrelated column-preference failure; unchanged targeted rerun: 16/16 pass. No expectations changed.
 - [x] 2.3 Inspect representative desktop screenshots and an interaction recording; obtain independent headless UI verification against #778.
-- [ ] 2.4 Commit/push and prepare a PR, subscribe exact-head CI and PR comments, and report remaining owner review/archive/merge gates to #770's manager.
+- [x] 2.4 Commit/push and prepare a PR, subscribe exact-head CI and PR comments, and report remaining owner review/archive/merge gates to #770's manager. PR #791; verification report in the worker thread. Owner media review and archive/merge/deployment remain gated.
