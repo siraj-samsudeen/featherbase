@@ -1749,17 +1749,29 @@ export function FilterBar({
 }) {
   const { t } = useI18n()
   const fields = [
-    { fieldname: 'row_id', label: 'Row ID' },
+    { fieldname: 'row_id', label: 'Row ID', choices: null, choice_labels: undefined },
     ...meta.columns
       .filter((f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden)
-      .map((f) => ({ fieldname: f.column_name, label: f.label ?? f.column_name })),
+      .map((f) => ({
+        fieldname: f.column_name,
+        label: f.label ?? f.column_name,
+        choices: choicesOf(f),
+        choice_labels: f.choice_labels,
+      })),
   ]
   const [field, setField] = useState('row_id')
   const [op, setOp] = useState<string>('=')
   const [value, setValue] = useState('')
-  const choice = ['=', '!='].includes(op)
-    ? meta.columns.find((c) => c.column_name === field && c.column_type === 'Choice')
-    : undefined
+  // #742: a column with set values is picked from, and only matched or not.
+  const picking = fields.find((f) => f.fieldname === field)
+  const choices = picking?.choices ?? null
+  const ops: readonly string[] = choices ? ['=', '!='] : OPS
+
+  function pickField(next: string) {
+    setField(next)
+    setValue('')
+    if (fields.find((f) => f.fieldname === next)?.choices && op !== '!=') setOp('=')
+  }
 
   function add() {
     if (!value.trim()) return
@@ -1773,7 +1785,7 @@ export function FilterBar({
       <div className="flex flex-wrap items-center gap-2">
         <select
           value={field}
-          onChange={(e) => { setField(e.target.value); setValue('') }}
+          onChange={(e) => pickField(e.target.value)}
           aria-label="Filter by field"
           data-testid="filter-field"
           className={inputClasses('max-w-[10rem]')}
@@ -1791,13 +1803,13 @@ export function FilterBar({
           data-testid="filter-op"
           className={inputClasses('max-w-[10rem]')}
         >
-          {OPS.map((o) => (
+          {ops.map((o) => (
             <option key={o} value={o}>
               {o}
             </option>
           ))}
         </select>
-        {choice ? (
+        {choices ? (
           <select
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -1806,19 +1818,23 @@ export function FilterBar({
             className={inputClasses('max-w-[20rem]')}
           >
             <option value="">Choose a value</option>
-            {(choice.choices ?? '').split('\n').filter(Boolean).map((raw) => (
-              <option key={raw} value={raw}>{choiceLabel(raw, choice.choice_labels, t)}</option>
+            {choices.map((raw) => (
+              <option key={raw} value={raw}>
+                {choiceLabel(raw, picking?.choice_labels, t)}
+              </option>
             ))}
           </select>
-        ) : <input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && add()}
-          placeholder="Value"
-          aria-label="Filter value"
-          data-testid="filter-value"
-          className={inputClasses('max-w-[10rem]')}
-        />}
+        ) : (
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+            placeholder="Value"
+            aria-label="Filter value"
+            data-testid="filter-value"
+            className={inputClasses('max-w-[10rem]')}
+          />
+        )}
         <button
           onClick={add}
           data-testid="filter-add"
