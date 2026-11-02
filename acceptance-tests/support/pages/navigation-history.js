@@ -61,9 +61,8 @@ class NavigationHistory {
 
   async visitPerson() {
     // A client navigation keeps the initial summary in flight.
-    await this.page.getByTestId('awesomebar').click();
-    await this.page.getByTestId('awesomebar').fill('Person');
-    await this.page.getByTestId('awesomebar-table').filter({ hasText: /^Person$/ }).click();
+    await this.page.getByRole('textbox', { name: 'Search or type a command' }).fill('Person');
+    await this.page.getByTestId('awesomebar-table').and(this.page.locator('[href="/featherbase/admin/Person"]')).click();
     await expect(this.page).toHaveURL(/\/admin\/Person$/);
     await expect.poll(() => this.page.evaluate(() => {
       const user = JSON.parse(localStorage.getItem('fc_user'));
@@ -81,10 +80,10 @@ class NavigationHistory {
   }
 
   async expectDestination(label, present) {
-    const sidebar = this.page.getByTestId('sidebar-recents').getByRole('link', { name: label, exact: true });
+    const sidebar = this.page.getByTestId('sidebar-recents').locator(`a[href="/featherbase/admin/${label}"]`);
     await expect(sidebar).toHaveCount(present ? 1 : 0);
-    await this.page.getByTestId('awesomebar').click();
-    await this.page.getByTestId('awesomebar').fill('');
+    await this.page.getByRole('textbox', { name: 'Search or type a command' }).click();
+    await this.page.getByRole('textbox', { name: 'Search or type a command' }).fill('');
     await expect(this.page.getByTestId('awesomebar-recent').filter({ hasText: label })).toHaveCount(present ? 1 : 0);
   }
 }
