@@ -114,6 +114,7 @@ test('renaming a row moves the links to it; a name already taken is refused and 
   const user = userEvent.setup()
   await seed(admin)
   await renderApp(`/featherbase/admin/${enc('Fx Store')}/store-1`, admin)
+  await user.click(await screen.findByRole('button', { name: 'Record actions' }))
   await user.click(await screen.findByTestId('form-rename', {}, { timeout: 8000 }))
   // Cancel leaves the name alone.
   await user.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -272,6 +273,7 @@ test('the delete confirmation can be backed out of with Cancel, Escape or a clic
   await seed(admin)
   await renderApp(`/featherbase/admin/${enc('Fx Visit')}/visit-1`, admin)
   const open = async () => {
+    await user.click(await screen.findByRole('button', { name: 'Record actions' }))
     await user.click(await screen.findByTestId('form-delete', {}, { timeout: 8000 }))
     return screen.getByTestId('delete-row-dialog')
   }

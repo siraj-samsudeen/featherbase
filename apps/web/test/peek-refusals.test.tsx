@@ -28,6 +28,7 @@ async function seed(admin: { post: <T>(p: string, b: unknown) => Promise<T> }) {
 
 async function openCustomer(admin: Parameters<typeof renderApp>[1], id: string) {
   await renderApp(`/featherbase/admin/${enc('Prf Customer')}/${id}`, admin)
+  fireEvent.click(await screen.findByRole('tab', { name: 'Related' }))
   await screen.findByTestId('connections-panel', {}, { timeout: 10_000 })
   await screen.findByTestId('connection-count-Prf Order')
 }

@@ -38,6 +38,10 @@ export interface TableMeta {
   sort_column: string
   sort_order: string
   track_changes: boolean
+  enable_assignments?: boolean
+  enable_tags?: boolean
+  enable_files?: boolean
+  enable_discussion?: boolean
   description: string | null
   custom: boolean
   // #74: platform tables created by the migration chain — grouped under the

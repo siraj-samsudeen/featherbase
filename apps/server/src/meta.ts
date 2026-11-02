@@ -3,6 +3,7 @@ import { AppError } from './errors'
 import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
 import { assertAppAvailable } from './app-lifecycle'
 import { resolvedRelation } from './platform-schema'
+import { METADATA_OVERRIDE_PROPERTIES, METADATA_OVERRIDE_BOOLEAN_VALUES } from 'shared'
 
 // Column types the engine understands (columns generated in META-002/003).
 export const COLUMN_TYPE_VALUES = [
@@ -105,6 +106,10 @@ export interface TableMeta {
   sort_column: string
   sort_order: string
   track_changes: boolean
+  enable_assignments: boolean
+  enable_tags: boolean
+  enable_files: boolean
+  enable_discussion: boolean
   description: string | null
   custom: boolean
   // #74: true for platform tables created by the migration chain. The Admin
@@ -228,20 +233,13 @@ export async function getBacklinks(target: string): Promise<Backlink[]> {
   return backlinksCache.get(target) ?? []
 }
 
-// CUST-002: coerce a Metadata Override's string value to the property's type.
-const BOOLEAN_PROPS = new Set(['hidden', 'reqd', 'read_only', 'in_list_view', 'unique'])
-const TABLE_OVERRIDES = new Set(['label', 'title_column', 'search_columns', 'sort_column', 'sort_direction'])
-const COLUMN_OVERRIDES = new Set(['label', 'hidden', 'reqd', 'read_only', 'in_list_view', 'default_value', 'choices'])
-
-export function assertMetadataOverride(property: unknown, column: unknown): void {
-  const allowed = column ? COLUMN_OVERRIDES : TABLE_OVERRIDES
-  if (typeof property !== 'string' || !allowed.has(property))
-    throw new AppError('ValidationError', `Metadata property ${String(property)} cannot be overridden`)
-}
-
-function coerceProperty(property: string, value: unknown): unknown {
-  if (BOOLEAN_PROPS.has(property)) return value === true || value === '1' || value === 'true'
-  return value
+export function assertMetadataOverride(property: unknown, column: unknown): 'text' | 'boolean' {
+  const allowed: Readonly<Record<string, 'text' | 'boolean'>> = column
+    ? METADATA_OVERRIDE_PROPERTIES.column
+    : METADATA_OVERRIDE_PROPERTIES.table
+  if (typeof property !== 'string' || !Object.hasOwn(allowed, property))
+    throw new AppError('ValidationError', `Metadata property ${String(property)} cannot be overridden. Permitted properties: ${Object.keys(allowed).join(', ')}`)
+  return allowed[property]
 }
 
 let overrideTableExists: boolean | null = null
@@ -258,8 +256,10 @@ async function applyMetadataOverrides(name: string, meta: TableMeta): Promise<vo
   const overrides = await sql<{ column_name: string | null; property: string; value: string }[]>`
     select column_name, property, value from metadata_override where table_name = ${name}`
   for (const o of overrides) {
-    assertMetadataOverride(o.property, o.column_name)
-    const val = coerceProperty(o.property, o.value)
+    const kind = assertMetadataOverride(o.property, o.column_name)
+    const val = kind === 'boolean'
+      ? Object.hasOwn(METADATA_OVERRIDE_BOOLEAN_VALUES, o.value) && METADATA_OVERRIDE_BOOLEAN_VALUES[o.value]
+      : o.value
     if (o.column_name) {
       const f = meta.columns.find((x) => x.column_name === o.column_name)
       if (f) (f as unknown as Record<string, unknown>)[o.property] = val
@@ -339,6 +339,10 @@ export async function getMeta(name: string): Promise<TableMeta> {
     select * from column_def where parent = ${name} order by position, column_name`
   const meta = {
     ...(dt as unknown as Omit<TableMeta, 'columns' | 'row_key'>),
+    enable_assignments: false,
+    enable_tags: false,
+    enable_files: false,
+    enable_discussion: false,
     row_key: physicalRowKey(name),
     columns,
   }

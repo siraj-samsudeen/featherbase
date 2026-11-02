@@ -50,6 +50,7 @@ test('a bulk delete that meets a row the server will not delete deletes nothing 
 test('the Delete Table dialog closes on a click outside it and on Escape, deleting nothing', async ({ admin }) => {
   await seed(admin, 'Lrf Keep')
   await open(admin, 'Lrf Keep')
+  fireEvent.click(await screen.findByRole('button', { name: 'Table administration' }))
   fireEvent.click(await screen.findByTestId('delete-table'))
   fireEvent.click(screen.getByTestId('delete-table-dialog').parentElement!)
   expect(screen.queryByTestId('delete-table-dialog')).not.toBeInTheDocument()

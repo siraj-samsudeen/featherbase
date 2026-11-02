@@ -5,6 +5,7 @@
 process.env.TZ = 'Asia/Kolkata'
 
 import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 
@@ -36,6 +37,7 @@ async function editedRow(admin: Admin) {
 
 async function diffLines(admin: Admin, rowId: string) {
   await renderApp(`/featherbase/admin/${ENC}/${rowId}`, admin)
+  await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
   const timeline = await screen.findByTestId('activity-timeline', {}, { timeout: 10_000 })
   const diff = await within(timeline).findByTestId('activity-diff')
   return diff
@@ -104,6 +106,7 @@ test('a Settings checkbox switched off reads ✓ → ✗', async ({ admin }) => 
   await admin.post('/api/save_row', { table: S, row: { open_sundays: true } })
   await admin.post('/api/save_row', { table: S, row: { open_sundays: false } })
   await renderApp(`/featherbase/admin/${encodeURIComponent(S)}`, admin)
+  await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
   const timeline = await screen.findByTestId('activity-timeline', {}, { timeout: 10_000 })
   await waitFor(() => {
     const diffs = within(timeline).getAllByTestId('activity-diff')
@@ -127,6 +130,7 @@ test('import and resolution history says who imported and which decision the per
   const { conflicts } = await admin.get<{ conflicts: { id: string }[] }>(`${path}:import-conflicts`)
   await admin.post(`${path}:resolve-import-conflict`, { conflict_id: conflicts[0].id, decision: 'keep' })
   await renderApp(`/featherbase/admin/${ENC}/${rowId}`, admin)
+  await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
   const timeline = await screen.findByTestId('activity-timeline', {}, { timeout: 8000 })
   await waitFor(() => expect(timeline).toHaveTextContent('Administrator imported'))
   expect(timeline).toHaveTextContent('timeline-next')

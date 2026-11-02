@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PrincipalName } from '../lib/people'
 import { cardClasses } from './ui'
-import { activityQuery, type VersionRow } from './Comments'
+import { activityQuery, AuthorInitials, type VersionRow } from './Comments'
 import { fmtInstantIST } from '../lib/inr'
 import { useMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
@@ -53,26 +53,27 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
       <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
         Activity
       </div>
-      {entries.length === 0 && (
+      {activity.isError && <p role="alert" className="text-sm text-negative">Activity could not be read.</p>}
+      {activity.isSuccess && entries.length === 0 && (
         <p className="text-xs text-ink-subtle">No activity yet</p>
       )}
       <ol className="space-y-3">
         {entries.map((e, i) => (
           <li key={i} className="flex gap-2 text-sm" data-testid={`activity-${e.kind}`}>
-            <span
-              className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
-                e.kind === 'comment' ? 'bg-action' : 'bg-ink-subtle'
-              }`}
-            />
+            {e.kind === 'comment' ? <AuthorInitials id={e.who} /> : <span
+              className="mt-1 h-2 w-2 shrink-0 rounded-full bg-ink-subtle"
+            />}
             <div className="min-w-0 flex-1">
               <div className="text-xs text-ink-muted">
-                <span className="font-medium text-ink"><PrincipalName id={e.who} /></span>{' '}
+                <span className="font-medium text-ink" data-testid={e.kind === 'comment' ? 'comment-author' : undefined}><PrincipalName id={e.who} /></span>{' '}
                 {e.kind === 'comment' ? 'commented' : e.resolution ? (e.resolution.decision === 'keep' ? 'kept their correction' : 'adopted the import value') : e.importRun ? 'imported' : 'edited'} ·{' '}
                 <span className="whitespace-nowrap" data-testid="activity-time">{fmtInstantIST(e.at)}</span>
               </div>
               {e.kind === 'comment' ? (
-                <div className="whitespace-pre-wrap break-words text-ink">
-                  {e.content}
+                <div className="whitespace-pre-wrap break-words text-ink" data-testid="comment-content">
+                  {e.content.split(/((?<![\w.@-])@\[[^\]\n]{1,140}\]|(?<![\w.@-])@[\w.-]+)/g).map((part, i) => (
+                    <span key={i} className={part.startsWith('@') ? 'font-medium text-action' : undefined}>{part}</span>
+                  ))}
                 </div>
               ) : (
                 <ul className="text-xs text-ink-muted" data-testid="activity-diff">

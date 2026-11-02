@@ -21,6 +21,10 @@ async function seedRow(admin: Admin) {
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
   })
+  await admin.post('/api/save_row', {
+    table: 'Metadata Override',
+    row: { row_id: 'cmt-discussion', table_name: DT, property: 'enable_discussion', value: 'true' },
+  })
   const doc = (await admin.post('/api/save_row', {
     table: DT,
     row: { title: 'discuss me' },
@@ -31,7 +35,8 @@ async function seedRow(admin: Admin) {
 async function openRow(admin: Admin, rowId: string) {
   await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/${rowId}`, admin)
   await screen.findByTestId('form-view')
-  return screen.findByTestId('comments-panel')
+  fireEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
+  return screen.findByTestId('activity-timeline')
 }
 
 const input = () => screen.getByTestId('comment-input') as HTMLTextAreaElement
@@ -50,18 +55,18 @@ async function submit(text: string) {
 test('a row with no comments says so rather than rendering an empty list', async ({ admin }) => {
   const rowId = await seedRow(admin)
   const panel = await openRow(admin, rowId)
-  await waitFor(() => expect(panel).toHaveTextContent('No comments yet'))
-  expect(screen.queryAllByTestId('comment-item')).toHaveLength(0)
+  await waitFor(() => expect(panel).toHaveTextContent('No activity yet'))
+  expect(screen.queryAllByTestId('activity-comment')).toHaveLength(0)
 })
 
 test('a posted comment appears in the thread and is stored against the row', async ({ admin }) => {
   const rowId = await seedRow(admin)
   const panel = await openRow(admin, rowId)
-  await waitFor(() => expect(panel).toHaveTextContent('No comments yet'))
+  await waitFor(() => expect(panel).toHaveTextContent('No activity yet'))
 
   await submit('First observation')
 
-  await waitFor(() => expect(screen.getAllByTestId('comment-item')).toHaveLength(1))
+  await waitFor(() => expect(screen.getAllByTestId('activity-comment')).toHaveLength(1))
   expect(screen.getByTestId('comment-content')).toHaveTextContent('First observation')
   // The draft clears, so the next comment starts from empty.
   await waitFor(() => expect(input()).toHaveValue(''))
@@ -113,10 +118,10 @@ test('a stored mention renders as its own highlighted node, and notifies', async
   const { ravi } = await people(admin)
   const rowId = await seedRow(admin)
   const panel = await openRow(admin, rowId)
-  await waitFor(() => expect(panel).toHaveTextContent('No comments yet'))
+  await waitFor(() => expect(panel).toHaveTextContent('No activity yet'))
 
   await submit('cc @[Ravi Menon] please review')
-  await waitFor(() => expect(screen.getAllByTestId('comment-item')).toHaveLength(1))
+  await waitFor(() => expect(screen.getAllByTestId('activity-comment')).toHaveLength(1))
 
   // The mention is a separate element, brand-coloured — not swallowed into
   // the surrounding sentence.

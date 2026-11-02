@@ -6,6 +6,8 @@ import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
+import { useRowCapabilities } from '../lib/row-capabilities'
+import { useWhoAmI } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
@@ -19,6 +21,7 @@ import { PersonSignInMethods } from './PersonSignInMethods'
 import { PersonIdentifiers } from './PersonIdentifiers'
 import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
+import { ActionDisclosure } from './ActionDisclosure'
 import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
 import { usePeek } from './Peek'
@@ -77,6 +80,8 @@ export function FormView({
     queryFn: () =>
       api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
+  const access = useRowCapabilities(table, name, doc.isSuccess, doc.data?.updated_at)
+  const session = useWhoAmI()
 
   // #465 D5: the fields the instance settings file set are read-only here,
   // each with a sentence saying where it is changed instead.
@@ -112,6 +117,8 @@ export function FormView({
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [staleBanner, setStaleBanner] = useState(false)
   const [scriptError, setScriptError] = useState<string | null>(null)
+  const [area, setArea] = useState('Work')
+  const workspaceId = useId()
 
   // CUST-003: client scripts registered for this Table. valuesRef mirrors the
   // live values so a script handler always sees current column values.
@@ -181,7 +188,7 @@ export function FormView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientScripts.handlers, values, rowLoaded, rowKey])
 
-  if (meta.isLoading || (!isNew && doc.isLoading))
+  if (meta.isLoading || (!isNew && (doc.isLoading || access.isLoading)))
     return <p className="text-sm text-ink-subtle">Loading…</p>
   if (meta.isError || (!isNew && doc.isError))
     return <p className="text-sm text-negative">Cannot load {table} {name}</p>
@@ -231,7 +238,9 @@ export function FormView({
   const sourceReadOnly = isSourceReadOnly(m)
   // #432: also read-only when the platform alone writes the rows — the form
   // opens for reading, with no Save, Delete or Rename, for everyone.
-  const rowsReadOnly = isRowsReadOnly(m)
+  const rowsReadOnly = isRowsReadOnly(m) || (isNew
+    ? !(session.data?.capabilities.manage || session.data?.capabilities.creatable.includes(table))
+    : !access.data?.write)
   const boundSource = m.data_source ?? null
   // #324: rows named by whoever creates them ('prompt') need that name typed
   // in on the new-row form; every other naming rule assigns the ID itself.
@@ -438,6 +447,7 @@ export function FormView({
               {status === 'submitted' ? 'Submitted' : status === 'cancelled' ? 'Cancelled' : 'Draft'}
             </span>
           )}
+          {!isNew && <ActionDisclosure label="Record actions">
           {!isNew && (
             <RouterLink
               to="/featherbase/print/$table/$name"
@@ -462,7 +472,7 @@ export function FormView({
             </RouterLink>
           )}
           {/* A bound row's pk belongs to the source — never renameable here. */}
-          {!isNew && !renaming && !boundSource && !rowsReadOnly && !rowManaged && !isOpaqueId(name) && (
+          {!isNew && !renaming && !boundSource && access.data?.rename && !rowManaged && !isOpaqueId(name) && (
             <button
               onClick={() => {
                 setRenameValue(name)
@@ -496,7 +506,7 @@ export function FormView({
               so an affordance here would only ever produce an error), and a
               read-only source, which owns its rows. */}
           {!isNew &&
-            !rowsReadOnly &&
+            access.data?.delete &&
             !rowManaged &&
             m.kind !== 'settings' &&
             m.kind !== 'sub_table' && (
@@ -511,6 +521,7 @@ export function FormView({
                 {t('Delete')}
               </button>
             )}
+          </ActionDisclosure>}
           {!rowsReadOnly && (
             <button
               onClick={save}
@@ -521,7 +532,7 @@ export function FormView({
               {saving ? t('Saving…') : t('Save')}
             </button>
           )}
-          {submittable && status === 'draft' && !dirty && (
+          {submittable && access.data?.submit && status === 'draft' && !dirty && (
             <button
               onClick={() => runAction('submit')}
               data-testid="form-submit"
@@ -530,7 +541,7 @@ export function FormView({
               Submit
             </button>
           )}
-          {submittable && status === 'submitted' && (
+          {submittable && access.data?.cancel && status === 'submitted' && (
             <button
               onClick={() => runAction('cancel')}
               data-testid="form-cancel"
@@ -539,7 +550,7 @@ export function FormView({
               Cancel
             </button>
           )}
-          {submittable && status === 'cancelled' && (
+          {submittable && access.data?.amend && status === 'cancelled' && (
             <button
               onClick={() => runAction('amend')}
               data-testid="form-amend"
@@ -612,6 +623,7 @@ export function FormView({
           {banner}
         </p>
       )}
+      {!isNew && access.isError && <p role="alert" className="mb-3 text-sm text-negative">Available operations could not be checked. Reload to retry.</p>}
       {scriptError && (
         <div
           className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm text-caution"
@@ -644,6 +656,7 @@ export function FormView({
           <button
             onClick={async () => {
               await queryClient.invalidateQueries({ queryKey: ['doc', table, name] })
+              await queryClient.invalidateQueries({ queryKey: ['row-capabilities'] })
               setStaleBanner(false)
             }}
             data-testid="stale-refresh"
@@ -653,6 +666,19 @@ export function FormView({
           </button>
         </div>
       )}
+      {!isNew && <div role="tablist" aria-label="Record workspace" className="mb-5 flex gap-1 border-b border-border">
+        {['Work', 'Related', 'Collaboration', 'Activity'].map((tab, index, tabs) => (
+          <button key={tab} id={`${workspaceId}-${tab}-tab`} role="tab" type="button"
+            aria-selected={area === tab} aria-controls={`${workspaceId}-${tab}`} tabIndex={area === tab ? 0 : -1}
+            onClick={() => setArea(tab)} onKeyDown={(e) => {
+              const next = e.key === 'ArrowRight' ? (index + 1) % tabs.length : e.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : null
+              if (next !== null) { e.preventDefault(); setArea(tabs[next]); document.getElementById(`${workspaceId}-${tabs[next]}-tab`)?.focus() }
+            }} className={`border-b-2 px-4 py-3 text-sm font-medium ${area === tab ? 'border-action text-action' : 'border-transparent text-ink-muted hover:text-ink'}`}>
+            {tab}
+          </button>
+        ))}
+      </div>}
+      <div id={`${workspaceId}-Work`} role={isNew ? undefined : 'tabpanel'} aria-labelledby={isNew ? undefined : `${workspaceId}-Work-tab`} hidden={!isNew && area !== 'Work'}>
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="min-w-0 max-w-3xl flex-1">
           {sections.map((fields, si) => (
@@ -694,16 +720,28 @@ export function FormView({
             {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
             {table === 'Person' && <PersonSignInMethods user={name} />}
             {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
-            <ConnectionsPanel table={table} name={name} />
-            <Assignments table={table} name={name} />
-            <Tags table={table} name={name} />
-            <Attachments table={table} name={name} />
-            <Comments table={table} name={name} />
-            <ActivityTimeline table={table} name={name} />
           </aside>
         )}
       </div>
-      {!isNew && m.kind === 'table' && <RelatedTabs table={table} name={name} />}
+      </div>
+      {!isNew && <>
+        <div id={`${workspaceId}-Related`} role="tabpanel" aria-labelledby={`${workspaceId}-Related-tab`} hidden={area !== 'Related'}>
+          <ConnectionsPanel table={table} name={name} />
+          {m.kind === 'table' && <RelatedTabs table={table} name={name} />}
+        </div>
+        <div id={`${workspaceId}-Collaboration`} role="tabpanel" aria-labelledby={`${workspaceId}-Collaboration-tab`} hidden={area !== 'Collaboration'}>
+          <p className="mb-4 text-sm text-ink-muted">People, tags and files for this record. Disabled features show existing content read-only.</p>
+          <div className="grid max-w-5xl grid-cols-1 items-start gap-4 lg:grid-cols-3">
+            <Assignments table={table} name={name} readOnly={!m.enable_assignments || !access.data?.assign} />
+            <Tags table={table} name={name} readOnly={!m.enable_tags || !access.data?.tag} />
+            <Attachments table={table} name={name} readOnly={!m.enable_files} canUpload={Boolean(access.data?.upload)} />
+          </div>
+        </div>
+        <div id={`${workspaceId}-Activity`} role="tabpanel" aria-labelledby={`${workspaceId}-Activity-tab`} hidden={area !== 'Activity'} className="max-w-3xl space-y-4">
+          <ActivityTimeline table={table} name={name} />
+          {m.enable_discussion && access.data?.comment && <Comments table={table} name={name} />}
+        </div>
+      </>}
     </div>
   )
 }

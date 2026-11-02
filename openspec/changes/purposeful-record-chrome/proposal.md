@@ -8,6 +8,7 @@ Row work competes with Table administration and empty collaboration cards. #800 
 - Group alternate list views and occasional row operations; separate Table administration and keep bulk actions contextual to selection.
 - Preserve field layout, pickers, permissions, confirmations and unsaved edits. Do not incorporate prototype #799 or take over #792–#796, #740 or #773.
 - Owner decision, 02-Nov-2026: “Default collaboration off everywhere, but keep existing content readable”. Explicit Table-level enablement independently controls assignment, tags, files and discussion UI; existing and new Tables default off, populated disabled features remain read-only under original access protections, and audit stays accessible. Flags grant no server permission.
+- Hide unavailable row operations using server-derived display advice through an authorized row read, preserving each actual operation's ownership, scope and share checks. Mutation policy remains unchanged.
 
 ## Capabilities
 

@@ -108,6 +108,7 @@ test('a yes/no in an embedded list reads ✓ or ✗', async ({ admin }) => {
   await admin.post('/api/save_row', { table: 'Rfg Audit', row: { store: store.row_id, passed: true } })
   await admin.post('/api/save_row', { table: 'Rfg Audit', row: { store: store.row_id, passed: false } })
   await renderApp(`/featherbase/admin/${enc('Rfg Store')}/${store.row_id}`, admin)
+  await userEvent.click(await screen.findByRole('tab', { name: 'Related' }))
   await userEvent.click(await screen.findByTestId('related-tab-Rfg Audit', {}, { timeout: 10_000 }))
   const embedded = await screen.findByTestId('embedded-list')
   await waitFor(() => expect(embedded.querySelectorAll('tbody tr')).toHaveLength(2))

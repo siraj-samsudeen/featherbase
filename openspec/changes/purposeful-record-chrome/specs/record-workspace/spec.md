@@ -37,6 +37,21 @@ Then the list does not offer Table administration
 And Tenkasi remains readable
 ```
 
+### Requirement: Offer only authorized row operations
+
+Existing-row controls SHALL use fresh server-derived display advice only after an authorized row read. Advice SHALL preserve each operation's ownership, scope and sharing rules, not authorize mutations. A write share SHALL NOT grant rename or delete. Collaboration SHALL use its own operation's grants, not parent-write permission; explicitly enabled tags SHALL remain reader-writable.
+
+#### Scenario: A reader sees only available enabled collaboration
+
+```gherkin
+Given the user reads Tenkasi with collaboration enabled but no collaboration grants
+When the user consults Tenkasi's available operations
+Then Tenkasi is read-only without save, rename or delete operations
+And assigning, uploading and composing discussion are absent
+But the reader can still label Tenkasi with a tag
+And selecting Tenkasi offers no unavailable bulk mutations
+```
+
 ### Requirement: Enable collaboration deliberately without hiding existing content
 
 Assignments, tags, files and discussion SHALL each need explicit Table-level UI enablement, off by default for existing and new Tables. Disabled features SHALL offer no add, edit or remove controls, but their existing content SHALL remain readable under the original access protections; enablement SHALL grant no server permission.
