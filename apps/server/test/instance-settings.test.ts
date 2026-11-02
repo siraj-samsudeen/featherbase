@@ -390,6 +390,75 @@ describe('export: credentials no deployment variable holds', () => {
 })
 
 describe('over HTTP (D3)', () => {
+  test('malformed source revisions leave the applied settings and audit unchanged', async ({ admin }) => {
+    const path = '/api/instance-settings/apply'
+    const file = (app_name: string) => ({ settings: { 'System Settings': { app_name } } })
+    const baseline = await admin.fetch(path, {
+      method: 'POST', body: JSON.stringify({
+        file: file('Source label baseline'), source: { revision: 'initial-1', run: 'seed_0' },
+      }),
+    })
+    expect(baseline.status).toBe(200)
+    const state = async () => ({
+      settings: await sql`select * from single_value order by table_name, field`,
+      methods: await sql`select * from sign_in_method order by row_id`,
+      jobs: await sql`select * from scheduled_job order by row_id`,
+      appSettings: await sql`select * from app_setting order by row_id`,
+      sources: await sql`select * from data_source order by row_id`,
+      managed: await sql`select * from instance_settings_apply order by id`,
+      versions: await sql`select * from version order by row_id`,
+      activity: await sql`select * from activity_log order by row_id`,
+    })
+    const before = await state()
+    expect(before.settings).toContainEqual({ table_name: 'System Settings', field: 'app_name', value: 'Source label baseline' })
+    expect(before.managed).toHaveLength(1)
+    expect(before.managed[0]).toMatchObject({ revision: 'initial-1', run: 'seed_0', applied_by: 'Administrator' })
+    const desired = file('Source label accepted')
+    for (const revision of ['', 'bad revision', 'r'.repeat(41)]) {
+      const response = await admin.fetch(path, {
+        method: 'POST', body: JSON.stringify({ file: desired, source: { revision, run: 'run_2.0-9' } }),
+      })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toEqual({ error: {
+        type: 'ValidationError',
+        message: 'source.revision must be up to 40 letters, digits, dots, dashes or underscores',
+        fields: { 'source.revision': 'invalid' },
+      } })
+      expect(await state()).toEqual(before)
+    }
+    const revision = 'a'.repeat(36) + '.-_9'
+    const run = 'run_2.0-9'
+    const response = await admin.fetch(path, {
+      method: 'POST', body: JSON.stringify({ file: desired, source: { revision, run } }),
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      dry_run: false, environment: null, summary: '1 setting changed',
+      changes: [{ table: 'System Settings', row_id: 'System Settings', field: 'app_name', old: 'Source label baseline', new: 'Source label accepted' }],
+    })
+    const after = await state()
+    expect(after.settings).toEqual(before.settings.map((row) => row.table_name === 'System Settings' && row.field === 'app_name'
+      ? { ...row, value: 'Source label accepted' } : row))
+    for (const key of ['methods', 'jobs', 'appSettings', 'sources'] as const) expect(after[key]).toEqual(before[key])
+    expect(after.managed).toEqual([{
+      id: true, applied_at: expect.any(Date), applied_by: 'Administrator', environment: null, revision, run,
+      managed_paths: [{ table: 'System Settings', row_id: 'System Settings', field: 'app_name' }],
+      managed_values: [{ table: 'System Settings', row_id: 'System Settings', field: 'app_name', value: 'Source label accepted' }],
+    }])
+    expect(after.versions).toHaveLength(before.versions.length + 1)
+    for (const row of before.versions) expect(after.versions).toContainEqual(row)
+    expect(after.versions.find((row) => !before.versions.some((old) => old.row_id === row.row_id))).toMatchObject({
+      ref_table: 'System Settings', ref_name: 'System Settings', created_by: INSTANCE_SETTINGS_ACTOR,
+      data: { changed: [['app_name', 'Source label baseline', 'Source label accepted']] },
+    })
+    expect(after.activity).toHaveLength(before.activity.length + 1)
+    for (const row of before.activity) expect(after.activity).toContainEqual(row)
+    expect(after.activity.find((row) => !before.activity.some((old) => old.row_id === row.row_id))).toMatchObject({
+      user: INSTANCE_SETTINGS_ACTOR, full_name: 'instance settings file, applied by Administrator',
+      operation: `settings_apply revision ${revision} run ${run}: 1 setting changed`,
+    })
+  })
+
   test('a System Manager service account applies and previews; anyone else is refused', async ({ api }) => {
     const bot = await createServiceAccount('settings-bot', ['System Manager'], 'Administrator')
     const { token } = await issueAccessToken(bot.row_id, 'settings workflow', null)
