@@ -4,9 +4,10 @@ The boxes above a list come from `StandardFilters` in `ListView.tsx`, and "Add f
 Both write filters into the page address as `[column, operator, value]`. #738 adds `viewColumns()` for the columns one
 person sees, so the boxes can read that instead of the Table's list columns.
 
-A Yes/No filter finds the wrong rows when its value arrives as text: on a normal Table, `"true"`, `"yes"` and `"maybe"`
-each find the No rows, with no error. A Choice filter with an unknown value finds no rows, with no error. Filters are
-built in two places, and neither converts the value:
+A Yes/No filter's value can arrive as text. On a normal Table the database reads `"true"` and `"yes"` itself (the
+connection sends filter values unprepared), but `"maybe"` gives a server error, and words such as `"on"` count as yes.
+A Choice filter with an unknown value finds no rows, with no error. Filters are built in two places, and neither
+converts the value:
 
 - `compileFilter` in `apps/server/src/query.ts`, for normal Tables.
 - `mapFilters` in `apps/server/src/sources/dispatch.ts`, for Tables bound to a data source.
