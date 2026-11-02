@@ -32,7 +32,7 @@ export function ActionDisclosure({ label, children }: { label: string; children:
         <ChevronDown aria-hidden data-chevron size={18} />
       </button>
       {open && (
-        <div id={id} className={cardClasses('absolute right-0 z-20 mt-1 flex w-64 flex-col items-stretch gap-1 p-2')}>
+        <div id={id} className={cardClasses('absolute right-0 z-20 mt-1 flex w-full flex-col items-stretch gap-1 p-2 sm:w-64')}>
           {children}
         </div>
       )}
