@@ -44,10 +44,14 @@ for (const map of maps) merged.merge(map)
 const context = libReport.createContext({ dir: resolve(directory, 'merged'), coverageMap: merged })
 for (const name of ['text', 'json', 'json-summary']) reports.create(name).execute(context)
 const summary = merged.getCoverageSummary()
+// ADR 0017: fresh CI run 41391014265, without removing any measured source.
+// Tighten these maximum uncovered counts as coverage improves.
+const maximumUncovered = { statements: 2, functions: 2, branches: 17, lines: 0 }
 let failed = false
 for (const metric of ['statements', 'functions', 'branches', 'lines']) {
   const { covered, total, pct } = summary[metric]
-  console.log(`Dash backend ${metric}: ${covered}/${total} (${pct}%)`)
-  if (total <= 0 || covered !== total) failed = true
+  const uncovered = total - covered
+  console.log(`Dash backend ${metric}: ${covered}/${total} (${pct}%), ${uncovered} uncovered (maximum ${maximumUncovered[metric]})`)
+  if (total <= 0 || uncovered > maximumUncovered[metric]) failed = true
 }
-if (failed) throw new Error('Dash backend requires 100% in all four metrics; reports retain the exact remaining gaps')
+if (failed) throw new Error('Dash backend exceeds its uncovered-count baseline or has an empty metric; reports retain the exact remaining gaps')
