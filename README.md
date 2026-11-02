@@ -66,6 +66,9 @@ URL-encode symbols in the password (`@` becomes `%40`, `#` becomes `%23`).
 Keep credentials out of Git. These instructions are not a claim of testing on
 a personal Windows machine; CI verifies the command surface separately.
 
+**Start clean:** stop Featherbase, preview with `featherbase reset`, then run
+`featherbase reset --yes; if ($LASTEXITCODE -eq 0) { featherbase setup }` in PowerShell.
+
 ### macOS and Linux
 
 Install [Git](https://git-scm.com/downloads), [Node 26.13.0 LTS (Lithium)](https://nodejs.org/en/download)
@@ -97,6 +100,9 @@ featherbase
 featherbase setup
 featherbase start
 ```
+
+**Start clean (macOS and Linux):** stop Featherbase, preview with `featherbase reset`,
+then run `featherbase reset --yes && featherbase setup`.
 
 `npm link` registers **this clone**, not a published package or another download.
 Run it once after installing dependencies; relink if you move the clone or want
@@ -140,11 +146,45 @@ to any action.
 
 ### Configuration and troubleshooting
 
-All three actions use `.env.local` at the repository root. Real environment
+All actions use `.env.local` at the repository root. Real environment
 variables win; blank values use defaults. Default database: `featherbase` on
 `127.0.0.1:5432`, user/password `postgres`; API port `8000`, web port `5173`.
-Setup and start are local-development operations, not production deployment.
+Setup, start and reset are local-development operations, not production deployment.
 Health can inspect the environment selected by the operator without mutating it.
+
+### Reset only the selected local instance
+
+`featherbase reset [<client>/<instance>] [--yes]` uses the same database selection
+as start: no name defaults to `featherbase`; `jeyarama/dash` defaults to
+`fb_jeyarama_dash`. An explicit `DATABASE_URL` overrides either default.
+Without `--yes`, reset prints the database, absolute storage path and file count,
+changes nothing and exits `1`. Confirmation removes that database and isolated
+uploads only, then says `Next: featherbase setup`; setup is never automatic.
+For a named instance, use `featherbase start <client>/<instance>` afterwards to
+prepare and install its declared apps again.
+
+Reset requires a loopback database URL without query options, a development
+process environment and the database's actual persisted `development` stamp.
+It refuses unstamped, test, staging and production databases even when the process
+says development; there is no override. Stop connected servers or database clients
+first: refusal lists PostgreSQL backend PIDs and application names, and kills nothing.
+
+Local commands now select uploads under `apps/server/storage/instances/<identity>`,
+where identity derives from the selected host, port and database, not the login
+password. Setup prints the absolute path. Different local databases no longer share
+uploads. **Existing uploads under `apps/server/storage/public` and `private` are
+not moved, copied or deleted**: another database may still use them. Existing File
+records will not find those old files in the new isolated directory. To continue
+using an old database with its old uploads, explicitly set `FILE_STORAGE_DIR` in
+`.env.local` to that old folder's absolute path. This retains the old shared-storage
+behavior, so reset refuses it. Unset that override only when deliberately choosing
+the new isolated storage and a clean reset. No legacy-file ownership is inferred
+from one database's records. Hosted storage configuration is unchanged.
+
+Reset also refuses custom storage paths and symbolic links rather than assume
+ownership. A database drop and filesystem deletion cannot be one transaction;
+if filesystem permissions prevent cleanup after the drop, the command fails and
+reports that no setup ran. Keep the printed path when diagnosing that failure.
 
 | Problem | Next action |
 |---|---|

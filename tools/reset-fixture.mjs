@@ -7,7 +7,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { assertLocal } from './dev.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -50,7 +50,7 @@ export async function resetFixture() {
     }
     // Resolve through the public startup environment; assertions below catch
     // a shared default before any destructive command runs.
-    const { instanceEnvironment } = await import(`${join(base, 'tools/dev.mjs')}?${suffix}`)
+    const { instanceEnvironment } = await import(`${pathToFileURL(join(base, 'tools/dev.mjs'))}?${suffix}`)
     const before = { ...process.env }
     let stores
     try {
@@ -78,7 +78,7 @@ export async function resetFixture() {
         for (let i = selected ? 0 : 1; i < names.length; i++) {
           const sql = postgres(urls[i], { max: 1 })
           try {
-            assert.deepEqual(await sql`select value from sentinel`, [{ value: i ? 'other-database-kept' : 'selected-database-removed' }])
+            assert.deepEqual([...(await sql`select value from sentinel`)], [{ value: i ? 'other-database-kept' : 'selected-database-removed' }])
           } finally { await sql.end() }
           for (let n = 0; n <= i; n++) assert.equal(readFileSync(join(stores[i], 'public', `upload-${n}`), 'utf8'), `${i}-${n}`)
         }
@@ -87,6 +87,19 @@ export async function resetFixture() {
       async assertRemoved() {
         assert.equal((await admin`select 1 from pg_database where datname = ${names[0]}`).length, 0)
         assert.equal(existsSync(stores[0]), false)
+      },
+      async attemptUnsafeSelections() {
+        const results = [
+          { DATABASE_URL: 'postgres://user:hidden@remote.example.com/unsafe' },
+          { FEATHERBASE_ENV: 'production' },
+          { FILE_STORAGE_DIR: base },
+        ].map((overrides) => run(['reset', '--yes'], overrides))
+        const sql = postgres(urls[0], { max: 1 })
+        try {
+          await sql`update featherbase.internal_metadata set value = 'production' where key = 'environment'`
+        } finally { await sql.end() }
+        results.push(run(['reset', '--yes']))
+        return results
       },
       connect(index = 0) { return postgres(urls[index], { max: 1, connection: { application_name: 'featherbase-reset-test-server' } }) },
       async close() {

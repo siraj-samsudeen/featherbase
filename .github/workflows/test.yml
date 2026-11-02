@@ -95,7 +95,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:dev
-      - run: node --test tools/featherbase.integration.test.mjs tools/orb-service.integration.test.mjs
+      - run: node --test tools/featherbase.integration.test.mjs tools/orb-service.integration.test.mjs tools/reset.test.mjs
       - run: pnpm featherbase setup
       - run: pnpm featherbase setup
       - run: pnpm featherbase start --check
