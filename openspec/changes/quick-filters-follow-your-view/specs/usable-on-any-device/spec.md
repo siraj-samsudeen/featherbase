@@ -11,7 +11,8 @@ folded control SHALL say how many filters are in use.
 
 - **WHEN** the user opens the list of "Section Mapping" on a phone
 - **THEN** no filter control shows, and the rows come straight after the folded filters
-- **AND** opening the filters shows every quick filter, one above the other, and lets the user add a filter
+- **AND** opening the filters shows up to six quick filters, one above the other, says how many more there are, and
+  lets the user add a filter
 
 #### Scenario: The folded control says 2 filters are in use
 
