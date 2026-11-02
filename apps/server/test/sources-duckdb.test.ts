@@ -30,6 +30,8 @@ beforeAll(async () => {
   await conn.run(`create table kitchen (
     id integer, ratio double, price decimal(8,2), flag boolean, born date,
     seen timestamp, payload json, label varchar, at_time time)`)
+  await conn.run(`create table nullable_groups (id integer primary key, qty integer)`)
+  await conn.run(`insert into nullable_groups values (1, null), (2, null), (3, null), (4, 7), (5, 7), (6, 12)`)
   // #625: a sequence an app's dataset query must not advance.
   await conn.run(`create sequence probe`)
   conn.closeSync()
@@ -227,9 +229,10 @@ describe('Browsing a warehouse before connecting a table', () => {
     expect(byCatalog.tables.map((t) => `${t.schema}.${t.table}`).sort()).toEqual([
       'warehouse.main.daily_sales',
       'warehouse.main.kitchen',
+      'warehouse.main.nullable_groups',
     ])
     const everything = await introspect(admin, '')
-    expect(everything.tables.map((t) => t.table)).toEqual(expect.arrayContaining(['daily_sales', 'kitchen']))
+    expect(everything.tables.map((t) => t.table)).toEqual(expect.arrayContaining(['daily_sales', 'kitchen', 'nullable_groups']))
   })
 
   test('warehouse column types map to the closest Featherbase type', async ({ admin }) => {
@@ -251,6 +254,41 @@ describe('Browsing a warehouse before connecting a table', () => {
 })
 
 describe('Filtering rows read from a warehouse', () => {
+  const nullableBinding: Binding = {
+    source: {
+      name: 'duck-fixture', engine: 'duckdb', url_env: DUCK_URL_ENV, root_path: null,
+      default_schema: null, access: 'read_only', pool_max: 1,
+      statement_timeout_ms: 10000, allowlist: null,
+    },
+    schema: 'warehouse.main', table: 'nullable_groups', pk: 'id', modified: null,
+    columns: [{ column_name: 'qty', source_column: 'qty', column_type: 'Int' }],
+  }
+
+  test('group counts retain the rows whose grouping value is NULL', async () => {
+    expect(await duckdbDriver.groupCount(nullableBinding, 'qty', [])).toEqual([
+      { label: '', value: 3 }, { label: '7', value: 2 }, { label: '12', value: 1 },
+    ])
+  })
+
+  test('non-list membership inputs use the empty-set semantics', async () => {
+    expect(await duckdbDriver.count(nullableBinding, [{ column: 'qty', op: 'in', value: [7] }])).toBe(2)
+    expect(await duckdbDriver.count(nullableBinding, [{ column: 'qty', op: 'in_or_null', value: [7] }])).toBe(5)
+    for (const value of [null, '7']) {
+      expect(await duckdbDriver.count(nullableBinding, [{ column: 'qty', op: 'in', value }])).toBe(0)
+      expect(await duckdbDriver.count(nullableBinding, [{ column: 'qty', op: 'not in', value }])).toBe(6)
+      expect(await duckdbDriver.count(nullableBinding, [{ column: 'qty', op: 'in_or_null', value }])).toBe(3)
+    }
+    expect(await duckdbDriver.groupCount(nullableBinding, 'qty', [])).toEqual([
+      { label: '', value: 3 }, { label: '7', value: 2 }, { label: '12', value: 1 },
+    ])
+  })
+
+  test('a missing warehouse key returns no document', async () => {
+    expect(await duckdbDriver.getDoc(nullableBinding, '4')).toEqual({ id: 4, qty: 7 })
+    expect(await duckdbDriver.getDoc(nullableBinding, '99')).toBeNull()
+    expect(await duckdbDriver.getDoc(nullableBinding, '1')).toEqual({ id: 1, qty: null })
+  })
+
   const stores = async (admin: {
     get: (p: string) => Promise<unknown>
   }, name: string, filters: unknown[]) => {

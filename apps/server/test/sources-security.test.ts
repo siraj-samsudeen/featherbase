@@ -418,6 +418,21 @@ describe('re-review findings', () => {
     expect(attempt.created).toEqual([])
   })
 
+  test('a direct Table definition cannot expose a credential-named primary key', async ({ admin }) => {
+    await bindAccount(admin, 'read_only')
+    const before = await cli`select * from sec_fixture.keyring`
+    await expectApiError(admin.post('/api/table_def', {
+      name: 'Credential Key Binding', data_source: 'sec-fixture',
+      external_schema: 'sec_fixture', external_table: 'keyring', external_pk: 'api_key',
+      columns: [{ column_name: 'note', column_type: 'Data' }],
+    }), {
+      status: 417, type: 'ValidationError', message: '417 ValidationError: Invalid binding for Credential Key Binding',
+      fields: { external_pk: 'Column api_key is a credential column name and cannot be the primary key' },
+    })
+    expect(await sql`select name from table_def where name = 'Credential Key Binding'`).toEqual([])
+    expect(await cli`select * from sec_fixture.keyring`).toEqual(before)
+  })
+
   test('finding 9: Data Source administration is System Manager-only', async ({
     admin,
     createUser,
