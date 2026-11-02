@@ -1,11 +1,11 @@
 ## 1. Handoff and acceptance examples
 
 The owner requests backend/data verification, not more simulation UI. The browser
-prototype is preserved on `codex/462-permissions-prototype`; completed UI work is
-historical evidence only. It does not count as production permission coverage.
+prototype has been discarded at the owner’s request; prior UI work is
+historical only. It does not count as production permission coverage.
 
 - [x] 1.1 Record the agreed rules, logical data model and synthetic bootstrap-to-approval examples in the OpenSpec artifacts. Preserve prototype defaults separately from agreed requirements.
-- [x] 1.2 Preserve the disposable prototype on its separate branch and capture the current done/pending state in design.md. Do not include the HTML in this PR or require owner UI review to proceed with the handoff.
+- [x] 1.2 Discard the disposable prototype and capture the current done/pending state in design.md. Do not include the HTML in this PR or require owner UI review to proceed with the handoff.
 - [x] 1.3 Supply sample-data.json with initial records, scenario-specific rows and expected outcomes. Mark unresolved defaults; check IDs, foreign keys, permission-column ownership and case references. This is design data, not a runtime fixture or import contract.
 - [ ] 1.4 Reconcile this proposal against current main and #246, #392, #449, #617 and #627. The source audit was at 40151182. Record overlaps, superseded assumptions and existing reusable implementation before writing code.
 

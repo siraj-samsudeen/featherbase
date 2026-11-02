@@ -38,8 +38,8 @@ None. This extends the existing permission and approval capabilities.
 ## Impact
 
 This PR is a design and sample-data handoff. It includes no runtime permission
-implementation, schema migration or UI. The disposable simulation is preserved
-on a separate branch; the owner no longer needs UI work. The next agent should
+implementation, schema migration or UI. The disposable simulation has been
+discarded at the owner’s request; no UI work is needed. The next agent should
 reconcile the design with current main, resolve the remaining policy/contract
 gates, then implement and verify the server model using synthetic data through
 real public operations and Postgres sandbox tests. The examples are not a

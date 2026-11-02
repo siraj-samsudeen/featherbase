@@ -5,13 +5,11 @@ handoff with **no new UI work**. Do not treat that as approval of the unresolved
 production choices below. Continue with server/API verification and synthetic
 records; the UI is not a prerequisite.
 
-**Done:** proposed permission/approval behaviour in the delta specs; the logical
-model and bootstrap-to-approval examples below; a disposable browser simulation
-on branch `codex/462-permissions-prototype` (last captured commit `f4f3bc5c`);
-and the structured design examples in `sample-data.json`. The prototype is a
-reference experiment, not a permission implementation or an enforcement oracle.
-Its UI checks were performed during this discussion; the temporary browser scripts
-are not a portable verification suite and are not required for takeover.
+**Done:** proposed permission/approval behaviour in the delta specs, the logical
+model and bootstrap-to-approval examples below, and the structured examples in
+`sample-data.json`. The disposable browser simulation was explored, then discarded
+at the owner's request. Do not restore it or use its checks as proof of server
+security. The retained design and sample cases are the takeover references.
 
 **Not done:** production metadata, migrations, server-side checks, approval
 application, transactional integration tests, preflight, or deployment. No claim
@@ -558,9 +556,8 @@ once. Do not mix an already approved CP1 with a test that requires it pending.
 
 ## Prototype status and current verification direction
 
-The one-table-at-a-time bootstrap and hands-on delegation simulation is preserved
-on `codex/462-permissions-prototype`, outside this PR. It was useful for explaining
-records, but the owner did not finish reviewing it. No further UI development or
+The disposable simulation has been discarded at the owner’s request. The owner
+did not finish reviewing it; it is not a takeover artifact. No further UI development or
 UI acceptance is required for this handoff. Presentation experiments do not amend
 production behaviour or settle the defaults listed above.
 
