@@ -14,7 +14,7 @@ import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { AdminLayout } from './pages/AdminLayout'
 import { ManageOnly } from './pages/RestrictedShell'
-import { EmptyState, buttonClasses } from './components/ui'
+import { EmptyState, Notice, buttonClasses } from './components/ui'
 import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
 import { useQuery } from '@tanstack/react-query'
@@ -647,6 +647,16 @@ function SourceBrowserPage() {
     queryFn: () => api.get<{ engine: string }>(`/api/table/Data%20Source/${encodeURIComponent(name)}`),
   })
   if (source.isPending) return null
+  if (source.error)
+    return (
+      <div data-testid="table-page">
+        <div data-testid="source-refused" className="max-w-3xl">
+          <Notice tone="negative">
+            {source.error instanceof ApiError ? source.error.message : 'This data source cannot be opened'}
+          </Notice>
+        </div>
+      </div>
+    )
   return (
     <div data-testid="table-page">
       {source.data?.engine === 'motherduck'

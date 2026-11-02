@@ -8,6 +8,7 @@ import path from 'node:path'
 export const STANDIN_TOKENS = {
   reader: 'standin-read-scaling-token-4f2a',
   writer: 'standin-read-write-token-77b1',
+  second: 'standin-second-read-token-9c1e',
   refused: 'standin-revoked-token-0000',
 }
 
@@ -30,7 +31,7 @@ export async function buildStandin(): Promise<string> {
     `create table shared_with_me (name varchar, url varchar, owner varchar)`,
     `insert into shared_with_me values ${SHARED.map(([n, o]) => `('${n}', '${path.join(dir, `${n}.duckdb`)}', '${o}')`).join(', ')}`,
     `create table tokens (token varchar, user_name varchar, can_write boolean)`,
-    `insert into tokens values ('${STANDIN_TOKENS.reader}', 'reader_user', false), ('${STANDIN_TOKENS.writer}', 'writer_user', true)`,
+    `insert into tokens values ('${STANDIN_TOKENS.reader}', 'reader_user', false), ('${STANDIN_TOKENS.writer}', 'writer_user', true), ('${STANDIN_TOKENS.second}', 'reader_user', false)`,
   ])
   await write('sales.duckdb', [
     `create table stores (code varchar, name varchar, city varchar, state_code varchar)`,

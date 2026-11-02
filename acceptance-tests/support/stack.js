@@ -48,6 +48,18 @@ function isolatedEnvironment(overrides = {}) {
   };
 }
 
+/** Runs the server's MotherDuck stand-in script; `build` returns the new folder. */
+function motherDuckStandin(...args) {
+  const out = execFileSync('pnpm', ['--filter', 'server', 'exec', 'tsx', 'scripts/motherduck-standin.ts', ...args],
+    { cwd: REPO_ROOT, timeout: 60_000, stdio: 'pipe' });
+  return out.toString().trim().split('\n').pop();
+}
+
+/** Adds a table to a stand-in database, as if the warehouse grew. */
+function addStandinTable(database, table) {
+  motherDuckStandin('add', process.env.MOTHERDUCK_STANDIN, database, table);
+}
+
 async function acceptanceSql(statement, parameters = []) {
   const { default: postgres } = require(require.resolve('postgres', { paths: [path.join(REPO_ROOT, 'apps/server')] }));
   const db = postgres(acceptanceDatabaseUrl(), { max: 1, prepare: false, onnotice() {} });
@@ -151,6 +163,8 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
           `Wait for it to finish, or run on other ports (${name}).`,
       );
   }
+  // #772 design D4: a local stand-in for MotherDuck, made fresh for each run.
+  process.env.MOTHERDUCK_STANDIN = motherDuckStandin('build');
   const env = isolatedEnvironment();
   for (const command of ['e2e:reset', 'migrate'])
     execFileSync('pnpm', ['--filter', 'server', command], { cwd: REPO_ROOT, env, timeout: 120_000, stdio: 'pipe' });
@@ -172,4 +186,4 @@ AfterAll(async function () {
 
 process.on('exit', stopAll);
 
-module.exports = { BASE_URL, API_URL, resetAcceptance, restartAcceptance, acceptanceSql, isolatedEnvironment, REPO_ROOT };
+module.exports = { BASE_URL, API_URL, resetAcceptance, restartAcceptance, acceptanceSql, isolatedEnvironment, addStandinTable, REPO_ROOT };
