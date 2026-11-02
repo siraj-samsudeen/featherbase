@@ -1620,10 +1620,9 @@ function StandardFilters({
   if (!columns.length) return null
   // #742: the first six show; past them, only a box holding a value, until
   // the person asks for the rest.
-  const shown = showAll
-    ? columns
-    : columns.filter((f, i) => i < QUICK_FILTER_ROW || current(f.column_name, boxOp(f)) !== '')
-  const folded = columns.length - shown.length
+  const inRow = columns.filter((f, i) => i < QUICK_FILTER_ROW || current(f.column_name, boxOp(f)) !== '')
+  const shown = showAll ? columns : inRow
+  const folded = columns.length - inRow.length
 
   function current(columnName: string, op: string): string {
     const hit = filters.find((f) => f[0] === columnName && f[1] === op)
@@ -1718,11 +1717,11 @@ function StandardFilters({
       {folded > 0 && (
         <button
           type="button"
-          onClick={() => setShowAll(true)}
+          onClick={() => setShowAll((all) => !all)}
           data-testid="std-filter-more"
           className={buttonClasses()}
         >
-          +{folded} more
+          {showAll ? 'Show fewer' : `+${folded} more`}
         </button>
       )}
     </div>

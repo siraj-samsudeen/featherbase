@@ -55,7 +55,7 @@ Same test file.
 - [x] 5.1 S13: `Eight possible boxes show six and say 2 more, and asking shows all eight without leaving the list`
 - [x] 5.2 S14: `A link with a value in the eighth box shows six plus the eighth, and says 1 more`
 - [x] 5.3 Test: `Six or fewer possible boxes show no "more" control`
-- [ ] 5.4 Test: `After opening, "Show fewer" folds the extra boxes away again, keeping a box that holds a value` (owner's addition)
+- [x] 5.4 Test: `After opening, "Show fewer" folds the extra boxes away again, keeping a box that holds a value` (owner's addition)
 
 ## 6. Filters fold away on a phone
 
