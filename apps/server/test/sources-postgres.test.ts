@@ -13,6 +13,7 @@ import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
 import type { ReflectionCandidate } from '../src/sources/reflect'
+import { makeTable } from './fixtures'
 
 const EXT_URL_ENV = 'EXT_FIXTURE_URL'
 process.env[EXT_URL_ENV] = EXTERNAL_DATABASE_URL
@@ -145,6 +146,54 @@ async function reflectTenant(admin: {
 }
 
 describe('EDS-1: Data Source registry', () => {
+  test('source actions refuse an ordinary row without mutation while real Postgres actions succeed', async ({ admin }) => {
+    await makeSource(admin)
+    const ordinary = await makeTable(admin, {
+      name: 'Source Action Note', id_pattern: 'prompt', columns: ['title', 'quantity:Int'],
+    })
+    await admin.post(ordinary.url, { row_id: 'ext-fixture', title: 'keep this note', quantity: 37 })
+    const state = async () => ({
+      rows: await sql`select * from featherbase.source_action_note order by row_id`,
+      sources: await sql`select * from data_source order by row_id`,
+      tables: await sql`select * from table_def order by name`,
+      columns: await sql`select * from column_def order by row_id`,
+      versions: await sql`select * from version order by row_id`,
+      activity: await sql`select * from activity_log order by row_id`,
+      external: await cli`select * from ext_fixture.business order by code`,
+    })
+    const before = await state()
+    for (const action of ['test_connection', 'introspect', 'reflect']) {
+      const response = await admin.fetch(`${ordinary.rowUrl('ext-fixture')}:${action}?schema=ext_fixture`,
+        action === 'introspect' ? undefined : {
+          method: 'POST', body: JSON.stringify({ schema: 'ext_fixture', tables: ['business'] }),
+        })
+      expect(response.status).toBe(404)
+      expect(await response.json()).toEqual({ error: {
+        type: 'NotFoundError', message: 'No such action for Source Action Note',
+      } })
+      expect(await state()).toEqual(before)
+    }
+    expect(await admin.post('/api/table/Data%20Source/ext-fixture:test_connection', {})).toEqual({ ok: true })
+    const [connected] = await sql`select * from data_source where row_id = 'ext-fixture'`
+    expect(connected).toMatchObject({ conn_status: 'ok', last_error: null })
+    expect(connected.last_checked_at).not.toBeNull()
+    const preview = await admin.get<{ tables: ReflectionCandidate[] }>(
+      '/api/table/Data%20Source/ext-fixture:introspect?schema=ext_fixture',
+    )
+    expect(preview.tables.find((table) => table.table === 'business')).toMatchObject({
+      schema: 'ext_fixture', pk: 'code', bindable: true, already_reflected: null,
+    })
+    expect(await admin.post('/api/table/Data%20Source/ext-fixture:reflect', {
+      schema: 'ext_fixture', tables: ['business'],
+    })).toMatchObject({ created: [{ name: 'Ext Business' }], skipped: [] })
+    expect(await admin.get(`/api/table/Ext%20Business?fields=${encodeURIComponent('["row_id","name"]')}&order_by=row_id%20asc`))
+      .toMatchObject({ data: [{ row_id: '1', name: 'Zulu' }, { row_id: '9', name: 'Alpha' }] })
+    const after = await state()
+    expect(after.rows).toEqual(before.rows)
+    expect(after.external).toEqual(before.external)
+    expect(after.sources).toEqual([connected])
+  })
+
   test('validates engine, url_env shape, and IV1 names', async ({ admin }) => {
     await expect(
       admin.post('/api/table/Data%20Source', {
