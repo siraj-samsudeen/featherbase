@@ -151,16 +151,28 @@ test('preparation progress remains inspectable while the build runs', async ({ a
 
 test('the catalog returns secret presence without values or package paths', async ({ admin }) => {
   const root = await sourceRepository()
+  const file = resolve(root, 'example-apps/other/featherbase.json')
+  const manifest = JSON.parse(await readFile(file, 'utf8'))
+  manifest.secrets.push({ name: 'CATALOG_OPTIONAL_SECRET', optional: true })
+  await writeFile(file, JSON.stringify(manifest))
   try {
     await discoverAppLibrary([], root)
-    await withNamedVariable('CATALOG_TEST_SECRET', 'not-for-the-browser', async () => {
+    await withNamedVariable('CATALOG_TEST_SECRET', 'not-for-the-browser', () => withNamedVariable('CATALOG_OPTIONAL_SECRET', undefined, async () => {
       const result = await admin.get<{ catalog: { secrets: unknown[] }[] }>('/api/apps')
-      expect(result.catalog[0].secrets).toEqual([{ name: 'CATALOG_TEST_SECRET', optional: false, present: true }])
+      expect(result.catalog[0].secrets).toEqual([
+        { name: 'CATALOG_TEST_SECRET', optional: false, present: true },
+        { name: 'CATALOG_OPTIONAL_SECRET', optional: true, present: false },
+      ])
       expect(JSON.stringify(result)).not.toMatch(/not-for-the-browser|built\.mjs|server\.mjs|app-library-/)
-    })
-    await withNamedVariable('CATALOG_TEST_SECRET', undefined, async () => {
-      expect((await admin.get<{ catalog: { secrets: unknown[] }[] }>('/api/apps')).catalog[0].secrets).toEqual([{ name: 'CATALOG_TEST_SECRET', optional: false, present: false }])
-    })
+    }))
+    await withNamedVariable('CATALOG_TEST_SECRET', undefined, () => withNamedVariable('CATALOG_OPTIONAL_SECRET', 'optional-not-for-the-browser', async () => {
+      const result = await admin.get<{ catalog: { secrets: unknown[] }[] }>('/api/apps')
+      expect(result.catalog[0].secrets).toEqual([
+        { name: 'CATALOG_TEST_SECRET', optional: false, present: false },
+        { name: 'CATALOG_OPTIONAL_SECRET', optional: true, present: true },
+      ])
+      expect(JSON.stringify(result)).not.toContain('optional-not-for-the-browser')
+    }))
   } finally {
     await discoverAppLibrary([], null)
     await rm(root, { recursive: true, force: true })
@@ -276,6 +288,13 @@ for (const { stamp, edit, active } of [
       ? JSON.stringify({ ...JSON.parse(original), title: 'Changed declaration' })
       : JSON.stringify(JSON.parse(original), null, 2))
     await withNamedVariable('FEATHERBASE_ENV', 'development', async () => {
+      if (stamp === 'development' && edit === 'code') {
+        const repinned = await withNamedVariable('FEATHERBASE_APP_PATHS', '[]', () => runMain(main, ['install-app', 'other']))
+        expect(repinned.code).toBe(0)
+        expect(repinned.stdout).toContain('other is already installed; re-pinned to its folder as it is now')
+        const [afterCli] = await sql`select artifact_digest from installed_app where name = 'other'`
+        expect(afterCli.artifact_digest).not.toBe(before.artifact_digest)
+      }
       await discoverAppLibrary([], root)
       await loadInstalledApps()
     })
