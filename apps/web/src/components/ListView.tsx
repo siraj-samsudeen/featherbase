@@ -840,7 +840,7 @@ export function ListView({
         </div>
       )}
       {onFiltersChange && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
-      {onFiltersChange && <RecentStrip table={table} onApply={onFiltersChange} />}
+      {onFiltersChange && !narrow && <RecentStrip table={table} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
         <>
           {narrow && (
@@ -852,12 +852,15 @@ export function ListView({
               className={buttonClasses({ className: 'mb-3' })}
             >
               Filters{filters.length > 0 && ` (${filters.length})`}
+              <ChevronDown aria-hidden data-chevron size={18} className={filtersOpen ? 'rotate-180' : undefined} />
             </button>
           )}
           {(!narrow || filtersOpen) && (
             <>
               <StandardFilters meta={meta.data} view={columns} filters={filters} onChange={onFiltersChange} stacked={narrow} />
               <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
+              {/* #742: on a phone, Recent folds in with the filters it reuses. */}
+              {narrow && <RecentStrip table={table} onApply={onFiltersChange} />}
             </>
           )}
         </>
@@ -1479,7 +1482,7 @@ function StandardFilters({
   view: ListColumn[]
   filters: Filter[]
   onChange: (filters: Filter[]) => void
-  /** On a phone, opened from the Filters button: every box, one above the other. */
+  /** On a phone, opened from the Filters button: the boxes one above the other. */
   stacked: boolean
 }) {
   // #742: the data columns this person sees. Row ID isn't one, so it gets no box.
@@ -1498,8 +1501,8 @@ function StandardFilters({
   const inRow = columns.filter(
     (f, i) => i < QUICK_FILTER_ROW || current(f.column_name, choicesOf(f) ? '=' : 'like') !== '',
   )
-  const shown = showAll || stacked ? columns : inRow
-  const folded = stacked ? 0 : columns.length - inRow.length
+  const shown = showAll ? columns : inRow
+  const folded = columns.length - inRow.length
 
   function current(columnName: string, op: string): string {
     const hit = filters.find((f) => f[0] === columnName && f[1] === op)
@@ -1588,6 +1591,10 @@ export function filterValueLabel(op: string, value: unknown): string {
   return String(value)
 }
 
+// A column or value control in Add filter: shares a phone's one line, and is
+// at most 10rem from sm up, as before.
+const FILTER_PART = 'min-w-0 flex-1 sm:flex-none sm:max-w-[10rem]'
+
 export function FilterBar({
   meta,
   filters,
@@ -1625,13 +1632,14 @@ export function FilterBar({
 
   return (
     <div className="mb-3">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* #742: on a phone the comparison stays on one line, its parts shrinking to fit. */}
+      <div className="flex items-center gap-1 sm:flex-wrap sm:gap-2">
         <select
           value={field}
           onChange={(e) => pickField(e.target.value)}
           aria-label="Filter by field"
           data-testid="filter-field"
-          className={inputClasses('max-w-[10rem]')}
+          className={inputClasses(FILTER_PART)}
         >
           {fields.map((f) => (
             <option key={f.fieldname} value={f.fieldname}>
@@ -1644,7 +1652,7 @@ export function FilterBar({
           onChange={(e) => setOp(e.target.value)}
           aria-label="Filter condition"
           data-testid="filter-op"
-          className={inputClasses('max-w-[10rem]')}
+          className={inputClasses('w-16 shrink-0 sm:w-auto sm:max-w-[10rem]')}
         >
           {ops.map((o) => (
             <option key={o} value={o}>
@@ -1658,7 +1666,7 @@ export function FilterBar({
             onChange={(e) => setValue(e.target.value)}
             aria-label="Filter value"
             data-testid="filter-value"
-            className={inputClasses('max-w-[10rem]')}
+            className={inputClasses(FILTER_PART)}
           >
             <option value="">Value</option>
             {choices.map((o) => (
@@ -1675,13 +1683,13 @@ export function FilterBar({
             placeholder="Value"
             aria-label="Filter value"
             data-testid="filter-value"
-            className={inputClasses('max-w-[10rem]')}
+            className={inputClasses(FILTER_PART)}
           />
         )}
         <button
           onClick={add}
           data-testid="filter-add"
-          className={buttonClasses()}
+          className={buttonClasses({ className: 'shrink-0' })}
         >
           Add filter
         </button>
