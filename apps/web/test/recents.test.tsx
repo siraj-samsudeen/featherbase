@@ -1,5 +1,6 @@
 import { ADMIN_NAMED_PAGE_KINDS, ADMIN_STATIC_PAGES, ADMIN_UNRECORDED_ROOTS } from 'shared'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { clearSession, getSessionUser, setSession } from '../src/lib/api'
 import {
   actionForLocation,
   ago,
@@ -125,11 +126,15 @@ describe('authoritative history during delivery', () => {
 
   it('discards a departed session journal even after its queue was drained', () => {
     const owner = 'history-departed'
-    connectEventSink({ currentUser: () => owner, post: () => {}, beacon: () => {} })
+    const person = { row_id: owner, email: null, full_name: null }
+    setSession('departing-token', person)
+    connectEventSink({ currentUser: () => getSessionUser()?.row_id ?? null, post: () => {}, beacon: () => {} })
     recordAction(owner, row('OLD-SESSION'), NOW)
+    // The account menu drains while credentials still exist, then clears
+    // the session after successful server sign-out. No signed-out flush runs.
     flushPendingEvents()
-    connectEventSink({ currentUser: () => null, post: () => {}, beacon: () => {} })
-    flushPendingEvents()
+    clearSession()
+    setSession('returning-token', person)
     replaceServerEntries(owner, [])
     expect(recentActions(owner, 10)).toEqual([])
   })
