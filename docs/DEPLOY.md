@@ -363,7 +363,7 @@ and crashes. Each service needs:
 | Builder, Dockerfile path | `DOCKERFILE`, `apps/server/Dockerfile` |
 | Pre-deploy command | `pnpm --filter server pre-deploy` |
 | Healthcheck path, timeout | `/api/ping`, `300` |
-| Restart policy | `ON_FAILURE`, 5 retries |
+| Restart policy | `ON_FAILURE` (Railway's default), 5 retries |
 | Volume | mounted at `/data` |
 
 `.railway/railway.ts` (Railway's Infrastructure as Code, which replaced

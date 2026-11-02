@@ -54,7 +54,10 @@ export default defineRailway((ctx) => {
     preDeploy: 'pnpm --filter server pre-deploy',
     healthcheck: '/api/ping',
     healthcheckTimeout: 300,
-    deploy: { restartPolicyType: 'ON_FAILURE', restartPolicyMaxRetries: 5 },
+    // On Failure is Railway's default restart policy, and Railway stores a
+    // default as empty, so naming it made every plan show a change no apply
+    // could settle. Only the retry count differs from the default (10).
+    deploy: { restartPolicyMaxRetries: 5 },
     volumeMounts: { '/data': data },
   })
 
