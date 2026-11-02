@@ -30,7 +30,7 @@ test('UI-020: dragging a card to another column updates its field in the DB', as
   session,
 }) => {
   // Reach the Kanban from the list.
-  await session.visit(`/admin/${encodeURIComponent(DT)}`)
+  await session.visit(`/admin/${encodeURIComponent(DT)}`).clickButton('View: List')
   await session.step('reach the Kanban from the list', async ({ page }) => {
     await page.getByTestId('open-kanban').click()
   })

@@ -271,7 +271,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
     await request.get(`/api/table/${encodeURIComponent(EXISTING_DT)}:count`, { headers })
   ).json()) as { count: number }
 
-  await session.visit(`/admin/${encodeURIComponent(EXISTING_DT)}`)
+  await session.visit(`/admin/${encodeURIComponent(EXISTING_DT)}`).clickButton('List actions')
 
   // Unique per run: this spec appends to a persistent Table, so a fixed SKU
   // would accumulate across runs and break the exactly-one-row assertion.

@@ -15,6 +15,24 @@
 // 404 check for Tables, 409-tolerance for rows).
 import { type APIRequestContext } from '@playwright/test'
 
+/** Opt fixture Tables into the optional UI operations a journey exercises. */
+export async function enableTableFeatures(
+  request: APIRequestContext,
+  auth: { Authorization: string },
+  table: string,
+  properties: string[],
+): Promise<void> {
+  for (const property of properties) {
+    const res = await request.post('/api/save_row', {
+      headers: auth,
+      data: { table: 'Metadata Override', row: {
+        row_id: `e2e-${table}-${property}`, table_name: table, property, value: 'true',
+      } },
+    })
+    if (res.status() !== 201) throw new Error(`${table} ${property}: ${res.status()} ${await res.text()}`)
+  }
+}
+
 /** Create a Table from its definition unless it already exists. */
 export async function ensureTable(
   request: APIRequestContext,

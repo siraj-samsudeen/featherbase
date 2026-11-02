@@ -39,25 +39,28 @@ test('DEL-J1: delete an unwanted Table — counted confirmation, then gone every
   })
   expect(imported.status()).toBe(201)
 
-  // J1.1 — the manager button row carries Delete Table (positive complement:
-  // Naming and Permissions are there too — the row rendered, Delete joined it)
+  // J1.1 — Table administration carries Delete Table (positive complement:
+  // Naming and Permissions are there too — the disclosure opened, Delete joined it)
   await signIn(session)
   await session
     .visit(`/admin/${ENC}`)
+    .clickButton('Table administration')
     .assertHas('[data-testid="open-naming"]')
     .assertHas('[data-testid="open-permissions"]')
     .assertHas('[data-testid="delete-table"]')
 
-  // Metadata gating: a system table's list view renders the same manager
-  // row WITHOUT the deletion affordance (DEL-R3's system refusal, at the UI).
+  // Metadata gating: a system table's list view opens the same administration
+  // disclosure WITHOUT the deletion affordance (DEL-R3's system refusal, at the UI).
   await session
     .visit('/admin/Person')
+    .clickButton('Table administration')
     .assertHas('[data-testid="open-naming"]')
     .refuteHas('[data-testid="delete-table"]')
 
   // J1.2 — the confirmation names the Table and its LIVE row count
   await session
     .visit(`/admin/${ENC}`)
+    .clickButton('Table administration')
     .clickButton('Delete Table')
     .assertHas('[data-testid="delete-table-dialog"]')
     .assertText(`Delete ${DT}?`)
@@ -71,7 +74,7 @@ test('DEL-J1: delete an unwanted Table — counted confirmation, then gone every
     .assertHas('[data-testid="list-total"]', { text: '8 total' })
 
   // J1.3 — confirm: landed on All tables, the Table absent everywhere
-  await session.clickButton('Delete Table').assertHas('[data-testid="delete-table-dialog"]')
+  await session.clickButton('Table administration').clickButton('Delete Table').assertHas('[data-testid="delete-table-dialog"]')
   await session.step('J1.3: confirm the deletion', async ({ page }: { page: Page }) => {
     await page.getByTestId('delete-table-confirm').click()
   })
@@ -123,6 +126,7 @@ test('DEL-J2: refused while referenced — the refusal names the blocker; unbloc
   await signIn(session)
   await session
     .visit(`/admin/${ENC}`)
+    .clickButton('Table administration')
     .clickButton('Delete Table')
     .assertHas('[data-testid="delete-table-dialog"]')
   await session.step('J2.2′: confirm — and read the refusal', async ({ page }: { page: Page }) => {

@@ -48,12 +48,16 @@ test('TLC-J1 / TLC-R1 / TLC-I1: declare a table, then reach its first row by cli
     .assertHas('[data-testid="list-view"]')
     .assertHas('[data-testid="list-total"]', { text: '0 total' })
 
-  // J1.2 — the create affordance is in the toolbar, beside the other actions
-  // (positive complement: Report and Import rendered too, so this asserts New
-  // JOINED a toolbar that exists, not that some toolbar exists).
+  // J1.2 — the create affordance is in the toolbar; Report and Import are
+  // reachable through its disclosures (positive complement: both actions
+  // render when opened, not just an otherwise-empty toolbar).
   await session
+    .clickButton('View: List')
     .assertHas('[data-testid="open-report"]')
+    .clickButton('View: List')
+    .clickButton('List actions')
     .assertHas('[data-testid="open-import"]')
+    .clickButton('List actions')
     .assertHas('[data-testid="list-new"]')
 
   // J1.2 — and the empty table offers the same way forward inline, which is
@@ -175,10 +179,11 @@ test('TLC-J2 / TLC-R3 / TLC-R4: delete a row from its own form, behind a confirm
 
   await signIn(session)
 
-  // J2.1 — the row I am looking at is the row I can remove; Delete sits
-  // beside Rename, not in a list I have to navigate back to.
+  // J2.1 — the row I am looking at is the row I can remove; Record actions
+  // contains Delete and Rename, without navigating back to a list.
   await session
     .visit(`/admin/${ENC}/note-2`)
+    .clickButton('Record actions')
     .assertHas('[data-testid="form-rename"]')
     .assertHas('[data-testid="form-delete"]')
 
@@ -200,7 +205,7 @@ test('TLC-J2 / TLC-R3 / TLC-R4: delete a row from its own form, behind a confirm
     .assertHas('[data-testid="form-view"]')
 
   // J2.3 — confirm: landed on the list, the row gone, the total moved.
-  await session.clickButton('Delete').assertHas('[data-testid="delete-row-dialog"]')
+  await session.clickButton('Record actions').clickButton('Delete').assertHas('[data-testid="delete-row-dialog"]')
   await session.step('J2.3: confirm the deletion', async ({ page }: { page: Page }) => {
     await page.getByTestId('delete-row-confirm').click()
   })
@@ -215,6 +220,7 @@ test('TLC-J2 / TLC-R3 / TLC-R4: delete a row from its own form, behind a confirm
   // dialog, naming the holder, and the row survives (TLC-R3.referenced).
   await session
     .visit(`/admin/${ENC}/note-1`)
+    .clickButton('Record actions')
     .clickButton('Delete')
     .assertHas('[data-testid="delete-row-dialog"]')
   await session.step('J2.3 branch: confirm a deletion the server will refuse', async ({ page }: { page: Page }) => {

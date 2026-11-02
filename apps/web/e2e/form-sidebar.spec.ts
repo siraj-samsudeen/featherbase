@@ -1,4 +1,5 @@
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
+import { enableTableFeatures } from './fixtures-ui'
 
 const DT = 'Sb DT'
 
@@ -16,13 +17,14 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
+  await enableTableFeatures(request, headers, DT, ['enable_assignments', 'enable_tags', 'enable_files'])
   docName = `sb-${Date.now()}`
   const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: docName, title: 'sidebar doc' } })
   if (doc.status() !== 201) throw new Error(`doc: ${doc.status()}`)
 })
 
 test('UI-017: assignments, tags, and attachments persist across reload', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+  await session.visit(`/admin/${encodeURIComponent(DT)}/${docName}`).click('Collaboration')
 
   await session.step('assign a user', async ({ page }) => {
     await page.getByTestId('assign-to').fill('Administrator')
@@ -47,6 +49,7 @@ test('UI-017: assignments, tags, and attachments persist across reload', async (
 
   await session.step('reload — all three persist and display', async ({ page }) => {
     await page.reload()
+    await page.getByRole('tab', { name: 'Collaboration', exact: true }).click()
     await expect(page.getByTestId('assignee')).toContainText('Administrator')
     await expect(page.getByTestId('tag-chip')).toContainText('urgent')
     await expect(page.getByTestId('attachment-row')).toContainText('spec.txt')

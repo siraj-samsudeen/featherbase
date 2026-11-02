@@ -1,4 +1,5 @@
 import { createSession } from 'feather-testing-core/playwright'
+import { enableTableFeatures } from './fixtures-ui'
 import {
   anonymousTest as test,
   expect,
@@ -26,6 +27,7 @@ test.beforeAll(async ({ request }, worker) => {
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
+  await enableTableFeatures(request, headers, DT, ['enable_discussion'])
   // A second real user for the mention/notification test.
   const made = await request.post('/api/save_row', {
     headers,
@@ -187,6 +189,7 @@ test('RT-003: an @mention pops the mentioned user unread count live', async ({ b
   })
   await sessionA.visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await sessionA.step('post a comment mentioning the other user', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Activity', exact: true }).click()
     // Trailing space closes the @mention autocomplete so it doesn't overlay
     // the submit button.
     await page.getByTestId('comment-input').fill(`ping @${OTHER_USERNAME} `)

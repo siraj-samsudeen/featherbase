@@ -36,7 +36,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('UI-021: events appear on their date and dragging updates the date field', async ({
   session,
 }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}`).clickLink('Calendar').assertHas('[data-testid="calendar-view"]')
+  await session.visit(`/admin/${encodeURIComponent(DT)}`).clickButton('View: List').clickLink('Calendar').assertHas('[data-testid="calendar-view"]')
 
   await session
     .within(`[data-testid="cal-cell-${DAY_FROM}"]`, (cell) =>

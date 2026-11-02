@@ -65,7 +65,7 @@ test('NAM-001: switching an existing Table to a series offers the derived prefix
     data: { id_pattern: 'hash' },
   })
 
-  await session.visit(`/admin/${encodeURIComponent(DT)}`)
+  await session.visit(`/admin/${encodeURIComponent(DT)}`).clickButton('Table administration')
   await session.step('open the naming dialog', async ({ page }) => {
     await page.getByTestId('open-naming').click()
   })

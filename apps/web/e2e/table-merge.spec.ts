@@ -70,7 +70,7 @@ test.afterEach(async ({ request }) => {
 })
 
 test('folding pairs what it can, and refuses to guess the rest', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(SRC)}`)
+  await session.visit(`/admin/${encodeURIComponent(SRC)}`).clickButton('Table administration')
   await session.step('open the merge screen and pick the target', async ({ page }) => {
     await page.getByTestId('open-merge').click()
     await expect(page.getByTestId('table-merge')).toBeVisible()

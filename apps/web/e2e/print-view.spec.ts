@@ -58,7 +58,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('PRN-001: print view shows labels, values, and child tables with no chrome', async ({
   session,
 }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+  await session.visit(`/admin/${encodeURIComponent(DT)}/${docName}`).clickButton('Record actions')
   await session.step('click Print and land on the print view', async ({ page }) => {
     await page.getByTestId('form-print').click()
     await expect(page).toHaveURL(new RegExp(`/print/${encodeURIComponent(DT)}/${docName}`))

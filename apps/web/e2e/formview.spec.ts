@@ -151,7 +151,7 @@ test('offline_row_recovery: rename and delete retain their target and succeed on
   expect(before.status()).toBe(200)
   const original = await before.json()
 
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${encodeURIComponent(rowId)}`).clickButton('Rename')
+  await session.visit(`/admin/${encodeURIComponent(DT)}/${encodeURIComponent(rowId)}`).clickButton('Record actions').clickButton('Rename')
   await session.step('enter a new row ID', async ({ page }) => {
     await page.getByTestId('rename-input').fill(newId)
   })
@@ -177,6 +177,10 @@ test('offline_row_recovery: rename and delete retain their target and succeed on
     await session.step('reconnect and retry the same rename', async ({ page }) => {
       await page.context().setOffline(false)
       await page.getByTestId('rename-confirm').click()
+      await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}/${encodeURIComponent(newId)}$`))
+      // Navigation may retain the open disclosure or remount it closed.
+      const actions = page.getByRole('button', { name: 'Record actions', exact: true })
+      if (await actions.getAttribute('aria-expanded') === 'false') await actions.click()
     })
     await session.assertPath(`/featherbase/admin/${encodeURIComponent(DT)}/${encodeURIComponent(newId)}`)
     const renamed = await request.get(renamedEndpoint, { headers })

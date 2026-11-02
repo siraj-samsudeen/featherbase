@@ -58,7 +58,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('RPT-001: group by Select shows correct counts and sums; column picker works', async ({
   session,
 }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}`)
+  await session.visit(`/admin/${encodeURIComponent(DT)}`).clickButton('View: List')
   await session.step('open the report, group by status, and verify counts/sums/columns', async ({ page }) => {
     // Enter through the list view's Report button.
     await page.getByTestId('open-report').click()

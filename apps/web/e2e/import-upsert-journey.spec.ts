@@ -70,6 +70,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   // the Table preselected (IMP-R7's entry variant, unchanged).
   await signIn(session)
     .visit(`/admin/${encodeURIComponent(DT)}`)
+    .clickButton('List actions')
     .assertHas('[data-testid="open-import"]')
   await session.step('J1.1: Import from the list view preselects the Table', async ({ page }) => {
     await page.getByTestId('open-import').click()
