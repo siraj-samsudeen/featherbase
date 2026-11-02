@@ -7,7 +7,7 @@
     "apps:prepare": "node tools/prepare-apps.mjs",
     "apps:prove": "node tools/prove-runtime-packages.mjs",
     "seed:tasker": "node tools/seed-tasker-development.mjs",
-    "check:openspec:specs": "openspec validate --specs --strict --no-interactive",
+    "check:openspec:specs": "node --test tools/openspec-validation.test.mjs && openspec validate --specs --strict --no-interactive",
     "check:openspec:changes": "openspec validate --changes --strict --no-interactive",
     "check:specs": "pnpm check:openspec:specs && pnpm check:openspec:changes && pnpm check:unarchived-changes",
     "check:unarchived-changes": "node --test tools/check-unarchived-changes.test.mjs && node tools/check-unarchived-changes.mjs",
