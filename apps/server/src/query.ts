@@ -11,6 +11,7 @@ import { mandatoryWhere, needsMandatoryRowRead } from './mandatory-access'
 import { MAX_RELATED_DEPTH, RELATED_OPS } from 'shared'
 import { MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
 import { linksTo } from './any-table-link'
+import { isYesNoFilter, readYesNo } from './yes-no-filter'
 
 export type { Filter } from './related-filter'
 
@@ -190,6 +191,10 @@ export async function scopedWhere(
       if (!spec.via) throw new AppError('ValidationError', `'not related' needs a sub-table { via, column, table }`)
       const { frag } = await relatedCond(field, value)
       return { frag: sql`not ${frag}` }
+    }
+    if (isYesNoFilter(meta.columns, field, op)) {
+      const yesNo = readYesNo(value)
+      return { frag: yesNo === undefined ? sql`false` : plainCond(field, op, yesNo) }
     }
     return { frag: plainCond(field, op, value) }
   }

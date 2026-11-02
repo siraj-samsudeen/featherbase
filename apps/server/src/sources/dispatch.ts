@@ -11,6 +11,7 @@ import {
   permittedTiers,
 } from '../permissions'
 import { isSensitiveColumn } from '../sensitive-columns'
+import { isYesNoFilter, readYesNo } from '../yes-no-filter'
 import { getDriver, getSource, assertAllowed } from './registry'
 import { REFUSAL_CODE } from './types'
 import type { Binding, ListSpec, SourceConfig, SourceDriver, SourceFilter, SourceRefusal, SourceRow } from './types'
@@ -254,11 +255,19 @@ async function mapFilters(
       continue
     }
     if (!OPS.has(op)) throw new AppError('ValidationError', `Unknown filter operator ${op}`)
-    mapped.push({
-      column: requireSourceColumn(bind, field, 'filter'),
-      op: op as Exclude<SourceFilter['op'], 'related'>,
-      value,
-    })
+    const column = requireSourceColumn(bind, field, 'filter')
+    if (isYesNoFilter(bind.columns, field, op)) {
+      // #742: a Yes/No value is read as true or false; anything else finds no
+      // rows, and an empty list matches nothing on every driver.
+      const yesNo = readYesNo(value)
+      mapped.push(
+        yesNo === undefined
+          ? { column, op: 'in', value: [] }
+          : { column, op: op as Exclude<SourceFilter['op'], 'related'>, value: yesNo },
+      )
+      continue
+    }
+    mapped.push({ column, op: op as Exclude<SourceFilter['op'], 'related'>, value })
   }
   return mapped
 }
