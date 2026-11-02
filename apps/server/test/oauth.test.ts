@@ -4,6 +4,7 @@ import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
+import { getBrowser } from '../src/print'
 import { makePerson } from './fixtures'
 import { mockConsentHtml } from '../src/oauth'
 import type { TestClient } from 'feather-testing-postgres'
@@ -90,6 +91,40 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   test('the mock consent page begins with a standards-mode doctype', () => {
     expect(mockConsentHtml('state', '/api/oauth/google/callback', 'person@example.com', 'Test User'))
       .toMatch(/^<!DOCTYPE html>/)
+  })
+
+  test('the dev consent endpoint keeps special characters inside form values', async ({ api }) => {
+    await setClientId('')
+    const { state } = await beginLogin(api)
+    const values = {
+      state,
+      redirect_uri: '/api/oauth/google/callback',
+      email: 'a&b@example.test',
+      name: 'Ada "><img id="consent-injected">& O\'Neil',
+      subject: 'acct<&>"\'',
+      hd: 'workspace.example.test',
+    }
+    const response = await api.fetch(`/api/oauth/mock/consent?${new URLSearchParams(values)}`)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/html')
+    const html = await response.text()
+    expect(html).toContain('value="a&amp;b@example.test"')
+    expect(html).toContain('value="Ada &quot;&gt;&lt;img id=&quot;consent-injected&quot;&gt;&amp; O&#39;Neil"')
+    expect(html).toContain('value="acct&lt;&amp;&gt;&quot;&#39;"')
+
+    const page = await (await getBrowser()).newPage({ javaScriptEnabled: false })
+    try {
+      await page.setContent(html)
+      expect(await page.locator('form').count()).toBe(1)
+      expect(await page.locator('form').getAttribute('method')).toBe('get')
+      expect(await page.locator('form').getAttribute('action')).toBe('/api/oauth/mock/approve')
+      expect(await page.locator('form input').evaluateAll(inputs =>
+        Object.fromEntries(inputs.map(input => [(input as HTMLInputElement).name, (input as HTMLInputElement).value])),
+      )).toEqual(values)
+      expect(await page.locator('#consent-injected, img, script').count()).toBe(0)
+    } finally {
+      await page.close()
+    }
   })
 
   test('full mock flow provisions a user and hands the SPA a session', async ({ api }) => {
