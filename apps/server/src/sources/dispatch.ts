@@ -9,6 +9,7 @@ import {
   permittedTiers,
 } from '../permissions'
 import { isSensitiveColumn } from '../sensitive-columns'
+import { isYesNoFilter, readYesNo } from '../yes-no-filter'
 import { getDriver, getSource, assertAllowed } from './registry'
 import { REFUSAL_CODE } from './types'
 import type { Binding, ListSpec, SourceConfig, SourceDriver, SourceFilter, SourceRefusal, SourceRow } from './types'
@@ -216,11 +217,14 @@ function mapFilters(bind: Binding, filters: unknown[]): SourceFilter[] {
       throw new AppError('ValidationError', 'Each filter must be [field, operator, value]')
     const [field, op, value] = flt as [string, string, unknown]
     if (!OPS.has(op)) throw new AppError('ValidationError', `Unknown filter operator ${op}`)
-    return {
-      column: requireSourceColumn(bind, field, 'filter'),
-      op: op as SourceFilter['op'],
-      value,
+    const column = requireSourceColumn(bind, field, 'filter')
+    if (isYesNoFilter(bind.columns, field, op)) {
+      const yesNo = readYesNo(value)
+      // An empty list matches nothing on every driver.
+      if (yesNo === undefined) return { column, op: 'in', value: [] }
+      return { column, op: op as SourceFilter['op'], value: yesNo }
     }
+    return { column, op: op as SourceFilter['op'], value }
   })
 }
 

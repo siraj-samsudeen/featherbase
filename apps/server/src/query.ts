@@ -7,6 +7,7 @@ import { getScopeMap, isPrivileged, permissionScope, permittedTiers } from './pe
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
+import { isYesNoFilter, readYesNo } from './yes-no-filter'
 
 export type Filter = [string, string, unknown]
 
@@ -226,6 +227,10 @@ export async function scopedWhere(
     if (!OPS.includes(op as (typeof OPS)[number]))
       throw new AppError('ValidationError', `Unknown filter operator ${op}`)
     if (op === 'related') return relatedCond(field, value)
+    if (isYesNoFilter(meta.columns, field, op)) {
+      const yesNo = readYesNo(value)
+      return { frag: yesNo === undefined ? sql`false` : plainCond(field, op, yesNo) }
+    }
     return { frag: plainCond(field, op, value) }
   }
 

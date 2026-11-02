@@ -5,15 +5,15 @@ refactor as separate commits. "S1" to "S16" are the 16 scenarios in this change'
 
 Test file: `apps/server/test/filter-yes-no.test.ts`, with the connected-Table tests beside the source they need.
 
-- [ ] 1.1 S11 test on a normal Table: `A link saying Active is "true" finds the active rows`
-- [ ] 1.2 Test on a normal Table: `true, false, yes and no find the right rows in any capitals, with = and !=`
-- [ ] 1.3 S12 test on a normal Table: `A link saying Active is "maybe" finds no rows, with = and with !=`
-- [ ] 1.4 Test on a normal Table: `A real true, a real false and an empty value still work`, so existing callers keep working
-- [ ] 1.5 Test on a Table connected to Postgres: `A connected Table reads Yes/No values as a normal Table does`, including "maybe"
-- [ ] 1.6 Test on a Table connected to local DuckDB: `A warehouse Table finds its rows for Yes and no rows for "maybe"`, with no raw conversion error
-- [ ] 1.7 Test on a CSV folder Table: the same promise, or record why that source can't hold a Yes/No column
-- [ ] 1.8 Build the one shared Yes/No check, used by `compileFilter` and `mapFilters`, as those tests demand
-- [ ] 1.9 Test: `The Yes/No check covers only = and !=; the other operators behave as they did`
+- [x] 1.1 S11 test on a normal Table: `A link saying Active is "true" finds the active rows`
+- [x] 1.2 Test on a normal Table: `true, false, yes and no find the right rows in any capitals, with = and !=`
+- [x] 1.3 S12 test on a normal Table: `A link saying Active is "maybe" finds no rows, with = and with !=`
+- [x] 1.4 Test on a normal Table: `A real true, a real false and an empty value still work`, so existing callers keep working
+- [x] 1.5 Test on a Table connected to Postgres: `A connected Table reads Yes/No values as a normal Table does`, including "maybe"
+- [x] 1.6 Test on a Table connected to local DuckDB: `A warehouse Table finds its rows for Yes and no rows for "maybe"`, with no raw conversion error
+- [x] 1.7 CSV folder: no test, because it reflects every column as text and so never holds a Yes/No column (noted in the test file)
+- [x] 1.8 Build the one shared Yes/No check, used by `compileFilter` and `mapFilters`, as those tests demand
+- [x] 1.9 Test: `The Yes/No check covers only = and !=; the other operators behave as they did`
 
 ## 2. The boxes follow the columns a person sees
 
