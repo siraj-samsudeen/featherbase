@@ -49,6 +49,11 @@ function save(user: string, entries: RecentEntry[]): void {
 // containing a visit confirms it. It has the same bounds as the visible cache.
 const unconfirmed = new Map<string, RecentEntry[]>()
 
+/** A completed session must not contribute visits to a later sign-in. */
+export function clearVisitJournal(): void {
+  unconfirmed.clear()
+}
+
 function remember(entries: RecentEntry[], action: RecentAction, now: number): void {
   const existing = entries.find((e) => e.key === action.key)
   if (existing) {
