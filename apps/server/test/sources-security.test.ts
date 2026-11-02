@@ -651,6 +651,26 @@ describe('main-merge interactions: related filters and :aggregate vs bound Table
   })
 
   // #330: the summary view's totals take the same path — counts per group at the source, sums refused.
+  test('bound summaries sort groups by value with NULL last rather than by frequency', async ({ admin }) => {
+    await bindAccount(admin)
+    for (const [id, label] of [
+      ['A-1', 'Aardvark'], ['A-2', 'Aardvark'], ['A-3', 'Aardvark'], ['A-4', 'Aardvark'],
+      ['Z-1', 'Zulu'], ['Z-2', 'Zulu'], ['Z-3', 'Zulu'], ['N-1', null], ['N-2', null],
+    ]) await cli`insert into sec_fixture.account (id, label) values (${id}, ${label})`
+    const before = await cli`select * from sec_fixture.account order by id`
+    const result = await admin.get(`/api/table/${encodeURIComponent(BOUND)}:summary?group_by=label`)
+    expect(result).toEqual({
+      count: 11, sums: {}, groups: [
+        { value: 'Aardvark', count: 4, sums: {} },
+        { value: 'Alpha', count: 1, sums: {} },
+        { value: 'Beta', count: 1, sums: {} },
+        { value: 'Zulu', count: 3, sums: {} },
+        { value: null, count: 2, sums: {} },
+      ],
+    })
+    expect(await cli`select * from sec_fixture.account order by id`).toEqual(before)
+  })
+
   test(':summary counts bound rows overall and per group, and rejects sums', async ({ admin }) => {
     await bindAccount(admin)
     const enc = encodeURIComponent(BOUND)
