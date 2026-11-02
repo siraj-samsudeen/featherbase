@@ -4,6 +4,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { initDocState } from '../src/workflow'
+import { expectApiError } from './fixtures'
 
 // WF-001/002/003: workflow definition, execution, and server-side role
 // enforcement.
@@ -59,6 +60,34 @@ async function drive(admin: TestClient) {
 }
 
 describe('WF-001: workflow definition', () => {
+  test('a workflow targeting a missing Table leaves no partial definition', async ({ admin }) => {
+    await setup(admin)
+    const valid = 'Wf Existing Target'
+    const rejected = 'Wf Missing Target'
+    const missing = 'Wf Never Created'
+    const definition = { is_active: false, states: [{ state: 'Open', target_status: 'draft' }], transitions: [] }
+    await admin.post('/api/save_row', {
+      table: 'Workflow', row: { ...definition, row_id: valid, ref_table: DT },
+    })
+    const controlPath = `/api/table/Workflow/${encodeURIComponent(valid)}`
+    const control = await admin.get(controlPath)
+    expect(control).toMatchObject({ ...definition, row_id: valid, ref_table: DT })
+    const metaPath = `/api/table/${encodeURIComponent(DT)}:meta`
+    const meta = await admin.get(metaPath)
+
+    const error = await expectApiError(admin.post('/api/save_row', {
+      table: 'Workflow', row: { ...definition, row_id: rejected, ref_table: missing },
+    }), {
+      status: 417, type: 'ValidationError', message: '417 ValidationError: Invalid links for Workflow',
+    })
+    expect(error.fields).toEqual({ ref_table: `Table ${missing} does not exist` })
+    expect(await sql`select row_id from workflow where row_id = ${rejected}`).toEqual([])
+    expect(await sql`select parent from workflow_document_state where parent = ${rejected}`).toEqual([])
+    expect(await sql`select name from table_def where name = ${missing}`).toEqual([])
+    expect(await admin.get(controlPath)).toEqual(control)
+    expect(await admin.get(metaPath)).toEqual(meta)
+  })
+
   test('persists and adds a workflow_state column to the target Table', async ({ admin }) => {
     await setup(admin)
     const res = await admin.fetch('/api/save_row', {
