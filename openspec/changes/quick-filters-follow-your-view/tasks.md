@@ -31,10 +31,10 @@ Test file: `apps/web/test/quick-filters.test.tsx`, against the real in-process s
 
 Same test file.
 
-- [ ] 3.1 S3: `Picking Closed narrows the rows and shows as in use; picking All brings them back`
-- [ ] 3.2 S8: `Typing "asha" in the Owner box finds rows containing asha`
-- [ ] 3.3 S9: `The Active box offers All, Yes and No, and each finds the right rows`
-- [ ] 3.4 Test: `A Yes/No box stores the word Yes or No in the page address, as Choice does`
+- [x] 3.1 S3: `Picking Closed narrows the rows and shows as in use; picking All brings them back`
+- [x] 3.2 S8: `Typing "asha" in the Owner box finds rows containing asha`
+- [x] 3.3 S9: `The Active box offers All, Yes and No, and each finds the right rows`
+- [x] 3.4 Test: `A Yes/No box stores the word Yes or No in the page address, as Choice does`
 
 ## 4. Add filter offers dropdowns
 
