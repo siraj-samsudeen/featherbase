@@ -1,7 +1,21 @@
 // #742: the quick filter boxes above a list follow the columns one person
 // sees, against the real in-process server.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
+import { NARROW_QUERY } from '../src/components/ui/DataList'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+// jsdom has no matchMedia; a phone is the narrow query matching.
+function onPhone() {
+  vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({
+    matches: q === NARROW_QUERY, media: q, onchange: null,
+    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+  }) as MediaQueryList)
+}
 
 type Admin = Parameters<typeof renderApp>[1]
 
@@ -273,6 +287,48 @@ test('Six or fewer possible boxes show no "more" control', async ({ admin }) => 
   await openList(admin)
   expect(boxes()).toHaveLength(3)
   expect(screen.queryByTestId('std-filter-more')).not.toBeInTheDocument()
+})
+
+const TWO_IN_USE = JSON.stringify([['floor', '=', 'Ground'], ['owner_name', 'like', '%asha%']])
+
+test('On a phone, the folded filters say 2 filters are in use', async ({ admin }) => {
+  onPhone()
+  await seed(admin)
+  await openList(admin, `?filters=${enc(TWO_IN_USE)}`)
+  expect(screen.getByTestId('filters-toggle')).toHaveTextContent('Filters (2)')
+  expect(screen.getByTestId('filters-toggle')).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByTestId('standard-filters')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('filter-field')).not.toBeInTheDocument()
+})
+
+test('On a phone, opening the filters shows every quick filter and lets the user add one', async ({ admin }) => {
+  onPhone()
+  await seedEight(admin)
+  await openList(admin)
+  expect(screen.getByTestId('filters-toggle')).toHaveTextContent('Filters')
+  fireEvent.click(screen.getByTestId('filters-toggle'))
+  expect(boxes()).toEqual(EIGHT)
+  expect(screen.queryByTestId('std-filter-more')).not.toBeInTheDocument()
+  expect(screen.getByTestId('filter-field')).toBeInTheDocument()
+})
+
+test('On a phone, only the count shows while folded; opening shows the filters in use, each removable', async ({ admin }) => {
+  onPhone()
+  await seed(admin)
+  await openList(admin, `?filters=${enc(TWO_IN_USE)}`)
+  expect(screen.queryByTestId('filter-chip')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('filters-toggle'))
+  const chips = screen.getAllByTestId('filter-chip')
+  expect(chips).toHaveLength(2)
+  fireEvent.click(within(chips[0]).getByLabelText('Remove filter'))
+  await waitFor(() => expect(screen.getByTestId('filters-toggle')).toHaveTextContent('Filters (1)'))
+})
+
+test('On a desktop, the filters show with no Filters button', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  expect(screen.queryByTestId('filters-toggle')).not.toBeInTheDocument()
+  expect(screen.getByTestId('standard-filters')).toBeInTheDocument()
 })
 
 test('Row ID gets no box and takes none of the six places, and can still get an added filter', async ({ admin }) => {
