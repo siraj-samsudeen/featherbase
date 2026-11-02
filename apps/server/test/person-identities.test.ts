@@ -284,6 +284,35 @@ describe('only a person has sign-in methods', () => {
 })
 
 describe('linked identity validation and lifecycle through the public APIs', () => {
+  test('malformed Google sign-in expectations leave the person unchanged', async ({ admin }) => {
+    const person = await admin.post<{ row_id: string; expects_google_sign_in: boolean }>('/api/table/Person', {
+      full_name: 'Google expectation holder', email: 'expectation@example.com', enabled: true, expects_google_sign_in: true,
+    })
+    expect(person.expects_google_sign_in).toBe(true)
+    await admin.post(`/api/people/${person.row_id}/identities`, {
+      method: 'google', email: 'expectation@example.com', send_invitation_email: false,
+    })
+    const before = await sql`select * from person where row_id = ${person.row_id}`
+    const identities = await sql`select * from sign_in_identity where person_id = ${person.row_id} order by id`
+    expect(identities).toHaveLength(1)
+
+    for (const [value, message] of [
+      ['true', 'Expected boolean, received string'],
+      [1, 'Expected boolean, received number'],
+    ] as const) {
+      const error = await expectApiError(patchDoc(admin, `/api/table/Person/${person.row_id}`, {
+        updated_at: before[0].updated_at,
+        full_name: 'Refused edit',
+        expects_google_sign_in: value,
+      }), {
+        status: 417, type: 'ValidationError', message: '417 ValidationError: Invalid values for Person',
+      })
+      expect(error.fields).toEqual({ expects_google_sign_in: message })
+      expect(await sql`select * from person where row_id = ${person.row_id}`).toEqual(before)
+      expect(await sql`select * from sign_in_identity where person_id = ${person.row_id} order by id`).toEqual(identities)
+    }
+  })
+
   test('outside links require a known non-password method, a subject and a real person', async ({ admin }) => {
     const person = await makePerson()
     for (const method of ['missing-method', 'password']) {
