@@ -29,6 +29,7 @@ import { isOpaqueId } from '../lib/people'
 import { EntryLabel } from '../lib/row-titles'
 import { metaQuery } from '../lib/meta'
 import { KindIcon } from '../lib/kind-icons'
+import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
@@ -701,6 +702,8 @@ function AdminShell() {
               ...(canManage ? [{ to: '/featherbase/admin/imports', label: 'Past imports', icon: History, testid: 'past-imports-link' }] : []),
             ]}
           />
+          {/* #772: each data source and the databases it reads; System Managers only. */}
+          {canManage && <DataSourcesSidebar />}
           <SidebarGroup
             heading="People and access"
             icon={ShieldLock}

@@ -16,7 +16,8 @@ import { AdminLayout } from './pages/AdminLayout'
 import { ManageOnly } from './pages/RestrictedShell'
 import { EmptyState, buttonClasses } from './components/ui'
 import { useCapabilities } from './lib/session'
-import { ApiError, getToken, landingPath, loginHref } from './lib/api'
+import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
+import { useQuery } from '@tanstack/react-query'
 import { crossesFramePolicy } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
@@ -51,6 +52,9 @@ import { ColumnEditor } from './pages/ColumnEditor'
 import { TableMerge } from './pages/TableMerge'
 import { AllTablesPage } from './pages/AllTables'
 import SourceBrowser from './pages/SourceBrowser'
+import ConnectSource from './pages/ConnectSource'
+import WarehouseSource from './pages/WarehouseSource'
+import { WarehouseBrowser } from './pages/WarehouseBrowser'
 import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { RelationMap } from './pages/RelationMap'
@@ -627,14 +631,27 @@ const allTablesRoute = createRoute({
 const sourceBrowserRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'source/$name',
+  // #772: a MotherDuck source's browser keeps its place in the address.
+  validateSearch: (search: Record<string, unknown>) => ({
+    database: searchString(search.database),
+    schema: searchString(search.schema),
+  }),
   component: SourceBrowserPage,
 })
 
 function SourceBrowserPage() {
   const { name } = sourceBrowserRoute.useParams()
+  const { database, schema } = sourceBrowserRoute.useSearch()
+  const source = useQuery({
+    queryKey: ['data-source', name],
+    queryFn: () => api.get<{ engine: string }>(`/api/table/Data%20Source/${encodeURIComponent(name)}`),
+  })
+  if (source.isPending) return null
   return (
     <div data-testid="table-page">
-      <SourceBrowser key={name} name={name} />
+      {source.data?.engine === 'motherduck'
+        ? <WarehouseBrowser key={name} name={name} database={database} schema={schema} />
+        : <SourceBrowser key={name} name={name} />}
     </div>
   )
 }
@@ -723,6 +740,15 @@ function TableFormPage() {
   const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
   const meta = useMeta(table)
   if (noSuchTable(meta.error, table)) return <AdminPageNotFound />
+  // #772: Data Source's New page is the guided connect page; a MotherDuck
+  // source's page shows its token by last four only (any other source keeps the form).
+  if (table === 'Data Source') {
+    return (
+      <div data-testid="doc-page">
+        {name === 'new' ? <ConnectSource /> : <WarehouseSource key={name} name={name} />}
+      </div>
+    )
+  }
   return (
     <div data-testid="doc-page">
       <FormView
