@@ -47,17 +47,24 @@ const EXPIRY_CHOICES = [
 ]
 
 // #852: what a token for an owner would reach, from GET /api/access_tokens/reach.
+interface TableReach {
+  table: string
+  own_rows: boolean
+}
+
 interface Reach {
   every_table: boolean
   own_roles: boolean
-  read: string[]
-  change: string[]
+  own_reach: boolean
+  read: TableReach[]
+  change: TableReach[]
 }
 
 const SHOWN_TABLES = 6
 
-function tableList(names: string[]): string {
-  if (names.length === 0) return 'nothing'
+function tableList(tables: TableReach[]): string {
+  if (tables.length === 0) return 'nothing'
+  const names = tables.map((t) => (t.own_rows ? `${t.table} (own rows only)` : t.table))
   const shown = names.slice(0, SHOWN_TABLES).join(', ')
   return names.length > SHOWN_TABLES ? `${shown} and ${names.length - SHOWN_TABLES} more` : shown
 }
@@ -538,11 +545,11 @@ export function AccessTokens() {
                 )}
               </div>
             )}
-            {reach.data && !reach.data.every_table && (!reach.data.own_roles || reach.data.read.length === 0) && (
+            {reach.data && !reach.data.every_table && !reach.data.own_reach && (
               <Notice tone="caution">
                 <p data-testid="token-reach-warning">
                   {reach.data.own_roles
-                    ? 'This token cannot read any Table, so it can do nothing yet.'
+                    ? `${ownerName(owner)}'s roles grant nothing beyond what every account can, so this token reaches only that. Give it a role with the access it needs before using the token.`
                     : `${ownerName(owner)} has no role of its own, so this token reaches only what every account can. Give it a role before using the token.`}
                 </p>
               </Notice>
