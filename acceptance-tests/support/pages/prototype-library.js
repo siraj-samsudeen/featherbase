@@ -126,6 +126,19 @@ class PrototypeLibrary {
 
   async captureForm() {
     this.syntheticControls = await this.controls();
+    // The retained native shell reconciles visits using one acknowledgement per event.
+    const before = Date.now();
+    const visits = [before - 61_000, before - 19_000, 1, before + 86_400_000];
+    const response = await this.page.request.post(`${PROTOTYPE_URL}/api/events`, {
+      data: { events: visits.map((at) => ({ kind: 'row', key: 'Lab Project/lab-north', at })) },
+    });
+    assert.equal(response.status(), 200);
+    const { inserted, timestamps } = await response.json();
+    const after = Date.now();
+    assert.equal(inserted, 4);
+    assert.deepEqual(timestamps.slice(0, 2), visits.slice(0, 2));
+    assert.ok(timestamps[2] >= before - 604_800_000 && timestamps[2] <= after - 604_800_000);
+    assert.ok(timestamps[3] >= before && timestamps[3] <= after);
   }
 
   async controls() {
