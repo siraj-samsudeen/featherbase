@@ -32,3 +32,22 @@ Then('the adjustment is saved for the whole Table rather than a column', async f
   assert.equal(row.property, 'label');
   assert.equal(row.value, 'Storage shelf');
 });
+
+Given('the user has saved an adjustment that hides {string}', async function (column) {
+  this.editor = new OverrideEditor(await this.asSystemManager(), await Api.asSystemManager());
+  await this.editor.prepare();
+  await this.editor.saveHidden(column);
+});
+When('the user tries to add the same adjustment again', async function () { await this.editor.attemptDuplicate(); });
+Then('the user is told to edit the existing adjustment', async function () { await this.editor.refused(); });
+Then('only the original adjustment is saved', async function () { assert.equal(await this.editor.originalCount(), 1); });
+When('the user tries to move it to a setting that already has an adjustment', async function () { await this.editor.attemptOccupiedMove(); });
+Then('the original adjustment stays on its previous Table', async function () {
+  const row = await this.editor.saved();
+  assert.equal(row.table_name, this.editor.table);
+  assert.equal(row.column_name, 'floor');
+  assert.equal(row.value, 'true');
+});
+When('the user moves the adjustment to another Table', async function () { await this.editor.move(); });
+Then('the old Table no longer hides its column', async function () { assert.equal(await this.editor.columnHidden(this.editor.table, 'floor'), false); });
+Then('the new Table hides the selected column', async function () { assert.equal(await this.editor.columnHidden(this.editor.other, 'aisle'), true); });

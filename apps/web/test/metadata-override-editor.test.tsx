@@ -43,3 +43,33 @@ for (const value of ['false', '0', 'true', '1']) {
     })
   })
 }
+
+test('moving an adjustment refreshes already visited target forms', async ({ admin }) => {
+  for (const name of ['Editor Warm Source', 'Editor Warm Destination'])
+    await admin.post('/api/table_def', { name, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  const row = await admin.post<{ row_id: string }>('/api/table/Metadata%20Override', {
+    table_name: 'Editor Warm Source', column_name: 'title', property: 'label', value: 'Headline',
+  })
+  const source = '/featherbase/admin/Editor%20Warm%20Source/new'
+  const destination = '/featherbase/admin/Editor%20Warm%20Destination/new'
+  const { router } = await renderApp(source, admin)
+  await screen.findByLabelText('Headline')
+  await router.navigate({ to: destination })
+  await screen.findByLabelText('Title')
+  await router.navigate({ to: `${path}/${row.row_id}` })
+  await screen.findByDisplayValue('Headline')
+  fireEvent.change(screen.getByLabelText('Table'), { target: { value: 'Editor Warm Destination' } })
+  fireEvent.mouseDown(await screen.findByRole('button', { name: 'Editor Warm Destination' }))
+  await waitFor(() => expect(screen.getByLabelText('Column')).toHaveTextContent('title'))
+  fireEvent.change(screen.getByLabelText('Column'), { target: { value: 'title' } })
+  fireEvent.change(screen.getByLabelText('Setting'), { target: { value: 'Label (label)' } })
+  fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'Headline' } })
+  fireEvent.click(screen.getByTestId('form-save'))
+  await waitFor(() => expect(screen.getByTestId('form-status')).toHaveTextContent('Saved'))
+  await router.navigate({ to: source })
+  await screen.findByLabelText('Title')
+  expect(screen.queryByLabelText('Headline')).toBeNull()
+  await router.navigate({ to: destination })
+  await screen.findByLabelText('Headline')
+  expect(screen.queryByLabelText('Title')).toBeNull()
+})

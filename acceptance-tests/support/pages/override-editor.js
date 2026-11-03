@@ -63,6 +63,48 @@ class OverrideEditor {
     await expect(this.form.getByRole('link', { name: `Open Table: ${this.table}`, exact: true })).toBeVisible();
     this.id = decodeURIComponent(new URL(this.page.url()).pathname.split('/').pop());
   }
+
+  async attemptDuplicate() {
+    const prefill = encodeURIComponent(JSON.stringify({ table_name: this.table }));
+    await this.page.goto(`/featherbase/admin/Metadata%20Override/new?prefill=${prefill}`);
+    await expect(this.form.getByLabel('Column', { exact: true })).toBeEnabled();
+    await this.chooseHidden('floor');
+    await this.form.getByTestId('form-save').click();
+  }
+
+  async attemptOccupiedMove() {
+    await this.changeTarget();
+    await this.api.call('POST', '/api/table/Metadata%20Override', {
+      table_name: this.other, column_name: 'aisle', property: 'hidden', value: 'false',
+    }, [201]);
+    await this.form.getByLabel('Column', { exact: true }).selectOption('aisle');
+    await this.form.getByLabel('Setting', { exact: true }).selectOption('Hidden (hidden)');
+    await this.form.getByLabel('Value', { exact: true }).check();
+    await this.form.getByTestId('form-save').click();
+  }
+
+  async refused() { await expect(this.form.getByTestId('form-banner')).toContainText('Edit the existing adjustment'); }
+
+  async originalCount() {
+    const filters = encodeURIComponent(JSON.stringify([['table_name', '=', this.table]]));
+    return (await (await this.api.call('GET', `/api/table/Metadata%20Override?filters=${filters}`, undefined, [200])).json()).data.length;
+  }
+
+  async move() {
+    // Warm the served metadata before moving, rather than testing a cold read.
+    await this.api.call('GET', `/api/table/${encodeURIComponent(this.table)}:meta`, undefined, [200]);
+    await this.changeTarget();
+    await this.form.getByLabel('Column', { exact: true }).selectOption('aisle');
+    await this.form.getByLabel('Setting', { exact: true }).selectOption('Hidden (hidden)');
+    await this.form.getByLabel('Value', { exact: true }).check();
+    await this.form.getByTestId('form-save').click();
+    await expect(this.form.getByRole('link', { name: `Open Table: ${this.other}`, exact: true })).toBeVisible();
+  }
+
+  async columnHidden(table, column) {
+    const meta = await (await this.api.call('GET', `/api/table/${encodeURIComponent(table)}:meta`, undefined, [200])).json();
+    return meta.columns.find(c => c.column_name === column).hidden;
+  }
 }
 
 module.exports = { OverrideEditor };
