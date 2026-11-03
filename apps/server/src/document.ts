@@ -1217,9 +1217,12 @@ async function updateDoc(
       // means "children untouched": the physical row spread into ctx.row
       // carries no Sub-table columns, so the key exists only if the payload
       // sent it or a hook set it.
-      for (const input of pickChildInputs(meta, row))
+      const childInputs = pickChildInputs(meta, row)
+      const accessBefore = await accessChildSummaries(stx, meta, name, childInputs)
+      for (const input of childInputs)
         await saveChildren(stx, meta, name, input, user, writeTiers)
-      await recordVersion(stx, meta, name, existing as RowValues, updated as RowValues, user)
+      const accessChanges = await accessChildChanges(stx, meta, name, childInputs, accessBefore)
+      await recordVersion(stx, meta, name, existing as RowValues, updated as RowValues, user, accessChanges)
       ctx.row = { ...(updated as RowValues) }
       await runHooks('after_save', ctx)
       await runHooks('on_update', ctx)
@@ -1251,6 +1254,7 @@ async function recordVersion(
   before: RowValues,
   after: RowValues,
   user: string,
+  childChanges: [string, unknown, unknown][] = [],
 ) {
   if (!meta.track_changes || UNVERSIONED.has(meta.name)) return
   // #421: a Date column is a calendar day, which the driver hands back as UTC
@@ -1264,6 +1268,7 @@ async function recordVersion(
     const a = norm(own(after, f.column_name), f.column_type)
     if (JSON.stringify(b) !== JSON.stringify(a)) changed.push([f.column_name, b, a])
   }
+  changed.push(...childChanges)
   if (!changed.length) return
   // #432: dated by the database's wall clock, like its Table, so a skewed
   // app clock never misdates history. clock_timestamp(), not now(): the
@@ -1282,6 +1287,47 @@ async function recordVersion(
     ref_name: name,
     data: { changed } as unknown as string,
   })}`
+}
+
+// #830: a Sub-table whose rows decide access (a Person's roles are Has Role
+// rows) is history an auditor needs, yet its rows are saved beside the parent
+// and never diffed as a column. Each such grid is summarised as its rows'
+// names in order ("System Manager, Sales Viewer"; null for none), before and
+// after the save, and a difference is recorded on the parent like any field.
+type ChildInput = ReturnType<typeof pickChildInputs>[number]
+
+async function accessChildSummaries(tx: typeof sql, meta: TableMeta, parent: string, inputs: ChildInput[]) {
+  const out = new Map<string, string | null>()
+  if (!meta.track_changes || UNVERSIONED.has(meta.name)) return out
+  for (const input of inputs) {
+    if (!(await isSecurityTable(input.childTable))) continue
+    const childMeta = await getMeta(input.childTable)
+    const column = childMeta.title_column || childMeta.columns.find((c) => !NO_COLUMN_TYPES.has(c.column_type))?.column_name
+    if (!column) continue
+    const rows = await tx`
+      select ${tx(column)} as name from ${tx(await tableRelation(childMeta.name))}
+      where parent = ${parent} and parenttype = ${meta.name} and parentfield = ${input.columnName}
+      order by position`
+    const names = rows.map((r) => r.name).filter((v) => v != null && v !== '').map(String)
+    out.set(input.columnName, names.length ? names.join(', ') : null)
+  }
+  return out
+}
+
+async function accessChildChanges(
+  tx: typeof sql,
+  meta: TableMeta,
+  parent: string,
+  inputs: ChildInput[],
+  before: Map<string, string | null>,
+): Promise<[string, unknown, unknown][]> {
+  const after = await accessChildSummaries(tx, meta, parent, inputs)
+  const changes: [string, unknown, unknown][] = []
+  for (const [column, now] of after) {
+    const was = before.get(column) ?? null
+    if (was !== now) changes.push([column, was, now])
+  }
+  return changes
 }
 
 // DOC-007: status transitions. draft -> submit -> submitted -> cancel ->

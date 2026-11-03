@@ -53,10 +53,13 @@ test('#830: a role removed from a Person is recorded too, down to no roles at al
   ])
 })
 
-test('#830: a Person created with roles records the grant; one created without records nothing', async ({ admin }) => {
+// A Person created with roles keeps no history entry of it: the Person's own
+// created_by / created_at say who created them with those roles, and a history
+// entry would make every new Person undeletable (#321 keeps a row with history).
+test('#830: creating a Person, with or without roles, records no history entry', async ({ admin }) => {
   await roles(['Rh Clerk'])
   const granted = await person(admin, { email: 'rh.new@example.com', full_name: 'Rh New', roles: [{ role: 'Rh Clerk' }] })
-  expect(await history(granted.row_id)).toEqual([{ by: 'Administrator', changed: [['roles', null, 'Rh Clerk']] }])
+  expect(await history(granted.row_id)).toEqual([])
   const plain = await person(admin, { email: 'rh.plain@example.com', full_name: 'Rh Plain' })
   expect(await history(plain.row_id)).toEqual([])
 })
@@ -67,5 +70,5 @@ test('#830: re-saving the same roles, or editing only other fields, records no r
   const again = await admin.post<typeof p>('/api/save_row', { table: 'Person', row: { row_id: p.row_id, updated_at: p.updated_at, roles: p.roles } })
   await admin.post('/api/save_row', { table: 'Person', row: { row_id: p.row_id, updated_at: again.updated_at, full_name: 'Rh Same Renamed' } })
   const changes = (await history(p.row_id)).map((h) => h.changed)
-  expect(changes).toEqual([[['roles', null, 'Rh Clerk']], [['full_name', 'Rh Same', 'Rh Same Renamed']]])
+  expect(changes).toEqual([[['full_name', 'Rh Same', 'Rh Same Renamed']]])
 })
