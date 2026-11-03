@@ -12,4 +12,5 @@
 
 - [x] 3.1 Run acceptance scenarios and relevant server/web/shared regression checks and typechecks; inspect exact catalogue proof.
 - [x] 3.2 Run independent headless 1280px UI verification against the issue checklist, inspect screenshots and real-pointer/keyboard recording, fix differences.
-- [x] 3.3 Open the implementation PR with evidence and exact-head CI/comment subscriptions; report source pin and remaining owner gates to manager. Do not merge, deploy or archive before owner video review.
+- [x] 3.3 Open the implementation PR with evidence and exact-head CI/comment subscriptions; report source pin and remaining gates to manager. Sync/archive under the manager-relayed continuation; record actual inspections without claiming owner video review. Do not merge or deploy.
+- [x] 3.4 After ordinary review, reproduce the legacy override inventory failure publicly; retain canonical destinations only for the known allowlist refusal after visibility checks, preserve other failures, and verify the focused regression plus old/new diagnostic controls. Bounded round 2 and exact-head CI remain landing gates.

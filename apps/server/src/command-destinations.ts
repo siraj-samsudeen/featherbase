@@ -23,8 +23,13 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
     throw new AppError('PermissionError', 'Admin access required')
 
   const tables: CommandDestinations['tables'] = []
-  const definitions = await sql<{ name: string; owner_app: string | null }[]>`select name, owner_app from table_def where kind != 'sub_table' order by name`
-  for (const { name, owner_app } of definitions) {
+  const invalidMetadata = new Set<string>()
+  const definitions = await sql<{
+    name: string; owner_app: string | null; module: string; system: boolean;
+    system_written: boolean; kind: 'table' | 'settings'
+  }[]>`select name, owner_app, module, system, system_written, kind from table_def where kind != 'sub_table' order by name`
+  for (const definition of definitions) {
+    const { name, owner_app } = definition
     if ((await permissionScope(user, name, 'read')) === 'none') continue
     try {
       if (owner_app) await assertAppAvailable(`${owner_app}.__inventory`)
@@ -39,7 +44,17 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
           (await permissionScope(user, name, 'create')) !== 'none',
       })
     } catch (error) {
-      if (!unavailable(error)) throw error
+      if (error instanceof AppError && error.type === 'ValidationError' &&
+          /^Metadata property .* cannot be overridden(?:\. Permitted properties: [a-z_]+(?:, [a-z_]+)*)?$/.test(error.message)) {
+        // Visibility has already passed. Invalid effective metadata may fall
+        // back to its canonical identity, but must never offer a new-row action.
+        invalidMetadata.add(name)
+        tables.push({
+          row_id: name, label: name, module: definition.module,
+          system: Boolean(definition.system), system_written: Boolean(definition.system_written),
+          kind: definition.kind, can_create: false,
+        })
+      } else if (!unavailable(error)) throw error
     }
   }
 
@@ -69,7 +84,7 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
   // Named resources use the normal list read: own rows, Data Scopes and
   // column tiers remain enforced. Page deterministically through all rows.
   async function named(table: string, fields: string[], visit: (row: Record<string, unknown>) => Promise<void> | void) {
-    if (!readable.has(table)) return
+    if (!readable.has(table) || invalidMetadata.has(table)) return
     try {
       for (let offset = 0; ; offset += 500) {
         const result = await getList(table, { fields, order_by: 'row_id asc', limit_start: offset, limit_page_length: 500 }, user)

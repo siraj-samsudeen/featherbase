@@ -12,6 +12,8 @@ Static Admin pages, own account sign-in methods, capability-gated interim report
 
 Apply app availability even for privileged viewers; permission bypass does not make an unavailable app openable. Preserve Admin/app-only boundaries. Read scoped named resources through existing read contracts, never raw unfiltered labels.
 
+For the known legacy metadata-override allowlist refusal only, retain the already-visible Table's canonical name rather than losing the entire inventory. Match the old diagnostic and the confirmed permitted-properties suffix; unrelated failures still propagate. This navigation fallback does not change direct metadata validation or create permissions.
+
 ### Treat dismissal as visibility, not clearing
 
 Keep destination activation's existing clearing behavior. Outside pointer and Escape instead close visibility and reset selection while retaining the query; Escape is handled at the form boundary so focused results work. A document pointer listener checks containment before dismissal. Results render only while open, so a late response cannot reopen them. Focus/Cmd K reopens and Tab inside remains usable.
