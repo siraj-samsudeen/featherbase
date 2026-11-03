@@ -59,7 +59,7 @@ export async function recordEvents(user: string, events: IncomingEvent[]): Promi
       sub_label: e.sub ?? null,
       path: e.path ?? null,
       occurred_at: new Date(at),
-      destination: sql.json((await bindNavigation(user, { ...e, at })) ?? { unavailable: true }),
+      destination: sql.json(await bindNavigation(user, { ...e, at })),
     }
   }))
   await sql`insert into user_event ${sql(rows)}`

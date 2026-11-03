@@ -124,11 +124,12 @@ describe('#873: validated Home destinations', () => {
     await admin.delete(table.defUrl)
     await makeTable(admin, def)
     await admin.post(table.url, { row_id: 'north', title: 'Wrong replacement' })
-    await admin.post('/api/events', { events: [event, list] })
-    expect((await admin.post<Home>('/api/home_resume', { hints: [event] })).entries).toEqual([])
+    // Optional display text cannot force a delayed visit onto the replacement.
+    await admin.post('/api/events', { events: [{ ...event, label: undefined }, list] })
+    expect((await admin.post<Home>('/api/home_resume', { hints: [{ ...event, label: undefined, at: event.at + 1 }] })).entries).toEqual([])
     const feed = await admin.get<Feed>('/api/activity_feed')
     expect(feed.items).toHaveLength(2)
-    expect(feed.items.find(i => i.sub === table.name)).toMatchObject({ path: '', destination_state: 'deleted_table' })
+    expect(feed.items.find(i => i.sub === table.name)).toMatchObject({ label: event.key, path: '', destination_state: 'deleted_table' })
     expect(feed.items.find(i => i.label === table.name)).toMatchObject({ path: '', destination_state: 'deleted_table' })
   })
 
@@ -179,7 +180,8 @@ describe('#873: validated Home destinations', () => {
     expect(definition.navigation_identity).not.toBe(forged)
     const event = await visit(admin, table.name)
     const other = await createUser({ roles: ['System Manager'] })
-    for (const invalid of [{ ...event, claim: null }, { ...event, claim: event.claim + 'x' }, { ...event, path: 'https://evil.example/' }]) {
+    for (const invalid of [{ ...event, claim: null }, { ...event, claim: event.claim + 'x' },
+      { ...event, path: undefined }, { ...event, path: 'https://evil.example/' }]) {
       await admin.post('/api/events', { events: [invalid] })
     }
     await other.post('/api/events', { events: [event] })
@@ -320,6 +322,27 @@ describe('#873: validated Home destinations', () => {
       const response = await admin.fetch('/api/home_resume', { method: 'POST', body, headers: { 'content-type': 'application/json' } })
       expect(response.status).toBe(417)
     }
+  })
+
+  test('unrecognized legacy history remains unavailable without being rewritten', async ({ admin }) => {
+    await admin.post('/api/events', { events: [{ kind: 'page', key: 'page:explore', path: '/featherbase/admin/explore' }] })
+    // Stored history permits arbitrary text kinds and missing paths, unlike
+    // new event input. Do not reinterpret an unsupported record as a visit.
+    await sql`update user_event set kind = 'legacy-unknown', path = null, destination = null`
+    const original = await sql`select * from user_event`
+    expect((await admin.post<Home>('/api/home_resume', {})).entries).toEqual([])
+    expect((await admin.get<Feed>('/api/activity_feed')).items[0]).toMatchObject({
+      label: 'Unavailable destination', path: '', destination_state: 'unavailable',
+    })
+    expect(await sql`select * from user_event`).toEqual(original)
+  })
+
+  test('search history accepts omitted optional display text', async ({ admin }) => {
+    await admin.post('/api/events', { events: [{ kind: 'search', key: 'search:depot' }] })
+    expect((await admin.post<Home>('/api/home_resume', {})).entries).toEqual([
+      expect.objectContaining({ label: '', path: '' }),
+    ])
+    expect((await admin.get<Feed>('/api/activity_feed')).items[0]).toMatchObject({ label: 'search:depot', path: '', destination_state: 'available' })
   })
 
   test('Home offers authorized pages and search beside a row', async ({ admin }) => {

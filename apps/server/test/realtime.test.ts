@@ -146,11 +146,11 @@ describe('subscription acknowledgment', () => {
       await frame('ready')
       // 'user:Guest' is somebody else's personal channel — refused, and so
       // absent from the ack: the ack reports what is live, not what was asked.
-      socket.send(JSON.stringify({ subscribe: ['list:User', 'user:Guest'] }))
+      socket.send(JSON.stringify({ subscribe: ['list:User', 'navigation', 'user:Guest'] }))
       expect(await frame('subscribed')).toEqual({
         channel: 'system',
         event: 'subscribed',
-        payload: { channels: ['list:User'] },
+        payload: { channels: ['list:User', 'navigation'] },
       })
     } finally {
       socket.terminate()

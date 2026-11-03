@@ -94,7 +94,7 @@ function canonicalPath(path: string | undefined): string | null {
   return url.pathname + url.search
 }
 
-export async function bindNavigation(user: string, event: NavigationEvent): Promise<NavigationEvent['destination']> {
+export async function bindNavigation(user: string, event: NavigationEvent): Promise<Binding | { unavailable: true }> {
   if (!event.claim) return { unavailable: true }
   let payload
   try { payload = await verify(event.claim, jwtSecret(), 'HS256') } catch { return { unavailable: true } }
