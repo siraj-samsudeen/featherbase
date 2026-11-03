@@ -70,6 +70,8 @@ test('Plain arrow keys choose typed results in displayed order', async ({ admin 
   fireEvent.focus(bar)
   fireEvent.change(bar, { target: { value: 'Sb Gadget' } })
   await screen.findByTestId('awesomebar-doc')
+  await screen.findByTestId('awesomebar-table')
+  await screen.findByTestId('awesomebar-new')
   const results = screen.getByTestId('awesomebar-results')
   const choices = Array.from(results.querySelectorAll('a, button'))
   expect(choices.length).toBeGreaterThanOrEqual(3)
