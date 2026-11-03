@@ -212,3 +212,12 @@ test('Ticking Closed in the Status box narrows the rows, and unticking it brings
   await waitFor(() => expect(codes()).toHaveLength(6))
   expect(chips()).toEqual([])
 })
+
+test('A filter added on Floor with Ground and First Floor shows both ticked in the Floor box', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  tick(addFilterOn('floor'), 'Ground', 'First Floor')
+  fireEvent.click(screen.getByTestId('filter-add'))
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
+  expect(ticked(openBox('floor'))).toEqual(['Ground', 'First Floor'])
+})
