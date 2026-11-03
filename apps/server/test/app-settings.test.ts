@@ -2,7 +2,7 @@
 // live in the App Setting security Table (set through the instance settings
 // file); secrets stay deployment variables. Handlers get only what was
 // declared, and a missing required value is "not set up yet", never a crash.
-// Fixture: runtime-apps/fixtures/setup-proof-v1.
+// Fixture: test-apps/fixtures/setup-proof-v1.
 import { resolve } from 'node:path'
 import { inspect } from 'node:util'
 import { pathToFileURL } from 'node:url'
@@ -14,9 +14,9 @@ import { withNamedVariable } from '../src/env'
 import { sql } from '../src/db'
 import { expectApiError } from './fixtures'
 import { applyInstanceSettings, exportInstanceSettings } from '../src/instance-settings'
-import { WITHHELD_ANSWER, WITHHELD_MESSAGE, keptSecrets, withSecretsKept } from '../src/app-settings'
+import { WITHHELD_ANSWER, WITHHELD_MESSAGE, holdsSecret, keptSecrets, withSecretsKept } from '../src/app-settings'
 
-const fixture = resolve('../..', 'runtime-apps/fixtures/setup-proof-v1')
+const fixture = resolve('../..', 'test-apps/fixtures/setup-proof-v1')
 const read = '/api/app_reads/setupproof/'
 const TOKEN = 'fixture-token-6f1c2a'
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
@@ -45,6 +45,32 @@ const setting = (admin: TestClient, name: string, value: string) =>
   admin.post('/api/save_row', { table: 'App Setting', row: { row_id: `setupproof.${name}`, value } })
 
 describe('declared app settings', () => {
+  test('an App Setting key without app.setting syntax preserves the declared setting', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await setting(admin, 'report_id', 'R-17')
+    const state = async () => ({
+      settings: await sql`select * from app_setting order by row_id`,
+      installed: await sql`select * from installed_app order by name`,
+      versions: await sql`select * from version where ref_table = 'App Setting' order by row_id`,
+      managed: await sql`select * from instance_settings_apply order by id`,
+      activity: await sql`select * from activity_log order by row_id`,
+    })
+    const before = await state()
+    const response = await admin.fetch('/api/save_row', {
+      method: 'POST', body: JSON.stringify({ table: 'App Setting', row: { row_id: 'setupproof-report_id', value: 'R-99' } }),
+    })
+    expect(response.status).toBe(417)
+    expect(await response.json()).toEqual({ error: {
+      type: 'ValidationError', message: 'An app setting is named <app>.<setting>, like tasker.report_id',
+      fields: { row_id: 'app.setting' },
+    } })
+    expect(await state()).toEqual(before)
+    expect(await admin.get('/api/table/App%20Setting/setupproof.report_id'))
+      .toMatchObject({ row_id: 'setupproof.report_id', app: 'setupproof', setting: 'report_id', value: 'R-17' })
+    expect(await withNamedVariable('SETUPPROOF_TOKEN', TOKEN, () => reader.post(read + 'config', { payload: {} })))
+      .toEqual({ result: { settings: { report_id: 'R-17' }, secrets: ['SETUPPROOF_TOKEN'] } })
+  })
+
   test('the handler gets the declared settings that hold a value', async ({ admin, createUser }) => {
     const { reader } = await setup(admin, createUser)
     await setting(admin, 'report_id', 'R-1')
@@ -240,6 +266,33 @@ describe('an app secret', () => {
     expect(logged).toEqual(['{"token":"[secret withheld]"}'])
   })
 
+  test('an error whose message getter throws cannot leak the app secret', async () => {
+    const failure = { get message(): string { throw new Error(PLAIN) } }
+    await expect(withSecretsKept(keptSecrets({ TOKEN: PLAIN }), async () => { throw failure }))
+      .rejects.toThrow("The app's message was withheld: it held one of the app's secrets")
+    expect(logged.join('\n')).not.toContain(PLAIN)
+  })
+
+  test('secret detection checks keys and inherited error causes without trusting throwing getters', () => {
+    const unreadable = { get unavailable(): unknown { throw new Error('not readable') } }
+    expect(holdsSecret([PLAIN], unreadable)).toBe(false)
+    expect(holdsSecret([PLAIN], { [PLAIN]: 'ordinary value' })).toBe(true)
+    class WrappedFailure extends Error { override get cause() { return PLAIN } }
+    expect(holdsSecret([PLAIN], new WrappedFailure('Safe heading'))).toBe(true)
+    expect(holdsSecret([PLAIN], new Error('Safe heading'))).toBe(false)
+  })
+
+  test('safe primitive failures and error codes survive, but a thrown secret does not', async () => {
+    const kept = keptSecrets({ TOKEN: PLAIN })
+    for (const value of [null, undefined, 37, 'ordinary refusal'])
+      await expect(withSecretsKept(kept, async () => { throw value })).rejects.toBe(value)
+    await expect(withSecretsKept(kept, async () => { throw PLAIN })).rejects.toThrow(WITHHELD_MESSAGE)
+    const failure = Object.assign(new Error('Upstream temporarily unavailable'), { code: 'EUPSTREAM' })
+    await expect(withSecretsKept(kept, async () => { throw failure })).rejects.toMatchObject({
+      message: 'Upstream temporarily unavailable', code: 'EUPSTREAM',
+    })
+  })
+
   test('outside an app handler the console is left alone', async () => {
     await withSecretsKept(keptSecrets({ TOKEN: PLAIN }), async () => {})
     console.log('count', 3, { a: 1 })
@@ -311,4 +364,3 @@ describe('the settings file sets app settings', () => {
       { status: 403, message: expect.stringMatching(/set in the instance settings file/) })
   })
 })
-

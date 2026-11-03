@@ -8,6 +8,7 @@ import { connectionLabel, useConnections, type Connection } from '../lib/connect
 import { useStepOptions } from '../lib/explore-steps'
 import { buttonClasses, cardClasses } from '../components/ui'
 import { fmtCount } from '../lib/inr'
+import { RowTitle } from '../lib/row-titles'
 
 type Row = Record<string, unknown>
 
@@ -44,7 +45,7 @@ export function RelationMap({
 }: {
   table: string
   name: string
-  trail?: string
+  trail?: unknown
 }) {
   const meta = useMeta(table)
   const cnx = useConnections(table, name)
@@ -111,21 +112,13 @@ export function RelationMap({
   function hop(toTable: string, toRow: string) {
     const nextTrail = [...parsedTrail, [table, name] as [string, string]].slice(-8)
     setOpenGroup(null)
-    navigate({
-      to: '/featherbase/admin/map/$table/$name',
-      params: { table: toTable, name: toRow },
-      search: { trail: JSON.stringify(nextTrail) },
-    })
+    void navigate({ to: '/featherbase/admin/map/$table/$name', params: { table: toTable, name: toRow }, search: { trail: nextTrail } })
   }
   function backTo(i: number) {
     const [t, n] = parsedTrail[i]
-    navigate({
-      to: '/featherbase/admin/map/$table/$name',
-      params: { table: t, name: n },
-      search: {
-        trail: parsedTrail.length > 1 ? JSON.stringify(parsedTrail.slice(0, i)) : undefined,
-      },
-    })
+    const previous = parsedTrail.slice(0, i)
+    setOpenGroup(null)
+    void navigate({ to: '/featherbase/admin/map/$table/$name', params: { table: t, name: n }, search: { trail: previous.length ? previous : undefined } })
   }
 
   const active = openGroup != null ? groups[openGroup] : null
@@ -183,18 +176,65 @@ export function RelationMap({
                 className="text-action hover:underline"
                 data-testid={`map-trail-${i}`}
               >
-                {n}
+                <RowTitle table={t} rowId={n} />
               </button>
               <span className="text-ink-subtle">›</span>
             </span>
           ))}
-          <span className="font-medium text-ink">{name}</span>
+          <span className="font-medium text-ink"><RowTitle table={table} rowId={name} /></span>
         </div>
       )}
-      <div className={cardClasses('overflow-x-auto p-2')}>
+      <div className={cardClasses('p-2')}>
+        <div className="space-y-3 xl:hidden" data-testid="map-narrow">
+          <div className="break-words rounded-control border border-action bg-action-tint px-3 py-2 text-sm">
+            <div className="font-semibold text-ink">{String(d[m.title_column ?? ''] ?? name)}</div>
+            <div className="text-xs text-ink-muted">{table}</div>
+          </div>
+          {forward.length > 0 && (
+            <section aria-label="Links from this row" className="space-y-2">
+              <h2 className="text-xs font-semibold text-ink-muted">Links from this row</h2>
+              {forward.map((f, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => hop(f.table, f.row_id)}
+                  data-testid={`map-narrow-forward-${f.table}`}
+                  className={buttonClasses({ className: 'w-full whitespace-normal break-words py-2 text-left' })}
+                >
+                  <span className="min-w-0">
+                    <span className="block text-xs text-ink-muted">{f.label} → {f.table}</span>
+                    <RowTitle table={f.table} rowId={f.row_id} />
+                  </span>
+                </button>
+              ))}
+            </section>
+          )}
+          {groups.length > 0 && (
+            <section aria-label="Related rows" className="space-y-2">
+              <h2 className="text-xs font-semibold text-ink-muted">Related rows</h2>
+              {groups.map((g, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setOpenGroup(openGroup === i ? null : i)}
+                  aria-expanded={openGroup === i}
+                  data-testid={`map-narrow-group-${g.table}`}
+                  className={buttonClasses({ className: 'w-full justify-between whitespace-normal break-words py-2 text-left' })}
+                >
+                  <span className="min-w-0">
+                    <span className="block">{g.label}</span>
+                    <span className="block text-xs text-ink-muted">{g.kind === 'child' ? 'child rows' : 'backlink'}</span>
+                  </span>
+                  <span className="shrink-0 text-action">{fmtCount(g.count)}</span>
+                </button>
+              ))}
+            </section>
+          )}
+          {!forward.length && !groups.length && <p className="text-sm text-ink-muted">No related rows</p>}
+        </div>
         <svg
           viewBox={`0 0 ${W} ${H}`}
-          className="block h-auto w-full min-w-[700px]"
+          className="hidden h-auto w-full xl:block"
           role="img"
           aria-label={`Relationship map for ${table} ${name}`}
           data-testid="map-svg"
@@ -352,10 +392,10 @@ export function RelationMap({
   )
 }
 
-function parseTrail(raw: string | undefined): [string, string][] {
+function parseTrail(raw: unknown): [string, string][] {
   if (!raw) return []
   try {
-    const value: unknown = JSON.parse(raw)
+    const value: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw
     if (
       Array.isArray(value) &&
       value.every(

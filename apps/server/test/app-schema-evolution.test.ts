@@ -18,7 +18,7 @@ import { preflightRelease } from '../src/release-preflight'
 import { rehearse } from '../src/migrate-rehearse'
 
 type Client = { post: <T = unknown>(path: string, body: unknown) => Promise<T> }
-const fixture = (v: number) => resolve('../..', `runtime-apps/fixtures/evolve-v${v}`)
+const fixture = (v: number) => resolve('../..', `test-apps/fixtures/evolve-v${v}`)
 const versions = [fixture(1), fixture(2), fixture(3), fixture(4)]
 
 async function upgrade(admin: Client, version: string) {

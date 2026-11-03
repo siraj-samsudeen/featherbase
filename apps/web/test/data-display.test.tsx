@@ -249,6 +249,53 @@ describe('DataList', () => {
     expect(card.querySelector('dt')?.className).toMatch(/\bmin-w-0\b/)
   })
 
+  // #738 point 10: a card shows at most three listed columns besides its title,
+  // status and row ID, and says how many more it has.
+  const wide = [{ id: 'w1', title: 'Sarees', status: 'Open', rowId: 'sm_1', a: 'A1', b: 'B1', c: 'C1', d: 'D1', e: 'E1' }]
+  type Wide = (typeof wide)[number]
+  const wideColumns: DataColumn<Wide>[] = [
+    { key: 'title', header: 'Section', cell: (r) => r.title, phone: 'title' },
+    { key: 'status', header: 'Status', cell: (r) => r.status, phone: 'status' },
+    { key: 'rowId', header: 'Row ID', cell: (r) => r.rowId, phone: 'meta' },
+    ...(['a', 'b', 'c', 'd', 'e'] as const).map((k) => ({ key: k, header: k.toUpperCase(), cell: (r: Wide) => r[k] })),
+  ]
+  const figureLabels = (card: HTMLElement) => [...card.querySelectorAll('dt')].map((dt) => dt.textContent)
+
+  test('a card shows at most three listed columns besides its title, status and row ID, then how many more', () => {
+    render(<DataList layout="cards" caption="Mappings" rows={wide} columns={wideColumns} rowKey={(r) => r.id} empty={EMPTY} />)
+    const card = screen.getByRole('listitem')
+    expect(figureLabels(card)).toEqual(['A', 'B', 'C'])
+    expect(within(card).getByText('Sarees')).toBeInTheDocument()
+    expect(within(card).getByText('Open')).toBeInTheDocument()
+    expect(within(card).getByText('sm_1')).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: /^2 more\b/ })).toBeInTheDocument()
+  })
+
+  test('a card with three listed columns or fewer offers no "more"', () => {
+    render(<DataList layout="cards" caption="Mappings" rows={wide} columns={wideColumns.slice(0, 6)} rowKey={(r) => r.id} empty={EMPTY} />)
+    const card = screen.getByRole('listitem')
+    expect(figureLabels(card)).toEqual(['A', 'B', 'C'])
+    expect(within(card).queryByText(/more/)).toBeNull()
+  })
+
+  test('"N more" opens that card\'s other columns in place, from the keyboard too', async () => {
+    const two = [wide[0], { ...wide[0], id: 'w2', title: 'Silks' }]
+    render(<DataList layout="cards" caption="Mappings" rows={two} columns={wideColumns} rowKey={(r) => r.id} empty={EMPTY} />)
+    const [first, second] = screen.getAllByRole('listitem')
+    const more = within(first).getByRole('button', { name: /^2 more\b/ })
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+    more.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(figureLabels(first)).toEqual(['A', 'B', 'C', 'D', 'E'])
+    expect(more).toHaveAttribute('aria-expanded', 'true')
+    expect(figureLabels(second)).toEqual(['A', 'B', 'C']) // only the card asked
+  })
+
+  test('the "N more" control says what it does to a screen reader', () => {
+    render(<DataList layout="cards" caption="Mappings" rows={wide} columns={wideColumns} rowKey={(r) => r.id} empty={EMPTY} />)
+    expect(within(screen.getByRole('listitem')).getByRole('button', { name: '2 more columns' })).toBeInTheDocument()
+  })
+
   test('with no rows it says so and offers the way forward, instead of an empty table', () => {
     render(
       <DataList

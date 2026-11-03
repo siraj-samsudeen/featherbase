@@ -16,7 +16,8 @@ import { saveDoc } from './document'
 import { logActivity } from './audit'
 import { queueEmail, type MailMessage } from './email'
 import { NO_RECIPIENTS, recordUndeliveredNotice, systemManagerEmails } from './system-notice'
-import { readMotherDuck, type WarehouseReader } from './motherduck-reader'
+import { readMotherDuck } from './motherduck-hosted'
+import type { WarehouseReader } from './motherduck-reader'
 
 export const LEAVER_CHECK_JOB = 'disable_leavers'
 export const LEAVER_CHECK_SUBJECT = 'Leaver check: people disabled from the StyleHR record'
@@ -188,7 +189,8 @@ export function planLeavers(
 // ------------------------------------------------------------- reading
 
 /** Every enabled person with a current StyleHR link: a record number or an
- *  employee code, from their identifiers or their StyleHR sign-in. */
+ *  employee code from their identifiers, or the record number their StyleHR
+ *  sign-in carries. */
 async function linkedPeople(): Promise<LinkedPerson[]> {
   const rows = await sql`
     with links as (
@@ -198,7 +200,7 @@ async function linkedPeople(): Promise<LinkedPerson[]> {
       select person_id, 'code', value from person_identifier
       where system = 'stylehr-employee-code' and upper_inf(valid) and value is not null
       union
-      select person_id, case when subject_kind = 'record-id' then 'record' else 'code' end, subject from sign_in_identity
+      select person_id, 'record', subject from sign_in_identity
       where method = 'stylehr' and ended_at is null and subject is not null
     )
     select p.row_id, p.full_name, p.updated_at,

@@ -1,155 +1,43 @@
 // The migrator run in this process through `main(argv, io)` (ADR 0012).
 //
-// Most cases need a database of their own: a fresh one, or one with a ledger
-// shaped as no migrated database is. The migrator's connection is fixed when
-// `src/db` is first loaded, so each of those cases loads a fresh copy of the
-// module graph pointed at its own disposable database, then drops it. The
-// rest run on the shared test database inside a rolled-back sandbox.
+// A database is either empty (a fresh install) or one the migrator has
+// migrated (it has the ledger); a database with no ledger that is not empty
+// is refused. Each case needs a database of its own; the migrator's
+// connection is fixed when `src/db` is first loaded, so each loads a fresh
+// copy of the module graph pointed at a disposable database, then drops it.
+// The rest run on the shared test database inside a rolled-back sandbox.
 import { readdirSync } from 'node:fs'
 import { afterAll, describe, expect, it } from 'vitest'
 import { _getUnqualifiedSql, sql, withTransaction } from '../src/db'
 import { applyMigrationFile, pendingMigrations } from '../src/migrate'
 import { runMain } from './command-io'
 import { test } from './pg-test'
-import { dropScratchDatabases, scratchDatabase } from './scratch-database'
+import { dropScratchDatabases, scratchDatabase, scratchInstalled } from './scratch-database'
 
 afterAll(dropScratchDatabases, 60_000)
 
-/** Every migration file name, in the order they apply. Read from disk, not
- *  from the shared test database's ledger, which can also name a retired file
- *  (0124_script_api_featherbase.sql, replaced in #556). */
-async function allMigrations(): Promise<string[]> {
+type Scratch = Awaited<ReturnType<typeof scratchDatabase>>
+
+/** Every migration file on disk, in the order they apply. */
+function allMigrations(): string[] {
   return readdirSync(new URL('../migrations', import.meta.url)).filter((f) => f.endsWith('.sql') || f.endsWith('.ts')).sort()
 }
 
-describe('migrate: a database of its own', () => {
-  it('migrates a fresh database to the current schema, stamps it, and a second run applies nothing', async () => {
-    const scratch = await scratchDatabase()
-    try {
-      const first = await runMain(scratch.migrate.main, [])
-      expect(first).toMatchObject({ code: 0, stderr: '' })
-      const ledger = (await scratch.db`select name from featherbase.migration`).map((r) => String(r.name)).sort()
-      expect(ledger).toEqual(await allMigrations())
-      expect(await scratch.db`select value from featherbase.internal_metadata where key = 'environment'`).toEqual([{ value: 'test' }])
-      expect(await scratch.migrate.pendingMigrations()).toEqual([])
-      expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
-      expect(await scratch.db`select count(*)::int as n from featherbase.migration`).toEqual([{ n: ledger.length }])
-    } finally {
-      await scratch.close()
-    }
-  }, 240_000)
+const ledger = async (s: Scratch) => (await s.db`select name from featherbase.migration order by name collate "C"`).map((r) => String(r.name))
 
-  it('refuses a database with both a public and a featherbase ledger, before changing anything', async () => {
-    const scratch = await scratchDatabase(`create table public.migration (name text primary key);
-      create schema featherbase; create table featherbase.migration (name text primary key)`)
-    try {
-      const r = await runMain(scratch.migrate.main, [])
-      expect(r.code).toBe(1)
-      expect(r.stderr).toContain('Refusing to run: both public and featherbase migration ledgers exist')
-      await expect(scratch.migrate.pendingMigrations()).rejects.toThrow('Refusing to run: both public and featherbase migration ledgers exist')
-      expect(await scratch.db`select count(*)::int as n from featherbase.migration`).toEqual([{ n: 0 }])
-    } finally {
-      await scratch.close()
-    }
-  }, 60_000)
-
-  it('refuses a legacy database that has not reached 0087, naming what it lacks', async () => {
-    const scratch = await scratchDatabase(`create table public.migration (name text primary key, applied_at timestamptz not null default now());
-      insert into public.migration (name) values ('0001_init.sql')`)
-    try {
-      const r = await runMain(scratch.migrate.main, [])
-      expect(r.code).toBe(1)
-      expect(r.stderr).toContain('Legacy database requires an intermediate historical upgrade through 0087; missing migrations:\n0002_')
-      expect(r.stderr).not.toContain('0001_init.sql\n')
-      expect(await scratch.db`select to_regclass('featherbase.migration') as m`).toEqual([{ m: null }])
-    } finally {
-      await scratch.close()
-    }
-  }, 60_000)
-
-  it('applies a missing pre-0094 file to a legacy database in public storage, and records it in the legacy ledger', async () => {
-    const recorded = (await allMigrations()).filter((f) => f !== '0089_app_enablement.sql')
-    const scratch = await scratchDatabase(`create table public.migration (name text primary key, applied_at timestamptz not null default now());
-      create table public.installed_app (name text primary key)`)
-    try {
-      await scratch.db`insert into public.migration ${scratch.db(recorded.map((name) => ({ name })))}`
-      expect(await scratch.migrate.pendingMigrations()).toEqual(['0089_app_enablement.sql'])
-      expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
-      expect(await scratch.db`select 1 from public.migration where name = '0089_app_enablement.sql'`).toHaveLength(1)
-      expect((await scratch.db`select column_name from information_schema.columns
-        where table_schema = 'public' and table_name = 'installed_app' order by column_name`).map((r) => r.column_name))
-        .toEqual(['enabled', 'name', 'runtime_package'])
-    } finally {
-      await scratch.close()
-    }
-  }, 60_000)
-})
-
-// running-an-instance "The person-record changes stand or fall together":
-// 0100, 0101, 0101a and 0102 apply as one transaction. A database stopped at
-// 0099 (later files recorded so they stay out of the way) gets a stray
-// `person_identifier` that only 0102 trips over — the last member fails, and
-// none of the four may be left applied. With the obstacle gone, the next run
-// applies the four once.
-describe('migrate: the person-record changes', () => {
-  const GROUP = ['0100_person_identities.ts', '0101_person_rename.ts', '0101a_service_account_name_unique.sql', '0102_person_resolution.ts']
-
-  it('one failing person change leaves none of them applied, and the next run applies them once', async () => {
-    const later = (await allMigrations()).filter((f) => f >= '0100')
-    expect(later).toEqual(expect.arrayContaining(GROUP))
-    const scratch = await scratchDatabase(`create schema featherbase;
-      create table featherbase.migration (name text primary key, applied_at timestamptz not null default now())`)
-    try {
-      await scratch.db`insert into featherbase.migration ${scratch.db(later.map((name) => ({ name })))}`
-      expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
-      await scratch.db`delete from featherbase.migration where name in ${scratch.db(GROUP)}`
-      await scratch.db`insert into featherbase."user" (row_id, email, full_name, enabled, created_at, updated_at)
-        values ('staff-0701', 'staff.0701@store.example', 'Staff 0701', true, now(), now())`
-      await scratch.db.unsafe('create table featherbase.person_identifier (stray int)')
-
-      const failed = await runMain(scratch.migrate.main, [])
-      expect(failed.code).toBe(1)
-      // The failure is 0102's — the last member — adding person_identifier's
-      // foreign key to person (nothing earlier in the group touches that table).
-      expect(failed.stderr).toContain('column "person_id" referenced in foreign key constraint does not exist')
-      const relation = async (name: string) => (await scratch.db`select to_regclass(${name})::text as r`)[0].r
-      // 0100's identities, 0101's rename and re-id, 0101a's index: none remains.
-      expect(await relation('featherbase.user_identity')).toBeNull()
-      expect(await relation('featherbase.sign_in_identity')).toBeNull()
-      expect(await relation('featherbase.sign_in_method')).toBeNull()
-      expect(await relation('featherbase.person')).toBeNull()
-      expect(await relation('featherbase.service_account_label_lower_uq')).toBeNull()
-      expect(await relation('featherbase.identifier_system')).toBeNull()
-      expect(await scratch.db`select row_id from featherbase."user" where email = 'staff.0701@store.example'`).toEqual([{ row_id: 'staff-0701' }])
-      expect(await scratch.db`select name from featherbase.migration where name in ${scratch.db(GROUP)}`).toEqual([])
-
-      await scratch.db.unsafe('drop table featherbase.person_identifier')
-      expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0 })
-      expect((await scratch.db`select name from featherbase.migration where name in ${scratch.db(GROUP)} order by name collate "C"`).map((r) => r.name)).toEqual(GROUP)
-      expect(await relation('featherbase.person')).toBe('featherbase.person')
-      expect(await scratch.db`select row_id from featherbase.person where email = 'staff.0701@store.example'`).toEqual([{ row_id: expect.stringMatching(/^psn_/) }])
-    } finally {
-      await scratch.close()
-    }
-  }, 240_000)
-})
-
+// First: a .ts migration's module, once loaded against a scratch database
+// below, keeps that database's (closed) connection.
 describe('migrate: one file', () => {
-  test('a migration that leaves two platform ledgers behind is refused', async () => {
-    await sql`delete from migration where name = '0123_instance_health.sql'`
-    await sql.unsafe('create table public.migration (name text primary key)')
-    await expect(sql.begin(() => applyMigrationFile('0123_instance_health.sql')))
-      .rejects.toThrow('Migration must leave exactly one platform migration ledger')
-  })
-
   test('a pending file reported, applied and recorded', async () => {
-    await sql`delete from migration where name = '0123_instance_health.sql'`
-    expect(await pendingMigrations()).toEqual(['0123_instance_health.sql'])
-    await sql.begin(() => applyMigrationFile('0123_instance_health.sql'))
+    await sql`delete from migration where name = '0003_mock_google_sign_in.ts'`
+    await sql`update sign_in_method set enabled = false where row_id = 'google'`
+    expect(await pendingMigrations()).toEqual(['0003_mock_google_sign_in.ts'])
+    await withTransaction(() => applyMigrationFile('0003_mock_google_sign_in.ts'))
     expect(await pendingMigrations()).toEqual([])
+    expect(await sql`select enabled from sign_in_method where row_id = 'google'`).toEqual([{ enabled: true }])
   })
 
-  test('the unqualified client the legacy files run on exists only inside a transaction', async () => {
+  test('the unqualified client the .sql files run on exists only inside a transaction', async () => {
     expect(() => _getUnqualifiedSql()).toThrow('_getUnqualifiedSql needs a transaction (withTransaction)')
     // Unqualified: `migration` resolves by search_path, not to featherbase.migration.
     await expect(withTransaction(async () => {
@@ -157,4 +45,134 @@ describe('migrate: one file', () => {
       await _getUnqualifiedSql().unsafe('select 1 from migration')
     })).rejects.toThrow('relation "migration" does not exist')
   })
+})
+
+describe('migrate: a new database', () => {
+  it('runs the baseline and the files after it, stamps the database, and a second run applies nothing', async () => {
+    const scratch = await scratchDatabase()
+    try {
+      const first = await runMain(scratch.migrate.main, [])
+      expect(first).toMatchObject({ code: 0, stderr: '' })
+      expect(first.stdout).toBe(`${allMigrations().map((f) => `applied ${f}\n`).join('')}migrations up to date (${allMigrations().length} total)\n`)
+      expect(await ledger(scratch)).toEqual(allMigrations())
+      expect(await scratch.db`select value from featherbase.internal_metadata where key = 'environment'`).toEqual([{ value: 'test' }])
+      // The steps after the baseline ran: a test run's Administrator gets the
+      // default password, and the suite's mock Google provider is enabled.
+      expect(await scratch.db`select password_hash is not null as set from featherbase.person where row_id = 'Administrator'`).toEqual([{ set: true }])
+      expect(await scratch.db`select enabled from featherbase.sign_in_method where row_id = 'google'`).toEqual([{ enabled: true }])
+      expect(await scratch.migrate.pendingMigrations()).toEqual([])
+      expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stdout: `migrations up to date (${allMigrations().length} total)\n` })
+    } finally {
+      await scratch.close()
+    }
+  }, 120_000)
+
+  it('a database with no ledger that already holds a table is refused, before changing anything', async () => {
+    const scratch = await scratchDatabase('create table public.someone_elses (id int primary key)')
+    try {
+      const relations = () => scratch.db`select relname from pg_class where relnamespace = 'public'::regnamespace order by 1`
+      const before = await relations()
+      const r = await runMain(scratch.migrate.main, [])
+      expect(r.code).toBe(1)
+      expect(r.stderr).toContain('Refusing to migrate: this database is not empty and has no Featherbase ledger (it holds table public.someone_elses); use a new database.')
+      expect(await scratch.db`select to_regnamespace('featherbase') as r`).toEqual([{ r: null }])
+      expect(await relations()).toEqual(before)
+      await expect(scratch.migrate.pendingMigrations()).rejects.toThrow('use a new database')
+    } finally {
+      await scratch.close()
+    }
+  }, 60_000)
+
+  it('an empty ledger beside platform tables is refused the same way', async () => {
+    const scratch = await scratchDatabase(`create schema featherbase; create table featherbase.person (row_id text primary key);
+      create table featherbase.migration (name text primary key, applied_at timestamptz not null default now())`)
+    try {
+      const r = await runMain(scratch.migrate.main, [])
+      expect(r.code).toBe(1)
+      expect(r.stderr).toContain('this database is not empty and has no Featherbase ledger (it holds table featherbase.person)')
+      expect(await ledger(scratch)).toEqual([])
+      expect(await scratch.db`select to_regclass('featherbase.internal_metadata') as r`).toEqual([{ r: null }])
+    } finally {
+      await scratch.close()
+    }
+  }, 60_000)
+
+})
+
+// Empty means no object in any user schema: not only tables, and not only in
+// featherbase and public. Each refusal leaves no ledger and no platform schema.
+describe('migrate: what counts as not empty', () => {
+  const refused = async (setup: string, holds: string, featherbaseExisted = false) => {
+    const scratch = await scratchDatabase(setup)
+    try {
+      const r = await runMain(scratch.migrate.main, [])
+      expect(r.code).toBe(1)
+      expect(r.stderr).toContain(`this database is not empty and has no Featherbase ledger (it holds ${holds}); use a new database.`)
+      expect(await scratch.db`select to_regclass('featherbase.migration') as m, to_regclass('featherbase.internal_metadata') as s`).toEqual([{ m: null, s: null }])
+      expect(await scratch.db`select to_regnamespace('featherbase') is not null as present`).toEqual([{ present: featherbaseExisted }])
+    } finally {
+      await scratch.close()
+    }
+  }
+
+  it('a table in a schema of its own, with public empty', () =>
+    refused('create schema business; create table business.orders (id int primary key)', 'schema business'), 60_000)
+
+  // Only the system's pg_toast*/pg_temp* schemas are skipped: a name that merely
+  // looks like one (an underscore is a LIKE wildcard) still counts.
+  it('a table in a schema whose name only resembles a system one', () =>
+    refused('create schema pgxtemp_business; create table pgxtemp_business.orders (id int primary key)', 'schema pgxtemp_business'), 60_000)
+
+  it('an enum in public', () =>
+    refused("create type public.order_state as enum ('open', 'closed')", 'type public.order_state'), 60_000)
+
+  it('a function in featherbase, which the baseline would collide with', () =>
+    refused('create schema featherbase; create function featherbase.fc_cancel_email_invites() returns int language sql as $$ select 1 $$',
+      'function featherbase.fc_cancel_email_invites', true), 60_000)
+
+  it('a database holding only an extension still counts as empty, and installs', async () => {
+    const scratch = await scratchDatabase('create extension btree_gist')
+    try {
+      expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
+      expect(await ledger(scratch)).toEqual(allMigrations())
+    } finally {
+      await scratch.close()
+    }
+  }, 120_000)
+})
+
+describe('migrate: an installed database', () => {
+  it('gets only the migrations its ledger does not record', async () => {
+    const scratch = await scratchInstalled()
+    try {
+      await scratch.db`delete from featherbase.migration where name = '0003_mock_google_sign_in.ts'`
+      expect(await scratch.migrate.pendingMigrations()).toEqual(['0003_mock_google_sign_in.ts'])
+      const r = await runMain(scratch.migrate.main, [])
+      expect(r).toMatchObject({ code: 0, stderr: '' })
+      expect(r.stdout).toBe(`applied 0003_mock_google_sign_in.ts\nmigrations up to date (${allMigrations().length} total)\n`)
+      expect(await ledger(scratch)).toEqual(allMigrations())
+    } finally {
+      await scratch.close()
+    }
+  }, 120_000)
+
+  // #693: a database installed from 0001–0004 has no hosted_domain column;
+  // 0005 adds it and keeps the links it already holds.
+  it('installed before 0005: 0005 adds sign_in_identity.hosted_domain and keeps its rows', async () => {
+    const scratch = await scratchInstalled()
+    try {
+      await scratch.db`alter table featherbase.sign_in_identity drop column hosted_domain`
+      await scratch.db`delete from featherbase.migration where name = '0005_sign_in_identity_hosted_domain.sql'`
+      await scratch.db`insert into featherbase.sign_in_identity (id, person_id, method, subject, email, linked_by)
+        values ('uid_before_0005', 'Administrator', 'google', 'g-before-0005', 'admin@example.com', 'self')`
+      expect(await scratch.migrate.pendingMigrations()).toEqual(['0005_sign_in_identity_hosted_domain.sql'])
+      expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
+      expect(await scratch.db`select id, subject, email, linked_by, hosted_domain from featherbase.sign_in_identity where id = 'uid_before_0005'`).toEqual([
+        { id: 'uid_before_0005', subject: 'g-before-0005', email: 'admin@example.com', linked_by: 'self', hosted_domain: null },
+      ])
+      expect(await ledger(scratch)).toEqual(allMigrations())
+    } finally {
+      await scratch.close()
+    }
+  }, 120_000)
 })

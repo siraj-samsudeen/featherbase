@@ -60,3 +60,48 @@ export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'document
   recordView(details?: { dataset?: string }): Promise<void>
 }
 export type RuntimeReadHandler = (context: RuntimeReadContext) => unknown | Promise<unknown>
+
+/** #700: the grants an app job may declare. A job holds only those it names. */
+export const APP_JOB_GRANTS = ['read_people', 'disable_people', 'email_system_managers'] as const
+export type AppJobGrant = (typeof APP_JOB_GRANTS)[number]
+
+/** #700: one enabled person, as an app job holding `read_people` sees them. */
+export interface AppJobPerson {
+  readonly person: string
+  readonly full_name: string | null
+  readonly email: string | null
+  /** Administrator or a System Manager: never disabled by a job. */
+  readonly privileged: boolean
+  /** Current values of the identifier systems the job declares, by system. */
+  readonly identifiers: Readonly<Record<string, readonly string[]>>
+}
+
+/** #700: what an app's scheduled job handler gets. It runs as the job's own
+ *  system actor, which holds no role: each capability below works only when
+ *  the job declares the grant it needs, and is refused otherwise. */
+export interface RuntimeJobContext {
+  /** The job's registered name (`<app>.<job>`), which is also its actor. */
+  readonly job: { readonly name: string; readonly run: string; readonly trigger: string }
+  readonly settings: Readonly<Record<string, string>>
+  /** Never return, log or store one. */
+  readonly secrets: Readonly<Record<string, string>>
+  /** The datasets the job declares, every row (a job has no places). */
+  readonly datasets: RuntimeReadContext['datasets']
+  readonly people: {
+    /** `read_people`: every enabled person. */
+    list(): Promise<AppJobPerson[]>
+    /** `disable_people`: disable one person. False when they are already
+     *  disabled, gone, or privileged (never disabled by a job). */
+    disable(person: string, reason: string): Promise<boolean>
+  }
+  readonly email: {
+    /** `email_system_managers`: mail every System Manager. The count mailed;
+     *  0 when none has an address (recorded as an undelivered notice). */
+    systemManagers(message: { subject: string; body: string }): Promise<number>
+  }
+  /** A one-line outcome kept on the run's record. */
+  setResult(text: string): void
+  /** End the run as refused: recorded and alerted, not retried. */
+  refuse(reason: string): void
+}
+export type RuntimeJobHandler = (context: RuntimeJobContext) => unknown | Promise<unknown>

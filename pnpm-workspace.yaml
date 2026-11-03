@@ -1,3 +1,28 @@
 packages:
   - apps/*
   - packages/*
+
+# esbuild checks its platform binary, fetching it if the optional dependency
+# carrying it is missing (#692). pnpm 12 uses allowBuilds for this permission.
+allowBuilds:
+  esbuild: true
+
+# Exact patches approved in #747 item 3, published within pnpm 12's default
+# 24-hour release-age window. Keep that default for every other release.
+minimumReleaseAgeExclude:
+  - '@tanstack/query-core@5.105.1'
+  - '@tanstack/react-query@5.105.1'
+  - hono@4.13.16
+
+# Audit findings in the coverage tooling that no release of its parents fixes
+# yet (#747): glob 13 (GHSA-3g3m-2fjr-6pw4) and minimatch 10
+# (GHSA-g3hv-75wg-m249). Every copy comes from nyc and the test-exclude that
+# nyc and vite-plugin-istanbul use, and their latest releases (nyc 18.0.0,
+# test-exclude 8.0.0) still ask for glob ^13 and minimatch ^10. Drop each line
+# once those parents allow the fixed major.
+overrides:
+  glob@<14.0.2: ^14.0.2
+  minimatch@<11.0.1: ^11.0.1
+
+patchedDependencies:
+  '@fission-ai/openspec@1.16.0': patches/@fission-ai__openspec@1.16.0.patch

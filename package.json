@@ -1,24 +1,35 @@
 {
   "name": "featherbase",
   "private": true,
+  "bin": {
+    "featherbase": "tools/featherbase.mjs"
+  },
   "scripts": {
-    "apps:prepare": "npm ci --prefix runtime-apps/tasker --ignore-scripts && npm test --prefix runtime-apps/tasker && npm run build --prefix runtime-apps/tasker && npm run build --prefix runtime-apps/scope-proof",
+    "featherbase": "node tools/featherbase.mjs",
+    "dev": "node tools/dev.mjs",
+    "dev:jeyarama": "node tools/dev.mjs jeyarama/dash",
+    "apps:prepare": "node tools/prepare-apps.mjs",
     "apps:prove": "node tools/prove-runtime-packages.mjs",
     "seed:tasker": "node tools/seed-tasker-development.mjs",
-    "check:openspec:specs": "openspec validate --specs --strict --no-interactive",
+    "check:openspec:specs": "node --test tools/openspec-validation.test.mjs && openspec validate --specs --strict --no-interactive",
     "check:openspec:changes": "openspec validate --changes --strict --no-interactive",
     "check:specs": "pnpm check:openspec:specs && pnpm check:openspec:changes && pnpm check:unarchived-changes",
     "check:unarchived-changes": "node --test tools/check-unarchived-changes.test.mjs && node tools/check-unarchived-changes.mjs",
     "check:e2e-dsl": "node --test tools/check-e2e-dsl.test.mjs && node tools/check-e2e-dsl.mjs",
     "check:sensitive": "node --test tools/check-sensitive.test.mjs && node tools/check-sensitive.mjs",
+    "check:dev": "node --test tools/dev.test.mjs tools/build-instance-apps.test.mjs tools/featherbase.test.mjs",
+    "check:ci-scope": "node --test tools/ci-scope.test.mjs",
+    "check:app-versions": "node --test tools/check-app-versions.test.mjs && node tools/check-app-versions.mjs",
     "check:vocabulary": "node --test tools/check-vocabulary.test.mjs && node tools/check-vocabulary.mjs",
+    "check:platform-imports": "node --test tools/check-platform-imports.test.mjs && node tools/check-platform-imports.mjs",
     "smoke": "pnpm --filter server test:smoke && pnpm --filter web smoke",
     "test": "pnpm -r test",
-    "test:coverage": "pnpm -r test:coverage",
+    "test:coverage": "pnpm -r test:coverage && npm run test:coverage --prefix example-apps/tasker",
     "test:all": "pnpm -r test && pnpm --filter web e2e"
   },
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@12.16.1+sha512.091d1dee7927575661b25dab3c2ae31cafc1c54d6b71ed6a6600cf0c1cb10434a447eae14015f1b23e2e6bedeed79df94a932e2164d2832280dce3fb32f656d1",
   "devDependencies": {
-    "@fission-ai/openspec": "1.13.2"
+    "@fission-ai/openspec": "1.16.0",
+    "railway": "3.16.0"
   }
 }

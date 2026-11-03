@@ -44,9 +44,11 @@ pnpm check:e2e-dsl                               # e2e specs use the DSL fixture
 ```
 
 Run `pnpm apps:prepare` after installing dependencies and before the server
-and web suites: it builds the runtime packages under `runtime-apps/` (Tasker
-has its own npm lockfile and is not a pnpm workspace member). CI and
-`./init.sh` do this for you.
+and web suites: it builds the app packages the suites install
+(`example-apps/tasker`, `test-apps/scope-proof`, `client-apps/jeyarama/dash`;
+the apps have their own npm lockfiles and are not pnpm workspace members). CI
+and `./init.sh` do this for you. It installs and builds; it does not run the
+apps' tests. Those are each app's `npm test`, and CI's.
 
 `typecheck` runs `tsc` twice — on `src`, then on `tsconfig.test.json`, which
 adds the test directories (and for web `e2e/` and the Vite/Playwright
@@ -59,12 +61,24 @@ tears them down. `pnpm smoke` does not; it drives whatever is already up on
 `:5173`, which is why `./init.sh` runs it as its boot check.
 
 **CI** (`.github/workflows/test.yml`) runs everything on every push to `main`.
-On a pull request it runs the static checks, both typechecks, the server suite
-(three shards), the web and shared suites and the PostgreSQL 18 release
-preflight, and runs e2e **only** when the PR touches `apps/web/**`,
-`packages/**`, `runtime-apps/**`, the lockfile, the root `package.json`,
-`pnpm-workspace.yaml` or the workflow. Add the `run-e2e` label to force it
-(say, a server change to a route the UI depends on).
+On a pull request `tools/ci-scope.mjs` picks the suites from the changed paths:
+
+| A PR changes | What runs |
+|---|---|
+| `*.md`, `docs/**`, `openspec/**`, agent files | the fast checks: specs, sensitive data, vocabulary, the other guards |
+| `client-apps/**` | fast checks, the app's `npm test` and platform tests |
+| `example-apps/**` | fast checks, Tasker's unit tests, the server and web tests that name an example app, its runtime components and packaged journeys |
+| `apps/server/**`, `docs/DEPLOY.md` | fast checks, typechecks, server suite, release preflight, client platform tests |
+| `apps/web/**` | fast checks, typechecks, web suite, e2e, merged coverage |
+| anything else (`packages/**`, lockfile, `package.json`, `tools/**`, workflows) | everything |
+
+A change across several areas gets the union. Add the `run-all` label to force
+everything, or `run-e2e` for e2e alone (say, a server change to a route the UI
+depends on). `unit` and `e2e` report on every PR, so never add a workflow-level
+`paths` filter to `test.yml`. The checks also fail a PR that changes an app's
+`version` to one not greater than `main`'s (`pnpm check:app-versions`).
+
+A scoped PR can break what it did not run; that shows on `main`, which runs it all.
 
 ## The sandbox model
 
@@ -146,6 +160,13 @@ Every non-sandboxed test file says why in its header comment.
   apply commits while they wait (#493). Create a disposable database
   `featherbase_<worker>_settings_commit_e2e`, migrate it, and run the opt-in
   command in the test's header; CI runs it in shard 3. It keeps its records.
+- `apps/server/test/security-concurrency-commit.test.ts` proves concurrent
+  workflow actions have one winner (#572), conditions are checked after a
+  waiting edit commits, and comment/file/share saves serialize with parent
+  rename/delete in either order (#599). Create the disposable local database
+  `featherbase_security_concurrency_commit_e2e` and run the opt-in command in
+  its header. Global setup migrates it; the tests check its environment stamp
+  and keep their records. Never use a default development or test database.
 - `pnpm apps:prove` builds the runtime packages as npm tarballs, runs them on
   plain Node against compiled core through real restarts, and writes evidence
   to `dist/runtime-proof-*/`. It uses only `featherbase_runtime_proof_e2e`
@@ -236,21 +257,35 @@ say why in a comment; `page.goto` for incidental fixture navigation is fine.
 
 Coverage is per package, collected only by `pnpm test:coverage` (never by
 plain `pnpm test`) and scoped to each package's `src/` — v8 for server and
-shared, Istanbul for web. E2E is not attributable to these numbers, and the
-server's `migrations/` and `patches/` are excluded (a separate process applies
-them; shipped migrations are append-only history).
+shared, Istanbul for web. The standalone web number counts component tests;
+the merged web report below also counts E2E. The server's `migrations/` are
+excluded (a separate process applies them; shipped migrations are append-only
+history). Hosted MotherDuck I/O is an explicit excluded boundary in
+`motherduck-hosted.ts`; local token validation and query construction remain
+measured. Thus even a 100% report does not claim to test the hosted service.
 
-The floors live only in each package's `vitest.config.ts` `coverage.thresholds`
-and only rise. CI fails a suite that drops below. The server suite's three CI
-shards run with thresholds zeroed and the `unit` job enforces the floor on the
-merged shard reports; locally each suite runs whole against its floor.
+Standalone floors live in each package's `vitest.config.ts`
+`coverage.thresholds`; merged-report scripts enforce the combined-source
+gates. Floors only rise. The server suite's three CI shards run with thresholds
+zeroed and the `unit` job enforces the floor on the merged shard reports, only
+when the server suite ran; locally each suite runs whole against its floor.
 
-Under ADR 0012 the server reached 100% of lines and functions, except
-release-preflight's PostgreSQL 18 checks (CI's `release-preflight-pg18` job).
-Its gates are functions 100, lines and statements 99.5, branches 90.
-`src/sources/mysql-driver.ts` is measured only when `MYSQL_TEST_URL` is set
-(CI sets it). A coverage ignore is allowed only as ADR 0012 lists, with its
-reason in the comment.
+[ADR 0017](../adr/0017-backend-coverage-non-regression-baselines.md) supersedes
+ADR 0016's immediate 100% gates with owner-approved maximum uncovered counts:
+core 232 statements, 870 branch arms, 22 functions and 25 lines; Dash 2
+statements, 17 branch arms, 2 functions and 0 lines. Tasker remains at 100%.
+These are exact counts, not rounded percentage floors; one additional uncovered
+item fails. Tighten the caps as coverage improves. Keep every measured source
+and existing exclusion unchanged. The goal remains 100%, not a claim that it
+has been achieved. Frontend coverage policy is unchanged.
+
+CI merges the PostgreSQL 18 release-preflight coverage with the server's
+three shards before enforcing the server gate. `src/sources/mysql-driver.ts`
+is measured only when `MYSQL_TEST_URL` is set (CI sets it for both the shards
+and the merge). A local run without MySQL is not an all-driver coverage
+claim. A coverage ignore is allowed only as ADR 0012 lists, with its reason
+in the comment. Read the generated report and exclusions, not an old
+percentage in documentation, to assess the current code.
 
 A `packages/shared` module driven only from the server and web suites reads as
 uncovered in shared's own report.
@@ -270,19 +305,132 @@ pnpm --filter web coverage:merged  # → apps/web/coverage-merged/index.html
 
 - `coverage:e2e` sets `E2E_COVERAGE=1`; only then does Playwright start the web
   server with `VITE_COVERAGE=true`, which adds `vite-plugin-istanbul` (the
-  normal dev server and `vite build` never see it). Tests get 60s instead of 30s.
+  normal dev server and `vite build` never see it). It also builds Tasker
+  with instrumentation. Tests get 60s instead of 30s.
 - `e2e/fixtures.ts` collects `window.__coverage__` from every page of both
-  fixtures, carrying counters across navigations via `sessionStorage`. Pages a
-  spec opens in its own `browser.newContext()` are not collected.
+  fixtures, including contexts a spec creates through `browser.newContext()`.
+  Before navigation it transfers maps directly to Node, including across
+  origins; `sessionStorage` carries fallback counters. Per-document deltas
+  prevent counting the same execution twice.
 - `scripts/coverage-merge.mjs` remaps each input to source lines *before*
   merging (`nyc merge` would add served-code counters to source-level ones).
-- The jsdom run's own thresholds gate CI's `unit-web` job; the merged run is
-  done by hand. To run it beside `./init.sh`, move the ports and give it a
-  private `DATABASE_URL`.
+  It uses Vitest's Istanbul remapper to retain implicit branch arms, and
+  refuses incompatible statement, function or branch inventories. The merge
+  command first runs a regression test using genuine instrumented executions.
+  It requires both suites and refuses missing executable source files,
+  including the SPA and gallery entries.
+- The jsdom run's own thresholds gate CI's `unit-web` job; CI's
+  `coverage-merged` job combines it with the browser run, when both ran. To run E2E beside
+  `./init.sh`, move the ports and give it a private `DATABASE_URL`.
 - Both web suites strip comments before instrumenting, so a coverage hint
   before a statement must be a legal comment —
   `/* istanbul ignore next -- <reason> @preserve */`; one inside an expression
   (the argument of `.catch(...)`) survives as it is.
+
+### Tasker coverage across runtime layers
+
+Tasker is an independent npm package. Its unit report supplies zero counters
+for every executable source file, including the server and nested help page.
+Merge it with the existing real-server component tests, owning server HTTP
+tests, browser tests above, and packaged acceptance journeys. All layers use
+the same Istanbul instrumentation; mixing V8 counters with these maps is
+rejected rather than reporting a false percentage.
+
+```bash
+rm -rf coverage/tasker
+npm run test:coverage --prefix example-apps/tasker
+VITE_COVERAGE=true npm run build --prefix example-apps/tasker
+pnpm --filter web exec vitest run --config ../../tools/vitest.runtime-components.config.ts
+pnpm --filter server exec vitest run --config ../../example-apps/tasker/vitest.integration.config.ts
+VITE_COVERAGE=true pnpm apps:prove
+# Run web coverage:e2e above before merging; it supplies the browser maps.
+npm run coverage:merged --prefix example-apps/tasker -- \
+  --browser-dir "$PWD/apps/web/.nyc_output" \
+  "$PWD"/coverage/tasker/components/coverage-final.json \
+  "$PWD"/coverage/tasker/integration/*.json \
+  "$PWD"/coverage/tasker/packaged/*.json
+```
+
+Use a disposable `DATABASE_URL` for HTTP tests. Packaged acceptance uses its
+own guarded `*_e2e` database as described above. Reports live at the repository
+root under `coverage/tasker/`, never inside the fingerprinted runtime app.
+Do not rebuild or edit an app while a server using its artifact is running:
+installed versions require their exact fingerprint. CI collects the HTTP and
+packaged layers after E2E, then publishes the merged runtime report alongside
+the web report. The runtime merger requires every line, statement and function
+to be covered, comparing exact counts rather than rounded percentages. It also
+requires every branch arm in Tasker's owned esbuild server-entry import closure
+to be covered; missing source coverage fails rather than shrinking that scope.
+This does not gate frontend branches or count platform backend code as Tasker.
+Each collector clears only its own previous output before a run; fresh browser
+collection preserves the independent component report.
+
+### Dash frontend coverage
+
+Dash's frontend profile is separate from its backend collector. It derives
+the executable source inventory from the browser entry's esbuild import
+closure and rejects missing or extra files. An unexecuted entry remains in
+the denominator. The profile includes public formatting contracts and page
+tests that use the real platform server and SQLSandbox; the older tests
+that inject API responses are not inputs to this report.
+
+After `pnpm apps:prepare`, use the explicitly named disposable local database:
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/featherbase_dash_frontend_test \
+  npm run test:coverage:frontend --prefix client-apps/jeyarama/dash
+npm run typecheck:frontend --prefix client-apps/jeyarama/dash
+```
+
+The report is `coverage/dash-frontend/coverage-final.json` with a summary and
+HTML beside it. This is frontend coverage only, not backend coverage or
+evidence of hosted warehouse or embedded-frame integration. There is no
+100% frontend gate yet: add it only when the actual report reaches 100%,
+without excluding executable source or weakening existing gates.
+
+### Dash backend coverage
+
+Both backend profiles use the same per-source Istanbul instrumentation.
+The platform profile instruments the original modules before bundling only
+the disposable copied app; the packageable app artifact stays unchanged.
+The denominator is the actual `src/server.ts` esbuild import closure, not
+the platform server's source or Dash's frontend.
+
+```bash
+npm run test:coverage:backend --prefix client-apps/jeyarama/dash
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/featherbase_dash_backend_test \
+  npm run test:coverage:backend:platform --prefix client-apps/jeyarama/dash
+npm run coverage:backend:merged --prefix client-apps/jeyarama/dash
+```
+
+The merger requires both complete source inventories and identical statement,
+function and branch maps before adding counters. It writes exact covered/total
+counts under `coverage/dash-backend/merged/` and fails if any uncovered count
+exceeds its ADR 0017 baseline, or any metric is empty.
+These commands do not prove hosted MotherDuck behavior. Old V8 profiles have
+incompatible remapping: regenerate both profiles rather than mixing them with
+these reports. A valid merge is not a claim that its coverage gate passes.
+
+### Mutation testing
+
+```bash
+npm ci --prefix tools/mutation --no-audit --no-fund
+npm test --prefix tools/mutation
+```
+
+This pinned Stryker runner copies the current shared source and tests into a
+disposable directory; it never mutates the checkout or touches a database.
+It runs every shared test, mutating the route, date, row-title and person-scope
+modules listed in `tools/mutation/stryker.config.json`. Its score describes
+that slice, not the backend or the whole project. Reports are written under
+`tools/mutation/reports/` and there is no mutation-score gate.
+
+The runner uses forks because changing `process.env.TZ` does not change
+Date's clock inside Node worker threads. A survivor means a mutation was not
+detected: inspect the contract and add a discriminating assertion where
+needed. It is not evidence that the original code is unused. Remove code
+only after checking real callers and reachability; keep equivalent mutants,
+uncovered mutants and runtime errors distinct from assertion kills.
 
 ## Tasker development scenarios
 
@@ -299,4 +447,4 @@ a transparent proxy, so never point it through a tunnel, port forward or
 proxy, or at any shared, QA, staging or production database. Rows have
 deterministic `DEV-TASKER-*` IDs; rerunning is safe and never overwrites a row
 a developer changed. Scenarios live in
-`runtime-apps/tasker/development/scenarios.mjs`.
+`example-apps/tasker/development/scenarios.mjs`.

@@ -42,6 +42,7 @@ const checkCol = (column_name: string) => ({ column_name, label: column_name, co
 // itself, so a resolver that stops early binds nothing at all.
 test('discovery reaches a checklist in the third Sub-table, past two near-misses', async ({
   admin,
+  createUser,
 }) => {
   for (const child of [
     subTable('Third Sub Attachment', [dataCol('caption')]),
@@ -77,10 +78,23 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
 
   // …and the run pane binds `steps`, the one carrying `done` — not the
   // near-miss ahead of it, and not nothing at all.
-  await renderApp(
+  const runView = await renderApp(
     `/featherbase/admin/Third%20Sub%20Parent/view/checklist?run=${encodeURIComponent(run.row_id)}`,
     admin,
   )
+  expect(await screen.findByText('Unlock the shutter')).toBeInTheDocument()
+  expect(screen.queryByText('not a checklist item')).not.toBeInTheDocument()
+  runView.unmount()
+
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Checklist Reader' } })
+  for (const ref_table of ['Third Sub Parent', 'Third Sub Step'])
+    await admin.post('/api/save_row', {
+      table: 'Permission', row: { ref_table, role: 'Checklist Reader', can_read: true },
+    })
+  const reader = await createUser({ roles: ['Checklist Reader'] })
+  // The first two metadata reads now really fail permission checks. They
+  // must not prevent discovery of the readable, qualifying third child.
+  await renderApp(`/featherbase/admin/Third%20Sub%20Parent/view/checklist?run=${encodeURIComponent(run.row_id)}`, reader)
   expect(await screen.findByText('Unlock the shutter')).toBeInTheDocument()
   expect(screen.queryByText('not a checklist item')).not.toBeInTheDocument()
 }, 15_000) // #619: creates four tables and traverses two screens on busy CI runners.
@@ -204,6 +218,13 @@ test('a note can be added to an item that is not ticked yet, and edited afterwar
   // The note is saved on the run, not just shown.
   const noted = (await admin.get(`/api/table/Checklist%20Run/${encodeURIComponent(run)}`)) as { items: { note: string | null }[] }
   expect(noted.items.map((i) => i.note)).toContain('Shutter jammed')
+
+  await userEvent.click(within(item()).getByTitle('Edit note'))
+  await userEvent.type(within(item()).getByTestId('checklist-note-input'), ' discarded{Escape}')
+  expect(within(item()).queryByTestId('checklist-note-input')).not.toBeInTheDocument()
+  expect(item()).toHaveTextContent('Note: Shutter jammed')
+  const cancelled = (await admin.get(`/api/table/Checklist%20Run/${encodeURIComponent(run)}`)) as { items: { note: string | null }[] }
+  expect(cancelled.items.map((i) => i.note)).toEqual(noted.items.map((i) => i.note))
 
   // Tapping it again edits it.
   await userEvent.click(within(item()).getByTitle('Edit note'))

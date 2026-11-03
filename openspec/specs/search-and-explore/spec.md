@@ -15,7 +15,10 @@ Feedback; this capability covers what that one doesn't.
 
 Searching SHALL only match rows the user can open, including any limit to
 rows they created or to a chosen set of rows. It SHALL never match rows from
-a Table whose data lives in a connected outside database.
+a Table whose data lives in a connected outside database, nor from a Table
+of an app that is turned off, awaiting activation of an upgrade, or upgraded
+since the user's page loaded. Such an app SHALL NOT stop search from
+answering with matches from every other Table.
 
 #### Scenario: Search stays within the user's own rows
 
@@ -35,6 +38,20 @@ a Table whose data lives in a connected outside database.
   Table connected to an outside database
 - **THEN** no result for that row appears, even though the Table itself can
   still be opened
+
+#### Scenario: A turned-off app does not break search
+
+- **WHEN** an installed app is turned off and someone searches for a value
+  found both in one of that app's Tables and in an ordinary Table
+- **THEN** the ordinary Table's row appears and the app's row does not
+- **AND** once the app is turned back on, its row appears again
+
+#### Scenario: An app upgraded while the page was open
+
+- **WHEN** an app with its own data changes is upgraded while the user's page
+  is open, and the user searches before reloading
+- **THEN** matches from every other Table appear, and the app's rows appear
+  again once the page is reloaded
 
 ### Requirement: Search shows a handful of best matches, not everything
 
@@ -169,3 +186,27 @@ Search results that are the platform's own definitions, such as a Table's defini
 
 - **WHEN** the user searches for a word that matches both a customer record and the definition of a Table with that word in its name
 - **THEN** the customer is listed first, and the definition is labelled as a Table definition
+
+### Requirement: Recent visits do not crowd out frequent destinations
+
+The user's navigation SHALL offer frequently used destinations alongside
+recent ones when there are frequent destinations not already shown.
+
+#### Scenario: Many recent visits
+
+- **WHEN** the user visits several new destinations after repeatedly using
+  an older destination
+- **THEN** the older destination remains available among frequently used
+  destinations without repeating one already shown as recent
+
+### Requirement: Open the last related row in place
+
+Selecting a row at the end of an Explore chain SHALL open its details in
+place without changing the selections that narrowed the chain.
+
+#### Scenario: Inspect the last pane
+
+- **WHEN** the user follows a supplier to its orders and then their items,
+  and selects one of the items
+- **THEN** the item's details open without leaving Explore
+- **AND** closing the details leaves the supplier and order selections intact

@@ -15,6 +15,72 @@ import { saveIdentifierSystem } from '../src/seed-packs'
 const ROSTER = { internal: { source: 'stylehr-roster-sync', verified: true } }
 
 describe('normalising', () => {
+  test('a digits-normalized public system refuses letters without mutations and keeps distinct numeric values searchable', async ({ admin }) => {
+    const system = 'coverage-digits'
+    await admin.post('/api/save_row', { table: 'Identifier System', row: {
+      row_id: system, label: 'Digits contact', kind: 'contact', normalise: 'digits', sensitivity: 'Normal', edited_by: 'system-manager',
+    } })
+    const { row_id: alpha } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Digits Alpha' } })
+    const { row_id: bravo } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Digits Bravo' } })
+    for (const [person, typed, value] of [[alpha, '12-03', '1203'], [bravo, '98 76', '9876']]) {
+      expect(await admin.post(`/api/people/${person}/identifiers`, { system, value: typed }))
+        .toMatchObject({ result: 'created', identifier: { person_id: person, system, value, verified: true } })
+    }
+    const snapshot = async () => ({
+      system: await sql`select * from identifier_system where row_id = ${system}`,
+      people: await sql`select * from person where row_id in (${alpha}, ${bravo}) order by row_id`,
+      identifiers: await sql`select * from person_identifier where system = ${system} order by id`,
+      audit: await sql`select * from activity_log where operation like 'identifier_%' order by row_id`,
+    })
+    const before = await snapshot()
+    const add = await admin.fetch(`/api/people/${alpha}/identifiers`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ system, value: '12A' }),
+    })
+    expect(add.status).toBe(417)
+    expect(await add.json()).toEqual({ error: { type: 'ValidationError', message: 'Digits only', fields: { value: 'invalid_format' } } })
+    expect(await snapshot()).toEqual(before)
+    const search = await admin.fetch(`/api/identifiers?${new URLSearchParams({ system, value: '12A' })}`)
+    expect(search.status).toBe(417)
+    expect(await search.json()).toEqual({ error: { type: 'ValidationError', message: 'Digits only', fields: { value: 'invalid_format' } } })
+    expect(await snapshot()).toEqual(before)
+    for (const [person, value] of [[alpha, '12 03'], [bravo, '98-76']]) {
+      expect(await admin.get(`/api/identifiers?${new URLSearchParams({ system, value })}`)).toEqual({ people: [{
+        person_id: person, resolved_to: person, replaced: false, current: true, assigner: '', pending_invite: false,
+      }] })
+    }
+    expect(await snapshot()).toEqual(before)
+  })
+
+  test('a public mobile system normalizes international 0091 and ordinary prefixes without conflating numbers', async ({ admin }) => {
+    const system = 'coverage-mobile'
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: system, label: 'Mobile contact', kind: 'contact' } })
+    expect(await admin.get(`/api/table/Identifier%20System/${system}`)).toMatchObject({
+      normalise: 'indian-mobile', sensitivity: 'Restricted', storage: 'plain', display: 'full', edited_by: 'self',
+    })
+    const { row_id: alpha } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Mobile Alpha' } })
+    const { row_id: bravo } = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Mobile Bravo' } })
+    const first = await admin.post<{ identifier: { id: string } }>(`/api/people/${alpha}/identifiers`, { system, value: '00919847012345' })
+    expect(first).toMatchObject({ result: 'created', identifier: { person_id: alpha, system, value: '+919847012345', verified: true } })
+    expect(await admin.post(`/api/people/${bravo}/identifiers`, { system, value: '+91 98470-99999' }))
+      .toMatchObject({ result: 'created', identifier: { person_id: bravo, system, value: '+919847099999', verified: true } })
+    const stored = await sql`select * from person_identifier where system = ${system} order by id`
+    const people = await sql`select * from person where row_id in (${alpha}, ${bravo}) order by row_id`
+    const writes = await sql`select * from activity_log where operation like 'identifier_add%' order by row_id`
+    for (const typed of ['00919847012345', '+91 98470-12345', '09847012345', '919847012345']) {
+      expect(await admin.post(`/api/people/${alpha}/identifiers`, { system, value: typed }))
+        .toMatchObject({ result: 'unchanged', identifier: { id: first.identifier.id, value: '+919847012345' } })
+      expect(await admin.get(`/api/identifiers?${new URLSearchParams({ system, value: typed })}`)).toEqual({ people: [{
+        person_id: alpha, resolved_to: alpha, replaced: false, current: true, assigner: '', pending_invite: false,
+      }] })
+    }
+    expect(await admin.get(`/api/identifiers?${new URLSearchParams({ system, value: '00919847099999' })}`)).toEqual({ people: [{
+      person_id: bravo, resolved_to: bravo, replaced: false, current: true, assigner: '', pending_invite: false,
+    }] })
+    expect(await sql`select * from person_identifier where system = ${system} order by id`).toEqual(stored)
+    expect(await sql`select * from person where row_id in (${alpha}, ${bravo}) order by row_id`).toEqual(people)
+    expect(await sql`select * from activity_log where operation like 'identifier_add%' order by row_id`).toEqual(writes)
+  })
+
   test('codes are upper-cased, addresses lower-cased, Indian mobiles canonical; national IDs need a valid check digit', () => {
     expect(normaliseValue(' rr-0102 ', 'upper')).toBe('RR-0102')
     expect(normaliseValue(' Mixed Case ', 'none')).toBe(' Mixed Case ')
@@ -135,6 +201,75 @@ describe('ending and removing (Codex review on #385)', () => {
 })
 
 describe('dates and audit (Codex review on #385)', () => {
+  test('malformed dates and a worker type on a contact refuse the add without storing a row', async ({ admin }) => {
+    const p = await makePerson({ full_name: 'Invalid input' })
+    const before = await sql`select * from person_identifier where person_id = ${p} order by id`
+    for (const field of ['valid_from', 'valid_to']) {
+      for (const value of ['not-a-date', '2026-13-01', '2026-2-01']) {
+        await expectApiError(admin.post(`/api/people/${p}/identifiers`, {
+          system: 'phone', value: '9847012345', [field]: value,
+        }), {
+          status: 417, type: 'ValidationError', message: expect.stringContaining(`${field} must be a date (YYYY-MM-DD)`),
+          fields: { [field]: 'a date' },
+        })
+        expect(await sql`select * from person_identifier where person_id = ${p} order by id`).toEqual(before)
+      }
+    }
+    await expectApiError(admin.post(`/api/people/${p}/identifiers`, {
+      system: 'phone', value: '9847012345', worker_type: 'Agency',
+    }), {
+      status: 417, type: 'ValidationError', message: expect.stringContaining('Only an employee record carries a worker type'),
+      fields: { worker_type: 'not for this system' },
+    })
+    expect(await sql`select * from person_identifier where person_id = ${p} order by id`).toEqual(before)
+  })
+
+  test('a disabled system and an empty period refuse new values without changing history', async ({ admin }) => {
+    await saveIdentifierSystem({ row_id: 'retired-contact', label: 'Retired contact', kind: 'contact', enabled: false })
+    const p = await makePerson({ full_name: 'Retired contact holder' })
+    const before = await sql`select * from person_identifier where person_id = ${p} order by id`
+    await expectApiError(admin.post(`/api/people/${p}/identifiers`, { system: 'retired-contact', value: 'old' }), {
+      status: 417, type: 'ValidationError', message: expect.stringContaining('Retired contact is turned off'), fields: { code: 'system_disabled' },
+    })
+    expect(await sql`select * from person_identifier where person_id = ${p} order by id`).toEqual(before)
+    await expectApiError(admin.post(`/api/people/${p}/identifiers`, {
+      system: 'phone', value: '9847012345', valid_from: '2025-01-01', valid_to: '2025-01-01',
+    }), {
+      status: 417, type: 'ValidationError', message: expect.stringContaining('The period ends before it starts'), fields: { valid_to: 'after valid_from' },
+    })
+    expect(await sql`select * from person_identifier where person_id = ${p} order by id`).toEqual(before)
+  })
+
+  test('correcting a spell can clear missing bounds, assigner and worker type; repeating it writes no audit', async ({ admin }) => {
+    await saveIdentifierSystem({ row_id: 'manual-employment', label: 'Manual employment', kind: 'employee-record', edited_by: 'system-manager' })
+    const p = await makePerson({ full_name: 'Corrected spell' })
+    const { identifier } = await admin.post<{ identifier: { id: string } }>(`/api/people/${p}/identifiers`, {
+      system: 'manual-employment', value: 'E-1', assigner: 'old firm', worker_type: 'Agency', valid_from: '2024-01-01', valid_to: '2025-01-01',
+    })
+    const patch = (body: unknown) => admin.fetch(`/api/identifiers/${identifier.id}`, { method: 'PATCH', body: JSON.stringify(body) })
+    const correction = { valid_from: '', valid_to: null, assigner: null, worker_type: null, note: 'Dates unknown; firm corrected' }
+    const response = await patch(correction)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ result: 'updated', identifier: {
+      id: identifier.id, valid_from: null, valid_to: null, assigner: '', worker_type: null, note: correction.note,
+    } })
+    expect(await sql`select lower_inf(valid) or lower(valid) = '-infinity'::date as unknown_start,
+      upper_inf(valid) as current, assigner, worker_type, note from person_identifier where id = ${identifier.id}`)
+      .toEqual([{ unknown_start: true, current: true, assigner: '', worker_type: null, note: correction.note }])
+    const before = await sql`select * from person_identifier where person_id = ${p} order by id`
+    const auditBefore = await sql`select * from activity_log where operation like ${'identifier_%' + p + '%'} order by row_id`
+    const unchanged = await patch(correction)
+    expect(unchanged.status).toBe(200)
+    expect(await unchanged.json()).toMatchObject({ result: 'unchanged', identifier: { id: identifier.id } })
+    expect(await sql`select * from person_identifier where person_id = ${p} order by id`).toEqual(before)
+    expect(await sql`select * from activity_log where operation like ${'identifier_%' + p + '%'} order by row_id`).toEqual(auditBefore)
+    // Invalid corrections must preserve the corrected, unbounded spell too.
+    await expectApiError(patch({ valid_from: '2026-02-30' }), {
+      status: 417, type: 'ValidationError', message: expect.stringContaining('valid_from must be a date'), fields: { valid_from: 'a date' },
+    })
+    expect(await sql`select * from person_identifier where person_id = ${p} order by id`).toEqual(before)
+  })
+
   test('an impossible calendar date is a field error, not a database error', async () => {
     const p = await makePerson({ full_name: 'Dates' })
     await expect(addIdentifier(p, { system: 'phone', value: '9847012345', valid_from: '2026-02-30' }, 'Administrator')).rejects.toMatchObject({
@@ -179,6 +314,62 @@ describe('who sees what', () => {
 })
 
 describe('search respects who may read people (Codex review on #385)', () => {
+  test('a Secret-system search refuses unavailable fingerprinting without changing identifier data', async ({ admin, createUser }) => {
+    const secret = 'search-national-id'
+    const normal = 'search-normal-code'
+    for (const row of [
+      { row_id: secret, label: 'Search national ID', kind: 'national-id' },
+      { row_id: normal, label: 'Search normal code', kind: 'contact', normalise: 'upper', sensitivity: 'Normal', edited_by: 'system-manager' },
+    ]) await admin.post('/api/save_row', { table: 'Identifier System', row })
+    const { row_id: person } = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person', row: { full_name: 'Search target' },
+    })
+    const { row_id: other } = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person', row: { full_name: 'Search other' },
+    })
+    await admin.post(`/api/people/${person}/identifiers`, { system: normal, value: 'Alpha-42' })
+    await admin.post(`/api/people/${other}/identifiers`, { system: normal, value: 'Bravo-81' })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Boundary Person Reader' } })
+    await admin.post('/api/save_row', {
+      table: 'Permission', row: { ref_table: 'Person', role: 'Boundary Person Reader', can_read: true },
+    })
+    const reader = await createUser({ roles: ['Boundary Person Reader'] })
+    const denied = await createUser()
+    const snapshot = async () => ({
+      systems: await sql`select * from identifier_system where row_id in (${secret}, ${normal}) order by row_id`,
+      identifiers: await sql`select * from person_identifier where person_id in (${person}, ${other}) or system = ${secret} order by id`,
+      people: await sql`select * from person where row_id in (${person}, ${other}) order by row_id`,
+    })
+    const before = await snapshot()
+    expect(before.systems.find((row) => row.row_id === secret)).toMatchObject({
+      kind: 'national-id', sensitivity: 'Secret', storage: 'fingerprint', display: 'last4', tier: 'restricted',
+    })
+    expect(before.identifiers.map((row) => [row.person_id, row.system, row.value]))
+      .toEqual(expect.arrayContaining([[person, normal, 'ALPHA-42'], [other, normal, 'BRAVO-81']]))
+    expect(before.identifiers.filter((row) => row.system === secret)).toEqual([])
+    const secretPath = `/api/identifiers?${new URLSearchParams({ system: secret, value: '234123412346' })}`
+    const normalPath = `/api/identifiers?${new URLSearchParams({ system: normal, value: 'alpha-42' })}`
+    const refused = await admin.fetch(secretPath)
+    expect(refused.status).toBe(417)
+    expect(await refused.json()).toEqual({ error: {
+      type: 'ValidationError',
+      message: 'Searching this identifier needs fingerprinting, which is not switched on',
+      fields: { code: 'fingerprint_unavailable' },
+    } })
+    expect(await snapshot()).toEqual(before)
+    expect(await reader.get(normalPath)).toEqual({ people: [{
+      person_id: person, resolved_to: person, replaced: false, current: true, assigner: '', pending_invite: false,
+    }] })
+    for (const path of [normalPath, secretPath]) {
+      const response = await denied.fetch(path)
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ error: {
+        type: 'PermissionError', message: 'You may not search people',
+      } })
+      expect(await snapshot()).toEqual(before)
+    }
+  })
+
   test('no Person read, no search; a Data Scope narrows the results', async ({ admin, createUser }) => {
     const p = await makePerson({ full_name: 'In scope', email: 'scoped.search@x.test' })
     const q = await makePerson({ full_name: 'Out of scope', email: 'other.search@x.test' })
@@ -218,6 +409,25 @@ describe('search respects who may read people (Codex review on #385)', () => {
 })
 
 describe('built-in and replaced records', () => {
+  test('independent identifier history blocks deleting a person without erasing mirrored email history', async ({ admin }) => {
+    const person = await makePerson({ full_name: 'Keep this history', email: 'keep-history@x.test' })
+    const { identifier } = await admin.post<{ identifier: { id: string } }>(`/api/people/${person}/identifiers`, {
+      system: 'phone', value: '9847012345',
+    })
+    const before = await sql`select id, system, value, source from person_identifier where person_id = ${person} order by id`
+    const response = await admin.fetch(`/api/table/Person/${person}`, { method: 'DELETE' })
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({ error: { type: 'ConflictError', fields: { code: 'has_identifiers' } } })
+    expect(await admin.get(`/api/table/Person/${person}`)).toMatchObject({ full_name: 'Keep this history', email: 'keep-history@x.test' })
+    // on_trash deletes mirrors before checking independent history; its refusal
+    // must roll that deletion back along with the refused Person deletion.
+    expect(await sql`select id, system, value, source from person_identifier where person_id = ${person} order by id`).toEqual(before)
+    expect(before).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: identifier.id, system: 'phone' }),
+      expect.objectContaining({ system: 'email', source: 'person-email' }),
+    ]))
+  })
+
   test('a built-in account gets no identifiers; a replaced record refuses writes and is left out of pickers', async ({ admin }) => {
     await expect(addIdentifier('Administrator', { system: 'phone', value: '9847012345' }, 'Administrator')).rejects.toMatchObject({ fields: { code: 'built_in' } })
     const survivor = await makePerson({ full_name: 'Survivor' })
@@ -250,8 +460,8 @@ describe('the freeze: employee codes by hand until the roster sync runs (review 
 
     const { configureDelegated } = await import('./identity-fixtures')
     await configureDelegated()
-    await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, subject_kind, linked_by)
-      values ('uid_joiner_20001', ${p}, 'stylehr', 'RR-20001', 'new.joiner', 'employee-code', 'Administrator')`
+    await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by)
+      values ('uid_joiner_20001', ${p}, 'stylehr', 'RR-20001', 'new.joiner', 'Administrator')`
     const { vi } = await import('vitest')
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
     try {
@@ -325,6 +535,29 @@ describe('the Person picker finds people by their current employee code (review 
 })
 
 describe('who may change a value follows its system (D9)', () => {
+  test('self editing does not let a Person reader change someone else’s phone', async ({ admin, createUser }) => {
+    const owner = await createUser({ email: 'phone.owner@x.test' })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Phone Reader' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Phone Reader', can_read: true } })
+    const reader = await createUser({ email: 'phone.other@x.test', roles: ['Phone Reader'] })
+    const { identifier } = await owner.post<{ identifier: { id: string; source: string; verified: boolean } }>(`/api/people/${owner.user}/identifiers`, {
+      system: 'phone', value: '9847012345',
+    })
+    expect(identifier).toMatchObject({ source: 'self', verified: false })
+    // Confirm the negative writes reach the system's editor rule, not a missing Person read.
+    expect(await reader.get(`/api/table/Person/${owner.user}`)).toMatchObject({ row_id: owner.user })
+    const before = await sql`select * from person_identifier where person_id = ${owner.user} order by id`
+    const denied = {
+      status: 403, type: 'PermissionError', message: expect.stringContaining('You may not change'), fields: { code: 'not_allowed' },
+    }
+    await expectApiError(reader.post(`/api/people/${owner.user}/identifiers`, { system: 'phone', value: '9847099999' }), denied)
+    expect(await sql`select * from person_identifier where person_id = ${owner.user} order by id`).toEqual(before)
+    await expectApiError(reader.fetch(`/api/identifiers/${identifier.id}`, { method: 'PATCH', body: JSON.stringify({ note: 'not mine' }) }), denied)
+    expect(await sql`select * from person_identifier where person_id = ${owner.user} order by id`).toEqual(before)
+    await expectApiError(reader.fetch(`/api/identifiers/${identifier.id}`, { method: 'DELETE' }), denied)
+    expect(await sql`select * from person_identifier where person_id = ${owner.user} order by id`).toEqual(before)
+  })
+
   test('a person without System Manager cannot add their own value to a system edited by System Managers, or by reviewers', async ({ createUser }) => {
     await saveIdentifierSystem({ row_id: 'badge-sm', label: 'Locker', kind: 'contact', source: 'self', match: 'Off', sensitivity: 'Normal', edited_by: 'system-manager' })
     await saveIdentifierSystem({ row_id: 'badge-rv', label: 'Uniform', kind: 'contact', source: 'self', match: 'Off', sensitivity: 'Normal', edited_by: 'reviewers' })
@@ -336,6 +569,51 @@ describe('who may change a value follows its system (D9)', () => {
       status: 403, type: 'PermissionError', message: expect.stringContaining('You may not change Uniform values'), fields: { code: 'not_allowed' },
     })
     expect(await sql`select 1 from person_identifier where person_id = ${clerk.user} and system in ('badge-sm', 'badge-rv')`).toEqual([])
+  })
+})
+
+describe('missing records and single current values', () => {
+  test('unknown systems, people and identifiers report not found and leave existing data alone', async ({ admin }) => {
+    const p = await makePerson({ full_name: 'Unaffected holder' })
+    await addIdentifier(p, { system: 'phone', value: '9847012345' }, 'Administrator')
+    const before = await sql`select * from person_identifier order by id`
+    await expectApiError(admin.post(`/api/people/${p}/identifiers`, { system: 'no-such-system', value: 'x' }), {
+      status: 404, type: 'NotFoundError', message: expect.stringContaining('Identifier system no-such-system not found'),
+    })
+    expect(await sql`select * from person_identifier order by id`).toEqual(before)
+    // Direct public APIs also defend callers that do not come through a route's Person read.
+    await expect(addIdentifier('no-such-person', { system: 'phone', value: '9847099999' }, 'Administrator'))
+      .rejects.toMatchObject({ type: 'NotFoundError', message: 'Person no-such-person not found' })
+    expect(await sql`select * from person_identifier order by id`).toEqual(before)
+    await expect(updateIdentifier('pid_missing', { note: 'missing' }, 'Administrator'))
+      .rejects.toMatchObject({ type: 'NotFoundError', message: 'Identifier pid_missing not found' })
+    expect(await sql`select * from person_identifier order by id`).toEqual(before)
+    await expect(deleteIdentifier('pid_missing', 'Administrator'))
+      .rejects.toMatchObject({ type: 'NotFoundError', message: 'Identifier pid_missing not found' })
+    expect(await sql`select * from person_identifier order by id`).toEqual(before)
+    await expectApiError(admin.fetch('/api/identifiers/pid_missing', { method: 'PATCH', body: JSON.stringify({ note: 'missing' }) }), {
+      status: 404, type: 'NotFoundError', message: expect.stringContaining('Identifier pid_missing not found'),
+    })
+    expect(await sql`select * from person_identifier order by id`).toEqual(before)
+  })
+
+  test('a single-value system refuses a second current value but keeps the first as history when ended', async ({ admin }) => {
+    await saveIdentifierSystem({ row_id: 'single-badge', label: 'Single badge', kind: 'contact', match: 'Off', one_per_person: true, edited_by: 'system-manager' })
+    const p = await makePerson({ full_name: 'Single badge holder' })
+    const { identifier } = await admin.post<{ identifier: { id: string } }>(`/api/people/${p}/identifiers`, {
+      system: 'single-badge', value: 'first', valid_from: '2024-01-01',
+    })
+    const before = await sql`select * from person_identifier where person_id = ${p} order by id`
+    await expectApiError(admin.post(`/api/people/${p}/identifiers`, { system: 'single-badge', value: 'second' }), {
+      status: 409, type: 'ConflictError', message: expect.stringContaining('This person already has a current value in this system'), fields: { code: 'one_per_person' },
+    })
+    expect(await sql`select * from person_identifier where person_id = ${p} order by id`).toEqual(before)
+    const ended = await admin.fetch(`/api/identifiers/${identifier.id}`, { method: 'PATCH', body: JSON.stringify({ valid_to: '2025-01-01' }) })
+    expect(ended.status).toBe(200)
+    await admin.post(`/api/people/${p}/identifiers`, { system: 'single-badge', value: 'second', valid_from: '2025-01-01' })
+    expect(await sql`select value, lower(valid)::text as valid_from, upper(valid)::text as valid_to
+      from person_identifier where person_id = ${p} and system = 'single-badge' order by value`)
+      .toEqual([{ value: 'first', valid_from: '2024-01-01', valid_to: '2025-01-01' }, { value: 'second', valid_from: '2025-01-01', valid_to: null }])
   })
 })
 
@@ -351,4 +629,3 @@ describe('write-through skips a provider value that does not fit its system', ()
     expect(await sql`select ended_reason from sign_in_identity where id = ${id}`).toEqual([{ ended_reason: 'unlinked' }])
   })
 })
-

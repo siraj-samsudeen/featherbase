@@ -32,6 +32,11 @@ function onClock<T>(tz: string, fn: () => T): T {
 const datetimeWire = (cell: string) => coerceRows([{ column_name: 'when', column_type: 'Datetime' }], [[cell]])[0].values.when
 
 describe('Excel dates in IST (+05:30)', () => {
+  test('a numeric cell with only a text format remains numeric rather than becoming a calendar date', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586, '@'], [45586, 'yyyy-mm-dd']]))
+    expect(sheet.rows).toEqual([[45586], ['2024-10-21']])
+  })
+
   test('the clock really is IST', () => {
     expect(new Date(2024, 9, 21).getTimezoneOffset()).toBe(-330)
   })
@@ -63,6 +68,7 @@ describe('Excel dates in IST (+05:30)', () => {
   })
 
   test.each([
+    [0, '1899-12-31'],
     [1, '1900-01-01'],
     [59, '1900-02-28'],
     [60, '1900-02-29'], // Excel's fictitious leap day, shown as the sheet shows it
@@ -153,6 +159,31 @@ describe('Excel dates in IST (+05:30)', () => {
     // 45585.5 meets [<=45586] and shows a time; 45587.5 does not and shows only the day (as SheetJS renders them).
     const [sheet] = await parseWorkbook(workbookFile([[45585.5, fmt], [45587.5, fmt]]))
     expect(sheet.rows.map((r) => r[0])).toEqual(['2024-10-20T12:00:00', '2024-10-22'])
+  })
+
+  test.each([
+    ['=', ['2024-10-20', '2024-10-21T12:00:00', '2024-10-22']],
+    ['>', ['2024-10-20', '2024-10-21', '2024-10-22T12:00:00']],
+    ['>=', ['2024-10-20', '2024-10-21T12:00:00', '2024-10-22T12:00:00']],
+    ['<', ['2024-10-20T12:00:00', '2024-10-21', '2024-10-22']],
+    ['<=', ['2024-10-20T12:00:00', '2024-10-21T12:00:00', '2024-10-22']],
+    ['<>', ['2024-10-20T12:00:00', '2024-10-21', '2024-10-22T12:00:00']],
+  ])('the %s condition preserves dates below, at, and above its boundary', async (operator, expected) => {
+    const fmt = `[${operator}45586.5]yyyy-mm-dd hh:mm;yyyy-mm-dd`
+    const [sheet] = await parseWorkbook(workbookFile([
+      [45585.5, fmt], [45586.5, fmt], [45587.5, fmt],
+    ]))
+    expect(sheet.rows.map((row) => row[0])).toEqual(expected)
+  })
+
+  test('two conditions choose the first matching section, or the third when neither matches', async () => {
+    const fmt = '[<45586]yyyy-mm-dd;[>=45587]yyyy-mm-dd hh:mm;yyyy-mm-dd hh:mm:ss.000'
+    const [sheet] = await parseWorkbook(workbookFile([
+      [45585.5, fmt], [45587.5, fmt], [45586.500005787, fmt],
+    ]))
+    expect(sheet.rows).toEqual([
+      ['2024-10-20'], ['2024-10-22T12:00:00'], ['2024-10-21T12:00:00.500'],
+    ])
   })
 
   test.each(['[m]', '[h]:mm', '[s]'])('an elapsed-time format (%s) is a duration, so the number is kept', async (fmt) => {

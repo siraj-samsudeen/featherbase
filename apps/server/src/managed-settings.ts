@@ -25,6 +25,11 @@ export interface ManagedPath {
 /** A locked field and the value the apply left in it (#465 D8). */
 export interface ManagedValue extends ManagedPath {
   value: unknown
+  /** #703: the variable this value came from, so nothing prints the value. */
+  from_variable?: string
+  /** #703: a later file stopped naming this field. It is neither locked nor
+   *  compared; the entry only keeps the value private until the value changes. */
+  not_in_file?: true
 }
 
 interface LastApply {

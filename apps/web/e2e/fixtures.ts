@@ -154,16 +154,15 @@ export async function waitForRealtime(page: Page, channel: string): Promise<void
 // Merged web coverage (ADR 0012). Under `E2E_COVERAGE=1` the web dev server is
 // Istanbul-instrumented (vite.config.ts), so every document the browser loads
 // carries `window.__coverage__`. A document's counters die with it, so each
-// document is read exactly once, in one of two ways:
+// document hands over its counters with a stable ID, so repeat snapshots
+// add only new executions:
 //
 //   * still open when the test ends: read directly, maps and counters;
-//   * unloaded by a navigation: its counters are written to sessionStorage on
-//     `pagehide`, and the NEXT document on that origin hands them to Node as
-//     it starts. (Calling back into Node from `pagehide` itself does not
-//     work: the binding's message is lost with the dying document, which left
-//     every page a spec navigated away from uncounted.) Only the counters are
-//     kept — the maps are bulky and identical in every document — and they
-//     are matched to their file's maps by the instrumentation hash.
+//   * leaving by navigation: beforeunload sends maps and counters to Node,
+//     including when the destination is another origin. pagehide is too
+//     late for that binding, so it stores compact counters as a same-origin
+//     fallback that the next document hands over. Those counters are matched
+//     to their file's maps by instrumentation hash.
 //
 // Counters are summed per worker and written once, at worker teardown, to
 // `apps/web/.nyc_output/e2e-<uuid>.json` — one file per worker rather than per
@@ -228,7 +227,7 @@ interface CoverageWorkerFixtures {
   browserCoverage: BrowserCoverage
 }
 
-const coverageTest = dslTest.extend<{ context: BrowserContext }, CoverageWorkerFixtures>({
+const coverageTest = dslTest.extend<object, CoverageWorkerFixtures>({
   browserCoverage: [
     async ({}, use) => {
       const state: BrowserCoverage = { totals: [], pending: [] }
@@ -244,43 +243,89 @@ const coverageTest = dslTest.extend<{ context: BrowserContext }, CoverageWorkerF
     },
     { scope: 'worker' },
   ],
-  context: async ({ context, browserCoverage }, use) => {
-    if (!COVERAGE) return use(context)
-    await context.exposeFunction('__featherbaseCoverage', (json: string) => {
-      const unplaced = addHandedOver(browserCoverage, JSON.parse(json) as Record<string, FileCounters>)
-      if (Object.keys(unplaced).length) browserCoverage.pending.push(unplaced)
-    })
-    await context.addInitScript(() => {
-      const KEY = '__featherbaseCoverage'
-      type W = { __coverage__?: Record<string, { hash?: string; s: unknown; f: unknown; b: unknown }>; __featherbaseCoverage?: (json: string) => void }
-      const w = window as unknown as W
-      try {
-        const left = sessionStorage.getItem(KEY)
-        if (left) {
-          sessionStorage.removeItem(KEY)
-          void w.__featherbaseCoverage?.(left)
+  // Hook the real context factory, not only Playwright's default context:
+  // realtime and cross-account journeys create and close their own contexts.
+  browser: [async ({ browser, browserCoverage }, use) => {
+    if (!COVERAGE) return use(browser)
+    const newContext = browser.newContext.bind(browser)
+    browser.newContext = async (options) => {
+      const context = await newContext(options)
+      await trackCoverage(context, browserCoverage)
+      return context
+    }
+    try {
+      await use(browser)
+    } finally {
+      browser.newContext = newContext
+    }
+  }, { scope: 'worker' }],
+})
+
+async function trackCoverage(context: BrowserContext, browserCoverage: BrowserCoverage) {
+  const received = new Map<string, Record<string, FileCounters>>()
+  const receive = (json: string) => {
+    const { id, doc, full } = JSON.parse(json) as { id: string; doc: CoverageData; full?: boolean }
+    const previous = received.get(id) ?? {}
+    for (const [file, cov] of Object.entries(doc)) {
+      const seen = previous[file] ?? { s: {}, f: {}, b: {} }
+      for (const key of ['s', 'f'] as const) {
+        for (const [counter, count] of Object.entries(cov[key])) {
+          cov[key][counter] = Math.max(0, count - (seen[key][counter] ?? 0))
+          seen[key][counter] = Math.max(count, seen[key][counter] ?? 0)
         }
-      } catch {
-        /* storage blocked on this page: nothing was left here either */
       }
-      addEventListener('pagehide', () => {
-        if (!w.__coverage__) return
-        const counters: Record<string, unknown> = {}
-        for (const [file, c] of Object.entries(w.__coverage__)) counters[file] = { hash: c.hash, s: c.s, f: c.f, b: c.b }
-        try {
-          sessionStorage.setItem(KEY, JSON.stringify(counters))
-        } catch {
-          /* over quota or blocked: this document's counters are lost */
-        }
-      })
+      for (const [counter, counts] of Object.entries(cov.b)) {
+        cov.b[counter] = counts.map((count, i) => Math.max(0, count - (seen.b[counter]?.[i] ?? 0)))
+        seen.b[counter] = counts.map((count, i) => Math.max(count, seen.b[counter]?.[i] ?? 0))
+      }
+      previous[file] = seen
+    }
+    // Repeated handovers (or a restored back/forward-cache document) add
+    // only counters since the previous snapshot, while still supplying maps.
+    received.set(id, previous)
+    if (full) return addDocument(browserCoverage, doc)
+    const unplaced = addHandedOver(browserCoverage, doc)
+    if (Object.keys(unplaced).length) browserCoverage.pending.push(unplaced)
+  }
+  await context.exposeFunction('__featherbaseCoverage', receive)
+  await context.addInitScript(() => {
+    const KEY = '__featherbaseCoverage'
+    type W = { __coverage__?: Record<string, { hash?: string; s: unknown; f: unknown; b: unknown }>; __featherbaseCoverage?: (json: string) => void; __coverageId?: string; __coverageCollected?: boolean }
+    const w = window as unknown as W
+    w.__coverageId = crypto.randomUUID()
+    try {
+      const left = sessionStorage.getItem(KEY)
+      if (left) {
+        sessionStorage.removeItem(KEY)
+        void w.__featherbaseCoverage?.(left)
+      }
+    } catch {
+      /* storage blocked on this page: nothing was left here either */
+    }
+    addEventListener('beforeunload', () => {
+      if (!w.__coverage__ || w.__coverageCollected) return
+      void w.__featherbaseCoverage?.(JSON.stringify({ id: w.__coverageId, doc: w.__coverage__, full: true }))
     })
-    await use(context)
+    addEventListener('pagehide', () => {
+      if (!w.__coverage__ || w.__coverageCollected) return
+      const counters: Record<string, unknown> = {}
+      for (const [file, c] of Object.entries(w.__coverage__)) counters[file] = { hash: c.hash, s: c.s, f: c.f, b: c.b }
+      try {
+        sessionStorage.setItem(KEY, JSON.stringify({ id: w.__coverageId, doc: counters }))
+      } catch {
+        /* over quota or blocked: this document's counters are lost */
+      }
+    })
+  })
+  const close = context.close.bind(context)
+  context.close = async (options) => {
     for (const page of context.pages()) {
       const json = await page
         .evaluate(() => {
           // The open document, and whatever an unloaded one left for it that
           // it has not yet handed over.
-          const w = window as unknown as { __coverage__?: unknown }
+          const w = window as unknown as { __coverage__?: unknown; __coverageId?: string; __coverageCollected?: boolean }
+          w.__coverageCollected = true
           let left: string | null = null
           try {
             left = sessionStorage.getItem('__featherbaseCoverage')
@@ -288,19 +333,17 @@ const coverageTest = dslTest.extend<{ context: BrowserContext }, CoverageWorkerF
           } catch {
             /* no storage */
           }
-          return JSON.stringify({ doc: w.__coverage__ ?? null, left })
+          return JSON.stringify({ id: w.__coverageId, doc: w.__coverage__ ?? null, full: true, left })
         })
         .catch(() => null) // a page mid-crash has nothing left to read
       if (!json) continue
       const { doc, left } = JSON.parse(json) as { doc: CoverageData | null; left: string | null }
-      if (doc) addDocument(browserCoverage, doc)
-      if (left) {
-        const unplaced = addHandedOver(browserCoverage, JSON.parse(left) as Record<string, FileCounters>)
-        if (Object.keys(unplaced).length) browserCoverage.pending.push(unplaced)
-      }
+      if (doc) receive(json)
+      if (left) receive(left)
     }
-  },
-})
+    await close(options)
+  }
+}
 
 interface AuthWorkerFixtures {
   /** Path to the storageState captured by signing in once per worker. */

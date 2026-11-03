@@ -71,9 +71,9 @@ test('a sign-out the server could not complete says so and keeps the person sign
   await sql.unsafe('create trigger tba_refuse before insert on featherbase.revoked_session for each row execute function featherbase.tba_refuse()')
   const told = vi.spyOn(window, 'alert').mockImplementation(() => {})
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
-  const r = await renderApp('/featherbase/admin', admin)
-  // Admin first redirects to its Home page. Settle that navigation before
-  // testing whether the refused sign-out leaves the current page unchanged.
+  // Start on a named page: an instance can legitimately choose another Home
+  // for /admin. This test promises that refused sign-out preserves THIS page.
+  const r = await renderApp('/featherbase/admin/home/system', admin)
   await waitFor(() => expect(pathOf(r)).toBe('/featherbase/admin/home/system'))
   await userEvent.click(await screen.findByTestId('session-user', {}, { timeout: 8000 }))
   await userEvent.click(await screen.findByTestId('logout'))

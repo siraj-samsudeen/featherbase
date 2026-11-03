@@ -26,6 +26,11 @@ export interface HookContext {
 export type Hook = (ctx: HookContext) => void | Promise<void>
 
 export const HOOK_EVENTS = [
+  // Inside the write's transaction, BEFORE the row is locked or read: the
+  // place to take a lock that other paths take before touching this Table's
+  // rows, so the two orders cannot deadlock (#693). `row` holds the values
+  // being written, or just the row key for a delete or rename.
+  'before_lock',
   'before_insert',
   'before_validate',
   'validate',

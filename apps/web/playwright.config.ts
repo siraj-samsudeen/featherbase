@@ -3,7 +3,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 // Resolve the Chromium binary the same way `apps/server/src/print.ts` does,
-// and for the same reason: CLAUDE.md's environment rule says Chromium is
+// and for the same reason (docs/DEPLOY.md, `CHROMIUM_PATH`): Chromium is
 // resolved from the environment and never hardcoded.
 //
 // Preferring Playwright's own resolution is not enough on a prebuilt
@@ -111,6 +111,7 @@ const coverage = process.env.E2E_COVERAGE === '1'
 
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: coverage ? './e2e/coverage-setup.ts' : undefined,
   timeout: coverage ? 60_000 : 30_000,
   // One worker, for the same reason the vitest suites set
   // `fileParallelism: false`: every spec drives the one shared server and
@@ -140,10 +141,10 @@ export default defineConfig({
             PORT: String(apiPort),
             DATABASE_URL: e2eDatabaseUrl(),
             FEATHERBASE_APP_PATHS: JSON.stringify([
-              resolve('../../runtime-apps/tasker'), resolve('../../runtime-apps/other'),
+              resolve('../../example-apps/tasker'), resolve('../../test-apps/other'),
               // #642: an app that declares a top-bar picker, and the app that
               // gives its readers their places (top-bar-picker.spec.ts).
-              resolve('../../runtime-apps/fixtures/bar-proof'), resolve('../../runtime-apps/fixtures/place-roster'),
+              resolve('../../test-apps/fixtures/bar-proof'), resolve('../../test-apps/fixtures/place-roster'),
             ]),
             // FEATHERBASE_ENV rather than NODE_ENV: the migrator must stamp this
             // database for the 'test' environment (which is what lets the reset

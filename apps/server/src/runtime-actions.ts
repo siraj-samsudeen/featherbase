@@ -7,6 +7,7 @@ import { AppError } from './errors'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { assertUserPermissions, deleteDoc, getDoc, saveDoc } from './document'
+import { holdBeforeRowLock } from './row-lock-order'
 import { documentActivity, retainedDocumentCounts } from './document-activity'
 import { getList } from './query'
 import { assertNoSecret, readyAppSetup, withSecretsKept, type AppSetup, type ReadySetup } from './app-settings'
@@ -66,6 +67,8 @@ function callerDocuments(app: string, allowed: string[], user: string) {
   async function locked(table: string, rowId: string) {
     const meta = await metaFor(table)
     if (typeof rowId !== 'string' || !rowId) reject('A row ID is required')
+    // #693: the pre-row locks the later saveDoc or deleteDoc takes, first.
+    await holdBeforeRowLock(sql, meta, user, { [meta.row_key]: rowId })
     await sql`select 1 from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${rowId} for update`
     return getDoc(table, rowId, user)
   }

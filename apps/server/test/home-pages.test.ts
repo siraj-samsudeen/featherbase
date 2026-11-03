@@ -7,7 +7,6 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { up as homePagesUp } from '../migrations/0060_home_pages'
 
 interface Card {
   label: string | null
@@ -267,41 +266,5 @@ describe('module pages never collide with the System page', () => {
     await sql`update home_page set shortcuts = ${'{not json'} where row_id = 'hp-bad-shortcuts'`
     const page = (await pages(admin)).find((p) => p.row_id === 'hp-bad-shortcuts')!
     expect(page.shortcuts).toEqual([])
-  })
-})
-
-describe('0060 seeds are idempotent', () => {
-  test('re-running the migration duplicates nothing', async ({ admin }) => {
-    const before = await pages(admin)
-    const beforeLinks = await sql`
-      select count(*)::int as n from home_page_link where parent = 'system'`
-    await homePagesUp()
-    await homePagesUp()
-    const after = await pages(admin)
-    const afterLinks = await sql`
-      select count(*)::int as n from home_page_link where parent = 'system'`
-    expect(after.map((p) => p.row_id)).toEqual(before.map((p) => p.row_id))
-    expect(Number(afterLinks[0].n)).toBe(Number(beforeLinks[0].n))
-  })
-
-  test('an emptied System page is reseeded with grouped cards', async ({ admin }) => {
-    await sql`delete from home_page_link where parent = 'system'`
-    await sql`delete from home_page where row_id = 'system'`
-    await homePagesUp()
-    const system = (await pages(admin)).find((p) => p.row_id === 'system')!
-    expect(system.cards.map((c) => c.label)).toEqual([
-      'Users & Access',
-      'Automation',
-      'Email',
-      'Reports & Dashboards',
-      'Website',
-      'Platform',
-    ])
-    // Every non-sub-table platform table has exactly one link on the page.
-    const linked = system.cards.flatMap((c) => c.links.map((l) => l.link_to))
-    const engine = await sql`
-      select name from table_def where system = true and kind in ('table', 'settings')`
-    expect(new Set(linked)).toEqual(new Set(engine.map((r) => String(r.name))))
-    expect(linked.length).toBe(engine.length)
   })
 })

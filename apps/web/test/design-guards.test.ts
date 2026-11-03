@@ -398,8 +398,11 @@ describe('the Admin shell', () => {
   })
 
   test('the shell draws no native select arrow: it uses the design-system Select', () => {
+    const switcher = source('src/components/AppSwitcher.tsx')
     expect(shell).not.toMatch(/<select\b/)
-    expect(shell).toMatch(/<Select\s[^>]*id="admin-app-switcher"/)
+    expect(shell).toMatch(/<AppSwitcher\s*\/>/)
+    expect(switcher).not.toMatch(/<select\b/)
+    expect(switcher).toMatch(/<Select\s[^>]*aria-label="Switch application"/)
   })
 
   test('the sidebar group headings look exactly like "Recently opened": muted, sentence case, small icon', () => {

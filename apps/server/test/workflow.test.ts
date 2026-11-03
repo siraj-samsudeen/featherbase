@@ -4,6 +4,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { initDocState } from '../src/workflow'
+import { expectApiError } from './fixtures'
 
 // WF-001/002/003: workflow definition, execution, and server-side role
 // enforcement.
@@ -59,6 +60,34 @@ async function drive(admin: TestClient) {
 }
 
 describe('WF-001: workflow definition', () => {
+  test('a workflow targeting a missing Table leaves no partial definition', async ({ admin }) => {
+    await setup(admin)
+    const valid = 'Wf Existing Target'
+    const rejected = 'Wf Missing Target'
+    const missing = 'Wf Never Created'
+    const definition = { is_active: false, states: [{ state: 'Open', target_status: 'draft' }], transitions: [] }
+    await admin.post('/api/save_row', {
+      table: 'Workflow', row: { ...definition, row_id: valid, ref_table: DT },
+    })
+    const controlPath = `/api/table/Workflow/${encodeURIComponent(valid)}`
+    const control = await admin.get(controlPath)
+    expect(control).toMatchObject({ ...definition, row_id: valid, ref_table: DT })
+    const metaPath = `/api/table/${encodeURIComponent(DT)}:meta`
+    const meta = await admin.get(metaPath)
+
+    const error = await expectApiError(admin.post('/api/save_row', {
+      table: 'Workflow', row: { ...definition, row_id: rejected, ref_table: missing },
+    }), {
+      status: 417, type: 'ValidationError', message: '417 ValidationError: Invalid links for Workflow',
+    })
+    expect(error.fields).toEqual({ ref_table: `Table ${missing} does not exist` })
+    expect(await sql`select row_id from workflow where row_id = ${rejected}`).toEqual([])
+    expect(await sql`select parent from workflow_document_state where parent = ${rejected}`).toEqual([])
+    expect(await sql`select name from table_def where name = ${missing}`).toEqual([])
+    expect(await admin.get(controlPath)).toEqual(control)
+    expect(await admin.get(metaPath)).toEqual(meta)
+  })
+
   test('persists and adds a workflow_state column to the target Table', async ({ admin }) => {
     await setup(admin)
     const res = await admin.fetch('/api/save_row', {
@@ -90,6 +119,44 @@ describe('WF-001: workflow definition', () => {
 })
 
 describe('WF-002/003: execution + server-side enforcement', () => {
+  test('malformed transition actions preserve the existing workflow state', async ({ admin }) => {
+    await setup(admin)
+    await makeFlow(admin)
+    await makeDoc(admin)
+    const base = `/api/table/${encodeURIComponent(DT)}`
+    await admin.post(base, { row_id: 'wf-srv-control', title: 'untouched' })
+    const snapshot = async () => ({
+      rows: await sql`select * from featherbase.wf_srv_task order by row_id`,
+      flow: await admin.get(`/api/table/Workflow/${encodeURIComponent(FLOW)}`),
+      meta: await admin.get(`${base}:meta`),
+      trail: await sql`select * from workflow_action where ref_table = ${DT} order by row_id`,
+      versions: await sql`select * from version where ref_table = ${DT} order by row_id`,
+    })
+    const before = await snapshot()
+    for (const action of [42, '']) {
+      const response = await admin.fetch(`${base}/wf-srv-1:apply_workflow_action`, {
+        method: 'POST', body: JSON.stringify({ action }),
+      })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toEqual({ error: {
+        type: 'ValidationError', message: 'Expected { action }',
+      } })
+      expect(await snapshot()).toEqual(before)
+    }
+    expect(await admin.post(`${base}/wf-srv-1:apply_workflow_action`, { action: 'Submit' }))
+      .toMatchObject({ row_id: 'wf-srv-1', title: 'x', workflow_state: 'Pending', status: 'draft' })
+    const after = await snapshot()
+    expect(after.rows).toEqual(before.rows.map((row) => row.row_id === 'wf-srv-1'
+      ? { ...row, workflow_state: 'Pending', updated_at: expect.any(Date) } : row))
+    expect(after.flow).toEqual(before.flow)
+    expect(after.meta).toEqual(before.meta)
+    expect(after.trail).toHaveLength(1)
+    expect(after.trail[0]).toMatchObject({
+      ref_table: DT, ref_name: 'wf-srv-1', action: 'Submit',
+      from_state: 'Draft', to_state: 'Pending', actor: 'Administrator',
+    })
+  })
+
   test('a role-less user is refused (403) and the state is unchanged', async ({
     admin,
     createUser,

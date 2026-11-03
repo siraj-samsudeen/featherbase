@@ -8,7 +8,7 @@ import { withAppClientVersion } from '../src/app-lifecycle'
 import { saveDoc } from '../src/document'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
 import { app } from '../src/index'
-import { version as oldVersion } from '../../../runtime-apps/tasker/package.json'
+import { version as oldVersion } from '../../../example-apps/tasker/package.json'
 
 void app
 const prove = process.env.TASKER_UPGRADE_ACTION_PROOF === '1' ? test : test.skip
@@ -20,7 +20,7 @@ prove('Tasker upgrade waits through committed action effects, then gates obsolet
   const expectedDatabase = decodeURIComponent(new URL(process.env.DATABASE_URL!).pathname.slice(1))
   expect(expectedDatabase).toMatch(/^featherbase_[a-z0-9_]+_actions_commit_e2e$/)
   expect(identity).toEqual({ name: expectedDatabase, environment: 'test' })
-  const source = resolve('../..', 'runtime-apps/tasker')
+  const source = resolve('../..', 'example-apps/tasker')
   const target = await mkdtemp(resolve('test/.tasker-action-upgrade-'))
   await cp(source, target, { recursive: true, filter: file => !file.split('/').includes('node_modules') })
   const manifestPath = resolve(target, 'featherbase.json')

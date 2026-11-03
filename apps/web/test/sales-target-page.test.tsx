@@ -3,7 +3,7 @@
 // there, the cached table is the report and stays open. Server in-process; MotherDuck stubbed.
 import { afterEach, beforeEach, vi } from 'vitest'
 import type { Sql } from 'postgres'
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { _setEmbedFetch, seedSalesTarget } from 'server/src/sales-target'
 import { _setSourceReader } from 'server/src/datasets/sales-target-mtd'
@@ -300,6 +300,63 @@ test('a store that is no longer theirs falls back to the default store with a no
     expect(localStorage.getItem(`featherbase.sales-target.store.${reader.user}`)).toBeNull()
   } finally {
     await spy.mockRestore()
+  }
+})
+
+for (const status of [200, 403]) test(`a delayed ${status} identity recheck cannot replace the newly selected store’s report`, async ({ admin, createUser, db }) => {
+  const reader = await twoStoreReader(admin, createUser as never)
+  const id = reader.user!
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  let rechecking!: () => void
+  const held = new Promise<void>((resolve) => { rechecking = resolve })
+  let rejected!: () => void
+  const bothRejected = new Promise<void>((resolve) => { rejected = resolve })
+  const restoreRole = () => (db as Sql)`insert into has_role (row_id, parent, parenttype, parentfield, role)
+    values (${`restored-${id}`}, ${id}, 'Person', 'roles', 'Sales Target Viewer') on conflict do nothing`
+  let identities = 0
+  let refusals = 0
+  let delivered: Promise<Response> | undefined
+  const real = globalThis.fetch
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const response = await real(input, init)
+    const path = new URL(String(input), 'http://localhost').pathname
+    if (path === '/api/sales_target/me') {
+      identities++
+      if (identities === 1) {
+        await (db as Sql)`delete from has_role where parent = ${id} and role = 'Sales Target Viewer'`
+      } else if (identities === 2) {
+        expect(response.status).toBe(status)
+        await restoreRole()
+        delivered = gate.then(() => response)
+        rechecking()
+        return delivered
+      }
+    } else if (path.startsWith('/api/sales_target/') && response.status === 403) {
+      // Both report halves receive real refusals before changing the role
+      // again. Hold only delivery, never substitute a server response.
+      if (++refusals === 2) {
+        if (status === 200) await restoreRole()
+        rejected()
+      }
+      await bothRejected
+    }
+    return response
+  })
+  try {
+    await renderApp('/featherbase/sales-target', reader as never)
+    await held
+    await userEvent.selectOptions(await screen.findByTestId('store-switcher'), '1515')
+    await screen.findByTestId('report-frame')
+    await act(async () => { release(); await delivered })
+    expect(screen.getByTestId('store-switcher')).toHaveValue('1515')
+    expect(screen.getByTestId('identity')).toHaveTextContent('1515 — Kattakada')
+    expect(screen.getByTestId('report-frame')).toBeInTheDocument()
+    expect(screen.queryByTestId('embed-state')).not.toBeInTheDocument()
+    expect(localStorage.getItem(`featherbase.sales-target.store.${id}`)).toBe('1515')
+  } finally {
+    release()
+    spy.mockRestore()
   }
 })
 

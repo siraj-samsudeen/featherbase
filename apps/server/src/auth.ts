@@ -403,6 +403,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
       floor(extract(epoch from u.sessions_ended_at)) as sessions_ended_at,
       m.enabled as method_enabled, m.kind as method_kind,
       i.person_id as identity_owner, i.subject as identity_subject, i.ended_at as identity_ended,
+      floor(extract(epoch from i.sessions_ended_at)) as identity_sessions_ended_at,
       (r.jti is not null) as signed_out
     from person u
     left join sign_in_method m on m.row_id = ${method}
@@ -423,7 +424,11 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
     (user.sessions_ended_at != null && authenticatedAt < Number(user.sessions_ended_at)) ||
     // person-resolution D5: a session opened through an identity that has
     // since ended (left, moved, unlinked) ends on its next request.
-    (identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null || user.identity_ended != null))
+    (identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null || user.identity_ended != null)) ||
+    // #693: the link stopped being admitted by its method's domains (Siraj,
+    // 30-Oct-2026). Whole seconds like iat; a sign-in in that same second
+    // ends too, since after the change that link could not sign in.
+    (identity !== null && user.identity_sessions_ended_at != null && authenticatedAt <= Number(user.identity_sessions_ended_at))
   if (ended) throw new AppError('AuthenticationError', 'Invalid or expired session')
   return {
     row_id: user.row_id as string,

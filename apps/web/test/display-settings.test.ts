@@ -4,7 +4,7 @@
 // locale's grouping.
 import { expect, test } from 'vitest'
 import { DISPLAY_DEFAULTS } from 'shared'
-import { DEFAULT_SETTINGS, formatCurrency, formatDate, formatNumber, formatValue, type Settings } from '../src/lib/settings'
+import { DEFAULT_SETTINGS, formatCurrency, formatDate, formatDateTime, formatNumber, formatValue, type Settings } from '../src/lib/settings'
 
 const with_ = (o: Partial<Settings>): Settings => ({ ...DEFAULT_SETTINGS, ...o })
 
@@ -71,6 +71,7 @@ test('another currency is written the way its own readers write it', () => {
   expect(formatCurrency(1234567.5, with_({ currency: 'GBP' }))).toBe('£1,234,567.50')
   expect(formatCurrency(1234567.5, with_({ currency: 'EUR' }))).toBe('1.234.567,50\u00a0€')
   expect(formatCurrency(1234567.5, with_({ currency: 'JPY' }))).toBe('￥1,234,568')
+  expect(formatCurrency(1234567.5, with_({ currency: 'CAD' }))).toBe('CA$1,234,567.50')
 })
 
 test('a negative amount puts its sign before the currency symbol', () => {
@@ -96,4 +97,28 @@ test('the precision setting is capped at the currency\'s ISO 4217 minor unit', (
 
 test('a plain decimal groups the Indian way', () => {
   expect(formatNumber(1234567.5, 2)).toBe('12,34,567.50')
+})
+
+test('display formatters keep missing values blank, zero numeric, and invalid text intact', () => {
+  for (const empty of [null, undefined, '']) {
+    expect(formatDate(empty, DEFAULT_SETTINGS.date_format)).toBe('')
+    expect(formatDateTime(empty)).toBe('')
+    expect(formatNumber(empty, 2)).toBe('')
+    expect(formatCurrency(empty, DEFAULT_SETTINGS)).toBe('')
+  }
+  expect(formatNumber(0, 2)).toBe('0.00')
+  expect(formatCurrency(0, DEFAULT_SETTINGS)).toBe('₹0.00')
+  expect(formatNumber('pending', 2)).toBe('pending')
+  expect(formatCurrency('pending', DEFAULT_SETTINGS)).toBe('pending')
+})
+
+test.each([
+  [{ shelf: 3 }, '{"shelf":3}'],
+  [[{ shelf: 9 }, false], '[{"shelf":9},false]'],
+  ['{"legacy":"text"}', '{"legacy":"text"}'],
+  [false, 'false'],
+  [0, '0'],
+  [null, ''],
+])('JSON formatting preserves the value %j', (value, shown) => {
+  expect(formatValue('JSON', value, DEFAULT_SETTINGS)).toBe(shown)
 })

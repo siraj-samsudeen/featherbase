@@ -62,6 +62,16 @@ describe('text identifiers survive the parser and storage (#111/#112)', () => {
 })
 
 describe('#115: parseWorkbook keeps sheet geometry', () => {
+  it('retains an unnamed header between named columns without shifting its data', async () => {
+    const [sheet] = await parseWorkbook(fileFrom([
+      ['First', null, 'Third'],
+      ['left', 17, 'right'],
+    ]))
+    expect(sheet.headers).toEqual(['First', '', 'Third'])
+    expect(sheet.rows).toEqual([['left', 17, 'right']])
+    expect(sheet.headerExcelRow).toBe(1)
+  })
+
   it('a blank data row survives as a row, and counts as no data', async () => {
     const [sheet] = await parseWorkbook(
       fileFrom([
@@ -159,6 +169,14 @@ describe('#198: parseWorkbook reports each sheet visibility', () => {
 // A workbook whose every sheet is blank has nothing to import, and says so
 // (merged web coverage, ADR 0012).
 describe('a workbook of blank sheets', () => {
+  it('distinguishes an Excel XML workbook with no sheets from one with blank sheets', async () => {
+    const xml = '<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"></Workbook>'
+    // Use the browser realm's buffer (Node's TextEncoder returns a buffer
+    // from a different realm, which SheetJS's instanceof check cannot read).
+    const bytes = Uint8Array.from(xml, (character) => character.charCodeAt(0))
+    await expect(parseWorkbook(asFile(bytes.buffer, 'no-sheets.xls'))).rejects.toThrow('The file has no sheets')
+  })
+
   it('is refused with the reason', async () => {
     await expect(parseWorkbook(fileFrom([[], [null, '']]))).rejects.toThrow(
       'The file has no sheet with a header row and data',

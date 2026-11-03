@@ -4,7 +4,7 @@ import { join, dirname } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { sql } from './db'
 import { publishUserEvent } from './realtime'
-import { appOperation } from './app-lifecycle'
+import { activeApps, appOperation } from './app-lifecycle'
 import { readVariable } from './env'
 
 // JOB-001/002/003: durable job queue with an in-process worker.
@@ -68,9 +68,30 @@ export type JobHandler = (
 export class FinalJobFailure extends Error {}
 
 const registry = new Map<string, JobHandler>()
+// #700: which app registered a method; absent for the platform's own jobs.
+const owners = new Map<string, string>()
 
-export function registerJob(method: string, handler: JobHandler): void {
+export function registerJob(method: string, handler: JobHandler, owner?: string): void {
   registry.set(method, handler)
+  if (owner) owners.set(method, owner)
+  else owners.delete(method)
+}
+
+/** #700: who registered `method`: an app's name, 'platform', or null when
+ *  nothing has. */
+export function jobRegistrant(method: string): string | null {
+  if (!registry.has(method)) return null
+  return owners.get(method) ?? 'platform'
+}
+
+// #700: a Scheduled Job an app declares is live only while that app is:
+// enabled, not waiting for an upgrade's activation, and loaded by this
+// process. The platform's own rows (no owner) depend on nothing.
+const scheduleColumns = () => sql`s.method, s.cadence, s.enabled, s.owner_app,
+  (s.owner_app is null or exists (select 1 from installed_app a
+    where a.name = s.owner_app and a.enabled and not a.activation_pending)) as owner_on`
+function isLive(row: Record<string, unknown>): boolean {
+  return Boolean(row.enabled) && Boolean(row.owner_on) && (row.owner_app == null || activeApps.has(String(row.owner_app)))
 }
 
 function jobName(): string {
@@ -153,21 +174,17 @@ async function logExecution(r: ExecutionRecord): Promise<void> {
 // means the method is not administered here (a one-off, or an app that
 // enqueued its own recurrence) and the queue row's own repeat_every governs.
 async function scheduledJob(method: string): Promise<{ cadence: string; enabled: boolean } | null> {
-  const [row] = await sql`select cadence, enabled from scheduled_job where method = ${method}`
-  return row ? { cadence: String(row.cadence), enabled: Boolean(row.enabled) } : null
+  const [row] = await sql`select ${scheduleColumns()} from scheduled_job s where s.method = ${method}`
+  return row ? { cadence: String(row.cadence), enabled: isLive(row) } : null
 }
 
 // Loaded on first use: job-alerts reaches email.ts, which registers its own
 // job against this module at import, so a static import would be a cycle.
-// Never throws: the run is already recorded and its recurrence queued, and a
-// mail problem must not turn a finished run back into a failed one.
+// alertJobProblem owns mail failures: the run is already recorded and its
+// recurrence queued, so it never undoes a finished run for a mail problem.
 async function alertProblem(p: import('./job-alerts').JobProblem): Promise<void> {
-  try {
-    const { alertJobProblem } = await import('./job-alerts')
-    await alertJobProblem(p)
-  } catch (err) {
-    console.warn(JSON.stringify({ event: 'job_alert_failed', method: p.method, error: err instanceof Error ? err.message : String(err) }))
-  }
+  const { alertJobProblem } = await import('./job-alerts')
+  await alertJobProblem(p)
 }
 
 // Claim and run a single due job. Returns true if one was processed.
@@ -195,17 +212,9 @@ async function runOneJobImpl(): Promise<boolean> {
 
   // JOB-005: progress reports go to the job owner's realtime channel.
   //
-  // A row queued before migration 0086 added `trigger` has it NULL (ALTER
-  // TABLE ADD COLUMN backfills nothing) — and syncScheduledJobs() adopts
-  // rather than replaces an existing live entry, so a legacy recurring row
-  // can still be sitting in the queue with trigger NULL on a deployment that
-  // has run this migration for days. `repeat_every IS NOT NULL` was, under
-  // the pre-0086 system, only ever true for the three platform recurrences —
-  // there was no other reason to set it — so a null trigger there means
-  // 'schedule', never 'demand'. Getting this wrong silently ends the
-  // recurrence under the trigger === 'schedule' gate below (Codex review,
-  // 19-Sep-2026): the exact multi-restart-safety failure mode #287 exists to
-  // prevent, just triggered by an upgrade instead of a restart.
+  // `trigger` is nullable: a row without one that repeats is a recurrence
+  // ('schedule'), never 'demand'. Getting this wrong silently ends the
+  // recurrence under the trigger === 'schedule' gate below (#287).
   const trigger: JobTrigger =
     (claimed.trigger as JobTrigger | null) ?? (claimed.repeat_every != null ? 'schedule' : 'demand')
   let result: string | undefined
@@ -338,11 +347,11 @@ async function runOneJobImpl(): Promise<boolean> {
 // nothing (the duplicate-recurrence bug the old boot guards existed for).
 export async function syncScheduledJobs(method?: string): Promise<void> {
   const rows = method
-    ? await sql`select method, cadence, enabled from scheduled_job where method = ${method}`
-    : await sql`select method, cadence, enabled from scheduled_job`
+    ? await sql`select ${scheduleColumns()} from scheduled_job s where s.method = ${method}`
+    : await sql`select ${scheduleColumns()} from scheduled_job s`
   for (const row of rows) {
     const name = String(row.method)
-    if (!row.enabled) {
+    if (!isLive(row)) {
       await sql`delete from background_job where method = ${name} and job_status = 'queued'`
       continue
     }
@@ -426,4 +435,14 @@ export async function loadJobs(): Promise<void> {
   // The directory ships with the source (the server runs src/ through tsx).
   const files = readdirSync(dir).filter((f) => /\.(ts|js|mjs)$/.test(f))
   for (const file of files) await import(pathToFileURL(join(dir, file)).href)
+}
+
+/** #700: withdraw every handler an app registered (its app was disabled,
+ *  upgraded or removed). Handlers someone else registered are left alone. */
+export function unregisterAppJobs(owner: string): void {
+  for (const [method, registrant] of owners)
+    if (registrant === owner) {
+      registry.delete(method)
+      owners.delete(method)
+    }
 }

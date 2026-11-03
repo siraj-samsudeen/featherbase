@@ -2,7 +2,7 @@ import type { TableController } from '../controllers'
 import { ensureStateField, validateWorkflow } from '../workflow'
 import { assertTargetNotSystemWritten } from '../system-written'
 import type { WorkflowState, WorkflowTransition } from '../workflow'
-import { assertNotAccessTarget } from '../security-tables'
+import { assertDirectWriteAllowed } from '../security-tables'
 
 // WF-001: validate a workflow definition (no transitions to/from undefined
 // states) and, once active, ensure the target Table has a workflow_state
@@ -15,7 +15,7 @@ const controller: TableController = {
       await assertTargetNotSystemWritten(row.ref_table, 'put under a workflow')
       // #437: a transition writes its state field directly, as whoever acts.
       if (typeof row.ref_table === 'string' && row.ref_table)
-        await assertNotAccessTarget(row.ref_table, String(row.state_field ?? '').trim() || 'workflow_state', 'A workflow')
+        await assertDirectWriteAllowed(row.ref_table, String(row.state_field ?? '').trim() || 'workflow_state', 'A workflow')
       const states = (row.states as WorkflowState[] | undefined) ?? []
       const transitions = (row.transitions as WorkflowTransition[] | undefined) ?? []
       validateWorkflow(states, transitions)

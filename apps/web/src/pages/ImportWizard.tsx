@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
 // imports this file — a strict useSearch would need the route object back)
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { applyColumnCombines, autoMapImportColumns, retiredColumnNotice, calendarDay, coerceRows, combineOverlap, idPatternFor, inferTableDef, isLocalMidnight, localIso, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
+import { applyColumnCombines, autoMapImportColumns, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, idPatternFor, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
@@ -27,7 +27,7 @@ import {
   shapeOf,
   type ImportDecisions,
 } from '../lib/import-session'
-import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '../components/ui'
+import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '../components/ui'
 import { fmtCount } from '../lib/inr'
 
 /**
@@ -74,6 +74,10 @@ interface SheetPlan {
   // Per file column, new-Table mode: import this column at all? (Existing
   // mode has the same control via the mapping's "— skip —".)
   include: boolean[]
+  // #738, new-Table mode: the user's own "In list" ticks, per file column.
+  // Absent until the user changes one; until then the ticks follow
+  // listTicks' default, the first seven columns in use.
+  list_ticks?: boolean[]
   // True when the existing target was picked by column-overlap scoring, not
   // by the user — surfaced as a notice so an unnoticed auto-match can't
   // quietly route rows into a lookalike Table.
@@ -105,6 +109,9 @@ interface SheetPlan {
   // counts data rows with nothing in any mapped column: they are sent
   // nowhere, so IMP-I1's arithmetic is disclosed, not silently absorbed.
   check: {
+    fields_updated?: number
+    fields_kept?: number
+    tracks_changes?: boolean | null
     valid: number
     updated: number
     inserted: number
@@ -124,7 +131,7 @@ interface SheetPlan {
   } | null
 }
 
-// ADR 0008: named UI-side thresholds — suggestion bets. (IMPORT_CHUNK
+// Named UI-side import thresholds (packages/shared/src/import.ts) — suggestion bets. (IMPORT_CHUNK
 // lives with the import-run module now.)
 const SUGGEST_MIN_SCORE = 0.3 // weakest near-match worth surfacing as a hint
 // UPS-H1 (owner decision 2026-08-11): beyond this many updates in one run,
@@ -132,6 +139,16 @@ const SUGGEST_MIN_SCORE = 0.3 // weakest near-match worth surfacing as a hint
 const CONFIRM_UPDATES_OVER = 20
 const SUGGEST_MAX = 3 // hints shown per sheet
 const ERRORS_ON_SCREEN = 5 // failures listed inline; the log keeps more
+// #738: a text-sized link in the grid header is thumb-tall at phone width
+// even under a mouse, as touchLinkClasses makes it on any touch screen.
+const PHONE_LINK = 'max-sm:inline-flex max-sm:min-h-touch max-sm:items-center'
+
+// #738: which columns a new Table's list starts with. A column left out of
+// the import (Use unticked) is never in the list.
+function listTicks(plan: Pick<SheetPlan, 'include' | 'list_ticks'>): boolean[] {
+  const own = plan.list_ticks?.length === plan.include.length ? plan.list_ticks : null
+  return own ? own.map((on, i) => on && plan.include[i]) : listColumnsInUse(plan.include)
+}
 
 interface ImportTarget {
   name: string
@@ -368,14 +385,13 @@ function mappableColumns(meta: TableMeta): MappableColumn[] {
     .map((c) => ({ column_name: c.column_name, label: c.label, column_type: c.column_type }))
 }
 
-// ADR 0008: preview cap — enough to spot trouble, cheap to render. Failed
+// Named import threshold (packages/shared/src/import.ts): preview cap — enough to spot trouble, cheap to render. Failed
 // rows beyond the cap always render.
 const PREVIEW_ROWS = 50
 
 /** A sheet cell as the preview shows it: a date as its calendar day (#387), never via toISOString(). */
 export function previewCell(v: unknown): string {
   if (v == null) return ''
-  if (v instanceof Date) return isLocalMidnight(v) ? calendarDay(v) : localIso(v).replace('T', ' ')
   return String(v)
 }
 
@@ -1081,7 +1097,7 @@ export function ImportWizard() {
         const cols = mergedColumnsFor(next)
         const rows = mergeSheetRows(cols, next.members.map((m) => sheets[m].rows))
         const inferred = inferTableDef(next.table, cols.map((c) => c.label), rows)
-        return { ...next, inferred, include: inferred.columns.map(() => true), check: null, result: null }
+        return { ...next, inferred, include: inferred.columns.map(() => true), list_ticks: undefined, check: null, result: null }
       }),
     )
   }
@@ -1113,6 +1129,7 @@ export function ImportWizard() {
                 failure: null,
                 inferred,
                 include: inferred.columns.map(() => true),
+                list_ticks: undefined,
                 auto_matched: false,
                 similar: null,
                 mapping: [],
@@ -1148,6 +1165,7 @@ export function ImportWizard() {
         key: null,
         suggested: null,
         include: sheet.headers.map(() => true),
+        list_ticks: undefined,
       })
       return
     }
@@ -1259,18 +1277,16 @@ export function ImportWizard() {
     }
   }
 
-  // #202: `only` scopes a rehearsal to one target — you check what you are
-  // looking at. Omitted, it still rehearses every mapped target.
-  async function runCheck(only?: number) {
+  // #202: the Check button rehearses the active existing-Table target.
+  async function runCheck(only: number) {
     setError(null)
     setBusy('Checking…')
     try {
       for (const [i, plan] of plans.entries()) {
-        if (only !== undefined && i !== only) continue
-        if (plan.mode !== 'existing' || plan.groupedInto !== null) continue
+        if (i !== only) continue
         // #201: rehearse member by member, exactly as the import will send
         // them, so a reported row number is true against its own sheet.
-        const totals = { valid: 0, updated: 0, inserted: 0, skipped: 0 }
+        const totals = { valid: 0, updated: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, tracks_changes: null as boolean | null }
         const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
         for (const m of plan.members) {
           const sheet = memberSheet(plan, m)
@@ -1287,6 +1303,9 @@ export function ImportWizard() {
             upsert: upsertArgs(plan),
             columnLabel: headerLabel(sheet, plan),
           })
+          totals.fields_updated += report.fields_updated
+          totals.fields_kept += report.fields_kept
+          totals.tracks_changes = report.tracks_changes
           totals.valid += report.valid
           totals.updated += report.updated
           totals.inserted += report.inserted
@@ -1354,17 +1373,19 @@ export function ImportWizard() {
         if (only === undefined && plan.result) continue
         try {
         if (plan.mode === 'new') {
+          const inList = listTicks(plan)
           await api.post('/api/table_def', {
             name: plan.table,
             id_pattern: planIdPattern(plan),
             columns: plan.inferred.columns
-              .filter((c, idx) => c.column_name.trim() && plan.include[idx])
-              .map((c) => ({
+              .map((c, idx) => ({ c, idx }))
+              .filter(({ c, idx }) => c.column_name.trim() && plan.include[idx])
+              .map(({ c, idx }) => ({
                 column_name: c.column_name.trim(),
                 label: c.label.trim() || undefined,
                 column_type: c.column_type,
                 choices: c.column_type === 'Choice' ? c.choices : undefined,
-                in_list_view: c.in_list_view,
+                in_list_view: inList[idx],
               })),
           })
         }
@@ -1511,7 +1532,6 @@ export function ImportWizard() {
   // no one member's sheet name speaks for it.
   function targetLabel(i: number): string {
     const plan = plans[i]
-    if (!plan) return ''
     if (plan.members.length > 1) return plan.table || 'Merged Table'
     return sheets[i]?.sheetName || plan.table
   }
@@ -1519,7 +1539,6 @@ export function ImportWizard() {
   // Rows this one target will send, for its own Import button.
   function targetRows(i: number): number {
     const plan = plans[i]
-    if (!plan) return 0
     return plan.members.reduce((n, m) => n + countDataRows(sheets[m]?.rows ?? []), 0)
   }
 
@@ -1849,6 +1868,7 @@ export function ImportWizard() {
         // Index-aligned with plan.inferred.columns: the grid's row N is this
         // merged column, and combines are expressed in its key.
         const groupColumns = merged ? mergedColumnsFor(plan) : []
+        const inList = listTicks(plan)
         const pickedKeys = groupColumns
           .map((c) => c.key)
           .filter((k) => combinePick[`${i}:${k}`])
@@ -1856,7 +1876,7 @@ export function ImportWizard() {
         const mappedCount = plan.mapping.filter((m, idx) => m && plan.include[idx]).length
         return (
           <div key={sheet.sheetName + i} className={cardClasses('mb-4 p-3')} data-testid={`iw-sheet-${i}`}>
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               {/* The counts describe the FILE's sheet, never the target
                   Table — say so, since sheet and Table often share a name
                   and the Table's own count sits beside the picker. */}
@@ -1883,7 +1903,7 @@ export function ImportWizard() {
                   </>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className={labelClasses('m-0')}>Import into</span>
                 <TargetPicker
                   i={i}
@@ -1967,6 +1987,9 @@ export function ImportWizard() {
                     className={inputClasses('w-64 py-1')}
                   />
                 </div>
+                {/* #738: the In list column makes the grid wider than a
+                    phone; it scrolls on its own rather than the page. */}
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm" data-testid={`iw-new-grid-${i}`}>
                   <thead className="bg-subtle text-left text-xs text-ink-muted">
                     <tr>
@@ -1976,6 +1999,32 @@ export function ImportWizard() {
                         </th>
                       )}
                       <th className="px-2 py-1">Use</th>
+                      <th className="px-2 py-1 align-bottom">
+                        {/* #738: "Tick all" and "Clear" sit above the In
+                            list column they act on, which follows Use so a
+                            phone shows it without scrolling the grid. */}
+                        <div className="flex gap-2 whitespace-nowrap font-normal">
+                          <button
+                            type="button"
+                            onClick={() => setPlan(i, { list_ticks: [...plan.include] })}
+                            data-testid={`iw-list-all-${i}`}
+                            aria-label="Tick all in the list"
+                            className={touchLinkClasses(`text-action underline ${PHONE_LINK}`)}
+                          >
+                            Tick all
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPlan(i, { list_ticks: plan.include.map(() => false) })}
+                            data-testid={`iw-list-clear-${i}`}
+                            aria-label="Clear the list ticks"
+                            className={touchLinkClasses(`text-action underline ${PHONE_LINK}`)}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <span className="whitespace-nowrap">In list</span>
+                      </th>
                       <th className="px-2 py-1">File column</th>
                       <th className="px-2 py-1">Label</th>
                       <th className="px-2 py-1">Column name</th>
@@ -1996,7 +2045,7 @@ export function ImportWizard() {
                       <td className="px-2 py-1 text-center text-ink-subtle" title="always present">
                         🔒
                       </td>
-                      <td className="px-2 py-1" colSpan={5}>
+                      <td className="px-2 py-1" colSpan={6}>
                         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                           <span className={labelClasses('m-0 shrink-0')}>Row ID</span>
                           <div className="min-w-0">
@@ -2055,6 +2104,22 @@ export function ImportWizard() {
                                 })
                               }
                               data-rowfield="include"
+                            />
+                          </label>
+                        </td>
+                        <td className="px-2 py-1 text-center">
+                          <label className="cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={inList[ci]}
+                              disabled={!plan.include[ci]}
+                              onChange={(e) =>
+                                setPlan(i, {
+                                  list_ticks: inList.map((v, j) => (j === ci ? e.target.checked : v)),
+                                })
+                              }
+                              data-rowfield="in_list_view"
+                              aria-label={`Show ${c.label || c.column_name} in the list`}
                             />
                           </label>
                         </td>
@@ -2127,6 +2192,7 @@ export function ImportWizard() {
                     ))}
                   </tbody>
                 </table>
+                </div>
 
                 {/* #211: the user's own column knowledge, which folding could
                     never supply. Two ticks and a name; the sample values are
@@ -2551,6 +2617,15 @@ export function ImportWizard() {
                     {plan.check.failed.length > 5 && ` … and ${plan.check.failed.length - 5} more`}
                   </span>
                 )}
+                {plan.check.tracks_changes === false && (
+                  <Notice tone="caution" className="mt-2">This Table does not keep change history. Imports overwrite existing values, including hand edits.</Notice>
+                )}
+                {plan.key != null && plan.check.fields_updated !== undefined && (
+                  <p className="mt-2 text-ink" data-testid={`iw-check-fields-${i}`}>
+                    {fmtCount(plan.check.fields_updated)} {plan.check.fields_updated === 1 ? 'field' : 'fields'} will update ·{' '}
+                    {fmtCount(plan.check.fields_kept ?? 0)} hand-edited {plan.check.fields_kept === 1 ? 'field' : 'fields'} will be kept and flagged.
+                  </p>
+                )}
                 {plan.check.skipped > 0 && (
                   <span className="ml-1 text-ink-muted" data-testid={`iw-check-skipped-${i}`}>
                     ({fmtCount(plan.check.skipped)} rows have no data in the imported columns and will be
@@ -2636,7 +2711,7 @@ export function ImportWizard() {
           {error}
         </p>
       )}
-      {runOutcome && (
+      {runOutcome && !needsFile && (
         <p
           className={`mt-2 text-sm ${runOutcome.failed.length ? 'text-negative' : 'text-positive'}`}
           data-testid="iw-done"

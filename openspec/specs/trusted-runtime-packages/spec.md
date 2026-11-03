@@ -114,30 +114,6 @@ version, fully working, with nothing partially changed.
 - **AND** the app keeps running on its old version as if the upgrade had
   never been attempted
 
-### Requirement: Task work from before Tasker existed carries into it
-
-An account that already had tasks and projects before Tasker existed as an
-installed app SHALL, on upgrading to a Featherbase release that includes
-Tasker, keep every one of them exactly as it was — id, references, comments,
-files, shares and who's responsible for each — now living inside Tasker
-instead of the built-in place they used to be. If Tasker's own storage
-already has something in the way, that upgrade SHALL refuse rather than
-merge or overwrite either side.
-
-#### Scenario: Nothing is lost in the handover
-
-- **WHEN** an account with existing tasks and projects upgrades to a release
-  that includes Tasker
-- **THEN** every task and project keeps its id, its comments and files, and
-  who it's shared with, now inside Tasker
-
-#### Scenario: A collision is refused, not merged
-
-- **WHEN** Tasker's own storage already holds something where that existing
-  work would land
-- **THEN** the upgrade refuses
-- **AND** neither side's data is changed
-
 ### Requirement: An app's tables belong only to it
 
 Two apps SHALL be able to use the very same name for one of their own tables
@@ -164,74 +140,6 @@ While an installed app is on, a dashboard number card or chart SHALL be able to 
 - **WHEN** an administrator turns the app off and someone opens that card or a chart of the same tasks
 - **THEN** it's refused, and the tasks themselves are kept
 
-### Requirement: An app owns its own screen
-
-An app that brings its own screen SHALL fully control its address, document,
-inner navigation and styling. Featherbase SHALL serve only that app's declared
-client files, SHALL NOT show one app's screen or its own in place of a missing
-piece, and SHALL preserve an app-owned deep path, query and fragment across
-sign-in and refresh while loading the app's entry document.
-
-Featherbase SHALL render every app screen inside its responsive host shell on
-desktop and touch/mobile. The shell SHALL keep a persistent Featherbase Admin
-icon immediately followed by one keyboard-operable app switcher. The switcher
-SHALL identify the current destination and contain Featherbase Admin plus every
-active installed app the current member is allowed to open. It SHALL refresh
-after the document regains focus or visibility, omit unavailable destinations,
-and return to Featherbase Admin if the current destination becomes unavailable.
-
-The Home destination SHALL be the single responsive route to Featherbase's
-ordinary host controls; neither the shell nor an app SHALL create a second app
-list. Shell controls SHALL have accessible names, visible keyboard focus and
-usable touch targets without obscuring or replacing app-owned content. An app
-with its own screen SHALL NOT also create a competing generated Home Page; its
-tables remain available to administrators.
-
-#### Scenario: A missing piece stays missing
-
-- **WHEN** something inside Tasker's screen fails to load
-- **THEN** it shows as missing
-- **AND** neither Tasker's own home screen nor Featherbase's is shown instead
-
-#### Scenario: Signing in returns to the app that was opened
-
-- **WHEN** a signed-out person opens a nested Tasker address with query state
-  and a selected task in its fragment
-- **THEN** after signing in and refreshing they remain at that exact address
-  with the selected task open
-
-#### Scenario: Every app opens in the host shell
-
-- **WHEN** an authorized member opens an app on desktop or touch/mobile
-- **THEN** the Home icon and unified app switcher remain available while the
-  app's own navigation and content render unchanged below them
-
-#### Scenario: The switcher follows current access
-
-- **WHEN** app access is granted, removed, disabled, made unavailable or
-  restored before the document regains focus or visibility
-- **THEN** the refreshed switcher contains Featherbase Admin plus exactly the
-  active installed apps that member can open
-- **AND** if the current app disappeared, the member returns to Featherbase Admin
-
-#### Scenario: Host controls work with keyboard and touch
-
-- **WHEN** a member uses the shell on desktop or a touch/mobile viewport
-- **THEN** Home and the switcher have accessible names, visible focus and
-  usable targets, and app-owned controls remain operable
-
-#### Scenario: Home restores Featherbase controls
-
-- **WHEN** a member activates the Home icon or chooses Featherbase Admin
-- **THEN** they reach Featherbase's responsive navigation, command, account,
-  appearance, language, notification and permitted administration controls
-
-#### Scenario: An app can be delivered without rebuilding core
-
-- **WHEN** built Tasker is staged after Featherbase core was built
-- **THEN** Tasker opens inside the host shell without a core rebuild or a
-  Tasker-specific core route
-
 ### Requirement: Featherbase and every app keep one working address
 
 An older link to a Featherbase screen SHALL still work, redirecting to its
@@ -244,64 +152,16 @@ current address and keeping the rest of what was being looked at intact.
 - **THEN** it lands on the same screen at the current address, showing the
   same thing that link pointed to
 
-### Requirement: platform_storage_is_explicit
-Featherbase-owned relations and functions SHALL live in PostgreSQL schema
-`featherbase`. A fresh install SHALL create them there. An upgrade SHALL move
-existing objects without replacing their identities, rows, constraints, indexes,
-grants, RLS policies, references or migration history. Core logical identities
-SHALL remain compatible and unqualified; application logical and physical
-identities SHALL remain scoped. Runtime and migration paths SHALL resolve physical
-relations deterministically without pooled mutable `search_path` routing.
-Security-definer functions SHALL restrict name resolution and explicitly address
-their dependencies.
-
-`public.site` SHALL remain an explicitly named pre-tenant host registry. It SHALL
-NOT be treated as tenant data or moved into the core schema. Site data SHALL remain
-isolated in its selected site schema.
-
-Legacy databases SHALL have all migrations through `0087_dataset_snapshot_tables.ts`
-recorded before upgrading directly with the current release. Older or incomplete
-legacy ledgers SHALL be rejected before migration mutation, naming the missing
-migrations and requiring an intermediate historical upgrade. Supported legacy
-upgrades SHALL apply pending prerequisites in order before convergence. Every
-migration's effects and ledger entry SHALL commit together; retries SHALL skip
-committed prerequisites and resume the first pending migration.
-
-#### Scenario: fresh_and_upgrade_converge_to_same_shape
-- **WHEN** a fresh database and an asymmetric exact pre-convergence database run
-  the production migration command
-- **THEN** both expose the same Featherbase-owned object shape, preserve expected
-  upgrade rows and privileges, retain scoped app storage, and leave only the site
-  registry at `public.site`.
-
-#### Scenario: failed_convergence_retries_atomically
-- **WHEN** convergence is forced to fail before commit and then rerun
-- **THEN** the failed attempt moves no partial object set and the retry produces
-  exactly one complete migrated state without duplicated rows or grants.
-
-#### Scenario: production_era_prerequisites_precede_convergence
-- **WHEN** a database released by commit 3a6770ff651a308bfae0e31b5c525705c356a5a5
-  with all migrations through 0087 recorded runs the current release command
-- **THEN** pending runtime-storage prerequisites and schema convergence complete,
-  preserving existing object identities, rows, grants and ledger timestamps
-- **AND** rerunning release makes no duplicate history or grant contributions.
-
-#### Scenario: failed_legacy_prerequisite_retries_atomically
-- **WHEN** a pending legacy prerequisite fails after beginning its changes
-- **THEN** neither its changes nor its ledger entry survive
-- **AND** retry applies it once while retaining earlier committed prerequisites.
-
-#### Scenario: unsupported_legacy_ledger_rejected
-- **WHEN** a legacy database lacks any migration recorded by the supported 0087 floor
-- **THEN** release names the missing migrations and required intermediate upgrade
-  without applying migrations or creating destination storage.
-
 ### Requirement: A new access rule needs a new, reviewed version
 
 An app SHALL only gain a new access rule — such as who may read or act on
 one of its tables — by shipping a new, reviewed version; Featherbase SHALL
 NOT let an already-installed version quietly pick up a rule it didn't
-originally declare. A new version MAY withdraw a rule its predecessor
+originally declare.
+
+#### Normative details for the whole requirement
+
+A new version MAY withdraw a rule its predecessor
 declared; applying it SHALL remove only the grant that app created, and
 record the withdrawal in the activity log. The image SHALL ship the installed
 predecessor beside the new version so the upgrade can find it.
@@ -342,7 +202,11 @@ delete was made against an out-of-date view of it.
 ### Requirement: explicit_runtime_policy_upgrade
 
 Package discovery SHALL validate read/action policy and required callback
-declarations as immutable artifact contents. Missing policies SHALL NOT become
+declarations as immutable artifact contents.
+
+#### Normative details for the whole requirement
+
+Missing policies SHALL NOT become
 implicit unscoped grants. The host SHALL recognize exact historical version-1
 artifacts for predecessor verification and reviewed upgrade planning without
 executing undeclared actions. Install/restart SHALL expose their policy-upgrade
@@ -511,7 +375,11 @@ app.
 A new version of an app SHALL be able to add and remove its tables, add a
 column of any kind, change a column's label, description (the line a form
 shows under it), choices, default, whether it is required, unique or hidden,
-rename a column or a table, and remove a column. Changing a label or a
+rename a column or a table, and remove a column.
+
+#### Normative details for the whole requirement
+
+Changing a label or a
 description SHALL change only what people read. A rename SHALL keep the rows,
 their history, the links to them and who may see them. An upgrade SHALL change
 only the app's own tables, never Featherbase's or the instance's.
@@ -598,6 +466,155 @@ had SHALL never widen through an upgrade.
 - **WHEN** an upgrade adds a Supplier table that its version lets clerks read
 - **THEN** the preview lists that access
 - **AND** after the upgrade clerks can read suppliers
+
+### Requirement: Platform storage is explicit
+Featherbase-owned relations and functions SHALL live in PostgreSQL schema
+`featherbase`.
+
+#### Normative details for the whole requirement
+
+A fresh install SHALL create them there. Core logical identities
+SHALL remain compatible and unqualified; application logical and physical
+identities SHALL remain scoped. Runtime and migration paths SHALL resolve physical
+relations deterministically without pooled mutable `search_path` routing.
+Security-definer functions SHALL restrict name resolution and explicitly address
+their dependencies.
+
+`public.site` SHALL remain an explicitly named pre-tenant host registry. It SHALL
+NOT be treated as tenant data or moved into the core schema. Site data SHALL remain
+isolated in its selected site schema.
+
+#### Scenario: A fresh install uses the platform schema
+- **WHEN** a fresh database runs the production migration command
+- **THEN** every Featherbase-owned object is in the platform schema, and only the
+  site registry is at `public.site`
+
+### Requirement: An app can bring its own scheduled jobs
+
+An app SHALL be able to declare scheduled jobs, each with how often it runs by
+default and what it does. Installing the app SHALL add each job to the
+scheduled jobs page under the app's name, where an admin manages it like any
+other scheduled job.
+
+#### Scenario: A daily job arrives with the app
+
+- **WHEN** the user installs an app that declares a daily job to disable
+  people who have left
+- **THEN** the scheduled jobs page lists that job under the app's name, set
+  to run daily, and it runs without anyone starting it
+
+### Requirement: An app's job can do only what it declares
+
+An app's job SHALL run as itself, not as a person, and SHALL be able to do only
+what the app declares for it: seeing the instance's people, disabling a person,
+or emailing the System Managers. Anything else SHALL be refused and recorded,
+and the job SHALL never disable an administrator.
+
+#### Scenario: A job that disables people
+
+- **WHEN** a job declared to disable people runs and finds a person who has
+  left and a System Manager who has left
+- **THEN** the person is disabled, with the job named as the one who did it,
+  and the System Manager is left as they are
+
+#### Scenario: A job tries something it did not declare
+
+- **WHEN** a job declared only to see people tries to disable someone
+- **THEN** the person stays enabled, the run is recorded as failed and is not
+  retried, and the access log records the refusal
+
+### Requirement: An app's jobs follow the app
+
+Turning an app off SHALL stop its jobs, turning it on SHALL start them again,
+and removing it SHALL remove them. An upgrade SHALL add, change or remove the
+app's jobs as the new version says, once the new version is turned on, and
+SHALL keep a cadence an admin chose.
+
+#### Scenario: Turning the app off and on
+
+- **WHEN** the user turns an app off and later back on
+- **THEN** its jobs do not run while it is off, and run again once it is on
+
+#### Scenario: An upgrade changes the jobs
+
+- **WHEN** the new version of an app runs one job hourly instead of daily,
+  adds a job, and drops another
+- **THEN** the upgrade preview lists all three changes, and once the new
+  version is turned on the scheduled jobs page matches it
+
+### Requirement: An upgrade can't give a job new access
+
+An upgrade SHALL NOT let a job do something its installed version was not
+allowed to do; a job that would gain access SHALL need a reviewed install.
+
+#### Scenario: A job that would gain the right to disable people
+
+- **WHEN** the new version of an app lets a job disable people when the
+  installed version only let it see them
+- **THEN** the upgrade preview is refused and says why
+
+### Requirement: A job name belongs to one owner
+
+An app SHALL NOT take the name of a scheduled job that Featherbase or another
+app already has; installing it SHALL be refused and leave nothing behind.
+
+#### Scenario: A name already in use
+
+- **WHEN** the user installs an app whose job would have the same name as an
+  existing scheduled job
+- **THEN** the install is refused, naming who has the job, and the existing
+  job is unchanged
+
+### Requirement: The platform is named Featherbase
+
+The platform destination SHALL be named Featherbase wherever the user switches
+between the platform and installed apps.
+
+#### Scenario: A clean instance identifies the platform
+
+```gherkin
+Given the user is a System Manager on an instance with no installed apps
+When the user inspects the destination switcher
+Then the platform destination is named "Featherbase"
+```
+
+#### Scenario: An installed app preserves the platform name
+
+```gherkin
+Given the user is a System Manager with Tasker installed
+When the user inspects the destination switcher while using Tasker
+Then the platform destination is named "Featherbase"
+And Tasker retains its own app name
+```
+
+### Requirement: An app owns its screen under the shared top bar
+
+An app SHALL own its address, document, state, content and styling outside shared navigation. Featherbase SHALL serve only declared client files, preserve deep paths, queries and fragments across sign-in and refresh, and never replace missing content. The shared bar SHALL include app controls, theme and account, without styling or covering app content. An app screen SHALL NOT compete with a generated Home Page; authorized administrators retain access to its data.
+
+#### Scenario: A missing piece stays missing
+
+```gherkin
+Given the user is using Tasker
+When a piece of Tasker's content cannot load
+Then that piece is shown as missing
+And neither Tasker's home nor Featherbase replaces it
+```
+
+#### Scenario: Signing in returns to the app that was opened
+
+```gherkin
+Given the user is signed out
+When the user opens a nested Tasker address with a selected task and signs in
+Then the same address and selected task survive refreshing the page
+```
+
+#### Scenario: An app can be delivered without rebuilding core
+
+```gherkin
+Given Featherbase has been built without Tasker's client files
+When built Tasker is installed
+Then Tasker opens with the shared navigation without rebuilding Featherbase or adding an app-specific platform route
+```
 
 ## Deferred
 

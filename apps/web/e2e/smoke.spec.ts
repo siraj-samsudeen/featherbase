@@ -25,3 +25,11 @@ test('api is reachable through the web proxy', async ({ request }) => {
   expect(res.ok()).toBeTruthy()
   expect(await res.json()).toMatchObject({ message: 'pong', db: true })
 })
+
+// The gallery has its own HTML/React entry outside the router. Component
+// tests exercise its controls; only a browser can prove that entry loads.
+test('the standalone component gallery boots from its own document', async ({ session }) => {
+  await session.visit('/gallery.html').step('the gallery entry mounts its page', async ({ page }) => {
+    await expect(page.getByRole('heading', { level: 1, name: 'Components' })).toBeVisible()
+  })
+})

@@ -122,6 +122,65 @@ describe('app manifests can declare Data Sources and reflections', () => {
     expect(src).toEqual({ '?column?': 1 }) // predated the app — never removed
   })
 
+  test('uninstall tolerates an already deleted owned source without removing an adopted source', async ({ admin }) => {
+    const name = 'appsrc-unbound'
+    const owned = 'appsrc-owned'
+    const adopted = 'appsrc-adopted'
+    await admin.post('/api/table/Data%20Source', {
+      row_id: adopted,
+      engine: 'postgres',
+      url_env: ENV_VAR,
+      default_schema: 'appsrc',
+      access: 'read_write',
+    })
+    const before = await sql`select * from data_source where row_id = ${adopted}`
+    const manifest = {
+      name,
+      sources: [owned, adopted].map(source => ({
+        name: source,
+        engine: 'postgres',
+        url_env: ENV_VAR,
+        default_schema: 'appsrc',
+        access: 'read_only',
+      })),
+    }
+    const installed = await admin.fetch('/api/install_app', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ manifest }),
+    })
+    expect(installed.status).toBe(201)
+    expect(await installed.json()).toEqual({
+      name, tables: [], roles: [], perms: [], fixtures: [], sources: [owned],
+    })
+    expect(await sql`select tables, sources from installed_app where name = ${name}`)
+      .toEqual([{ tables: [], sources: [owned] }])
+    expect(await sql`select row_id, access from data_source where row_id = ${owned}`)
+      .toEqual([{ row_id: owned, access: 'read_only' }])
+    expect(await sql`select * from data_source where row_id = ${adopted}`).toEqual(before)
+    expect(await sql`select name from table_def where data_source in (${owned}, ${adopted})`).toEqual([])
+
+    const deleted = await admin.fetch(`/api/table/Data%20Source/${owned}`, { method: 'DELETE' })
+    expect(deleted.status).toBe(200)
+    expect(await deleted.json()).toEqual({ ok: true })
+    expect(await sql`select row_id from data_source where row_id = ${owned}`).toEqual([])
+    // Ordinary source deletion leaves the app's genuine ownership record intact.
+    expect(await sql`select tables, sources from installed_app where name = ${name}`)
+      .toEqual([{ tables: [], sources: [owned] }])
+
+    const uninstalled = await admin.fetch('/api/uninstall_app', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    expect(uninstalled.status).toBe(200)
+    expect(await uninstalled.json()).toEqual({ name, removed: [] })
+    expect(await sql`select name from installed_app where name = ${name}`).toEqual([])
+    expect(await sql`select row_id from data_source where row_id = ${owned}`).toEqual([])
+    expect(await sql`select * from data_source where row_id = ${adopted}`).toEqual(before)
+    expect(await cli`select extractor, holder from appsrc.lease`).toEqual([{ extractor: 'sap', holder: 'box-1' }])
+  })
+
   test('a relation the source does not have fails the install loudly', async ({ admin }) => {
     invalidateSources()
     await expect(

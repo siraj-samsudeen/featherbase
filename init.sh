@@ -15,9 +15,17 @@ command -v pnpm >/dev/null || npm install -g pnpm
 # near-instant when the lockfile is already satisfied, so paying it every boot
 # is cheaper than the debugging it saves.
 pnpm install
-pnpm apps:prepare
-# Development examples are explicit configured packages, never core imports.
-export FEATHERBASE_APP_PATHS="${FEATHERBASE_APP_PATHS:-$(node -e 'console.log(JSON.stringify(process.argv.slice(1)))' "$PWD/runtime-apps/fixtures/tasker-v2.2" "$PWD/runtime-apps/tasker" "$PWD/runtime-apps/other")}"
+# Apps are opt-in. Test suites prepare their fixtures explicitly with apps:prepare.
+# Client apps are opt-in (ADR 0014): FEATHERBASE_CLIENT_APPS="jeyarama/dash"
+# (space-separated) adds already-built client-apps/<each> to the app path.
+client_app_paths=()
+for client_app in ${FEATHERBASE_CLIENT_APPS:-}; do
+  [ -f "client-apps/$client_app/featherbase.json" ] || { echo "!! FEATHERBASE_CLIENT_APPS names client-apps/$client_app, which has no featherbase.json"; exit 1; }
+  client_app_paths+=("$PWD/client-apps/$client_app")
+done
+if [ "${#client_app_paths[@]}" -gt 0 ]; then
+  export FEATHERBASE_APP_PATHS="${FEATHERBASE_APP_PATHS:-$(node -e 'console.log(JSON.stringify(process.argv.slice(1)))' "${client_app_paths[@]}")}"
+fi
 
 # --- 2. Database -----------------------------------------------------------
 # DATABASE_URL is the single source of truth; the default below must stay in
@@ -25,7 +33,7 @@ export FEATHERBASE_APP_PATHS="${FEATHERBASE_APP_PATHS:-$(node -e 'console.log(JS
 # serving that URL — on the container, and on any second run, this whole block
 # is a no-op. Only when the URL does not answer do we try to start a cluster
 # and create the role/database, branching by platform at that point.
-export DATABASE_URL="${DATABASE_URL:-postgres://postgres:postgres@127.0.0.1:5432/featherbase}"
+export DATABASE_URL="${DATABASE_URL:-$(node --env-file-if-exists=.env.local -p 'process.env.DATABASE_URL || "postgres://postgres:postgres@127.0.0.1:5432/featherbase"')}"
 
 # A personal ~/.psqlrc can print text ("Border style is 2") that the
 # `psql -tAc` checks below would read as an answer: ignore it.
@@ -105,6 +113,11 @@ EOF
     #     is missing. Find a superuser connection this host will accept.
     ADMIN_URL=""
     SU_POSTGRES=0
+    # A new database may not exist yet while its supplied role/password
+    # already works. Try those credentials against the maintenance database
+    # before falling back to passwordless local administration.
+    cand="$(node -e 'const u=new URL(process.argv[1]);u.pathname="/postgres";process.stdout.write(u.toString())' "$DATABASE_URL")"
+    PGCONNECT_TIMEOUT=5 admin_psql "$cand" -w -tAc 'select 1' >/dev/null 2>&1 && ADMIN_URL="$cand"
     for u in "$(id -un)" postgres; do
       [ -n "$ADMIN_URL" ] && continue
       cand="postgres://$u@$DB_HOST:$DB_PORT/postgres"
@@ -149,9 +162,8 @@ EOF
   fi
 fi
 
-# --- 3. Migrations + patches -----------------------------------------------
+# --- 3. Migrations ---------------------------------------------------------
 pnpm --filter server migrate
-pnpm --filter server patches
 
 # --- 3b. The TEST database, which is a different database -------------------
 # The suites default to `featherbase_test`, never the database this dev server
@@ -184,8 +196,29 @@ fi
 export ALLOW_MOCK_OAUTH=1
 # These defaults are the single-checkout development ports. Export them so
 # Vite both listens on the selected web port and proxies to this stack's API.
-export API_PORT="${API_PORT:-8000}"
-export WEB_PORT="${WEB_PORT:-5173}"
+export API_PORT="${API_PORT:-$(node --env-file-if-exists=.env.local -p 'process.env.API_PORT || "8000"')}"
+export WEB_PORT="${WEB_PORT:-$(node --env-file-if-exists=.env.local -p 'process.env.WEB_PORT || "5173"')}"
+# In an Amp orb the supervisor owns services; shell background jobs do not
+# survive an orb pause or CLI update. Never run the local fallback there.
+if [ -n "${AMP_ORB:-}" ]; then
+  command -v amp >/dev/null || { echo "!! Amp orb boot requires the service supervisor (amp)."; exit 1; }
+  service_name="featherbase-${API_PORT}-${WEB_PORT}"
+  # The supervisor does not inherit this shell. Snapshot only declared runtime
+  # variables into a gitignored 0600 file; no credentials go in its command.
+  mkdir -p .amp
+  private_env="$PWD/.amp/.env.${service_name}.json"
+  (cd apps/server && node --import tsx ../../tools/orb-service.mts capture "$private_env")
+  printf -v start_command 'cd %q && node --import tsx ../../tools/orb-service.mts start %q' "$PWD/apps/server" "$private_env"
+  amp orb service start "$service_name" --command "$start_command" --port "$WEB_PORT" --portal
+  for i in $(seq 1 90); do
+    if curl -sf "http://localhost:$API_PORT/api/ping" >/dev/null 2>&1 && curl -sf "http://localhost:$WEB_PORT" >/dev/null 2>&1; then break; fi
+    [ "$i" = 90 ] && { echo "!! service not ready; run amp orb service logs $service_name"; exit 1; }
+    sleep 1
+  done
+  SERVER_URL="http://localhost:$API_PORT" WEB_URL="http://localhost:$WEB_PORT" pnpm smoke
+  echo "==> init OK — supervised Featherbase; next: featherbase health (or pnpm featherbase health)"
+  exit 0
+fi
 server_log="/tmp/featherbase-server-${API_PORT}.log"
 web_log="/tmp/featherbase-web-${WEB_PORT}.log"
 # Kill by listening port — pattern-matching the tsx wrapper misses the actual

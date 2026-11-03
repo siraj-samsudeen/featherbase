@@ -26,11 +26,16 @@ function configurePreview(user = PREVIEW_USER) {
 }
 
 describe('the deploy config runs one pre-deploy command', () => {
-  it('railway.json names the pre-deploy command alone, with nothing a shell would have to read', () => {
-    const railway = JSON.parse(readFileSync(join(repo, 'railway.json'), 'utf8'))
+  it('.railway/railway.ts names the pre-deploy command alone in every environment, with nothing a shell would have to read', async () => {
+    const { createRailwayContext, project } = await import('railway/iac')
+    const { default: program } = await import('../../../.railway/railway')
     // The host may run each entry as argv, not through a shell: an `&&` there
     // is an argument, and whatever follows it silently never runs.
-    expect(railway.deploy.preDeployCommand).toEqual(['pnpm --filter server pre-deploy'])
+    for (const environment of ['production', 'staging']) {
+      const { resources = [] } = await program(createRailwayContext({ environment }), project)
+      const server = resources.flat().find(resource => resource.type === 'service')
+      expect(server?.type === 'service' && server.deploy?.preDeployCommand, environment).toEqual(['pnpm --filter server pre-deploy'])
+    }
     const server = JSON.parse(readFileSync(join(repo, 'apps', 'server', 'package.json'), 'utf8'))
     expect(server.scripts['pre-deploy']).toBe('tsx src/pre-deploy.ts')
   })
@@ -44,9 +49,41 @@ describe('the deploy config runs one pre-deploy command', () => {
     const output = execFileSync(process.execPath, ['--import', 'tsx', join(repo, 'apps', 'server', 'src', 'pre-deploy.ts')], {
       cwd: join(repo, 'apps', 'server'), env, timeout: 60_000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
     })
-    expect(output).toContain('patches up to date (1 total)\n')
+    expect(output).toContain('preflight: pending migrations: none\n')
     expect(output).toContain('preview sign-in is not configured here — nothing to seed\n')
   }, 60_000)
+})
+
+describe('pre-deploy for a client instance', () => {
+  it('refuses a development server before the release changes anything', async () => {
+    vi.stubEnv('FEATHERBASE_INSTANCE', 'jeyarama/dash')
+    vi.stubEnv('FEATHERBASE_ENV', 'development')
+    const r = await runMain(main, [])
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain('use pnpm dev')
+    expect(r.stdout).not.toContain('preflight:')
+  })
+
+  it('refuses an image that holds no such instance before the release changes anything', async () => {
+    vi.stubEnv('FEATHERBASE_INSTANCE', 'acme/not_here')
+    vi.stubEnv('FEATHERBASE_ENV', 'staging')
+    const r = await runMain(main, [])
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain('holds no instance "acme/not_here"')
+    expect(r.stdout).not.toContain('preflight:')
+  })
+})
+
+describe('pre-deploy for a client instance, past the release', () => {
+  it('a problem in the instance step fails the deploy', async () => {
+    vi.stubEnv('FEATHERBASE_INSTANCE', 'jeyarama/dash')
+    vi.stubEnv('FEATHERBASE_ENV', 'staging')
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    const r = await runMain(main, [])
+    expect(r.code).toBe(1)
+    expect(r.stdout).toContain('preflight:')
+    expect(r.stderr).toContain('deploy failed: This image ships no app')
+  })
 })
 
 describe('pre-deploy', () => {
@@ -54,8 +91,8 @@ describe('pre-deploy', () => {
     configurePreview()
     const r = await runMain(main, [])
     expect(r.code).toBe(0)
-    expect(r.stdout).toContain('patches up to date (1 total)\n')
-    expect(r.stdout.indexOf('patches up to date')).toBeLessThan(r.stdout.indexOf('preview seed complete'))
+    expect(r.stdout).toContain('preflight: pending migrations: none\n')
+    expect(r.stdout.indexOf('preflight: pending migrations')).toBeLessThan(r.stdout.indexOf('preview seed complete'))
     const [person] = await sql`select row_id, enabled from person where lower(email) = ${PREVIEW_USER}`
     expect(person).toMatchObject({ enabled: true })
     expect(await sql`select 1 from table_def where name = 'Store Sections'`).toHaveLength(1)

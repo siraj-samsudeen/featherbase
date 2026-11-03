@@ -1,5 +1,5 @@
 import { makeClient, type TestClient } from 'feather-testing-postgres'
-import { version } from '../../../runtime-apps/tasker/package.json'
+import { version } from '../../../example-apps/tasker/package.json'
 
 // Model a client built with this package. Raw clients remain available for
 // explicit missing/old-version rejection checks; never change global HTTP.

@@ -116,7 +116,7 @@ test('when the server cannot say what the person may use, the Admin says so and 
 })
 
 test('choosing another application in the switcher goes to its address', async ({ admin }) => {
-  expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker')])).toEqual([])
+  expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
   if (await isInstalled('tasker')) await uninstallApp('tasker')
   await installApp('tasker')
   const reports = navigationReports()

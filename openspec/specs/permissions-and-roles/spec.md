@@ -151,7 +151,11 @@ list.
 ### Requirement: The screen shows only what a person can use
 
 After signing in, a person SHALL see only the tools they can use, decided by
-the server from their current roles and grants. Someone whose only access is
+the server from their current roles and grants.
+
+#### Normative details for the whole requirement
+
+Someone whose only access is
 the Sales Target report SHALL get a bare screen — the report, their name,
 their own sign-in methods and sign-out — with no administration menu, and
 without the page asking for anything they would be refused. Someone with no
@@ -238,7 +242,11 @@ scopes, shares, sign-in methods, identifier systems, installed apps, and the
 tables that decide whose sales targets a person sees — and the tables that
 make the system act on others' rows (server scripts, workflows, assignment
 rules) SHALL refuse every write
-from anyone but a System Manager, whatever grants exist on them. Reading them
+from anyone but a System Manager, whatever grants exist on them.
+
+#### Normative details for the whole requirement
+
+Reading them
 SHALL stay governed by ordinary grants. A person's roles and whether their
 account is enabled SHALL likewise change only for a System Manager, through
 every way a row can be saved; values sent back unchanged SHALL NOT block an
@@ -313,7 +321,11 @@ domain.
 
 An installed app's tables SHALL NOT count towards the administration only when
 that app opens at its own root, with pages of its own, whether it is switched on
-or off. Reading such an app's tables, or a row of one shared with them, does not
+or off.
+
+#### Normative details for the whole requirement
+
+Reading such an app's tables, or a row of one shared with them, does not
 by itself open the administration to a person: they reach those tables through
 the app, which keeps working for them as before, and signing in takes them to it.
 An app without pages of its own is used through the administration, so its
@@ -341,3 +353,17 @@ tables still count, as do grants on the instance's own tables.
   has no pages of its own signs in
 - **THEN** they can open the administration and use that app's tables there,
   as before
+
+### Requirement: A role that may only create rows keeps what it typed
+
+A new row SHALL keep every column its creator filled in that their role's
+create or edit access reaches. A role allowed to create rows but not to
+edit them SHALL therefore save a new row with what was typed, and cannot
+change it afterwards.
+
+#### Scenario: Create without edit
+
+- **WHEN** a user whose role may create orders but not edit them saves a new
+  order titled "Planner order"
+- **THEN** the order is saved with that title
+- **AND** a later change to it is refused

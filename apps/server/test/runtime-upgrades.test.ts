@@ -12,7 +12,7 @@ import { makeTaskerV2 } from '../../../tools/tasker-upgrade-fixture.mjs'
 
 async function targetPackage() {
   const directory = await mkdtemp(resolve('test/.upgrade-'))
-  await cp(resolve('../..', 'runtime-apps/other'), directory, { recursive: true })
+  await cp(resolve('../..', 'test-apps/other'), directory, { recursive: true })
   const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
   const pkg = JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8'))
   const column = { column_name: 'notes', label: 'Notes', column_type: 'Text' }
@@ -28,7 +28,7 @@ describe('runtime upgrades', () => {
   test('core identity snapshot is host derived; multiple identities never override availability or version', async ({ admin, createUser }) => {
     const { directory } = await targetPackage()
     try {
-      await discoverPackages([resolve('../..', 'runtime-apps/fixtures/tasker-v2'), directory])
+      await discoverPackages([resolve('../..', 'test-apps/fixtures/tasker-v2'), directory])
       await admin.post('/api/install_app', { name: 'tasker' })
       await admin.post('/api/install_app', { name: 'other' })
       const member = await createUser({ email: 'identity-reader@example.com', roles: [] })
@@ -58,7 +58,7 @@ describe('runtime upgrades', () => {
   })
 
   test('Tasker upgrade preserves complete existing work and matches fresh v2 schema', async ({ admin }) => {
-    const source = resolve('../..', 'runtime-apps/fixtures/tasker-v1')
+    const source = resolve('../..', 'test-apps/fixtures/tasker-v1')
     const directory = await mkdtemp(resolve('test/.tasker-upgrade-'))
     await makeTaskerV2(source, directory)
     async function schema() {
@@ -81,7 +81,7 @@ describe('runtime upgrades', () => {
         throw rollback
       })).rejects.toBe(rollback)
       invalidateMeta()
-      await discoverPackages([source, resolve('../..', 'runtime-apps/other')])
+      await discoverPackages([source, resolve('../..', 'test-apps/other')])
       await admin.post('/api/install_app', { name: 'tasker' })
       await admin.post('/api/install_app', { name: 'other' })
       const project = await admin.post<{ row_id: string }>('/api/save_row', { table: 'tasker.project', row: { project_name: 'Stock review — southern region' } })
@@ -99,7 +99,7 @@ describe('runtime upgrades', () => {
         grants: await sql`select * from permission where owner_app = 'tasker' order by row_id`,
         preferences: await admin.get('/api/user_settings/tasker.preferences'),
       }
-      await discoverPackages([source, directory, resolve('../..', 'runtime-apps/other')])
+      await discoverPackages([source, directory, resolve('../..', 'test-apps/other')])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'tasker', version: '2.0.0' })
       await admin.post('/api/upgrade_app', { name: 'tasker', version: '2.0.0', planId: plan.planId })
@@ -128,7 +128,7 @@ describe('runtime upgrades', () => {
   })
 
   test('preview, commit, restart, activate and retry preserve asymmetric rows and grants', async ({ admin, createUser }) => {
-    const source = resolve('../..', 'runtime-apps/other')
+    const source = resolve('../..', 'test-apps/other')
     const { directory } = await targetPackage()
     try {
       await discoverPackages([source])
@@ -180,7 +180,7 @@ describe('runtime upgrades', () => {
   })
 
   test('second DDL failure rolls back first addition and ledger; retry runs exactly once', async ({ admin }) => {
-    const source = resolve('../..', 'runtime-apps/other')
+    const source = resolve('../..', 'test-apps/other')
     const { directory, manifest } = await targetPackage()
     const column = { column_name: 'second', label: 'Second', column_type: 'Text' }
     manifest.tables[0].columns.push(column)
@@ -210,7 +210,7 @@ describe('runtime upgrades', () => {
   })
 
   test('malformed, incompatible, skipped, changed permissions and undeclared destructive changes fail closed', async ({ admin }) => {
-    const source = resolve('../..', 'runtime-apps/other')
+    const source = resolve('../..', 'test-apps/other')
     const { directory, manifest } = await targetPackage()
     try {
       await discoverPackages([source])
@@ -243,7 +243,7 @@ describe('runtime upgrades', () => {
   })
 
   test('preview digest changes on enablement; missing and edited artifact cannot mutate schema', async ({ admin }) => {
-    const source = resolve('../..', 'runtime-apps/other')
+    const source = resolve('../..', 'test-apps/other')
     const { directory } = await targetPackage()
     try {
       await discoverPackages([source])
@@ -263,7 +263,7 @@ describe('runtime upgrades', () => {
   })
 
   test('upgrade waits for admitted post-commit save; queued disable preserves disabled activation', async ({ admin }) => {
-    const source = resolve('../..', 'runtime-apps/other')
+    const source = resolve('../..', 'test-apps/other')
     const { directory } = await targetPackage()
     let release!: () => void
     let entered!: () => void
@@ -302,7 +302,7 @@ describe('runtime upgrades', () => {
   })
 
   test('duplicate-different targets and same-version replacement after commit cannot replay success', async ({ admin }) => {
-    const source = resolve('../..', 'runtime-apps/other')
+    const source = resolve('../..', 'test-apps/other')
     const { directory, manifest } = await targetPackage()
     const duplicate = await mkdtemp(resolve('test/.upgrade-duplicate-'))
     try {
@@ -327,7 +327,7 @@ describe('runtime upgrades', () => {
   })
 
   test('disabled upgrade, checksum drift, downgrade, missing prior and code-only next version', async ({ admin }) => {
-    const source = resolve('../..', 'runtime-apps/other')
+    const source = resolve('../..', 'test-apps/other')
     const { directory, manifest } = await targetPackage()
     const next = await mkdtemp(resolve('test/.upgrade-next-'))
     try {
@@ -361,7 +361,7 @@ describe('runtime upgrades', () => {
 
 describe('An upgrade never goes backward', () => {
   test('previewing an upgrade to the version already installed is refused and changes nothing', async ({ admin }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     const [{ package_version: installed }] = await sql`select package_version from installed_app where name = 'other'`
     await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: installed }))
@@ -376,7 +376,7 @@ describe('explicit_runtime_policy_upgrade', () => {
     const copy = await mkdtemp(resolve('test/.relabel-'))
     const header = { 'X-Featherbase-App-Version': 'tasker@2.0.0' }
     try {
-      await cp(resolve('../..', 'runtime-apps/fixtures/tasker-v2'), copy, { recursive: true })
+      await cp(resolve('../..', 'test-apps/fixtures/tasker-v2'), copy, { recursive: true })
       expect(await discoverPackages([copy])).toEqual([])
       await admin.post('/api/install_app', { name: 'tasker' })
       expect((await admin.fetch('/api/table/tasker.task', { headers: header })).status).toBe(200)

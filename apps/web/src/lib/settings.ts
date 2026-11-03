@@ -75,6 +75,8 @@ export function formatValue(columnType: string, value: unknown, s: Settings): st
       return formatNumber(value, s.float_precision)
     case 'Check':
       return value ? '✓' : '✗'
+    case 'JSON':
+      return typeof value === 'string' ? value : JSON.stringify(value)
     default:
       return String(value)
   }

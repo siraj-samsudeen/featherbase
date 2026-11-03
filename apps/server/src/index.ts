@@ -16,7 +16,7 @@ import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
-import { GOOGLE_OFF, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
+import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
@@ -29,7 +29,7 @@ import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirec
 import { sendInvitation } from './invitation-email'
 import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
-import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
+import { assertPermission, assertSystemManager, getRoles, permissionScope, permittedTiers, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
 import { landingAfterSignIn, openAdminFor } from './landing'
@@ -76,7 +76,8 @@ import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled, isInstalled, installedAppNames } from './apps'
-import { discoverPackages, packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { discoverAppLibrary, appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
@@ -86,6 +87,7 @@ import { assertServerStart, readVariable } from './env'
 import helpdesk from './sample-apps/helpdesk'
 import checklists from './sample-apps/checklists'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
+import { readGlossary, takeAppWording } from './glossary'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -101,7 +103,7 @@ registerApp(helpdesk)
 // Same discipline: checklist tables exist only after
 // POST /api/install_app { name: 'checklists' }.
 registerApp(checklists)
-await discoverPackages(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+await discoverAppLibrary(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
 await loadInstalledApps()
 // Custom fields may target app-owned Tables, so activation precedes replay.
 await reapplyCustomFields()
@@ -619,7 +621,7 @@ async function googleCallback(c: Context) {
     } catch (err) {
       if (!(err instanceof AppError)) return back('failed')
       if (err.type === 'ConflictError') return back(err.message.includes('reserved') ? 'reserved' : 'taken')
-      if (err.type === 'PermissionError') return back('not_allowed')
+      if (err.type === 'PermissionError') return back(err.message === LINK_DOMAIN_NOT_ALLOWED ? 'domain_not_allowed' : 'not_allowed')
       return back(err.message.startsWith('Sign in again') || err.message.includes('session') ? 'sign_in_again' : 'google_failed')
     }
   }
@@ -755,7 +757,7 @@ app.use('/api/*', rateLimit)
 // Lifecycle endpoints take the exclusive counterpart inside their handlers
 // (the upgrade preview too since #651: it runs the steps to count losses).
 app.use('/api/*', async (c, next) => {
-  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/preview_app_upgrade', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
+  if (['/api/apps/prepare-install', '/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/preview_app_upgrade', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
     return next()
   try {
     // Do not await here: only synchronous identity parsing failures belong to
@@ -1205,11 +1207,11 @@ app.post('/api/instance-settings/apply', async (c) => {
   if (!parsed.success) {
     const fields: Record<string, string> = {}
     for (const issue of parsed.error.issues) fields[issue.path.join('.') || 'body'] = issue.message
-    throw new AppError('ValidationError', `Expected { file, environment?, dry_run?, source?, files? }: ${Object.entries(fields).map(([k, v]) => `${k} ${v}`).join('; ')}`, fields)
+    throw new AppError('ValidationError', `Expected { file, environment?, dry_run?, source?, files?, env? }: ${Object.entries(fields).map(([k, v]) => `${k} ${v}`).join('; ')}`, fields)
   }
   const body = parsed.data
   return c.json(await applyInstanceSettings(body.file, {
-    by: who(c), environment: body.environment, dryRun: body.dry_run === true, source: body.source, files: body.files,
+    by: who(c), environment: body.environment, dryRun: body.dry_run === true, source: body.source, files: body.files, env: body.env,
   }))
 })
 
@@ -1660,6 +1662,8 @@ app.post('/api/upload_file', async (c) => {
       ...(refName ? { ref_name: refName } : {}),
     },
     who(c),
+    'insert',
+    { uploadedFileUrl: stored.file_url },
   )
   // thumbnail_url is a read_only, system-managed field, so it's set with a
   // direct write (the save lifecycle ignores client values for read_only
@@ -1777,10 +1781,27 @@ app.post('/api/permissions/:table', async (c) => {
 // install/uninstall their Tables + doc_events and report installed state.
 app.get('/api/apps', async (c) => {
   await assertSystemManager(who(c))
-  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), versions: availableRuntimeVersions(), actions: declaredPackageActions(),
+  c.header('Cache-Control', 'no-store')
+  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), versions: availableRuntimeVersions(), actions: declaredPackageActions(), catalog: await appLibraryCatalog(),
     failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
 })
+app.post('/api/apps/prepare-install', async c => {
+  await assertSystemManager(who(c))
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body.name !== 'string' || !/^[a-z][a-z0-9_]{0,30}$/.test(body.name) || Object.keys(body).some(key => key !== 'name'))
+    throw new AppError('ValidationError', 'Expected { name } naming an app in the catalog; paths and commands are not accepted')
+  return c.json(await prepareAndInstallApp(body.name), 201)
+})
 app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
+// #629: the glossary everyone signed in reads, and an editor's way back to an
+// app's own wording of a term the instance reworded.
+app.get('/api/glossary', async (c) => c.json(await readGlossary(who(c))))
+app.post('/api/glossary/take_app_wording', async (c) => {
+  const { id } = (await c.req.json().catch(() => ({}))) as { id?: unknown }
+  if (typeof id !== 'string') throw new AppError('ValidationError', 'Expected { id }')
+  await takeAppWording(id, who(c))
+  return c.json({ ok: true })
+})
 // #642 (E8): the controls an app declared for the shared top bar, filled for
 // this person.
 app.get('/api/app_bar/:app', async (c) => {
@@ -2152,7 +2173,10 @@ app.get('/api/table/:table', async (c) => {
   if (suffix === 'meta') {
     const meta = await getMeta(table)
     await assertPermission(user.row_id, meta.name, 'read')
-    return c.json(meta)
+    // #738: the caller's readable levels ride beside the cached meta, never
+    // inside it — the meta object is shared by every caller.
+    const readable = await permittedTiers(user.row_id, meta.name, 'read')
+    return c.json({ ...meta, readable_tiers: [...readable] })
   }
   if (suffix === 'count') {
     const filters = c.req.query('filters')

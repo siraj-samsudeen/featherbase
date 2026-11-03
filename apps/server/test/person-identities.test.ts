@@ -5,11 +5,15 @@ import { afterEach, describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test, patchDoc } from './pg-test'
 import { sql } from '../src/db'
-import { makePerson } from './fixtures'
+import { expectApiError, makePerson } from './fixtures'
 import { issueSession } from '../src/auth'
 import { configureGoogle, inviteGoogleRaw, linkDelegated, configureDelegated } from './identity-fixtures'
 import { googleSignIn, redeemSession } from './google-mock'
 import { _setDelegatedFetch } from '../src/delegated-login'
+import {
+  candidate, disableLeaver, getIdentity, getSignInMethod, inviteGoogle, linkIdentity,
+  listIdentities, methodOfKind, touchIdentity,
+} from '../src/identities'
 
 const enc = encodeURIComponent
 
@@ -276,5 +280,205 @@ describe('only a person has sign-in methods', () => {
       message: 'Person psn_nobody not found',
     })
     expect(await sql`select 1 from sign_in_identity where person_id in (${bot.row_id}, 'psn_nobody')`).toHaveLength(0)
+  })
+})
+
+describe('linked identity validation and lifecycle through the public APIs', () => {
+  test('malformed Google sign-in expectations leave the person unchanged', async ({ admin }) => {
+    const person = await admin.post<{ row_id: string; expects_google_sign_in: boolean }>('/api/table/Person', {
+      full_name: 'Google expectation holder', email: 'expectation@example.com', enabled: true, expects_google_sign_in: true,
+    })
+    expect(person.expects_google_sign_in).toBe(true)
+    await admin.post(`/api/people/${person.row_id}/identities`, {
+      method: 'google', email: 'expectation@example.com', send_invitation_email: false,
+    })
+    const before = await sql`select * from person where row_id = ${person.row_id}`
+    const identities = await sql`select * from sign_in_identity where person_id = ${person.row_id} order by id`
+    expect(identities).toHaveLength(1)
+
+    for (const [value, message] of [
+      ['true', 'Expected boolean, received string'],
+      [1, 'Expected boolean, received number'],
+    ] as const) {
+      const error = await expectApiError(patchDoc(admin, `/api/table/Person/${person.row_id}`, {
+        updated_at: before[0].updated_at,
+        full_name: 'Refused edit',
+        expects_google_sign_in: value,
+      }), {
+        status: 417, type: 'ValidationError', message: '417 ValidationError: Invalid values for Person',
+      })
+      expect(error.fields).toEqual({ expects_google_sign_in: message })
+      expect(await sql`select * from person where row_id = ${person.row_id}`).toEqual(before)
+      expect(await sql`select * from sign_in_identity where person_id = ${person.row_id} order by id`).toEqual(identities)
+    }
+  })
+
+  test('outside links require a known non-password method, a subject and a real person', async ({ admin }) => {
+    const person = await makePerson()
+    for (const method of ['missing-method', 'password']) {
+      await expectApiError(admin.post(`/api/people/${person}/identities`, { method, subject: 'outside-id' }), {
+        status: 417, type: 'ValidationError', message: `417 ValidationError: Unknown outside sign-in method "${method}"`,
+      })
+    }
+    await expectApiError(admin.post(`/api/people/${person}/identities`, { method: 'google', subject: '   ' }), {
+      status: 417, type: 'ValidationError', message: '417 ValidationError: Expected { subject }', fields: { subject: 'required' },
+    })
+    await expectApiError(admin.post('/api/people/psn_missing/identities', { method: 'google', subject: 'outside-id' }), {
+      status: 404, type: 'NotFoundError', message: '404 NotFoundError: Person psn_missing not found',
+    })
+    expect(await listIdentities(person)).toEqual([])
+    expect(await getSignInMethod('missing-method')).toBeNull()
+    expect(await candidate('psn_missing')).toBeNull()
+  })
+
+  test('removing an unused Google method leaves no invitation mechanism', async ({ admin }) => {
+    const person = await makePerson()
+    await admin.delete('/api/table/Sign%20In%20Method/google')
+    expect(await methodOfKind('google')).toBeNull()
+    await expect(inviteGoogle(person, 'staff@example.com', 'Administrator')).rejects.toMatchObject({
+      type: 'ValidationError', message: 'Google sign-in is not set up',
+    })
+    expect(await listIdentities(person)).toEqual([])
+  })
+
+  test('invitations validate addresses, fold repeat invitations and preserve the holder on a clash', async ({ admin }) => {
+    const owner = await makePerson()
+    const other = await makePerson()
+    for (const email of ['', '  ', 'not-an-address']) {
+      await expect(inviteGoogle(owner, email, 'Administrator')).rejects.toMatchObject({
+        type: 'ValidationError', message: 'Expected { email }', fields: { email: 'a real address' },
+      })
+    }
+    await expect(inviteGoogle(owner, 'staff@EXAMPLE.INVALID.', 'Administrator')).rejects.toMatchObject({
+      type: 'ValidationError', message: 'That address cannot receive mail', fields: { email: 'not a real address (.invalid)' },
+    })
+    const first = await inviteGoogle(owner, ' Staff@Example.com ', 'Administrator')
+    const original = await getIdentity(first.id)
+    expect(first).toMatchObject({ created: true, pending_email: 'staff@example.com', subject: null })
+    expect(await inviteGoogle(owner, 'STAFF@example.com', other)).toEqual({ ...original, created: false })
+    await expectApiError(admin.post(`/api/people/${other}/identities`, {
+      method: 'google', email: 'STAFF@example.com', send_invitation_email: false,
+    }), {
+      status: 409, type: 'ConflictError', message: `409 ConflictError: This invited address is already linked to ${owner}`,
+      fields: { clash: 'invite', identity: first.id, person: owner },
+    })
+    expect(await getIdentity(first.id)).toEqual(original)
+    expect(await listIdentities(other)).toEqual([])
+    expect(await sql`select operation from activity_log where operation = ${`identity_invited google for ${owner} (${first.id})`}`).toHaveLength(1)
+  })
+
+  test('reposting a subject renames only its sign-in name, with blank and null names meaning none', async ({ admin }) => {
+    const person = await makePerson()
+    const first = await linkIdentity(person, {
+      method: 'google', subject: ' permanent-id ', email: 'first@example.com', display_name: 'First name',
+    }, 'Administrator')
+    const original = await getIdentity(first.id)
+    expect(first).toMatchObject({ created: true, subject: 'permanent-id', sign_in_name: null })
+    expect(await linkIdentity(person, {
+      method: 'google', subject: 'permanent-id', sign_in_name: '   ', email: 'ignored@example.com', display_name: 'Ignored',
+    }, 'Administrator')).toEqual({ ...original, created: false })
+    const httpOriginal = JSON.parse(JSON.stringify(original))
+    const renamed = await admin.post(`/api/people/${person}/identities`, {
+      method: 'google', subject: 'permanent-id', sign_in_name: ' New.Name ',
+    })
+    expect(renamed).toEqual({ ...httpOriginal, sign_in_name: 'New.Name' })
+    expect(await patchDoc(admin, `/api/identities/${first.id}`, {})).toEqual(renamed)
+    expect(await patchDoc(admin, `/api/identities/${first.id}`, { person_id: person, sign_in_name: null })).toEqual(httpOriginal)
+    await patchDoc(admin, `/api/identities/${first.id}`, { sign_in_name: 'another' })
+    expect(await patchDoc(admin, `/api/identities/${first.id}`, { sign_in_name: '  ' })).toEqual(httpOriginal)
+    expect(await listIdentities(person)).toEqual([original])
+  })
+
+  test('a conflicting rename, including one during a move, rolls back both original links', async ({ admin }) => {
+    const owner = await makePerson()
+    const other = await makePerson()
+    const first = await linkIdentity(owner, { method: 'google', subject: 'rename-owner', sign_in_name: 'held.name' }, 'Administrator')
+    const second = await linkIdentity(other, { method: 'google', subject: 'rename-other', sign_in_name: 'other.name' }, 'Administrator')
+    const originals = await Promise.all([getIdentity(first.id), getIdentity(second.id)])
+    for (const change of [{ sign_in_name: 'HELD.NAME' }, { person_id: owner, sign_in_name: 'HELD.NAME' }]) {
+      await expectApiError(patchDoc(admin, `/api/identities/${second.id}`, change), {
+        status: 409, type: 'ConflictError', message: `409 ConflictError: This sign-in name is already linked to ${owner}`,
+        fields: { clash: 'sign_in_name', identity: first.id, person: owner },
+      })
+      expect(await listIdentities(owner, { includeEnded: true })).toEqual([originals[0]])
+      expect(await listIdentities(other, { includeEnded: true })).toEqual([originals[1]])
+    }
+    expect(await sql`select operation from activity_log where operation like ${`identity_moved %(${second.id})`}
+      or operation like ${`identity_renamed %(${second.id})`}`).toEqual([])
+  })
+
+  test('only managers manage links, and self-removal cannot remove another person\'s link', async ({ admin, createUser }) => {
+    const owner = await createUser()
+    const other = await createUser()
+    const linked = await linkIdentity(owner.user!, { method: 'google', subject: 'permission-owner' }, 'Administrator')
+    const original = await getIdentity(linked.id)
+    for (const request of [
+      () => other.get(`/api/people/${owner.user}/identities`),
+      () => other.post(`/api/people/${owner.user}/identities`, { method: 'google', subject: 'permission-new' }),
+      () => patchDoc(other, `/api/identities/${linked.id}`, { person_id: other.user }),
+      () => other.delete(`/api/identities/${linked.id}`),
+    ]) {
+      await expectApiError(request(), {
+        status: 403, type: 'PermissionError', message: '403 PermissionError: Requires the System Manager role',
+      })
+    }
+    await expectApiError(other.delete(`/api/me/identities/${linked.id}`), {
+      status: 404, type: 'NotFoundError', message: `404 NotFoundError: Linked sign-in ${linked.id} not found`,
+    })
+    expect(await getIdentity(linked.id)).toEqual(original)
+    expect(await listIdentities(other.user!)).toEqual([])
+    await admin.delete(`/api/identities/${linked.id}`)
+    const ended = await getIdentity(linked.id)
+    expect(ended).toMatchObject({ ...original, ended_at: expect.any(Date), ended_reason: 'unlinked' })
+    await expectApiError(patchDoc(admin, `/api/identities/${linked.id}`, { sign_in_name: 'cannot-revive' }), {
+      status: 404, type: 'NotFoundError', message: `404 NotFoundError: Linked sign-in ${linked.id} not found`,
+    })
+    await expectApiError(owner.delete(`/api/me/identities/${linked.id}`), {
+      status: 404, type: 'NotFoundError', message: `404 NotFoundError: Linked sign-in ${linked.id} not found`,
+    })
+    expect(await getIdentity(linked.id)).toEqual(ended)
+  })
+
+  test('a pending invitation moves without becoming a credential, and its holder can cancel it without another way in', async ({ admin, createUser }) => {
+    const owner = await makePerson()
+    const next = await createUser()
+    const invite = await inviteGoogle(owner, 'move.pending@example.com', 'Administrator')
+    const moved = await patchDoc<{ id: string }>(admin, `/api/identities/${invite.id}`, { person_id: next.user })
+    expect(moved.id).not.toBe(invite.id)
+    expect(await getIdentity(invite.id)).toMatchObject({ person_id: owner, subject: null, ended_reason: 'moved', ended_at: expect.any(Date) })
+    expect(await getIdentity(moved.id)).toMatchObject({ person_id: next.user, subject: null, pending_email: 'move.pending@example.com', ended_at: null })
+    expect(await next.delete(`/api/me/identities/${moved.id}`)).toEqual({ ok: true })
+    await expect(getIdentity(moved.id)).rejects.toMatchObject({ type: 'NotFoundError', message: `Linked sign-in ${moved.id} not found` })
+    expect(await listIdentities(next.user!, { includeEnded: true })).toEqual([])
+    expect(await getIdentity(invite.id)).toMatchObject({ ended_reason: 'moved' })
+  })
+
+  test('provider email updates do not replace contact data without an active Google link and an old matching address', async ({ admin }) => {
+    const googlePerson = await makePerson({ email: 'contact@example.com' })
+    const google = await linkIdentity(googlePerson, { method: 'google', subject: 'no-old-address' }, 'Administrator')
+    await touchIdentity(google.id, { email: 'provider@example.com', display_name: 'Provider Name' })
+    expect(await getIdentity(google.id)).toMatchObject({ email: 'provider@example.com', display_name: 'Provider Name', last_used_at: expect.any(Date) })
+    expect(await sql`select email from person where row_id = ${googlePerson}`).toEqual([{ email: 'contact@example.com' }])
+
+    await configureDelegated()
+    const delegatedPerson = await makePerson({ email: 'delegated.old@example.com' })
+    const delegated = await linkIdentity(delegatedPerson, { method: 'stylehr', subject: 'email-probe', email: 'delegated.old@example.com' }, 'Administrator')
+    await touchIdentity(delegated.id, { email: 'delegated.new@example.com' })
+    expect(await getIdentity(delegated.id)).toMatchObject({ email: 'delegated.new@example.com' })
+    expect(await sql`select email from person where row_id = ${delegatedPerson}`).toEqual([{ email: 'delegated.old@example.com' }])
+
+    await admin.delete(`/api/identities/${google.id}`)
+    await touchIdentity(google.id, { email: 'ended.new@example.com' })
+    expect(await getIdentity(google.id)).toMatchObject({ email: 'ended.new@example.com', ended_reason: 'unlinked' })
+    expect(await sql`select email from person where row_id = ${googlePerson}`).toEqual([{ email: 'contact@example.com' }])
+  })
+
+  test('leaver reports for missing or already disabled people are no-ops', async () => {
+    const person = await makePerson({ enabled: false })
+    const before = await sql`select * from person where row_id = ${person}`
+    await disableLeaver('psn_missing', 'google')
+    await disableLeaver(person, 'google')
+    expect(await sql`select * from person where row_id = ${person}`).toEqual(before)
+    expect(await sql`select operation from activity_log where "user" in (${person}, 'psn_missing') and operation like 'disabled_as_leaver%'`).toEqual([])
   })
 })

@@ -1,9 +1,9 @@
-import { describe, expect } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
-import type { WorkflowState } from '../src/workflow'
+import { notifyApproversOfNewRow, type WorkflowState } from '../src/workflow'
 
 // WF-004: only a state explicitly marked as waiting for approval emails
 // the roles on its outgoing transitions. The holders of those
@@ -105,34 +105,85 @@ describe('WF-004: pending-approval notifications', () => {
     expect(mail.send_status).toBe('queued')
   })
 
-  test('entering a terminal state notifies no one (no outgoing transitions)', async ({
+  test('entering an approval-marked terminal state notifies no one (no outgoing transitions)', async ({
     admin,
     createUser,
   }) => {
     const approver = await setup(admin, createUser)
-    // Legacy relied on the previous test's document sitting in Pending;
-    // recreate that state explicitly: create the doc and submit it.
+    const flowPath = `/api/table/Workflow/${encodeURIComponent(FLOW)}`
+    const flow = await admin.get<{ states: WorkflowState[] }>(flowPath)
+    flow.states[2].waits_for_approval = true
+    await admin.post('/api/save_row', { table: 'Workflow', row: flow })
+    const savedFlow = await admin.get(flowPath)
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'unrelated-draft', title: 'Keep this draft' })
+    const unrelated = await admin.get(`/api/table/${encodeURIComponent(DT)}/unrelated-draft`)
     await admin.post(`/api/table/${encodeURIComponent(DT)}`, {
       row_id: 'wf-notify-1',
       title: 'Widget order',
     })
     await admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent('wf-notify-1')}:apply_workflow_action`, { action: 'Submit' })
 
-    // The approver approves: Pending -> Approved (terminal). No further email.
-    const before = (
-      await sql`select count(*)::int as n from email_queue where ref_table = ${DT}`
-    )[0].n as number
+    const before = await sql`select * from email_queue where ref_table = ${DT} order by row_id`
+    expect(before).toHaveLength(1)
+    expect(before[0]).toMatchObject({
+      recipient: APPROVER, subject: `Approval required: ${DT} wf-notify-1`,
+      body: `${DT} wf-notify-1 has entered the "Pending" state and is awaiting your action.\n\nAvailable actions: Approve\nOpen the row: /featherbase/admin/${encodeURIComponent(DT)}/wf-notify-1`,
+      ref_table: DT, reference_name: 'wf-notify-1', send_status: 'queued',
+    })
 
     const res = await approver.post<{ workflow_state: string }>(
       `/api/table/${encodeURIComponent(DT)}/wf-notify-1:apply_workflow_action`,
       { action: 'Approve' },
     )
     expect(res.workflow_state).toBe('Approved')
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/wf-notify-1`))
+      .toMatchObject({ row_id: 'wf-notify-1', title: 'Widget order', workflow_state: 'Approved', status: 'submitted' })
+    expect(await sql`select * from email_queue where ref_table = ${DT} order by row_id`).toEqual(before)
+    expect(await admin.get(flowPath)).toEqual(savedFlow)
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/unrelated-draft`)).toEqual(unrelated)
+  })
 
-    const after = (
-      await sql`select count(*)::int as n from email_queue where ref_table = ${DT}`
-    )[0].n as number
-    expect(after).toBe(before) // no new email on entering a terminal state
+  test('a waiting state with only acting disabled and email-less approvers queues no mail until a distinct recipient exists', async ({ admin, createUser }) => {
+    const actor = await setup(admin, createUser)
+    await admin.post('/api/save_row', { table: 'Person', row: {
+      full_name: 'Disabled approver', email: 'wf-disabled@x.com', enabled: false, roles: [{ role: APPROVER_ROLE }],
+    } })
+    await admin.post('/api/save_row', { table: 'Person', row: {
+      full_name: 'Email-less approver', enabled: true, roles: [{ role: APPROVER_ROLE }],
+    } })
+    const holders = await sql`select * from person where row_id in
+      (select parent from has_role where parenttype = 'Person' and role = ${APPROVER_ROLE}) order by row_id`
+    expect(holders).toHaveLength(3)
+    expect(holders).toEqual(expect.arrayContaining([
+      expect.objectContaining({ row_id: actor.user, email: APPROVER, enabled: true }),
+      expect.objectContaining({ full_name: 'Disabled approver', email: 'wf-disabled@x.com', enabled: false }),
+      expect.objectContaining({ full_name: 'Email-less approver', email: null, enabled: true }),
+    ]))
+    expect(holders.filter(p => p.enabled && p.email && p.row_id !== actor.user)).toEqual([])
+    const flowPath = `/api/table/Workflow/${encodeURIComponent(FLOW)}`
+    const flow = await admin.get(flowPath)
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'unrelated-draft', title: 'Unrelated request' })
+    const unrelated = await admin.get(`/api/table/${encodeURIComponent(DT)}/unrelated-draft`)
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'no-recipient', title: 'Only ineligible holders' })
+    expect(await actor.post(`/api/table/${encodeURIComponent(DT)}/no-recipient:apply_workflow_action`, { action: 'Submit' }))
+      .toMatchObject({ title: 'Only ineligible holders', workflow_state: 'Pending', status: 'draft' })
+    const waiting = await admin.get(`/api/table/${encodeURIComponent(DT)}/no-recipient`)
+    expect(await sql`select * from email_queue where ref_table = ${DT}`).toEqual([])
+
+    await createUser({ email: 'wf-distinct@x.com', roles: [APPROVER_ROLE] })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'has-recipient', title: 'Another request' })
+    expect(await actor.post(`/api/table/${encodeURIComponent(DT)}/has-recipient:apply_workflow_action`, { action: 'Submit' }))
+      .toMatchObject({ title: 'Another request', workflow_state: 'Pending', status: 'draft' })
+    expect(await sql`select recipient, subject, body, ref_table, reference_name, send_status from email_queue where ref_table = ${DT}`)
+      .toEqual([{
+        recipient: 'wf-distinct@x.com', subject: `Approval required: ${DT} has-recipient`,
+        body: `${DT} has-recipient has entered the "Pending" state and is awaiting your action.\n\nAvailable actions: Approve\nOpen the row: /featherbase/admin/${encodeURIComponent(DT)}/has-recipient`,
+        ref_table: DT, reference_name: 'has-recipient', send_status: 'queued',
+      }])
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/no-recipient`)).toEqual(waiting)
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/unrelated-draft`)).toEqual(unrelated)
+    expect(await admin.get(flowPath)).toEqual(flow)
+    expect(await sql`select * from person where row_id in ${sql(holders.map(p => p.row_id))} order by row_id`).toEqual(holders)
   })
 
   // person-identities: an approver with no email is skipped, never mailed at
@@ -195,6 +246,28 @@ describe('WF-004: pending-approval notifications', () => {
       expect(String(emails[0].subject)).toContain('Approval required')
       expect(String(emails[0].body)).toContain(`/admin/${encodeURIComponent(DT)}/wf-notify-new`)
       expect(String(emails[0].body)).toContain('Approve')
+    })
+
+    test('a notification storage outage is logged against the saved row without undoing it', async ({ admin, createUser }) => {
+      await setupStartsPending(admin, createUser)
+      const row = await admin.post<Record<string, unknown>>(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'mail-outage', title: 'Keep this row' })
+      const errors = vi.spyOn(console, 'error')
+      const rollback = new Error('restore notification storage')
+      try {
+        // The exported post-save operation runs after the document commit.
+        // Isolate the outage in a savepoint, restoring its schema afterwards.
+        await expect(sql.begin(async tx => {
+          await tx`drop table featherbase.email_account`
+          await notifyApproversOfNewRow(DT, row, 'Administrator')
+          expect(errors.mock.calls).toContainEqual([
+            `[workflow] ${DT} mail-outage: approvers not notified:`, expect.objectContaining({ code: '42P01' }),
+          ])
+          throw rollback
+        })).rejects.toBe(rollback)
+      } finally {
+        errors.mockRestore()
+      }
+      expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/mail-outage`)).toMatchObject({ title: 'Keep this row', workflow_state: 'Pending' })
     })
 
     test('the approver who creates it is not emailed', async ({ admin, createUser }) => {

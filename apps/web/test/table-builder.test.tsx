@@ -44,13 +44,45 @@ describe('Build a table by describing its columns', () => {
     await user.click(screen.getByTestId('dt-paste-text'))
     await user.paste('Aisle, Shelf')
     await user.click(screen.getByTestId('dt-paste-build'))
+    await user.click(cell(gridRows()[1], 'in_list_view'))
+    expect(cell(gridRows()[1], 'in_list_view')).not.toBeChecked()
     await user.click(screen.getByTestId('dt-create'))
 
     await screen.findByTestId('list-view', undefined, { timeout: 10_000 })
     const meta = (await admin.get(`/api/table/${encodeURIComponent('Tb Shelf Label')}:meta`)) as {
-      columns: { column_name: string }[]
+      columns: { column_name: string; in_list_view: boolean }[]
     }
     expect(meta.columns.map((c) => c.column_name)).toEqual(['aisle', 'shelf'])
+    expect(meta.columns.map((c) => c.in_list_view)).toEqual([true, false])
+  })
+})
+
+describe("A new table's list starts with its first seven columns", () => {
+  const inList = () => gridRows().map((r) => (cell(r, 'in_list_view') as HTMLInputElement).checked)
+  const FIRST_SEVEN = [true, true, true, true, true, true, true, false, false, false]
+
+  test('typing ten columns ticks the first seven for the list', async ({ admin }) => {
+    const user = userEvent.setup()
+    await renderApp('/featherbase/admin/new-table', admin)
+    await screen.findByTestId('table-builder')
+
+    for (let n = 1; n < 10; n++) await user.click(screen.getByTestId('dt-add-field'))
+
+    expect(inList()).toEqual(FIRST_SEVEN)
+  })
+
+  test('pasting ten columns ticks the first seven for the list', async ({ admin }) => {
+    const user = userEvent.setup()
+    await renderApp('/featherbase/admin/new-table', admin)
+    await screen.findByTestId('table-builder')
+
+    await user.click(screen.getByTestId('dt-paste-open'))
+    await user.click(screen.getByTestId('dt-paste-text'))
+    await user.paste('Section, MCH, Floor, Zone, Rack, Owner, Category, Remarks, Updated On, Notes')
+    await user.click(screen.getByTestId('dt-paste-build'))
+
+    await waitFor(() => expect(gridRows()).toHaveLength(10))
+    expect(inList()).toEqual(FIRST_SEVEN)
   })
 })
 

@@ -9,11 +9,18 @@ import { sql } from '../src/db'
 import { getMeta } from '../src/meta'
 import { issueAccessToken } from '../src/auth'
 import { getRoles, isPrivileged } from '../src/permissions'
-import { makePerson } from './fixtures'
+import { createUserWithRole, makePerson } from './fixtures'
+import { personByEmail } from '../src/people-directory'
 
 const rel = async (name: string) => (await sql`select to_regclass(${'featherbase.' + name}) as r`)[0].r
 
 describe('person-rename: the human record is a Person', () => {
+  test('an email lookup reports a scope database failure rather than saying the person does not exist', async ({ admin, createUser }) => {
+    const reader = await createUserWithRole(admin, createUser, { role: 'Directory Reader Failure', table: 'Person', can_read: true })
+    await sql`drop table data_scope`
+    await expect(personByEmail('person@example.test', reader.user!)).rejects.toMatchObject({ code: '42P01' })
+  })
+
   test('tables are renamed and /api/users is gone, with no alias', async ({ admin }) => {
     expect(await rel('person')).toBeTruthy()
     expect(await rel('user')).toBeNull()

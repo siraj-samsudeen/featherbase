@@ -234,3 +234,133 @@ describe('history', () => {
     expect(migrationSchema.parse(legacy)).toEqual(legacy)
   })
 })
+
+describe('replay refuses inconsistent operation starting points', () => {
+  const notes = { column_name: 'notes', label: 'Notes', column_type: 'Text' as const }
+  const line: TableDef = { name: 'shop.line', label: 'Line', kind: 'sub_table', columns: [notes] }
+  const lines = { column_name: 'lines', label: 'Lines', column_type: 'Sub-table' as const, row_table: line.name }
+
+  test.each<{ name: string; tables: TableDef[]; operation: unknown; message: string }>([
+    { name: 'a column on a Table not yet added', tables: [item()],
+      operation: { kind: 'addColumn', table: 'shop.missing', column: notes },
+      message: "addColumn shop.missing.notes: shop.missing is not one of the app's Tables at this point in its history" },
+    { name: 'a rename of a column not yet added', tables: [item()],
+      operation: { kind: 'renameColumn', table: 'shop.item', from: 'notes', to: 'remarks' },
+      message: 'renameColumn shop.item.notes: shop.item has no column notes at this point in its history' },
+    { name: 'a duplicate Table', tables: [item()], operation: { kind: 'addTable', table: item() },
+      message: 'addTable shop.item: the Table already exists' },
+    { name: 'an app settings Table', tables: [item()], operation: { kind: 'addTable', table: { ...supplier, kind: 'settings' } },
+      message: 'addTable shop.supplier: an app Table needs a label and its own storage (no settings, data_source or system)' },
+    { name: 'an app system Table', tables: [item()], operation: { kind: 'addTable', table: { ...supplier, system: true } },
+      message: 'addTable shop.supplier: an app Table needs a label and its own storage (no settings, data_source or system)' },
+    { name: 'an externally stored app Table', tables: [item()], operation: { kind: 'addTable', table: { ...supplier, data_source: 'warehouse' } },
+      message: 'addTable shop.supplier: an app Table needs a label and its own storage (no settings, data_source or system)' },
+    { name: 'an app Table without a label', tables: [item()], operation: { kind: 'addTable', table: { name: supplier.name, columns: supplier.columns } },
+      message: 'addTable shop.supplier: an app Table needs a label and its own storage (no settings, data_source or system)' },
+    { name: 'a Table with duplicate columns', tables: [item()], operation: { kind: 'addTable', table: { ...supplier, columns: [notes, notes] } },
+      message: 'addTable shop.supplier: duplicate column names' },
+    { name: 'a user column replacing a standard column', tables: [item()],
+      operation: { kind: 'addColumn', table: 'shop.item', column: { ...notes, column_name: 'row_id' } },
+      message: 'addColumn shop.item.row_id: row_id is a standard column name' },
+    { name: 'a Choice without choices', tables: [item()],
+      operation: { kind: 'addColumn', table: 'shop.item', column: { ...notes, column_type: 'Choice' } },
+      message: 'addColumn shop.item.notes: Choice column notes needs choices' },
+    { name: 'a Reference without its target', tables: [item()],
+      operation: { kind: 'addColumn', table: 'shop.item', column: { ...notes, column_type: 'Reference' } },
+      message: 'addColumn shop.item.notes: link column notes needs reference_table' },
+    { name: 'a link to an app Table not yet added', tables: [item()],
+      operation: { kind: 'addColumn', table: 'shop.item', column: { ...notes, column_type: 'Reference', reference_table: supplier.name } },
+      message: 'addColumn shop.item.notes: link column notes names shop.supplier, which the app does not hold at this point' },
+    { name: 'a duplicate column', tables: [item()],
+      operation: { kind: 'addColumn', table: 'shop.item', column: item().columns[0] },
+      message: 'addColumn shop.item.title: shop.item already has that column' },
+    { name: 'a Sub-table backfill', tables: [item(), line],
+      operation: { kind: 'addColumn', table: 'shop.item', column: lines, backfill: 'l1' },
+      message: 'addColumn shop.item.lines: a Sub-table column holds no value to backfill' },
+    { name: 'an insertion past the end', tables: [item()],
+      operation: { kind: 'addColumn', table: 'shop.item', column: notes, position: 3 },
+      message: 'addColumn shop.item.notes: position 3 is past the end of shop.item' },
+    { name: 'an alteration backfilling a unique column', tables: [item()],
+      operation: { kind: 'alterColumn', table: 'shop.item', column: 'title', from: { unique: null }, to: { unique: true }, backfill: 'same' },
+      message: 'alterColumn shop.item.title: a unique column cannot be backfilled with one value' },
+    { name: 'a rename onto a standard column', tables: [item()],
+      operation: { kind: 'renameColumn', table: 'shop.item', from: 'title', to: 'row_id' },
+      message: 'renameColumn shop.item.title: row_id is a standard column name' },
+    { name: 'a drop with the wrong position', tables: [item([...item().columns, notes])],
+      operation: { kind: 'dropColumn', table: 'shop.item', column: notes, destructive: true, position: 1 },
+      message: 'dropColumn shop.item.notes: the column stood at position 2, not 1' },
+    { name: 'a drop of the row naming column', tables: [{ ...item([...item().columns, notes]), id_pattern: 'field:notes' }],
+      operation: { kind: 'dropColumn', table: 'shop.item', column: notes, destructive: true },
+      message: "dropColumn shop.item.notes: it is the Table's title column or names its rows" },
+    { name: 'a drop of the only column', tables: [item()],
+      operation: { kind: 'dropColumn', table: 'shop.item', column: item().columns[0], destructive: true },
+      message: 'dropColumn shop.item.title: a Table keeps at least one column' },
+    { name: 'a rename onto another Table', tables: [item(), supplier],
+      operation: { kind: 'renameTable', from: 'shop.supplier', to: 'shop.item' },
+      message: 'renameTable shop.supplier: shop.item already exists' },
+  ])('$name', ({ tables, operation, message }) => {
+    const before = structuredClone(tables)
+    const operations = step([operation]).operations
+    expect(() => replayForward('shop', tables, operations)).toThrowError(expect.objectContaining({ type: 'ValidationError', message }))
+    expect(tables).toEqual(before)
+  })
+
+  test('a submittable Table keeps its amendment link', () => {
+    const amended = { column_name: 'amended_from', label: 'Amended from', column_type: 'Reference' as const, reference_table: 'shop.item' }
+    const table = { ...item([...item().columns, amended]), is_submittable: true }
+    expect(() => replayForward('shop', [table], step([{ kind: 'dropColumn', table: table.name, column: amended, destructive: true }]).operations))
+      .toThrowError(expect.objectContaining({ type: 'ValidationError', message: 'dropColumn shop.item.amended_from: a submittable Table keeps amended_from' }))
+  })
+
+  test('renaming the row naming column preserves the naming rule through history', () => {
+    const final = { ...item([{ column_name: 'heading', label: 'Title', column_type: 'Data' }]), id_pattern: 'field:heading' }
+    const migration = step([{ kind: 'renameColumn', table: final.name, from: 'title', to: 'heading' }])
+    expect(validateMigrations('shop', '0.2.0', [final], [migration])).toEqual([{ ...item(), id_pattern: 'field:title' }])
+  })
+
+  test('a renamed Sub-table keeps the parent column attached throughout replay', () => {
+    const baseline = [item([...item().columns, lines]), line]
+    const final = [item([...item().columns, { ...lines, row_table: 'shop.item_line' }]), { ...line, name: 'shop.item_line' }]
+    const migration = step([{ kind: 'renameTable', from: line.name, to: 'shop.item_line' }])
+    expect(validateMigrations('shop', '0.2.0', final, [migration])).toEqual(baseline)
+    expect(replayForward('shop', baseline, migration.operations)).toEqual(final)
+  })
+})
+
+describe('history must explain the final declaration', () => {
+  const notes = { column_name: 'notes', label: 'Notes', column_type: 'Text' as const }
+
+  test.each<{ name: string; tables: TableDef[]; operation: unknown; message: string }>([
+    { name: 'a dropped Table still declared', tables: [item(), supplier],
+      operation: { kind: 'dropTable', table: supplier, destructive: true },
+      message: 'dropTable shop.supplier: the Table is declared after it was dropped' },
+    { name: 'an added column absent at its declared position', tables: [item([...item().columns, notes])],
+      operation: { kind: 'addColumn', table: 'shop.item', column: notes, position: 1 },
+      message: 'addColumn shop.item.notes does not match column 1 as declared after it' },
+    { name: 'a dropped column still declared', tables: [item([...item().columns, notes])],
+      operation: { kind: 'dropColumn', table: 'shop.item', column: notes, destructive: true },
+      message: 'dropColumn shop.item.notes: the column is declared after it was dropped' },
+    { name: 'an altered column declaring the old label', tables: [item()],
+      operation: { kind: 'alterColumn', table: 'shop.item', column: 'title', from: { label: 'Title' }, to: { label: 'Heading' } },
+      message: 'alterColumn shop.item.title: the column as declared after it does not hold label "Heading"' },
+  ])('$name', ({ tables, operation, message }) => {
+    const before = structuredClone(tables)
+    expect(() => validateMigrations('shop', '0.2.0', tables, [step([operation])]))
+      .toThrowError(expect.objectContaining({ type: 'ValidationError', message }))
+    expect(tables).toEqual(before)
+  })
+
+  test('an unpositioned drop reconstructs the last column', () => {
+    expect(validateMigrations('shop', '0.2.0', [item()], [step([{ kind: 'dropColumn', table: 'shop.item', column: notes, destructive: true }])]))
+      .toEqual([item([...item().columns, notes])])
+  })
+
+  test('a declaration retaining the old title column after its rename is refused', () => {
+    const final = [{ ...item([{ column_name: 'heading', label: 'Title', column_type: 'Data' }]), title_column: 'title' }]
+    const before = structuredClone(final)
+    expect(() => validateMigrations('shop', '0.2.0', final, [step([
+      { kind: 'renameColumn', table: 'shop.item', from: 'title', to: 'heading' },
+    ])])).toThrowError(expect.objectContaining({ type: 'ValidationError', message: 'Migration history does not replay to the final declaration' }))
+    expect(final).toEqual(before)
+  })
+})

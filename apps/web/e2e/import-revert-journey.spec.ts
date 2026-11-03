@@ -98,19 +98,24 @@ test('RVT-J1: revert the bad run from the history strip — rehearse, skip-the-e
   // lists the run; rehearse shows counts before anything commits, the
   // edited row named.
   await session.visit(`/admin/import?table=${encodeURIComponent(DT)}`)
+  let historyKey = ''
   await session.step('J1.1: rehearse the revert from the history strip', async ({ page }) => {
     await expect(page.getByTestId('iw-run-history')).toBeVisible()
-    await expect(page.getByTestId('iw-run-0')).toContainText('corrected.xlsx')
-    await page.getByTestId('iw-revert-open-h0').click()
-    const preview = page.getByTestId('iw-revert-preview-h0')
+    // Scripted imports now have run identities too. Select the named run,
+    // not the newest run (the later API edit deliberately sits ahead of it).
+    const run = page.getByTestId(/^iw-run-\d+$/).filter({ hasText: 'corrected.xlsx' })
+    await expect(run).toHaveCount(1)
+    historyKey = `h${(await run.getAttribute('data-testid'))!.slice('iw-run-'.length)}`
+    await page.getByTestId(`iw-revert-open-${historyKey}`).click()
+    const preview = page.getByTestId(`iw-revert-preview-${historyKey}`)
     await expect(preview).toContainText('delete 1 added rows')
     await expect(preview).toContainText(`${alphaName} (edited after this import)`)
   })
 
   // J1.2: confirm. Charlie goes; Alpha stays edited, named in the report.
   await session.step('J1.2: confirm the revert', async ({ page }) => {
-    await page.getByTestId('iw-revert-confirm-h0').click()
-    const result = page.getByTestId('iw-revert-result-h0')
+    await page.getByTestId(`iw-revert-confirm-${historyKey}`).click()
+    const result = page.getByTestId(`iw-revert-result-${historyKey}`)
     await expect(result).toContainText('0 restored, 1 deleted')
     await expect(result).toContainText(`${alphaName} (edited after this import)`)
   })
@@ -126,8 +131,8 @@ test('RVT-J1: revert the bad run from the history strip — rehearse, skip-the-e
   // restore returns Alpha to the RUN's before-value (12000), not 13500: the
   // version trail's before-values are the restore source.
   await session.step('J1.4: escalate — restore the named row anyway', async ({ page }) => {
-    await page.getByTestId('iw-revert-override-h0').click()
-    await expect(page.getByTestId('iw-revert-result-h0')).toContainText('1 restored')
+    await page.getByTestId(`iw-revert-override-${historyKey}`).click()
+    await expect(page.getByTestId(`iw-revert-result-${historyKey}`)).toContainText('1 restored')
   })
   const after = await zonePops(request, headers)
   const byZone = Object.fromEntries(after.map((r) => [r.zone, Number(r.pop)]))

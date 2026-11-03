@@ -88,9 +88,20 @@ export function prettifyLabel(header: string): string {
     .join(' ')
 }
 
-// ADR 0008: every inference threshold is a named, exported bet. Spec, ADR,
-// and tests reference these names, never the literals. Changing one means
-// re-scoring the judgement rules it feeds (see the ADR).
+// Import thresholds are bets, not facts (this rule was ADR 0008, folded here
+// in #705). Every threshold the import feature uses is a named constant, never
+// a bare literal: the ones below, and the UI-side ones beside their use
+// (IMPORT_CHUNK in apps/web/src/lib/import-run.ts; SUGGEST_*, ERRORS_ON_SCREEN
+// and PREVIEW_ROWS in ImportWizard.tsx; MAX_ROWS and LOG_ERROR_SAMPLE in
+// collection-import.ts).
+// - Change = re-score. Altering a judgement threshold (CHOICE_*, AUTO_MATCH_*,
+//   SUGGEST_*) means re-running the labelled examples and reporting the
+//   change in the PR, not a one-reviewer verdict. Until a labelled corpus
+//   exists, re-run the spreadsheet-import spec's example tables and say so.
+// - No new literals. A new inference threshold lands named, in the change
+//   that introduces it.
+// - The zones.csv e2e fixture is built so CHOICE_* and the type order interact
+//   observably (Region promotes to Choice, Is Active must not).
 const COLUMN_NAME_MAX = 63 // Postgres identifier headroom
 const LONG_TEXT_CHARS = 140 // beyond this a cell reads as prose
 const CHOICE_MIN_SAMPLE = 6 // fewer values: repetition proves nothing
@@ -320,6 +331,23 @@ export function idPatternFor(tableName: string, digits = 3): string {
   return prefix ? `${prefix}.${'#'.repeat(digits)}` : 'hash'
 }
 
+// #738: how many columns a new table's list starts with, whether the table
+// is typed in the Table Builder or imported. Whoever creates it can change
+// which columns are in before creating it.
+export const LIST_COLUMNS_ON_CREATE = 7
+
+// The default list ticks for a new table: the first LIST_COLUMNS_ON_CREATE
+// columns in use. A column left out (include false) is never in the list and
+// makes room for the next one.
+export function listColumnsInUse(include: boolean[]): boolean[] {
+  let taken = 0
+  return include.map((inUse) => {
+    if (!inUse || taken >= LIST_COLUMNS_ON_CREATE) return false
+    taken += 1
+    return true
+  })
+}
+
 // IMP-003: headers + parsed rows -> a ready POST /api/table payload.
 // Original headers survive as labels; the first columns are flagged for the
 // list view so the imported Table is immediately browsable.
@@ -344,11 +372,11 @@ export function inferTableDef(
       column_name,
       // IMP-012: labels are normalized, not copied verbatim — a file with
       // "Zone ID" next to "Reg_District_ID" yields consistent labels.
-      label: prettifyLabel(String(headers[i] ?? '')) || prettifyLabel(column_name),
+      label: prettifyLabel(String(headers[i])) || prettifyLabel(column_name),
       column_type,
       ...(choices ? { choices } : {}),
       reqd: false,
-      in_list_view: i < 4,
+      in_list_view: i < LIST_COLUMNS_ON_CREATE,
     }
   })
   // Imported Tables get a readable series (ZONE-001) rather than the engine's
@@ -470,7 +498,7 @@ export function mergeSheetHeaders(sheetHeaders: string[][]): MergedColumn[] {
       if (!column) {
         column = {
           key,
-          label: prettifyLabel(raw) || prettifyLabel(folded) || `Column ${columnIndex + 1}`,
+          label: prettifyLabel(raw) || `Column ${columnIndex + 1}`,
           spellings: [],
           from: sheetHeaders.map(() => -1),
         }

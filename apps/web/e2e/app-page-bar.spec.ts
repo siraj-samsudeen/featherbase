@@ -5,7 +5,7 @@ import type { APIRequestContext } from '@playwright/test'
 // same TopBar as every other page, drawn by the platform's bar bundle into a
 // host the server puts first in the app's document. playwright.config.ts lists
 // `barproof.localhost`, which opens the bar-proof fixture app; its page
-// (runtime-apps/fixtures/bar-proof/client/index.html) shows the store it read
+// (test-apps/fixtures/bar-proof/client/index.html) shows the store it read
 // from the address on load and the one the bar's `featherbase:bar-change`
 // event told it, and pins a box below the bar with `--featherbase-bar-height`.
 // Its own styling (a serif face, dark red text on cream) is deliberately unlike
@@ -78,7 +78,7 @@ for (const scheme of ['light', 'dark'] as const) {
     test("the app's page carries the shared bar: the app's name, its picker, the theme and the Account menu", async ({ session, page, request }) => {
       await onAppPage(page, await reader(request, `Bar Page ${scheme}`))
       await session.step('left to right: name, picker, then theme, Account', async () => {
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Bar proof')
+        await expect(page.getByTestId('top-bar-name')).toHaveValue('/barproof/')
         const order = [
           (await box(page, 'top-bar-name')).x,
           (await picker(page).boundingBox())!.x,
@@ -92,8 +92,8 @@ for (const scheme of ['light', 'dark'] as const) {
       await session.step('no Open Admin for a person who only reads the app', async () => {
         await expect(bar(page).getByTestId('open-admin')).toHaveCount(0)
       })
-      await session.step('no app switcher, and nothing left of the old header', async () => {
-        await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveCount(0)
+      await session.step('the application-name dropdown replaces the old header', async () => {
+        await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveValue('/barproof/')
         await expect(page.locator('[data-testid="runtime-shell"]')).toHaveCount(0)
       })
       await session.step('the Account menu holds Sign-in methods and Log out', async () => {

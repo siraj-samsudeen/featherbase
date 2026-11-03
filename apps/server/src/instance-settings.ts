@@ -15,7 +15,7 @@ import { actionTransaction } from './action-transaction'
 import { runAsSystemActor } from './system-actor'
 import { INSTANCE_SETTINGS_ACTOR, holdManagedSet, holdManagedSetExclusive, lastApply, recordApply, type ManagedPath, type ManagedValue } from './managed-settings'
 import { config } from './config'
-import { declaredAppSecrets } from './app-settings'
+import { declaredAppSecretNames, declaredAppSecrets } from './app-settings'
 import { DEV_ENVIRONMENTS, SETTINGS_CONDITIONS, VARIABLES, isSet, readVariable, type Variable, type VariableName } from './env'
 
 /** Who an apply's saves are recorded as (D4). */
@@ -31,12 +31,19 @@ const SCOPE = [
   // Every field of a sign-in method is configuration; its secrets (the Google
   // client secret) are deployment variables, never columns.
   { table: 'Sign In Method', shape: 'rows', fields: 'all', createRows: true },
-  // A scheduled job is code; the file only switches it on or off.
-  { table: 'Scheduled Job', shape: 'rows', fields: ['enabled'], createRows: false },
+  // A scheduled job is code; the file switches it on or off and sets how
+  // often it runs (#700). Its cadence is a Choice, so a made-up one is
+  // refused by the save, listed with the file's other problems.
+  { table: 'Scheduled Job', shape: 'rows', fields: ['enabled', 'cadence'], createRows: false },
   // #620 (E2): an installed app's declared settings, one row per
   // `<app>.<setting>`. The App Setting controller refuses a setting the app
   // does not declare. An app's secrets are deployment variables, never rows.
   { table: 'App Setting', shape: 'rows', fields: ['value'], createRows: true },
+  // #703: where an instance's outside data lives, so it comes back after a
+  // wipe. A row names the variable holding the connection (url_env; the save
+  // refuses a connection string), never the connection itself. The connection
+  // status columns are the server's own, so they stay out.
+  { table: 'Data Source', shape: 'rows', fields: ['engine', 'url_env', 'default_schema', 'access', 'table_allowlist'], createRows: true },
 ] as const
 
 /** Column types that hold no value, a secret, or a file in one instance's own
@@ -73,12 +80,12 @@ export async function managedScope(): Promise<ScopeEntry[]> {
 // ---------------------------------------------------------------- the file (D1)
 
 const rowSchema = z.object({ row_id: z.string().min(1) }).catchall(z.unknown())
-const settingsBlock = z.record(z.union([z.array(rowSchema), z.record(z.unknown())]))
+const settingsBlock = z.record(z.string(), z.union([z.array(rowSchema), z.record(z.string(), z.unknown())]))
 
-export const instanceSettingsFileSchema = z
+const instanceSettingsFileSchema = z
   .object({
     settings: settingsBlock,
-    environments: z.record(z.object({ settings: settingsBlock.optional() }).strict()).optional(),
+    environments: z.record(z.string(), z.object({ settings: settingsBlock.optional() }).strict()).optional(),
   })
   .strict()
 
@@ -92,7 +99,8 @@ export const applyRequestSchema = z
     environment: z.string().min(1).optional(),
     dry_run: z.boolean().optional(),
     source: z.object({ revision: z.string().optional(), run: z.string().optional() }).strict().optional(),
-    files: z.record(z.string()).optional(),
+    files: z.record(z.string(), z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
   })
   .strict()
 type Block = z.infer<typeof settingsBlock>
@@ -181,6 +189,30 @@ function fromFile(kind: ValueKind, v: unknown): unknown {
   }
 }
 
+/** A value from a variable, in the field's own type. Undefined when it isn't. */
+function fromVariable(kind: ValueKind, text: string): unknown {
+  const v = text.trim()
+  switch (kind) {
+    case 'check':
+      return v === 'true' ? true : v === 'false' ? false : undefined
+    case 'int':
+    case 'number': {
+      const n = v === '' ? Number.NaN : Number(v)
+      return Number.isFinite(n) && (kind === 'number' || Number.isInteger(n)) ? n : undefined
+    }
+    case 'json':
+      try {
+        return JSON.parse(text)
+      } catch {
+        return undefined
+      }
+    case 'text':
+      return text
+  }
+}
+
+const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+
 /** Key-order-independent JSON, so `{a,b}` and `{b,a}` are the same value. */
 function canonical(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`
@@ -190,6 +222,27 @@ function canonical(v: unknown): string {
 }
 
 const same = (a: unknown, b: unknown) => canonical(a) === canonical(b)
+
+// ---------------------------------------------------------------- values from variables (#703)
+
+const pathKey = (table: string, rowId: string, field: string) => `${table}|${rowId}|${field}`
+const withheldValue = (variable: string) => `[the value of ${variable}]`
+
+/** The fields the last apply recorded as coming from a variable. */
+function variableOrigins(apply: Awaited<ReturnType<typeof lastApply>>): Map<string, ManagedValue> {
+  const origins = (apply?.managed_values ?? []).filter((v) => v.from_variable)
+  return new Map(origins.map((v) => [pathKey(v.table, v.row_id, v.field), v]))
+}
+
+/** The variable a field's stored value came from, if it is still that value:
+ *  a field the file stopped naming is an ordinary setting again once someone
+ *  changes it. A field the file still names stays the variable's, whatever an
+ *  emergency change has put there. */
+function originOf(origins: Map<string, ManagedValue>, table: string, rowId: string, field: string, stored: unknown): string | undefined {
+  const origin = origins.get(pathKey(table, rowId, field))
+  if (!origin) return undefined
+  return !origin.not_in_file || same(origin.value, stored ?? null) ? origin.from_variable : undefined
+}
 
 // ---------------------------------------------------------------- reading
 
@@ -218,6 +271,10 @@ async function storedRows(meta: TableMeta, fields: string[], stamps?: Map<string
   return out
 }
 
+async function storedFields(meta: TableMeta, fields: string[]): Promise<Map<string, Record<string, unknown>>> {
+  return meta.kind === 'settings' ? new Map([[meta.name, await storedSettings(meta, fields)]]) : storedRows(meta, fields)
+}
+
 function columnType(meta: TableMeta, field: string): string {
   return meta.columns.find((c) => c.column_name === field)?.column_type ?? 'Data'
 }
@@ -234,6 +291,10 @@ interface SettingChange {
   created?: true
   /** The field had no stored value (its default was in effect). */
   was_default?: true
+  /** #703: the new value came from this variable, so old and new are not
+   *  shown. A value that had come from a variable and is being replaced by the
+   *  file's own shows as `[the value of NAME]` in old. */
+  from_variable?: string
 }
 
 interface ApplyResult {
@@ -257,6 +318,10 @@ interface ApplyOptions {
   source?: { revision?: string; run?: string }
   /** Contents of the files the settings name with { file } (D2). */
   files?: Record<string, string>
+  /** Values of the variables the settings name with { env } (#703), read by
+   *  the sender, as { file } contents are: the server never reads its own
+   *  environment for a file, so a file cannot pull a variable out of it. */
+  env?: Record<string, string>
   /** The environment this server runs as, for the feature-secret check (D7).
    *  Defaults to this process's. */
   serverEnvironment?: string
@@ -276,7 +341,13 @@ function summarize(n: number, dryRun: boolean): string {
   return dryRun ? `${n} ${noun} would change` : `${n} ${noun} changed`
 }
 
-function refuse(problems: Record<string, string>): never {
+function refuse(problems: Record<string, string>, hide: ReadonlyMap<string, string> = new Map()): never {
+  // A save's refusal may quote the value it refused.
+  for (const [path, why] of Object.entries(problems)) {
+    let text = why
+    for (const [value, name] of hide) text = text.split(value).join(withheldValue(name))
+    problems[path] = text
+  }
   const lines = Object.entries(problems).map(([path, why]) => `- ${path}: ${why}`)
   throw new AppError('ValidationError', `The settings file was not applied; nothing changed.\n${lines.join('\n')}`, problems)
 }
@@ -312,6 +383,13 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
   const scope = await managedScope()
   const problems: Record<string, string> = {}
   const plan: { entry: ScopeEntry; meta: TableMeta; rows: { row_id: string; values: Record<string, unknown> }[] }[] = []
+  // #703: which fields came from a variable, and the values never to print.
+  const fromVariables = new Map<string, string>()
+  const hiddenValues = new Map<string, string>()
+  const secretNames = new Set([
+    ...(VARIABLES as readonly Variable[]).filter((v) => v.secret).map((v) => v.name as string),
+    ...(await declaredAppSecretNames()),
+  ])
 
   // 1. The shape, the names and the types, before anything is read or saved.
   for (const [table, value] of Object.entries(desired)) {
@@ -348,6 +426,26 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
           continue
         }
         let v = raw
+        if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 1 && 'env' in v) {
+          const name = (v as { env: unknown }).env
+          const text = typeof name === 'string' ? opts.env?.[name] : undefined
+          if (typeof name !== 'string' || !VARIABLE_NAME.test(name)) {
+            problems[path] = `${table}.${field} names a variable with { "env": ... }, which must be a variable name`
+          } else if (secretNames.has(name)) {
+            problems[path] = `${table}.${field} names the variable ${name}, which holds a secret; a secret stays a deployment variable and is never saved in a Table`
+          } else if (!text?.trim()) {
+            problems[path] = `${table}.${field} reads the variable ${name}, which is not set or is empty`
+          } else {
+            const value = fromVariable(kindOf(column.column_type), text)
+            if (value === undefined) problems[path] = `${table}.${field} wants ${WANTS[kindOf(column.column_type)]}, and the variable ${name} holds something else`
+            else {
+              values[field] = value
+              fromVariables.set(pathKey(table, row.row_id, field), name)
+              hiddenValues.set(text, name)
+            }
+          }
+          continue
+        }
         if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 1 && 'file' in v && kindOf(column.column_type) === 'text') {
           const name = (v as { file: unknown }).file
           const text = typeof name === 'string' ? opts.files?.[name] : undefined
@@ -378,6 +476,9 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
     // D5: no save of a lockable Table runs between this read and the commit
     // that publishes the new locked set (managed-settings.ts).
     await holdManagedSetExclusive(sql)
+    const origins = variableOrigins(await lastApply())
+    for (const { value, from_variable } of origins.values())
+      if (typeof value === 'string' && value && !hiddenValues.has(value)) hiddenValues.set(value, from_variable!)
     const changes: SettingChange[] = []
     const warnings: string[] = []
     // What each managed field holds once the saves are done: the "settings
@@ -417,14 +518,22 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
         const old = before.get(row_id)
         const now = after.get(row_id)
         if (!now) continue
-        for (const field of Object.keys(values)) appliedValues.push({ table: meta.name, row_id, field, value: now[field] ?? null })
+        for (const field of Object.keys(values)) {
+          const variable = fromVariables.get(pathKey(meta.name, row_id, field))
+          appliedValues.push({ table: meta.name, row_id, field, value: now[field] ?? null, ...(variable ? { from_variable: variable } : {}) })
+        }
         for (const field of Object.keys(values)) {
           const was = old ? (old[field] ?? null) : null
           if (old && old[field] !== undefined && same(was, now[field])) continue
           if (now[field] === undefined) continue
           if (!old && now[field] === null) continue
+          const fromVariable = fromVariables.get(pathKey(meta.name, row_id, field))
+          const replacedVariable = originOf(origins, meta.name, row_id, field, was)
           changes.push({
-            table: meta.name, row_id, field, old: was, new: now[field],
+            table: meta.name, row_id, field,
+            old: fromVariable ? null : replacedVariable ? withheldValue(replacedVariable) : was,
+            new: fromVariable ? null : now[field],
+            ...(fromVariable ? { from_variable: fromVariable } : {}),
             ...(old ? {} : { created: true as const }),
             ...(old && old[field] === undefined ? { was_default: true as const } : {}),
           })
@@ -441,7 +550,7 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
       if (DEV_ENVIRONMENTS.includes(serverEnvironment)) warnings.push(`WARNING: ${why}`)
       else problems[v.name] = `${why} Set the variable first, then apply again.`
     }
-    if (Object.keys(problems).length) refuse(problems)
+    if (Object.keys(problems).length) refuse(problems, hiddenValues)
 
     const result: ApplyResult = {
       dry_run: Boolean(opts.dryRun),
@@ -455,6 +564,14 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
     // next successful apply replaces it.
     const managed: ManagedPath[] = plan.flatMap(({ meta, rows }) =>
       rows.flatMap(({ row_id, values }) => Object.keys(values).map((field) => ({ table: meta.name, row_id, field }))))
+    // A field this file stops naming keeps the variable's value, so that value
+    // stays private until someone changes it.
+    const named = new Set(managed.map((p) => pathKey(p.table, p.row_id, p.field)))
+    for (const [key, origin] of origins) {
+      if (named.has(key)) continue
+      const current = (await storedFields(await getMeta(origin.table), [origin.field])).get(origin.row_id)
+      if (current && same(origin.value, current[origin.field] ?? null)) appliedValues.push({ ...origin, not_in_file: true })
+    }
     await recordApply(sql, {
       applied_by: opts.by,
       environment: opts.environment ?? null,
@@ -486,6 +603,8 @@ interface SettingDrift {
   table: string
   row_id: string
   field: string
+  /** #703: the file sets this field from this variable. */
+  from_variable?: string
 }
 
 /** The managed fields that differ from the last apply: [] before any apply
@@ -511,17 +630,17 @@ async function driftFrom(apply: Awaited<ReturnType<typeof lastApply>>): Promise<
   if (!apply) return []
   if (apply.managed_values === null) return null
   const drift: SettingDrift[] = []
-  const tables = [...new Set(apply.managed_values.map((v) => v.table))]
+  const managed = apply.managed_values.filter((v) => !v.not_in_file)
+  const tables = [...new Set(managed.map((v) => v.table))]
   for (const table of tables) {
-    const recorded = apply.managed_values.filter((v) => v.table === table)
+    const recorded = managed.filter((v) => v.table === table)
     const meta = await getMeta(table)
     const fields = [...new Set(recorded.map((v) => v.field))]
-    const current = meta.kind === 'settings'
-      ? new Map([[meta.name, await storedSettings(meta, fields)]])
-      : await storedRows(meta, fields)
+    const current = await storedFields(meta, fields)
     for (const v of recorded) {
       const row = current.get(v.row_id)
-      if (!row || !same(v.value, row[v.field] ?? null)) drift.push({ table: v.table, row_id: v.row_id, field: v.field })
+      if (!row || !same(v.value, row[v.field] ?? null))
+        drift.push({ table: v.table, row_id: v.row_id, field: v.field, ...(v.from_variable ? { from_variable: v.from_variable } : {}) })
     }
   }
   return drift
@@ -589,16 +708,32 @@ function secretIn(value: unknown, appSecrets: readonly { name: string; value: st
 }
 
 /** This environment's managed settings in the file's own shape (D9). Unset
- *  fields are left out (they keep their defaults, unmanaged). */
+ *  fields are left out (they keep their defaults, unmanaged). A field set from
+ *  a variable exports as that variable's name, never its value (#703). */
 export async function exportInstanceSettings(): Promise<ExportResult> {
+  // Under the managed-settings lock: an apply committing between reading the
+  // origins and reading the values would export a variable's value (#703).
+  return withTransaction(async () => {
+    await holdManagedSet(sql, null)
+    return exportUnderLock()
+  })
+}
+
+async function exportUnderLock(): Promise<ExportResult> {
   const settings: Block = {}
   const withheld: string[] = []
   const appSecrets = await declaredAppSecrets()
+  const origins = variableOrigins(await lastApply())
   for (const entry of await managedScope()) {
     const meta = await getMeta(entry.table)
-    const keep = (where: string, values: Record<string, unknown>) => {
+    const keep = (where: string, rowId: string, values: Record<string, unknown>) => {
       const out: Record<string, unknown> = {}
       for (const [field, value] of Object.entries(values)) {
+        const variable = originOf(origins, entry.table, rowId, field, value)
+        if (variable) {
+          out[field] = { env: variable }
+          continue
+        }
         if (value === null || value === undefined) continue
         const why = secretIn(value, appSecrets)
         if (why) withheld.push(`${where}.${field}: ${why}`)
@@ -607,11 +742,11 @@ export async function exportInstanceSettings(): Promise<ExportResult> {
       return out
     }
     if (entry.shape === 'settings') {
-      settings[entry.table] = keep(entry.table, await storedSettings(meta, entry.fields))
+      settings[entry.table] = keep(entry.table, entry.table, await storedSettings(meta, entry.fields))
     } else {
       const rows: Row[] = []
       for (const [rowId, values] of await storedRows(meta, entry.fields))
-        rows.push({ row_id: rowId, ...keep(`${entry.table}.${rowId}`, values) })
+        rows.push({ row_id: rowId, ...keep(`${entry.table}.${rowId}`, rowId, values) })
       settings[entry.table] = rows
     }
   }

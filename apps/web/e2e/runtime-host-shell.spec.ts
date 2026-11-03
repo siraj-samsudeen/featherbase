@@ -19,7 +19,16 @@ test.beforeAll(async ({ request }) => {
   await ensureRuntimeApp(request, 'other')
 })
 
-test("an app keeps its deep address under the shared bar, and Open Admin leaves for the Admin", async ({ session, request }) => {
+// Deliberate deep link: an installed app can ship another HTML document
+// whose relative scripts must resolve beside that document, not the SPA root.
+test("an app's nested help document loads its own relative script", async ({ session }) => {
+  await session.visit('/tasker/help/index.html').assertText('Tasker help')
+  await session.step('the nested document script executes', async ({ page }) => {
+    await expect(page.locator('body')).toHaveAttribute('data-tasker-help', 'ready')
+  })
+})
+
+test("an app keeps its deep address under the shared bar, and the dropdown leaves for Featherbase", async ({ session, request }) => {
   const taskerHeaders = await ensureRuntimeApp(request, 'tasker')
   const saved = await request.post('/api/save_row', {
     headers: taskerHeaders,
@@ -45,18 +54,17 @@ test("an app keeps its deep address under the shared bar, and Open Admin leaves 
       .step('opening the task restores the original deep URL', async ({ page }: { page: Page }) => {
         await expect(page).toHaveURL(location)
       })
-      .step("the shared bar names the app, with no app switcher", async ({ page }: { page: Page }) => {
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Tasker')
-        await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveCount(0)
+      .step("the shared dropdown names the app", async ({ page }: { page: Page }) => {
+        await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveValue('/tasker/')
       })
       .step('reload keeps the exact app location', async ({ page }: { page: Page }) => {
         await page.reload()
         await expect(page).toHaveURL(location)
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Tasker')
+        await expect(page.getByTestId('top-bar-name')).toHaveValue('/tasker/')
       })
       .assertText('Host shell deep-link proof')
-      .step('Open Admin loads the Admin screens', async ({ page }: { page: Page }) => {
-        await page.getByTestId('open-admin').click()
+      .step('the dropdown opens Featherbase', async ({ page }: { page: Page }) => {
+        await page.getByRole('combobox', { name: 'Switch application' }).selectOption('/featherbase/admin')
         await expect(page).toHaveURL(/\/featherbase\/admin(?:\/|$)/)
         await expect(page.getByTestId('admin-sidebar')).toBeVisible()
       })
@@ -70,7 +78,7 @@ test("an app's own hash and query links keep its deep path under the bar", async
   await session
     .visit('/other/review/37?owner=all')
     .step('the bar names the app', async ({ page }: { page: Page }) => {
-      await expect(page.getByTestId('top-bar-name')).toHaveText('Other tasks')
+      await expect(page.getByTestId('top-bar-name')).toHaveValue('/other/')
     })
     .clickLink('Selected task')
     .step('an app hash link retains its deep path and query', async ({ page }: { page: Page }) => {
@@ -80,6 +88,19 @@ test("an app's own hash and query links keep its deep path under the bar", async
     .step('an app query link retains its deep path', async ({ page }: { page: Page }) => {
       await expect(page).toHaveURL('/other/review/37?owner=me')
     })
+})
+
+test('the app sidebar follows the shared bar theme without repainting app content', async ({ session }) => {
+  await signIn(session)
+  await session.visit('/tasker/').step('both navigation surfaces follow each choice', async ({ page }) => {
+    const contentColor = await page.locator('body').evaluate(element => getComputedStyle(element).backgroundColor)
+    for (const name of ['Dark', 'Light']) {
+      await page.getByRole('radio', { name, exact: true }).click()
+      const color = await page.getByTestId('top-bar').evaluate(element => getComputedStyle(element).backgroundColor)
+      await expect(page.getByRole('navigation', { name: 'Task views' }).locator('.sidebar-frame')).toHaveCSS('background-color', color)
+      await expect(page.locator('body')).toHaveCSS('background-color', contentColor)
+    }
+  })
 })
 
 test.describe('coarse-pointer phone', () => {
@@ -99,15 +120,9 @@ test.describe('coarse-pointer phone', () => {
       })
   })
 
-  // KNOWN DEFECT, pinned (#650 follow-up). SPEC: a panel an app pins to the
-  // window starts below the shared bar. The bar publishes its height as
-  // --featherbase-bar-height; Tasker 2.3.0 still reads the retired runtime
-  // shell's --featherbase-runtime-shell-inset (falling back to 0), so its phone
-  // inspector opens under the bar. Tasker's files are not changed here: an
-  // installed Tasker 2.3.0 is matched by fingerprint, and changed files under
-  // the same version would stop the server booting. Fixed by a new Tasker
-  // version that reads the bar's variable; then flip this to a plain test.
-  test.fail("Tasker's inspector, pinned to the window, starts below the shared bar on a phone", async ({ session, request }) => {
+  // #650, fixed in #702: pinned panels consume the shared bar's published
+  // height, so their top controls remain reachable by real pointer input.
+  test("Tasker's inspector, pinned to the window, starts below the shared bar on a phone", async ({ session, request }) => {
     const headers = await ensureRuntimeApp(request, 'tasker')
     const saved = await request.post('/api/save_row', {
       headers,
@@ -122,18 +137,18 @@ test.describe('coarse-pointer phone', () => {
         .visit('/tasker/')
         .clickLink('Host shell mobile proof')
         .step("the inspector is pinned at the bar's height, not at the window's top", async ({ page }: { page: Page }) => {
-          // Measured from the styles, not from where things happen to be
-          // drawn: whether the bar is in view depends on how far the page was
-          // scrolled (Tasker's own styles make its body the scroll container,
-          // so the sticky bar scrolls with the page), and the bar may cover
-          // the Inspector button, so it is pressed without aiming.
           await expect(page.getByTestId('top-bar')).toHaveCount(1)
-          const barHeight = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--featherbase-bar-height').trim())
-          expect(barHeight).toMatch(/^\d+px$/)
-          await page.getByRole('button', { name: 'Inspector' }).dispatchEvent('click')
+          await page.getByRole('button', { name: 'Inspector' }).click()
           await expect(page.locator('.tasker-inspector')).toBeVisible()
-          expect(await page.locator('.tasker-inspector').evaluate((el) => getComputedStyle(el).top)).toBe(barHeight)
+          await expect.poll(() => page.locator('.tasker-inspector').evaluate((inspector) => {
+            const height = getComputedStyle(document.documentElement).getPropertyValue('--featherbase-bar-height')
+            return Math.abs(parseFloat(getComputedStyle(inspector).top) - parseFloat(height))
+          })).toBeLessThan(1)
         })
+        .clickLink('Close')
+        .assertHas('.tasker-inspector', { count: 0 })
+        .clickLink('Host shell mobile proof')
+        .assertHas('.tasker-inspector', { count: 1 })
     } finally {
       await deleteTask(request, headers, task.row_id)
     }

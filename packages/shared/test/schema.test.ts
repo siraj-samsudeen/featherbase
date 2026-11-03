@@ -76,6 +76,22 @@ describe('tableSchemaToZod: column type mapping', () => {
     expect(s.safeParse({ stage: ' Open' }).success).toBe(false)
   })
 
+  it('keeps required Choice errors distinct from wrong types and unknown choices (#747)', () => {
+    const schema = tableSchemaToZod([col('stage', 'Choice', { choices: 'Open\nClosed', reqd: true })])
+    for (const [row, expected] of [
+      [{}, 'Required'],
+      [{ stage: '' }, 'Required'],
+      [{ stage: null }, 'Required'],
+      [{ stage: 7 }, "Expected 'Open' | 'Closed', received number"],
+      [{ stage: '7' }, "Invalid enum value. Expected 'Open' | 'Closed', received '7'"],
+    ] as const) {
+      const result = schema.safeParse(row)
+      expect(result.success).toBe(false)
+      if (!result.success) expect(zodFieldErrors(result.error)).toEqual({ stage: expected })
+    }
+    expect(schema.parse({ stage: 'Open' })).toEqual({ stage: 'Open' })
+  })
+
   it('falls back to a free-form string when a Choice column has no choices', () => {
     const s = tableSchemaToZod([col('stage', 'Choice')])
     expect(s.safeParse({ stage: 'anything at all' }).success).toBe(true)

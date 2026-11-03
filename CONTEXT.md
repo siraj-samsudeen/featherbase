@@ -6,7 +6,7 @@ generated from that one definition.
 
 This file is the **ubiquitous language** — the words this project uses, and the
 words it has deliberately retired. It is a glossary and nothing else: no file
-paths, no implementation notes. For decisions, see [docs/adr/](docs/adr/).
+paths, no implementation notes. For decisions, see [adr/](adr/).
 
 Featherbase began as a faithful replication of
 [Frappe Framework](https://frappe.io/framework) and has since diverged on
@@ -40,19 +40,6 @@ System Settings.
 _Avoid_: Single, Single DocType
 
 ## Identity
-
-> **Live inconsistency.** [ADR 0009](docs/adr/0009-record-identity-id-and-name.md)
-> ratified the two terms below, but the rename has not landed in the code yet —
-> the primary key column is still literally `name`
-> ([#89](https://github.com/siraj-samsudeen/featherbase/issues/89) is open).
-> Until it lands, `name` in code means identity, while `name` in this glossary
-> means the human-readable name. Prefer the language below when writing prose,
-> specs, and issue titles; expect the old meaning when reading code.
-
-**ID**:
-A Row's primary key — the platform's own identifier for it. Always the bare
-column `id`, never domain-prefixed.
-_Avoid_: name (as identity), pk, row_id, docname
 
 **Name**:
 The human-readable name of a Row — an ordinary user Column that a Table may or
@@ -165,6 +152,17 @@ _Avoid_: Awesomebar, omnibox, quick search
 A public, optionally anonymous form over a whitelisted subset of one Table's
 Columns.
 _Avoid_: public form, survey
+
+**Glossary**:
+The words an instance's Apps use and what they mean, readable by everyone
+signed in. An App ships its terms; an instance adds its own and may reword an
+App's.
+_Avoid_: dictionary, help pages
+
+**Glossary term**:
+One word in the Glossary: a definition, with examples, words to avoid and the
+Tables or Columns it describes where they help.
+_Avoid_: definition entry, tooltip
 
 ## Platform, apps and instances
 

@@ -5,14 +5,18 @@
 import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
+import { saveDoc } from '../src/document'
 import { AppError } from '../src/errors'
 import {
   INSTANCE_SETTINGS_ACTOR,
   applyInstanceSettings,
   exportInstanceSettings,
   managedScope,
+  settingsDrift,
   type InstanceSettingsFile,
 } from '../src/instance-settings'
+import { BREAK_GLASS_ACTOR } from '../src/managed-settings'
+import { runAsSystemActor } from '../src/system-actor'
 import { createServiceAccount } from '../src/service-accounts'
 import { issueAccessToken } from '../src/auth'
 import { makePerson } from './fixtures'
@@ -55,8 +59,9 @@ describe('the managed scope (D2)', () => {
         'kind', 'label', 'enabled', 'new_person', 'allowed_email_domains', 'self_link', 'client_id',
         'service_url', 'settings', 'identifier_system',
       ]],
-      ['Scheduled Job', 'rows', ['enabled']],
+      ['Scheduled Job', 'rows', ['cadence', 'enabled']],
       ['App Setting', 'rows', ['value']],
+      ['Data Source', 'rows', ['engine', 'url_env', 'default_schema', 'access', 'table_allowlist']],
     ])
     // The privacy notice may be kept in its own file next to the settings file.
     expect(scope[0].fileFields).toContain('privacy_notice')
@@ -80,6 +85,15 @@ describe('the managed scope (D2)', () => {
 })
 
 describe('apply (D4)', () => {
+  // #693: the Sign In Method controller refuses a malformed domain list, and
+  // the settings file saves through it, so a typo there lands nothing.
+  test('a domain list with a space inside an entry is refused and nothing changes', async () => {
+    await sql`update sign_in_method set allowed_email_domains = ${DOMAINS} where row_id = 'google'`
+    const file: InstanceSettingsFile = { settings: { 'Sign In Method': [{ row_id: 'google', allowed_email_domains: 'exam ple.com' }] } }
+    await expect(applyInstanceSettings(file, { by: 'Administrator' })).rejects.toThrow('"exam ple.com" is not a domain such as example.com, or *')
+    expect(await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`).toEqual([{ allowed_email_domains: DOMAINS }])
+  })
+
   test('a missing company domain is restored, and the result names that one setting', async () => {
     await sql`update sign_in_method set allowed_email_domains = null where row_id = 'google'`
     const file: InstanceSettingsFile = { settings: { 'Sign In Method': [{ row_id: 'google', allowed_email_domains: DOMAINS }] } }
@@ -152,7 +166,7 @@ describe('apply (D4)', () => {
         // Valid on its own, so the rollback is what keeps it out.
         'System Settings': { app_name: 'Should Not Land', allowed_login_domains: 'example.com', date_format: 'not-a-format' },
         'Sign In Method': [{ row_id: 'google', allowed_email_domains: 'x.com' }],
-        'Scheduled Job': [{ row_id: 'no_such_job', enabled: true }, { row_id: 'check_sla', cadence: 'hourly' }],
+        'Scheduled Job': [{ row_id: 'no_such_job', enabled: true }, { row_id: 'check_sla', description: 'Not the file\'s to set.' }],
         'Person': [{ row_id: 'Administrator', email: 'x@example.com' }],
       },
     } as unknown as InstanceSettingsFile, { by: 'Administrator' }))
@@ -162,8 +176,8 @@ describe('apply (D4)', () => {
       'System Settings.allowed_login_domains': 'System Settings has no field allowed_login_domains',
       'System Settings.date_format': expect.stringContaining('not-a-format'),
       'Scheduled Job.no_such_job': 'Scheduled Job has no row no_such_job',
-      'Scheduled Job.check_sla.cadence': 'Scheduled Job.cadence is not managed by the settings file (it manages: enabled)',
-      Person: 'Person is not managed by the settings file (it manages: System Settings, Sign In Method, Scheduled Job, App Setting)',
+      'Scheduled Job.check_sla.description': 'Scheduled Job.description is not managed by the settings file (it manages: cadence, enabled)',
+      Person: 'Person is not managed by the settings file (it manages: System Settings, Sign In Method, Scheduled Job, App Setting, Data Source)',
     })
     expect(await snapshot()).toEqual(before)
   })
@@ -376,6 +390,75 @@ describe('export: credentials no deployment variable holds', () => {
 })
 
 describe('over HTTP (D3)', () => {
+  test('malformed source revisions leave the applied settings and audit unchanged', async ({ admin }) => {
+    const path = '/api/instance-settings/apply'
+    const file = (app_name: string) => ({ settings: { 'System Settings': { app_name } } })
+    const baseline = await admin.fetch(path, {
+      method: 'POST', body: JSON.stringify({
+        file: file('Source label baseline'), source: { revision: 'initial-1', run: 'seed_0' },
+      }),
+    })
+    expect(baseline.status).toBe(200)
+    const state = async () => ({
+      settings: await sql`select * from single_value order by table_name, field`,
+      methods: await sql`select * from sign_in_method order by row_id`,
+      jobs: await sql`select * from scheduled_job order by row_id`,
+      appSettings: await sql`select * from app_setting order by row_id`,
+      sources: await sql`select * from data_source order by row_id`,
+      managed: await sql`select * from instance_settings_apply order by id`,
+      versions: await sql`select * from version order by row_id`,
+      activity: await sql`select * from activity_log order by row_id`,
+    })
+    const before = await state()
+    expect(before.settings).toContainEqual({ table_name: 'System Settings', field: 'app_name', value: 'Source label baseline' })
+    expect(before.managed).toHaveLength(1)
+    expect(before.managed[0]).toMatchObject({ revision: 'initial-1', run: 'seed_0', applied_by: 'Administrator' })
+    const desired = file('Source label accepted')
+    for (const revision of ['', 'bad revision', 'r'.repeat(41)]) {
+      const response = await admin.fetch(path, {
+        method: 'POST', body: JSON.stringify({ file: desired, source: { revision, run: 'run_2.0-9' } }),
+      })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toEqual({ error: {
+        type: 'ValidationError',
+        message: 'source.revision must be up to 40 letters, digits, dots, dashes or underscores',
+        fields: { 'source.revision': 'invalid' },
+      } })
+      expect(await state()).toEqual(before)
+    }
+    const revision = 'a'.repeat(36) + '.-_9'
+    const run = 'run_2.0-9'
+    const response = await admin.fetch(path, {
+      method: 'POST', body: JSON.stringify({ file: desired, source: { revision, run } }),
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      dry_run: false, environment: null, summary: '1 setting changed',
+      changes: [{ table: 'System Settings', row_id: 'System Settings', field: 'app_name', old: 'Source label baseline', new: 'Source label accepted' }],
+    })
+    const after = await state()
+    expect(after.settings).toEqual(before.settings.map((row) => row.table_name === 'System Settings' && row.field === 'app_name'
+      ? { ...row, value: 'Source label accepted' } : row))
+    for (const key of ['methods', 'jobs', 'appSettings', 'sources'] as const) expect(after[key]).toEqual(before[key])
+    expect(after.managed).toEqual([{
+      id: true, applied_at: expect.any(Date), applied_by: 'Administrator', environment: null, revision, run,
+      managed_paths: [{ table: 'System Settings', row_id: 'System Settings', field: 'app_name' }],
+      managed_values: [{ table: 'System Settings', row_id: 'System Settings', field: 'app_name', value: 'Source label accepted' }],
+    }])
+    expect(after.versions).toHaveLength(before.versions.length + 1)
+    for (const row of before.versions) expect(after.versions).toContainEqual(row)
+    expect(after.versions.find((row) => !before.versions.some((old) => old.row_id === row.row_id))).toMatchObject({
+      ref_table: 'System Settings', ref_name: 'System Settings', created_by: INSTANCE_SETTINGS_ACTOR,
+      data: { changed: [['app_name', 'Source label baseline', 'Source label accepted']] },
+    })
+    expect(after.activity).toHaveLength(before.activity.length + 1)
+    for (const row of before.activity) expect(after.activity).toContainEqual(row)
+    expect(after.activity.find((row) => !before.activity.some((old) => old.row_id === row.row_id))).toMatchObject({
+      user: INSTANCE_SETTINGS_ACTOR, full_name: 'instance settings file, applied by Administrator',
+      operation: `settings_apply revision ${revision} run ${run}: 1 setting changed`,
+    })
+  })
+
   test('a System Manager service account applies and previews; anyone else is refused', async ({ api }) => {
     const bot = await createServiceAccount('settings-bot', ['System Manager'], 'Administrator')
     const { token } = await issueAccessToken(bot.row_id, 'settings workflow', null)
@@ -519,5 +602,205 @@ describe('a decimal setting', () => {
       await sql`delete from column_def where parent = 'System Settings' and column_name = 'rate_test'`
       invalidateMeta('System Settings')
     }
+  })
+})
+
+describe('values from variables (#703)', () => {
+  const file = (name: unknown) => ({ settings: { 'System Settings': { app_name: { env: name } } } }) as unknown as InstanceSettingsFile
+
+  describe('the value stays private after the apply that read it', () => {
+    const PRIVATE = 'made-up-private-dive-7031'
+    const literal = (value: string) => ({ settings: { 'System Settings': { app_name: value } } })
+    const fromVariable = (value = PRIVATE) => applyInstanceSettings(file('DIVE_ID'), { by: 'Administrator', env: { DIVE_ID: value } })
+    const exported = async () => {
+      const result = await exportInstanceSettings()
+      return { text: JSON.stringify(result), appName: (result.file.settings['System Settings'] as Record<string, unknown>).app_name }
+    }
+
+    test('an export names the variable, and applying it back changes nothing', async () => {
+      await fromVariable()
+      const { text, appName } = await exported()
+      expect(appName).toEqual({ env: 'DIVE_ID' })
+      expect(text).not.toContain(PRIVATE)
+      const { file: again } = await exportInstanceSettings()
+      expect((await applyInstanceSettings(again, { by: 'Administrator', env: { DIVE_ID: PRIVATE } })).changes).toEqual([])
+    })
+
+    test('a row\'s value from a variable exports by name too', async () => {
+      await applyInstanceSettings({ settings: { 'Sign In Method': [{ row_id: 'google', allowed_email_domains: { env: 'DOMAINS' } }] } } as unknown as InstanceSettingsFile,
+        { by: 'Administrator', env: { DOMAINS: 'made-up-private.example.com' } })
+      const result = await exportInstanceSettings()
+      const google = (result.file.settings['Sign In Method'] as Record<string, unknown>[]).find((r) => r.row_id === 'google')
+      expect(google?.allowed_email_domains).toEqual({ env: 'DOMAINS' })
+      expect(JSON.stringify(result)).not.toContain('made-up-private')
+    })
+
+    test('replacing it with a plain value withholds the old one, in a preview and in the apply', async () => {
+      await fromVariable()
+      const preview = await applyInstanceSettings(literal('Plain name'), { by: 'Administrator', dryRun: true })
+      expect(JSON.stringify(preview)).not.toContain(PRIVATE)
+      expect(preview.changes).toEqual([expect.objectContaining({ field: 'app_name', old: '[the value of DIVE_ID]', new: 'Plain name' })])
+      const applied = await applyInstanceSettings(literal('Plain name'), { by: 'Administrator' })
+      expect(JSON.stringify(applied)).not.toContain(PRIVATE)
+      expect(applied.changes).toEqual([expect.objectContaining({ old: '[the value of DIVE_ID]', new: 'Plain name' })])
+      // The plain value is the file's own from now on.
+      expect((await exported()).appName).toBe('Plain name')
+    })
+
+    test('replacing a plain value with a variable shows neither, and exports by name', async () => {
+      await applyInstanceSettings(literal('Plain name'), { by: 'Administrator' })
+      expect((await exported()).appName).toBe('Plain name')
+      const result = await fromVariable()
+      expect(result.changes).toEqual([expect.objectContaining({ from_variable: 'DIVE_ID', old: null, new: null })])
+      expect((await exported()).appName).toEqual({ env: 'DIVE_ID' })
+    })
+
+    test('a change outside the file drifts by name, and the export still does not print a value', async () => {
+      await fromVariable()
+      await runAsSystemActor(BREAK_GLASS_ACTOR, () => saveDoc('System Settings', { app_name: 'Set by hand' }, BREAK_GLASS_ACTOR))
+      const drift = await settingsDrift()
+      expect(drift).toEqual([{ table: 'System Settings', row_id: 'System Settings', field: 'app_name', from_variable: 'DIVE_ID' }])
+      expect(JSON.stringify(drift)).not.toContain(PRIVATE)
+      expect((await exported()).appName).toEqual({ env: 'DIVE_ID' })
+    })
+
+    test('a file that stops naming the field keeps the value private until someone changes it', async () => {
+      await fromVariable()
+      expect((await applyInstanceSettings({ settings: {} }, { by: 'Administrator' })).changes).toEqual([])
+      expect(await settingsDrift()).toEqual([])
+      const { text, appName } = await exported()
+      expect(appName).toEqual({ env: 'DIVE_ID' })
+      expect(text).not.toContain(PRIVATE)
+      // Still private across a second apply that does not name it.
+      await applyInstanceSettings({ settings: {} }, { by: 'Administrator' })
+      expect((await exported()).appName).toEqual({ env: 'DIVE_ID' })
+      // No longer locked; what a person types is an ordinary setting.
+      await saveDoc('System Settings', { app_name: 'Typed in Admin' }, 'Administrator')
+      expect((await exported()).appName).toBe('Typed in Admin')
+    })
+  })
+
+  test('refuses a variable an installed app declares as a secret, even when this server has it unset', async () => {
+    const name = 'declared_secret_proof'
+    await sql`insert into installed_app ${sql({ name, manifest: sql.json({ secrets: ['UNSET_APP_SECRET'] }) } as never)}`
+    try {
+      await expect(applyInstanceSettings(file('UNSET_APP_SECRET'), { by: 'Administrator', env: { UNSET_APP_SECRET: 'made-up-credential-71' } }))
+        .rejects.toThrow(/UNSET_APP_SECRET, which holds a secret/)
+    } finally {
+      await sql`delete from installed_app where name = ${name}`
+    }
+  })
+
+  test('a value is read, saved, locked, and never shown', async () => {
+    const secretLooking = 'made-up-value-40417'
+    const result = await applyInstanceSettings(file('SOME_NAME'), { by: 'Administrator', env: { SOME_NAME: secretLooking } })
+    expect(result.changes).toEqual([expect.objectContaining({ field: 'app_name', from_variable: 'SOME_NAME', old: null, new: null })])
+    expect(JSON.stringify(result)).not.toContain(secretLooking)
+    const [stored] = await sql`select value from single_value where table_name = 'System Settings' and field = 'app_name'`
+    expect(stored.value).toBe(secretLooking)
+    await expect(saveDoc('System Settings', { app_name: 'By hand' }, 'Administrator')).rejects.toThrow(/settings file/)
+    expect(JSON.stringify(await settingsDrift())).not.toContain(secretLooking)
+    // Unchanged on a second apply, and a dry run shows nothing either.
+    expect((await applyInstanceSettings(file('SOME_NAME'), { by: 'Administrator', env: { SOME_NAME: secretLooking } })).changes).toEqual([])
+    const preview = await applyInstanceSettings(file('SOME_NAME'), { by: 'Administrator', dryRun: true, env: { SOME_NAME: 'made-up-other-71' } })
+    expect(preview.changes).toHaveLength(1)
+    expect(JSON.stringify(preview)).not.toMatch(/made-up-(other|value)/)
+  })
+
+  test.each([[undefined], [''], ['   ']])('a variable holding %j is a listed problem naming it, in a dry run too', async (value) => {
+    const before = await snapshot()
+    const env: Record<string, string> = value === undefined ? {} : { MISSING_NAME: value }
+    for (const dryRun of [false, true]) {
+      const err = await problemsOf(applyInstanceSettings(file('MISSING_NAME'), { by: 'Administrator', dryRun, env }))
+      expect(err.fields).toMatchObject({ 'System Settings.app_name': expect.stringContaining('MISSING_NAME') })
+    }
+    expect(await snapshot()).toEqual(before)
+  })
+
+  test('the server never reads its own environment for a file', async () => {
+    vi.stubEnv('ONLY_ON_THE_SERVER', 'server-side-value')
+    const err = await problemsOf(applyInstanceSettings(file('ONLY_ON_THE_SERVER'), { by: 'Administrator' }))
+    expect(err.message).toContain('ONLY_ON_THE_SERVER')
+    expect(err.message).not.toContain('server-side-value')
+  })
+
+  test('a secret variable and a malformed name are refused', async () => {
+    const secret = await problemsOf(applyInstanceSettings(file('DATABASE_URL'), { by: 'Administrator', env: { DATABASE_URL: 'x' } }))
+    expect(secret.message).toContain('holds a secret')
+    const bad = await problemsOf(applyInstanceSettings(file(5), { by: 'Administrator' }))
+    expect(bad.message).toContain('must be a variable name')
+  })
+
+  test('a value in the wrong type is refused without being quoted', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'Scheduled Job': [{ row_id: 'check_sla', enabled: { env: 'SWITCH' } }] } } as unknown as InstanceSettingsFile,
+      { by: 'Administrator', env: { SWITCH: 'made-up-not-a-switch' } }))
+    expect(err.message).toContain('SWITCH')
+    expect(err.message).not.toContain('made-up-not-a-switch')
+  })
+
+  test('a value takes the field\'s own type', async () => {
+    await applyInstanceSettings({
+      settings: {
+        'System Settings': { session_hours: { env: 'HOURS' } },
+        'Scheduled Job': [{ row_id: 'check_sla', enabled: { env: 'ON' } }],
+        'Sign In Method': [{ row_id: 'password', settings: { env: 'JSON_VALUE' } }],
+      },
+    } as unknown as InstanceSettingsFile, { by: 'Administrator', env: { HOURS: '12', ON: 'false', JSON_VALUE: '{"a":1}' } })
+    const [hours] = await sql`select value from single_value where table_name = 'System Settings' and field = 'session_hours'`
+    expect(Number(hours.value)).toBe(12)
+    const [job] = await sql`select enabled from scheduled_job where row_id = 'check_sla'`
+    expect(job.enabled).toBe(false)
+    const [method] = await sql`select settings from sign_in_method where row_id = 'password'`
+    expect(method.settings).toEqual({ a: 1 })
+    const bad = await problemsOf(applyInstanceSettings({
+      settings: {
+        'System Settings': { session_hours: { env: 'HOURS' } },
+        'Sign In Method': [{ row_id: 'password', settings: { env: 'JSON_VALUE' } }],
+      },
+    } as unknown as InstanceSettingsFile, { by: 'Administrator', env: { HOURS: '1.5', JSON_VALUE: '{not json' } }))
+    expect(bad.fields).toMatchObject({
+      'System Settings.session_hours': expect.stringContaining('wants a whole number'),
+      'Sign In Method.password.settings': expect.stringContaining('wants JSON'),
+    })
+    expect(bad.message).not.toContain('{not json')
+  })
+
+  test('a save that quotes the refused value has it taken out', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'Sign In Method': [{ row_id: 'google', allowed_email_domains: { env: 'DOMAINS' } }] } } as unknown as InstanceSettingsFile,
+      { by: 'Administrator', env: { DOMAINS: 'exam ple.com' } }))
+    expect(err.message).toContain('[the value of DOMAINS]')
+    expect(err.message).not.toContain('exam ple.com')
+  })
+
+  test('an app setting for an app not yet installed is a listed problem', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'App Setting': [{ row_id: 'not_installed.dive_id', value: { env: 'DIVE' } }] } } as unknown as InstanceSettingsFile,
+      { by: 'Administrator', env: { DIVE: 'made-up-dive-9' } }))
+    expect(err.message).toContain('App not_installed is not installed')
+    expect(err.message).not.toContain('made-up-dive-9')
+  })
+})
+
+describe('Data Source rows (#703)', () => {
+  const source = { row_id: 'made-up-warehouse', engine: 'postgres', url_env: 'MADE_UP_WAREHOUSE_URL', access: 'read_only' }
+
+  test('a row comes back from the file, and is locked', async () => {
+    const result = await applyInstanceSettings({ settings: { 'Data Source': [source] } }, { by: 'Administrator' })
+    expect(result.changes.some((c) => c.table === 'Data Source' && c.field === 'url_env' && c.created)).toBe(true)
+    const [row] = await sql`select engine, url_env, access from data_source where row_id = ${source.row_id}`
+    expect(row).toMatchObject({ engine: 'postgres', url_env: 'MADE_UP_WAREHOUSE_URL', access: 'read_only' })
+    const [current] = await sql`select updated_at from data_source where row_id = ${source.row_id}`
+    await expect(saveDoc('Data Source', { row_id: source.row_id, url_env: 'OTHER', updated_at: current.updated_at }, 'Administrator')).rejects.toThrow(/settings file/)
+    expect((await applyInstanceSettings({ settings: { 'Data Source': [source] } }, { by: 'Administrator' })).changes).toEqual([])
+  })
+
+  test('a connection string is refused, and not repeated', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'Data Source': [{ ...source, url_env: 'postgres://u:made-up-pw@db/x' }] } }, { by: 'Administrator' }))
+    expect(err.message).toContain('url_env must be a variable NAME')
+    expect(err.message).not.toContain('made-up-pw')
+  })
+
+  test('the connection status stays the server\'s', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'Data Source': [{ ...source, conn_status: 'ok' }] } }, { by: 'Administrator' }))
+    expect(err.message).toContain('is not managed by the settings file')
   })
 })

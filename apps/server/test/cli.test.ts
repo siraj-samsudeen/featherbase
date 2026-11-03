@@ -17,7 +17,6 @@ import { main } from '../src/cli'
 import { invalidateMeta } from '../src/meta'
 import { captureIO, runMain } from './command-io'
 import { test } from './pg-test'
-import { configureDelegated } from './identity-fixtures'
 
 const serverDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 const DT = 'Cli Test Widget'
@@ -476,7 +475,7 @@ describe('#401: cli settings:set', () => {
     }
   }, 60_000)
 
-  it('sets a sign-in method text field with --table and --row, even when locked', async () => {
+  test('sets a sign-in method text field with --table and --row, even when locked', async () => {
     const [before] = await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`
     await sql`delete from instance_settings_apply`
     await sql`insert into instance_settings_apply ${sql({ applied_by: 'cli-test', managed_paths: sql.json([{ table: 'Sign In Method', row_id: 'google', field: 'allowed_email_domains' }]) })}`
@@ -497,7 +496,7 @@ describe('#401: cli settings:set', () => {
   it('refuses a Table the settings file does not manage, and a row Table without --row', async () => {
     const outside = await failure(['settings:set', 'full_name', '--stdin', '--table', 'Person', '--row', 'x'], 'x')
     expect(outside?.status).toBe(1)
-    expect(outside?.stderr).toContain('settings:set writes System Settings, Sign In Method, Scheduled Job or App Setting, not Person')
+    expect(outside?.stderr).toContain('settings:set writes System Settings, Sign In Method, Scheduled Job, App Setting or Data Source, not Person')
     const noRow = await failure(['settings:set', 'label', '--stdin', '--table', 'Sign In Method'], 'x')
     expect(noRow?.status).toBe(1)
     expect(noRow?.stderr).toContain('Sign In Method has rows: name one with --row')
@@ -506,6 +505,45 @@ describe('#401: cli settings:set', () => {
 
 // #465 (D3, D9): the settings file from the command line. Export, then apply
 // the export, must report "nothing changed"; a dry run writes nothing.
+describe('#703: cli install-app', () => {
+  test('install-app requires exactly one app and leaves the installed registry unchanged on bad arguments', async () => {
+    const before = await sql`select name, package_version from installed_app order by name`
+    for (const args of [[], ['checklists', 'helpdesk']]) {
+      const result = await runMain(main, ['install-app', ...args])
+      expect(result).toMatchObject({ code: 1, stdout: '', stderr: 'error: usage: cli install-app <name>\n' })
+      expect(await sql`select name, package_version from installed_app order by name`).toEqual(before)
+    }
+  })
+
+  it('installs a shipped app once, says so the second time, and names what it has otherwise', async () => {
+    const { uninstallApp, isInstalled } = await import('../src/apps')
+    if (await isInstalled('checklists')) await uninstallApp('checklists')
+    expect(await cli(['install-app', 'checklists'])).toContain('installed checklists')
+    try {
+      expect(await isInstalled('checklists')).toBe(true)
+      expect(await cli(['install-app', 'checklists'])).toContain('already installed')
+    } finally {
+      await uninstallApp('checklists')
+    }
+    const refused = captureIO()
+    expect(await main(['install-app', 'no_such_app'], refused.io)).toBe(1)
+    expect(refused.stderr()).toMatch(/no app no_such_app on this server \(it has: .*checklists/)
+  })
+
+  it('reads a { env } value from its own environment, and does not print it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'settings-env-'))
+    try {
+      writeFileSync(join(dir, 'f.json'), JSON.stringify({ settings: { 'System Settings': { app_name: { env: 'CLI_TEST_NAME' } } } }))
+      vi.stubEnv('CLI_TEST_NAME', 'made-up-name-3391')
+      const out = await cli(['settings:apply', '--file', join(dir, 'f.json'), '--dry-run'])
+      expect(out).toContain('from CLI_TEST_NAME (value not shown)')
+      expect(out).not.toContain('made-up-name-3391')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('#465: cli settings:export and settings:apply', () => {
   const dir = mkdtempSync(join(tmpdir(), 'featherbase-settings-cli-'))
   afterAll(async () => {
@@ -518,7 +556,7 @@ describe('#465: cli settings:export and settings:apply', () => {
     const out = await cli(['settings:export', '--dir', dir])
     expect(out).toContain('instance-settings.json')
     const file = JSON.parse(readFileSync(join(dir, 'instance-settings.json'), 'utf8'))
-    expect(Object.keys(file.settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting'])
+    expect(Object.keys(file.settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting', 'Data Source'])
     const applied = await cli(['settings:apply', '--file', join(dir, 'instance-settings.json'), '--revision', 'cli-test'])
     expect(applied).toContain('settings:apply: nothing changed')
   }, 60_000)
@@ -607,11 +645,11 @@ describe('Running an Instance: the command line lists what it can do', () => {
       output = `${e.stdout ?? ''}${e.stderr ?? ''}`
     }
     expect(code).toBe(1)
-    expect(output).toMatch(/usage: cli <migrate\|patches\|/)
+    expect(output).toMatch(/usage: cli <migrate\|seed\|/)
   }, 60_000)
 
   test('no command lists the commands and succeeds', async () => {
-    expect(await cli([])).toMatch(/^usage: cli <migrate\|patches\|/)
+    expect(await cli([])).toMatch(/^usage: cli <migrate\|seed\|/)
   })
 })
 
@@ -672,26 +710,6 @@ describe('the command line, command by command', () => {
     expect(await sql`select count(*)::int as n from migration`).toEqual([before])
   })
 
-  test('patches applies a patch not yet recorded, and reports the patch that fails', async () => {
-    await sql`delete from patch_log where patch = '0001_file_ref_index'`
-    await sql.unsafe('drop index if exists featherbase.file_ref_idx')
-    expect(await cli(['patches'])).toBe('applied patch 0001_file_ref_index\npatches up to date (1 total)\n')
-    expect(await sql`select to_regclass('featherbase.file_ref_idx') is not null as made`).toEqual([{ made: true }])
-    expect(await cli(['patches'])).toBe('patches up to date (1 total)\n')
-    await sql`delete from patch_log where patch = '0001_file_ref_index'`
-    await sql.unsafe('alter table featherbase.file rename to file_moved')
-    const f = await failure(['patches'])
-    expect(f?.stderr).toBe('error: relation "featherbase.file" does not exist\n')
-  })
-
-  test('identities:plan prints what migration 0100 would do, on a database before it', async () => {
-    // The pre-0101 names this plan reads (migration-0100.test.ts has the full shape).
-    await sql.unsafe(`alter table featherbase.person rename to "user";
-      alter table featherbase."user" add column user_type varchar(140) not null default 'human'`)
-    const out = await cli(['identities:plan'])
-    expect(out).toMatch(/^person-identities/)
-  })
-
   test('migrate:rehearse runs in its own process: a bad argument, the database here (live, so only with --allow-live), and a database that is not there', async () => {
     expect((await failure(['migrate:rehearse', '--bogus']))?.stderr).toBe('error: migrate:rehearse: unknown argument --bogus\n')
     // This suite's own sessions are connected, so the database here looks live.
@@ -702,21 +720,11 @@ describe('the command line, command by command', () => {
     expect((await runMain(main, ['migrate:rehearse', '--database-url', missing.toString()])).code).toBe(1)
   }, 120_000)
 
-  test('people:resolve needs a file, and a dry run of an empty one moves nobody', async () => {
-    expect((await failure(['people:resolve', '--dry-run']))?.stderr).toBe('error: usage: cli people:resolve <stylehr_record_ids.csv> [--dry-run]\n')
-    const dir = mkdtempSync(join(tmpdir(), 'featherbase-resolve-cli-'))
-    try {
-      writeFileSync(join(dir, 'ids.csv'), 'employee_code,assigner,stylehr_record_id\n')
-      await configureDelegated()
-      const out = await cli(['people:resolve', '--dry-run', join(dir, 'ids.csv')])
-      expect(out).toMatch(/^people:resolve \(dry run — rolled back\): 0 live StyleHR sign-ins\n {2}moved to the record number: 0 none\n/)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
   test('seed-pack applies a named pack, and needs `apply <name>`', async () => {
     expect((await failure(['seed-pack', 'jeyarama']))?.stderr).toBe('error: usage: cli seed-pack apply <name>\n')
+    expect((await failure(['seed-pack', 'apply', '../jeyarama']))?.stderr).toBe('error: Unknown seed pack "../jeyarama"\n')
+    expect((await failure(['seed-pack', 'apply', 'missing-backend-coverage-pack']))?.stderr)
+      .toBe(`error: Seed pack missing-backend-coverage-pack not found (${join(serverDir, 'seeds/missing-backend-coverage-pack/identifier-systems.json')})\n`)
     expect(await cli(['seed-pack', 'apply', 'jeyarama'])).toMatch(/^seed pack jeyarama: added .*; kept .*; sign-in methods linked .*; people_review \w+\n$/)
   })
 
@@ -775,7 +783,7 @@ describe('the command line, command by command', () => {
     await sql`update sign_in_method set service_url = 'https://bot:hunter2@hr.example.com/login' where row_id = 'google'`
     const r = await runMain(main, ['settings:export'])
     expect(r.code).toBe(0)
-    expect(Object.keys(JSON.parse(r.stdout).settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting'])
+    expect(Object.keys(JSON.parse(r.stdout).settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting', 'Data Source'])
     expect(r.stderr).toBe('settings:export: left out Sign In Method.google.service_url: a web address with credentials in it\n')
     await sql`insert into single_value (table_name, field, value) values ('System Settings', 'privacy_notice', '# Notice\n')
       on conflict (table_name, field) do update set value = excluded.value`

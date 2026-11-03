@@ -124,3 +124,46 @@ describe('#338: scheduled report emails run as the person who set them up', () =
     expect((await admin.get<Record<string, any>>(url)).recipients).toBe('lead@store.test')
   })
 })
+
+describe('#611: a report a schedule sends changes only with its scheduler', () => {
+  const reportUrl = `/api/table/Report/${encodeURIComponent(REPORT)}`
+  const widen = async (client: TestClient) => {
+    const cur = await currentReport(client)
+    return client.fetch(reportUrl, {
+      method: 'PATCH',
+      body: JSON.stringify({ updated_at: cur.updated_at, config: { columns: ['title', 'cost'], filters: [] } }),
+    })
+  }
+  const currentReport = (client: TestClient) => client.get<Record<string, any>>(reportUrl)
+
+  test('a colleague who may edit reports cannot change one a schedule sends', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const colleague = await createUser({ roles: [ROLE] })
+    expect((await widen(colleague)).status).toBe(403)
+    expect((await admin.get<Record<string, any>>(reportUrl)).config).toEqual({ columns: ['title'], filters: [] })
+  })
+
+  test('the person who set up every schedule that sends it, or a System Manager, may change it', async ({ admin, createUser }) => {
+    const planner = await setup(admin, createUser)
+    expect((await widen(planner)).status).toBe(200)
+    expect((await widen(admin)).status).toBe(200)
+  })
+
+  test('once a second person schedules the report, neither may change it alone', async ({ admin, createUser }) => {
+    const planner = await setup(admin, createUser)
+    const colleague = await createUser({ roles: [ROLE] })
+    await colleague.post('/api/save_row', {
+      table: 'Auto Email Report',
+      row: { row_id: 'Aeo Colleague', report: REPORT, recipients: 'me@store.test', file_format: 'CSV', frequency: 'Daily', enabled: true },
+    })
+    expect((await widen(planner)).status).toBe(403)
+    expect((await widen(colleague)).status).toBe(403)
+  })
+
+  test('a report no schedule sends stays open to anyone who may edit reports', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const colleague = await createUser({ roles: [ROLE] })
+    await sql`delete from auto_email_report where row_id = ${AER}`
+    expect((await widen(colleague)).status).toBe(200)
+  })
+})

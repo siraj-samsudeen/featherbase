@@ -52,7 +52,7 @@ const displayOnly = (to: z.infer<typeof alterable>) => Object.keys(to).every(key
 // or column as it stood, an altered column's `from`), so a history replays
 // backward from the final declaration as well as forward from the installed
 // one.
-export const operationSchema = z.discriminatedUnion('kind', [
+const operationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('addTable'), table: tableDefSchema }).strict(),
   z.object({ kind: z.literal('dropTable'), table: tableDefSchema, destructive: z.boolean().optional() }).strict(),
   z.object({ kind: z.literal('addColumn'), table: z.string(), column, position: z.number().int().min(1).optional(), backfill: fill.optional() }).strict(),

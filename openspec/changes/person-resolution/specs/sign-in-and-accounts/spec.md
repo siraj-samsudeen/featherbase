@@ -35,7 +35,11 @@ record, and the same provider ID can later be linked afresh.
 
 An HR system sign-in SHALL be linked to the person by the HR system's own
 record number, which never changes, rather than by the employee code, which
-can change or be shared between companies. A link set up before this was so
+can change or be shared between companies.
+
+#### Normative details for the whole requirement
+
+A link set up before this was so
 keeps working by its employee code until its record number is supplied, and
 is listed for the administrator meanwhile. The upgrade itself reads no file:
 the record numbers are supplied afterwards, from the warehouse's list of
@@ -64,7 +68,11 @@ and is listed.
 ### Requirement: Someone who has left is refused everywhere
 
 When a connected service reports that a person has left, Featherbase SHALL
-close that way in, keeping its history. Whether the person is still employed
+close that way in, keeping its history.
+
+#### Normative details for the whole requirement
+
+Whether the person is still employed
 is judged from the HR roster's current employment records on their account,
 never from their other sign-in methods: when the roster shows a current
 employment under a different HR record, only the ended way in closes and the
@@ -107,15 +115,19 @@ A deployment MAY switch on test mode for sign-in through a connected service,
 only through its server environment and only with an exact switch value, and
 only on a development, test or staging server — staging being a hosted trial
 instance that is a production server in every other respect: any other server
-refuses to start with it set. While it is on, the service SHALL NOT be asked:
+refuses to start with it set.
+A typed password SHALL NOT be logged.
+
+#### Normative details for the whole requirement
+
+While it is on, the service SHALL NOT be asked:
 a tester signs in as a person by typing the employee code on that person's
 record, in any mix of capitals, with any password or none. The code must
 belong to exactly one person, and that person must have a live, unended link
 to the service; who may sign in is otherwise unchanged — one enabled account,
 and not the Administrator or a System Manager. The sign-in page SHALL look
 exactly as it does without test mode and SHALL NOT say that test mode is on,
-so the shortcut is known only to those who need it. A typed password SHALL
-NOT be logged.
+so the shortcut is known only to those who need it.
 
 Because the service is not asked, it cannot report that someone has left.
 While test mode is on, a person who has left is refused only when their

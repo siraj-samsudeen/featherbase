@@ -99,8 +99,9 @@ function formatSectionFor(format: string, value: number): string {
   const holds = (c: RegExpMatchArray | null) => {
     if (!c) return false
     const n = Number(c[2])
+    // CONDITION emits exactly these six operators.
     const tests: Record<string, boolean> = { '=': value === n, '>': value > n, '>=': value >= n, '<': value < n, '<=': value <= n, '<>': value !== n }
-    return tests[c[1]] ?? false
+    return tests[c[1]]
   }
   const c1 = pos.match(CONDITION)
   const c2 = neg.match(CONDITION)
@@ -169,6 +170,11 @@ function calendarDates(XLSX: typeof import('xlsx'), sheet: import('xlsx').WorkSh
     if (cell.t !== 'n' || typeof cell.v !== 'number' || !cell.z) continue
     const section = formatSectionFor(String(cell.z), cell.v)
     if (!XLSX.SSF.is_date(section)) continue
+    // The date format is read here and nowhere else. xlsx 0.20's sheet_to_json
+    // turns any cell that still has one into a Date (an Invalid Date once the
+    // cell is text below), so it goes whether the cell becomes text or stays a number.
+    delete cell.z
+    delete cell.w
     // [h], [m], [s] show elapsed time: a duration, not a date. Keep the number.
     if (/\[(?:h+|m+|s+)\]/i.test(literalFree(section))) continue
     // Excel shows no date before serial 0 or after 31-Dec-9999; such a cell stays a number.

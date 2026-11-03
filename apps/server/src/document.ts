@@ -10,6 +10,7 @@ import { assertNothingRetained, repointRowActivity, retainedActivityCounts, reta
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
+import { holdBeforeRowLock } from './row-lock-order'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
 import { applySla } from './sla'
@@ -17,7 +18,7 @@ import { getActiveWorkflow, stateField, rethrowWorkflowConflict, notifyApprovers
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
-import { FULL_READER, ROW_ATTACHED_TABLES, readerFor, restrictRow, seesEveryColumn, type Tiers } from './row-readers'
+import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, readerFor, restrictRow, seesEveryColumn, type Tiers } from './row-readers'
 import { assertNotSystemWritten } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
@@ -29,6 +30,7 @@ import {
   getScopeMap,
   isPrivileged,
   isSharedWith,
+  insertTiers,
   permittedTiers,
   stripUnwritableFields,
 } from './permissions'
@@ -360,6 +362,12 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
   const refName = row.ref_name ? String(row.ref_name) : ''
   if (!refTable || !refName) return
   const refused = () => new AppError('PermissionError', `No read permission on this ${table} row for ${user}`)
+  // A comment or file may sit on a comment, edit or file that is itself on a
+  // plain row, one level deep (assertAttachedTarget); a deeper chain, which
+  // only a direct write could leave, is refused rather than followed, so it
+  // can never loop. The list leaves rows on such Tables out (the row's own
+  // activity shows them).
+  if (ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName))) throw refused()
   const refMeta = await getMeta(refTable).catch(() => null)
   if (!refMeta) throw refused()
   try {
@@ -368,8 +376,57 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
     if (err instanceof AppError) throw refused()
     throw err
   }
-  if (table === 'Version' && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
+  if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
     throw refused()
+}
+
+// Whether a comment, edit or file is itself on another comment, edit or file.
+async function attachedToAttached(table: string, name: string): Promise<boolean> {
+  const [held] = await sql`
+    select ref_table, ref_name from ${sql(await tableRelation(table))} where row_id = ${name}`
+  return Boolean(held && ROW_ATTACHED_TABLES.has(String(held.ref_table ?? '')) && String(held.ref_name ?? ''))
+}
+
+async function hasAttachments(table: string, name: string): Promise<boolean> {
+  for (const held of ROW_ATTACHED_TABLES) {
+    const [hit] = await sql`
+      select 1 from ${sql(await tableRelation(held))} where ref_table = ${table} and ref_name = ${name} limit 1`
+    if (hit) return true
+  }
+  return false
+}
+
+// #609, #610: a comment or file is attached only to a row its writer may
+// open, and one already on a row is changed only by someone who may open that
+// row, so moving it elsewhere cannot carry it out of its row's reach, and
+// only a privileged caller takes it off its row (which hands it to the File
+// grant). A row names its Table whenever it names a row, and one on a
+// comment, edit or file goes one level deep only. Judged on the row as written.
+async function assertAttachedTarget(
+  meta: TableMeta,
+  row: RowValues,
+  old: RowValues | null,
+  user: string,
+  trusted: boolean,
+) {
+  if (!ROW_ATTACHED_TABLES.has(meta.name)) return
+  const refTable = String(row.ref_table ?? '')
+  const refName = String(row.ref_name ?? '')
+  if (refName && !refTable) throw new AppError('ValidationError', `A ${meta.name} on a row must name its Table`)
+  if (refName && ROW_ATTACHED_TABLES.has(refTable)) {
+    if (await attachedToAttached(refTable, refName))
+      throw new AppError('ValidationError', `A ${meta.name} cannot be attached to a ${refTable} that is itself attached to one`)
+    // Whatever already hangs on this row would then sit two levels deep.
+    if (old && (await hasAttachments(meta.name, String(row[ROW_KEY] ?? old[ROW_KEY]))))
+      throw new AppError('ValidationError', `This ${meta.name} has comments, files or history of its own, so it cannot be attached to a ${refTable}`)
+  }
+  if (trusted) return
+  if (old) await assertAttachedRowReadable(meta.name, old, user)
+  const moved = !old || String(old.ref_table ?? '') !== refTable || String(old.ref_name ?? '') !== refName
+  if (!moved) return
+  if (old && String(old.ref_name ?? '') && !refName && !(await isPrivileged(user)))
+    throw new AppError('PermissionError', `Only a System Manager can take a ${meta.name} off its row`)
+  await assertAttachedRowReadable(meta.name, row, user)
 }
 
 // META-007/DOC-005: extract Sub-table column arrays from the payload; they are
@@ -696,6 +753,14 @@ interface SaveOptions {
   // created_by, which is what makes own_rows_only portals work. Never expose
   // this to callers that pass through arbitrary client input.
   skipPermissions?: boolean
+  // Only the upload route supplies the exact path returned by storage.
+  // Never derive this option from a client row or request body.
+  uploadedFileUrl?: string
+}
+
+function assertStoredFileUrl(meta: TableMeta, row: RowValues, allowed: unknown) {
+  if (meta.name === 'File' && String(row.file_url ?? '') !== String(allowed ?? ''))
+    throw new AppError('ValidationError', 'file_url is managed by uploads and cannot be assigned or changed')
 }
 
 export function saveDoc(...args: Parameters<typeof saveDocImpl>) {
@@ -785,7 +850,7 @@ async function writeDoc(
   }
   const writeTiers = opts.skipPermissions
     ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
-    : await permittedTiers(user, table, 'write')
+    : await insertTiers(user, table)
   const fieldValues = validateValues(
     meta,
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
@@ -811,7 +876,7 @@ async function writeDoc(
   const [saved] = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
-      await holdManagedSet(stx, meta.name)
+      await holdBeforeRowLock(stx, meta, user, { ...values }, true)
       const rowId = await resolveRowId(stx, meta, values)
       const now = new Date()
       const row: RowValues = {
@@ -834,6 +899,8 @@ async function writeDoc(
       await runDocEventScripts('validate', meta.name, ctx.row, ctx.tx)
       await runHooks('before_save', ctx)
       await runDocEventScripts('before_save', meta.name, ctx.row, ctx.tx)
+      await assertAttachedTarget(meta, row, null, user, Boolean(opts.skipPermissions))
+      assertStoredFileUrl(meta, row, opts.uploadedFileUrl)
       // Hooks may add or replace Sub-table arrays on ctx.row (an app hook
       // snapshotting template items into a new row, say) — re-pick from the
       // hooked row so what saves is what the chain left behind.
@@ -914,7 +981,7 @@ async function saveBoundDoc(
   // PERM-005: Data Scopes judge the incoming Reference values exactly as on
   // a native insert.
   await assertUserPermissions(user, meta, values)
-  const writeTiers = await permittedTiers(user, meta.name, 'write')
+  const writeTiers = await insertTiers(user, meta.name)
   const fieldValues = validateValues(
     meta,
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
@@ -1072,7 +1139,7 @@ async function updateDoc(
   const saved = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
-      await holdManagedSet(stx, meta.name)
+      await holdBeforeRowLock(stx, meta, user, { ...values, [meta.row_key]: name })
       const [existing] = await tx`
         select * from ${tx(table)} where ${tx(meta.row_key)} = ${name} for update`
       if (!existing)
@@ -1120,6 +1187,8 @@ async function updateDoc(
       // Judged on the row the hooks and scripts leave behind — the one that
       // is written — against the stored row.
       await assertAccessColumnsUnchanged(stx, meta, row, existing as RowValues, user, trusted, writeTiers)
+      await assertAttachedTarget(meta, row, existing as RowValues, user, trusted)
+      assertStoredFileUrl(meta, row, existing.file_url)
       const dbRow = {
         ...columnValues(meta, row),
         updated_at: new Date(),
@@ -1223,6 +1292,7 @@ async function setStatus(
   const tbl = await tableRelation(table)
   const [saved] = await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
+    await runHooks('before_lock', { row: { [meta.row_key]: name }, meta, user, isNew: false, tx: stx })
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
@@ -1355,13 +1425,16 @@ async function deleteDocImpl(
   if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
   await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
-    await holdManagedSet(stx, meta.name)
+    await holdBeforeRowLock(stx, meta, user, { [meta.row_key]: name })
     const [existing] = await tx`
       select * from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
       throw new AppError('NotFoundError', `${table} ${name} not found`)
     await assertDocPermission(user, table, 'delete', String(existing.created_by))
     await assertUserPermissions(user, meta, existing as RowValues)
+    // #610: a comment or file on a row is removed only by someone who may
+    // open that row, as only they may read it (#342, #609).
+    if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, existing as RowValues, user)
     await assertRowNotManaged(stx, meta, name, user)
     if (meta.owner_app) {
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
@@ -1540,6 +1613,7 @@ async function renameDocImpl(
   await sql.begin(async (tx) => {
     const tbl = await tableRelation(table)
     await holdManagedSet(tx as unknown as typeof sql, null)
+    await runHooks('before_lock', { row: { [meta.row_key]: oldName }, meta, user, isNew: false, tx: tx as unknown as typeof sql })
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${oldName} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${oldName} not found`)

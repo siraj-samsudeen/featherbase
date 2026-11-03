@@ -1,11 +1,11 @@
 import { describe, expect } from 'vitest'
 import { join, resolve } from 'node:path'
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { test as base } from './pg-test'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
 import { taskerClient } from './tasker-client'
-import { discoverPackages } from '../src/runtime-packages'
+import { discoverPackages, findScopeProvider, shippedUpgrades } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
@@ -20,7 +20,232 @@ const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   createUser: async ({ createUser }, use) => use(async options => taskerClient(await createUser(options))),
 })
 
+describe('Rejected runtime artifacts never become applications', () => {
+  type PackageFiles = { root: string; manifest: Record<string, any>; npm: Record<string, any> }
+  type Rejection = { name: string; error: string; change: (files: PackageFiles) => void | Promise<void> }
+  const provider = { name: 'places', tables: ['other.task'] }
+  const actions = { version: 2, tables: ['other.task'], operations: {
+    count: { policy: { kind: 'table' }, authorization: { kind: 'generic' } },
+  } }
+  const serverExports = (body: string) => async ({ root }: PackageFiles) => {
+    await writeFile(resolve(root, 'server.mjs'), `export const platformVersion = '2026-10'\n${body}\n`)
+  }
+  const rejected: Rejection[] = [
+    ...['name', 'version'].map((field): Rejection => ({
+      name: `npm identity lacks ${field}`, error: 'Expected npm package name and version',
+      change: ({ npm }) => { delete npm[field] },
+    })),
+    { name: 'absolute manifest path', error: 'Package paths must be relative',
+      change: ({ root, npm }) => { npm.featherbase = resolve(root, 'featherbase.json') } },
+    { name: 'manifest path points at its root', error: 'Package path escapes its declared root',
+      change: ({ npm }) => { npm.featherbase = '.' } },
+    { name: 'escaping manifest path', error: 'Package path escapes its declared root',
+      change: async ({ root, npm }) => {
+        await cp(resolve(root, 'featherbase.json'), resolve(root, '../outside.json'))
+        npm.featherbase = '../outside.json'
+      } },
+    { name: 'artifact contains a symlink', error: 'Package artifact must not contain symbolic links',
+      change: async ({ root }) => { await symlink('server.mjs', resolve(root, 'linked.mjs')) } },
+    { name: 'duplicate Table declaration', error: 'Duplicate Tables or unknown entryTable',
+      change: ({ manifest }) => { manifest.tables.push(structuredClone(manifest.tables[0])) } },
+    { name: 'entry Table is absent', error: 'Duplicate Tables or unknown entryTable',
+      change: ({ manifest }) => { manifest.entryTable = 'other.absent' } },
+    ...[
+      ['unqualified Table', { name: 'Task' }],
+      ['foreign Table', { name: 'someone.task' }],
+      ['missing Table label', { label: null }],
+      ['system Table', { system: true }],
+      ['external storage', { data_source: 'remote' }],
+    ].map(([name, fields]): Rejection => ({
+      name: String(name), error: 'Package Tables require qualified ownership, label and local storage',
+      change: ({ manifest }) => {
+        Object.assign(manifest.tables[0], fields)
+        // Keep entryTable valid so the ownership/storage guard is reached.
+        manifest.entryTable = manifest.tables[0].name
+      },
+    })),
+    { name: 'client is a file', error: 'Client root is not a directory',
+      change: ({ manifest }) => { manifest.client = 'server.mjs' } },
+    { name: 'absolute client path', error: 'Package paths must be relative',
+      change: ({ root, manifest }) => { manifest.client = resolve(root, 'client') } },
+    { name: 'escaping client path', error: 'Package path escapes its declared root',
+      change: ({ manifest }) => { manifest.client = '..' } },
+    { name: 'provider has no server', error: 'A scope provider requires a server module',
+      change: ({ manifest }) => { manifest.scopeProvider = provider; delete manifest.server } },
+    { name: 'provider reads an unmarked Table', error: 'A scope provider reads only Tables marked decides_scope',
+      change: ({ manifest }) => { manifest.scopeProvider = provider } },
+    { name: 'provider reads a Table containing Sub-tables', error: 'A scope provider cannot read Tables with Sub-tables',
+      change: ({ manifest }) => {
+        manifest.scopeProvider = provider
+        manifest.tables[0].decides_scope = true
+        manifest.tables.push({ ...structuredClone(manifest.tables[0]), name: 'other.line', kind: 'sub_table' })
+        manifest.tables[0].columns.push({ column_name: 'lines', column_type: 'Sub-table', row_table: 'other.line' })
+      } },
+    { name: 'provider handler is absent', error: 'Package handlers and authorization callbacks must match declared names',
+      change: ({ manifest }) => {
+        manifest.scopeProvider = provider
+        manifest.tables[0].decides_scope = true
+      } },
+    { name: 'operations have no server', error: 'Declared operations require a server module',
+      change: ({ manifest }) => { manifest.actions = actions; delete manifest.server } },
+    { name: 'reads have no server', error: 'Declared operations require a server module',
+      change: ({ manifest }) => { manifest.reads = { ...actions, version: 1 }; delete manifest.server } },
+    { name: 'shared action Table lacks a permission', error: 'Shared action Tables require declared permissions; other apps are not allowed',
+      change: ({ manifest }) => { manifest.actions = { ...actions, tables: ['Comment'] } } },
+    { name: 'action names another app despite a permission', error: 'Shared action Tables require declared permissions; other apps are not allowed',
+      change: ({ manifest }) => {
+        manifest.actions = { ...actions, tables: ['tasker.task'] }
+        manifest.permissions.push({ table: 'tasker.task', role: 'All', can_read: true })
+      } },
+    { name: 'absolute server path', error: 'Package paths must be relative',
+      change: ({ root, manifest }) => { manifest.server = resolve(root, 'server.mjs') } },
+    { name: 'escaping server path', error: 'Package path escapes its declared root',
+      change: ({ manifest }) => { manifest.server = '..' } },
+    { name: 'uncompiled server module', error: 'Server module must be compiled JavaScript',
+      change: async ({ root, manifest }) => {
+        await cp(resolve(root, 'server.mjs'), resolve(root, 'server.ts'))
+        manifest.server = 'server.ts'
+      } },
+    { name: 'handlers are an array', error: 'Expected named package functions', change: serverExports('export const actions = []') },
+    { name: 'handlers are a scalar', error: 'Expected named package functions', change: serverExports('export const actions = 37') },
+    { name: 'undeclared handler', error: 'Package handlers and authorization callbacks must match declared names',
+      change: serverExports('export const actions = { count() {} }') },
+    { name: 'declared handler is absent', error: 'Package handlers and authorization callbacks must match declared names',
+      change: ({ manifest }) => { manifest.actions = actions } },
+    { name: 'declared handler is not callable', error: 'Package handlers and authorization callbacks must match declared names',
+      change: async (files) => {
+        files.manifest.actions = actions
+        await serverExports('export const actions = { count: 37 }')(files)
+      } },
+    { name: 'handler uses the wrong declared name', error: 'Package handlers and authorization callbacks must match declared names',
+      change: async (files) => {
+        files.manifest.actions = actions
+        await serverExports('export const actions = { different() {} }')(files)
+      } },
+    { name: 'validator targets a foreign Table', error: 'Validators must target owned Tables',
+      change: serverExports("export const validators = { 'tasker.task'() {} }") },
+    { name: 'validator is not callable', error: 'Validators must target owned Tables',
+      change: serverExports("export const validators = { 'other.task': 37 }") },
+  ]
+
+  test.for(rejected)('$name is refused before registration', async ({ change, error }, { admin }) => {
+    const directory = await mkdtemp(resolve('test/.runtime-rejected-'))
+    const root = resolve(directory, 'package')
+    try {
+      await cp(resolve('../..', 'test-apps/other'), root, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(root, 'featherbase.json'), 'utf8'))
+      const npm = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
+      await change({ root, manifest, npm })
+      await writeFile(resolve(root, 'featherbase.json'), JSON.stringify(manifest))
+      await writeFile(resolve(root, 'package.json'), JSON.stringify(npm))
+      expect(await discoverPackages([root])).toEqual([{ path: root, error }])
+      const status = await admin.get<{ available: string[]; installed: unknown[]; versions: unknown[]; actions: unknown[]; failures: unknown[] }>('/api/apps')
+      expect(status.available).not.toContain('other')
+      expect(status.installed).toEqual([])
+      expect(status.versions).toEqual([])
+      expect(status.actions).toEqual([])
+      // HTTP diagnostics deliberately hide operator paths and module details.
+      expect(status.failures).toEqual([{ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' }])
+      await expect(admin.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({
+        status: 417, type: 'ValidationError', message: '417 ValidationError: Unknown app: other', fields: { name: 'Not registered' },
+      })
+      expect(await admin.get('/api/app_catalog')).toEqual([])
+      expect(await findScopeProvider()).toBeUndefined()
+      expect(await sql`select name from installed_app where name = 'other'`).toEqual([])
+      expect(await sql`select name from table_def where name = 'other.task'`).toEqual([])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('identical artifacts on multiple paths register one installable version', async ({ admin }) => {
+    const directory = await mkdtemp(resolve('test/.runtime-duplicates-'))
+    try {
+      const first = resolve(directory, 'first')
+      const second = resolve(directory, 'second')
+      for (const root of [first, second]) await cp(resolve('../..', 'test-apps/other'), root, { recursive: true })
+      expect(await discoverPackages([first, second, first])).toEqual([])
+      const status = await admin.get<{ versions: { name: string; version: string; digest: string }[] }>('/api/apps')
+      expect(status.versions).toEqual([{ name: 'other', version: '0.0.1', digest: expect.stringMatching(/^[a-f0-9]{64}$/) }])
+      await admin.post('/api/install_app', { name: 'other' })
+      expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'once', quantity: 13 } }))
+        .toMatchObject({ validation_runs: 1 })
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('conflicting artifacts quarantine every copy of the version', async ({ admin }) => {
+    const directory = await mkdtemp(resolve('test/.runtime-conflicts-'))
+    try {
+      const roots = ['first', 'changed', 'third'].map(name => resolve(directory, name))
+      for (const root of roots) await cp(resolve('../..', 'test-apps/other'), root, { recursive: true })
+      await writeFile(resolve(roots[1], 'extra.txt'), 'different immutable artifact')
+      expect(await discoverPackages(roots)).toEqual(roots.slice(1).map(path => ({
+        path, error: 'Duplicate different artifacts for one package version',
+      })))
+      const status = await admin.get<{ available: string[]; versions: unknown[]; installed: unknown[]; actions: unknown[] }>('/api/apps')
+      expect(status.available).not.toContain('other')
+      expect(status.versions).toEqual([])
+      expect(status.installed).toEqual([])
+      expect(status.actions).toEqual([])
+      await expect(admin.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({
+        status: 417, type: 'ValidationError', message: '417 ValidationError: Unknown app: other', fields: { name: 'Not registered' },
+      })
+      expect(await findScopeProvider()).toBeUndefined()
+      expect(await sql`select name from table_def where name = 'other.task'`).toEqual([])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test.for([
+    { name: 'changed', error: 'Package artifact changed; restore immutable files and restart before previewing again' },
+    { name: 'missing', error: 'Package artifact is missing; restore the exact version and restart' },
+    { name: 'symlinked', error: 'Package artifact must not contain symbolic links' },
+  ])('a $name discovered artifact cannot be installed', async ({ name, error }, { admin }) => {
+    const root = await mkdtemp(resolve('test/.runtime-immutable-'))
+    try {
+      await cp(resolve('../..', 'test-apps/other'), root, { recursive: true })
+      expect(await discoverPackages([root])).toEqual([])
+      if (name === 'changed') await writeFile(resolve(root, 'extra.txt'), 'post-discovery change')
+      else if (name === 'missing') await rm(root, { recursive: true })
+      else await symlink('server.mjs', resolve(root, 'linked.mjs'))
+      await expect(admin.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({
+        status: 417, type: 'ValidationError', message: `417 ValidationError: ${error}`,
+      })
+      expect(await sql`select name from installed_app where name = 'other'`).toEqual([])
+      expect(await sql`select name from table_def where name = 'other.task'`).toEqual([])
+      expect(await admin.get('/api/app_catalog')).toEqual([])
+      expect(await findScopeProvider()).toBeUndefined()
+    } finally { await rm(root, { recursive: true, force: true }) }
+  })
+})
+
 describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
+  test('shipped upgrades choose 1.10 over 1.9 regardless of artifact discovery order', async ({ admin }) => {
+    const directory = await mkdtemp(resolve('test/.runtime-newest-'))
+    try {
+      const installed = resolve(directory, 'installed')
+      await cp(resolve('../..', 'test-apps/other'), installed, { recursive: true })
+      expect(await discoverPackages([installed])).toEqual([])
+      await admin.post('/api/install_app', { name: 'other' })
+      const versions = ['1.9.0', '1.10.0']
+      const roots = versions.map(version => resolve(directory, version))
+      const migrations = versions.map((version, index) => ({
+        id: `release_${index + 1}`, fromVersion: index === 0 ? '0.0.1' : versions[index - 1],
+        toVersion: version, operations: [],
+      }))
+      for (const [index, root] of roots.entries()) {
+        await cp(installed, root, { recursive: true })
+        const npm = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
+        const manifest = JSON.parse(await readFile(resolve(root, 'featherbase.json'), 'utf8'))
+        await writeFile(resolve(root, 'package.json'), JSON.stringify({ ...npm, version: versions[index] }))
+        await writeFile(resolve(root, 'featherbase.json'), JSON.stringify({ ...manifest, migrations: migrations.slice(0, index + 1) }))
+      }
+      const rows = await sql`select name, package_version, migration_ledger from installed_app where name = 'other'`
+      const expected = [{ name: 'other', from: '0.0.1', to: '1.10.0', ownsClient: true, migrations }]
+      expect(await shippedUpgrades(rows, roots)).toEqual(expected)
+      expect(await shippedUpgrades(rows, [...roots].reverse())).toEqual(expected)
+      expect(await sql`select package_version, migration_ledger from installed_app where name = 'other'`)
+        .toEqual([{ package_version: '0.0.1', migration_ledger: [] }])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   test('PKG-R6: legacy human deep links redirect to Featherbase while technical roots remain reserved', async ({ api }) => {
     const old = await api.fetch('/admin/Tasker%20Task/one?view=board')
     expect(old.status).toBe(308)
@@ -36,7 +261,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   test('PKG-R1: reserved names fail discovery; failed installation leaves no Tables or activation', async ({ admin }) => {
     const directory = await mkdtemp(resolve('test/.runtime-package-'))
     try {
-      await cp(resolve('../..', 'runtime-apps/other'), directory, { recursive: true })
+      await cp(resolve('../..', 'test-apps/other'), directory, { recursive: true })
       const file = resolve(directory, 'featherbase.json')
       const manifest = JSON.parse(await readFile(file, 'utf8'))
       for (const name of ['featherbase', 'api', 'assets']) {
@@ -58,7 +283,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('PKG-R2: customization cannot change identity, storage, binding or hook dispatch', async ({ admin }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     for (const property of ['name', 'owner_app', 'physical_schema', 'physical_relation', 'data_source', 'row_key', 'columns']) {
       const row = { row_id: `override-${property}`, table_name: 'other.task', column_name: null, property, value: 'tasker' }
@@ -76,7 +301,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('PKG-R3: no database role but the owner can read app relations outside the availability-aware API', async ({ admin }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     for (const enabled of [true, false]) {
       await admin.post('/api/set_app_enabled', { name: 'other', enabled })
@@ -85,7 +310,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('PKG-R3: disable waits for the post-commit tail, including a nested save', async ({ admin }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     let entered!: () => void
     let release!: () => void
@@ -121,7 +346,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('PKG-R2 PKG-H1: two real packages isolate IDs, references, rules and ordinary-user grants', async ({ admin, createUser }) => {
-    expect(await discoverPackages(['tasker', 'other'].map(name => resolve('../..', 'runtime-apps', name)))).toEqual([])
+    expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'tasker' })
     await admin.post('/api/install_app', { name: 'other' })
     const member = await createUser({ email: 'two-packages@example.com', roles: [] })
@@ -158,7 +383,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   test('PKG-R3: equivalent shared-table grants remain independent across packages', async ({ admin, createUser }) => {
     const other = await mkdtemp(resolve('test/.runtime-shared-grant-'))
     try {
-      await cp(resolve('../..', 'runtime-apps/other'), other, { recursive: true })
+      await cp(resolve('../..', 'test-apps/other'), other, { recursive: true })
       const file = resolve(other, 'featherbase.json')
       const manifest = JSON.parse(await readFile(file, 'utf8'))
       manifest.permissions.push(
@@ -167,21 +392,10 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
         { table: 'Comment', role: 'All', tier: 'restricted', can_read: true },
       )
       await writeFile(file, JSON.stringify(manifest))
-      expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker'), other])).toEqual([])
+      expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), other])).toEqual([])
       await admin.post('/api/install_app', { name: 'tasker' })
       await admin.post('/api/install_app', { name: 'other' })
-      // Recreate the pre-0092 upgrade state: Tasker created the basic grant,
-      // Other adopted it without a ledger entry, and neither grant had an
-      // owner. The migration must recover both independent declarations.
-      const [adopted] = await sql`
-        delete from permission
-        where owner_app = 'other' and ref_table = 'Comment' and tier = 'basic'
-        returning row_id`
-      await sql`
-        update installed_app set perms = perms - ${String(adopted.row_id)}
-        where name = 'other'`
-      await sql`update permission set owner_app = null where owner_app in ('tasker', 'other')`
-      await sql.unsafe(await readFile(resolve('migrations/0092_runtime_permission_owner.sql'), 'utf8'))
+      // Each package owns its own declaration of the shared grant.
       expect(await sql`
         select owner_app, tier from permission
         where ref_table = 'Comment' and owner_app in ('tasker', 'other')
@@ -210,7 +424,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('disable rejects stale writes, preserves rows, and enable wires validation once', async ({ admin }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     const row = await admin.post<Record<string, unknown>>('/api/save_row', {
       table: 'other.task', row: { row_id: 'same', quantity: 37 },
@@ -232,7 +446,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('PKG-R4: ordinary member catalog and client root are separate from management and server files', async ({ api, admin, createUser }) => {
-    expect(await discoverPackages([resolve('../..', 'runtime-apps/other')])).toEqual([])
+    expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
     for (const [request, location] of [
       ['/other', '/other/'],
@@ -302,7 +516,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test('PKG-J2: restart without compatible code fails closed, restoring code preserves data', async ({ admin }) => {
-    const source = resolve('../..', 'runtime-apps/other')
+    const source = resolve('../..', 'test-apps/other')
     await discoverPackages([source])
     await admin.post('/api/install_app', { name: 'other' })
     await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'survivor', quantity: 19 } })
@@ -336,7 +550,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   // #650 (design D3): the shared top bar replaced the runtime shell's header
   // and its app switcher; the bar names only the app it stands on.
   test("PKG-R4: an app's entry document carries the shared bar's host, named by the app's title", async ({ admin }) => {
-    expect(await discoverPackages(['tasker', 'other'].map(name => resolve('../..', 'runtime-apps', name)))).toEqual([])
+    expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'tasker' })
     await admin.post('/api/install_app', { name: 'other' })
 
@@ -363,12 +577,12 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   test('PKG-R4: runtime catalog and document omit an unauthorized app', async ({ admin, createUser }) => {
     const restricted = await mkdtemp(resolve('test/.runtime-restricted-shell-'))
     try {
-      await cp(resolve('../..', 'runtime-apps/other'), restricted, { recursive: true })
+      await cp(resolve('../..', 'test-apps/other'), restricted, { recursive: true })
       const file = resolve(restricted, 'featherbase.json')
       const manifest = JSON.parse(await readFile(file, 'utf8'))
       manifest.permissions = manifest.permissions.map((permission: Record<string, unknown>) => ({ ...permission, role: 'System Manager' }))
       await writeFile(file, JSON.stringify(manifest))
-      await discoverPackages([resolve('../..', 'runtime-apps/tasker'), restricted])
+      await discoverPackages([resolve('../..', 'example-apps/tasker'), restricted])
       await admin.post('/api/install_app', { name: 'tasker' })
       await admin.post('/api/install_app', { name: 'other' })
       const member = await createUser({ email: 'runtime-shell-no-manager@example.com', roles: [] })
@@ -382,29 +596,63 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     }
   })
 
-  // #437: 2.3.0 withdraws the everyone-reads-Person grant; both shipped
-  // predecessors upgrade to it, and the image ships 2.2.0 beside it.
-  for (const predecessor of ['tasker-v2.1', 'tasker-v2.2'])
-    test(`changed Tasker package upgrades from its exact shipped predecessor (${predecessor})`, async ({ admin }) => {
-      const predecessorTasker = resolve('../..', 'runtime-apps/fixtures', predecessor)
-      const currentTasker = resolve('../..', 'runtime-apps/tasker')
-      expect(await discoverPackages([predecessorTasker])).toEqual([])
+  // #437: a new version may withdraw a grant its installed version declared.
+  // Two synthetic copies of Tasker: the installed one also lets everyone read
+  // Person; the next version, one migration on, does not.
+  const currentTasker = resolve('../..', 'example-apps/tasker')
+  const everyoneReadsPerson = () => sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`
+  async function taskerGrants() {
+    const [app] = await sql`select perms from installed_app where name = 'tasker'`
+    return sql`select ref_table from permission where row_id in ${sql(app.perms as string[])} order by 1`
+  }
+  async function editJson(file: string, change: (value: Record<string, any>) => void) {
+    const value = JSON.parse(await readFile(file, 'utf8'))
+    change(value)
+    await writeFile(file, JSON.stringify(value))
+  }
+
+  test('an upgrade withdraws a grant the installed version declared, and records the withdrawal', async ({ admin }) => {
+    const root = await mkdtemp(resolve('test/.tasker-withdraw-'))
+    const installed = resolve(root, 'installed')
+    const next = resolve(root, 'next')
+    try {
+      for (const to of [installed, next])
+        await cp(currentTasker, to, { recursive: true, filter: file => !file.split('/').includes('node_modules') })
+      const { version: from } = JSON.parse(await readFile(resolve(installed, 'package.json'), 'utf8')) as { version: string }
+      const to = '99.0.0'
+      await editJson(resolve(installed, 'featherbase.json'), m => { m.permissions.push({ table: 'Person', role: 'All', can_read: true }) })
+      await editJson(resolve(next, 'featherbase.json'), m => { m.migrations.push({ id: 'withdraw_person_read_probe', fromVersion: from, toVersion: to, operations: [] }) })
+      await editJson(resolve(next, 'package.json'), p => { p.version = to })
+
+      expect(await discoverPackages([installed])).toEqual([])
       await admin.post('/api/install_app', { name: 'tasker' })
-      expect(await discoverPackages([predecessorTasker, currentTasker])).toEqual([])
+      // A client of the installed version saves a task before the upgrade.
+      const saved = await admin.fetch('/api/save_row', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `tasker@${from}` },
+        body: JSON.stringify({ table: 'tasker.task', row: { task_title: 'Kept across the upgrade' } }) })
+      expect(saved.status).toBe(201)
+      const { row_id: task } = await saved.json() as { row_id: string }
+      expect(await discoverPackages([installed, next])).toEqual([])
       await loadInstalledApps()
-      expect(await sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`).toHaveLength(1)
-      const plan = await admin.post<{ planId: string; permissions: unknown[] }>('/api/preview_app_upgrade', { name: 'tasker', version: '2.3.0' })
+      expect(await admin.get('/api/runtime_app_versions')).toEqual([`tasker@${from}`])
+      expect(await everyoneReadsPerson()).toHaveLength(1)
+
+      const plan = await admin.post<{ planId: string; permissions: unknown[] }>('/api/preview_app_upgrade', { name: 'tasker', version: to })
       expect(plan.permissions).toEqual([{ withdraw: { table: 'Person', role: 'All', can_read: true } }])
-      await admin.post('/api/upgrade_app', { name: 'tasker', version: '2.3.0', planId: plan.planId })
-      await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: '2.3.0' })
-      expect(await admin.get('/api/app_catalog')).toContainEqual({ name: 'tasker', title: 'Tasker', href: '/tasker/' })
-      expect(await sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`).toHaveLength(0)
-      const [app] = await sql`select perms from installed_app where name = 'tasker'`
-      expect(await sql`select ref_table from permission where row_id in ${sql(app.perms as string[])} order by 1`)
-        .toEqual([{ ref_table: 'Comment' }, { ref_table: 'tasker.project' }, { ref_table: 'tasker.task' }])
+      await admin.post('/api/upgrade_app', { name: 'tasker', version: to, planId: plan.planId })
+      await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: to })
+      expect(await admin.get('/api/runtime_app_versions')).toEqual([`tasker@${to}`])
+      expect(await everyoneReadsPerson()).toHaveLength(0)
+      expect(await taskerGrants()).toEqual([{ ref_table: 'Comment' }, { ref_table: 'tasker.project' }, { ref_table: 'tasker.task' }])
+      const kept = await admin.fetch(`/api/table/tasker.task/${task}`, { headers: { 'X-Featherbase-App-Version': `tasker@${to}` } })
+      expect(await kept.json()).toMatchObject({ task_title: 'Kept across the upgrade' })
       // The withdrawal is on the record.
-      expect(await sql`select operation from activity_log where operation like 'app_grant_withdrawn tasker@2.3.0: All on Person%'`).toHaveLength(1)
-    })
+      expect(await sql`select operation from activity_log where operation like ${`app_grant_withdrawn tasker@${to}: All on Person%`}`).toHaveLength(1)
+      const [row] = await sql`select migration_ledger from installed_app where name = 'tasker'`
+      expect((row.migration_ledger as { id: string }[]).map(m => m.id).at(-1)).toBe('withdraw_person_read_probe')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })
 
 // #551 (ADR 0011, design E9): an app states the platform version it was built
@@ -412,7 +660,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
 describe('An app states the platform version it was built for', () => {
   async function appBuiltFor(manifestFields: Record<string, unknown>, serverVersion: string, serverLine = `export const platformVersion = '${serverVersion}'`) {
     const directory = await mkdtemp(resolve('test/.platform-version-'))
-    await cp(resolve('../..', 'runtime-apps/other'), directory, { recursive: true })
+    await cp(resolve('../..', 'test-apps/other'), directory, { recursive: true })
     const file = resolve(directory, 'featherbase.json')
     const { platformVersion: _builtFor, ...manifest } = JSON.parse(await readFile(file, 'utf8'))
     await writeFile(file, JSON.stringify({ ...manifest, ...manifestFields }))
@@ -460,7 +708,7 @@ describe('An app states the platform version it was built for', () => {
 
 describe('Removing an app isn’t offered yet', () => {
   test('removing an app that has its own code is refused, pointing to disable, and nothing is removed', async ({ admin }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'keep-me', quantity: 43 } })
     await expect(admin.post('/api/uninstall_app', { name: 'other' }))
@@ -473,7 +721,7 @@ describe('Removing an app isn’t offered yet', () => {
 
 describe("Dashboards reach an app's data only while it is on", () => {
   test('while the app is on, a member who can read its table gets a count and a chart, and is refused once that read is taken away', async ({ admin, createUser }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'counted-1', quantity: 5 } })
     await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'counted-2', quantity: 5 } })
@@ -489,7 +737,7 @@ describe("Dashboards reach an app's data only while it is on", () => {
   })
 
   test('a generic dashboard count or chart over a turned-off app’s table is refused, and its rows stay', async ({ admin }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'counted', quantity: 37 } })
     await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
@@ -501,7 +749,7 @@ describe("Dashboards reach an app's data only while it is on", () => {
 
 describe('Only administrators manage apps', () => {
   test('an ordinary member can neither install, turn off, nor preview an upgrade of an app', async ({ admin, createUser }) => {
-    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await discoverPackages([resolve('../..', 'test-apps/other')])
     const member = await createUser({ email: 'not-a-manager@example.com', roles: ['All'] })
     await expect(member.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({ status: 403 })
     expect(await sql`select name from installed_app where name = 'other'`).toEqual([])
@@ -523,7 +771,7 @@ describe('An app owns its own screen', () => {
   test('a built Tasker staged after core loads opens in the host shell with no core rebuild or Tasker route', async ({ admin, createUser }) => {
     const routesBefore = app.routes.map((r) => `${r.method} ${r.path}`)
     expect(routesBefore.filter((r) => /tasker/i.test(r))).toEqual([])
-    const source = resolve('../..', 'runtime-apps/tasker')
+    const source = resolve('../..', 'example-apps/tasker')
     const staged = join(await mkdtemp(resolve('test/.runtime-delivered-')), 'package')
     try {
       const shipped = JSON.parse(await readFile(resolve(source, 'package.json'), 'utf8')) as { files: string[] }
@@ -559,7 +807,7 @@ describe('An app owns its own screen', () => {
 describe('An app declares its phone tabs', () => {
   async function otherWith(fields: Record<string, unknown>) {
     const directory = await mkdtemp(resolve('test/.app-tabs-'))
-    await cp(resolve('../..', 'runtime-apps/other'), directory, { recursive: true })
+    await cp(resolve('../..', 'test-apps/other'), directory, { recursive: true })
     const file = resolve(directory, 'featherbase.json')
     await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), ...fields }))
     return directory
@@ -612,7 +860,7 @@ describe('An app declares its phone tabs', () => {
   })
 
   test('an app that declares no tabs gets none', async ({ admin }) => {
-    expect(await discoverPackages([resolve('../..', 'runtime-apps/other')])).toEqual([])
+    expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
     expect(await admin.get('/api/app_catalog')).toEqual([{ name: 'other', title: 'Other tasks', href: '/other/' }])
   })

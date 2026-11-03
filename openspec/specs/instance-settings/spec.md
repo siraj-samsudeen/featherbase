@@ -36,6 +36,52 @@ an environment says so. That section is the list of intended differences.
   it off
 - **THEN** applying the file leaves the job on in prod and off on dev
 
+### Requirement: A setting can take its value from a variable
+
+A setting in the file MAY name a variable instead of holding a value. Applying
+the file SHALL read that variable and save its value, and SHALL never show the
+value, in a preview or anywhere else. The setting SHALL be remembered as coming
+from that variable, so later applies, previews, drift reports and exports name
+the variable or withhold the value too, until the value is replaced. A variable
+holding a secret SHALL be refused.
+
+#### Scenario: A dive's id differs by environment
+
+- **WHEN** the file's dev section says a dive's id comes from a variable, the
+  variable is set, and the user applies the file to dev
+- **THEN** the setting holds that value and is locked as usual, and the result
+  says the setting changed without showing the value
+
+#### Scenario: Exporting a setting that came from a variable
+
+- **WHEN** a setting was applied from a variable and the owner exports the
+  environment's settings
+- **THEN** the export names the variable and does not contain the value
+
+#### Scenario: Replacing a value that came from a variable
+
+- **WHEN** a setting was applied from a variable and a later file gives it a
+  plain value, or stops naming it
+- **THEN** the result, in a preview or an apply, withholds the old value, and a
+  field the file stopped naming stays withheld until its value changes
+
+#### Scenario: The variable is missing
+
+- **WHEN** the variable is not set or is empty, and the user applies or previews
+  the file
+- **THEN** nothing changes, and the problems name that variable
+
+### Requirement: The file brings back an instance's data sources
+
+The file SHALL be able to name an instance's data sources, by which variable
+holds each connection and never the connection itself.
+
+#### Scenario: After a wipe
+
+- **WHEN** an instance's database was wiped and the user applies the file
+- **THEN** its data sources are back, and a table read from one can be reflected
+  again
+
 ### Requirement: Preview before applying
 
 The owner SHALL be able to see what applying a file would change in an
@@ -134,3 +180,23 @@ secret.
 - **WHEN** the owner applies a file that turns on Google sign-in for an
   environment without the Google secret
 - **THEN** applying it changes nothing and names the missing secret
+
+### Requirement: The settings file can set how often a job runs
+
+The settings file SHALL be able to set how often a scheduled job runs, as well
+as whether it runs, from the same fixed list an admin chooses from. A cadence
+the file sets SHALL be read-only in Admin, and a cadence not on the list SHALL
+be refused with nothing changed.
+
+#### Scenario: Running a job every four hours
+
+- **WHEN** the file sets a daily job to run every four hours and the owner
+  previews, then applies it
+- **THEN** the preview names the cadence as the setting that would change,
+  the apply changes it, and Admin shows the cadence as set in the file
+
+#### Scenario: A made-up cadence
+
+- **WHEN** the file sets a job to run fortnightly
+- **THEN** the apply is refused, pointing at that job's cadence, and nothing
+  changes

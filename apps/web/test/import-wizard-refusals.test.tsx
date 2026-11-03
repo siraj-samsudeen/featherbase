@@ -37,6 +37,51 @@ async function openOnZones(admin: Admin) {
   await waitFor(() => expect(screen.getByTestId('iw-target-0')).toHaveValue('Iwr Zone'), { timeout: 8000 })
 }
 
+test('a match preview refused by the server disappears, while Check reports the refusal', async ({ admin }) => {
+  const user = userEvent.setup()
+  await openOnZones(admin)
+  await admin.delete('/api/table_def/Iwr%20Zone')
+  await user.selectOptions(screen.getByTestId('iw-key-0'), 'zone_name')
+  await waitFor(() => expect(screen.queryByTestId('iw-preview-pending-0')).not.toBeInTheDocument(), { timeout: 8000 })
+  expect(screen.queryByTestId('iw-preview-0')).not.toBeInTheDocument()
+  await user.click(screen.getByTestId('iw-check'))
+  expect(await screen.findByTestId('iw-error')).toHaveTextContent(/^Table Iwr Zone was deleted by Administrator on /)
+  clearSession()
+})
+
+test('rows with data only in an excluded column are skipped by both Check and keyed import', async ({ admin }) => {
+  clearSession()
+  await zoneTable(admin)
+  await renderApp('/featherbase/admin/import?table=Iwr%20Zone', admin)
+  await upload('zone_name,pop,note\n,,not imported\n')
+  const user = userEvent.setup()
+  await user.click(await screen.findByTestId('iw-map-use-0-2'))
+  await user.selectOptions(screen.getByTestId('iw-key-0'), 'zone_name')
+  await user.click(screen.getByTestId('iw-check'))
+  expect(await screen.findByTestId('iw-check-0')).toHaveTextContent('All 0 rows are ready to import')
+  expect(screen.getByTestId('iw-check-skipped-0')).toHaveTextContent('1 rows have no data in the imported columns and will be skipped')
+  await user.click(screen.getByTestId('iw-import'))
+  await screen.findByTestId('list-view')
+  expect(await admin.get('/api/table/Iwr%20Zone?fields=["zone_name","pop"]')).toMatchObject({ total: 1, data: [{ zone_name: 'A', pop: 1 }] })
+  clearSession()
+})
+
+test('a remembered match key is not suggested when the file does not map that column', async ({ admin }) => {
+  clearSession()
+  await zoneTable(admin)
+  await admin.post('/api/table/Iwr%20Zone:import', { key_column: 'zone_name', rows: [{ zone_name: 'A', pop: 2 }] })
+  await renderApp('/featherbase/admin/import?table=Iwr%20Zone', admin)
+  await upload('pop,note\n3,new note\n')
+  await waitFor(() => expect(screen.getByTestId('iw-target-0')).toHaveValue('Iwr Zone'))
+  const user = userEvent.setup()
+  await user.click(screen.getByTestId('iw-check'))
+  expect(await screen.findByTestId('iw-check-0')).toHaveTextContent('All 1 rows are ready to import')
+  expect(screen.getByTestId('iw-key-0')).toHaveValue('')
+  expect(screen.queryByTestId('iw-key-suggested-0')).not.toBeInTheDocument()
+  expect(await admin.get('/api/table/Iwr%20Zone?fields=["zone_name","pop"]')).toMatchObject({ total: 1, data: [{ zone_name: 'A', pop: 2 }] })
+  clearSession()
+})
+
 test('with a match key, empty cells can be kept or cleared, and unticking or remapping a column keeps the key', async ({ admin }) => {
   const user = userEvent.setup()
   await openOnZones(admin)

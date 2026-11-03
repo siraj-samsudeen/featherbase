@@ -83,15 +83,6 @@ test('until the roster sync runs, a System Manager records a joiner’s code by 
   expect(within(codes).getByRole('button', { name: 'End' })).toHaveClass('shrink-0')
 })
 
-test('a StyleHR sign-in still keyed by employee code says it is awaiting its record number', async ({ admin, createUser }) => {
-  await configureDelegated()
-  const tl = await createUser({ email: 'tl.awaiting@example.com' })
-  const id = await linkDelegated(tl.user!, 'tl_awaiting', { subject: 'RR-0108' })
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
-  const methods = await screen.findByTestId('user-sign-in-methods')
-  expect(await within(methods).findByTestId(`unresolved-${id}`)).toHaveTextContent('Awaiting its record number')
-})
-
 test('the Identifier System form shows each setting’s default, offers a revert, and says why an option is refused', async ({ admin }) => {
   await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'badge-code', label: 'Badge code', kind: 'employee-record', normalise: 'trim' } })
   await renderApp('/featherbase/admin/Identifier%20System/phone', admin)
@@ -122,6 +113,11 @@ test('Find a person lists each identifier system by name for a System Manager; n
   expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(expect.arrayContaining(['Email address', 'Mobile phone', 'StyleHR employee code']))
   expect(within(select).getAllByRole('option').every((o) => (o.textContent ?? '').trim() !== '')).toBe(true)
   expect(select).toHaveValue('stylehr-employee-code')
+  await userEvent.type(within(page).getByLabelText('Value'), '   ')
+  await userEvent.click(within(page).getByRole('button', { name: 'Find' }))
+  expect(within(page).queryByTestId('find-person-none')).not.toBeInTheDocument()
+  expect(within(page).queryByTestId('find-person-error')).not.toBeInTheDocument()
+  await userEvent.clear(within(page).getByLabelText('Value'))
   await userEvent.type(within(page).getByLabelText('Value'), 'rbchandran')
   await userEvent.click(within(page).getByRole('button', { name: 'Find' }))
   const none = await within(page).findByTestId('find-person-none')

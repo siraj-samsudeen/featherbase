@@ -17,6 +17,8 @@ export const ROW_ID_HOLDERS = [
   { relation: 'data_scope', tableColumn: 'allow_table', nameColumn: 'for_value' },
   { relation: 'email_queue', tableColumn: 'ref_table', nameColumn: 'reference_name' },
   { relation: 'file', tableColumn: 'ref_table', nameColumn: 'ref_name' },
+  { relation: 'import_source', tableColumn: 'ref_table', nameColumn: 'ref_name' },
+  { relation: 'import_conflict', tableColumn: 'ref_table', nameColumn: 'ref_name' },
   { relation: 'notification_log', tableColumn: 'ref_table', nameColumn: 'ref_name' },
   { relation: 'share', tableColumn: 'share_table', nameColumn: 'share_name' },
   { relation: 'tag_link', tableColumn: 'ref_table', nameColumn: 'ref_name' },
@@ -96,11 +98,12 @@ export async function documentActivity(table: string, name: string, user: string
         where ref_table = ${table} and ref_name = ${name} order by created_at asc`,
   ])
   const visibleVersions = versions.map((version) => {
-    const data = version.data as { changed?: [string, unknown, unknown][] } | null
+    const data = version.data as { changed?: [string, unknown, unknown][]; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown } } | null
     return {
       ...version,
       data: {
-        ...data,
+        ...(data?.import_run ? { import_run: data.import_run } : {}),
+        ...(data?.resolution && visibleFields.has(data.resolution.field) ? { resolution: data.resolution } : {}),
         changed: (data?.changed ?? []).filter(([field]) => visibleFields.has(field)),
       },
     }

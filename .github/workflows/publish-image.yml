@@ -65,6 +65,10 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+
       # The platform-version label is read from the code's
       # SUPPORTED_PLATFORM_VERSIONS, never hard-coded here.
       - name: Decide labels

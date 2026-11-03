@@ -91,7 +91,7 @@ prove('real commits: both sides of core-link/reference deletion races; effects o
   expect(String(identity.name).endsWith('_actions_commit_e2e')).toBe(true)
   expect(identity.environment).toBe('test')
   expect(await sql`select name from installed_app where name = 'actionproof'`).toHaveLength(0)
-  expect(await discoverPackages([resolve('../..', 'runtime-apps/action-proof')])).toEqual([])
+  expect(await discoverPackages([resolve('../..', 'test-apps/action-proof')])).toEqual([])
   await installApp('actionproof')
   await createTable({ name: 'ActionProof Ref', columns: [{ column_name: 'source', column_type: 'Reference', reference_table: 'actionproof.work' }] })
   const controllers: TableController[] = []

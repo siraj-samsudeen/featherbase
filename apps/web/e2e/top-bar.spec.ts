@@ -1,5 +1,7 @@
 import { anonymousTest as test, expect, adminAuth, type Page } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
+import { createServer, request as httpRequest } from 'node:http'
+import { once } from 'node:events'
 
 // #489 (design D3, "One top bar on every address"): the shared top bar on the
 // two addresses of one instance (playwright.config.ts INSTANCE_ADDRESSES):
@@ -15,6 +17,49 @@ const PASSWORD = 'top-bar-pw-489'
 const SHOTS = process.env.TOP_BAR_SHOTS
 
 test.skip(process.env.E2E_ISOLATED !== '1', 'needs the isolated stack, whose server lists the two addresses')
+
+test('the Admin bar remains named and usable when its public brand endpoint fails', async ({ session, page, request }) => {
+  const manager = await person(request, 'Brand Outage Manager', ['System Manager'])
+  let failures = 0
+  // A real HTTP reverse proxy isolates the outage to the public brand endpoint.
+  // Every other request reaches the same running application and database.
+  const proxy = createServer((incoming, outgoing) => {
+    if (incoming.url === '/api/brand') {
+      failures++
+      outgoing.writeHead(503, { 'content-type': 'text/plain' }).end('Brand temporarily unavailable')
+      return
+    }
+    const upstream = httpRequest(`http://localhost:${port}${incoming.url}`, {
+      method: incoming.method, headers: { ...incoming.headers, host: `localhost:${port}` },
+    }, (response) => {
+      outgoing.writeHead(response.statusCode!, response.headers)
+      response.pipe(outgoing)
+    })
+    upstream.on('error', () => outgoing.writeHead(502).end())
+    incoming.pipe(upstream)
+  })
+  proxy.listen(0, '127.0.0.1')
+  await once(proxy, 'listening')
+  const address = proxy.address() as { port: number }
+  try {
+    await session.step('sign in through the proxy while brand is unavailable', async () => {
+      await signInAt(page, `http://127.0.0.1:${address.port}`, manager)
+      await expect(page.getByTestId('admin-sidebar')).toBeVisible()
+      // Login's StrictMode effects plus the bar's initial read and two retries.
+      await expect.poll(() => failures).toBeGreaterThanOrEqual(5)
+      // With installed apps this is a picker: its textContent includes every
+      // option, but the label the person sees is the selected destination.
+      await expect.poll(() => page.getByTestId('top-bar-name').evaluate((element) =>
+        element instanceof HTMLSelectElement ? element.selectedOptions[0]?.textContent : element.textContent,
+      )).toBe('Featherbase')
+      await page.getByTestId('session-user').click()
+      await expect(page.getByTestId('logout')).toBeVisible()
+    })
+  } finally {
+    proxy.closeAllConnections()
+    await new Promise<void>((resolve) => proxy.close(() => resolve()))
+  }
+})
 
 async function person(request: APIRequestContext, name: string, roles: string[]): Promise<string> {
   const headers = await adminAuth(request)
@@ -89,9 +134,9 @@ test('the Sign-in methods page is served on the Admin address too', async ({ ses
     await page.getByTestId('session-user').click()
     await page.getByTestId('account-sign-in-methods').click()
   })
-  await session.step('it opens under a bar named Featherbase Admin, with no Admin menus', async () => {
+  await session.step('it opens under a bar named Featherbase, with no Admin menus', async () => {
     await expect(page).toHaveURL(`${ADMIN}/featherbase/account/sign-in-methods`)
-    await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase Admin')
+    await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase')
     await expect(page.getByTestId('admin-sidebar')).toHaveCount(0)
   })
 })
@@ -257,14 +302,14 @@ for (const width of [1280, 375]) {
   test.describe(`#501 at ${width}px`, () => {
     test.use({ viewport: { width, height: phone ? 812 : 800 }, colorScheme: 'light' })
 
-    test('the Admin screens are titled Featherbase Admin', async ({ session, page, request }) => {
+    test('the Admin screens are titled Featherbase', async ({ session, page, request }) => {
       const manager = await person(request, `Admin Title ${width}`, ['System Manager'])
       await signInAt(page, ADMIN, manager)
       await expect(page).toHaveURL(new RegExp(`^${ADMIN}/featherbase/admin`), { timeout: 15_000 })
       await expect(page.getByTestId('session-user')).toBeVisible()
-      await session.step('the tab and the logo say Featherbase Admin', async () => {
-        await expect(page).toHaveTitle('Featherbase Admin')
-        await expect(page.getByRole('link', { name: 'Featherbase Admin' })).toHaveAttribute('title', 'Featherbase Admin')
+      await session.step('the tab and the logo say Featherbase', async () => {
+        await expect(page).toHaveTitle('Featherbase')
+        await expect(page.getByRole('link', { name: 'Featherbase', exact: true })).toHaveAttribute('title', 'Featherbase')
       })
       await shot(page, 'item1-admin-address-admin')
     })
@@ -296,14 +341,14 @@ for (const width of [1280, 375]) {
       await shot(page, 'item3-dash-address-account')
     })
 
-    test('on the Admin address the account page is Featherbase Admin for someone who can use Admin', async ({ session, page, request }) => {
+    test('on the Admin address the account page is Featherbase for someone who can use Admin', async ({ session, page, request }) => {
       const manager = await person(request, `Account Admin ${width}`, ['System Manager'])
       await signInAt(page, ADMIN, manager)
       await expect(page).toHaveURL(new RegExp(`^${ADMIN}/featherbase/admin`), { timeout: 15_000 })
       await page.goto(`${ADMIN}/featherbase/account/sign-in-methods`)
-      await session.step('bar and tab say Featherbase Admin, with no Open Admin', async () => {
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase Admin')
-        await expect(page).toHaveTitle('Featherbase Admin')
+      await session.step('bar and tab say Featherbase, with no Open Admin', async () => {
+        await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase')
+        await expect(page).toHaveTitle('Featherbase')
         expect(await openAdminShown(page, phone)).toBe(0)
       })
       await shot(page, 'item3-admin-address-account-admin')

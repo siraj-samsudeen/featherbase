@@ -22,6 +22,7 @@ import { ActivityTimeline } from './ActivityTimeline'
 import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
 import { usePeek } from './Peek'
+import { GlossaryHelp } from './GlossaryHelp'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from './ui'
 
@@ -396,6 +397,7 @@ export function FormView({
             {/* The row's title (title column, or a readable stand-in from its
                 values) — the same one Home and the activity feed show. */}
             {table}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
+            <GlossaryHelp table={table} className="ml-1" />
           </h1>
           <span className="text-xs text-ink-muted" data-testid="form-status">
             {dirty ? 'Not saved' : isNew ? 'New document' : 'Saved'}
@@ -747,6 +749,7 @@ function FieldControl({
     <label htmlFor={controlId} className={labelClasses()}>
       <span id={labelId}>{t(field.label ?? field.column_name)}</span>
       {field.reqd && <span aria-hidden="true" className="text-negative"> *</span>}
+      <GlossaryHelp table={meta.name} column={field.column_name} className="ml-1" />
     </label>
   )
   // SET-004: below Date/Currency/Float inputs, show the value as it renders

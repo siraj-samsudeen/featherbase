@@ -16,7 +16,8 @@ export async function actionTransaction<T>(fn: () => Promise<T>): Promise<T> {
 /**
  * Run `commit` — a call that opens AND commits a transaction — so that every
  * effect registered inside it waits for that commit (#426). Inside an action
- * transaction the effects keep waiting for the outer commit instead.
+ * transaction the effects keep waiting for the outer commit instead, and are
+ * dropped if their own nested commit fails.
  *
  * Without this, a document hook's afterDocumentCommit ran at once, inside the
  * still-open transaction: a mention's realtime event reached the recipient
@@ -24,7 +25,16 @@ export async function actionTransaction<T>(fn: () => Promise<T>): Promise<T> {
  * event triggered could read 0 and the badge never came.
  */
 export async function afterCommitOf<T>(commit: () => Promise<T>): Promise<T> {
-  if (effects.getStore()) return await commit()
+  const outer = effects.getStore()
+  if (outer) {
+    // A nested commit is a savepoint. If it rolls back while the outer
+    // transaction carries on (#686: one refused import row), its effects
+    // describe writes that never happened, so they are dropped with it.
+    const inner: (() => Promise<void>)[] = []
+    const result = await effects.run(inner, commit)
+    outer.push(...inner)
+    return result
+  }
   const pending: (() => Promise<void>)[] = []
   const result = await effects.run(pending, commit)
   // Deliberately outside both async-local scopes: nested effect writes use

@@ -22,7 +22,6 @@ function flush() {
       for (const [id, resolvers] of batch) for (const r of resolvers) r(names[id] ?? null)
     })
     .catch(
-      /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; the server answers every well-formed batch */
       () => {
         for (const resolvers of batch.values()) for (const r of resolvers) r(null)
       },

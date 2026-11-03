@@ -3,6 +3,7 @@
 // one-sentence rows. Every claim is read off the rendered page.
 import { screen, waitFor, within } from '@testing-library/react'
 import { vi } from 'vitest'
+import { grantRole, makePerson } from 'server/test/fixtures'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
 
@@ -146,7 +147,7 @@ test('a System Manager sees Data and People and access, each link with a grey ic
   const data = screen.getByTestId('sidebar-group-data')
   expect(within(data).getByTestId('sidebar-group-heading')).toHaveTextContent(/^Data$/)
   expect(within(data).getByTestId('sidebar-group-heading').tagName).toBe('H2')
-  expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All tables', 'Past imports'])
+  expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All tables', 'Glossary', 'Past imports'])
   const access = screen.getByTestId('sidebar-group-access')
   expect(within(access).getByTestId('sidebar-group-heading')).toHaveTextContent(/^People and access$/)
   // #489 item 6: Sign-in methods is in the Account menu only.
@@ -165,7 +166,7 @@ test('a person with only a Table grant keeps today’s links, and no management 
   const clerk = await createUser({ email: 'home.clerk@example.com', roles: ['Home Shelf Clerk'] })
   await renderApp('/featherbase/admin', clerk)
   await screen.findByTestId('sidebar-group-data')
-  expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All tables'])
+  expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All tables', 'Glossary'])
   expect(groupLinks('sidebar-group-access')).toEqual(['Access tokens'])
 })
 
@@ -195,9 +196,9 @@ test('Recently opened holds at most five items, Frequent included', async ({ adm
 })
 
 // #489 items 2 and 9 replace #476's phone label ("Home"): the selector's
-// current entry is the shared top bar's name, "Featherbase Admin", at every
+// current entry is the shared top bar's name, "Featherbase", at every
 // width; a phone cuts it with an ellipsis rather than dropping words.
-test('the app selector reads Featherbase Admin, on a phone as on a wide screen', async ({ admin }) => {
+test('the app selector reads Featherbase, on a phone as on a wide screen', async ({ admin }) => {
   const { PHONE_QUERY } = await import('../src/components/TopBar')
   const phone = (matches: boolean) =>
     vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({
@@ -207,13 +208,13 @@ test('the app selector reads Featherbase Admin, on a phone as on a wide screen',
   phone(true)
   const first = await renderApp('/featherbase/admin', admin)
   const select = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
-  expect(select.selectedOptions[0].textContent).toBe('Featherbase Admin')
+  expect(select.selectedOptions[0].textContent).toBe('Featherbase')
   first.unmount()
   vi.restoreAllMocks()
   phone(false)
   await renderApp('/featherbase/admin', admin)
   const wide = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
-  expect(wide.selectedOptions[0].textContent).toBe('Featherbase Admin')
+  expect(wide.selectedOptions[0].textContent).toBe('Featherbase')
   vi.restoreAllMocks()
 })
 
@@ -238,4 +239,41 @@ test('a row whose Table has no title column is headed by its readable values', a
   await renderApp(`/featherbase/admin/${encodeURIComponent(MERCH)}/${encodeURIComponent(MERCH_ROW)}`, admin)
   const heading = await screen.findByRole('heading', { level: 1 })
   await waitFor(() => expect(heading).toHaveTextContent(`${MERCH}: 1517 · Kurti Z`))
+})
+
+test.for(['Person', 'Service Account'] as const)('a %s-valued row title names recents, sidebar, heading and breadcrumb', async (principalTable, { admin }) => {
+  const label = principalTable === 'Person' ? 'Maya Title Owner' : 'warehouse-title-importer'
+  const principal = principalTable === 'Person'
+    ? await makePerson({ full_name: label })
+    : (await admin.post<{ row_id: string }>('/api/service_accounts', { label })).row_id
+  const table = `Home Title ${principalTable}`
+  await admin.post('/api/table_def', { name: table, id_pattern: 'prompt', title_column: 'owner', columns: [
+    { column_name: 'owner', column_type: 'Reference', reference_table: principalTable },
+  ] })
+  await admin.post('/api/save_row', { table, row: { row_id: 'owned-1', owner: principal } })
+  const path = `/featherbase/admin/${encodeURIComponent(table)}`
+  recordAction('Administrator', { kind: 'row', key: `row:${table}/owned-1`, label: 'owned-1', sub: table, path: `${path}/owned-1` }, Date.now() - 1000)
+  const list = await renderApp(path, admin)
+  await waitFor(() => expect(screen.getByTestId('recent-strip-row')).toHaveTextContent(label))
+  await waitFor(() => expect(screen.getByTestId('sidebar-recents')).toHaveTextContent(label))
+  list.unmount()
+  await renderApp(`${path}/owned-1`, admin)
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(`${table}: ${label}`))
+  expect(screen.getByTestId('breadcrumbs')).toHaveTextContent(label)
+  expect(screen.getByTestId('breadcrumbs')).not.toHaveTextContent(principal)
+})
+
+test('a readable row does not name a Person the reader cannot read', async ({ admin, createUser }) => {
+  const owner = await makePerson({ full_name: 'Undisclosed Title Owner' })
+  const table = 'Home Private Owner'
+  await admin.post('/api/table_def', { name: table, id_pattern: 'prompt', title_column: 'owner', columns: [
+    { column_name: 'owner', column_type: 'Reference', reference_table: 'Person' },
+  ] })
+  await admin.post('/api/save_row', { table, row: { row_id: 'owned-1', owner } })
+  await grantRole(admin, { role: 'Home Title Reader', table, can_read: true })
+  const reader = await createUser({ roles: ['Home Title Reader'] })
+  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/owned-1`, reader)
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(`${table}: Unnamed person`))
+  expect(screen.getByTestId('breadcrumbs')).toHaveTextContent('Unnamed person')
+  expect(screen.getByRole('heading', { level: 1 })).not.toHaveTextContent('Undisclosed Title Owner')
 })

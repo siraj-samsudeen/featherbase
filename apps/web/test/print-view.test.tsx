@@ -12,9 +12,14 @@ async function setup(admin: TestClient, customer = 'Wayne Enterprises') {
   await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'prompt',
-    columns: [{ column_name: 'customer', column_type: 'Data', label: 'Customer' }],
+    columns: [
+      { column_name: 'customer', column_type: 'Data', label: 'Customer' },
+      { column_name: 'paid', column_type: 'Check', label: 'Paid' },
+      { column_name: 'sent', column_type: 'Check', label: 'Sent' },
+      { column_name: 'notes', column_type: 'Data', label: 'Notes' },
+    ],
   })
-  await admin.post('/api/save_row', { table: DT, row: { row_id: 'pv-1', customer } })
+  await admin.post('/api/save_row', { table: DT, row: { row_id: 'pv-1', customer, paid: true, sent: false } })
   await admin.post('/api/save_row', {
     table: 'Letter Head',
     row: { row_id: 'Pv Main', is_default: true, header_html: '<p>MAIN HEADER for {{ customer }}</p>', footer_html: '<p>MAIN FOOTER</p>' },
@@ -35,6 +40,9 @@ test('the default letterhead appears on the print page without choosing one', as
   // A plain page: just the row, no menus or navigation around it.
   expect(screen.queryByTestId('top-bar')).toBeNull()
   expect(screen.getByTestId('print-field-customer')).toHaveTextContent('Wayne Enterprises')
+  expect(screen.getByTestId('print-field-paid')).toHaveTextContent('Yes')
+  expect(screen.getByTestId('print-field-sent')).toHaveTextContent('No')
+  expect(screen.getByTestId('print-field-notes')).toHaveTextContent('—')
 })
 
 test('the user can choose another letterhead, or leave it off', async ({ admin }) => {
@@ -59,10 +67,11 @@ test('a value containing markup is shown as text on the print page, not run as m
   await setup(admin, '<img src="x" alt="injected" data-injected="1">')
   await admin.post('/api/save_row', {
     table: 'Print Format',
-    row: { row_id: 'Pv Fmt', ref_table: DT, is_default: true, template: '<p>Order for {{ customer }}</p>' },
+    row: { row_id: 'Pv Fmt', ref_table: DT, is_default: true, template: '<p>Order for {{ customer }}</p><p>Paid: {{ paid }}; Sent: {{ sent }}; Notes: {{ notes }}</p>' },
   })
   await renderApp(printUrl(), admin)
   const body = await screen.findByTestId('print-format-body')
   expect(body.querySelector('[data-injected]')).toBeNull()
   expect(body).toHaveTextContent('<img src="x" alt="injected" data-injected="1">')
+  expect(body).toHaveTextContent('Paid: Yes; Sent: No; Notes:')
 })

@@ -51,11 +51,11 @@ export async function assertNotPlatformDatabase(
   try {
     theirs = await readIdentity(client)
   } catch (err) {
-    // A server that speaks the protocol but lacks these catalog functions
-    // (SQLSTATE class 42) is not this platform's PostgreSQL. Anything else,
-    // a connection failure above all, is the caller's to report.
-    /* v8 ignore next -- a server that speaks the PostgreSQL protocol without its catalog functions cannot be stood up in the test stack */
-    if (/^42/.test(String((err as { code?: string }).code ?? ''))) return
+    // A protocol-compatible server may lack PostgreSQL's catalog relation
+    // or functions. Other errors, including denied catalog access, cannot
+    // establish a different database and must fail closed.
+    /* v8 ignore next -- missing built-in catalog functions/relations require a non-PostgreSQL server; ordinary permission and connection errors are tested */
+    if (['42883', '42P01'].includes(String((err as { code?: string }).code ?? ''))) return
     throw err
   }
   if (sameDatabase(await readIdentity(sql), theirs))

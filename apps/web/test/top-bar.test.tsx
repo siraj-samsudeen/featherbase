@@ -61,9 +61,9 @@ const openAccountMenu = async () => {
 
 // ---- 2. the name ---------------------------------------------------------------
 
-test('on the Admin screens the bar is named Featherbase Admin', async ({ admin }) => {
+test('on the Admin screens the bar is named Featherbase', async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
-  expect(await barName()).toHaveTextContent('Featherbase Admin')
+  expect(await barName()).toHaveTextContent('Featherbase')
 })
 
 test('on the Sales Target page the bar is named for the app, Feather Dash', async ({ admin }) => {
@@ -77,10 +77,10 @@ test("on an app's address the account page is named for the app", async ({ admin
   await waitFor(async () => expect(await barName()).toHaveTextContent('Feather Dash'))
 })
 
-test('on the Admin address the account page is named Featherbase Admin', async ({ admin }) => {
+test('on the Admin address the account page is named Featherbase', async ({ admin }) => {
   onAddressThatOpens('admin')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  await waitFor(async () => expect(await barName()).toHaveTextContent('Featherbase Admin'))
+  await waitFor(async () => expect(await barName()).toHaveTextContent('Featherbase'))
 })
 
 // Verifier, round 2 on #495: on an app's address every page's tab says the
@@ -107,26 +107,26 @@ test("the Sales Target page on the Admin address has Feather Dash as its tab tit
   await waitFor(() => expect(document.title).toBe('Feather Dash'))
 })
 
-// #501 item 1: the Admin's browser tab and its logo say "Featherbase Admin".
-test('on the Admin screens the tab title is Featherbase Admin', async ({ admin }) => {
+// #758: the platform destination has one name, Featherbase.
+test('on the Admin screens the tab title is Featherbase', async ({ admin }) => {
   document.title = 'Featherbase'
   await renderApp('/featherbase/admin', admin)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Featherbase Admin'))
+  await waitFor(() => expect(document.title).toBe('Featherbase'))
 })
 
-test("the Admin logo's tooltip is Featherbase Admin", async ({ admin }) => {
+test("the Admin logo's tooltip is Featherbase", async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
-  const logo = await within(await settledBar()).findByRole('link', { name: 'Featherbase Admin' })
-  expect(logo).toHaveAttribute('title', 'Featherbase Admin')
+  const logo = await within(await settledBar()).findByRole('link', { name: 'Featherbase' })
+  expect(logo).toHaveAttribute('title', 'Featherbase')
 })
 
-test('on the Admin address the account page tab title is Featherbase Admin for someone who can use Admin', async ({ admin }) => {
+test('on the Admin address the account page tab title is Featherbase for someone who can use Admin', async ({ admin }) => {
   document.title = 'Featherbase'
   onAddressThatOpens('admin')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Featherbase Admin'))
+  await waitFor(() => expect(document.title).toBe('Featherbase'))
 })
 
 // #501 item 3: on the Admin address the account page is named for where the
@@ -177,7 +177,7 @@ test("on an app's address the account page stays named for the app for someone w
 // INTERIM_APPS stands in for Feather Dash only until an app of that name is
 // installed (design D8): from then on the bar leads to the app's own root.
 
-const DASH_STAND_IN = resolve('../..', 'runtime-apps/fixtures/dash-stand-in')
+const DASH_STAND_IN = resolve('../..', 'test-apps/fixtures/dash-stand-in')
 
 /** An app installed under the name feather_dash, open to everyone (its entry
  *  Table is readable by All, which is no Table grant of a person's own). */
@@ -200,7 +200,7 @@ test("on an app's address whose app is installed, the bar's name leads to the ap
 // everyone can open (Tasker grants All) is no one's in particular, so only the
 // app installed under the interim name takes Feather Dash's place (e2e
 // top-bar.spec.ts, items 3).
-const OTHER_APP = resolve('../..', 'runtime-apps/other')
+const OTHER_APP = resolve('../..', 'test-apps/other')
 
 test('on the Admin address the account page is Featherbase for someone who can open only an app open to everyone', async ({ admin, createUser }) => {
   expect(await discoverPackages([OTHER_APP])).toEqual([])
@@ -302,7 +302,7 @@ test('Open Admin is not offered on the Sales Target page opened on the Admin add
 test('Open Admin is not offered on the account page on the Admin address', async ({ admin }) => {
   onAddressThatOpens('admin')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  expect(within(await settledName('Featherbase Admin')).queryByTestId('open-admin')).not.toBeInTheDocument()
+  expect(within(await settledName('Featherbase')).queryByTestId('open-admin')).not.toBeInTheDocument()
 })
 
 test('Open Admin is not offered on a host the list does not name, which holds the Admin', async ({ admin }) => {
@@ -370,6 +370,20 @@ test('the no-access page has no Log out outside the Account menu', async ({ crea
   await screen.findByTestId('no-access')
   await settledBar()
   expect(screen.queryByText('Log out')).toBeNull()
+})
+
+test('the no-access Admin address names the platform in the bar and tab, retaining Account actions', async ({ createUser }) => {
+  onAddressThatOpens('admin')
+  document.title = 'Featherbase Admin'
+  const nobody = await createUser({ roles: [] })
+  await renderApp('/featherbase/admin', nobody)
+  await screen.findByTestId('no-access')
+  await settledBar()
+  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Featherbase$/))
+  expect(document.title).toBe('Featherbase')
+  const menu = await openAccountMenu()
+  expect(within(menu).getByRole('menuitem', { name: 'Sign-in methods' })).toBeInTheDocument()
+  expect(within(menu).getByRole('menuitem', { name: 'Log out' })).toBeInTheDocument()
 })
 
 // ---- 7. the Sales Target page's identity line ---------------------------------

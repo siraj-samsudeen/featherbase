@@ -112,7 +112,11 @@ and asking for it SHALL NOT run any of the app's own business logic.
 
 Every protected read and action SHALL resolve the authenticated user's enabled
 state, app availability, declared operation roles and explicit store values from
-trusted current server state. Package-declared role names SHALL determine which
+trusted current server state.
+
+#### Normative details for the whole requirement
+
+Package-declared role names SHALL determine which
 roles permit reads and which permit actions. Browser roles, store grants, filters,
 SQL, navigation and cached state SHALL NOT authorize. The new store policy SHALL
 reuse existing role and Data Scope assignments, deny absent scope, and have no
@@ -155,7 +159,11 @@ matching refusal wins without disclosing inaccessible resource details:
 ### Requirement: authoritative_object_store_scope
 
 Object-addressed stores-policy operations SHALL declare a trusted scope resolver
-separate from the business handler. After fresh principal/app/role and claimed-scope checks,
+separate from the business handler.
+
+#### Normative details for the whole requirement
+
+After fresh principal/app/role and claimed-scope checks,
 the host SHALL permit only declared package-owned scope-fact reads to resolve the
 complete authoritative store set and resource identity. These authorization
 lookups are the explicit exception to refusal before database reads; protected
@@ -195,7 +203,11 @@ the same non-disclosing refusal.
 ### Requirement: declared_product_gate_composes
 
 An immutable operation declaration SHALL explicitly select generic-only or named
-product authorization. A named gate SHALL run fresh after generic store approval
+product authorization.
+
+#### Normative details for the whole requirement
+
+A named gate SHALL run fresh after generic store approval
 and before every protected handler or replay-result disclosure. Missing gate code,
 failed lookup, malformed verdict or refusal SHALL fail closed across restart and
 upgrade. Product authorization SHALL only narrow host authority. It SHALL receive
@@ -272,7 +284,11 @@ configuration diagnostics. Refusal audit SHALL survive business rollback.
 A stores-policy read MAY explicitly enable self-only store discovery. Discovery
 SHALL freshly verify enabled caller, active exact app identity, entry access,
 declared read role and valid owned store dimension, then return only sorted exact
-current store codes from that caller's Data Scope. No current grants SHALL return
+current store codes from that caller's Data Scope.
+
+#### Normative details for the whole requirement
+
+No current grants SHALL return
 an empty array after other gates pass. Missing role/user/app/policy SHALL refuse.
 No caller-selected user, role, dimension or scope override SHALL be accepted.
 Discovery SHALL be operation-specific and invalid on table policies, actions or

@@ -2,7 +2,7 @@
 // fixture folder mimics a dbt seeds/ directory; byte stability of untouched
 // records is the load-bearing property (reviewable git diffs).
 import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, utimesSync } from 'node:fs'
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test, patchDoc } from './pg-test'
@@ -474,6 +474,106 @@ describe('Filtering and ordering rows read from a CSV file', () => {
     expect(await codes([{ column: 'store_code', op: '>', value: 'KKL' }])).toEqual(['TVM'])
     expect(await codes([{ column: 'store_code', op: '<', value: 'KKL' }])).toEqual(['CHN'])
     expect(await codes([{ column: 'store_code', op: '<=', value: 'KKL' }])).toEqual(['CHN', 'KKL'])
+  })
+
+  test('numeric cells sort numerically without losing their original formatting', async () => {
+    writeFileSync(path.join(dir, 'store_master.csv'), 'store_code,store_name,city\n2,Two,A\n10,Ten,B\n02,Also two,C\n-1,Negative,D\n')
+    expect(await codes([])).toEqual(['-1', '2', '02', '10'])
+    expect(await codes([], 'desc')).toEqual(['10', '2', '02', '-1'])
+    expect(await codes([{ column: 'store_code', op: '=', value: 2 }])).toEqual(['2', '02'])
+    expect(await codes([{ column: 'store_code', op: '>', value: 2 }])).toEqual(['10'])
+  })
+
+  test('a short record reads missing cells as blank and expands on an edit; typed writes become CSV text', async () => {
+    const file = path.join(dir, 'store_master.csv')
+    writeFileSync(file, 'store_code,store_name,city\nKKL\nTVM,Untouched,TVM\n')
+    const bind = bindStores()
+    bind.source.access = 'read_write'
+    const before = await csvFolderDriver.getDoc(bind, '1')
+    expect(before).toMatchObject({ store_code: 'KKL', store_name: '', city: '' })
+    expect(await csvFolderDriver.update(bind, '1', { city: true }, String(before!._mtime)))
+      .toMatchObject({ store_code: 'KKL', store_name: '', city: 'true' })
+    expect(readFileSync(file, 'utf8')).toBe('store_code,store_name,city\nKKL,,true\nTVM,Untouched,TVM\n')
+    expect(await csvFolderDriver.insert(bind, { store_code: 3, store_name: null, city: false }, null))
+      .toMatchObject({ _row: '3', store_code: '3', store_name: '', city: 'false' })
+    expect(readFileSync(file, 'utf8')).toBe('store_code,store_name,city\nKKL,,true\nTVM,Untouched,TVM\n3,,false\n')
+    expect(await csvFolderDriver.getDoc(bind, '3'))
+      .toMatchObject({ store_code: '3', store_name: '', city: 'false' })
+  })
+
+  test('a row removed by an outside editor is missing on both save and delete', async () => {
+    const bind = bindStores()
+    bind.source.access = 'read_write'
+    const loaded = await csvFolderDriver.getDoc(bind, '3')
+    expect(loaded).toMatchObject({ store_code: 'CHN' })
+    const shortened = 'store_code,store_name,city\nKKL,"Karaikal, Main",Karaikal\nTVM,Thiruvananthapuram,TVM\n'
+    const file = path.join(dir, 'store_master.csv')
+    writeFileSync(file, shortened)
+    expect(await csvFolderDriver.update(bind, '3', { city: 'Never written' }, String(loaded!._mtime)))
+      .toBe('missing')
+    expect(await csvFolderDriver.remove(bind, '3', String(loaded!._mtime))).toBe('missing')
+    expect(await csvFolderDriver.getDoc(bind, '3')).toBeNull()
+    expect(readFileSync(file, 'utf8')).toBe(shortened)
+  })
+
+  test('a source with no root configuration is refused by the driver contract', async () => {
+    const cfg = { ...bindStores().source, root_path: null }
+    await expect(csvFolderDriver.test(cfg)).rejects.toMatchObject({
+      message: 'Data source seed-direct has no root_path configured',
+    })
+    await expect(csvFolderDriver.introspect(cfg)).rejects.toMatchObject({
+      message: 'Data source seed-direct has no root_path configured',
+    })
+  })
+
+  test('introspection ignores hidden files and folders and does not follow symlinks', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'fb-csv-browse-'))
+    try {
+      mkdirSync(path.join(root, '.hidden'))
+      mkdirSync(path.join(root, 'visible'))
+      writeFileSync(path.join(root, '.hidden.csv'), 'k\nsecret\n')
+      writeFileSync(path.join(root, '.hidden', 'nested.csv'), 'k\nsecret\n')
+      writeFileSync(path.join(root, 'visible', 'data.CSV'), 'k\nshown\n')
+      symlinkSync(path.join(root, 'visible', 'data.CSV'), path.join(root, 'linked.csv'))
+      symlinkSync(path.join(root, 'visible'), path.join(root, 'linked-folder'))
+      const tables = await csvFolderDriver.introspect({ ...bindStores().source, root_path: root })
+      expect(tables.map((t) => t.table)).toEqual(['visible/data.CSV'])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('CSV reads and writes refuse traversal and symlinks without changing the target', async () => {
+    const base = mkdtempSync(path.join(tmpdir(), 'fb-csv-containment-'))
+    const root = path.join(base, 'root')
+    const outside = path.join(base, 'outside')
+    mkdirSync(root)
+    mkdirSync(outside)
+    const text = 'store_code,store_name,city\nA,Original,Here\n'
+    writeFileSync(path.join(root, 'inside.csv'), text)
+    writeFileSync(path.join(outside, 'data.csv'), text)
+    symlinkSync(path.join(root, 'inside.csv'), path.join(root, 'inside-link.csv'))
+    symlinkSync(path.join(outside, 'data.csv'), path.join(root, 'outside-link.csv'))
+    symlinkSync(outside, path.join(root, 'outside-folder'))
+    try {
+      const source = { ...bindStores().source, root_path: root, access: 'read_write' as const }
+      for (const [table, message] of [
+        ['../outside/data.csv', 'Invalid csv path ../outside/data.csv'],
+        ['outside-folder/data.csv', 'csv path escapes root_path'],
+        ['inside-link.csv', 'csv path is a symlink and is refused'],
+        ['outside-link.csv', 'csv path is a symlink and is refused'],
+      ]) {
+        const bind = { ...bindStores(), source, table }
+        await expect(csvFolderDriver.getDoc(bind, '1')).rejects.toMatchObject({ message })
+        await expect(csvFolderDriver.insert(bind, { store_code: 'No' }, null)).rejects.toMatchObject({ message })
+        await expect(csvFolderDriver.update(bind, '1', { city: 'No' }, null)).rejects.toMatchObject({ message })
+        await expect(csvFolderDriver.remove(bind, '1', null)).rejects.toMatchObject({ message })
+      }
+      expect(readFileSync(path.join(root, 'inside.csv'), 'utf8')).toBe(text)
+      expect(readFileSync(path.join(outside, 'data.csv'), 'utf8')).toBe(text)
+    } finally {
+      rmSync(base, { recursive: true, force: true })
+    }
   })
 
   test('a Data Scope filter lets blank cells through as well as the allowed values', async () => {

@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event'
 import { _setDelegatedFetch } from 'server/src/delegated-login'
 import { configureDelegated, linkDelegated, removeDelegated } from 'server/test/identity-fixtures'
 import { test, expect, renderApp } from './pg-test'
+import { takeLoginNext } from '../src/pages/Login'
 
 const anonymous = { user: null, token: null } as never
 
@@ -81,6 +82,24 @@ test('with a connected service the page opens on its form, and the other ways in
   } finally {
     vi.unstubAllEnvs()
   }
+})
+
+test('another connected service changes the form, and Google keeps the intended destination', async () => {
+  await configureDelegated()
+  await configureDelegated({ key: 'payroll', label: 'Payroll' })
+  const next = '/featherbase/admin/Sign%20In%20Method/google'
+  await renderApp(`/featherbase/login?next=${encodeURIComponent(next)}`, anonymous)
+  const user = userEvent.setup()
+  await screen.findByTestId('delegated-login-form')
+  // Select whichever service is not the initial one; ordering is immaterial.
+  const firstIsPayroll = screen.queryByLabelText('Payroll ID') !== null
+  await user.click(screen.getByTestId(`delegated-login-toggle-${firstIsPayroll ? 'stylehr' : 'payroll'}`))
+  expect(await screen.findByLabelText(firstIsPayroll ? 'StyleHR ID' : 'Payroll ID')).toBeInTheDocument()
+  expect(screen.queryByLabelText(firstIsPayroll ? 'Payroll ID' : 'StyleHR ID')).not.toBeInTheDocument()
+  const google = screen.getByTestId('google-login')
+  google.addEventListener('click', (event) => event.preventDefault()) // jsdom cannot navigate to OAuth
+  await user.click(google)
+  expect(takeLoginNext()).toBe(next)
 })
 
 test('wrong password, an outage and a person who has left each read differently', async ({ createUser }) => {

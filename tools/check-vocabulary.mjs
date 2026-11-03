@@ -2,7 +2,7 @@
 /**
  * CI check: retired product words must not creep back (#485).
  *
- * Scans tracked text files under apps/<app>/.../src, openspec/, docs/ and the
+ * Scans tracked text files under apps/<app>/.../src, client-apps/, openspec/, docs/ and the
  * root *.md files for each word in RETIRED_WORDS (whole word, any case) and
  * prints the file, the line and the word to use instead.
  *
@@ -26,7 +26,7 @@ export const RETIRED_WORDS = [
   },
 ]
 
-const IN_SCOPE = [/^apps\/.+\/src\//, /^openspec\//, /^docs\//, /^[^/]+\.md$/]
+const IN_SCOPE = [/^apps\/.+\/src\//, /^client-apps\//, /^openspec\//, /^docs\//, /^[^/]+\.md$/]
 const SKIP_FILES = [/^CONTEXT\.md$/]
 const ALLOW_MARK = /vocabulary-allow/
 

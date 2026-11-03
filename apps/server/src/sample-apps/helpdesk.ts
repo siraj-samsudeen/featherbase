@@ -48,17 +48,15 @@ const helpdesk: AppManifest = {
   // Agents work every ticket; managers may also delete; customers get a
   // portal view of their OWN tickets only (creation happens through the web
   // form, which attributes the logged-in submitter — deliberately no
-  // can_write, so the install's can_create-without-can_write warning is
-  // expected). The collab grants cover tables with no "All"-role defaults.
+  // can_write, so they cannot change a ticket once sent). The collab grants
+  // cover tables with no "All"-role defaults.
   permissions: [
     { table: 'HD Ticket', role: 'Support Agent', can_read: true, can_write: true, can_create: true },
     { table: 'HD Ticket', role: 'Support Manager', can_read: true, can_write: true, can_create: true, can_delete: true },
     { table: 'HD Ticket', role: 'Customer', own_rows_only: true, can_read: true, can_create: true },
     { table: 'ToDo', role: 'Support Agent', can_read: true, can_write: true },
     { table: 'ToDo', role: 'Support Manager', can_read: true, can_write: true },
-    // Comment/File need can_write: on insert, fields are stripped to the
-    // user's WRITE tiers (permissions.ts stripUnwritableFields), so a
-    // create-only grant could never set content.
+    // Comment/File carry can_write so people can edit what they posted.
     { table: 'Comment', role: 'Support Agent', can_read: true, can_write: true, can_create: true },
     { table: 'Comment', role: 'Support Manager', can_read: true, can_write: true, can_create: true },
     { table: 'Comment', role: 'Customer', can_read: true, can_write: true, can_create: true },

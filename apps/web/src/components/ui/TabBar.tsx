@@ -22,7 +22,7 @@ export interface TabBarItem {
  * `--featherbase-tab-bar-height` (0 on a wider screen) for the app to keep
  * that room itself.
  */
-export const TAB_BAR_HEIGHT_VARIABLE = '--featherbase-tab-bar-height'
+const TAB_BAR_HEIGHT_VARIABLE = '--featherbase-tab-bar-height'
 
 export function TabBar({
   label,

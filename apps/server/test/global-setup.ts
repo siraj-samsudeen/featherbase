@@ -65,10 +65,10 @@ export async function setup() {
 
   await assertDatabaseEnvironment()
   // The suite opts into the mock Google provider (vitest.config.ts `env`), but
-  // that only reaches the test workers. Migration 0100 turns Google on only
+  // that only reaches the test workers. Migration 0003 turns Google on only
   // when it can work, so the migrating process must see the same opt-in.
   if (process.env.ALLOW_MOCK_OAUTH === undefined) process.env.ALLOW_MOCK_OAUTH = '1'
-  await runMigrations()
+  await runMigrations(console.log)
   const pending = await pendingMigrations()
   if (pending.length > 0)
     throw new Error(
@@ -87,6 +87,10 @@ export async function setup() {
         select to_regclass(${'featherbase.' + table}) is not null as exists`
       if (exists) await sql`delete from ${sql('featherbase.' + table)}`
     }
+    // Migration 0003 only runs once, so a database first migrated by hand
+    // without the opt-in above keeps Google off for good, and the suite's Google
+    // tests fail with a null redirect. Match the opt-in on every run.
+    await sql`update featherbase.sign_in_method set enabled = true where row_id = 'google'`
   } finally {
     await sql.end({ timeout: 5 })
   }

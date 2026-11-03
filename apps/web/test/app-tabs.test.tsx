@@ -49,7 +49,7 @@ function onAddressThatOpens(opens: string) {
 /** The test app "other", installed, declaring `tabs` (or none). */
 async function installOther(admin: Admin, tabs?: unknown) {
   staged = await mkdtemp(resolve('test/.app-tabs-'))
-  await cp(resolve('../..', 'runtime-apps/other'), staged, { recursive: true })
+  await cp(resolve('../..', 'test-apps/other'), staged, { recursive: true })
   const file = resolve(staged, 'featherbase.json')
   await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), ...(tabs ? { tabs } : {}) }))
   expect(await discoverPackages([staged])).toEqual([])
