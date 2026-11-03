@@ -357,6 +357,19 @@ test('On a desktop, the filters show with no Filters button', async ({ admin }) 
   expect(screen.getByTestId('standard-filters')).toBeInTheDocument()
 })
 
+test('A hand-edited link shows its Yes/No value in the box: true as Yes, and a value it cannot read as itself', async ({ admin }) => {
+  await seedActive(admin)
+  await openList(admin, `?filters=${enc(JSON.stringify([['active', '=', 'TRUE']]))}`)
+  await waitFor(() => expect(sections()).toHaveLength(2))
+  expect(screen.getByTestId('std-filter-active')).toHaveValue('Yes')
+})
+
+test('A hand-edited link with a value the box cannot read shows that value, not All', async ({ admin }) => {
+  await seedActive(admin)
+  await openList(admin, `?filters=${enc(JSON.stringify([['active', '=', 'maybe']]))}`)
+  expect(await screen.findByTestId('std-filter-active')).toHaveValue('maybe')
+})
+
 test('Row ID gets no box and takes none of the six places, and can still get an added filter', async ({ admin }) => {
   await seed(admin)
   await openList(admin)
