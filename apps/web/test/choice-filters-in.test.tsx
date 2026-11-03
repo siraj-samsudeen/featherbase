@@ -248,3 +248,14 @@ test('The box reads All with no filter, and "2 selected" with two choices ticked
   await waitFor(() => expect(screen.getByTestId('std-filter-floor')).toHaveTextContent(/^2 selected$/))
   expect(screen.getByTestId('std-filter-floor')).toHaveAccessibleName('Floor: 2 selected')
 })
+
+test('Ticking every floor at once, then unticking Ground, shows every row not on Ground', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  const list = openBox('floor')
+  fireEvent.click(within(list).getByRole('button', { name: 'Select all' }))
+  expect(ticked(list)).toEqual(FLOORS)
+  tick(list, 'Ground')
+  await waitFor(() => expect(codes()).toEqual(['R3', 'R4', 'R5', 'R6']))
+  expect(chips()).toEqual(['floor in First Floor, Second Floor, Third Floor×'])
+})
