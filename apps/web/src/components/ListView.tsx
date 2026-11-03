@@ -24,6 +24,7 @@ import { Button, DataCards, NARROW_QUERY, ViewToggle, Notice, Select, buttonClas
 import { ArrowDown, ArrowUp, ChevronDown } from '@featherbase/shop-floor'
 import { GlossaryHelp } from './GlossaryHelp'
 import { ChoiceTicks } from './ChoiceTicks'
+import { inChoiceOrder, tickedChoices, withTicked } from '../lib/choice-filters'
 import { fmtCount } from '../lib/inr'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
@@ -1847,18 +1848,21 @@ export function FilterBar({
   const [field, setField] = useState('row_id')
   const [op, setOp] = useState<string>('=')
   const [value, setValue] = useState('')
-  const [picks, setPicks] = useState<string[]>([])
+  // #820: what is ticked in Add filter; until the person ticks, the column's
+  // filter in use, so adding the column again starts from its choices.
+  const [picks, setPicks] = useState<string[] | null>(null)
   const column = fields.find((f) => f.fieldname === field)
   // #742: a Yes/No column is picked from, and only matched or not. #820: a
   // Choice column ticks one or more of its choices.
   const choices = column?.choices ?? null
   const ticks = Boolean(column?.ticks)
   const ops: readonly string[] = ticks ? ['in'] : choices ? ['=', '!='] : OPS
+  const ticked = picks ?? (ticks ? tickedChoices(filters, field) : [])
 
   function pickField(next: string) {
     setField(next)
     setValue('')
-    setPicks([])
+    setPicks(null)
     const to = fields.find((f) => f.fieldname === next)
     if (to?.ticks) setOp('in')
     else if ((to?.choices && op !== '!=') || op === 'in') setOp('=')
@@ -1866,8 +1870,10 @@ export function FilterBar({
 
   function add() {
     if (ticks) {
-      onChange([...filters, [field, 'in', picks]])
-      setPicks([])
+      // #820: one filter per Choice column, so adding it again adds to it.
+      const union = inChoiceOrder([...tickedChoices(filters, field), ...ticked], choices!)
+      onChange(withTicked(filters, field, [...new Set(union)], choices!))
+      setPicks(null)
       return
     }
     if (!value.trim()) return
@@ -1910,9 +1916,9 @@ export function FilterBar({
           <ChoiceTicks
             label={column!.label}
             choices={choices!}
-            ticked={picks}
+            ticked={ticked}
             onChange={setPicks}
-            buttonText={picks.length ? `${picks.length} selected` : 'Value'}
+            buttonText={ticked.length ? `${ticked.length} selected` : 'Value'}
             testId="filter-value"
             listTestId="filter-choices"
             className={FILTER_PART}
@@ -1945,7 +1951,7 @@ export function FilterBar({
         )}
         <button
           onClick={add}
-          disabled={ticks && !picks.length}
+          disabled={ticks && !ticked.length}
           data-testid="filter-add"
           className={buttonClasses({ className: 'shrink-0' })}
         >
