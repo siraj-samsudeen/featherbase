@@ -116,6 +116,67 @@ signedInTest('a cached list remains usable when settings and recent-history read
     })
 })
 
+signedInTest('an offline return retains the saved list arrangement', async ({ page, request }) => {
+  const headers = await adminAuth(request)
+  const table = 'Offline Arranged List'
+  expect((await request.post('/api/table_def', { headers, data: {
+    name: table, columns: [
+      { column_name: 'title', column_type: 'Data', in_list_view: true },
+      { column_name: 'note', column_type: 'Data', in_list_view: true },
+    ],
+  } })).status()).toBe(201)
+  for (const title of ['Alpha cached', 'Zulu cached']) {
+    expect((await request.post('/api/save_row', { headers, data: { table, row: { title, note: 'Hidden note' } } })).status()).toBe(201)
+  }
+  expect((await request.put(`/api/user_settings/${encodeURIComponent(table)}`, { headers,
+    data: { sort: { field: 'title', dir: 'asc' }, hiddenCols: ['note'] },
+  })).status()).toBe(200)
+  // Let settings win the arrival race: no default-arrangement row query may
+  // accidentally warm a second cache that conceals the offline reset.
+  let release!: () => void
+  const metadata = new Promise<void>(resolve => { release = resolve })
+  const metaPath = `**/api/table/${encodeURIComponent(table)}:meta`
+  await page.route(metaPath, async route => { await metadata; await route.continue() })
+  try {
+    const settings = page.waitForResponse(r => r.url().endsWith(`/api/user_settings/${encodeURIComponent(table)}`))
+    await page.goto(`/featherbase/admin/${encodeURIComponent(table)}`)
+    await settings
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    release()
+    await expect(page.getByTestId('list-rows').locator('tr').first()).toContainText('Alpha cached')
+    await expect(page.getByTestId('col-title')).toContainText('↑')
+    await expect(page.getByTestId('col-note')).toHaveCount(0)
+    await page.getByTestId('session-user').click()
+    await page.getByTestId('account-sign-in-methods').click()
+    await expect(page.getByTestId('sign-in-methods')).toBeVisible()
+    await page.context().setOffline(true)
+    await page.goBack()
+    await expect(page.getByTestId('list-rows').locator('tr').first()).toContainText('Alpha cached')
+    await expect(page.getByTestId('list-rows')).toContainText('Zulu cached')
+    await expect(page.getByTestId('col-title')).toContainText('↑')
+    await expect(page.getByTestId('col-note')).toHaveCount(0)
+    await page.context().setOffline(false)
+    await page.getByTestId('col-title').click()
+    await expect.poll(async () => {
+      const response = await request.get(`/api/user_settings/${encodeURIComponent(table)}`, { headers })
+      return (await response.json()).settings?.sort
+    }).toEqual({ field: 'title', dir: 'desc' })
+    await expect(page.getByTestId('list-rows').locator('tr').first()).toContainText('Zulu cached')
+    await page.getByTestId('session-user').click()
+    await page.getByTestId('account-sign-in-methods').click()
+    await expect(page.getByTestId('sign-in-methods')).toBeVisible()
+    await page.context().setOffline(true)
+    await page.goBack()
+    await expect(page.getByTestId('list-rows').locator('tr').first()).toContainText('Zulu cached')
+    await expect(page.getByTestId('col-title')).toContainText('↓')
+    await expect(page.getByTestId('col-note')).toHaveCount(0)
+  } finally {
+    release()
+    await page.context().setOffline(false)
+    await page.unroute(metaPath)
+  }
+})
+
 signedInTest('an offline return never revives a list after metadata access is denied', async ({ session, page, request }) => {
   const headers = await adminAuth(request)
   const table = 'Offline Denied List'
