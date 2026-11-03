@@ -75,6 +75,12 @@ choices one at a time gives the same rows as ticking them together.
 - **THEN** rows on Ground and on First Floor show
 - **AND** there is one filter in use naming both
 
+#### Scenario: A link with two Floor filters shows as one
+
+- **WHEN** the user opens a link that holds two separate filters on Floor, one for Ground and one for First Floor
+- **THEN** rows on Ground and on First Floor show
+- **AND** there is one filter in use naming both, and the quick filter for Floor shows both ticked
+
 ### Requirement: A quick filter is the same filter
 
 The quick filter for a column with set choices SHALL always show the same choices as that column's filter in use, and
