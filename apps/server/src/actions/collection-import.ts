@@ -6,7 +6,7 @@ import { quoteIdent } from '../sql-identifier'
 import { AppError } from '../errors'
 import { checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
-import { assertDocPermission, assertPermission, permissionScope } from '../permissions'
+import { assertDocPermission, assertPermission, permissionScope, permittedTiers } from '../permissions'
 import { registerCollectionAction } from '../actions'
 import { sql } from '../db'
 import { tableRelation, quoteRelation } from '../table-engine'
@@ -261,6 +261,44 @@ registerCollectionAction('import', {
         'ValidationError',
         `${table} is bound to data source ${meta.data_source}; bulk import is not supported on bound Tables yet`,
       )
+
+    if (args.analyze_keys != null && typeof args.analyze_keys !== 'boolean')
+      throw new AppError('ValidationError', 'analyze_keys must be a boolean')
+    // Analysis must return before upsert setup: no index, save or Import Log.
+    if (args.analyze_keys) {
+      if (!Array.isArray(args.columns) || args.columns.some((c) => typeof c !== 'string'))
+        throw new AppError('ValidationError', 'columns must be an array of column names')
+      const columns = [...new Set(args.columns as string[])]
+      for (const column of columns)
+        if (column !== ROW_KEY && !meta.columns.some((c) => c.column_name === column))
+          throw new AppError('ValidationError', `${meta.name} has no column ${column}`)
+      const readTiers = await permittedTiers(user.row_id, table, 'read')
+      const writeTiers = await permittedTiers(user.row_id, table, 'write')
+      const key_candidates: { column: string; matched: number; complete: boolean }[] = []
+      for (const column of columns) {
+        const definition = meta.columns.find((c) => c.column_name === column)
+        if (definition && (definition.read_only || ['Section Break', 'Column Break', 'Sub-table'].includes(definition.column_type))) continue
+        const tier = definition?.tier ?? 'basic'
+        if (!readTiers.has(tier) || !writeTiers.has(tier)) continue
+        const matches = await resolveRows(meta, rows, column)
+        // A single blank, duplicate or ambiguous key invalidates the column.
+        if (matches.some((r) => r.action === 'fail')) continue
+        try {
+          await assertRunPermitted(user.row_id, table, matches)
+          for (const match of matches) {
+            if (match.action !== 'update') continue
+            // getDoc includes own-row, reference-scope and attached-row gates.
+            await getDoc(table, match.row_id!, user.row_id)
+          }
+        } catch (err) {
+          if (err instanceof AppError && err.type === 'PermissionError') continue
+          throw err
+        }
+        const matched = matches.filter((r) => r.action === 'update').length
+        key_candidates.push({ column, matched, complete: matched === rows.length })
+      }
+      return { key_candidates }
+    }
 
     const upsert = parseUpsertArgs(meta, args)
     // #145 (ruled 2026-08-11): the match key gets its index the first time a
