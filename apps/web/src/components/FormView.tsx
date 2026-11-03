@@ -227,10 +227,11 @@ export function FormView({
     const next = { ...valuesRef.current, [fieldname]: value }
     valuesRef.current = next
     setValues(next)
-    setErrors((e) => {
-      const { [fieldname]: _drop, ...rest } = e
-      return rest
-    })
+    // A grid's cell errors (`lines.0.customer`) are keyed by row position,
+    // so any change to the grid drops them with the grid's own (#832 review).
+    setErrors((e) => Object.fromEntries(
+      Object.entries(e).filter(([key]) => key !== fieldname && !key.startsWith(`${fieldname}.`)),
+    ))
     // CUST-003: fire the field's change handler with the updated doc.
     fireHandler(fieldname, next)
   }
@@ -402,6 +403,7 @@ export function FormView({
         managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
         value={values[f.column_name]}
         error={errors[f.column_name]}
+        errors={errors}
         onChange={(v) => {
           setField(f.column_name, v)
           if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
@@ -811,10 +813,14 @@ function FieldControl({
   values,
   setField,
   managedHint,
+  errors,
 }: {
   field: ColumnDef
   value: unknown
   error?: string
+  /** Every field's error, keyed as the server names them; a grid of nested
+   *  rows shows its cells' (`lines.0.customer`) in place (#832). */
+  errors?: Record<string, string>
   onChange: (value: unknown) => void
   meta: TableMeta
   values: Row
@@ -989,6 +995,7 @@ function FieldControl({
           field={field}
           rows={(values[field.column_name] as Row[] | undefined) ?? []}
           onChange={(rows) => setField(field.column_name, rows)}
+          errors={errors}
         />,
       )
     case 'Reference':
@@ -1048,6 +1055,8 @@ function toLocalDatetime(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+const CHILD_CELL_CLASSES = 'w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control'
+
 // Minimal child grid: renders child rows with editable cells. Full add/
 // delete/reorder verification is UI-007.
 function ChildGrid({
@@ -1056,12 +1065,14 @@ function ChildGrid({
   field,
   rows,
   onChange,
+  errors = {},
 }: {
   id: string
   labelledBy: string
   field: ColumnDef
   rows: Row[]
   onChange: (rows: Row[]) => void
+  errors?: Record<string, string>
 }) {
   const childMeta = useMeta(field.row_table ?? '')
   const { t } = useI18n()
@@ -1091,6 +1102,11 @@ function ChildGrid({
       return edited
     }))
   }
+  function cellInvalid(i: number, row: Row, c: ColumnDef) {
+    return errors[`${field.column_name}.${i}.${c.column_name}`]
+      ? { 'aria-invalid': true, 'aria-describedby': `${id}-${rowKey(row)}-${c.column_name}-error` }
+      : {}
+  }
   function move(i: number, dir: -1 | 1) {
     const j = i + dir
     if (j < 0 || j >= rows.length) return
@@ -1116,6 +1132,24 @@ function ChildGrid({
             <tr key={rowKey(row)} className="border-b border-border last:border-0">
               {cols.map((c) => (
                 <td key={c.column_name} className="px-1 py-1">
+                  {c.column_type === 'Reference' ? (
+                    // #832: a link cell is picked from the linked Table's rows,
+                    // with the form's own link picker; its list floats above
+                    // the grid's scrolling frame instead of being cut by it.
+                    <LinkControl
+                      field={c}
+                      value={row[c.column_name]}
+                      onChange={(value) => setCell(i, c.column_name, value)}
+                      className={CHILD_CELL_CLASSES}
+                      common={{
+                        id: `${id}-${rowKey(row)}-${c.column_name}`,
+                        'aria-label': `${t(field.label ?? field.column_name)}, ${t(c.label ?? c.column_name)}, row ${i + 1}`,
+                        'data-childfield': c.column_name,
+                        ...cellInvalid(i, row, c),
+                      }}
+                      floating
+                    />
+                  ) : (
                   <label className={c.column_type === 'Check' ? 'inline-flex size-control cursor-pointer items-center justify-center' : 'block'}>
                   <input
                     id={`${id}-${rowKey(row)}-${c.column_name}`}
@@ -1124,10 +1158,17 @@ function ChildGrid({
                     checked={c.column_type === 'Check' ? Boolean(row[c.column_name]) : undefined}
                     value={c.column_type === 'Check' ? undefined : String(row[c.column_name] ?? '')}
                     onChange={(e) => setCell(i, c.column_name, c.column_type === 'Check' ? e.target.checked : e.target.value)}
-                    className={c.column_type === 'Check' ? 'size-4 pointer-coarse:size-5' : 'w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control'}
+                    className={c.column_type === 'Check' ? 'size-4 pointer-coarse:size-5' : CHILD_CELL_CLASSES}
                     data-childfield={c.column_name}
+                    {...cellInvalid(i, row, c)}
                   />
                   </label>
+                  )}
+                  {errors[`${field.column_name}.${i}.${c.column_name}`] && (
+                    <p id={`${id}-${rowKey(row)}-${c.column_name}-error`} className="mt-0.5 px-1 text-xs text-negative" data-testid={`error-${field.column_name}-${i}-${c.column_name}`}>
+                      {errors[`${field.column_name}.${i}.${c.column_name}`]}
+                    </p>
+                  )}
                 </td>
               ))}
               <td className="whitespace-nowrap px-1 text-center">
@@ -1177,6 +1218,7 @@ export function LinkControl({
   className,
   common,
   forFilter = false,
+  floating = false,
 }: {
   field: ColumnDef
   value: unknown
@@ -1185,8 +1227,13 @@ export function LinkControl({
   common: Record<string, unknown>
   /** A list filter: it only picks existing rows, never creates one. */
   forFilter?: boolean
+  /** Inside a scrolling frame (a grid of nested rows): the list is placed
+   *  over the page under the box, so the frame cannot cut it off. */
+  floating?: boolean
 }) {
   const target = field.reference_table ?? ''
+  const box = useRef<HTMLInputElement>(null)
+  const [place, setPlace] = useState<{ top: number; left: number; width: number } | null>(null)
   // #793: a Table with no picker of its own is searched and shown by its
   // title column, never by its row id.
   const targetMeta = useMeta(target)
@@ -1212,6 +1259,25 @@ export function LinkControl({
   // A filter has its own clear control and stays a filter: no peek or open.
   const hasValue = Boolean(value) && query === null && !forFilter
 
+  // The floating list is placed once, under the box; scrolling or resizing
+  // would leave it behind, so either closes it.
+  useEffect(() => {
+    if (!floating || !open) return
+    const close = () => setOpen(false)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [floating, open])
+
+  function openList() {
+    const rect = floating ? box.current?.getBoundingClientRect() : undefined
+    setPlace(rect ? { top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 224) } : null)
+    setOpen(true)
+  }
+
   function search(q: string) {
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
@@ -1220,7 +1286,7 @@ export function LinkControl({
           // Name, @username, address or employee code — never the id.
           const res = await api.get<{ people: { row_id: string; label: string }[] }>(`/api/people/pick?q=${encodeURIComponent(q)}`)
           setOptions(res.people.map((p) => ({ value: p.row_id, label: p.label })))
-          setOpen(true)
+          openList()
           return
         }
         const label = picker.labelField
@@ -1230,7 +1296,7 @@ export function LinkControl({
           limit_page_length: 10,
         })
         setOptions(res.data.map((r) => ({ value: r.row_id, label: label ? String(r[label] ?? '') || r.row_id : r.row_id })))
-        setOpen(true)
+        openList()
       } catch {
         setOptions([])
       }
@@ -1246,19 +1312,28 @@ export function LinkControl({
   return (
     <div className="relative">
       <input
+        ref={box}
         type="text"
         role="combobox"
         aria-expanded={open}
         placeholder={forFilter ? `Filter ${field.label ?? field.column_name}…` : `Reference: ${target}`}
         value={shown}
         onFocus={() => search(query ?? (picker.labelField ? '' : shown))}
-        onBlur={() => setTimeout(() => {
-          setOpen(false)
-          // A filter shows only what it filters by: unpicked typing is dropped.
-          if (forFilter) setQuery(null)
-        }, 150)}
+        onBlur={() => {
+          // A search still waiting must not reopen the list on a cell left behind.
+          clearTimeout(timer.current)
+          setTimeout(() => {
+            setOpen(false)
+            // A filter shows only what it filters by, and a grid cell what will
+            // be saved: text typed but never picked goes.
+            if (forFilter || floating) setQuery(null)
+          }, 150)
+        }}
         onChange={(e) => {
           setQuery(e.target.value)
+          // In a grid, emptying the cell removes the link (Codex on #874);
+          // other typed text still has to be picked.
+          if (floating && e.target.value === '') onChange(null)
           search(e.target.value)
         }}
         className={`${className} ${hasValue ? 'pr-14' : ''}`}
@@ -1302,7 +1377,8 @@ export function LinkControl({
       )}
       {open && (
         <div
-          className="absolute z-10 mt-1 w-full rounded-md border border-border bg-surface shadow-lg"
+          className={place ? 'fixed z-30 rounded-md border border-border bg-surface shadow-lg' : 'absolute z-10 mt-1 w-full rounded-md border border-border bg-surface shadow-lg'}
+          style={place ?? undefined}
           data-testid={`link-options-${field.column_name}`}
         >
           {options.map((o) => (
