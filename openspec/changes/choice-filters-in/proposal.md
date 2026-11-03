@@ -6,28 +6,27 @@ user wants both the Ground and the First Floor rows.
 
 ## What Changes
 
-- **A Choice filter picks one or more choices.** In "Add filter", a Choice column offers `in`
-  and `not in`, with the column's choices as tick boxes. `in` shows rows holding any ticked
-  choice; `not in` shows rows holding none of them. For Choice columns these replace `=` and
-  `!=`, since ticking one choice does the same.
+- **A Choice filter ticks one or more choices.** In "Add filter", a Choice column offers `in`,
+  with the column's choices as tick boxes; it shows rows holding any ticked choice. For Choice
+  columns it replaces `=` and `!=`, since ticking one choice does the same.
 - **One chip per filter.** The ticked choices make one filter, shown as one chip, for example
   `floor in Ground, First Floor`, and kept in the page address as
   `["floor","in",["Ground","First Floor"]]`.
-- **One filter per Choice column, and it keeps its condition.** Adding the same column again
-  with `in` adds the new choices to its filter, so picking choices one at a time gives the same
-  rows as picking them together. While a column has an `in` filter, "Add filter" offers only
-  `in` for it, and only `not in` while it has a `not in` filter; to switch, the user removes
-  the filter first.
-- **The quick filter box stays a single dropdown** and writes the same kind of filter with one
-  choice. When a filter with several choices is on, the box says how many are picked, and with
-  a `not in` filter on it says how many are left out; picking a choice in it replaces that
-  filter.
+- **One filter per Choice column.** Adding the same column again opens with its current choices
+  ticked and adds to that filter, so picking choices one at a time gives the same rows as
+  picking them together.
+- **The quick filter box ticks choices too.** A tick means the choice shows. The quick box,
+  "Add filter" and the chip are the same one filter, so a change in one shows at once in the
+  others. Unticking every choice, or ticking every one, removes the filter.
+- **Long lists stay easy.** Both tick-box lists have Select all and Clear; a list of more than 8
+  choices also has a search box, and Select all then ticks only the matching choices.
 - **Filters on different columns still narrow each other**, and permissions still apply on top,
   so a filter never shows a row the user can't already see.
 - Yes/No columns keep `=` and `!=`. Links and saved views that hold a Choice `=` filter keep
-  working.
+  working and count as `in` with that one choice, so more choices can be added to them.
 
-Not in this change: picking months for date columns, and OR between different columns.
+Not in this change: `not in` for Choice (Select all, then untick, covers leaving choices out),
+picking months for date columns, and OR between different columns.
 
 ## Capabilities
 
@@ -37,13 +36,15 @@ None.
 
 ### Modified Capabilities
 
-- `list-view`: a filter on a Choice column picks one or more choices.
+- `list-view`: a filter on a Choice column ticks one or more choices, in "Add filter" and in its
+  quick filter.
 
 ## Impact
 
-- `apps/web/src/components/ListView.tsx`: "Add filter" offers `in` / `not in` with tick boxes
-  for a Choice column, adds to an existing filter on the same column and keeps its condition;
-  the quick filter box writes `in` and shows how many choices are picked or left out.
-- No server change: the server already accepts `in` and `not in`, for native Tables and for
-  every data-source driver (Postgres, MySQL, DuckDB/MotherDuck, CSV).
+- `apps/web/src/components/ListView.tsx`: "Add filter" offers `in` with tick boxes for a Choice
+  column and adds to an existing filter on the same column; the quick filter box becomes a
+  tick-box dropdown kept in step with the chip; both lists get Select all, Clear and, past 8
+  choices, a search box.
+- No server change: the server already accepts `in`, for native Tables and for every
+  data-source driver (Postgres, MySQL, DuckDB/MotherDuck, CSV).
 - **Builds on #742** (PR #814), which adds the Choice dropdown in "Add filter" that this changes.
