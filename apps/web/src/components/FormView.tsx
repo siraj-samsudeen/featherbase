@@ -706,6 +706,7 @@ export function FormView({
                     managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
                     value={values[f.column_name]}
                     error={errors[f.column_name]}
+                    errors={errors}
                     onChange={(v) => {
                       setField(f.column_name, v)
                       if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
@@ -759,10 +760,14 @@ function FieldControl({
   values,
   setField,
   managedHint,
+  errors,
 }: {
   field: ColumnDef
   value: unknown
   error?: string
+  /** Every field's error, keyed as the server names them; a grid of nested
+   *  rows shows its cells' (`lines.0.customer`) in place (#832). */
+  errors?: Record<string, string>
   onChange: (value: unknown) => void
   meta: TableMeta
   values: Row
@@ -929,6 +934,7 @@ function FieldControl({
           field={field}
           rows={(values[field.column_name] as Row[] | undefined) ?? []}
           onChange={(rows) => setField(field.column_name, rows)}
+          errors={errors}
         />,
       )
     case 'Reference':
@@ -988,6 +994,8 @@ function toLocalDatetime(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+const CHILD_CELL_CLASSES = 'w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control'
+
 // Minimal child grid: renders child rows with editable cells. Full add/
 // delete/reorder verification is UI-007.
 function ChildGrid({
@@ -996,12 +1004,14 @@ function ChildGrid({
   field,
   rows,
   onChange,
+  errors = {},
 }: {
   id: string
   labelledBy: string
   field: ColumnDef
   rows: Row[]
   onChange: (rows: Row[]) => void
+  errors?: Record<string, string>
 }) {
   const childMeta = useMeta(field.row_table ?? '')
   const { t } = useI18n()
@@ -1031,6 +1041,11 @@ function ChildGrid({
       return edited
     }))
   }
+  function cellInvalid(i: number, row: Row, c: ColumnDef) {
+    return errors[`${field.column_name}.${i}.${c.column_name}`]
+      ? { 'aria-invalid': true, 'aria-describedby': `${id}-${rowKey(row)}-${c.column_name}-error` }
+      : {}
+  }
   function move(i: number, dir: -1 | 1) {
     const j = i + dir
     if (j < 0 || j >= rows.length) return
@@ -1056,6 +1071,24 @@ function ChildGrid({
             <tr key={rowKey(row)} className="border-b border-border last:border-0">
               {cols.map((c) => (
                 <td key={c.column_name} className="px-1 py-1">
+                  {c.column_type === 'Reference' ? (
+                    // #832: a link cell is picked from the linked Table's rows,
+                    // with the form's own link picker; its list floats above
+                    // the grid's scrolling frame instead of being cut by it.
+                    <LinkControl
+                      field={c}
+                      value={row[c.column_name]}
+                      onChange={(value) => setCell(i, c.column_name, value)}
+                      className={CHILD_CELL_CLASSES}
+                      common={{
+                        id: `${id}-${rowKey(row)}-${c.column_name}`,
+                        'aria-label': `${t(field.label ?? field.column_name)}, ${t(c.label ?? c.column_name)}, row ${i + 1}`,
+                        'data-childfield': c.column_name,
+                        ...cellInvalid(i, row, c),
+                      }}
+                      floating
+                    />
+                  ) : (
                   <label className={c.column_type === 'Check' ? 'inline-flex size-control cursor-pointer items-center justify-center' : 'block'}>
                   <input
                     id={`${id}-${rowKey(row)}-${c.column_name}`}
@@ -1064,10 +1097,17 @@ function ChildGrid({
                     checked={c.column_type === 'Check' ? Boolean(row[c.column_name]) : undefined}
                     value={c.column_type === 'Check' ? undefined : String(row[c.column_name] ?? '')}
                     onChange={(e) => setCell(i, c.column_name, c.column_type === 'Check' ? e.target.checked : e.target.value)}
-                    className={c.column_type === 'Check' ? 'size-4 pointer-coarse:size-5' : 'w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control'}
+                    className={c.column_type === 'Check' ? 'size-4 pointer-coarse:size-5' : CHILD_CELL_CLASSES}
                     data-childfield={c.column_name}
+                    {...cellInvalid(i, row, c)}
                   />
                   </label>
+                  )}
+                  {errors[`${field.column_name}.${i}.${c.column_name}`] && (
+                    <p id={`${id}-${rowKey(row)}-${c.column_name}-error`} className="mt-0.5 px-1 text-xs text-negative" data-testid={`error-${field.column_name}-${i}-${c.column_name}`}>
+                      {errors[`${field.column_name}.${i}.${c.column_name}`]}
+                    </p>
+                  )}
                 </td>
               ))}
               <td className="whitespace-nowrap px-1 text-center">
@@ -1116,14 +1156,20 @@ function LinkControl({
   onChange,
   className,
   common,
+  floating = false,
 }: {
   field: ColumnDef
   value: unknown
   onChange: (value: unknown) => void
   className: string
   common: Record<string, unknown>
+  /** Inside a scrolling frame (a grid of nested rows): the list is placed
+   *  over the page under the box, so the frame cannot cut it off. */
+  floating?: boolean
 }) {
   const target = field.reference_table ?? ''
+  const box = useRef<HTMLInputElement>(null)
+  const [place, setPlace] = useState<{ top: number; left: number; width: number } | null>(null)
   const picker = pickerFor(target)
   const [query, setQuery] = useState<string | null>(null) // null = not searching
   const [open, setOpen] = useState(false)
@@ -1141,6 +1187,12 @@ function LinkControl({
   // row in a slide-over, ↗ navigates to its form. Hidden while searching.
   const hasValue = Boolean(value) && query === null
 
+  function openList() {
+    const rect = floating ? box.current?.getBoundingClientRect() : undefined
+    setPlace(rect ? { top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 224) } : null)
+    setOpen(true)
+  }
+
   function search(q: string) {
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
@@ -1149,7 +1201,7 @@ function LinkControl({
           // Name, @username, address or employee code — never the id.
           const res = await api.get<{ people: { row_id: string; label: string }[] }>(`/api/people/pick?q=${encodeURIComponent(q)}`)
           setOptions(res.people.map((p) => ({ value: p.row_id, label: p.label })))
-          setOpen(true)
+          openList()
           return
         }
         const label = picker.labelField
@@ -1159,7 +1211,7 @@ function LinkControl({
           limit_page_length: 10,
         })
         setOptions(res.data.map((r) => ({ value: r.row_id, label: label ? String(r[label] ?? '') || r.row_id : r.row_id })))
-        setOpen(true)
+        openList()
       } catch {
         setOptions([])
       }
@@ -1175,6 +1227,7 @@ function LinkControl({
   return (
     <div className="relative">
       <input
+        ref={box}
         type="text"
         role="combobox"
         aria-expanded={open}
@@ -1227,7 +1280,8 @@ function LinkControl({
       )}
       {open && (
         <div
-          className="absolute z-10 mt-1 w-full rounded-md border border-border bg-surface shadow-lg"
+          className={place ? 'fixed z-30 rounded-md border border-border bg-surface shadow-lg' : 'absolute z-10 mt-1 w-full rounded-md border border-border bg-surface shadow-lg'}
+          style={place ?? undefined}
           data-testid={`link-options-${field.column_name}`}
         >
           {options.map((o) => (

@@ -1,11 +1,11 @@
 ## 1. Acceptance first
 
-- [ ] 1.1 Step definitions for "A role is picked from the roles that exist" and "A typed role that was never picked is not saved" on the Person form: fail for the right reason (the role cell is a plain text box)
+- [x] 1.1 Step definitions for "A role is picked from the roles that exist" and "A typed role that was never picked is not saved" on the Person form: fail for the right reason (the role cell is a plain text box)
 
 ## 2. Implementation
 
-- [ ] 2.1 A Reference column in the nested-row grid renders the form's link picker, keeping the cell's accessible name and identity; component tests pin offering, picking, and that typed-but-unpicked text is not saved
-- [ ] 2.2 The picker's options are not clipped by the grid's scrolling frame
+- [x] 2.1 A Reference column in the nested-row grid renders the form's link picker, keeping the cell's accessible name and identity; component tests pin offering, picking, and that typed-but-unpicked text is not saved
+- [x] 2.2 The picker's options are not clipped by the grid's scrolling frame
 
 ## 3. Completion
 
