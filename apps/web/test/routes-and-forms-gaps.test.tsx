@@ -22,9 +22,9 @@ test('/featherbase sends a signed-out visitor to sign in, and a signed-in one to
 })
 
 for (const path of [
-  '/featherbase/portal/Orders',
-  '/featherbase/portal/Orders/one',
-  '/featherbase/print/Orders/one',
+  '/featherbase/portal/orders',
+  '/featherbase/portal/orders/one',
+  '/featherbase/print/orders/one',
   '/featherbase/account/sign-in-methods',
 ]) {
   test(`signed-out deep link ${path} keeps its destination through the login guard`, async () => {
@@ -62,10 +62,10 @@ test('a new row opened with prefilled values starts with them; a prefill that is
   await noteTable(admin)
   // The router writes the search value as JSON, so the prefill string is quoted once more.
   const prefill = (v: unknown) => enc(JSON.stringify(JSON.stringify(v)))
-  const first = await renderApp(`/featherbase/admin/${enc('Rfg Visit')}/new?prefill=${prefill({ store: 'ATK' })}`, admin)
+  const first = await renderApp(`/featherbase/admin/table/rfg-visit/new?prefill=${prefill({ store: 'ATK' })}`, admin)
   await waitFor(() => expect(field('store')).toHaveValue('ATK'), { timeout: 8000 })
   first.unmount()
-  await renderApp(`/featherbase/admin/${enc('Rfg Visit')}/new?prefill=${prefill(['ATK'])}`, admin)
+  await renderApp(`/featherbase/admin/table/rfg-visit/new?prefill=${prefill(['ATK'])}`, admin)
   await waitFor(() => expect(field('store')).toBeInTheDocument(), { timeout: 8000 })
   expect(field('store')).toHaveValue('')
 })
@@ -107,7 +107,7 @@ test('a yes/no in the native related rows list reads ✓ or ✗', async ({ admin
   const store = (await admin.post('/api/save_row', { table: 'Rfg Store', row: { label: 'ATK' } })) as { row_id: string }
   await admin.post('/api/save_row', { table: 'Rfg Audit', row: { store: store.row_id, passed: true } })
   await admin.post('/api/save_row', { table: 'Rfg Audit', row: { store: store.row_id, passed: false } })
-  await renderApp(`/featherbase/admin/${enc('Rfg Store')}/${store.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/rfg-store/row/${store.row_id}`, admin)
   await userEvent.click(await screen.findByRole('tab', { name: 'Related' }))
   const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
   await userEvent.click(within(relationships).getByRole('button', { name: /^Rfg Audit · store\s*2$/ }))

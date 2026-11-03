@@ -6,6 +6,7 @@
 // test that sorts waits for it to land (see list-settings.test.tsx) — a PUT
 // that arrives after the sandbox closes would commit for real.
 
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { afterAll, beforeAll, beforeEach, describe } from 'vitest'
@@ -41,7 +42,7 @@ async function seedTickets(admin: Admin, name: string, count = 3, choice_labels?
 }
 
 async function openList(admin: Admin, name: string, search = '') {
-  await renderApp(`/featherbase/admin/${enc(name)}${search}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(name))}${search}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   await screen.findByTestId('list-rows')
 }
@@ -303,8 +304,8 @@ test('See a row\'s nested rows without opening it: expanding shows references, z
 
   fireEvent.click(screen.getByTestId('row-expand'))
   const grid = await screen.findByTestId('inline-children-lines')
-  expect(await within(grid).findByRole('link', { name: 'bolt' })).toHaveAttribute('href', '/featherbase/admin/Lv%20Item/bolt')
-  expect(await within(grid).findByRole('link', { name: 'Lila Lines' })).toHaveAttribute('href', `/featherbase/admin/Person/${owner.user}`)
+  expect(await within(grid).findByRole('link', { name: 'bolt' })).toHaveAttribute('href', '/featherbase/admin/table/lv-item/row/bolt')
+  expect(await within(grid).findByRole('link', { name: 'Lila Lines' })).toHaveAttribute('href', `/featherbase/admin/table/person/row/${owner.user}`)
   expect(within(grid).queryByText(owner.user!)).not.toBeInTheDocument()
   expect(within(grid).getByRole('cell', { name: '₹0.00' })).toBeInTheDocument()
   expect(within(grid).getByText('Σ Amount: ₹25.50')).toBeInTheDocument()
@@ -398,7 +399,7 @@ describe('A read-only source', () => {
     })
     const created = ((await res.json()) as { created: { name: string }[] }).created[0].name
 
-    await renderApp(`/featherbase/admin/${enc(created)}`, admin)
+    await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(created))}`, admin)
     await screen.findByTestId('list-view', {}, { timeout: 8000 })
     await waitFor(() => expect(within(rowsEl()).getByText('Karaikal')).toBeInTheDocument())
     expect(screen.getByTestId('source-badge')).toHaveTextContent('read-only')

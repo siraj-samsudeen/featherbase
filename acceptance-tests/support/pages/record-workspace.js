@@ -1,11 +1,12 @@
 'use strict';
 
 const { expect } = require('playwright/test');
+const { rowHref, tableHref } = require('../../../packages/shared/src/app-routes.ts');
 
 class RecordWorkspace {
   constructor(page) { this.page = page; }
   async openRow() {
-    await this.page.goto('/featherbase/admin/Plant/9154');
+    await this.page.goto(rowHref('Plant', '9154'));
     await this.page.getByTestId('form-view').waitFor();
     await expect(this.page.getByLabel('Plant name', { exact: true })).toHaveValue('Tenkasi');
   }
@@ -34,7 +35,7 @@ class RecordWorkspace {
     await this.area('Related');
   }
   async openList() {
-    await this.page.goto('/featherbase/admin/Plant');
+    await this.page.goto(tableHref('Plant'));
     await this.page.getByRole('checkbox', { name: 'Select Tenkasi', exact: true }).waitFor();
   }
   async select() {
@@ -126,7 +127,7 @@ class RecordWorkspace {
 
 class RelatedWorkspace extends RecordWorkspace {
   async openRow() {
-    await this.page.goto('/featherbase/admin/Lab%20Project/lab-north');
+    await this.page.goto(rowHref('Lab Project', 'lab-north'));
     await expect(this.page.getByLabel('Region', { exact: true })).toHaveValue('North');
   }
   selector() { return this.page.getByRole('navigation', { name: 'Relationships', exact: true }); }

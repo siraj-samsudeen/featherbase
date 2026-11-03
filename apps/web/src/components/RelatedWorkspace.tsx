@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import { rowHref, tableSlug } from 'shared'
 import { connectionLabel, useConnections, type Connection } from '../lib/connections'
 import { useMeta } from '../lib/meta'
 import { usePeek } from './Peek'
@@ -55,13 +56,13 @@ function RelatedRows({ connection, owner }: { connection: Connection; owner: { t
   const filters: Filter[] = [...connection.filters, ...(query ? [[titleColumn, 'like', `%${query}%`] as Filter] : [])]
   return <section aria-label="Related rows" className="min-w-0 flex-1 space-y-4">
     <div className="flex flex-wrap items-center gap-2">
-      <Link to="/featherbase/admin/$table" params={{ table: connection.table }} search={{ filters: JSON.stringify(connection.filters) }} className={buttonClasses()}>Open full list</Link>
+      <Link to="/featherbase/admin/table/$table" params={{ table: tableSlug(connection.table) }} search={{ filters: JSON.stringify(connection.filters) }} className={buttonClasses()}>Open full list</Link>
       {peek.available && <Button onClick={() => peek.push({ kind: 'list', table: connection.table, filters: connection.filters, title: metaTitle })}>Peek</Button>}
     </div>
     <SearchInput aria-label="Search related record names" placeholder="Search related rows" value={query} onChange={(event) => setQuery(event.target.value)} />
     <ListView table={connection.table} filters={filters}
       breadcrumb={<Breadcrumbs label="Related breadcrumb" items={[
-        { label: owner.title, href: `/featherbase/admin/${encodeURIComponent(owner.table)}/${encodeURIComponent(owner.name)}` },
+        { label: owner.title, href: rowHref(owner.table, owner.name) },
         { label: 'Related', href: '#related' },
         { label: metaTitle },
       ]} />}

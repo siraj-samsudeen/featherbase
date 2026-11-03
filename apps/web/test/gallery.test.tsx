@@ -32,7 +32,7 @@ databaseTest('screen starter retains its search and draft while the native list 
     await user.type(await screen.findByRole('textbox', { name: 'Note for Project records' }), 'Retain this plan')
     await user.type(screen.getByRole('searchbox', { name: 'Search screen starters' }), 'Project')
     expect(screen.queryByRole('link', { name: 'Related tasks' })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Project records' })).toHaveAttribute('href', '/featherbase/admin/Lab%20Project')
+    expect(screen.getByRole('link', { name: 'Project records' })).toHaveAttribute('href', '/featherbase/admin/table/lab-project')
 
     await user.click(screen.getByRole('tab', { name: 'Native Table list' }))
     await screen.findByTestId('list-view')

@@ -20,7 +20,7 @@ test('typing a colleague\'s email assigns the row to them, and the list shows th
   const row = (await admin.post('/api/save_row', { table: 'Ab Ticket', row: { title: 'assign me' } })) as { row_id: string }
   await sql`insert into person ${sql({ row_id: 'psn_abmeenaabmeenaabmeen', created_by: 'Administrator', updated_by: 'Administrator', email: 'meena-ab@example.com', full_name: 'Meena Raman', enabled: true })}`
 
-  await renderApp(`/featherbase/admin/${encodeURIComponent('Ab Ticket')}/${row.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/ab-ticket/row/${row.row_id}`, admin)
   await user.click(await screen.findByRole('tab', { name: 'Collaboration' }))
   const panel = await screen.findByTestId('assignments-panel')
   await user.type(within(panel).getByTestId('assign-to'), 'meena-ab@example.com')

@@ -15,7 +15,7 @@ export function rowCapabilitiesQuery(table: string, name: string, revision?: unk
 export function useRowCapabilities(table: string, name: string, enabled = true, revision?: unknown) {
   return useQuery({
     ...rowCapabilitiesQuery(table, name, revision),
-    enabled: enabled && name !== 'new',
+    enabled,
     // A saved revision must not unmount the row's mounted panels/drafts while
     // advice refreshes. Never carry advice across a different row or identity.
     placeholderData: (previous, query) => query !== undefined && query.queryKey[1] === getSessionUser()?.row_id

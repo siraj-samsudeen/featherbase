@@ -1,6 +1,7 @@
 // SET-003: the permission matrix opens showing the grants already stored, and
 // a save the server refuses says why. Gaps the merged web coverage report
 // (ADR 0012) showed: permission-manager.test.tsx always opens an empty matrix.
+import { tableSlug } from 'shared'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
@@ -17,7 +18,7 @@ async function seed(admin: { post: (p: string, b: unknown) => Promise<unknown> }
 
 test('a stored grant shows ticked when the matrix opens', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/permissions/${ENC}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/permissions`, admin)
   expect(await screen.findByTestId(`perm-${ROLE}-can_read`, {}, { timeout: 8000 })).toBeChecked()
   expect(screen.getByTestId(`perm-${ROLE}-can_write`)).not.toBeChecked()
 })
@@ -26,7 +27,7 @@ test('granting a role deleted meanwhile is refused, with the reason', async ({ a
   const user = userEvent.setup()
   await seed(admin)
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pms Temp Role' } })
-  await renderApp(`/featherbase/admin/permissions/${ENC}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/permissions`, admin)
   await user.click(await screen.findByTestId('perm-Pms Temp Role-can_read', {}, { timeout: 8000 }))
   await admin.delete(`/api/table/Role/${encodeURIComponent('Pms Temp Role')}`)
   await user.click(screen.getByTestId('perm-save'))

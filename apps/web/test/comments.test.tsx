@@ -8,6 +8,7 @@
 // a stored mention renders as its own highlighted node (not as plain text,
 // which is what a broken renderContent would leave behind).
 
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { test, expect, renderApp } from './pg-test'
@@ -33,7 +34,7 @@ async function seedRow(admin: Admin) {
 }
 
 async function openRow(admin: Admin, rowId: string) {
-  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/${rowId}`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(DT)}/row/${rowId}`, admin)
   await screen.findByTestId('form-view')
   fireEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
   return screen.findByTestId('activity-timeline')

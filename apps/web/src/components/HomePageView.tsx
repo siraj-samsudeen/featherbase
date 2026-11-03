@@ -1,4 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
+import { rowHref, tableHref } from 'shared'
 import { useHomePages, type HomePageShortcut } from '../lib/home-pages'
 import { ActivityFeed } from './ActivityFeed'
 import { ResumeStrip, RoutineCard } from './HomeRecall'
@@ -17,12 +18,12 @@ function routeFor(s: HomePageShortcut): string {
     case 'dashboard':
       return `/featherbase/admin/dashboard/${encodeURIComponent(to)}`
     case 'report':
-      return `/featherbase/admin/Report/${encodeURIComponent(to)}`
+      return rowHref('Report', to)
     case 'url':
       return to
     case 'table':
     default:
-      return `/featherbase/admin/${encodeURIComponent(to)}`
+      return tableHref(to)
   }
 }
 
@@ -77,7 +78,7 @@ export function HomePageView({ name }: { name: string }) {
                 {card.links.map((l) => (
                   <Link
                     key={l.link_to}
-                    to="/featherbase/admin/$table"
+                    to="/featherbase/admin/table/$table"
                     params={{ table: l.link_to }}
                     search={{ filters: undefined }}
                     data-testid={`home-link-${l.link_to}`}

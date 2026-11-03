@@ -1,6 +1,7 @@
 import { test, expect, adminToken, type Page } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
+import { tableHref } from 'shared'
 
 // #199/#200 (issue #197): the file overview. A workbook opens on a list of
 // sheets — no column grids — with the sheets the workbook was hiding in their
@@ -171,7 +172,7 @@ test('only the chosen sheet reaches the column step, and importing it leaves the
     await expect(page.getByTestId('list-rows')).toContainText('P-1')
     await expect(page.getByTestId('list-rows')).toContainText('P-2')
   })
-  await session.assertPath(`/featherbase/admin/${encodeURIComponent(PICKED_DT)}`)
+  await session.assertPath(tableHref(PICKED_DT))
 
   const imported = await request.get(`/api/table/${encodeURIComponent(PICKED_DT)}?fields=${encodeURIComponent('["ov_ref","ov_amount"]')}`, {
     headers: { Authorization: `Bearer ${token}` },

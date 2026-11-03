@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 const DT = 'Ps Ui Target'
@@ -28,7 +29,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('CUST-002: a label override shows in the form and reverts when removed', async ({ session, request }) => {
   const headers = await adminAuth(request)
 
-  await session.visit(`/admin/${encodeURIComponent(DT)}/ps-doc`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/ps-doc`)
   await session.step('base label reads "Title"', async ({ page }) => {
     await expect(page.locator('label', { hasText: 'Title' }).first()).toBeVisible()
   })

@@ -32,7 +32,7 @@ test('FILE-002: attach two files, both listed, delete one cleans up storage', as
   session,
 }) => {
   await session
-    .visit('/admin/Person/Guest')
+    .visit('/featherbase/admin/table/person/row/Guest')
     .click('Collaboration')
     .assertHas('[data-testid="attachments-panel"]')
     .assertHas('[data-testid="attachments-panel"]', { text: 'No attachments' })

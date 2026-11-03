@@ -20,7 +20,7 @@ test('a System Manager sees codes with their periods and the address; a roster v
   const tl = await createUser({ email: 'tl.ids@example.com' })
   await addIdentifier(tl.user!, { system: 'stylehr-employee-code', assigner: '7', value: '30654', valid_from: '2024-06-01', valid_to: '2026-03-03' }, 'sync', ROSTER)
   await addIdentifier(tl.user!, { system: 'stylehr-employee-code', assigner: '12', value: 'RR-0102', valid_from: '2026-03-03' }, 'sync', ROSTER)
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('person-identifiers')
   const codes = await within(panel).findByTestId('identifier-group-stylehr-employee-code')
   expect(codes).toHaveTextContent('RR-0102')
@@ -53,7 +53,7 @@ test('a merged-away record names its survivor (never its id) and offers no chang
   const survivor = await createUser({ email: 'survivor.ids@example.com', fullName: 'Survivor Sasi' })
   const loser = await createUser({ email: 'loser.ids@example.com' })
   await sql`update person set enabled = false, replaced_by = ${survivor.user!} where row_id = ${loser.user!}`
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(loser.user!)}`, admin)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(loser.user!)}`, admin)
   const panel = await screen.findByTestId('person-identifiers')
   const banner = await within(panel).findByTestId('replaced-banner')
   await waitFor(() => expect(banner).toHaveTextContent('merged into Survivor Sasi'))
@@ -65,7 +65,7 @@ test('until the roster sync runs, a System Manager records a joiner’s code by 
   await applySeedPack('jeyarama')
   await sql`delete from person_identifier where source = 'stylehr-roster-sync'`
   const joiner = await createUser({ email: 'joiner.ids@example.com', fullName: 'Joiner Jaya' })
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(joiner.user!)}`, admin)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(joiner.user!)}`, admin)
   const panel = await screen.findByTestId('person-identifiers')
   const form = await within(panel).findByTestId('add-identifier-form')
   expect(within(form).queryByTestId('identifier-note')).toBeNull()
@@ -85,7 +85,7 @@ test('until the roster sync runs, a System Manager records a joiner’s code by 
 
 test('the Identifier System form shows each setting’s default, offers a revert, and says why an option is refused', async ({ admin }) => {
   await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'badge-code', label: 'Badge code', kind: 'employee-record', normalise: 'trim' } })
-  await renderApp('/featherbase/admin/Identifier%20System/phone', admin)
+  await renderApp('/featherbase/admin/table/identifier-system/row/phone', admin)
   const phone = await screen.findByTestId('identifier-system-defaults')
   expect(within(phone).getByTestId('default-one_holder_at_a_time')).toHaveTextContent(/second holder must be accepted/)
   expect(within(phone).queryByRole('button', { name: 'Revert to default' })).toBeNull()
@@ -93,7 +93,7 @@ test('the Identifier System form shows each setting’s default, offers a revert
 
 test('revert to default puts back the kind’s setting', async ({ admin }) => {
   await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'badge-code', label: 'Badge code', kind: 'employee-record', normalise: 'trim' } })
-  await renderApp('/featherbase/admin/Identifier%20System/badge-code', admin)
+  await renderApp('/featherbase/admin/table/identifier-system/row/badge-code', admin)
   const panel = await screen.findByTestId('identifier-system-defaults')
   const normalise = within(panel).getByTestId('default-normalise')
   expect(normalise).toHaveTextContent('default upper')
@@ -122,14 +122,14 @@ test('Find a person lists each identifier system by name for a System Manager; n
   await userEvent.click(within(page).getByRole('button', { name: 'Find' }))
   const none = await within(page).findByTestId('find-person-none')
   expect(none).toHaveTextContent(/No exact match/)
-  expect(within(none).getByRole('link', { name: 'Person list' })).toHaveAttribute('href', '/featherbase/admin/Person')
+  expect(within(none).getByRole('link', { name: 'Person list' })).toHaveAttribute('href', '/featherbase/admin/table/person')
 })
 
 test('the Person list links to Find by code; an old code finds the person, shown by name', async ({ admin, createUser }) => {
   await applySeedPack('jeyarama')
   const leaver = await createUser({ email: 'leaver.find@example.com', fullName: 'Leaving Latha' })
   await addIdentifier(leaver.user!, { system: 'stylehr-employee-code', value: 'RR-777', valid_from: '2024-01-01', valid_to: '2025-01-01' }, 'sync', ROSTER)
-  await renderApp('/featherbase/admin/Person', admin)
+  await renderApp('/featherbase/admin/table/person', admin)
   await userEvent.click(await screen.findByRole('button', { name: 'List actions' }))
   expect(await screen.findByTestId('open-find-person')).toHaveAttribute('href', '/featherbase/admin/find-person')
   await renderApp('/featherbase/admin/find-person', admin)

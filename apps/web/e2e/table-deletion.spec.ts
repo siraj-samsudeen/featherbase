@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import type { Page } from '@playwright/test'
 import { anonymousTest as test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
@@ -43,7 +44,7 @@ test('DEL-J1: delete an unwanted Table — counted confirmation, then gone every
   // Naming and Permissions are there too — the disclosure opened, Delete joined it)
   await signIn(session)
   await session
-    .visit(`/admin/${ENC}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`)
     .clickButton('Table administration')
     .assertHas('[data-testid="open-naming"]')
     .assertHas('[data-testid="open-permissions"]')
@@ -52,14 +53,14 @@ test('DEL-J1: delete an unwanted Table — counted confirmation, then gone every
   // Metadata gating: a system table's list view opens the same administration
   // disclosure WITHOUT the deletion affordance (DEL-R3's system refusal, at the UI).
   await session
-    .visit('/admin/Person')
+    .visit('/featherbase/admin/table/person')
     .clickButton('Table administration')
     .assertHas('[data-testid="open-naming"]')
     .refuteHas('[data-testid="delete-table"]')
 
   // J1.2 — the confirmation names the Table and its LIVE row count
   await session
-    .visit(`/admin/${ENC}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`)
     .clickButton('Table administration')
     .clickButton('Delete Table')
     .assertHas('[data-testid="delete-table-dialog"]')
@@ -89,7 +90,7 @@ test('DEL-J1: delete an unwanted Table — counted confirmation, then gone every
   // J1.4 — the direct URL answers with the tombstone (DEL-R9), never a
   // bare error, never an empty list
   await session
-    .visit(`/admin/${ENC}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`)
     .assertText(`${DT} was deleted by Administrator on`)
 
   // J1.5 — the Import Log entry outlives the Table (#432: history survives
@@ -125,7 +126,7 @@ test('DEL-J2: refused while referenced — the refusal names the blocker; unbloc
   // J2.2′ — the refusal names the referencing Table and column, in place
   await signIn(session)
   await session
-    .visit(`/admin/${ENC}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`)
     .clickButton('Table administration')
     .clickButton('Delete Table')
     .assertHas('[data-testid="delete-table-dialog"]')

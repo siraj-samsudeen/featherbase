@@ -6,7 +6,7 @@ import { test, adminAuth, type APIRequestContext } from './fixtures'
 // locked before the first apply.
 
 const HINT = 'Set in the instance settings file (instance-settings.json). Change it there, then apply the file.'
-const GOOGLE = '/admin/Sign%20In%20Method/google'
+const GOOGLE = '/featherbase/admin/table/sign-in-method/row/google'
 let originalDomains: string | null = null
 let timeZone: string | null = null
 
@@ -72,7 +72,7 @@ test('the Google sign-in method form locks the domains the file sets, and only t
 test('the System Settings form locks a field the file sets', async ({ session, request }) => {
   await applyFile(request, { 'System Settings': { time_zone: timeZone } })
   await session
-    .visit('/admin/System%20Settings')
+    .visit('/featherbase/admin/table/system-settings')
     .assertHas('[data-testid="form-view"]')
     .within('[data-field="time_zone"]', (input) => input.assertAttribute('disabled'))
     .within('[data-testid="managed-time_zone"]', (hint) => hint.assertExactText(HINT))

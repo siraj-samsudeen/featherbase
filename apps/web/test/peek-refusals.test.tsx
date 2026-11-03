@@ -27,7 +27,7 @@ async function seed(admin: { post: <T>(p: string, b: unknown) => Promise<T> }) {
 }
 
 async function openCustomer(admin: Parameters<typeof renderApp>[1], id: string) {
-  const app = await renderApp(`/featherbase/admin/${enc('Prf Customer')}/${id}`, admin)
+  const app = await renderApp(`/featherbase/admin/table/prf-customer/row/${id}`, admin)
   fireEvent.click(await screen.findByRole('tab', { name: 'Related' }))
   const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
   expect(within(relationships).getByRole('button', { name: /^Prf Order · customer\s*1$/ })).toHaveAttribute('aria-pressed', 'true')

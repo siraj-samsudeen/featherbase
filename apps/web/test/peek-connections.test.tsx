@@ -64,7 +64,7 @@ async function seed(admin: { post: <T>(p: string, b: unknown) => Promise<T> }) {
 
 test('peek at a connection: its rows, then one row with its lines, a deeper link, and back out', async ({ admin }) => {
   const { asha, saree, order } = await seed(admin)
-  await renderApp(`/featherbase/admin/${enc('Pc Customer')}/${asha.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/pc-customer/row/${asha.row_id}`, admin)
   fireEvent.click(await screen.findByRole('tab', { name: 'Related' }))
   const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
   expect(within(relationships).getByRole('button', { name: /^Pc Order · customer\s*2$/ })).toHaveAttribute('aria-pressed', 'true')
@@ -108,7 +108,7 @@ test('peek at a connection: its rows, then one row with its lines, a deeper link
 
 test("a peeked record's own connections open as a list, and ↗ on a list opens the filtered list itself", async ({ admin }) => {
   const { asha } = await seed(admin)
-  await renderApp(`/featherbase/admin/${enc('Pc Customer')}/${asha.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/pc-customer/row/${asha.row_id}`, admin)
   fireEvent.click(await screen.findByRole('tab', { name: 'Related' }))
   const related = await screen.findByRole('region', { name: 'Related rows' })
   fireEvent.click(within(related).getByRole('button', { name: 'Peek' }))
@@ -136,7 +136,7 @@ test("a peeked record's own connections open as a list, and ↗ on a list opens 
 test('a selected relationship shows native rows, with ways on to the full list and a new row', async ({ admin }) => {
   const user = userEvent.setup()
   const { asha, order } = await seed(admin)
-  await renderApp(`/featherbase/admin/${enc('Pc Customer')}/${asha.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/pc-customer/row/${asha.row_id}`, admin)
   await user.click(await screen.findByRole('tab', { name: 'Related' }))
   const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
   const relationship = within(relationships).getByRole('button', { name: /^Pc Order · customer\s*2$/ })
@@ -147,13 +147,13 @@ test('a selected relationship shows native rows, with ways on to the full list a
   await waitFor(() =>
     expect(embedded.querySelectorAll('tbody a')).toHaveLength(2),
   )
-  expect(embedded.querySelector(`a[href$="/${enc('Pc Order')}/${order.row_id}"]`)).not.toBeNull()
+  expect(embedded.querySelector(`a[href$="/table/pc-order/row/${enc(order.row_id)}"]`)).not.toBeNull()
   expect(within(related).getByRole('link', { name: 'Open full list' })).toHaveAttribute(
     'href',
-    expect.stringContaining(`/featherbase/admin/${enc('Pc Order')}`),
+    expect.stringContaining(`/featherbase/admin/table/pc-order`),
   )
   const create = within(embedded).getByRole('link', { name: 'New' })
-  expect(create).toHaveAttribute('href', expect.stringContaining(`/featherbase/admin/${enc('Pc Order')}/new`))
+  expect(create).toHaveAttribute('href', expect.stringContaining(`/featherbase/admin/table/pc-order/new`))
   // The router writes the search value as JSON, so the prefill string is quoted once more.
   const prefill = new URL(create.getAttribute('href')!, 'http://x').searchParams.get('prefill')!
   expect(JSON.parse(JSON.parse(prefill) as string)).toEqual({ customer: asha.row_id })
@@ -207,7 +207,7 @@ test('relationship search and record search keep distinct paths and owner filter
     { row_id: 'review', label: 'Review materials', project: 'north' },
     { row_id: 'foreign', label: 'Review budget', project: 'south', review_project: 'south' },
   ]) await admin.post('/api/save_row', { table: 'Rws Task', row })
-  await renderApp(`/featherbase/admin/${enc('Rws Project')}/north`, admin)
+  await renderApp('/featherbase/admin/table/rws-project/row/north', admin)
   await user.click(await screen.findByRole('tab', { name: 'Related' }))
   const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
   const rows = () => screen.getByRole('region', { name: 'Related rows' })

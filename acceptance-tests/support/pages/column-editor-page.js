@@ -9,7 +9,7 @@ class ColumnEditorPage {
   }
 
   async open(table) {
-    await this.page.goto(`/featherbase/admin/${encodeURIComponent(table)}/columns`);
+    await this.page.goto(`/featherbase/admin/table/${encodeURIComponent(table.toLowerCase().replace(/[-_\s]+/g, ' ').trim().replace(/ /g, '-'))}/columns`);
     await this.page.getByTestId('column-editor').waitFor();
   }
 

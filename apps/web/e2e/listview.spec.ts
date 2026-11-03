@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import type { PlaywrightStepContext, Session } from 'feather-testing-core/playwright'
 import { test, expect, adminAuth, type Page } from './fixtures'
 import { ensureListTableA, ensureTable, fillRows, LIST_DT_A as DT_A } from './fixtures-ui'
@@ -110,7 +111,7 @@ test.beforeAll(async ({ request }) => {
 test('UI-002: one generic ListView renders two different Tables with sort + pagination', async ({ session }) => {
   // --- Table A: metadata columns, pagination
   await session
-    .visit(`/admin/${encodeURIComponent(DT_A)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT_A))}`)
     .assertHas('[data-testid="col-title"]', { text: 'Title' })
     .assertHas('[data-testid="col-qty"]', { text: 'Qty' })
     .assertHas('[data-testid="list-total"]', { text: '30 total' })
@@ -142,7 +143,7 @@ test('UI-002: one generic ListView renders two different Tables with sort + pagi
 
   // --- Table B: same component, entirely different columns
   await session
-    .visit(`/admin/${encodeURIComponent(DT_B)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT_B))}`)
     .assertHas('[data-testid="col-city"]', { text: 'City' })
     .assertHas('[data-testid="col-active"]', { text: 'Active' })
     .assertHas('[data-testid="list-total"]', { text: '3 total' })
@@ -206,7 +207,7 @@ async function assertResponsiveListLayout(
 
 async function openResponsiveList(session: Session<PlaywrightStepContext, Page>): Promise<void> {
   await session
-    .visit(`/admin/${encodeURIComponent(RESPONSIVE_DT)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(RESPONSIVE_DT))}`)
     .assertHas('[data-testid="list-view"]')
 }
 
@@ -286,7 +287,7 @@ test.describe('ListView pop-ups on desktop', () => {
   })
 
   test('the Show columns menu of a ten-column Table fits without scrolling inside', async ({ session }) => {
-    await session.visit(`/admin/${encodeURIComponent(TEN_DT)}`).assertHas('[data-testid="list-columns"]')
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(TEN_DT))}`).assertHas('[data-testid="list-columns"]')
     await session.step('open Show columns, then measure it', async ({ page }) => {
       await page.getByTestId('list-columns').click()
       const popup = page.getByTestId('list-columns-popup')

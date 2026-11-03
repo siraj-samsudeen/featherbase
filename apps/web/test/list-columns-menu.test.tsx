@@ -8,6 +8,7 @@
 // list-settings.test.tsx): a write that outlives the test's transaction
 // would commit for real.
 
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
@@ -35,7 +36,7 @@ async function seedTable(admin: Admin) {
 }
 
 async function openList(as: Admin) {
-  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}`, as)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`, as)
   await screen.findByTestId('list-view')
   await waitFor(() =>
     expect(within(screen.getByTestId('list-rows')).getByText('Sarees')).toBeInTheDocument(),
@@ -195,7 +196,7 @@ test('a reader who is not a System Manager is not offered it, nor "Edit columns"
 })
 
 test('a Table whose columns belong to the platform offers neither', async ({ admin }) => {
-  await renderApp('/featherbase/admin/Import%20Log', admin)
+  await renderApp('/featherbase/admin/table/import-log', admin)
   await screen.findByTestId('list-view')
   const menu = await openMenu()
   expect(within(menu).queryByRole('button', { name: MAKE_DEFAULT })).not.toBeInTheDocument()

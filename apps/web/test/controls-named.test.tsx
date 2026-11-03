@@ -53,7 +53,7 @@ async function seed(admin: Admin) {
 
 test('Controls are clearly named: every control on a row\'s form has a name', async ({ admin }) => {
   const row = await seed(admin)
-  await renderApp(`/featherbase/admin/Named%20Thing/${row.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/named-thing/row/${row.row_id}`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await screen.findByLabelText('Title')
   expect(unnamedControls(screen.getByTestId('form-view'))).toEqual([])
@@ -61,7 +61,7 @@ test('Controls are clearly named: every control on a row\'s form has a name', as
 
 test('Controls are clearly named: every control in the top bar and the search bar has a name', async ({ admin }) => {
   await seed(admin)
-  await renderApp('/featherbase/admin/Named%20Thing', admin)
+  await renderApp('/featherbase/admin/table/named-thing', admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   expect(unnamedControls(screen.getByRole('banner'))).toEqual([])
 })
@@ -69,7 +69,7 @@ test('Controls are clearly named: every control in the top bar and the search ba
 test('Controls are clearly named: every control on a Table\'s list has a name, including the row checkboxes and filter pickers', async ({ admin }) => {
   await seed(admin)
   await admin.post('/api/save_row', { table: 'Named Thing', row: { title: 'two', stage: 'Closed' } })
-  await renderApp('/featherbase/admin/Named%20Thing', admin)
+  await renderApp('/featherbase/admin/table/named-thing', admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   // Each row's checkbox says which row it selects.
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Select one' }))
@@ -84,7 +84,7 @@ test('Controls are clearly named: every control on a Table\'s list has a name, i
 // called "Columns", side by side on a phone.
 test('Controls are clearly named: no two controls in a Table\'s list toolbar share a name', async ({ admin }) => {
   await seed(admin)
-  await renderApp('/featherbase/admin/Named%20Thing', admin)
+  await renderApp('/featherbase/admin/table/named-thing', admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   const toolbar = screen.getByTestId('list-toolbar')
   fireEvent.click(within(toolbar).getByRole('button', { name: 'Table administration' }))

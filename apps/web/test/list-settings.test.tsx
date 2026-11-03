@@ -16,6 +16,7 @@
 // the developer's database) a pre-customized list. `settledSettings` keeps
 // the write inside the transaction, where rollback can undo it.
 
+import { tableSlug } from 'shared'
 import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import { setSession } from '../src/lib/api'
@@ -46,7 +47,7 @@ async function seedList(admin: Admin) {
 /** Mount the list and wait for its rows — settings load on mount, so every
  *  assertion below has to come after this resolves. */
 async function openList(admin: Admin) {
-  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`, admin)
   await screen.findByTestId('list-view')
   await waitFor(() => expect(screen.getByTestId('col-title')).toBeInTheDocument())
   await waitFor(() =>

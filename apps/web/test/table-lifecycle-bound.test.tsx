@@ -15,6 +15,7 @@
 // A csv-folder source is the cheapest real fixture for both: it is writable,
 // its pk is positional (`_row`), and it maps file mtime to updated_at — which
 // is exactly the class where a missing revision deletes the wrong row.
+import { tableSlug } from 'shared'
 import { screen, waitFor } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -85,7 +86,7 @@ test('TLC-R3.bound: deleting a bound row echoes the loaded revision, so the dele
   const before = (await admin.get(`/api/table/${enc}/1`)) as { updated_at: string }
   expect(Date.parse(before.updated_at)).not.toBeNaN()
 
-  await renderApp(`/featherbase/admin/${enc}/1`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(enc)))}/row/1`, admin)
   await screen.findByTestId('form-view')
   ;(await screen.findByRole('button', { name: 'Record actions' })).click()
   ;(await screen.findByTestId('form-delete')).click()
@@ -109,7 +110,7 @@ test('TLC-R1.bound: a read-only binding owns its rows, so the list offers no New
 }) => {
   const table = await bindCsv(admin, 'read_only')
 
-  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}`, admin)
   await screen.findByTestId('list-view')
 
   // EDS-13: absent, not disabled.
@@ -121,7 +122,7 @@ test('#176 ListView falls back to row_id for a no-revision binding without a sto
   const table = await bindCsv(admin, 'read_only')
   await sql`update table_def set external_modified = null, sort_column = '' where name = ${table}`
   invalidateMeta(table)
-  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}`, admin)
   await waitFor(() => expect(screen.getByTestId('list-rows')).toHaveTextContent('Thiruvananthapuram'))
   const rows = screen.getByTestId('list-rows').querySelectorAll('tr')
   expect(rows[0]).toHaveTextContent('Thiruvananthapuram')
@@ -132,7 +133,7 @@ test('A read-only data source keeps its tables view-only: the row form names the
   admin,
 }) => {
   const table = await bindCsv(admin, 'read_only')
-  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/1`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}/row/1`, admin)
   await screen.findByTestId('form-view', undefined, { timeout: 8000 })
 
   expect(await screen.findByTestId('source-badge')).toHaveTextContent('lifecycle-fixture · read-only')
@@ -154,7 +155,7 @@ test('A writable connected row with no last-changed time says its saves are not 
   const table = await bindCsv(admin, 'read_write')
   await sql`update table_def set external_modified = null where name = ${table}`
   invalidateMeta(table)
-  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/1`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}/row/1`, admin)
   await screen.findByTestId('form-view', undefined, { timeout: 8000 })
 
   const notice = await screen.findByTestId('unchecked-saves-notice')
@@ -167,7 +168,7 @@ test('A connected row whose source tells when it last changed carries no uncheck
   admin,
 }) => {
   const table = await bindCsv(admin, 'read_write')
-  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/1`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}/row/1`, admin)
   await screen.findByTestId('form-view', undefined, { timeout: 8000 })
   await screen.findByTestId('source-badge')
   expect(screen.getByTestId('form-save')).toBeInTheDocument()
@@ -180,7 +181,7 @@ test('A new row on a connected table with no last-changed time carries no unchec
   const table = await bindCsv(admin, 'read_write')
   await sql`update table_def set external_modified = null where name = ${table}`
   invalidateMeta(table)
-  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/new`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}/new`, admin)
   await screen.findByTestId('form-view', undefined, { timeout: 8000 })
   await screen.findByTestId('source-badge')
   expect(screen.queryByTestId('unchecked-saves-notice')).toBeNull()
@@ -192,7 +193,7 @@ test('A read-only connected row with no last-changed time carries no unchecked-s
   const table = await bindCsv(admin, 'read_only')
   await sql`update table_def set external_modified = null where name = ${table}`
   invalidateMeta(table)
-  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/1`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}/row/1`, admin)
   await screen.findByTestId('form-view', undefined, { timeout: 8000 })
   await screen.findByTestId('source-badge')
   expect(screen.queryByTestId('unchecked-saves-notice')).toBeNull()

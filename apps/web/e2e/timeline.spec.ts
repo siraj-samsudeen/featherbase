@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 import { enableTableFeatures } from './fixtures-ui'
 
@@ -37,7 +38,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('UI-019: timeline interleaves an edit (with diff) and a comment in order', async ({
   session,
 }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`)
   await session.step('open Activity, then return to Work', async ({ page }) => {
     await page.getByRole('tab', { name: 'Activity', exact: true }).click()
     await expect(page.getByTestId('activity-timeline')).toBeVisible()

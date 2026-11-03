@@ -5,11 +5,12 @@ import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
 import { _setInvitationDeliveryForTests } from 'server/src/invitation-email'
 import { test, expect, renderApp } from './pg-test'
+import { rowHref } from 'shared'
 
 type Admin = Parameters<typeof renderApp>[1]
 
 async function openPerson(admin: Admin, user: string) {
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(user)}`, admin)
+  await renderApp(rowHref('Person', user), admin)
   return screen.findByTestId('user-sign-in-methods')
 }
 
@@ -41,7 +42,7 @@ test('#833: with no SMTP server, the panel says the invitation went to the Email
   await userEvent.click(within(invite).getByRole('button'))
   const notice = await within(panel).findByTestId('user-method-notice')
   expect(notice).toHaveTextContent('Invitation saved to the Email Sink for sink.guest@gmail.com; this instance does not send email.')
-  expect(within(notice).getByRole('link', { name: 'Email Sink' })).toHaveAttribute('href', '/featherbase/admin/Email%20Sink')
+  expect(within(notice).getByRole('link', { name: 'Email Sink' })).toHaveAttribute('href', '/featherbase/admin/table/email-sink')
   await waitFor(() => expect(panel).toHaveTextContent('invitation saved to the Email Sink'))
   expect(panel).not.toHaveTextContent(/emailed/i)
 })

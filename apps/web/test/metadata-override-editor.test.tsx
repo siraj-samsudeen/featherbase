@@ -1,8 +1,9 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { test, expect, renderApp } from './pg-test'
+import { rowHref, tableHref } from 'shared'
 
 const table = 'Override Editor Shelf'
-const path = '/featherbase/admin/Metadata%20Override'
+const path = tableHref('Metadata Override')
 
 test('a column adjustment receives its ID from the generic form', async ({ admin }) => {
   await admin.post('/api/table_def', { name: table, columns: [
@@ -31,7 +32,7 @@ for (const value of ['false', '0', 'true', '1']) {
     await admin.post('/api/table/Metadata%20Override', {
       row_id: 'editor-existing', table_name: table, column_name: 'floor', property: 'hidden', value,
     })
-    await renderApp(`${path}/editor-existing`, admin)
+    await renderApp(rowHref('Metadata Override', 'editor-existing'), admin)
     const control = await screen.findByRole('checkbox', { name: 'Value' })
     await waitFor(() => expect(control).toBeEnabled())
     expect(control).toHaveProperty('checked', value === 'true' || value === '1')
@@ -50,13 +51,13 @@ test('moving an adjustment refreshes already visited target forms', async ({ adm
   const row = await admin.post<{ row_id: string }>('/api/table/Metadata%20Override', {
     table_name: 'Editor Warm Source', column_name: 'title', property: 'label', value: 'Headline',
   })
-  const source = '/featherbase/admin/Editor%20Warm%20Source/new'
-  const destination = '/featherbase/admin/Editor%20Warm%20Destination/new'
+  const source = `${tableHref('Editor Warm Source')}/new`
+  const destination = `${tableHref('Editor Warm Destination')}/new`
   const { router } = await renderApp(source, admin)
   await screen.findByLabelText('Headline')
   await router.navigate({ to: destination })
   await screen.findByLabelText('Title')
-  await router.navigate({ to: `${path}/${row.row_id}` })
+  await router.navigate({ to: rowHref('Metadata Override', row.row_id) })
   await screen.findByDisplayValue('Headline')
   fireEvent.change(screen.getByLabelText('Table'), { target: { value: 'Editor Warm Destination' } })
   fireEvent.mouseDown(await screen.findByRole('button', { name: 'Editor Warm Destination' }))

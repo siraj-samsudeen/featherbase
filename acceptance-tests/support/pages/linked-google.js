@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
+const { rowHref } = require('../../../packages/shared/src/app-routes.ts');
 
 // #837: a person's claimed Google invite, read on their Person form.
 const ACCOUNT_NUMBER = '104116711844961612173';
@@ -37,7 +38,7 @@ class LinkedGoogle {
   }
 
   async open(person) {
-    await this.page.goto(`/featherbase/admin/Person/${encodeURIComponent(person)}`);
+    await this.page.goto(rowHref('Person', person));
     this.panel = this.page.getByTestId('user-sign-in-methods');
     this.row = this.panel.locator('li', { hasText: 'Google' }).first();
     await this.row.waitFor();

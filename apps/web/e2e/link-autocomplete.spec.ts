@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth } from './fixtures'
 import { ensureFormCustomer, ensureFormTables, createFormRow, FORM_CUST as CUST, FORM_DT as DT } from './fixtures-ui'
 
@@ -19,7 +20,7 @@ test.beforeAll(async ({ request }) => {
 // named step; `session.visit`/`assertHas` carry navigation and the Saved
 // check around it.
 test('UI-006: link autocomplete filters, selects, persists, and offers create-new', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`)
 
   await session.step('typing filters suggestions, picking one saves', async ({ page }) => {
     const input = page.locator('[data-field=customer]')
@@ -56,7 +57,7 @@ test('UI-006: link autocomplete filters, selects, persists, and offers create-ne
     await expect(page.getByTestId('link-options-customer')).toContainText('No matches')
     await page.getByTestId('link-create-new').click()
     await expect(page).toHaveURL(
-      new RegExp(`/admin/${encodeURIComponent(CUST).replace(/%/g, '%')}/new`.replace(/[.*+?^${}()|[\]\\]/g, (m) => `\\${m}`)),
+      new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(CUST))}/new`.replace(/[.*+?^${}()|[\]\\]/g, (m) => `\\${m}`)),
     )
     await expect(page.getByTestId('form-status')).toContainText('New document')
   })
