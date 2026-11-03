@@ -80,6 +80,48 @@ describe('Copy a warehouse table into Featherbase', () => {
     expect(info).toMatchObject({ source_table: 'cycle_stores', key_column: 'store_code' })
   })
 
+  test('later key and data column renames retain their source mapping on copy again', async ({ admin }) => {
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-rename', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-rename:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Renamed Copy', key: 'code', columns: STORES })
+    await admin.post('/api/table_def/Renamed%20Copy/rename_column', { from: 'store_code', to: 'warehouse_code' })
+    await admin.post('/api/table_def/Renamed%20Copy/rename_column', { from: 'display_name', to: 'trading_name' })
+    expect(await admin.get('/api/table/Renamed%20Copy:copy_info')).toMatchObject({ key_column: 'warehouse_code' })
+    await admin.post('/api/table/Renamed%20Copy:copy_again', {})
+    expect(await admin.get('/api/table/Renamed%20Copy/S002')).toMatchObject({ warehouse_code: 'S002', trading_name: 'Hill Street' })
+  })
+
+  test('each copy appears in Past imports and its initial rows can be undone', async ({ admin }) => {
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-history', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    const made = await admin.post<{ result: { run_id: string } }>(`${SOURCES}/tc-history:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'History Copy', key: 'code', columns: STORES })
+    const history = await admin.get<{ batches: { batch_id: string; targets: { table: string; run_id: string }[] }[] }>('/api/import/batches')
+    expect(history.batches.find((b) => b.batch_id === made.result.run_id)?.targets).toEqual(expect.arrayContaining([expect.objectContaining({ table: 'History Copy', run_id: made.result.run_id })]))
+    expect(await admin.post('/api/table/History%20Copy:import-revert', { run_id: made.result.run_id })).toMatchObject({ deleted: 3, failed: [], skipped: [] })
+    await expect(admin.get('/api/table/History%20Copy/S001')).rejects.toMatchObject({ status: 404 })
+    expect(await admin.get('/api/table/History%20Copy:meta')).toMatchObject({ name: 'History Copy' })
+  })
+
+  test('deletion markers are managed, restored by the source and undone with the copy', async ({ admin }) => {
+    await changeStandin(dir, 'sales', ['create table undo_stores as select * from stores'])
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-undo', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-undo:copy_create`, { database: 'sales', schema: 'main', table: 'undo_stores', name: 'Undo Copy', key: 'code', columns: STORES })
+    const row = await admin.get<{ updated_at: string }>('/api/table/Undo%20Copy/S003')
+    expect(row).toMatchObject({ deleted_at_source: false })
+    await admin.post('/api/save_row', { table: 'Undo Copy', row: { row_id: 'S003', updated_at: row.updated_at, deleted_at_source: true } })
+    expect(await admin.get('/api/table/Undo%20Copy/S003')).toMatchObject({ deleted_at_source: false })
+    await changeStandin(dir, 'sales', ["update undo_stores set name = 'Harbour renewed' where code = 'S001'", "delete from undo_stores where code = 'S003'", "insert into undo_stores values ('S004', 'New Quay', 'City', '07')"])
+    await admin.post(`${SOURCES}/tc-undo:refresh_tables`, { database: 'sales' })
+    const copied = await admin.post<{ run_id: string }>('/api/table/Undo%20Copy:copy_again', {})
+    expect(await admin.get('/api/table/Undo%20Copy/S003')).toMatchObject({ deleted_at_source: true })
+    expect(await admin.post('/api/table/Undo%20Copy:import-revert', { run_id: copied.run_id })).toMatchObject({ restored: 2, deleted: 1, failed: [] })
+    expect(await admin.get('/api/table/Undo%20Copy/S001')).toMatchObject({ display_name: 'Harbour Road' })
+    expect(await admin.get('/api/table/Undo%20Copy/S003')).toMatchObject({ deleted_at_source: false })
+    await admin.post('/api/table/Undo%20Copy:copy_again', {})
+    await changeStandin(dir, 'sales', ["insert into undo_stores values ('S003', 'Market Lane restored', 'City', '32')"])
+    await admin.post(`${SOURCES}/tc-undo:refresh_tables`, { database: 'sales' })
+    expect(await admin.post('/api/table/Undo%20Copy:copy_again', {})).toMatchObject({ back_at_source: 1 })
+    expect(await admin.get('/api/table/Undo%20Copy/S003')).toMatchObject({ deleted_at_source: false, display_name: 'Market Lane restored' })
+  })
+
   test('copy actions require System Manager even with native source and target read/write rights', async ({ admin, createUser }) => {
     await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-guard', token: STANDIN_TOKENS.reader, databases: ['sales'] })
     await admin.post(`${SOURCES}/tc-guard:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Guarded Copy', key: 'code', columns: STORES })
