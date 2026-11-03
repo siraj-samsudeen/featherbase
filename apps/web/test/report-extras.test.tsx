@@ -132,6 +132,7 @@ test('saving a report on a Table deleted meanwhile, and pinning to a dashboard d
   await admin.post('/api/save_row', { table: 'Dashboard', row: { row_id: 'Rex Board', label: 'Rex Board', config: { cards: [], charts: [] } } })
   await openReport(admin, `?report=${encodeURIComponent('Rex Report')}`)
 
+  await within(screen.getByTestId('pin-dashboard')).findByRole('option', { name: 'Rex Board' })
   await user.selectOptions(screen.getByTestId('pin-dashboard'), 'Rex Board')
   await admin.delete(`/api/table/Dashboard/${encodeURIComponent('Rex Board')}`)
   await user.click(screen.getByTestId('pin-chart'))
