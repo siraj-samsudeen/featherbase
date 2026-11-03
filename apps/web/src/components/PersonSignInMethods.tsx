@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
+import { Link as RouterLink } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
@@ -65,7 +66,16 @@ export function PersonSignInMethods({ user }: { user: string }) {
     queryKey: key,
     enabled: isManager,
     queryFn: () =>
-      api.get<{ identities: AdminIdentity[]; has_password: boolean; methods: (MethodInfo & { enabled: boolean })[] }>(
+      api.get<{
+        identities: AdminIdentity[]
+        has_password: boolean
+        methods: (MethodInfo & { enabled: boolean })[]
+        /** #833: the Person's own address, whether they expect Google sign-in,
+         *  and where mail goes on this instance. */
+        email: string | null
+        expects_google_sign_in: boolean
+        mail_transport: 'smtp' | 'email_sink'
+      }>(
         `/api/people/${encodeURIComponent(user)}/identities`,
       ),
   })
@@ -75,7 +85,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
     queryFn: () => api.get<{ methods: MethodInfo[] }>('/api/me/sign_in_methods'),
   })
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<ReactNode>(null)
   const done = () => {
     setError(null)
     setNotice(null)
@@ -85,10 +95,22 @@ export function PersonSignInMethods({ user }: { user: string }) {
     setNotice(null)
     setError(err instanceof ApiError ? err.message : 'That did not work')
   }
+  // #833: with no SMTP server, mail lands in the Email Sink; nothing reaches
+  // the invitee, so the panel never says "emailed".
+  const toSink = data?.mail_transport === 'email_sink'
   // #430: say what became of the invitation email. A failed send is an
   // error even though the invite itself was made.
   const reportEmail = (address: string, email: InvitationEmail | undefined) => {
-    if (email?.status === 'sent') setNotice(`Invitation emailed to ${address}.`)
+    if (email?.status === 'sent')
+      setNotice(
+        toSink ? (
+          <>
+            Invitation saved to the <EmailSinkLink /> for {address}; this instance does not send email.
+          </>
+        ) : (
+          `Invitation emailed to ${address}.`
+        ),
+      )
     if (email?.status === 'failed') setError(`Invited ${address}, but ${email.error.charAt(0).toLowerCase()}${email.error.slice(1)}.`)
   }
   // The form is cleared only when the server accepted it, so a refused link
@@ -136,6 +158,14 @@ export function PersonSignInMethods({ user }: { user: string }) {
   const shownAs = (i: AdminIdentity) =>
     isGoogle(i) && i.email ? i.email : [i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')
 
+  // #833: an expected Google sign-in is a way in the panel names, until a
+  // Google link or invite takes its place.
+  const holdsGoogle = Boolean(google && data?.identities.some((i) => !i.ended_at && i.method === google.key))
+  const expectsGoogle = Boolean(google && data?.expects_google_sign_in && data.email && !holdsGoogle)
+  // #833: the Person's own address starts the invite, so it is typed once;
+  // it can be changed for another Google address.
+  const ownAddress = data?.email && !data.identities.some((i) => !i.ended_at && i.pending_email === data.email!.toLowerCase()) ? data.email : ''
+
   function onLink(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
@@ -180,7 +210,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
               )}
               {i.subject == null && i.invitation_sent_at && (
                 <span className="block text-sm text-ink-muted" data-testid={`invitation-sent-${i.id}`}>
-                  invitation emailed {fmtInstantIST(i.invitation_sent_at)}
+                  {toSink ? 'invitation saved to the Email Sink' : 'invitation emailed'} {fmtInstantIST(i.invitation_sent_at)}
                 </span>
               )}
             </span>
@@ -211,7 +241,13 @@ export function PersonSignInMethods({ user }: { user: string }) {
             {fmtInstantIST(i.ended_at!)} ({i.ended_reason})
           </li>
         ))}
-        {data && !data.has_password && data.identities.filter((i) => !i.ended_at).length === 0 && (
+        {expectsGoogle && (
+          <li className="text-sm text-ink-muted" data-testid="user-method-expected-google">
+            <span className="font-medium text-ink">Expects Google sign-in as {data!.email}.</span> That lets this address in only
+            when its domain is allowed for Google sign-in. Invite the address to let it in from any domain.
+          </li>
+        )}
+        {data && !data.has_password && !expectsGoogle && data.identities.filter((i) => !i.ended_at).length === 0 && (
           <li className="text-sm text-ink-muted">No way to sign in yet.</li>
         )}
       </ul>
@@ -227,9 +263,19 @@ export function PersonSignInMethods({ user }: { user: string }) {
           <Button type="submit" block>Link</Button>
         </form>
       )}
-      {google && (
+      {/* Shown once the Person is loaded, so the starting address never
+          replaces what the administrator has begun to type. */}
+      {google && data && (
         <form className="mt-3 space-y-2" onSubmit={onInvite} data-testid="invite-google-form">
-          <TextInput name="email" type="email" aria-label="Google address to invite" placeholder="Google address to invite" required />
+          <TextInput
+            key={ownAddress}
+            name="email"
+            type="email"
+            aria-label="Google address to invite"
+            placeholder="Google address to invite"
+            defaultValue={ownAddress}
+            required
+          />
           <label className="flex items-center gap-2 text-sm text-ink">
             <input type="checkbox" name="send_invitation_email" defaultChecked className="shrink-0 accent-action" />
             Email an invitation to this address
@@ -248,5 +294,13 @@ export function PersonSignInMethods({ user }: { user: string }) {
         </p>
       )}
     </Card>
+  )
+}
+
+function EmailSinkLink() {
+  return (
+    <RouterLink to="/featherbase/admin/table/$table" params={{ table: 'Email Sink' }} search={{ filters: undefined }} className="text-action underline">
+      Email Sink
+    </RouterLink>
   )
 }
