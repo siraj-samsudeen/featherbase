@@ -13,7 +13,7 @@ const { FormPage } = require('../support/pages/form-page');
 const SCHEMA = 'parcel_fixture';
 const SOURCE = 'parcels';
 const PARCEL = '7';
-const DESK = 'Parcel Desk';
+const COUNTER = 'Parcel Counter';
 const MODES = { 'its fields by data type': 'type', 'its filled fields first': 'filled', 'its links first': 'links', "its fields in the table's own order": 'source' };
 const GROUPS = { numbers: 'number', links: 'link', text: 'text', dates: 'date', files: 'file' };
 
@@ -77,9 +77,9 @@ Given("the user arranged the parcel's fields by data type in one column", async 
   await saved;
 });
 
-Given('a parcel desk table its builder laid out in two sections', async function () {
+Given('a parcel counter table its builder laid out in two sections', async function () {
   await this.withApi((api) => api.createTable({
-    name: DESK,
+    name: COUNTER,
     id_pattern: 'prompt',
     columns: [
       { column_name: 'sender', label: 'Sender', column_type: 'Data' },
@@ -89,15 +89,15 @@ Given('a parcel desk table its builder laid out in two sections', async function
       { column_name: 'shelf_note', label: 'Shelf Note', column_type: 'Data' },
     ],
   }));
-  const role = await this.withApi((api) => api.readerRoleFor(DESK));
+  const role = await this.withApi((api) => api.readerRoleFor(COUNTER));
   await this.person('the user', [role]);
 });
 
-Given('a parcel {string} at the parcel desk', async function (rowId) {
-  await this.withApi((api) => api.call('POST', `/api/table/${encodeURIComponent(DESK)}`, {
+Given('a parcel {string} at the parcel counter', async function (rowId) {
+  await this.withApi((api) => api.call('POST', `/api/table/${encodeURIComponent(COUNTER)}`, {
     row_id: rowId, sender: 'Front desk', handed_in_on: '2026-10-30', weight: 2.5, shelf_note: 'Top',
-  }, [201], 'add a parcel at the desk'));
-  this.deskRow = rowId;
+  }, [201], 'add a parcel at the counter'));
+  this.counterRow = rowId;
 });
 
 // ---- When ----
@@ -136,9 +136,9 @@ When('the user opens that parcel and shows its fields in one column', async func
   await this.form.showColumns(1);
 });
 
-When('the user opens that parcel at the parcel desk', async function () {
+When('the user opens that parcel at the parcel counter', async function () {
   this.form = new FormPage(await this.actor());
-  await this.form.open(DESK, this.deskRow);
+  await this.form.open(COUNTER, this.counterRow);
 });
 
 // ---- Then ----

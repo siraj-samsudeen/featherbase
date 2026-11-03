@@ -10,7 +10,7 @@ Skipped: `acceptance-tests/` exists. Uses #782's outside-database harness (`supp
 - [x] 2.4 core-forms: importance order, folded empty fields and opening them, the footer line, values by type
 - [x] 2.5 core-forms: arranging by data type, filled first, links first, the table's own order; one column
 - [x] 2.6 core-forms: remembered for the user ("arranged … by data type in one column", "opens that parcel again") and not for a colleague
-- [x] 2.7 core-forms: the parcel desk laid out in two sections opens in its builder's sections
+- [x] 2.7 core-forms: the parcel counter laid out in two sections opens in its builder's sections
 
 ## 3. Implementation
 
