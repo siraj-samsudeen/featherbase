@@ -1883,7 +1883,7 @@ export function FilterBar({
 }) {
   const { t } = useI18n()
   const fields = [
-    { fieldname: 'row_id', label: 'Row ID', choices: null, choice_labels: undefined },
+    { fieldname: 'row_id', label: 'Row ID', choices: null, ticks: false },
     ...meta.columns
       .filter((f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden)
       .map((f) => ({
