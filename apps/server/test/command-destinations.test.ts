@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
 
 // Public inventory contract: Table names stay canonical; pages carry their
 // existing href. The browser never derives resource identities from slugs.
@@ -62,6 +63,31 @@ describe('#737 command destinations', () => {
     const outsider = await createUser({ roles: [] })
     const res = await outsider.fetch(PATH)
     expect(res.status).toBe(403)
+  })
+
+  test('a legacy override refusal preserves the permitted navigation inventory', async ({ admin, createUser }) => {
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Legacy Inventory Reader' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Legacy Inventory Reader', can_read: true } })
+    const reader = await createUser({ roles: ['Legacy Inventory Reader'] })
+    await sql`insert into metadata_override (row_id, table_name, property, value)
+      values ('inventory-legacy-person', 'Person', 'autoname', 'legacy'),
+             ('inventory-legacy-dashboard', 'Dashboard', 'autoname', 'legacy')`
+    invalidateMeta('Person')
+    invalidateMeta('Dashboard')
+
+    const res = await admin.fetch(PATH)
+    expect(res.status).toBe(200)
+    const inventory = await res.json() as Inventory
+    for (const name of ['Person', 'Dashboard'])
+      expect(inventory.tables.find((t) => t.row_id === name)).toMatchObject({ label: name, kind: 'table', can_create: false })
+    expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/admin/instance-health')
+    const limited = await reader.get<Inventory>(PATH)
+    expect(limited.tables.map((t) => t.row_id)).toEqual(['Glossary Term', 'Person'])
+    expect(limited.tables.every((t) => !t.can_create)).toBe(true)
+    expect(limited.pages.map((p) => p.href)).not.toContain('/featherbase/admin/instance-health')
+    const meta = await admin.fetch('/api/table/Person:meta')
+    expect(meta.status).toBe(417)
+    expect((await meta.json()).error.type).toBe('ValidationError')
   })
 
   test('unavailable app Tables are excluded even for Administrator', async ({ admin }) => {
