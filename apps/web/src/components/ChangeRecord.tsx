@@ -18,6 +18,7 @@ export function ChangeRecord({ values }: { values: Record<string, unknown> }) {
   return (
     <section data-testid="change-record" className={cardClasses('mb-4 overflow-hidden')}>
       <header data-testid="change-header" className="border-b border-border p-4 text-sm text-ink-muted">
+        <h2 className="m-0 mb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">Changes</h2>
         <div className="text-base font-semibold text-ink">
           {table}
           {row && (
