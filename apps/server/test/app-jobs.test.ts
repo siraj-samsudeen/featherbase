@@ -42,6 +42,7 @@ const overreach: Job = { name: 'overreach', cadence: 'hourly', description: 'Rea
 // The handlers a version ships: only the jobs its manifest declares, as the
 // platform requires.
 const HANDLERS: Record<string, string> = {
+  read_profile: `async read_profile(ctx) { calls.push({ job: ctx.job.name, people: await ctx.people.list() }) }`,
   sweep: `async sweep(ctx) {
     const people = await ctx.people.list()
     const gone = []
@@ -813,4 +814,21 @@ test('an upgrade preserves a replacement schedule held by another owner', async 
   await sql`update scheduled_job set owner_app='replacementowner', description='Keep their description' where method=${SWEEP}`
   await admin.post('/api/upgrade_app', { name: APP, version: '2.0.0', planId: plan.planId })
   expect(await row(SWEEP)).toMatchObject({ owner_app: 'replacementowner', cadence: 'daily', description: 'Keep their description' })
+})
+
+
+test('a people-reading job receives missing optional profile values as null', async ({ admin, createUser }) => {
+  const job: Job = { name: 'read_profile', cadence: 'hourly', description: 'Read optional person profile data.', grants: ['read_people'] }
+  expect(await discoverPackages([await writeApp({ jobs: [job] })])).toEqual([])
+  await admin.post('/api/install_app', { name: APP })
+  const person = await createUser({ roles: [], fullName: 'Optional profile', email: 'optional-job-profile@example.test' })
+  const before = await admin.get<Record<string, unknown>>(`/api/table/Person/${person.user}`)
+  const cleared = await admin.post('/api/save_row', { table: 'Person', row: {
+    row_id: person.user, updated_at: before.updated_at, username: before.username || 'optional_job_profile', full_name: null, email: null,
+  } })
+  expect(cleared).toMatchObject({ enabled: true, full_name: null, email: null })
+  await runDue()
+  expect(calls()).toEqual([{ job: `${APP}.read_profile`, people: [{
+    person: person.user, full_name: null, email: null, privileged: false, identifiers: {},
+  }] }])
 })
