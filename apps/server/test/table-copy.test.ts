@@ -35,6 +35,26 @@ describe('Copy a warehouse table into Featherbase', () => {
     await expect(admin.get('/api/table/Data%20Source:copy_info')).rejects.toMatchObject({ status: 404 })
   })
 
+  test('incomplete copy choices refuse before creating a native Table', async ({ admin }) => {
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-incomplete', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await expect(admin.post(`${SOURCES}/tc-incomplete:copy_create`, { database: 'sales' })).rejects.toMatchObject({ status: 417 })
+    // A missing warehouse relation uses the driver's DataSourceError, like
+    // any other refused warehouse query; copy creation validates its choices.
+    await expect(admin.get(`${SOURCES}/tc-incomplete:copy_check_key?database=sales`)).rejects.toMatchObject({ status: 502 })
+    await expect(admin.get('/api/table/Incomplete%20Copy:meta')).rejects.toMatchObject({ status: 404 })
+  })
+
+  test('warehouse scalar types retain their values in native rows', async ({ admin }) => {
+    await changeStandin(dir, 'sales', [
+      `create table typed_copy_rows(code varchar, amount double, opened date, note text)`,
+      `insert into typed_copy_rows values ('0007', 12.75, '2024-02-29', 'Long warehouse note')`,
+    ])
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-types', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-types:copy_create`, { database: 'sales', schema: 'main', table: 'typed_copy_rows', name: 'Typed Copy', key: 'code', columns: ['code', 'amount', 'opened', 'note'].map(source => ({ source, column_name: source })) })
+    // Native Date columns serialize as midnight UTC, not a DuckDB object.
+    expect(await admin.get('/api/table/Typed%20Copy/0007')).toMatchObject({ code: '0007', amount: 12.75, opened: '2024-02-29T00:00:00.000Z', note: 'Long warehouse note' })
+  })
+
   test('copy, correct, copy again: the correction is kept, a changed source raises a conflict, a gone row is marked', async ({ admin }) => {
     // Keep warehouse mutations independent of tests that use the original stores.
     await changeStandin(dir, 'sales', ['create table cycle_stores as select * from stores'])
@@ -96,6 +116,18 @@ describe('Copy a warehouse table into Featherbase', () => {
     expect(await admin.get('/api/table/Renamed%20Copy:copy_info')).toMatchObject({ key_column: 'warehouse_code' })
     await admin.post('/api/table/Renamed%20Copy:copy_again', {})
     expect(await admin.get('/api/table/Renamed%20Copy/S002')).toMatchObject({ warehouse_code: 'S002', trading_name: 'Hill Street' })
+  })
+
+  test('removing the matching column refuses refresh without changing rows', async ({ admin }) => {
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-removed-key', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-removed-key:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Removed Key Copy', key: 'code', columns: STORES })
+    const meta = await admin.get<{ columns: { column_name: string }[] }>('/api/table/Removed%20Key%20Copy:meta')
+    await admin.put('/api/table_def/Removed%20Key%20Copy', { columns: meta.columns.filter(c => c.column_name !== 'store_code'), remove_columns: ['store_code'] })
+    const before = await admin.get('/api/table/Removed%20Key%20Copy/S001')
+    const history = await admin.get('/api/import/batches')
+    await expect(admin.post('/api/table/Removed%20Key%20Copy:copy_again', {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('key column store_code') })
+    expect(await admin.get('/api/table/Removed%20Key%20Copy/S001')).toEqual(before)
+    expect(await admin.get('/api/import/batches')).toEqual(history)
   })
 
   test('each copy appears in Past imports and its initial rows can be undone', async ({ admin }) => {
@@ -235,6 +267,21 @@ describe('Copy a warehouse table into Featherbase', () => {
     await expect(admin.post('/api/table/Duplicate%20Copy:copy_again', {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Copy key values must be unique') })
     expect(await admin.get('/api/table/Duplicate%20Copy/S001')).toEqual(before)
     expect(await admin.get('/api/import/batches')).toEqual(history)
+  })
+
+  test('empty source identities refuse the whole refresh', async ({ admin }) => {
+    await changeStandin(dir, 'sales', ['create table empty_key_stores as select * from stores'])
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-empty-key', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-empty-key:copy_create`, { database: 'sales', schema: 'main', table: 'empty_key_stores', name: 'Empty Key Copy', key: 'code', columns: STORES })
+    const before = await admin.get('/api/table/Empty%20Key%20Copy/S001')
+    const history = await admin.get('/api/import/batches')
+    for (const invalid of ["'   '", 'NULL']) {
+      await changeStandin(dir, 'sales', [`update empty_key_stores set code = ${invalid} where name = 'Market Lane'`])
+      await admin.post(`${SOURCES}/tc-empty-key:refresh_tables`, { database: 'sales' })
+      await expect(admin.post('/api/table/Empty%20Key%20Copy:copy_again', {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Copy key values must not be empty') })
+      expect(await admin.get('/api/table/Empty%20Key%20Copy/S001')).toEqual(before)
+      expect(await admin.get('/api/import/batches')).toEqual(history)
+    }
   })
 
   // Separate committed connections are essential: a sandbox's single session
