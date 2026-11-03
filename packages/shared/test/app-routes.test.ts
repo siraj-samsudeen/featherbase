@@ -1,5 +1,21 @@
 import { describe, expect, test } from 'vitest'
-import { APP_ROOT_PATTERN, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref, appTabLinks, ownFramePolicyPage } from '../src/index'
+import { APP_ROOT_PATTERN, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref, appTabLinks, ownFramePolicyPage, tableHref, rowHref } from '../src/index'
+
+test.each([
+  ['Sign In Method', '/featherbase/admin/table/sign-in-method'],
+  [' New--Table__ ', '/featherbase/admin/table/new-table'],
+  ['tasker.task_item', '/featherbase/admin/table/tasker.task-item'],
+])('Table destinations normalize separators without losing qualification: %s', (name, href) => {
+  expect(tableHref(name)).toBe(href)
+})
+
+test.each([
+  ['new', 'new'],
+  ['columns', 'columns'],
+  ['A / B?x#%', 'A%20%2F%20B%3Fx%23%25'],
+])('row destinations encode the unchanged ID separately: %s', (id, encoded) => {
+  expect(rowHref('Sign In Method', id)).toBe(`/featherbase/admin/table/sign-in-method/row/${encoded}`)
+})
 
 test('the canonical Featherbase destination has its product label and path', () => {
   expect(FEATHERBASE_ADMIN_DESTINATION).toEqual({
