@@ -5,7 +5,8 @@ a runtime package) and `stylehr/` (browsing the HR system live; a manifest with
 no code, installed as its README says, reading `STYLEHR_URL`) and
 `stylehr-warehouse/` (the same tables from the warehouse copy in MotherDuck,
 reading `STYLEHR_WAREHOUSE_URL`; an instance installs one of the two, and their
-table entries stay identical, which a server test checks). Each
+table entries stay identical apart from the warehouse loader's `_dlt_*`
+columns, which a server test checks). Each
 instance's settings and setup are in `instances/<instance>/` (ADR 0014); no
 secret or host detail goes there.
 

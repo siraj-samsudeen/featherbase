@@ -27,6 +27,10 @@
               "organization_id",
               "city",
               "is_active"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
             ]
           },
           {
@@ -41,6 +45,10 @@
               "label",
               "floor_number",
               "store_id"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
             ]
           },
           {
@@ -56,6 +64,10 @@
               "name",
               "store_id",
               "is_active"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
             ]
           },
           {
@@ -71,6 +83,10 @@
               "section_id",
               "min_employee",
               "max_employee"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
             ]
           },
           {
@@ -118,7 +134,9 @@
               "notes",
               "termination_reason",
               "favourited_by_id",
-              "is_favourite"
+              "is_favourite",
+              "_dlt_load_id",
+              "_dlt_id"
             ],
             "title_column": "first_name",
             "list_columns": [
@@ -146,6 +164,10 @@
               "from_date",
               "to_date",
               "is_active"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
             ]
           },
           {
@@ -159,6 +181,10 @@
             "list_columns": [
               "employeedeploying_id",
               "floorsection_id"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
             ]
           },
           {
@@ -173,6 +199,10 @@
               "store_id",
               "firm_id",
               "work_location"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
             ]
           },
           {
@@ -186,6 +216,10 @@
             "list_columns": [
               "employee_id",
               "employeestoresandfirms_id"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
             ]
           },
           {
@@ -200,6 +234,10 @@
             "list_columns": [
               "name",
               "organization_id"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
             ]
           },
           {
@@ -214,6 +252,10 @@
             "list_columns": [
               "name",
               "parent_department_id"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
             ]
           },
           {
@@ -224,6 +266,10 @@
             "list_columns": [
               "name",
               "abbreviation"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
             ]
           },
           {
@@ -236,7 +282,9 @@
             "leave_out_columns": [
               "pan",
               "tan",
-              "tds_circle_ao_code"
+              "tds_circle_ao_code",
+              "_dlt_load_id",
+              "_dlt_id"
             ],
             "title_column": "name"
           }

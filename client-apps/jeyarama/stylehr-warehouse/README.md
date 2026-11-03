@@ -7,7 +7,9 @@ addresses StyleHR's database does not accept. An instance installs this app or
 `stylehr`, never both: they make the same Tables.
 
 `app.json` is the whole app. Its `reflect.tables` entries are identical to
-`stylehr`'s (a server test checks it); only the data source differs: engine
+`stylehr`'s, except that each also leaves out the warehouse loader's
+bookkeeping columns (`_dlt_load_id`, `_dlt_id`); a server test checks it. The
+data source differs: engine
 `duckdb`, schema `bronze_stylehr.public`, variable `STYLEHR_WAREHOUSE_URL`. The
 warehouse declares no keys or links, so the entries' `key` and `links` (#876)
 make each row addressable by its id and link the tables as the HR database does.

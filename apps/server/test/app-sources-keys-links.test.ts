@@ -172,12 +172,19 @@ describe('an app declares a table\'s key and its links', () => {
 })
 
 // The live and warehouse StyleHR apps describe their thirteen tables the same
-// way; only the data source differs. Edit one, copy it across.
+// way; only the data source differs, and the warehouse copy also leaves out
+// its loader's bookkeeping columns. Edit one, copy it across.
 test('the two StyleHR apps connect their tables with identical settings', () => {
   const read = (app: string) =>
     JSON.parse(readFileSync(new URL(`../../../client-apps/jeyarama/${app}/app.json`, import.meta.url), 'utf8'))
-  const live = read('stylehr')
-  const warehouse = read('stylehr-warehouse')
-  expect(warehouse.sources[0].reflect.tables).toEqual(live.sources[0].reflect.tables)
-  expect(warehouse.sources[0].reflect.tables).toHaveLength(13)
+  const live = read('stylehr').sources[0].reflect.tables as { leave_out_columns?: string[] }[]
+  const warehouse = read('stylehr-warehouse').sources[0].reflect.tables as { leave_out_columns?: string[] }[]
+  const LOADER = ['_dlt_load_id', '_dlt_id']
+  for (const t of warehouse) expect(t.leave_out_columns).toEqual(expect.arrayContaining(LOADER))
+  const withoutLoader = warehouse.map(({ leave_out_columns, ...t }) => {
+    const kept = (leave_out_columns ?? []).filter((c) => !LOADER.includes(c))
+    return kept.length ? { ...t, leave_out_columns: kept } : t
+  })
+  expect(withoutLoader).toEqual(live)
+  expect(live).toHaveLength(13)
 })
