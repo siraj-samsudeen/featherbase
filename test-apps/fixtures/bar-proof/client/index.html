@@ -4,6 +4,10 @@
   body { margin: 0; font: 20px/2 Georgia, serif; color: rgb(120, 20, 20); background: rgb(250, 245, 230); }
   main { padding: 8px 16px; }
   .long { height: 150vh; }
+  /* #668: the app follows the person's theme from the attribute the bar sets
+     on its root; its own body colours and data-theme stay its own. */
+  #theme-follower { display: inline-block; padding: 0 8px; background: rgb(255, 255, 255); color: rgb(20, 20, 20); }
+  html[data-featherbase-theme="dark"] #theme-follower { background: rgb(20, 20, 20); color: rgb(255, 255, 255); }
   .pinned { position: fixed; inset: var(--featherbase-bar-height, 0) 0 auto auto; padding: 4px 8px; background: rgb(220, 235, 250); }
 </style>
 <body>
@@ -12,6 +16,7 @@
   <p>Reads the store the top bar sets.</p>
   <p>On load, from the address: <output id="store-on-load"></output></p>
   <p>From the bar's event: <output id="store-from-event">none</output></p>
+  <p>The person's theme: <output id="theme-follower">none</output></p>
   <div class="long"></div>
   <p id="page-end">End of the page</p>
 </main>
@@ -23,5 +28,10 @@
   window.addEventListener('featherbase:bar-change', (event) => {
     if (event.detail.key === 'store') document.getElementById('store-from-event').textContent = event.detail.value
   })
+  // #668: and of the person's theme from the root's attribute on load, then
+  // from the documented `featherbase:theme-change` event.
+  const follower = document.getElementById('theme-follower')
+  follower.textContent = document.documentElement.dataset.featherbaseTheme || 'none'
+  window.addEventListener('featherbase:theme-change', (event) => { follower.textContent = event.detail.theme })
 </script>
 </body></html>

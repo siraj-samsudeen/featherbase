@@ -23,6 +23,7 @@ import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
 import { usePeek } from './Peek'
 import { GlossaryHelp } from './GlossaryHelp'
+import { ReadingPresentation } from './ReadingPresentation'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from './ui'
 
@@ -378,6 +379,9 @@ export function FormView({
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 
+  const reading = !isNew && rowsReadOnly ? m.reading_presentation : null
+  const RawDetails = reading ? 'details' : 'div'
+
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
@@ -684,6 +688,9 @@ export function FormView({
           </button>
         </div>
       )}
+      {reading && <ReadingPresentation presentation={reading} meta={m} values={values} />}
+      <RawDetails data-testid={reading ? 'raw-details' : undefined}>
+      {reading && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t('Raw details')}</summary>}
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="min-w-0 max-w-3xl flex-1">
           {sections.map((fields, si) => (
@@ -735,6 +742,7 @@ export function FormView({
         )}
       </div>
       {!isNew && m.kind === 'table' && <RelatedTabs table={table} name={name} />}
+      </RawDetails>
     </div>
   )
 }
