@@ -13,7 +13,7 @@ const controller: TableController = {
       assertCustomFieldName(row.column_name)
       await assertTargetNotSystemWritten(row.dt, 'changed')
     },
-    after_insert: async ({ row, tx }) => {
+    after_save: async ({ row, tx }) => {
       await applyCustomField(row as unknown as CustomFieldRec, tx)
     },
     on_trash: async ({ row }) => {
