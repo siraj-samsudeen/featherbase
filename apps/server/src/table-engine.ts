@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { prettifyLabel } from 'shared'
 import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
@@ -96,6 +97,7 @@ export const columnSchema = z.object({
   // Sub-table -> the sub-table's Table name.
   reference_table: optionalString,
   choices: optionalString,
+  choice_labels: z.record(z.string(), z.string()).nullish(),
   row_table: optionalString,
   reqd: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   unique: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
@@ -470,9 +472,10 @@ export async function updateTable(
       const old = before.get(f.column_name)
       const row: Record<string, unknown> = {
         position: i + 1,
-        label: f.label ?? f.column_name,
+        label: f.label ?? prettifyLabel(f.column_name),
         reference_table: f.reference_table ?? null,
         choices: f.choices ?? null,
+        choice_labels: f.choice_labels == null ? null : tx.json(f.choice_labels),
         row_table: f.row_table ?? null,
         reqd: f.reqd ?? false,
         unique: f.unique ?? false,
@@ -719,10 +722,11 @@ export async function createTable(
         parent: def.name,
         position: i + 1,
         column_name: f.column_name,
-        label: f.label ?? f.column_name,
+        label: f.label ?? prettifyLabel(f.column_name),
         column_type: f.column_type,
         reference_table: f.reference_table ?? null,
         choices: f.choices ?? null,
+        choice_labels: f.choice_labels == null ? null : tx.json(f.choice_labels),
         row_table: f.row_table ?? null,
         reqd: f.reqd ?? false,
         unique: f.unique ?? false,

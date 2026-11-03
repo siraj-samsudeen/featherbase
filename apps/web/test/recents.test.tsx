@@ -370,6 +370,14 @@ describe('helpers', () => {
     )
     expect(describeFilters('not json')).toBeUndefined()
     expect(describeFilters(undefined)).toBeUndefined()
+    const columns = [{ column_name: 'policy', label: 'Policy', column_type: 'Choice', choice_labels: { raw_policy: 'Use this policy' } }]
+    const filters = '[["policy","=","raw_policy"]]'
+    const path = '/featherbase/admin/Contacts'
+    const original = actionForLocation(path, { filters })!
+    const readable = actionForLocation(path, { filters }, columns)!
+    expect(readable.sub).toBe('Policy = Use this policy')
+    expect(readable.key).toBe(original.key)
+    expect(readable.path).toBe(original.path)
   })
 
   it('ago compresses to m/h/d', () => {

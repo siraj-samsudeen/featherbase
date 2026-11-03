@@ -28,6 +28,7 @@ import { PeekProvider } from '../components/Peek'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel } from '../lib/row-titles'
 import { metaQuery } from '../lib/meta'
+import { useI18n } from '../lib/i18n'
 import { KindIcon } from '../lib/kind-icons'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
@@ -116,6 +117,7 @@ function AdminShell() {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
+  const { t } = useI18n()
   const user = getSessionUser()
   // The command bar's theme commands; the bar's own toggle is in TopBar.
   const { set: setTheme } = useThemeChoice()
@@ -153,7 +155,7 @@ function AdminShell() {
     }
     const owner = user.row_id
     queryClient.fetchQuery(metaQuery(table)).then(
-      () => recordAction(owner, action),
+      (meta) => recordAction(owner, actionForLocation(location.pathname, location.search as Record<string, unknown>, meta.columns, t) ?? action),
       () => {},
     )
   }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
