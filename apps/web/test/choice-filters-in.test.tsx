@@ -98,3 +98,12 @@ test('Floor in Ground and First Floor plus Status Open shows only Open rows on t
     'state in Open×',
   ])
 })
+
+test('Add stays off until at least one choice is ticked', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  const list = addFilterOn('floor')
+  expect(screen.getByTestId('filter-add')).toBeDisabled()
+  tick(list, 'Ground')
+  expect(screen.getByTestId('filter-add')).toBeEnabled()
+})
