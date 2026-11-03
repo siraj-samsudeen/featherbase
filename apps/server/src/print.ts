@@ -1,4 +1,5 @@
 import { existsSync, readdirSync } from 'node:fs'
+import { choiceLabel } from 'shared'
 import { readVariable } from './env'
 import { join } from 'node:path'
 import { getMeta } from './meta'
@@ -122,7 +123,13 @@ function autoLayout(meta: Awaited<ReturnType<typeof getMeta>>, row: Row): string
   )
   const tables = meta.columns.filter((f) => f.column_type === 'Sub-table' && !f.hidden && f.column_name in row)
   const rows = scalar
-    .map((f) => `<dt>${esc(f.label ?? f.column_name)}</dt><dd>${fmt(Object.hasOwn(row, f.column_name) ? row[f.column_name] : undefined)}</dd>`)
+    .map((f) => {
+      const value = Object.hasOwn(row, f.column_name) ? row[f.column_name] : undefined
+      const display = f.column_type === 'Choice' && typeof value === 'string' && value !== ''
+        ? choiceLabel(value, f.choice_labels)
+        : value
+      return `<dt>${esc(f.label ?? f.column_name)}</dt><dd>${fmt(display)}</dd>`
+    })
     .join('')
   const tableHtml = tables
     .map((tf) => {
