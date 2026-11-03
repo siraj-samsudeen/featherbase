@@ -19,7 +19,7 @@ async function createTable(world, name, idPattern) {
 }
 
 async function addRow(world, table) {
-  const row = await world.withApi((api) => api.saveRow(table, { title: 'a plant' }));
+  const row = await world.withApi((api) => api.saveRow(table, { title: 'a row' }));
   world.added.push(row.row_id);
   return row.row_id;
 }
@@ -41,12 +41,12 @@ Given('a table {string} whose rows are numbered 1, 2, 3', async function (name) 
   await createTable(this, name, 'integer');
 });
 
-Given('the user has added plant 1 and imported a plant with the id 2', async function () {
+Given('the user has added bin 1 and imported a bin with the id 2', async function () {
   const [table] = this.tables;
   assert.equal(await addRow(this, table), '1');
   // An import supplies its own ids through the same create the API offers.
   await this.withApi((api) =>
-    api.call('POST', `/api/table/${encodeURIComponent(table)}`, { row_id: '2', title: 'imported' }, [201], 'import plant 2'),
+    api.call('POST', `/api/table/${encodeURIComponent(table)}`, { row_id: '2', title: 'imported' }, [201], 'import bin 2'),
   );
 });
 
@@ -63,11 +63,11 @@ When('the user adds three plants', async function () {
   for (let i = 0; i < 3; i++) await addRow(this, this.tables[0]);
 });
 
-When('the user adds a plant to each', async function () {
+When('the user adds a store to each', async function () {
   for (const table of this.tables) await addRow(this, table);
 });
 
-When('the user adds another plant', async function () {
+When('the user adds another bin', async function () {
   await addRow(this, this.tables[0]);
 });
 
@@ -77,8 +77,8 @@ Then('the plants are numbered 1, 2 and 3', function () {
   assert.deepEqual(this.added, ['1', '2', '3']);
 });
 
-Then('each plant is numbered PLANT-001', function () {
-  assert.deepEqual(this.added, ['PLANT-001', 'PLANT-001']);
+Then('each store is numbered STORE-001', function () {
+  assert.deepEqual(this.added, ['STORE-001', 'STORE-001']);
 });
 
 Then('it is numbered 3', function () {
