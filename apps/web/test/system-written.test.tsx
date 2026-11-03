@@ -2,7 +2,7 @@
 // no write affordance to anyone, Administrator included — absent, not
 // disabled — and its form opens read-only. Driven by the table's meta, so an
 // ordinary platform table (Comment) keeps its controls.
-import { screen, waitFor, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { beforeEach } from 'vitest'
 import { logActivity } from 'server/src/audit'
 import { sql } from 'server/src/db'
