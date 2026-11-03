@@ -129,6 +129,25 @@ export async function run(cfg: SourceConfig, text: string, params: unknown[]): P
   }
 }
 
+/** One source observation, fetched in native chunks instead of materializing
+ * the whole warehouse in JavaScript. Closing also handles an aborted caller. */
+export async function* stream(cfg: SourceConfig, text: string): AsyncGenerator<SourceRow[]> {
+  try {
+    const { instance } = await instanceFor(cfg)
+    const conn = await instance.connect()
+    try {
+      const result = await conn.stream(text)
+      try {
+        const names = result.columnNames()
+        const { JsonDuckDBValueConverter } = await loadDuckdb()
+        for await (const chunk of result) {
+          yield chunk.convertRows(JsonDuckDBValueConverter).map(values => Object.fromEntries(names.map((name, i) => [name, values[i]])))
+        }
+      } finally { result.closeSync() }
+    } finally { conn.closeSync() }
+  } catch (err) { wrapError(cfg, err) }
+}
+
 function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`
 }

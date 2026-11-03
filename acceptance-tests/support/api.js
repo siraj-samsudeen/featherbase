@@ -146,6 +146,10 @@ class Api {
     await this.call('POST', `/api/table/Data%20Source/${encodeURIComponent(source)}:refresh_tables`, { database }, [200], 'refresh synthetic warehouse');
   }
 
+  async renameColumn(table, from, to) {
+    await this.call('POST', `/api/table_def/${encodeURIComponent(table)}/rename_column`, { from, to }, [200], 'rename copied column');
+  }
+
   /** A role that may read this table (its basic columns). */
   async readerRoleFor(table) {
     const role = `${table} Reader`;

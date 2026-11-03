@@ -1,6 +1,11 @@
 // #772 part 2: copy a warehouse table in, correct it, copy it again.
-import { afterAll, beforeAll, describe, expect } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { rmSync } from 'node:fs'
+import { makeClient } from 'feather-testing-postgres'
+import { app } from '../src/index'
+import { issueSession } from '../src/auth'
+import { deleteTable } from '../src/table-engine'
+import { sql } from '../src/db'
 import { test } from './pg-test'
 import { overrideVariable } from '../src/env'
 import { invalidateSources } from '../src/sources/registry'
@@ -25,6 +30,9 @@ describe('Copy a warehouse table into Featherbase', () => {
     const code = await admin.get<{ usable: boolean; rows: number }>(`${SOURCES}/tc-key:copy_check_key?database=sales&schema=main&table=stores&column=code`)
     expect(city.usable).toBe(false)
     expect(code).toMatchObject({ usable: true, rows: 3 })
+    await expect(admin.post(`${SOURCES}/tc-key:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Invalid Key Copy', key: 'city', columns: [{ source: 'city', column_name: 'city' }] })).rejects.toMatchObject({ status: 417 })
+    await expect(admin.post(`${SOURCES}/tc-key:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Missing Key Copy', key: 'code', columns: STORES.slice(0, 1) })).rejects.toMatchObject({ status: 417 })
+    await expect(admin.get('/api/table/Data%20Source:copy_info')).rejects.toMatchObject({ status: 404 })
   })
 
   test('copy, correct, copy again: the correction is kept, a changed source raises a conflict, a gone row is marked', async ({ admin }) => {
@@ -108,6 +116,12 @@ describe('Copy a warehouse table into Featherbase', () => {
     expect(row).toMatchObject({ deleted_at_source: false })
     await admin.post('/api/save_row', { table: 'Undo Copy', row: { row_id: 'S003', updated_at: row.updated_at, deleted_at_source: true } })
     expect(await admin.get('/api/table/Undo%20Copy/S003')).toMatchObject({ deleted_at_source: false })
+    await admin.post('/api/table/Undo%20Copy:import', {
+      rows: [{ row_id: 'S003', deleted_at_source: true }], key_column: 'row_id',
+      managedColumns: ['deleted_at_source'], managedValues: { deleted_at_source: true },
+      context: { managedColumns: ['deleted_at_source'] },
+    })
+    expect(await admin.get('/api/table/Undo%20Copy/S003')).toMatchObject({ deleted_at_source: false })
     await changeStandin(dir, 'sales', ["update undo_stores set name = 'Harbour renewed' where code = 'S001'", "delete from undo_stores where code = 'S003'", "insert into undo_stores values ('S004', 'New Quay', 'City', '07')"])
     await admin.post(`${SOURCES}/tc-undo:refresh_tables`, { database: 'sales' })
     const copied = await admin.post<{ run_id: string }>('/api/table/Undo%20Copy:copy_again', {})
@@ -120,6 +134,96 @@ describe('Copy a warehouse table into Featherbase', () => {
     await admin.post(`${SOURCES}/tc-undo:refresh_tables`, { database: 'sales' })
     expect(await admin.post('/api/table/Undo%20Copy:copy_again', {})).toMatchObject({ back_at_source: 1 })
     expect(await admin.get('/api/table/Undo%20Copy/S003')).toMatchObject({ deleted_at_source: false, display_name: 'Market Lane restored' })
+  })
+
+  test('a refused later row rolls back earlier changes, conflicts, import history and provenance', async ({ admin }) => {
+    await changeStandin(dir, 'sales', ['create table atomic_stores as select * from stores'])
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-atomic', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-atomic:copy_create`, { database: 'sales', schema: 'main', table: 'atomic_stores', name: 'Atomic Copy', key: 'code', columns: STORES })
+    await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'refuse-copy-third-row', script_type: 'Document Event', ref_table: 'Atomic Copy', event: 'before_save', script: 'if (doc.store_code === "S003") throw new Error("Third store refused")', enabled: true } })
+    const snapshot = () => Promise.all(['S001', 'S002', 'S003'].map(id => admin.get(`/api/table/Atomic%20Copy/${id}`)))
+    const before = await snapshot()
+    const history = await admin.get('/api/import/batches')
+    const provenance = await admin.get('/api/table/Atomic%20Copy:copy_info')
+    await changeStandin(dir, 'sales', ["update atomic_stores set name = 'Changed before refusal' where code = 'S001'"])
+    await admin.post(`${SOURCES}/tc-atomic:refresh_tables`, { database: 'sales' })
+    await expect(admin.post('/api/table/Atomic%20Copy:copy_again', {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Third store refused') })
+    expect(await snapshot()).toEqual(before)
+    expect(await admin.get('/api/import/batches')).toEqual(history)
+    expect(await admin.get('/api/table/Atomic%20Copy:copy_info')).toEqual(provenance)
+    // The underlying importer remains best-effort for unrelated consumers.
+    expect(await admin.post('/api/table/Atomic%20Copy:import', { key_column: 'row_id', rows: [{ row_id: 'S001', display_name: 'Generic success' }, { row_id: 'S003', display_name: 'Generic refusal' }] })).toMatchObject({ updated: 1, failed: [{ index: 1 }] })
+    expect(await admin.get('/api/table/Atomic%20Copy/S001')).toMatchObject({ display_name: 'Generic success' })
+  })
+
+  test('a failed source observation leaves the target untouched', async ({ admin }) => {
+    await changeStandin(dir, 'sales', ['create table failing_stores as select * from stores'])
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-source-failure', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-source-failure:copy_create`, { database: 'sales', schema: 'main', table: 'failing_stores', name: 'Source Failure Copy', key: 'code', columns: STORES })
+    const snapshot = () => Promise.all(['S001', 'S002', 'S003'].map(id => admin.get(`/api/table/Source%20Failure%20Copy/${id}`)))
+    const before = await snapshot()
+    const history = await admin.get('/api/import/batches')
+    const provenance = await admin.get('/api/table/Source%20Failure%20Copy:copy_info')
+    await changeStandin(dir, 'sales', ['drop table failing_stores'])
+    await admin.post(`${SOURCES}/tc-source-failure:refresh_tables`, { database: 'sales' })
+    await expect(admin.post('/api/table/Source%20Failure%20Copy:copy_again', {})).rejects.toMatchObject({ status: 502 })
+    expect(await snapshot()).toEqual(before)
+    expect(await admin.get('/api/import/batches')).toEqual(history)
+    expect(await admin.get('/api/table/Source%20Failure%20Copy:copy_info')).toEqual(provenance)
+  })
+
+  test('duplicate source identities refuse the whole refresh', async ({ admin }) => {
+    await changeStandin(dir, 'sales', ['create table duplicate_stores as select * from stores'])
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-duplicate', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-duplicate:copy_create`, { database: 'sales', schema: 'main', table: 'duplicate_stores', name: 'Duplicate Copy', key: 'code', columns: STORES })
+    const before = await admin.get('/api/table/Duplicate%20Copy/S001')
+    const history = await admin.get('/api/import/batches')
+    await changeStandin(dir, 'sales', ["insert into duplicate_stores values ('S001', 'Duplicate', 'City', '99')"])
+    await admin.post(`${SOURCES}/tc-duplicate:refresh_tables`, { database: 'sales' })
+    await expect(admin.post('/api/table/Duplicate%20Copy:copy_again', {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Copy key values must be unique') })
+    expect(await admin.get('/api/table/Duplicate%20Copy/S001')).toEqual(before)
+    expect(await admin.get('/api/import/batches')).toEqual(history)
+  })
+
+  // Separate committed connections are essential: a sandbox's single session
+  // can reacquire its own advisory lock and cannot prove serialization.
+  it('overlapping refreshes produce distinct undoable source observations', async () => {
+    const session = await issueSession('Administrator')
+    const admin = makeClient(app, session.token, 'Administrator')
+    try {
+    await changeStandin(dir, 'sales', ['create table concurrent_stores as select * from stores'])
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-concurrent', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-concurrent:copy_create`, { database: 'sales', schema: 'main', table: 'concurrent_stores', name: 'Concurrent Copy', key: 'code', columns: STORES })
+    await changeStandin(dir, 'sales', ["update concurrent_stores set name = 'Latest source' where code = 'S001'"])
+    await admin.post(`${SOURCES}/tc-concurrent:refresh_tables`, { database: 'sales' })
+    const results = await Promise.all([1, 2].map(() => admin.post<{ run_id: string; changed: number; unchanged: number; conflicts: number }>('/api/table/Concurrent%20Copy:copy_again', {})))
+    expect(new Set(results.map(r => r.run_id)).size).toBe(2)
+    expect(results.map(r => r.changed).sort()).toEqual([0, 1])
+    expect(results.map(r => r.unchanged).sort()).toEqual([2, 3])
+    expect(results.map(r => r.conflicts)).toEqual([0, 0])
+    expect(await admin.get('/api/table/Concurrent%20Copy/S001')).toMatchObject({ display_name: 'Latest source' })
+    const history = await admin.get<{ batches: { batch_id: string }[] }>('/api/import/batches')
+    expect(history.batches.map(b => b.batch_id)).toEqual(expect.arrayContaining(results.map(r => r.run_id)))
+    } finally {
+      await sql`delete from featherbase.table_copy where target_table = 'Concurrent Copy'`
+      await deleteTable('Concurrent Copy')
+      await admin.delete(`${SOURCES}/tc-concurrent`)
+      await admin.post('/api/logout', {})
+    }
+  })
+
+  test('an empty source marks every row through the undoable import chain', async ({ admin }) => {
+    await changeStandin(dir, 'sales', ['create table empty_stores as select * from stores'])
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-empty', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-empty:copy_create`, { database: 'sales', schema: 'main', table: 'empty_stores', name: 'Empty Copy', key: 'code', columns: STORES })
+    expect(await admin.post('/api/table/Empty%20Copy:copy_again', {})).toMatchObject({ updated: 3, changed: 0, unchanged: 3 })
+    await changeStandin(dir, 'sales', ['delete from empty_stores'])
+    await admin.post(`${SOURCES}/tc-empty:refresh_tables`, { database: 'sales' })
+    const copied = await admin.post<{ run_id: string }>('/api/table/Empty%20Copy:copy_again', {})
+    expect(copied).toMatchObject({ inserted: 0, updated: 0, deleted_at_source: 3 })
+    expect(await admin.get('/api/table/Empty%20Copy/S001')).toMatchObject({ deleted_at_source: true })
+    expect(await admin.post('/api/table/Empty%20Copy:import-revert', { run_id: copied.run_id })).toMatchObject({ restored: 3, deleted: 0, failed: [] })
+    expect(await admin.get('/api/table/Empty%20Copy/S001')).toMatchObject({ deleted_at_source: false })
   })
 
   test('copy actions require System Manager even with native source and target read/write rights', async ({ admin, createUser }) => {

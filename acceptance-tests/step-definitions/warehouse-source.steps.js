@@ -375,3 +375,38 @@ Then('store {string} still has the person\'s correction', async function (store)
   await this.form.open(this.nativeTable, store);
   assert.equal(await this.form.value('State code'), '32');
 });
+
+Given('the copied key and trading-name columns have been renamed', async function () {
+  await this.withApi(async api => {
+    await api.renameColumn(this.nativeTable, 'store_code', 'warehouse_code');
+    await api.renameColumn(this.nativeTable, 'store_name', 'trading_name');
+  });
+});
+
+Then('the renamed columns contain the updated and added stores', async function () {
+  await this.withApi(async api => {
+    const changed = await api.row(this.nativeTable, 'S001');
+    const added = await api.row(this.nativeTable, 'S004');
+    assert.equal(changed.trading_name, 'Harbour Road renewed');
+    assert.equal(added.warehouse_code, 'S004');
+    assert.equal(added.trading_name, 'New Quay');
+    assert.equal(Object.hasOwn(added, 'store_code'), false);
+    assert.equal(Object.hasOwn(added, 'store_name'), false);
+  });
+});
+
+When('the user copies again and undoes that copy from its import history', async function () {
+  this.page = await this.asSystemManager();
+  this.copied = new CopiedWarehousePage(this.page, this.nativeTable);
+  await this.copied.open();
+  await this.copied.copyAgain();
+  await this.copied.undoLastCopy();
+  this.form = new FormPage(this.page);
+});
+
+Then('the original three stores remain without the new warehouse changes', async function () {
+  await this.copied.open();
+  assert.deepEqual((await this.copied.rowIds()).sort(), ['S001', 'S002', 'S003']);
+  await this.form.open(this.nativeTable, 'S001');
+  assert.equal(await this.form.value('Trading name'), 'Harbour Road');
+});

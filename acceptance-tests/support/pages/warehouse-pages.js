@@ -287,6 +287,15 @@ class CopiedWarehousePage {
     if (!res.ok()) throw new Error(`copy again refused: ${res.status()} ${await res.text()}`);
     await this.page.getByTestId('copy-result').waitFor();
   }
+
+  async undoLastCopy() {
+    await this.page.goto('/featherbase/admin/imports');
+    await this.page.getByTestId(`ib-target-${this.table}`).first().waitFor();
+    await this.page.goto(`/featherbase/admin/import?table=${encodeURIComponent(this.table)}`);
+    await this.page.getByTestId('iw-revert-open-h0').click();
+    await this.page.getByTestId('iw-revert-confirm-h0').click();
+    await this.page.getByTestId('iw-revert-result-h0').waitFor();
+  }
 }
 
 module.exports = { ConnectWarehousePage, WarehouseSourcePage, DataSourcesSidebar, WarehouseBrowserPage, WarehouseCopyPage, CopiedWarehousePage };

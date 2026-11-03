@@ -914,6 +914,8 @@ export async function renameColumn(
       await tx.unsafe(`alter table ${relation} rename column ${quoteIdent(from)} to ${quoteIdent(target)}`)
     await tx`update column_def set column_name = ${target}
       where parent = ${meta.name} and column_name = ${from}`
+    await tx`update featherbase.table_copy set key_column = ${target}
+      where target_table = ${meta.name} and key_column = ${from}`
     // A Sub-table's children name their column on every row, in
     // `parentfield`, and every child read filters on it (document.ts
     // loadChildren). Renaming only the column_def would leave them addressed
