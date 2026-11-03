@@ -11,4 +11,6 @@
 
 - [x] 3.1 Run focused browser/component checks, typecheck, strict OpenSpec validation and boot smoke.
 - [x] 3.2 Independently verify the issue checklist at desktop width and inspect a real-pointer/keyboard recording.
-- [ ] 3.3 Prepare a tested PR with exact-head CI and comment subscriptions; leave archive, merge and deployment gated by the owner.
+- [x] 3.3 Prepare a tested PR with exact-head CI and comment subscriptions; leave archive, merge and deployment gated by the owner.
+
+PR: https://github.com/siraj-samsudeen/featherbase/pull/824. Local validation and independent UI verification passed. Remote CI is subscribed, not yet claimed green. Owner video review and archive remain pending; no merge or deployment performed.
