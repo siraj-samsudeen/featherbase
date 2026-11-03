@@ -229,7 +229,9 @@ class Tickets {
   async fictionalEvidence() {
     const api = await Api.asSystemManager();
     for (const table of ['tickets.request', 'tickets.event']) {
-      const response = await api.call('GET', `/api/table/${table}?limit_page_length=500`, undefined, [200], 'inspect explicit fictional samples');
+      const fields = table === 'tickets.request' ? ['row_id', 'original'] : ['row_id', 'operation', 'text'];
+      const params = new URLSearchParams({ limit_page_length: '500', fields: JSON.stringify(fields) });
+      const response = await api.call('GET', `/api/table/${table}?${params}`, undefined, [200], 'inspect explicit fictional samples');
       const { data } = await response.json();
       const evidence = table === 'tickets.event' ? data.filter(row => ['verify', 'evidence'].includes(row.operation)) : data;
       assert.ok(evidence.length > 0);
