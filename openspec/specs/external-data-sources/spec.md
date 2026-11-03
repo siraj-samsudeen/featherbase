@@ -478,6 +478,7 @@ And a bin on the shelf titled "Top"
 And the user may read bins but not shelves
 When the user opens that bin's relationship map
 Then the user does not see "Top"
+```
 
 ### Requirement: Explore follows linked rows within one connected Postgres source
 
