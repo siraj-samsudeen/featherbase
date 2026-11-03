@@ -53,6 +53,7 @@ test('#825: a Version reads as a Field · Before · After table, in the changed 
     // Created without a label: the readable label the platform gives it.
     ['Region', '—', 'South'],
   ]))
+  expect(within(record).getByRole('heading', { name: 'Changes' })).toBeInTheDocument()
   expect(within(record).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Field', 'Before', 'After'])
 })
 
@@ -77,8 +78,9 @@ test('#825: the stored JSON stays available, collapsed, and is no longer the mai
 
 test('#825: an import, an undo and a kept correction say so; no field changes says so', async ({ admin }) => {
   const { rowId } = await editedPlant(admin)
+  let n = 0
   const add = async (data: Record<string, unknown>) => {
-    const [v] = await sql`insert into version (row_id, ref_table, ref_name, data) values (${`vr-${Object.keys(data).join('-')}`}, ${T}, ${rowId}, ${sql.json(data)}) returning row_id`
+    const [v] = await sql`insert into version (row_id, ref_table, ref_name, data) values (${`vr-${++n}`}, ${T}, ${rowId}, ${sql.json(data)}) returning row_id`
     return String(v.row_id)
   }
   const imported = await add({ changed: [['region', 'South', 'East']], import_run: 'sap-2' })
@@ -93,4 +95,8 @@ test('#825: an import, an undo and a kept correction say so; no field changes sa
   record = await openVersion(admin, kept)
   await waitFor(() => expect(within(record).getByTestId('change-resolution')).toHaveTextContent('Region: kept the current value instead of West'))
   expect(within(record).getByText('No field changes')).toBeInTheDocument()
+
+  const adopted = await add({ changed: [['region', 'South', 'West']], resolution: { field: 'region', decision: 'source', incoming: 'West' } })
+  record = await openVersion(admin, adopted)
+  await waitFor(() => expect(within(record).getByTestId('change-resolution')).toHaveTextContent('Region: accepted the source; future imports can update this field'))
 })
