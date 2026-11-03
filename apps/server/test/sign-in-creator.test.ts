@@ -48,4 +48,11 @@ describe('who created a person', () => {
     expect(await created(signedUp)).toMatchObject({ created_by: 'google-sign-in', author_name: 'Google sign-in' })
     expect(await created(byHand)).toMatchObject({ created_by: 'Administrator' })
   })
+
+  test('a creator that is no person, service account or known sign-in reads as Unknown person', async ({ admin }) => {
+    const row = await makePerson({ full_name: 'From an old import' }, 'Administrator')
+    await sql`update person set created_by = 'old-importer' where row_id = ${row}`
+    const body = (await (await admin.fetch(`/api/activity/Person/${row}`)).json()) as { created: { created_by: string; author_name: string } }
+    expect(body.created).toMatchObject({ created_by: 'old-importer', author_name: 'Unknown person' })
+  })
 })

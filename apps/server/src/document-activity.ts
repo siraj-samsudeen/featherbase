@@ -101,11 +101,11 @@ export async function documentActivity(table: string, name: string, user: string
   ])
   // Only authors of this already-authorized row's activity are resolved.
   // This does not grant the caller access to the Person directory or emails.
-  const creator = visibleDoc.created_by == null ? null : String(visibleDoc.created_by)
-  const ids = [...new Set([...comments, ...versions].map(entry => String(entry.created_by)).concat(creator ?? []))]
-  const actors = ids.length ? await sql`
-    select row_id, full_name, username from person where row_id in ${sql(ids)}
-    union all select row_id, label as full_name, null as username from service_account where row_id in ${sql(ids)}` : []
+  // #829: the row's own creator is resolved too. A source-bound row has none.
+  const ids = [...new Set([...comments, ...versions, visibleDoc].map(entry => entry.created_by).filter(id => id != null).map(String))]
+  const actors = await sql`
+    select row_id, full_name, username from person where row_id = any(${ids})
+    union all select row_id, label as full_name, null as username from service_account where row_id = any(${ids})`
   const names = new Map(actors.map(actor => [String(actor.row_id), displayName(actor)]))
   const withAuthor = (entry: Record<string, unknown>) => ({
     ...entry,
@@ -123,6 +123,6 @@ export async function documentActivity(table: string, name: string, user: string
     }
   })
   // #829: who made the row, and when, opens its Activity.
-  const created = creator && visibleDoc.created_at ? withAuthor({ created_by: creator, created_at: visibleDoc.created_at }) : null
+  const created = withAuthor({ created_by: visibleDoc.created_by, created_at: visibleDoc.created_at })
   return { created, comments: comments.map(withAuthor), versions: visibleVersions }
 }
