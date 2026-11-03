@@ -1652,6 +1652,7 @@ function ChoiceBox({
         choices={inChoiceOrder([...choices, ...ticked], choices)}
         ticked={ticked}
         onChange={(next) => onChange(withTicked(filters, column.column_name, next, choices))}
+        settle={(next) => tickedChoices(withTicked([], column.column_name, next, choices), column.column_name)}
         buttonText={ticked.length ? `${ticked.length} selected` : 'All'}
         testId={`std-filter-${column.column_name}`}
         listTestId={`std-choices-${column.column_name}`}
