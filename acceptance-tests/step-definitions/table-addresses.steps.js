@@ -54,3 +54,23 @@ When('the user opens that spelling as a Table address', async function () {
 Then('the ambiguity is reported without opening either Table', async function () {
   await this.withApi(api => this.addresses.ambiguity(api));
 });
+When("the user attempts to create another Table with Route Probe's address", async function () {
+  await this.withApi(api => this.addresses.refuseSlugTwin(api));
+});
+Then('the new Table is refused without changing Route Probe', async function () {
+  await this.withApi(api => this.addresses.unchangedAfterRefusal(api));
+});
+Then('the original Route Probe remains reachable with its unchanged identity', async function () {
+  this.addresses = new TableAddresses(await this.signedIn('the route editor'));
+  await this.addresses.originalReachable();
+});
+When("the user imports rows into a new Table with Route Probe's address", async function () {
+  this.addresses = new TableAddresses(await this.asSystemManager());
+  await this.withApi(api => this.addresses.importSlugTwin(api));
+});
+Then('the imported Table is refused without changing Route Probe', async function () {
+  await this.withApi(api => this.addresses.importRefused(api));
+});
+Then('a new Table with a different address can still be imported', async function () {
+  await this.withApi(api => this.addresses.importOther(api));
+});

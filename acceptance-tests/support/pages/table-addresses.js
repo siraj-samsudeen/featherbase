@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { expect } = require('playwright/test');
 const { FormPage } = require('./form-page');
 const { ListPage } = require('./list-page');
+const { ImportWizardPage } = require('./import-wizard-page');
 const { acceptanceSql, restartAcceptance } = require('../stack');
 
 // Literal expected addresses are deliberately independent of the application's
@@ -204,6 +205,65 @@ class TableAddresses {
     await expect(this.page.getByTestId('breadcrumbs')).toContainText('System Settings');
     await expect(this.page.getByTestId('form-status')).toHaveText('Saved');
     await expect(this.page.getByRole('heading', { name: /System Settings:/ })).toBeVisible();
+  }
+  async refuseSlugTwin(api) {
+    this.originalMetadata = await (await api.call('GET', '/api/table/route-probe:meta', undefined, [200])).json();
+    this.originalRow = await api.row('Route Probe', 'Stock review');
+    this.refusal = await api.call('POST', '/api/table_def', {
+      name: 'Route Probe ', columns: [{ column_name: 'subject', column_type: 'Data' }],
+    });
+  }
+  async unchangedAfterRefusal(api) {
+    assert.equal(this.refusal.status(), 409, await this.refusal.text());
+    assert.match(await this.refusal.text(), /Route Probe/);
+    const metadata = await (await api.call('GET', '/api/table/route-probe:meta', undefined, [200])).json();
+    assert.deepEqual(metadata, this.originalMetadata);
+    assert.deepEqual(await api.row('Route Probe', 'Stock review'), this.originalRow);
+    const rows = await api.call('GET', '/api/table/route-probe', undefined, [200]);
+    assert.equal((await rows.json()).total, 2);
+  }
+  async originalReachable() {
+    await this.navigate('Route Probe');
+    await this.path(ROOT);
+    await this.page.getByTestId('list-rows').getByRole('link', { name: 'Stock review', exact: true }).click();
+    await this.path(STOCK);
+    await this.formReady();
+    await expect(this.page.getByLabel('Review title', { exact: true })).toHaveValue('Stock review');
+    await expect(this.page.getByLabel('Review notes', { exact: true })).toHaveValue('Existing Stock review');
+    await this.page.reload();
+    await expect(this.page.getByLabel('Review notes', { exact: true })).toHaveValue('Existing Stock review');
+  }
+  async importSlugTwin(api) {
+    this.originalMetadata = await (await api.call('GET', '/api/table/route-probe:meta', undefined, [200])).json();
+    this.originalRow = await api.row('Route Probe', 'Stock review');
+    const wizard = new ImportWizardPage(this.page);
+    await wizard.open();
+    await wizard.dropCsv('route-probe.csv', 'subject,notes\nIncoming,Must not land\n');
+    await wizard.asNewTable('Route Probe ');
+    const response = this.page.waitForResponse(r => new URL(r.url()).pathname === '/api/table_def' && r.request().method() === 'POST');
+    await this.page.getByTestId('iw-import').click();
+    this.refusal = await response;
+    assert.equal(this.refusal.request().postDataJSON().name, 'Route Probe ');
+  }
+  async importRefused(api) {
+    await this.unchangedAfterRefusal(api);
+    await expect(this.page.getByTestId('iw-failure-0')).toContainText('Route Probe');
+    await expect(this.page.getByTestId('iw-result-0')).toHaveCount(0);
+    await expect(this.page.getByTestId('list-view')).toHaveCount(0);
+  }
+  async importOther(api) {
+    await api.removeTableIfPresent('Route Import Other');
+    const wizard = new ImportWizardPage(this.page);
+    await wizard.open();
+    await wizard.dropCsv('route-other.csv', 'subject,notes\nIncoming,Allowed import\n');
+    await wizard.asNewTable('Route Import Other');
+    await wizard.importAll();
+    await this.path('/featherbase/admin/table/route-import-other');
+    await expect(this.page.getByTestId('list-rows')).toContainText('Incoming');
+    const rows = await api.call('GET', '/api/table/route-import-other', undefined, [200]);
+    const imported = (await rows.json()).data;
+    assert.equal(imported.length, 1);
+    assert.equal((await api.row('Route Import Other', imported[0].row_id)).notes, 'Allowed import');
   }
   static async ambiguousDefinitions(api) {
     await TableAddresses.arrange(api, 'Legacy Route Probe');
