@@ -38,7 +38,7 @@
 
 ## 6. Single-PR verification and trial
 
-- [ ] 6.1 Run proportionate tests after each stable commit and the combined suites/typechecks at integration; record exact commands in the one Tasker PR.
+- [x] 6.1 Run proportionate tests after each stable commit and the combined suites/typechecks at integration; record exact commands in the one Tasker PR.
 - [x] 6.2 Have an independent verifier run the numbered UI checklist at 1280px and 375px in light/dark; deliver screenshots and a spec-versus-built table, fix differences and rerun.
 - [x] 6.3 Run feather-code-review for hidden access, migration and scheduling logic, at most two Codex rounds; fix blockers and record remaining findings.
 - [x] 6.4 Prove the new app version's install, upgrade, fingerprints and retained data; do not modify an installed artifact under its old version.
