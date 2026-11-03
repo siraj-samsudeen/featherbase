@@ -71,7 +71,9 @@ function syntheticApi(): Plugin {
           if (request.method === 'GET' && path === '/api/search') return send({ results: [] })
           if (request.method === 'POST' && path === '/api/set_theme') return send({ ok: true })
           if (request.method === 'POST' && path === '/api/events') {
-            const timestamps = (body.events as unknown[]).map(() => Date.now())
+            const now = Date.now()
+            const timestamps = (body.events as { at?: unknown }[]).map((event) =>
+              typeof event?.at === 'number' ? Math.min(Math.max(event.at, now - 7 * 86_400_000), now) : now)
             return send({ inserted: timestamps.length, timestamps })
           }
           if (request.method === 'POST' && path === '/api/row_titles') {
