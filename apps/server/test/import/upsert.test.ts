@@ -862,6 +862,49 @@ describe('#851 permission-safe matching suggestions', () => {
     expect(await importState()).toEqual(before)
   })
 
+  test('analysis offers only editable matching columns', async ({ admin }) => {
+    await setup(admin, { columns: [
+      { column_name: 'zone', column_type: 'Data' },
+      { column_name: 'pop', column_type: 'Int', read_only: true },
+      { column_name: 'section', column_type: 'Section Break' },
+    ] })
+    await admin.post(PATH, { rows: [{ row_id: 'A', zone: 'Alpha' }] })
+    const before = await importState()
+    expect(await admin.post(PATH, {
+      analyze_keys: true, columns: ['pop', 'section', 'row_id', 'zone'],
+      rows: [{ row_id: 'A', zone: 'Alpha', pop: 13 }],
+    })).toEqual({ key_candidates: [
+      { column: 'row_id', matched: 1, complete: true, can_match: true },
+      { column: 'zone', matched: 1, complete: true, can_match: true },
+    ] })
+    expect(await importState()).toEqual(before)
+  })
+
+  test('analysis refuses a failed row read instead of reporting no overlap', async ({ admin }) => {
+    await setup(admin)
+    await seed(admin)
+    const before = await importState()
+    // Inject a database read failure without substituting the permission or
+    // document code: keys remain readable, but loading a complete row fails.
+    await sql`alter table featherbase.upsert_target rename to upsert_analysis_backing`
+    await sql`create view featherbase.upsert_target as select row_id, created_by, updated_at, zone,
+      1 / (pop - pop) as pop from featherbase.upsert_analysis_backing`
+    await sql`savepoint analysis_read_fault`
+    try {
+      const response = await admin.fetch(PATH, { method: 'POST', body: JSON.stringify({
+        analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }],
+      }) })
+      expect(response.status).toBe(500)
+      expect(await response.json()).toEqual({ error: { type: 'InternalError', message: 'Internal server error' } })
+    } finally {
+      await sql`rollback to savepoint analysis_read_fault`
+      await sql`release savepoint analysis_read_fault`
+      await sql`drop view featherbase.upsert_target`
+      await sql`alter table featherbase.upsert_analysis_backing rename to upsert_target`
+    }
+    expect(await importState()).toEqual(before)
+  })
+
   test('readable overlap survives a refusal to write matched rows', async ({ admin, createUser }) => {
     await setup(admin)
     await seed(admin)
