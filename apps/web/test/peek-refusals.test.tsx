@@ -75,3 +75,17 @@ test('peeking at, or selecting, a connected Table deleted meanwhile says it cann
   expect(await within(related).findByTestId('list-rows-error')).toHaveTextContent(/Prf Order/)
   expect(within(related).queryByText('Only order')).not.toBeInTheDocument()
 })
+
+test('opening Related after its owner was deleted shows a refusal, not an empty relationship list', async ({ admin }) => {
+  const user = userEvent.setup()
+  const { asha, order } = await seed(admin)
+  await renderApp(`/featherbase/admin/table/prf-customer/row/${asha.row_id}`, admin)
+  await screen.findByRole('textbox', { name: 'Label' })
+  await admin.delete(`/api/table/${enc('Prf Order')}/${order.row_id}`)
+  await admin.delete(`/api/table/${enc('Prf Customer')}/${asha.row_id}`)
+
+  await user.click(screen.getByRole('tab', { name: 'Related' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Cannot load relationships.')
+  expect(screen.queryByRole('navigation', { name: 'Relationships' })).not.toBeInTheDocument()
+  expect(screen.queryByText('No readable relationships.')).not.toBeInTheDocument()
+})

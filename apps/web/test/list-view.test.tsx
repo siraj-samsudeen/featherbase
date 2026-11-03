@@ -199,6 +199,13 @@ test('Bulk Check edits persist true and false only on rows selected after cleari
   await openList(admin, table)
   await waitFor(() => expect(cellTexts('title')).toHaveLength(2))
 
+  const initialTarget = within(rowsEl()).getByRole('link', { name: 'change' }).closest('tr')!
+  fireEvent.click(within(initialTarget).getByTestId('row-check'))
+  expect(screen.getByTestId('bulk-count')).toHaveTextContent('1 selected')
+  fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }))
+  expect(screen.queryByTestId('bulk-bar')).not.toBeInTheDocument()
+  expect(within(initialTarget).getByTestId('row-check')).not.toBeChecked()
+
   fireEvent.click(screen.getByTestId('select-all'))
   expect(screen.getByTestId('bulk-count')).toHaveTextContent('2 selected')
   fireEvent.click(screen.getByTestId('select-all'))
