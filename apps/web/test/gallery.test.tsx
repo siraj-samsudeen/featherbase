@@ -105,7 +105,7 @@ test('filters component examples by purpose', async () => {
   await user.type(screen.getByRole('searchbox', { name: 'Search components' }), 'list')
   expect(screen.getByRole('heading', { name: 'List (a table when wide, cards on a phone)' })).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Buttons' })).not.toBeInTheDocument()
-  expect(screen.getByText('apps/web/src/components/ui/DataList.tsx')).toBeInTheDocument()
+  expect(screen.getByText('packages/shop-floor/src/DataList.tsx')).toBeInTheDocument()
 })
 
 test('shows every section, flips light and dark, and raises both toasts', async () => {
