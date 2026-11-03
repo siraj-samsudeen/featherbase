@@ -71,3 +71,17 @@ test('Adding a filter on Status offers its choices to tick, and only in', async 
   expect(options('filter-op')).toEqual(['in'])
   expect(tickNames(list)).toEqual(['Open', 'Closed'])
 })
+
+/** Ticks the named choices in an open list. */
+function tick(list: HTMLElement, ...names: string[]) {
+  for (const name of names) fireEvent.click(within(list).getByRole('checkbox', { name }))
+}
+
+test("Ticking Ground and First Floor shows both floors' rows, with one chip naming both", async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  tick(addFilterOn('floor'), 'Ground', 'First Floor')
+  fireEvent.click(screen.getByTestId('filter-add'))
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
+  expect(screen.getAllByTestId('filter-chip').map((c) => c.textContent)).toEqual(['floor in Ground, First Floor×'])
+})
