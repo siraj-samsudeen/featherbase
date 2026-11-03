@@ -33,6 +33,38 @@ function acceptanceDatabaseUrl() {
   return url.toString();
 }
 
+// An outside database for data-source scenarios: a sibling of the acceptance
+// database (a data source may never reach the platform's own), read through a
+// login that owns nothing. Its password is new each run; the API is started
+// knowing the URL, under the variable a scenario's data source names.
+const EXTERNAL_URL_ENV = 'ACCEPTANCE_EXTERNAL_READER_URL';
+const EXTERNAL_READER = 'acceptance_external_reader';
+const EXTERNAL_READER_PASSWORD = require('node:crypto').randomBytes(18).toString('hex');
+
+function externalDatabaseUrl({ asReader = false } = {}) {
+  const url = new URL(acceptanceDatabaseUrl());
+  url.pathname = `${url.pathname}_ext`;
+  if (asReader) {
+    url.username = EXTERNAL_READER;
+    url.password = EXTERNAL_READER_PASSWORD;
+  }
+  return url.toString();
+}
+
+async function ensureExternalDatabase() {
+  const name = new URL(externalDatabaseUrl()).pathname.slice(1);
+  const [exists] = await acceptanceSql('select 1 from pg_database where datname = $1', [name]);
+  if (!exists) await acceptanceSql(`create database "${name}"`);
+}
+
+/** Runs SQL on the outside database as its owner. */
+async function externalSql(statement, parameters = []) {
+  const { default: postgres } = require(require.resolve('postgres', { paths: [path.join(REPO_ROOT, 'apps/server')] }));
+  const db = postgres(externalDatabaseUrl(), { max: 1, prepare: false, onnotice() {} });
+  try { return await db.unsafe(statement, parameters); }
+  finally { await db.end(); }
+}
+
 const children = [];
 const logs = [];
 let apiChild;
@@ -46,6 +78,7 @@ function isolatedEnvironment(overrides = {}) {
     SMTP_HOST: '', SMTP_USER: '', SMTP_PASSWORD: '',
     GOOGLE_CLIENT_SECRET: 'acceptance-private-secret',
     ALLOW_MOCK_OAUTH: '1', PREAUTH_LOGIN_MAX: '10000', WEB_ORIGINS: BASE_URL,
+    [EXTERNAL_URL_ENV]: externalDatabaseUrl({ asReader: true }),
     ...overrides,
   };
 }
@@ -156,6 +189,7 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
   const env = isolatedEnvironment();
   for (const command of ['e2e:reset', 'migrate'])
     execFileSync('pnpm', ['--filter', 'server', command], { cwd: REPO_ROOT, env, timeout: 120_000, stdio: 'pipe' });
+  await ensureExternalDatabase();
   // No watcher: tsx watch starts its own process group and can survive the
   // scenario API's shutdown, retaining stale schema and environment state.
   const api = apiChild = start('api', ['--filter', 'server', 'start'], env);
@@ -178,4 +212,7 @@ AfterAll(async function () {
 
 process.on('exit', stopAll);
 
-module.exports = { BASE_URL, API_URL, PROTOTYPE_URL, resetAcceptance, restartAcceptance, acceptanceSql, isolatedEnvironment, REPO_ROOT };
+module.exports = {
+  BASE_URL, API_URL, PROTOTYPE_URL, resetAcceptance, restartAcceptance, acceptanceSql, isolatedEnvironment, REPO_ROOT,
+  externalSql, EXTERNAL_URL_ENV, EXTERNAL_READER, EXTERNAL_READER_PASSWORD,
+};

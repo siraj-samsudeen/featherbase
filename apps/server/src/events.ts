@@ -40,7 +40,7 @@ function id(): string {
   return randomBytes(8).toString('hex')
 }
 
-export async function recordEvents(user: string, events: IncomingEvent[]): Promise<number> {
+export async function recordEvents(user: string, events: IncomingEvent[]): Promise<number[]> {
   const now = Date.now()
   const rows = events.map((e) => {
     const at = typeof e.at === 'number' ? Math.min(Math.max(e.at, now - MAX_EVENT_AGE_MS), now) : now
@@ -66,7 +66,7 @@ export async function recordEvents(user: string, events: IncomingEvent[]): Promi
   await sql`
     delete from user_event
     where occurred_at < now() - make_interval(days => ${RETENTION_DAYS})`
-  return rows.length
+  return rows.map((row) => row.occurred_at.getTime())
 }
 
 // #440: before the recorder knew the static admin pages, it logged them as a

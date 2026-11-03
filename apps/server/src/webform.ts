@@ -43,6 +43,7 @@ export async function getWebFormConfig(route: string): Promise<WebFormConfig> {
       column_type: f.column_type,
       reference_table: f.reference_table ?? null,
       choices: f.choices ?? null,
+      choice_labels: f.choice_labels ?? null,
       reqd: Boolean(f.reqd),
     }))
   return {

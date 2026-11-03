@@ -582,3 +582,143 @@ When a System Manager switches Remarks into its list
 Then a colleague opening the list of "Section Mapping" sees Remarks
 And no row's values have changed
 ```
+
+### Requirement: Readable labels without replacing authored wording
+
+The platform SHALL supply readable labels when none are authored, retaining
+common acronyms. Upgrading built-in labels SHALL preserve custom wording,
+overrides and effective translations.
+Fresh and existing instances SHALL converge through an ordered, repeatable
+update limited to enumerated exact old defaults on noncustom platform columns.
+A legacy base label needed by an installed translation SHALL be retained.
+
+#### Scenario: Generated labels leave authored wording intact
+
+```gherkin
+Given the user defines a contact list with an unlabelled client identifier and an authored service label
+When the user opens the contact list
+Then the generated identifier label is readable with its acronym preserved
+And the authored service label is unchanged
+```
+
+#### Scenario: Upgrade preserves customized wording
+
+```gherkin
+Given the user has customized and translated labels beside unchanged platform defaults
+When the platform label update is applied
+Then eligible unchanged platform defaults become readable without displacing installed translations
+And the user's custom wording and effective translations remain unchanged
+```
+
+### Requirement: Authored choice wording does not change saved values
+
+Forms, lists, filters and public forms SHALL show an existing original-value
+translation first, otherwise translated authored wording, otherwise the value
+verbatim. Translations SHALL NOT be recased. Display wording SHALL NOT change
+allowed or saved values, filters, exports, row requests/responses or definition
+editors, and SHALL NOT become an additional valid value.
+
+#### Scenario: Readable policy choice keeps its original value
+
+```gherkin
+Given the user has a contact list with authored wording for a technical policy choice
+When the user chooses that policy and saves a contact
+Then the contact shows the authored policy wording in its form, list and filter control
+And filtering by that policy finds the contact using its original value
+```
+
+#### Scenario: Unmapped choices keep their authored text
+
+```gherkin
+Given the user has a contact list with an unmapped choice containing underscores and no translation
+When the user opens that choice in a contact
+Then the choice text is shown verbatim
+```
+
+#### Scenario: Installed choice translations keep their wording
+
+```gherkin
+Given the user's contact policy has different translations for its original value and its authored wording
+When the user opens that policy in a contact
+Then the existing translation of the original value is shown unchanged
+```
+
+### Requirement: Recognize a Table in its settings
+
+The user SHALL recognize a saved Table by its own name rather than an unrelated grouping value. An explicitly authored display name MUST retain precedence.
+
+#### Scenario: SAP Plant is identified rather than its module
+
+```gherkin
+Given the user has a Table called "SAP Plant" in the "Custom" module
+When the user opens the settings for "SAP Plant"
+Then the settings identify "SAP Plant" rather than "Custom"
+```
+
+#### Scenario: An authored display name takes precedence
+
+```gherkin
+Given the user has a Table called "SAP Plant" in the "Custom" module
+And its effective authored display name is "Plant catalogue"
+When the user opens the settings for "SAP Plant"
+Then the settings identify "Plant catalogue"
+```
+
+### Requirement: Copy the authoritative storage identity
+
+The user SHALL be able to copy a saved Table's read-only schema, relation and physical row key when its metadata is readable. The identity MUST describe actual local, shared Settings or connected storage, not a name inferred from its label.
+
+#### Scenario: SAP Plant exposes its local storage
+
+```gherkin
+Given the user has a Table called "SAP Plant" in the "Custom" module
+When the user opens the settings for "SAP Plant"
+Then the user can copy schema "featherbase", relation "sap_plant" and row key "row_id" without editing them
+```
+
+#### Scenario: SAP Plant belongs to an installed app
+
+```gherkin
+Given an installed app owns "SAP Plant" with explicitly mapped storage
+When the user opens the settings for the app's "SAP Plant"
+Then the user can copy the app's mapped storage identity rather than a name inferred from its label
+```
+
+#### Scenario: SAP Plant uses shared Settings storage
+
+```gherkin
+Given "SAP Plant" is a Settings Table in the "Custom" module
+When the user opens the settings for "SAP Plant"
+Then the user can copy shared storage "featherbase.single_value" with key "table_name, field" and discriminator "SAP Plant"
+```
+
+#### Scenario: SAP Plant is connected to outside storage
+
+```gherkin
+Given "SAP Plant" is connected to an outside Data Source in the "Custom" module
+When the user opens the settings for "SAP Plant"
+Then its storage identity describes its source binding without credentials
+```
+
+#### Scenario: SAP Plant metadata is not readable
+
+Reading a Table's definition alone MUST NOT disclose storage when the described Table's metadata is denied; the definition form remains usable.
+
+```gherkin
+Given the user can read the definition of "SAP Plant" but not its metadata
+When the user opens the settings for "SAP Plant"
+Then its storage identity is not disclosed and the definition form remains usable
+```
+
+### Requirement: Do not invent a warehouse destination
+
+A warehouse destination SHALL be shown only when Featherbase has an authoritative configured CDC mapping for the Table. Without that mapping the destination MUST be absent, not inferred from a Table name or Data Source. This change introduces no CDC configuration or integration.
+
+#### Scenario: SAP Plant has no configured warehouse mapping
+
+```gherkin
+Given the user has a Table called "SAP Plant" in the "Custom" module
+And Featherbase has no configured warehouse mapping for "SAP Plant"
+When the user opens the settings for "SAP Plant"
+Then no warehouse destination is shown
+```
