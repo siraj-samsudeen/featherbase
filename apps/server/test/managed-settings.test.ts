@@ -102,7 +102,7 @@ describe('Admin saves of a locked field are refused (D5)', () => {
   test('the message names the field and says where it is changed', async ({ admin }) => {
     await apply()
     const err = await expectApiError(admin.post('/api/save_row', { table: 'System Settings', row: { app_name: 'Drifted' } }), LOCKED)
-    expect(err.message).toContain(`App name on System Settings is set in the instance settings file (${INSTANCE_SETTINGS_FILE}), so it cannot be changed here. Change it in the file, then apply the file.`)
+    expect(err.message).toContain(`App Name on System Settings is set in the instance settings file (${INSTANCE_SETTINGS_FILE}), so it cannot be changed here. Change it in the file, then apply the file.`)
     expect(err.fields).toEqual({ app_name: 'set in the instance settings file' })
   })
 

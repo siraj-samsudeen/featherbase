@@ -1,4 +1,5 @@
 export { tableSchemaToZod, zodFieldErrors, type ColumnDef } from './schema'
+export { choiceLabel } from './choice-label'
 export { DISPLAY_DEFAULTS } from './display-settings'
 export { METADATA_OVERRIDE_PROPERTIES, METADATA_OVERRIDE_BOOLEAN_VALUES } from './metadata-overrides'
 export { calendarDay, fmtInstantIST, isCalendarDay, isLocalMidnight, localIso, wallTimeToInstant } from './dates'
