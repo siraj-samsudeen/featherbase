@@ -827,17 +827,66 @@ describe('#851 permission-safe matching suggestions', () => {
     await seed(admin)
     const before = await importState()
     const analyze = (rows: Record<string, unknown>[], columns = ['zone', 'pop']) =>
-      admin.post<{ key_candidates: { column: string; matched: number; complete: boolean }[] }>(PATH, {
+      admin.post<{ key_candidates: { column: string; matched: number; complete: boolean; can_match: boolean }[] }>(PATH, {
         analyze_keys: true, rows, columns,
       })
     const full = await analyze([{ zone: ' Alpha ', pop: 12000 }, { zone: 'Bravo', pop: 8400 }])
     expect(full.key_candidates).toEqual([
-      { column: 'zone', matched: 2, complete: true },
-      { column: 'pop', matched: 2, complete: true },
+      { column: 'zone', matched: 2, complete: true, can_match: true },
+      { column: 'pop', matched: 2, complete: true, can_match: true },
     ])
     const partial = await analyze([{ zone: 'Alpha' }, { zone: 'New' }], ['zone'])
-    expect(partial.key_candidates).toEqual([{ column: 'zone', matched: 1, complete: false }])
+    expect(partial.key_candidates).toEqual([{ column: 'zone', matched: 1, complete: false, can_match: true }])
     expect(await importState()).toEqual(before)
+  })
+
+  test('readable overlap survives a refusal to write matched rows', async ({ admin, createUser }) => {
+    await setup(admin)
+    await seed(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, can_read: true, can_create: true, can_write: false,
+    } })
+    const user = await createUser({ roles: [ROLE] })
+    const readable = await user.get<{ data: { zone: string }[] }>(
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["zone"]')}&order_by=zone%20asc`,
+    )
+    expect(readable.data).toEqual([{ zone: 'Alpha' }, { zone: 'Bravo' }])
+    const before = await importState()
+    const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
+      analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }, { zone: 'Bravo' }],
+    }) })
+    expect(response.status).toBe(201)
+    expect(await response.json()).toEqual({ key_candidates: [
+      { column: 'zone', matched: 2, complete: true, can_match: false },
+    ] })
+    const keyed = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
+      key_column: 'zone', rows: [{ zone: 'Alpha', pop: 1 }],
+    }) })
+    expect(keyed.status).toBe(403)
+    expect(await importState()).toEqual(before)
+  })
+
+  test('read-all coverage survives own-row-only write scope', async ({ admin, createUser }) => {
+    await setup(admin)
+    await seed(admin)
+    const writer = `${ROLE} Writer`
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: writer } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, can_read: true, can_create: true,
+    } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: writer, can_write: true, own_rows_only: true,
+    } })
+    const user = await createUser({ roles: [ROLE, writer] })
+    const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
+      analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }, { zone: 'Bravo' }],
+    }) })
+    expect(response.status).toBe(201)
+    expect(await response.json()).toEqual({ key_candidates: [
+      { column: 'zone', matched: 2, complete: true, can_match: false },
+    ] })
   })
 
   test('analysis excludes blank, repeated and ambiguous candidates', async ({ admin }) => {
@@ -871,10 +920,18 @@ describe('#851 permission-safe matching suggestions', () => {
     await setup(admin)
     await seed(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    const writer = `${ROLE} Writer`
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: writer } })
     await admin.post('/api/save_row', { table: 'Permission', row: {
-      ref_table: DT, role: ROLE, can_read: true, can_write: true, can_create: true, own_rows_only: true,
+      ref_table: DT, role: ROLE, can_read: true, can_create: true, own_rows_only: true,
     } })
-    const user = await createUser({ roles: [ROLE] })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: writer, can_write: true, own_rows_only: false,
+    } })
+    const user = await createUser({ roles: [ROLE, writer] })
+    await user.post(PATH, { rows: [{ zone: 'Mine', pop: 1 }] })
+    const mine = await user.post(PATH, { analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Mine' }] })
+    expect(mine).toEqual({ key_candidates: [{ column: 'zone', matched: 1, complete: true, can_match: true }] })
     const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
       analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }],
     }) })
