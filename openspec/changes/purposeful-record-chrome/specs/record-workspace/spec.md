@@ -84,3 +84,66 @@ Given Tenkasi has a discussion and a recorded edit
 When the user consults its activity
 Then the discussion and edit appear together once
 ```
+
+### Requirement: Navigate related rows through one contextual workspace
+
+Related SHALL offer one searchable path selector beside the selected native list. Empty paths SHALL stay selectable and quieter. Table/Column/via paths, mandatory filters, permission-scoped counts/rows, owner breadcrumbs, full-list/peek/new navigation and unfinished Work edits SHALL retain their context and existing permissions as illustrated below.
+
+Example names are acceptance fixtures, not shipped app schema.
+
+#### Scenario: Distinct paths to the same Table include an empty relationship
+
+```gherkin
+Given North workshop has two readable Lab Task relationships through project and review_project
+And project has two related rows while review_project has none
+When the user selects review_project in Related
+Then the native list shows no rows for review_project
+And the single relationship selector keeps both paths available with their separate counts
+```
+
+#### Scenario: Relationship search does not change the selected row scope
+
+```gherkin
+Given review_project is selected among North workshop's two Lab Task relationships
+When the user searches relationships for review
+Then the selector shows one matching relationship out of two
+And the selected review_project list still shows zero rows
+```
+
+#### Scenario: Record search retains the owner and selected path
+
+```gherkin
+Given North workshop has Prepare workshop and Review materials through project
+And another project has Review budget through project
+When the user searches North workshop's project relationship for Review
+Then only Review materials is listed
+And clearing record search restores only North workshop's project rows
+```
+
+#### Scenario: Work survives consulting a related path
+
+```gherkin
+Given the user can edit North workshop
+When the user changes its region to Unfinished North and consults Related before returning to Work
+Then Unfinished North remains present as an unsaved edit
+And the saved region has not changed
+```
+
+#### Scenario: Related navigation retains context and existing capabilities
+
+```gherkin
+Given the user can read North workshop's project relationship and create related Lab Task rows
+When the user consults that relationship
+Then breadcrumbs identify North workshop, Related and the project path without a second Home root
+And Open full list and permitted peek retain the project relationship's filters
+And new related-row navigation prefills project with North workshop's row identifier
+```
+
+#### Scenario: Related navigation grants no new access
+
+```gherkin
+Given the user may read only one of two Lab Task rows related to North workshop and may not create Lab Task rows
+When the user consults North workshop's project relationship
+Then the relationship count and native list include only the readable row
+And no related-row creation is offered
+```

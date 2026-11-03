@@ -19,3 +19,14 @@
 - [x] 3.3 Run reader-operation acceptance red; reuse actual operation authorization in a generic per-row display descriptor; test reader/owner/non-owner/write-share asymmetry and fresh grants, then rerun browser verification.
 - [ ] 3.4 Obtain required ordinary local hidden-logic review. Unmet: installed Codex returns 401; no alternate authenticated reviewer available. Manager retains the exact-head review queue; GitHub feedback does not substitute for this gate.
 - [ ] 3.5 Owner reviews media before spec sync/archive; hold UI merge until owner return and explicit authorization. No deployment authorized.
+
+## 4. Owner-selected Related A refinement
+
+- [x] 4.1 Record manager relay of Siraj's Related A approval and numbered issue checklist 11–14. Update the existing design/spec/tasks with the confirmed refinement; no new ADR or policy.
+- [x] 4.2 Compose the real-component prototype using #773's attributed primitives and actual native ListView/FormView. Send inspected 1280px default/path/search/empty screenshots and pointer/keyboard evidence to manager. This completes the prototype milestone only, not production or security verification.
+- [x] 4.3 Polish the clipped placeholder to Search relations while preserving the full Search relationships accessible label. Capture, inspect and present the complete initial edit → Related → Work prototype cycle: Region North → Unfinished North; saved value remains North. Strict change validation, web typecheck/build and production-preview exclusion checks pass.
+- [ ] 4.4 Obtain presentation/review clearance for the real-component preview before production replacement. Planning confirmation and prototype evidence do not satisfy this gate.
+- [ ] 4.5 Bind the Related examples acceptance-first and demonstrate the current duplicate selectors/context loss fail without weakening existing assertions.
+- [ ] 4.6 Replace duplicate ConnectionsPanel/RelatedTabs surfaces with one searchable path selector and the native selected list. Preserve immutable relationship filters, distinct table/column/via identities, zero-count paths, contextual breadcrumbs, prefill/peek/permission invariants and mounted Work drafts. No native toolbar redesign or new controls.
+- [ ] 4.7 Run relevant acceptance/component/typecheck/build checks and real HTTP/browser role, path and search cases; obtain independent headless final UI verification at 1280px and inspect default/non-default screenshots plus the complete edit/Related/Work clip.
+- [ ] 4.8 Revalidate the exact integrated head after #802 and reconcile #774's shared map, #773 primitives and #821 canonical URLs. Keep ordinary local hidden-logic review and explicit owner UI merge approval outstanding until actually satisfied. No merge or deployment.

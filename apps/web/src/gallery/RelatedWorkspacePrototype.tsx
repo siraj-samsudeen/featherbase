@@ -27,7 +27,7 @@ export function RelatedWorkspacePrototype() {
       { id: 'work', label: 'Work', content: <FormView table="Lab Project" name={owner} /> },
       { id: 'related', label: 'Related', content: <div className="flex min-h-full min-w-0 gap-6">
         <aside className="w-64 shrink-0 border-r border-border pr-4">
-          <SearchableList label="Search relationships" items={items} query={query} onQueryChange={setQuery} getSearchText={(connection) => `${label(connection)} ${connection.count}`}>
+          <SearchableList label="Search relationships" placeholder="Search relations" items={items} query={query} onQueryChange={setQuery} getSearchText={(connection) => `${label(connection)} ${connection.count}`}>
             {(matching) => <nav aria-label="Relationships" className="flex flex-col gap-1">
               {matching.map((connection) => <button key={key(connection)} type="button" aria-pressed={key(active) === key(connection)}
                 onClick={() => setSelected(key(connection))}
