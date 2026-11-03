@@ -1,7 +1,7 @@
 ## 1. Acceptance-first examples
 
-- [ ] 1.1 Author executable steps for the Table-address scenarios and demonstrate the spaced-name navigation failure on unchanged code.
-- [ ] 1.2 Demonstrate the reserved Table/row collision failures; retain query and canonical-name controls.
+- [x] 1.1 Author executable steps for the Table-address scenarios and demonstrate the spaced-name navigation failure on unchanged code.
+- [x] 1.2 Demonstrate the reserved Table/row collision failures; retain query and canonical-name controls.
 
 ## 2. Implementation
 
