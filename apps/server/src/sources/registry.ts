@@ -105,11 +105,13 @@ export function resolveUrl(cfg: SourceConfig): string {
 export function assertAllowed(cfg: SourceConfig, schema: string, table: string): void {
   if (!cfg.allowlist) return
   const qualified = schema ? `${schema}.${table}` : table
-  if (!cfg.allowlist.includes(qualified))
+  if (!cfg.allowlist.includes(qualified)) {
+    const guidance = allowlistQualificationGuidance(cfg.engine, cfg.allowlist.join('\n'))
     throw new AppError(
       'PermissionError',
-      `Table ${qualified} is not in the allowlist of data source ${cfg.name}`,
+      `Table ${qualified} is not in the allowlist of data source ${cfg.name}${guidance ? `. ${guidance}` : ''}`,
     )
+  }
 }
 
 // EDS-1: Test Connection. Stamps conn_status/last_checked_at/last_error on
