@@ -85,3 +85,16 @@ test("Ticking Ground and First Floor shows both floors' rows, with one chip nami
   await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
   expect(screen.getAllByTestId('filter-chip').map((c) => c.textContent)).toEqual(['floor in Ground, First Floor×'])
 })
+
+test('Floor in Ground and First Floor plus Status Open shows only Open rows on those floors', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin, [['floor', 'in', ['Ground', 'First Floor']]])
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
+  tick(addFilterOn('state'), 'Open')
+  fireEvent.click(screen.getByTestId('filter-add'))
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R3']))
+  expect(screen.getAllByTestId('filter-chip').map((c) => c.textContent)).toEqual([
+    'floor in Ground, First Floor×',
+    'state in Open×',
+  ])
+})
