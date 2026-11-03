@@ -1,14 +1,16 @@
 // #772: a MotherDuck source connected by pasting its token, against the local
 // stand-in (design D4). Each test names its own source, so they never share a session.
 import { afterAll, beforeAll, describe, expect } from 'vitest'
-import { rmSync } from 'node:fs'
+import { readdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename } from 'node:path'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { overrideVariable } from '../src/env'
 import { getSource, invalidateSources } from '../src/sources/registry'
-import { run } from '../src/sources/duckdb-driver'
+import { run, stream } from '../src/sources/duckdb-driver'
 import { encryptSecret } from '../src/secret-store'
-import { addStandinTable, buildStandin, STANDIN_TOKENS } from './motherduck-standin'
+import { addStandinTable, buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
 
 let dir: string
 beforeAll(async () => {
@@ -107,6 +109,34 @@ describe('A pasted token stays secret', () => {
 })
 
 describe('A warehouse token can be replaced', () => {
+  test('concurrent first public previews open only one source session', async ({ admin }) => {
+    await connect(admin, 'md-concurrent-open', ['sales'])
+    const folders = () => readdirSync(tmpdir()).filter(n => n.startsWith(`fb-md-session-${basename(dir)}-`))
+    const before = new Set(folders())
+    const previews = await Promise.all(Array.from({ length: 8 }, () => admin.get<{ rows: number }>(`${SOURCES}/md-concurrent-open:preview?database=sales&schema=main&table=stores`)))
+    expect(previews.map(p => p.rows)).toEqual(Array(8).fill(3))
+    expect(folders().filter(n => !before.has(n))).toHaveLength(1)
+  })
+
+  test('token replacement keeps an active source reader alive until it finishes', async ({ admin }) => {
+    await changeStandin(dir, 'sales', ['create table session_rows as select i as id from range(4100) t(i)'])
+    await connect(admin, 'md-active-reader', ['sales'])
+    const folders = () => readdirSync(tmpdir()).filter(n => n.startsWith(`fb-md-session-${basename(dir)}-`))
+    const before = new Set(folders())
+    const reader = stream(await getSource('md-active-reader'), 'select id from sales.main.session_rows order by id')
+    try {
+      const first = await reader.next()
+      expect(first.done).toBe(false)
+      await admin.post(`${SOURCES}/md-active-reader:replace_token`, { token: STANDIN_TOKENS.second })
+      await admin.get(`${SOURCES}/md-active-reader:preview?database=sales&schema=main&table=stores`)
+      expect(folders().filter(n => !before.has(n))).toHaveLength(2)
+      let count = first.value!.length
+      for await (const chunk of reader) count += chunk.length
+      expect(count).toBe(4100)
+      await expect.poll(() => folders().filter(n => !before.has(n)).length).toBe(1)
+    } finally { await reader.return(undefined) }
+  })
+
   test('a working new token replaces the old one; a refused one changes nothing', async ({ admin }) => {
     await connect(admin, 'md-replace')
     await expect(admin.post(`${SOURCES}/md-replace:replace_token`, { token: STANDIN_TOKENS.refused })).rejects.toMatchObject({ status: 417 })

@@ -156,6 +156,14 @@ describe('Copy a warehouse table into Featherbase', () => {
     expect(await admin.get('/api/table/Atomic%20Copy/S001')).toMatchObject({ display_name: 'Generic success' })
   })
 
+  test('failed copy provenance creation leaves no native Table', async ({ admin }) => {
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-create-failure', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await sql.unsafe(`create function refuse_copy_provenance() returns trigger language plpgsql as $$ begin raise exception 'Copy provenance refused'; end $$;
+      create trigger refuse_copy_provenance before insert on featherbase.table_copy for each row execute function refuse_copy_provenance()`)
+    await expect(admin.post(`${SOURCES}/tc-create-failure:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Atomic Creation Copy', key: 'code', columns: STORES })).rejects.toMatchObject({ status: 500 })
+    await expect(admin.get('/api/table/Atomic%20Creation%20Copy:meta')).rejects.toMatchObject({ status: 404 })
+  })
+
   test('a failed source observation leaves the target untouched', async ({ admin }) => {
     await changeStandin(dir, 'sales', ['create table failing_stores as select * from stores'])
     await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-source-failure', token: STANDIN_TOKENS.reader, databases: ['sales'] })
