@@ -64,7 +64,7 @@ test('pickers: Person searches the people directory and never offers built-ins o
 test('a Data Scope row picks a Person or a Service account; the Person picker shows name and handle', async ({ admin }) => {
   await admin.post('/api/save_row', { table: 'Person', row: { full_name: 'Asha Kumar', username: 'asha.k' } })
   await admin.post('/api/save_row', { table: 'Person', row: { email: 'no.name@example.com' } })
-  await renderApp('/featherbase/admin/Data%20Scope/new', admin)
+  await renderApp('/featherbase/admin/table/data-scope/new', admin)
   const person = await screen.findByPlaceholderText('Reference: Person')
   expect(screen.getByPlaceholderText('Reference: Service Account')).toBeInTheDocument()
   await userEvent.type(person, 'asha')
@@ -78,7 +78,7 @@ test('a Data Scope row picks a Person or a Service account; the Person picker sh
 })
 
 test('the Share form offers the same two pickers', async ({ admin }) => {
-  await renderApp('/featherbase/admin/Share/new', admin)
+  await renderApp('/featherbase/admin/table/share/new', admin)
   expect(await screen.findByPlaceholderText('Reference: Person')).toBeInTheDocument()
   expect(screen.getByPlaceholderText('Reference: Service Account')).toBeInTheDocument()
 })
@@ -99,7 +99,7 @@ test('names, not ids: a comment by a person shows their name and initials', asyn
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Comment', role: 'All', can_read: true, can_create: true, can_write: true } })
   const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Names Row', row: { title: 'discuss' } })
   await asha.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Names Row', ref_name: doc.row_id, content: 'looks right, mail sm.atk@jeyarama.com' } })
-  await renderApp(`/featherbase/admin/Names%20Row/${doc.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/names-row/row/${doc.row_id}`, admin)
   const author = await screen.findByTestId('comment-author')
   await waitFor(() => expect(author).toHaveTextContent('Asha Kumar'))
   expect(screen.getByTestId('comment-initials')).toHaveTextContent('AK')
@@ -112,7 +112,7 @@ test('names, not ids: a comment by a person shows their name and initials', asyn
 
 test('the Person list shows each person’s name in its first column', async ({ admin, createUser }) => {
   const ravi = await createUser({ email: 'ravi.list@example.com', fullName: 'Ravi Menon' })
-  await renderApp('/featherbase/admin/Person', admin)
+  await renderApp('/featherbase/admin/table/person', admin)
   await waitFor(() => expect(screen.getAllByTestId('principal-name').some((n) => n.textContent === 'Ravi Menon')).toBe(true))
   const table = screen.getAllByTestId('principal-name')[0].closest('table') as HTMLElement
   expect(within(table).queryByText(ravi.user!)).toBeNull()
@@ -130,7 +130,7 @@ test('a name the viewer may not read is "Unnamed person", never a stuck "…" or
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Comment', role: 'All', can_read: true, can_create: true, can_write: true } })
   const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Hidden Row', row: { title: 'x' } })
   await author.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Hidden Row', ref_name: doc.row_id, content: 'hello' } })
-  await renderApp(`/featherbase/admin/Hidden%20Row/${doc.row_id}`, reader)
+  await renderApp(`/featherbase/admin/table/hidden-row/row/${doc.row_id}`, reader)
   const name = await screen.findByTestId('comment-author')
   await waitFor(() => expect(name).toHaveTextContent('Unnamed person'))
   expect(name.textContent).not.toContain(author.user!)
@@ -141,7 +141,7 @@ test('a name the viewer may not read is "Unnamed person", never a stuck "…" or
 test('a Person form is headed by the name, never the id, offers no Rename, and Recent remembers the name', async ({ admin, createUser }) => {
   const asha = await createUser({ email: 'asha.form@example.com', fullName: 'Asha Form' })
   localStorage.clear()
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(asha.user!)}`, admin)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(asha.user!)}`, admin)
   const form = await screen.findByTestId('form-view')
   const heading = within(form).getByRole('heading', { level: 1 })
   await waitFor(() => expect(heading).toHaveTextContent('Person: Asha Form'))
@@ -160,7 +160,7 @@ test('a Person form is headed by the name, never the id, offers no Rename, and R
 test('saving a new full name on the Person form shows the new name at once', async ({ admin, createUser }) => {
   const p = await createUser({ email: 'renamed.form@example.com', fullName: 'Old Name' })
   localStorage.clear()
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(p.user!)}`, admin)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(p.user!)}`, admin)
   const form = await screen.findByTestId('form-view')
   const heading = within(form).getByRole('heading', { level: 1 })
   await waitFor(() => expect(heading).toHaveTextContent('Person: Old Name'))
@@ -177,7 +177,7 @@ test('saving a new full name on the Person form shows the new name at once', asy
 test('a Recent row for a person with no caption shows the name and no id tooltip', async ({ admin, createUser }) => {
   const p = await createUser({ email: 'nosub.recent@example.com', fullName: 'Nosub Person' })
   localStorage.clear()
-  recordAction(admin.user!, { kind: 'row', key: `row:Person/${p.user!}`, label: p.user!, path: `/featherbase/admin/Person/${p.user!}` })
+  recordAction(admin.user!, { kind: 'row', key: `row:Person/${p.user!}`, label: p.user!, path: `/featherbase/admin/table/person/row/${p.user!}` })
   await renderApp('/featherbase/admin/all-tables', admin)
   const rows = await screen.findAllByTestId('sidebar-recent')
   const row = rows.find((r) => r.getAttribute('href')?.includes(p.user!))!

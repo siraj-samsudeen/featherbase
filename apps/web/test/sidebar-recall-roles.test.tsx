@@ -13,6 +13,7 @@
 // Two claims: the rows are links, and a page button keeps its name to itself
 // even when a chip is wearing the same words.
 
+import { tableSlug } from 'shared'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
@@ -46,7 +47,7 @@ function seedTrail(user: string) {
   for (const at of [1, 2, 3])
     recordAction(
       user,
-      { kind: 'row', key: 'row:Saved Search/SS-1', label: 'Saved Search', sub: 'row', path: '/featherbase/admin/Saved%20Search/SS-1' },
+      { kind: 'row', key: 'row:Saved Search/SS-1', label: 'Saved Search', sub: 'row', path: '/featherbase/admin/table/saved-search/row/SS-1' },
       Date.now() - at * 1000,
     )
 }
@@ -55,12 +56,12 @@ test('sidebar recall rows expose the link role, never button', async ({ admin })
   await seed(admin)
   seedTrail('Administrator')
 
-  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/new`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/new`, admin)
   await screen.findByTestId('form-view')
 
   const row = await screen.findByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
   expect(row).toHaveRole('link')
-  expect(row).toHaveAttribute('href', '/featherbase/admin/Saved%20Search/SS-1')
+  expect(row).toHaveAttribute('href', '/featherbase/admin/table/saved-search/row/SS-1')
   expect(screen.queryAllByRole('button')).not.toContain(row)
   // Modified clicks belong to the browser (new tab/window), not the SPA.
   expect(fireEvent.click(row, { ctrlKey: true })).toBe(true)
@@ -72,7 +73,7 @@ for (const repeats of [0, 1, 2]) {
     await seed(admin)
     const now = Date.now()
     const trail = (name: string, at: number) => recordAction('Administrator', {
-      kind: 'list', key: `list:${name}`, label: name, path: `/featherbase/admin/${name}`,
+      kind: 'list', key: `list:${name}`, label: name, path: `/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(name)))}`,
     }, at)
     for (let i = 0; i < repeats; i++) {
       trail(`Frequent${i}`, now - 20_000 - i)
@@ -81,7 +82,7 @@ for (const repeats of [0, 1, 2]) {
     for (let i = 0; i < 6; i++) trail(`Recent${i}`, now - 1000 - i)
     // A recent destination is also highly frequent: never duplicate it.
     if (repeats) trail('Recent0', now - 500)
-    await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/new`, admin)
+    await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/new`, admin)
     await screen.findByTestId('form-view')
     await waitFor(() => {
       const recent = screen.getAllByTestId('sidebar-recent')
@@ -101,7 +102,7 @@ test("a chip wearing a button's words does not widen that button's name lookup",
   await seed(admin)
   seedTrail('Administrator')
 
-  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/new`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/new`, admin)
   await screen.findByTestId('form-view')
   await screen.findByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
 

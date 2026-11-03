@@ -2,6 +2,7 @@
 // bulk delete the server refuses part-way, backing out of the Delete Table
 // dialog by clicking outside or pressing Escape, and the filter-reuse counter
 // keeping itself small and surviving a corrupt entry. Refusals are the server's.
+import { tableSlug } from 'shared'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { test, expect, renderApp } from './pg-test'
 
@@ -25,7 +26,7 @@ async function seed(admin: Admin, name: string, submittable = false) {
 
 async function open(admin: Admin, table: string, filters?: unknown) {
   const search = filters ? `?filters=${enc(JSON.stringify(filters))}` : ''
-  await renderApp(`/featherbase/admin/${enc(table)}${search}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}${search}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   return screen.findByTestId('list-rows')
 }

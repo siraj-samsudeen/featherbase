@@ -1,4 +1,5 @@
 import { test, expect, adminAuth } from './fixtures'
+import { rowHref } from 'shared'
 
 // #832: a link cell in a grid of nested rows (a person's roles) offers the
 // linked Table's rows. The grid scrolls sideways, which would cut off a list
@@ -17,7 +18,7 @@ test("a person's role is picked from a list that the grid does not cut off", asy
   expect(made.status()).toBe(201)
   const { row_id } = (await made.json()) as { row_id: string }
 
-  await session.visit(`/admin/Person/${encodeURIComponent(row_id)}`).assertHas('[data-testid="add-row-roles"]')
+  await session.visit(rowHref('Person', row_id)).assertHas('[data-testid="add-row-roles"]')
 
   await session.step('typing "Sys" in the new role offers System Manager, fully visible over the page', async ({ page }) => {
     await page.getByTestId('add-row-roles').click()

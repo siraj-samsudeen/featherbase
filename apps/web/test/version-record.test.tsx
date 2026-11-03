@@ -7,6 +7,7 @@ process.env.TZ = 'Asia/Kolkata'
 import { screen, waitFor, within } from '@testing-library/react'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
+import { rowHref } from 'shared'
 
 const T = 'Vr Plant'
 const ENC = encodeURIComponent(T)
@@ -39,7 +40,7 @@ async function editedPlant(admin: Admin) {
 let shown: { unmount: () => void } | undefined
 async function openVersion(admin: Admin, versionId: string) {
   shown?.unmount()
-  shown = await renderApp(`/featherbase/admin/Version/${encodeURIComponent(versionId)}`, admin)
+  shown = await renderApp(rowHref('Version', versionId), admin)
   return screen.findByTestId('change-record', {}, { timeout: 10_000 })
 }
 
@@ -64,7 +65,7 @@ test('#825: the header says what changed, by whom and when, and links to the row
   await waitFor(() => expect(header).toHaveTextContent('Administrator'))
   expect(header).toHaveTextContent(T)
   expect(header).toHaveTextContent('03-Nov-2026 11:10 IST')
-  expect(within(header).getByRole('link', { name: rowId })).toHaveAttribute('href', `/featherbase/admin/${ENC}/${encodeURIComponent(rowId)}`)
+  expect(within(header).getByRole('link', { name: rowId })).toHaveAttribute('href', `/featherbase/admin/table/vr-plant/row/${encodeURIComponent(rowId)}`)
 })
 
 test('#825: the stored JSON stays available, collapsed, and is no longer the main view', async ({ admin }) => {

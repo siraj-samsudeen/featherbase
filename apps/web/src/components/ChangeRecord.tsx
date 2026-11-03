@@ -23,7 +23,7 @@ export function ChangeRecord({ values }: { values: Record<string, unknown> }) {
           {row && (
             <>
               {' · '}
-              <RouterLink to="/featherbase/admin/$table/$name" params={{ table, name: row }} search={{ prefill: undefined }} className="text-action hover:underline">
+              <RouterLink to="/featherbase/admin/table/$table/row/$name" params={{ table, name: row }} search={{ prefill: undefined }} className="text-action hover:underline">
                 {row}
               </RouterLink>
             </>

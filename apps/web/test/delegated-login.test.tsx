@@ -87,7 +87,7 @@ test('with a connected service the page opens on its form, and the other ways in
 test('another connected service changes the form, and Google keeps the intended destination', async () => {
   await configureDelegated()
   await configureDelegated({ key: 'payroll', label: 'Payroll' })
-  const next = '/featherbase/admin/Sign%20In%20Method/google'
+  const next = '/featherbase/admin/table/sign-in-method/row/google'
   await renderApp(`/featherbase/login?next=${encodeURIComponent(next)}`, anonymous)
   const user = userEvent.setup()
   await screen.findByTestId('delegated-login-form')

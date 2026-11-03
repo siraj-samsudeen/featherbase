@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
@@ -237,7 +238,7 @@ test('IMP-013: leave a sheet out, drop a column, and drive the target picker', a
     await page.getByTestId('iw-import').click()
 
     // Single active sheet: lands on the new Table's list.
-    await expect(page).toHaveURL(new RegExp('/admin/Wizard%20Keep'))
+    await expect(page).toHaveURL(new RegExp('/featherbase/admin/table/wizard-keep'))
   })
 
   // pick_b was excluded; the sheet left off the overview created nothing.
@@ -271,7 +272,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
     await request.get(`/api/table/${encodeURIComponent(EXISTING_DT)}:count`, { headers })
   ).json()) as { count: number }
 
-  await session.visit(`/admin/${encodeURIComponent(EXISTING_DT)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(EXISTING_DT))}`)
 
   // Unique per run: this spec appends to a persistent Table, so a fixed SKU
   // would accumulate across runs and break the exactly-one-row assertion.
@@ -293,7 +294,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
     // sheet's own row count in the card header.
     await expect(page.getByTestId('iw-view-target-0')).toHaveAttribute(
       'href',
-      `/featherbase/admin/${encodeURIComponent(EXISTING_DT)}`,
+      `/featherbase/admin/table/${encodeURIComponent(tableSlug(EXISTING_DT))}`,
     )
     await expect(page.getByTestId('iw-view-target-0')).toHaveAttribute('target', '_blank')
     await expect(page.getByTestId('iw-target-count-0')).toContainText(
@@ -306,7 +307,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
 
     await page.getByTestId('iw-import').click()
     // Single-sheet import navigates to the target Table's list.
-    await expect(page).toHaveURL(new RegExp(`/admin/Wizard%20Stock`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/wizard-stock`))
     await expect(page.getByTestId('list-rows')).toContainText(sku)
   })
 

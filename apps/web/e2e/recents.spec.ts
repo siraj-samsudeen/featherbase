@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 
 const DT = 'Recents DT'
@@ -7,13 +8,13 @@ const DOC = 'quokka-recent-doc'
 const DOC_TITLE = 'searchable'
 
 test('#827: typed results follow keyboard selection across groups', async ({ session }) => {
-  await session.visit('/featherbase/admin/Person')
+  await session.visit('/featherbase/admin/table/person')
   await session.step('choose the Table, new row, record and command with plain arrows', async ({ page }) => {
     const bar = page.getByRole('textbox', { name: 'Search or type a command' })
     for (const [target, path] of [
-      ['awesomebar-table', '/featherbase/admin/Person'],
-      ['awesomebar-new', '/featherbase/admin/Person/new'],
-      ['awesomebar-doc', '/featherbase/admin/Table/Person'],
+      ['awesomebar-table', '/featherbase/admin/table/person'],
+      ['awesomebar-new', '/featherbase/admin/table/person/new'],
+      ['awesomebar-doc', '/featherbase/admin/table/table/row/Person'],
     ]) {
       await page.keyboard.press('Meta+k')
       await bar.fill('person')
@@ -78,14 +79,14 @@ test('#827: a replacement search cannot activate the previous query record', asy
     await bar.press('Enter')
     await expect(bar).not.toBeFocused()
     await expect(page).not.toHaveURL(/\/all-tables$/)
-    expect(decodeURIComponent(new URL(page.url()).pathname)).not.toContain('/Table/Person')
+    expect(decodeURIComponent(new URL(page.url()).pathname)).not.toContain('/table/table/row/Person')
   })
 })
 
 for (const activation of ['pointer', 'Enter', 'focused link'] as const) {
   for (const alreadyOpen of [false, true]) {
     test(`#822: ${activation} dismisses a Table destination${alreadyOpen ? ' already open' : ''}`, async ({ session }) => {
-      await session.visit(alreadyOpen ? '/featherbase/admin/Sign%20In%20Method' : '/featherbase/admin/all-tables')
+      await session.visit(alreadyOpen ? '/featherbase/admin/table/sign-in-method' : '/featherbase/admin/all-tables')
       await session.step('activate the destination, then reopen the command bar', async ({ page }) => {
         await expect(page.getByTestId('all-tables-link')).toBeVisible()
         const bar = page.getByRole('textbox', { name: 'Search or type a command' })
@@ -101,7 +102,7 @@ for (const activation of ['pointer', 'Enter', 'focused link'] as const) {
           await expect(destination).toBeFocused()
           await page.keyboard.press('Enter')
         }
-        await expect(page).toHaveURL(/\/featherbase\/admin\/Sign%20In%20Method$/)
+        await expect(page).toHaveURL(/\/featherbase\/admin\/table\/sign-in-method$/)
         await expect(page.getByTestId('table-page')).toBeVisible()
         await expect(page.getByTestId('awesomebar-results')).toBeHidden()
         await expect(bar).not.toBeFocused()
@@ -144,10 +145,10 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('#101: an empty command bar lists recent visits and replays them', async ({ session }) => {
   // Build a trail: a filtered list, then a row.
   const filters = encodeURIComponent(JSON.stringify([['note', '=', 'searchable']]))
-  await session.visit(`/admin/${encodeURIComponent(DT)}?filters=${filters}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}?filters=${filters}`)
   await session.step('build a trail, then replay it from the empty command bar', async ({ page }) => {
     await expect(page.getByTestId('table-page')).toBeVisible()
-    await page.goto(`/admin/${encodeURIComponent(DT)}/${DOC}`)
+    await page.goto(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`)
     await expect(page.getByTestId('form-view')).toBeVisible()
     await page.goto('/admin')
 
@@ -173,17 +174,17 @@ test('#101: an empty command bar lists recent visits and replays them', async ({
     await expect(recents.first()).toBeVisible()
     await bar.press('ArrowDown')
     await bar.press('Enter')
-    await expect(page).toHaveURL(new RegExp(`${encodeURIComponent(DT)}/${DOC}`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`))
     await expect(page.getByTestId('form-view')).toBeVisible()
   })
 })
 
 test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ session }) => {
   const filters = encodeURIComponent(JSON.stringify([['note', '=', 'searchable']]))
-  await session.visit(`/admin/${encodeURIComponent(DT)}?filters=${filters}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}?filters=${filters}`)
   await session.step('sidebar recall and the per-table strip both replay the trail', async ({ page }) => {
     await expect(page.getByTestId('table-page')).toBeVisible()
-    await page.goto(`/admin/${encodeURIComponent(DT)}/${DOC}`)
+    await page.goto(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`)
     await expect(page.getByTestId('form-view')).toBeVisible()
 
     // Sidebar recall, zero keystrokes: the row we're on tops the group.
@@ -201,7 +202,7 @@ test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ s
     await expect(page.getByTestId('table-page')).toBeVisible()
 
     // The strip above the grid shows this table's recent row + filter set.
-    await page.goto(`/admin/${encodeURIComponent(DT)}`)
+    await page.goto(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     const strip = page.getByTestId('recent-strip')
     await expect(strip.getByTestId('recent-strip-row').first()).toContainText(DOC_TITLE)
     await expect(strip.getByTestId('recent-strip-view').first()).toContainText('Note = searchable')
@@ -210,13 +211,13 @@ test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ s
     await strip.getByTestId('recent-strip-view').first().click()
     await expect(page).toHaveURL(/filters=/)
     await strip.getByTestId('recent-strip-row').first().click()
-    await expect(page).toHaveURL(new RegExp(`${encodeURIComponent(DT)}/${DOC}`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`))
     await expect(page.getByTestId('form-view')).toBeVisible()
   })
 })
 
 test('#101 P3: the trail reaches the server in debounced batches', async ({ session, request }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${DOC}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`)
   await session.step('the row visit is present', async ({ page }) => {
     await expect(page.getByTestId('form-view')).toBeVisible()
   })
@@ -261,7 +262,7 @@ test('#101 P5: resume tiles put yesterday one click away', async ({ session }) =
 
     // The row tile resumes the form.
     await page.getByTestId('resume-tile-row').click()
-    await expect(page).toHaveURL(new RegExp(`${encodeURIComponent(DT)}/${DOC}`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`))
     await expect(page.getByTestId('form-view')).toBeVisible()
   })
 })
@@ -274,7 +275,7 @@ test('#101: searches are remembered and offered back while typing', async ({ ses
     await bar.fill('quokka-rec')
     await expect(page.getByTestId('awesomebar-doc').first()).toBeVisible()
     await bar.press('Enter')
-    await expect(page).toHaveURL(new RegExp(`${encodeURIComponent(DT)}/${DOC}`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`))
 
     await page.goto('/admin')
 

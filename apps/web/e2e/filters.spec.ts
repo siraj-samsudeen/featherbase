@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, adminToken, bearer } from './fixtures'
 import { ensureListTableA, LIST_DT_A as DT_A } from './fixtures-ui'
 
@@ -17,7 +18,7 @@ test.beforeAll(async ({ request }) => {
 // presence/text/count checks the DSL can express.
 test('UI-003: filters narrow results, persist in the URL across reload, and are removable', async ({ session }) => {
   await session
-    .visit(`/admin/${encodeURIComponent(DT_A)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT_A))}`)
     .assertHas('[data-testid="list-total"]', { text: '30 total' })
 
   // qty >= 25 -> 5 rows
@@ -118,7 +119,7 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
   // Typed by hand, never built by the app: qty >= 7 -> 3 of the 10 rows.
   // Filters are [field, op, value] triples (see `parsed` in router.tsx).
   const filters = encodeURIComponent(JSON.stringify([['qty', '>=', 7]]))
-  await session.visit(`/admin/${encodeURIComponent(DT_COLD)}?filters=${filters}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT_COLD))}?filters=${filters}`)
   await session
     .assertHas('[data-testid="filter-chip"]', { count: 1 })
     .within('[data-testid="list-total"]', (total) => total.assertExactText('3 total'))
@@ -137,7 +138,7 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
   // discarded, not handed to ListView — which indexes each entry as a triple
   // and would throw, blanking the page.
   for (const bad of ['{}', '[null]', '["qty",">=",7]', '[["qty"]]', 'not json']) {
-    await session.visit(`/admin/${encodeURIComponent(DT_COLD)}?filters=${encodeURIComponent(bad)}`)
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT_COLD))}?filters=${encodeURIComponent(bad)}`)
     await session
       .within('[data-testid="list-total"]', (total) => total.assertExactText('10 total'))
       .assertHas('[data-testid="filter-chip"]', { count: 0 })

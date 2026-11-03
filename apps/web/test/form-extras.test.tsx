@@ -52,7 +52,7 @@ const stored = (admin: Admin, id = 'visit-1') =>
 test('a yes/no, a date, a date-time and the order of sub-table rows are saved as edited', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
-  await renderApp(`/featherbase/admin/${enc('Fx Visit')}/visit-1`, admin)
+  await renderApp(`/featherbase/admin/table/fx-visit/row/visit-1`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('done')).toBeInTheDocument())
 
@@ -92,7 +92,7 @@ test('an invalid date-time set by a client script stays editable instead of brea
       script: `featherbase.ui.form.on('Fx Visit', { onload: function (frm) { frm.set_value('met_at', 'not-a-date') } })`,
     },
   })
-  await renderApp(`/featherbase/admin/${enc('Fx Visit')}/visit-1`, admin)
+  await renderApp(`/featherbase/admin/table/fx-visit/row/visit-1`, admin)
   await screen.findByTestId('form-view')
   await waitFor(() => expect(screen.getByTestId('form-status')).toHaveTextContent('Not saved'))
   expect(field('met_at')).toHaveValue('')
@@ -104,7 +104,7 @@ test('an invalid date-time set by a client script stays editable instead of brea
 
 test('the ↗ beside a linked row opens that row', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/${enc('Fx Visit')}/visit-1`, admin)
+  await renderApp(`/featherbase/admin/table/fx-visit/row/visit-1`, admin)
   fireEvent.mouseDown(await screen.findByTestId('link-open-store', {}, { timeout: 8000 }))
   await waitFor(() => expect(field('city')).toHaveValue('Kochi'))
   expect(screen.getByTestId('breadcrumbs')).toHaveTextContent('Fx Store')
@@ -113,7 +113,7 @@ test('the ↗ beside a linked row opens that row', async ({ admin }) => {
 test('renaming a row moves the links to it; a name already taken is refused and nothing moves', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
-  await renderApp(`/featherbase/admin/${enc('Fx Store')}/store-1`, admin)
+  await renderApp(`/featherbase/admin/table/fx-store/row/store-1`, admin)
   await user.click(await screen.findByTestId('form-rename', {}, { timeout: 8000 }))
   // Cancel leaves the name alone.
   await user.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -153,7 +153,7 @@ test('a client script runs on load against the loaded row, keeping its values', 
       `,
     },
   })
-  await renderApp(`/featherbase/admin/${enc('Fx Visit')}/visit-1`, admin)
+  await renderApp(`/featherbase/admin/table/fx-visit/row/visit-1`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('note')).toHaveValue('opened visit-1'), { timeout: 3000 })
   expect(field('store')).toHaveValue('store-1')
@@ -172,7 +172,7 @@ test('a client script runs on load once: after saving, the form stays saved', as
       script: `featherbase.ui.form.on('Fx Visit', { onload: function (frm) { frm.set_value('qty', Number(frm.doc.qty || 0) + 1) } })`,
     },
   })
-  await renderApp(`/featherbase/admin/${enc('Fx Visit')}/visit-1`, admin)
+  await renderApp(`/featherbase/admin/table/fx-visit/row/visit-1`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('qty')).toHaveValue(1), { timeout: 3000 })
   expect(screen.getByTestId('form-status')).toHaveTextContent('Not saved')
@@ -200,7 +200,7 @@ test('a client script runs on load against a cached row under StrictMode, keepin
       script: `featherbase.ui.form.on('Fx Visit', { onload: function (frm) { frm.set_value('note', 'opened ' + frm.doc.row_id) } })`,
     },
   })
-  const path = `/featherbase/admin/${enc('Fx Visit')}/visit-1`
+  const path = `/featherbase/admin/table/fx-visit/row/visit-1`
   const first = await renderApp(path, admin)
   await waitFor(() => expect(field('note')).toHaveValue('opened visit-1'), { timeout: 8000 })
   const { queryClient } = first
@@ -234,7 +234,7 @@ test('a client script that fails while running says so, can be dismissed, and th
       })`,
     },
   })
-  await renderApp(`/featherbase/admin/${enc('Fx Visit')}/visit-1`, admin)
+  await renderApp(`/featherbase/admin/table/fx-visit/row/visit-1`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('qty')).toBeInTheDocument())
 
@@ -260,7 +260,7 @@ test('a client script whose load handler fails says so instead of breaking the f
       script: `featherbase.ui.form.on('Fx Visit', { onload: function () { throw new Error('cannot start') } })`,
     },
   })
-  await renderApp(`/featherbase/admin/${enc('Fx Visit')}/visit-1`, admin)
+  await renderApp(`/featherbase/admin/table/fx-visit/row/visit-1`, admin)
   expect(await screen.findByTestId('client-script-error', {}, { timeout: 8000 })).toHaveTextContent(
     'Client script error (onload): cannot start',
   )
@@ -270,7 +270,7 @@ test('a client script whose load handler fails says so instead of breaking the f
 test('the delete confirmation can be backed out of with Cancel, Escape or a click outside', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
-  await renderApp(`/featherbase/admin/${enc('Fx Visit')}/visit-1`, admin)
+  await renderApp(`/featherbase/admin/table/fx-visit/row/visit-1`, admin)
   const open = async () => {
     await user.click(await screen.findByTestId('form-delete', {}, { timeout: 8000 }))
     return screen.getByTestId('delete-row-dialog')
