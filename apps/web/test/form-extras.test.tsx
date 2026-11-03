@@ -113,7 +113,7 @@ test('the ↗ beside a linked row opens that row', async ({ admin }) => {
 test('renaming a row moves the links to it; a name already taken is refused and nothing moves', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
-  await renderApp(`/featherbase/admin/table/fx-store/row/store-1`, admin)
+  const { router } = await renderApp(`/featherbase/admin/table/fx-store/row/store-1`, admin)
   await user.click(await screen.findByRole('button', { name: 'Record actions' }))
   await user.click(await screen.findByTestId('form-rename', {}, { timeout: 8000 }))
   // Cancel leaves the name alone.
@@ -131,7 +131,9 @@ test('renaming a row moves the links to it; a name already taken is refused and 
   await user.type(screen.getByTestId('rename-input'), 'store-kochi')
   await user.click(screen.getByTestId('rename-confirm'))
   await waitFor(() => expect(screen.queryByTestId('rename-input')).not.toBeInTheDocument())
-  await waitFor(() => expect(screen.getByTestId('breadcrumbs')).toHaveTextContent('store-kochi'))
+  // The breadcrumb resolves the readable title, not the row's technical ID.
+  await waitFor(() => expect(router.state).toMatchObject({ location: { pathname: '/featherbase/admin/table/fx-store/row/store-kochi' } }))
+  await waitFor(() => expect(screen.getByTestId('breadcrumbs')).toHaveTextContent('Kochi'))
   expect(field('city')).toHaveValue('Kochi')
   expect((await stored(admin)).store).toBe('store-kochi')
 })
