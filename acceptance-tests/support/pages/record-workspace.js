@@ -173,7 +173,7 @@ class RelatedWorkspace extends RecordWorkspace {
   }
   async retainedEdit() {
     await expect(this.page.getByLabel('Region', { exact: true })).toHaveValue('Unfinished North');
-    await expect(this.page.getByTestId('form-banner')).toHaveText('Not saved');
+    await expect(this.page.getByTestId('form-status')).toHaveText('Not saved');
   }
   async context() {
     const crumbs = this.rows().getByRole('navigation', { name: 'Related breadcrumb', exact: true });
@@ -198,7 +198,9 @@ class RelatedWorkspace extends RecordWorkspace {
   async prefilledNew() {
     await this.rows().getByTestId('list-new').click();
     await expect(this.page.getByTestId('form-view')).toBeVisible();
-    await expect(this.page.locator('[data-field="project"] input')).toHaveValue('North workshop');
+    // Generic Reference controls currently display the row identifier, not a
+    // promised title-first picker (#793 remains separately owned).
+    await expect(this.page.getByRole('combobox', { name: 'Project', exact: true })).toHaveValue('lab-north');
   }
   async onlyReadableRow() {
     await expect(this.rows().getByTestId('list-total')).toHaveText('1 total');

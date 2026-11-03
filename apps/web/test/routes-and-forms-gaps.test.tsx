@@ -2,7 +2,7 @@
 // two forms: /featherbase sending a visitor on, the Admin home for someone who
 // sees no Home Page, a new row opened with prefilled values (and an address
 // whose prefill is not an object), a yes/no on a public web form, and a yes/no
-// in an embedded list. Real server throughout.
+// in a native related rows list. Real server throughout.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
@@ -95,7 +95,7 @@ test('a public web form takes a yes/no', async ({ admin }) => {
   expect(row).toMatchObject({ full_name: 'Ada', newsletter: true })
 })
 
-test('a yes/no in an embedded list reads ✓ or ✗', async ({ admin }) => {
+test('a yes/no in the native related rows list reads ✓ or ✗', async ({ admin }) => {
   await admin.post('/api/table_def', { name: 'Rfg Store', columns: [{ column_name: 'label', column_type: 'Data', in_list_view: true }] })
   await admin.post('/api/table_def', {
     name: 'Rfg Audit',
@@ -109,8 +109,10 @@ test('a yes/no in an embedded list reads ✓ or ✗', async ({ admin }) => {
   await admin.post('/api/save_row', { table: 'Rfg Audit', row: { store: store.row_id, passed: false } })
   await renderApp(`/featherbase/admin/${enc('Rfg Store')}/${store.row_id}`, admin)
   await userEvent.click(await screen.findByRole('tab', { name: 'Related' }))
-  await userEvent.click(await screen.findByTestId('related-tab-Rfg Audit', {}, { timeout: 10_000 }))
-  const embedded = await screen.findByTestId('embedded-list')
+  const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
+  await userEvent.click(within(relationships).getByRole('button', { name: /^Rfg Audit · store\s*2$/ }))
+  const related = await screen.findByRole('region', { name: 'Related rows' })
+  const embedded = await within(related).findByTestId('list-view')
   await waitFor(() => expect(embedded.querySelectorAll('tbody tr')).toHaveLength(2))
   expect([...embedded.querySelectorAll('tbody tr')].map((r) => r.textContent).join(' ')).toMatch(/✓[\s\S]*✗|✗[\s\S]*✓/)
 })

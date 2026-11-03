@@ -1,8 +1,8 @@
-// Peeking and the related tabs when what they point at went away after the
+// Peeking and native related rows when what they point at went away after the
 // form opened: a connected Table deleted, a connected row deleted. Gaps the
 // merged web coverage report (ADR 0012) showed. Each "cannot load" comes from
 // the server's real answer, not a stub.
-import { fireEvent, screen, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 
@@ -27,16 +27,17 @@ async function seed(admin: { post: <T>(p: string, b: unknown) => Promise<T> }) {
 }
 
 async function openCustomer(admin: Parameters<typeof renderApp>[1], id: string) {
-  await renderApp(`/featherbase/admin/${enc('Prf Customer')}/${id}`, admin)
+  const app = await renderApp(`/featherbase/admin/${enc('Prf Customer')}/${id}`, admin)
   fireEvent.click(await screen.findByRole('tab', { name: 'Related' }))
-  await screen.findByTestId('connections-panel', {}, { timeout: 10_000 })
-  await screen.findByTestId('connection-count-Prf Order')
+  const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
+  expect(within(relationships).getByRole('button', { name: /^Prf Order · customer\s*1$/ })).toHaveAttribute('aria-pressed', 'true')
+  return app
 }
 
 test('peeking at a row deleted after its list was shown says it cannot be loaded', async ({ admin }) => {
   const { asha, order } = await seed(admin)
   await openCustomer(admin, asha.row_id)
-  fireEvent.click(screen.getByTestId('connection-peek-Prf Order'))
+  fireEvent.click(within(screen.getByRole('region', { name: 'Related rows' })).getByRole('button', { name: 'Peek' }))
   const list = await screen.findByTestId('peek-panel-0')
   const [row] = await within(list).findAllByTestId('peek-list-row')
   await admin.delete(`/api/table/${enc('Prf Order')}/${order.row_id}`)
@@ -45,18 +46,32 @@ test('peeking at a row deleted after its list was shown says it cannot be loaded
   expect(await within(record).findByText(`Cannot load Prf Order ${order.row_id}`)).toBeInTheDocument()
 })
 
-test('peeking at, or opening the tab of, a connected Table deleted meanwhile says it cannot be loaded', async ({ admin }) => {
+test('peeking at, or selecting, a connected Table deleted meanwhile says it cannot be loaded', async ({ admin }) => {
   const user = userEvent.setup()
   const { asha } = await seed(admin)
+  // Switch away before deletion so selecting Orders again mounts a fresh
+  // native list, rather than inspecting the already-mounted successful list.
+  await admin.post('/api/table_def', {
+    name: 'Prf Visit',
+    columns: [{ column_name: 'customer', column_type: 'Reference', reference_table: 'Prf Customer' }],
+  })
   await openCustomer(admin, asha.row_id)
+  const relationships = screen.getByRole('navigation', { name: 'Relationships' })
+  const originalRows = screen.getByRole('region', { name: 'Related rows' })
+  await within(originalRows).findByText('Only order')
+  await user.click(within(relationships).getByRole('button', { name: /^Prf Visit · customer\s*0$/ }))
+  await waitFor(() => expect(originalRows).not.toBeInTheDocument())
   await admin.delete(`/api/table_def/${enc('Prf Order')}`)
 
-  fireEvent.click(screen.getByTestId('connection-peek-Prf Order'))
+  await user.click(within(relationships).getByRole('button', { name: /^Prf Order · customer\s*1$/ }))
+  const related = screen.getByRole('region', { name: 'Related rows' })
+  fireEvent.click(within(related).getByRole('button', { name: 'Peek' }))
   const list = await screen.findByTestId('peek-panel-0')
   expect(await within(list).findByText('Cannot load Prf Order')).toBeInTheDocument()
   fireEvent.keyDown(document, { key: 'Escape' })
 
-  await user.click(screen.getByTestId('related-tab-Prf Order'))
-  expect(await screen.findByText('Cannot load Prf Order')).toBeInTheDocument()
-  expect(screen.queryByTestId('embedded-list')).not.toBeInTheDocument()
+  // The remounted native list must show its own refusal, not stale rows
+  // concealed behind the independent Peek query's error.
+  expect(await within(related).findByTestId('list-rows-error')).toHaveTextContent(/Prf Order/)
+  expect(within(related).queryByText('Only order')).not.toBeInTheDocument()
 })

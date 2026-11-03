@@ -25,7 +25,9 @@ async function collaborate(world) {
     });
     assert.equal(upload.status(), 201);
     const row = await api.row('Plant', '9154');
-    await api.call('PATCH', '/api/table/Plant/9154', { plant_name: 'Tenkasi', updated_at: row.updated_at }, [200], 'record edit');
+    await api.call('PATCH', '/api/table/Plant/9154', { plant_name: 'Tenkasi before review', updated_at: row.updated_at }, [200], 'record edit');
+    const edited = await api.row('Plant', '9154');
+    await api.call('PATCH', '/api/table/Plant/9154', { plant_name: 'Tenkasi', updated_at: edited.updated_at }, [200], 'restore reviewed name');
   });
 }
 

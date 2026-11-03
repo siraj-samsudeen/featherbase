@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
-import { INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
+import { INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, rowDisplayTitle, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
@@ -23,11 +23,11 @@ import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
 import { ActionDisclosure } from './ActionDisclosure'
 import { WorkflowActions } from './WorkflowActions'
-import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
+import { RelatedWorkspace } from './RelatedWorkspace'
 import { usePeek } from './Peek'
 import { GlossaryHelp } from './GlossaryHelp'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
-import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from './ui'
+import { ContentTabs, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from './ui'
 
 type Row = Record<string, unknown>
 
@@ -118,7 +118,6 @@ export function FormView({
   const [staleBanner, setStaleBanner] = useState(false)
   const [scriptError, setScriptError] = useState<string | null>(null)
   const [area, setArea] = useState('Work')
-  const workspaceId = useId()
 
   // CUST-003: client scripts registered for this Table. valuesRef mirrors the
   // live values so a script handler always sees current column values.
@@ -383,6 +382,36 @@ export function FormView({
     else if (!f.hidden) sections[sections.length - 1].push(f)
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
+
+  const work = <div className="flex flex-col gap-6 lg:flex-row">
+    <div className="min-w-0 max-w-3xl flex-1">
+      {sections.map((fields, si) => (
+        <div key={si} data-testid={`form-section-${si}`}
+          className={cardClasses('mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2')}>
+          {fields.map((f) => f.column_type === 'Column Break' ? (
+            <div key={f.column_name} className="hidden md:block" />
+          ) : (
+            <FieldControl key={f.column_name}
+              field={rowsReadOnly || (submittable && status !== 'draft') || managedFields.has(f.column_name) ? { ...f, read_only: true } : f}
+              managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
+              value={values[f.column_name]} error={errors[f.column_name]}
+              onChange={(v) => {
+                setField(f.column_name, v)
+                if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
+              }}
+              meta={m} values={values} setField={setField}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+    {!isNew && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
+      {/* person-identities: the one platform Table whose rows sign in. */}
+      {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
+      {table === 'Person' && <PersonSignInMethods user={name} />}
+      {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
+    </aside>}
+  </div>
 
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
@@ -666,82 +695,22 @@ export function FormView({
           </button>
         </div>
       )}
-      {!isNew && <div role="tablist" aria-label="Record workspace" className="mb-5 flex gap-1 border-b border-border">
-        {['Work', 'Related', 'Collaboration', 'Activity'].map((tab, index, tabs) => (
-          <button key={tab} id={`${workspaceId}-${tab}-tab`} role="tab" type="button"
-            aria-selected={area === tab} aria-controls={`${workspaceId}-${tab}`} tabIndex={area === tab ? 0 : -1}
-            onClick={() => setArea(tab)} onKeyDown={(e) => {
-              const next = e.key === 'ArrowRight' ? (index + 1) % tabs.length : e.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : null
-              if (next !== null) { e.preventDefault(); setArea(tabs[next]); document.getElementById(`${workspaceId}-${tabs[next]}-tab`)?.focus() }
-            }} className={`border-b-2 px-4 py-3 text-sm font-medium ${area === tab ? 'border-action text-action' : 'border-transparent text-ink-muted hover:text-ink'}`}>
-            {tab}
-          </button>
-        ))}
-      </div>}
-      <div id={`${workspaceId}-Work`} role={isNew ? undefined : 'tabpanel'} aria-labelledby={isNew ? undefined : `${workspaceId}-Work-tab`} hidden={!isNew && area !== 'Work'}>
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="min-w-0 max-w-3xl flex-1">
-          {sections.map((fields, si) => (
-            <div
-              key={si}
-              data-testid={`form-section-${si}`}
-              className={cardClasses('mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2')}
-            >
-              {fields.map((f) =>
-                f.column_type === 'Column Break' ? (
-                  <div key={f.column_name} className="hidden md:block" />
-                ) : (
-                  <FieldControl
-                    key={f.column_name}
-                    field={
-                      rowsReadOnly || (submittable && status !== 'draft') || managedFields.has(f.column_name)
-                        ? { ...f, read_only: true }
-                        : f
-                    }
-                    managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
-                    value={values[f.column_name]}
-                    error={errors[f.column_name]}
-                    onChange={(v) => {
-                      setField(f.column_name, v)
-                      if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
-                    }}
-                    meta={m}
-                    values={values}
-                    setField={setField}
-                  />
-                ),
-              )}
-            </div>
-          ))}
-        </div>
-        {!isNew && (
-          <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
-            {/* person-identities: the one platform Table whose rows sign in. */}
-            {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
-            {table === 'Person' && <PersonSignInMethods user={name} />}
-            {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
-          </aside>
-        )}
-      </div>
-      </div>
-      {!isNew && <>
-        <div id={`${workspaceId}-Related`} role="tabpanel" aria-labelledby={`${workspaceId}-Related-tab`} hidden={area !== 'Related'}>
-          <ConnectionsPanel table={table} name={name} />
-          {m.kind === 'table' && <RelatedTabs table={table} name={name} />}
-        </div>
-        <div id={`${workspaceId}-Collaboration`} role="tabpanel" aria-labelledby={`${workspaceId}-Collaboration-tab`} hidden={area !== 'Collaboration'}>
+      {isNew ? work : <ContentTabs label="Record workspace" value={area} onChange={setArea} tabs={[
+        { id: 'Work', label: 'Work', content: work },
+        { id: 'Related', label: 'Related', content: <RelatedWorkspace table={table} name={name} title={rowDisplayTitle(m, doc.data ?? {}, name)} active={area === 'Related'} /> },
+        { id: 'Collaboration', label: 'Collaboration', content: <>
           <p className="mb-4 text-sm text-ink-muted">People, tags and files for this record. Disabled features show existing content read-only.</p>
           <div className="grid max-w-5xl grid-cols-1 items-start gap-4 lg:grid-cols-3">
             <Assignments table={table} name={name} readOnly={!m.enable_assignments || !access.data?.assign} />
             <Tags table={table} name={name} readOnly={!m.enable_tags || !access.data?.tag} />
             <Attachments table={table} name={name} readOnly={!m.enable_files} canUpload={Boolean(access.data?.upload)} />
           </div>
-        </div>
-        <div id={`${workspaceId}-Activity`} role="tabpanel" aria-labelledby={`${workspaceId}-Activity-tab`} hidden={area !== 'Activity'} className="max-w-3xl space-y-4">
+        </> },
+        { id: 'Activity', label: 'Activity', content: <div className="max-w-3xl space-y-4">
           <ActivityTimeline table={table} name={name} />
           {m.enable_discussion && access.data?.comment && <Comments table={table} name={name} />}
-        </div>
-      </>}
+        </div> },
+      ]} />}
     </div>
   )
 }

@@ -101,17 +101,22 @@ export function ListView({
   table,
   filters = [],
   onFiltersChange,
+  breadcrumb,
+  newRowPrefill,
 }: {
   table: string
   filters?: Filter[]
   onFiltersChange?: (filters: Filter[]) => void
+  breadcrumb?: ReactNode
+  /** null disables direct creation for a via-sub-table relationship. */
+  newRowPrefill?: Record<string, unknown> | null
 }) {
   const meta = useMeta(table)
   const settings = useSettings()
   const isSystemManager = useIsSystemManager()
   const caps = useCapabilities()
   // #410: New is offered only to someone the server would let create a row here.
-  const canAddRows = Boolean(caps?.manage || caps?.creatable.includes(table))
+  const canAddRows = newRowPrefill !== null && Boolean(caps?.manage || caps?.creatable.includes(table))
   const queryClient = useQueryClient()
   // usable-on-any-device "Lists fit a phone": below 40rem the rows are cards.
   const narrow = useMediaQuery(NARROW_QUERY)
@@ -308,7 +313,9 @@ export function ListView({
     )
 
   const total = list.data?.total ?? 0
-  const rows = list.data?.data ?? []
+  // A refetch refusal must replace cached rows with the error, not silently
+  // keep showing a successful list after its Table/access disappeared.
+  const rows = list.isError ? [] : list.data?.data ?? []
   const childFields = (meta.data?.columns ?? []).filter(
     (f) => f.column_type === 'Sub-table' && !f.hidden,
   )
@@ -347,7 +354,7 @@ export function ListView({
           <Link
             to="/featherbase/admin/$table/$name"
             params={{ table, name: 'new' }}
-            search={{ prefill: undefined }}
+            search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
             className="text-action underline"
             data-testid="list-empty-new"
           >
@@ -502,15 +509,15 @@ export function ListView({
     <div data-testid="list-view">
       {/* Top-aligned on desktop: however many rows the actions wrap to, the first
           row sits level with the title (listview.spec "share a vertical band"). */}
-      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div>
-          <div className="text-xs text-ink-subtle">
+          {breadcrumb ?? <div className="text-xs text-ink-subtle">
             <Link to="/featherbase/admin" className="hover:text-ink">
               Home
             </Link>
             {' / '}
             {table}
-          </div>
+          </div>}
           <h1 className="text-xl font-semibold text-ink">{table}<GlossaryHelp table={table} className="ml-1" /></h1>
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
@@ -526,7 +533,7 @@ export function ListView({
           )}
         </div>
         <div
-          className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:justify-end"
+          className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:basis-64 sm:justify-end"
           data-testid="list-toolbar"
         >
           <div className="relative">
@@ -604,7 +611,7 @@ export function ListView({
             <Link
               to="/featherbase/admin/$table/$name"
               params={{ table, name: 'new' }}
-              search={{ prefill: undefined }}
+              search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
               className={buttonClasses({ variant: 'primary' })}
               data-testid="list-new"
             >

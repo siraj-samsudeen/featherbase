@@ -1,8 +1,7 @@
-// Relational navigation (#100): from a record's Connections, peek at the rows
+// Relational navigation (#100): from a record's Relationships, peek at the rows
 // that point at it, step into one of them (its fields, its sub-table, its own
-// connections), and close the stack again; and the related tabs above the
-// form, which open a short embedded list of the same rows. These are the
-// paths the merged web coverage report (ADR 0012) showed no test taking —
+// connections), and close the stack again; and the native related rows list.
+// These are paths the merged web coverage report (ADR 0012) showed no test taking —
 // core-forms.test.tsx covers peeking along a Reference field only.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -63,11 +62,11 @@ test('peek at a connection: its rows, then one row with its lines, a deeper link
   const { asha, saree, order } = await seed(admin)
   await renderApp(`/featherbase/admin/${enc('Pc Customer')}/${asha.row_id}`, admin)
   fireEvent.click(await screen.findByRole('tab', { name: 'Related' }))
-  await screen.findByTestId('connections-panel', {}, { timeout: 10_000 })
-  expect(await screen.findByTestId('connection-count-Pc Order')).toHaveTextContent('2')
+  const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
+  expect(within(relationships).getByRole('button', { name: /^Pc Order · customer\s*2$/ })).toHaveAttribute('aria-pressed', 'true')
 
   // The connection's rows, read-only, in a panel over the form.
-  fireEvent.click(screen.getByTestId('connection-peek-Pc Order'))
+  fireEvent.click(within(screen.getByRole('region', { name: 'Related rows' })).getByRole('button', { name: 'Peek' }))
   const list = await screen.findByTestId('peek-panel-0')
   const rows = await within(list).findAllByTestId('peek-list-row')
   expect(rows).toHaveLength(2)
@@ -94,10 +93,10 @@ test('peek at a connection: its rows, then one row with its lines, a deeper link
   // Esc closes the whole stack; the form is still there.
   fireEvent.keyDown(document, { key: 'Escape' })
   await waitFor(() => expect(screen.queryByTestId('peek-panel-0')).not.toBeInTheDocument())
-  expect(screen.getByTestId('connections-panel')).toBeInTheDocument()
+  expect(screen.getByRole('navigation', { name: 'Relationships' })).toBeInTheDocument()
 
   // The scrim closes it too.
-  fireEvent.click(screen.getByTestId('connection-peek-Pc Order'))
+  fireEvent.click(within(screen.getByRole('region', { name: 'Related rows' })).getByRole('button', { name: 'Peek' }))
   await screen.findByTestId('peek-panel-0')
   fireEvent.click(screen.getByTestId('peek-scrim'))
   await waitFor(() => expect(screen.queryByTestId('peek-panel-0')).not.toBeInTheDocument())
@@ -107,8 +106,8 @@ test("a peeked record's own connections open as a list, and ↗ on a list opens 
   const { asha } = await seed(admin)
   await renderApp(`/featherbase/admin/${enc('Pc Customer')}/${asha.row_id}`, admin)
   fireEvent.click(await screen.findByRole('tab', { name: 'Related' }))
-  await screen.findByTestId('connections-panel', {}, { timeout: 10_000 })
-  fireEvent.click(screen.getByTestId('connection-peek-Pc Order'))
+  const related = await screen.findByRole('region', { name: 'Related rows' })
+  fireEvent.click(within(related).getByRole('button', { name: 'Peek' }))
   const list = await screen.findByTestId('peek-panel-0')
   fireEvent.click((await within(list).findAllByTestId('peek-list-row'))[0])
   const record = await screen.findByTestId('peek-panel-1')
@@ -130,32 +129,34 @@ test("a peeked record's own connections open as a list, and ↗ on a list opens 
   expect(screen.queryByTestId('form-view')).not.toBeInTheDocument()
 })
 
-test('related tabs open a short list of the rows that point here, with ways on to the full list and a new row', async ({ admin }) => {
+test('a selected relationship shows native rows, with ways on to the full list and a new row', async ({ admin }) => {
   const user = userEvent.setup()
   const { asha, order } = await seed(admin)
   await renderApp(`/featherbase/admin/${enc('Pc Customer')}/${asha.row_id}`, admin)
   await user.click(await screen.findByRole('tab', { name: 'Related' }))
-  const tab = await screen.findByTestId('related-tab-Pc Order', {}, { timeout: 10_000 })
-  expect(within(tab).getByTestId('related-count-Pc Order')).toHaveTextContent('2')
-  await user.click(tab)
-  expect(tab).toHaveAttribute('aria-expanded', 'true')
-  const embedded = await screen.findByTestId('embedded-list')
+  const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
+  const relationship = within(relationships).getByRole('button', { name: /^Pc Order · customer\s*2$/ })
+  await user.click(relationship)
+  expect(relationship).toHaveAttribute('aria-pressed', 'true')
+  const related = await screen.findByRole('region', { name: 'Related rows' })
+  const embedded = await within(related).findByTestId('list-view')
   await waitFor(() =>
     expect(embedded.querySelectorAll('tbody a')).toHaveLength(2),
   )
   expect(embedded.querySelector(`a[href$="/${enc('Pc Order')}/${order.row_id}"]`)).not.toBeNull()
-  expect(within(embedded).getByTestId('embedded-open-list')).toHaveAttribute(
+  expect(within(related).getByRole('link', { name: 'Open full list' })).toHaveAttribute(
     'href',
     expect.stringContaining(`/featherbase/admin/${enc('Pc Order')}`),
   )
-  const create = within(embedded).getByTestId('embedded-new')
-  expect(create).toHaveTextContent('+ New Pc Order')
+  const create = within(embedded).getByRole('link', { name: 'New' })
+  expect(create).toHaveAttribute('href', expect.stringContaining(`/featherbase/admin/${enc('Pc Order')}/new`))
   // The router writes the search value as JSON, so the prefill string is quoted once more.
   const prefill = new URL(create.getAttribute('href')!, 'http://x').searchParams.get('prefill')!
   expect(JSON.parse(JSON.parse(prefill) as string)).toEqual({ customer: asha.row_id })
 
-  // Pressing the tab again folds the list away.
-  await user.click(tab)
-  expect(tab).toHaveAttribute('aria-expanded', 'false')
-  expect(screen.queryByTestId('embedded-list')).not.toBeInTheDocument()
+  // Selecting the current relationship again keeps its native rows visible.
+  await user.click(relationship)
+  expect(relationship).toHaveAttribute('aria-pressed', 'true')
+  expect(within(related).getByTestId('list-view')).toBeVisible()
+  expect(embedded.querySelectorAll('tbody a')).toHaveLength(2)
 })
