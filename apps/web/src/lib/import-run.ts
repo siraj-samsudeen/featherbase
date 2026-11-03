@@ -40,6 +40,7 @@ export interface ImportKeyCandidate {
   column: string
   matched: number
   complete: boolean
+  can_match: boolean
 }
 
 export async function analyzeImportKeys(opts: {
@@ -59,7 +60,7 @@ export async function analyzeImportKeys(opts: {
     }
     return true
   })
-  let candidates = eligible.map((column) => ({ column, matched: 0, complete: true }))
+  let candidates = eligible.map((column) => ({ column, matched: 0, complete: true, can_match: true }))
   for (let at = 0; at < opts.rows.length && candidates.length; at += IMPORT_CHUNK) {
     const res = await api.post<{ key_candidates: ImportKeyCandidate[] }>(
       `/api/table/${encodeURIComponent(opts.table)}:import`,
@@ -67,7 +68,7 @@ export async function analyzeImportKeys(opts: {
     )
     candidates = candidates.flatMap((candidate) => {
       const part = res.key_candidates.find((c) => c.column === candidate.column)
-      return part ? [{ column: candidate.column, matched: candidate.matched + part.matched, complete: candidate.complete && part.complete }] : []
+      return part ? [{ column: candidate.column, matched: candidate.matched + part.matched, complete: candidate.complete && part.complete, can_match: candidate.can_match && part.can_match }] : []
     })
   }
   return candidates

@@ -274,17 +274,16 @@ registerCollectionAction('import', {
           throw new AppError('ValidationError', `${meta.name} has no column ${column}`)
       const readTiers = await permittedTiers(user.row_id, table, 'read')
       const writeTiers = await permittedTiers(user.row_id, table, 'write')
-      const key_candidates: { column: string; matched: number; complete: boolean }[] = []
+      const key_candidates: { column: string; matched: number; complete: boolean; can_match: boolean }[] = []
       for (const column of columns) {
         const definition = meta.columns.find((c) => c.column_name === column)
         if (definition && (definition.read_only || ['Section Break', 'Column Break', 'Sub-table'].includes(definition.column_type))) continue
         const tier = definition?.tier ?? 'basic'
-        if (!readTiers.has(tier) || !writeTiers.has(tier)) continue
+        if (!readTiers.has(tier)) continue
         const matches = await resolveRows(meta, rows, column)
         // A single blank, duplicate or ambiguous key invalidates the column.
         if (matches.some((r) => r.action === 'fail')) continue
         try {
-          await assertRunPermitted(user.row_id, table, matches)
           for (const match of matches) {
             if (match.action !== 'update') continue
             // getDoc includes own-row, reference-scope and attached-row gates.
@@ -294,8 +293,19 @@ registerCollectionAction('import', {
           if (err instanceof AppError && err.type === 'PermissionError') continue
           throw err
         }
+        // Readable overlap still matters to an append-only caller. Whether
+        // this key can authorize an upsert is a separate permission fact.
+        let can_match = writeTiers.has(tier)
+        if (can_match) {
+          try {
+            await assertRunPermitted(user.row_id, table, matches)
+          } catch (err) {
+            if (err instanceof AppError && err.type === 'PermissionError') can_match = false
+            else throw err
+          }
+        }
         const matched = matches.filter((r) => r.action === 'update').length
-        key_candidates.push({ column, matched, complete: matched === rows.length })
+        key_candidates.push({ column, matched, complete: matched === rows.length, can_match })
       }
       return { key_candidates }
     }

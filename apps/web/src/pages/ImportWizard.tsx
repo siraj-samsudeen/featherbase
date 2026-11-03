@@ -369,7 +369,7 @@ function KeySuggestions({ i, table, rows, columns, suggested, label, onAccept }:
   if (!analysis.data) return <p className="mt-1 text-xs text-ink-muted">Checking matching columns…</p>
   return (
     <div className="mt-1 flex flex-wrap items-center gap-2">
-      {analysis.data.filter((c) => c.complete || c.column === suggested?.key).map((candidate) => {
+      {analysis.data.filter((c) => c.can_match && (c.complete || c.column === suggested?.key)).map((candidate) => {
         const remembered = candidate.column === suggested?.key
         return (
           <span key={candidate.column} data-testid={remembered ? `iw-key-suggested-${i}` : undefined} className="text-xs text-action">
