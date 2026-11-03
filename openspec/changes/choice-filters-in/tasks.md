@@ -42,10 +42,10 @@ Same test file.
 
 ## 5. Tests from #742 that change
 
-- [ ] 5.1 Update the tests that expect `=` and `!=` or a single dropdown for Choice
+- [x] 5.1 Update the tests that expect `=` and `!=` or a single dropdown for Choice
       (`quick-filters.test.tsx`, `list-view.test.tsx`, `e2e/quick-filters.spec.ts`, `e2e/saved-report.spec.ts`)
       so they tick with `in`, keeping what they check
-- [ ] 5.2 S1, S5 and S6 keep passing unchanged (text and Yes/No boxes, add and remove a filter)
+- [x] 5.2 S1, S5 and S6 keep passing unchanged (text and Yes/No boxes, add and remove a filter)
 
 ## 6. A hand-made in with numbers
 
@@ -68,7 +68,7 @@ Test file: `apps/web/e2e/choice-filters-in.spec.ts`, headless.
 ## 9. Final checks
 
 - [ ] 9.1 `pnpm --filter web test` and `pnpm --filter server test` pass
-- [ ] 9.2 `pnpm --filter web typecheck` passes
+- [x] 9.2 `pnpm --filter web typecheck` passes
 - [ ] 9.3 `pnpm --filter web e2e` passes, or is reported as not run if Playwright still doesn't start on this Windows
       machine
 - [ ] 9.4 `pnpm dev jeyarama/dash` boots, and the Section Mapping list works in a headless browser
