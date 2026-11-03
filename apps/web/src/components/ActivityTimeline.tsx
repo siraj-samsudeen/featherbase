@@ -3,8 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { PrincipalName } from '../lib/people'
 import { cardClasses, fmtInstant } from '@featherbase/shop-floor'
 import { activityQuery, AuthorInitials, type VersionRow } from './Comments'
-import { useMeta } from '../lib/meta'
-import { formatValue, useSettings } from '../lib/settings'
+import { useChangeFormat } from '../lib/change-format'
 
 type Entry =
   | { kind: 'comment'; at: string; who: string; content: string }
@@ -32,20 +31,11 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
     return out.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
   }, [activity.data])
 
-  // #421: a changed value reads the way the rest of the Admin shows it (a Date
-  // as DD-Mon-YYYY, money the Indian way), by its column's type.
-  const meta = useMeta(table)
-  const settings = useSettings()
-  const columnLabel = (column: string) => meta.data?.columns.find((c) => c.column_name === column)?.label ?? column
-  const columnType = (column: string) => meta.data?.columns.find((c) => c.column_name === column)?.column_type ?? 'Data'
-  // A Settings Table records its values as stored text, so a checkbox is '1'/'0'.
-  const asStored = (type: string, v: unknown) =>
-    type === 'Check' && typeof v === 'string' ? v === '1' || v === 'true' : v
-  const fmt = (column: string, v: unknown) => {
-    if (v == null || v === '') return '∅'
-    const type = columnType(column)
-    return formatValue(type, asStored(type, v), settings) || String(v)
-  }
+  // #421: a changed value reads the way the rest of the Admin shows it.
+  const format = useChangeFormat(table, '∅')
+  const columnLabel = format.label
+  const columnType = format.type
+  const fmt = format.value
 
   return (
     <div className={cardClasses('p-4')} data-testid="activity-timeline">

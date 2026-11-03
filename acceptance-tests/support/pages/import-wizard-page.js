@@ -24,6 +24,7 @@ class ImportWizardPage {
   /** Enter from the existing table's list, just as a returning importer does. */
   async openForTable(table) {
     await this.page.goto(`/featherbase/admin/${encodeURIComponent(table)}`);
+    await this.page.getByRole('button', { name: 'List actions', exact: true }).click();
     await this.page.getByTestId('open-import').click();
     await this.page.getByTestId('import-wizard').waitFor();
   }
