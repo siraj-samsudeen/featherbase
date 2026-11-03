@@ -44,6 +44,19 @@ function parseAllowlist(raw: unknown): string[] | null {
   return entries.length ? entries : null
 }
 
+export function allowlistQualificationGuidance(engine: string, raw: unknown): string | null {
+  const format = engine === 'postgres' ? 'schema.table'
+    : engine === 'mysql' ? 'database.table'
+    : engine === 'duckdb' || engine === 'motherduck' ? 'catalog.schema.table'
+    : null
+  if (!format) return null
+  const requiredParts = format.split('.').length
+  // Only check qualification depth, not SQL identifier syntax: literal
+  // dotted names still match exactly as stored at runtime.
+  const incomplete = parseAllowlist(raw)?.some((entry) => entry.split('.').length < requiredParts)
+  return incomplete ? `Use ${format} for every table restriction` : null
+}
+
 export async function getSource(name: string): Promise<SourceConfig> {
   const cached = cache.get(name)
   if (cached) return cached
