@@ -145,7 +145,7 @@ export function TaskManagementPage() {
   const [projectName, setProjectName] = useState('')
   const [projectTask, setProjectTask] = useState('')
   const [selectedProject, setSelectedProject] = useState('')
-  const [personalOwner, setPersonalOwner] = useState(me)
+  const personalOwner = me
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [creatingProject, setCreatingProject] = useState(false)
@@ -754,10 +754,6 @@ export function TaskManagementPage() {
       {view === 'personal' && (
         <section aria-labelledby="personal-heading">
           <SectionTitle id="personal-heading" title="Personal tasks" hint="Your personal tasks are visible only to you" />
-          <label className="mb-4 flex items-center gap-2 pointer-fine:text-xs text-[var(--color-ink-muted)]">
-            Show tasks for
-            <select aria-label="Personal tasks owner" value={personalOwner} onChange={(event) => setPersonalOwner(event.target.value)} className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 pointer-fine:text-sm text-[var(--color-ink)]">{people.filter(user => user.row_id === me).map((user) => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}</select>
-          </label>
           <form className={cardClasses("mb-5 flex gap-2 p-3")} onSubmit={async (event) => { event.preventDefault(); const title = capture; try { await createTask(title, { personal_tasks_owner: personalOwner }); setCapture('') } catch { /* shown above */ } }}>
             <label className="sr-only" htmlFor="personal-capture">Add personal task</label>
             <input id="personal-capture" readOnly={saving} value={capture} onChange={(event) => setCapture(event.target.value)} placeholder="Add a personal task" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm" autoFocus />

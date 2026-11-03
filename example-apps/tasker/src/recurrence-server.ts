@@ -18,7 +18,6 @@ interface ActionContext { user: string; payload: unknown; documents: Documents; 
 interface Snapshot { task: Row; subtasks: Row[] }
 const TASK = 'tasker.task'
 const SERIES = 'tasker.recurrence'
-const instant = (value: unknown) => value instanceof Date ? value.toISOString() : String(value)
 const fields = ['task_title', 'description', 'assigned_to', 'urgent', 'project']
 const snapshotTask = (row: Row) => Object.fromEntries(fields.map(field => [field, row[field] ?? null]))
 async function all(documents: Documents, table: string, filters: [string, string, unknown][]) {
@@ -66,7 +65,7 @@ export async function runRecurrence(ctx: RecurrenceJobContext) {
       if (active && active.task_state !== 'Done') continue
       if (active) {
         if (!active.completed_at) throw new Error('A completed recurring task needs its completion time')
-        const due = nextOccurrence(settings, instant(active.completed_at), ctx.timeZone)
+        const due = nextOccurrence(settings, String(active.completed_at), ctx.timeZone)
         if ((!series.next_at || new Date(String(series.next_at)).toISOString() !== due) || Boolean(series.shared) !== Boolean(series.shared || active.shared)) series = await documents.update(SERIES, {
           row_id: series.row_id, updated_at: series.updated_at,
           next_at: due,
@@ -149,11 +148,10 @@ interface ValidationContext {
 }
 /** Protect the series' snapshot and its one active occurrence on direct saves too. */
 export async function prepareRecurrence(ctx: ValidationContext) {
-  try { schedule(ctx.row); snapshot(ctx.row) } catch (error) { ctx.reject(error instanceof Error ? error.message : 'Choose a valid recurring schedule') }
+  try { schedule(ctx.row); snapshot(ctx.row) } catch (error) { ctx.reject((error as Error).message) }
   if (!ctx.row.active_task && ctx.isNew) ctx.reject('Choose the first task in this series')
   if (ctx.isNew) {
     const task = await ctx.documents.get(TASK, String(ctx.row.active_task))
-    if (!task.shared && task.created_by !== ctx.user) ctx.reject('Only the task creator can schedule private repeats')
     if (task.parent_task || task.recurrence) ctx.reject('Choose a parent task that is not already recurring')
     const children = await all(ctx.documents as Documents, TASK, [['parent_task', '=', task.row_id]])
     ctx.row.snapshot = JSON.stringify({ task: snapshotTask(task), subtasks: children.map(snapshotTask) })
@@ -175,7 +173,7 @@ export async function prepareRecurrence(ctx: ValidationContext) {
     }
     if (ctx.row.active_task && active?.task_state === 'Done') {
       if (!active.completed_at) ctx.reject('A completed occurrence needs its completion time')
-      ctx.row.next_at = nextOccurrence(schedule(ctx.row), instant(active.completed_at), ctx.timeZone)
+      ctx.row.next_at = nextOccurrence(schedule(ctx.row), String(active.completed_at), ctx.timeZone)
     } else if (active?.task_state === 'Cancelled') {
       ctx.row.paused = true
       ctx.row.next_at = null

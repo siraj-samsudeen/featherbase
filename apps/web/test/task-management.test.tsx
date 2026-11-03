@@ -35,9 +35,9 @@ test('the Inbox reports a revoked session instead of presenting an empty success
     const session = await issueSession('Administrator')
     await fetch('/api/logout', { method: 'POST', headers: { Authorization: `Bearer ${session.token}` } })
     renderTasker({ ...admin, token: session.token })
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('Invalid or expired session')
-    expect(within(alert).getByRole('link', { name: 'Back to Featherbase' })).toHaveAttribute('href', '/featherbase/admin')
+    const back = (await screen.findAllByRole('link', { name: 'Back to Featherbase' }))[0]
+    expect(back.closest('[role=alert]')).toHaveTextContent('Invalid or expired session')
+    expect(back).toHaveAttribute('href', '/featherbase/admin')
   } finally {
     await uninstallApp(APP).catch(() => {})
   }
@@ -883,7 +883,7 @@ test('saved view names reject case-insensitive collisions on creation and rename
 test('personal_destination_assigns_owner: Inbox work moved to Personal tasks assigns its owner', async ({ admin, createUser }) => {
   await install()
   try {
-    await createUser({ roles: [] })
+    const colleague = await createUser({ roles: [] })
     const task = (await admin.post('/api/save_row', {
       table: 'tasker.task',
       row: { task_title: 'Prepare my weekly notes' },
@@ -907,11 +907,12 @@ test('personal_destination_assigns_owner: Inbox work moved to Personal tasks ass
       task_state: 'Not started',
     })
     await user.click(screen.getByRole('button', { name: /^Personal tasks/ }))
-    expect(within(screen.getByRole('combobox', { name: 'Personal tasks owner' })).getAllByRole('option').map(option => (option as HTMLOptionElement).value)).toEqual(['Administrator'])
+    expect(screen.queryByRole('combobox', { name: 'Personal tasks owner' })).not.toBeInTheDocument()
     await user.type(screen.getByRole('textbox', { name: 'Add personal task' }), 'My follow-up{Enter}')
     expect(await screen.findByRole('link', { name: 'My follow-up' })).toBeInTheDocument()
     const fields = encodeURIComponent(JSON.stringify(['task_title', 'personal_tasks_owner', 'assigned_to']))
     expect((await admin.get<{ data: Record<string, unknown>[] }>(`/api/table/tasker.task?fields=${fields}`)).data.find(row => row.task_title === 'My follow-up')).toMatchObject({ personal_tasks_owner: 'Administrator', assigned_to: 'Administrator' })
+    expect((await colleague.get<{ data: unknown[] }>('/api/table/tasker.task')).data).toEqual([])
   } finally {
     await uninstallApp(APP).catch(() => {})
   }
