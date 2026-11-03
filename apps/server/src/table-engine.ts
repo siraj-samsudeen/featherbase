@@ -9,7 +9,7 @@ import { deleteStored } from './storage'
 import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation, resolvedRelation, tableName } from './platform-schema'
-import { readingPresentationSchema } from 'shared'
+import { readingPresentationSchema, browsePresentationSchema } from 'shared'
 
 export { tableName }
 
@@ -118,7 +118,7 @@ export const tableDefSchema = z.object({
   name: z
     .string()
     .regex(/^(?:[A-Za-z][A-Za-z0-9 ]{0,60}|[a-z][a-z0-9_]{0,30}\.[a-z][a-z0-9_]{0,30})$/, 'invalid Table name'),
-  label: optionalString,
+  label: z.string().nullish(),
   module: optionalString,
   // Replaces the old istable/issingle booleans: 'table' = normal collection,
   // 'sub_table' = rows only ever nested inside a parent row, 'settings' = a
@@ -128,6 +128,7 @@ export const tableDefSchema = z.object({
   id_pattern: optionalString,
   title_column: optionalString,
   reading_presentation: readingPresentationSchema.nullish(),
+  browse_presentation: browsePresentationSchema.nullish(),
   description: optionalString,
   // #74: platform-table flag. Accepted here so migrations and seeds can set
   // it through createTable; the public /api/table_def routes REJECT it — a
@@ -198,6 +199,15 @@ function targetOf(f: TableDef['columns'][number]): string | undefined {
 
 function validateDef(def: TableDef) {
   const errs: Record<string, string> = {}
+  const valueColumns = new Set([
+    ...STANDARD_COLUMNS,
+    ...def.columns.filter(f => !['Section Break', 'Column Break', 'Sub-table'].includes(f.column_type)).map(f => f.column_name),
+  ])
+  for (const [field, op, value] of def.browse_presentation?.default_filters ?? []) {
+    if (!valueColumns.has(field)) errs.browse_presentation = `Default filter column ${field} is not a value column of this Table`
+    if ((op === 'in' || op === 'not in') !== Array.isArray(value))
+      errs.browse_presentation = `Default filter ${op} requires ${op === 'in' || op === 'not in' ? 'an array' : 'a scalar'} value`
+  }
   const reading = def.reading_presentation
   if (reading) {
     const columns = new Set(def.columns.filter(f => !['Section Break', 'Column Break', 'Sub-table'].includes(f.column_type)).map(f => f.column_name))
@@ -374,6 +384,19 @@ async function assertNoRepeats(
   })
 }
 
+// Only a direct reverse Reference is eligible; connection queries still enforce
+// the current principal's permissions and may omit an unreadable connection.
+async function validateBrowseRelation(def: TableDef) {
+  const preferred = def.browse_presentation?.preferred_related
+  if (!preferred) return
+  const target = preferred.table === def.name ? def : await getMeta(preferred.table)
+  const column = target.columns.find(f => f.column_name === preferred.column)
+  if (!column || column.column_type !== 'Reference' || column.reference_table !== def.name)
+    throw new AppError('ValidationError', 'Preferred related connection must reference this Table', {
+      browse_presentation: `${preferred.table}.${preferred.column} is not a direct Reference to ${def.name}`,
+    })
+}
+
 // META-004: sync an existing Table's columns to a new definition. Additions
 // create columns; property edits update column_def rows; removals delete the
 // column_def row but KEEP the physical column (data is never dropped without
@@ -428,7 +451,9 @@ export async function updateTable(
       hidden: true,
     })
   if (def.reading_presentation === undefined) def.reading_presentation = existing.reading_presentation
+  if (def.browse_presentation === undefined) def.browse_presentation = existing.browse_presentation
   validateDef(def)
+  await validateBrowseRelation(def)
   if (def.id_pattern)
     validateIdPattern(def.id_pattern, def.columns.map((f) => f.column_name))
   if ((def.kind ?? 'table') !== existing.kind)
@@ -486,10 +511,12 @@ export async function updateTable(
     await clearChangedListOverrides(tx, name, def.columns, before)
     await tx`update table_def set ${tx({
       module: def.module ?? existing.module,
+      ...(def.label !== undefined ? { label: def.label } : {}),
       is_submittable: def.is_submittable ?? existing.is_submittable,
       id_pattern: def.id_pattern ?? existing.id_pattern,
       title_column: def.title_column ?? null,
       ...(def.reading_presentation !== undefined ? { reading_presentation: def.reading_presentation } : {}),
+      ...(def.browse_presentation !== undefined ? { browse_presentation: def.browse_presentation } : {}),
       description: def.description ?? null,
       // Only when given: an update that leaves it out keeps the Table's choice.
       ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
@@ -633,6 +660,7 @@ export async function createTable(
       hidden: true,
     })
   validateDef(def)
+  await validateBrowseRelation(def)
   if (def.id_pattern)
     validateIdPattern(def.id_pattern, def.columns.map((f) => f.column_name))
 
@@ -722,11 +750,13 @@ export async function createTable(
     const tableRow: Record<string, unknown> = {
       name: def.name,
       module: def.module ?? 'Core',
+      label: def.label ?? null,
       kind: def.kind ?? 'table',
       is_submittable: def.is_submittable ?? false,
       id_pattern: def.id_pattern ?? 'hash',
       title_column: def.title_column ?? null,
       reading_presentation: def.reading_presentation ?? null,
+      browse_presentation: def.browse_presentation ?? null,
       description: def.description ?? null,
       system: def.system ?? false,
     }
@@ -980,10 +1010,20 @@ export async function renameColumn(
     await tx`update metadata_override set column_name = ${target} where table_name = ${meta.name} and column_name = ${from}`
     await renameInGlossary(tx, meta.name, { table: meta.name, column: from }, { table: meta.name, column: target })
     await renameInImportHistory(tx, meta.name, from, target)
+    await tx`update table_def set browse_presentation = jsonb_set(browse_presentation, '{default_filters}', (
+      select jsonb_agg(case when entry->>0 = ${from}
+        then jsonb_set(entry, '{0}', to_jsonb(${target}::text)) else entry end order by n)
+      from jsonb_array_elements(browse_presentation->'default_filters') with ordinality as f(entry, n)))
+      where name = ${meta.name} and jsonb_array_length(browse_presentation->'default_filters') > 0`
+    await tx`update table_def set browse_presentation = jsonb_set(browse_presentation,
+      '{preferred_related,column}', to_jsonb(${target}::text))
+      where browse_presentation->'preferred_related'->>'table' = ${meta.name}
+        and browse_presentation->'preferred_related'->>'column' = ${from}`
+
     await tx`update table_def set updated_at = ${new Date()} where name = ${meta.name}`
   })
 
-  invalidateMeta(meta.name)
+  invalidateMeta()
   await logAccess(user, `rename_column ${from} -> ${target}`, {
     table: 'Table',
     row_id: meta.name,
@@ -1098,6 +1138,10 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
     await tx`delete from table_def where name = ${from}`
     await tx`update column_def set reference_table = ${to} where reference_table = ${from}`
     await tx`update column_def set row_table = ${to} where row_table = ${from}`
+    await tx`update table_def set browse_presentation = jsonb_set(browse_presentation,
+      '{preferred_related,table}', to_jsonb(${to}::text))
+      where browse_presentation->'preferred_related'->>'table' = ${from}`
+
     for (const child of children)
       await tx.unsafe(`update ${child} set parenttype = $1 where parenttype = $2`, [to, from])
     for (const p of pointers)

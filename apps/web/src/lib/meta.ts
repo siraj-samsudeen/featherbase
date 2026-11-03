@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import { viewColumns } from './list-view-columns'
-import type { ReadingPresentation } from 'shared'
+import type { BrowsePresentation, ReadingPresentation } from 'shared'
 
 export interface ColumnDef {
   row_id: string
@@ -32,12 +32,14 @@ export interface ColumnDef {
 
 export interface TableMeta {
   name: string
+  label?: string | null
   module: string
   kind: 'table' | 'sub_table' | 'settings'
   is_submittable: boolean
   id_pattern: string
   title_column: string | null
   reading_presentation?: ReadingPresentation | null
+  browse_presentation?: BrowsePresentation | null
   sort_column: string
   sort_order: string
   track_changes: boolean

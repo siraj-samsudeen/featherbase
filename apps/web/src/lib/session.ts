@@ -87,6 +87,7 @@ export function useCapabilities(): Capabilities | undefined {
 
 export interface TableSummary {
   row_id: string
+  label?: string | null
   module: string
   system: boolean
   // #432: no "New" anywhere for a Table only the platform writes.
@@ -107,7 +108,7 @@ export function useShellTables(): TableSummary[] | undefined {
     queryFn: () =>
       listResource<TableSummary>('Table', {
         filters: [['kind', '!=', 'sub_table']],
-        fields: ['row_id', 'module', 'system', 'system_written'],
+        fields: ['row_id', 'label', 'module', 'system', 'system_written'],
         order_by: 'row_id asc',
         limit_page_length: 200,
       }),

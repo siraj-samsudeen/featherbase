@@ -503,9 +503,9 @@ export function ListView({
               Home
             </Link>
             {' / '}
-            {table}
+            {meta.data?.label || table}
           </div>
-          <h1 className="text-xl font-semibold text-ink">{table}<GlossaryHelp table={table} className="ml-1" /></h1>
+          <h1 className="text-xl font-semibold text-ink">{meta.data?.label || table}<GlossaryHelp table={table} className="ml-1" /></h1>
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
           </span>

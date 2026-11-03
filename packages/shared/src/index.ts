@@ -1,4 +1,4 @@
-export { tableSchemaToZod, zodFieldErrors, readingPresentationSchema, type ReadingPresentation, type ColumnDef } from './schema'
+export { tableSchemaToZod, zodFieldErrors, readingPresentationSchema, browsePresentationSchema, type BrowsePresentation, type ReadingPresentation, type ColumnDef } from './schema'
 export { choiceLabel } from './choice-label'
 export { DISPLAY_DEFAULTS } from './display-settings'
 export { METADATA_OVERRIDE_PROPERTIES, METADATA_OVERRIDE_BOOLEAN_VALUES } from './metadata-overrides'

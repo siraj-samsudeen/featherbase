@@ -36,6 +36,14 @@ async function ledgerOff() {
 }
 
 describe('renameTable', () => {
+  shopTest('preferred related targets follow a table rename', async () => {
+    await shop()
+    await sql`update table_def set browse_presentation = ${sql.json({ preferred_related: { table: 'shop.order', column: 'supplier' } })} where name = 'shop.supplier'`
+    await renameTable('shop.order', 'shop.purchase', 'shop')
+    const [row] = await sql`select browse_presentation from table_def where name = 'shop.supplier'`
+    expect(row.browse_presentation).toEqual({ preferred_related: { table: 'shop.purchase', column: 'supplier' } })
+  })
+
   shopTest('rows are kept under the new name', async () => {
     await shop()
     await renameTable('shop.supplier', 'shop.vendor', 'shop')
