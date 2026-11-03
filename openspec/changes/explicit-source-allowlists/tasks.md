@@ -7,6 +7,6 @@
 
 ## 2. Completion
 
-- [ ] 2.1 Run the effective acceptance suite with zero pending/undefined steps and generated HTML report, source suites, server typecheck, whitespace/spec/sensitive guards and real-stack smoke/HTTP proof.
+- [x] 2.1 Run the effective acceptance suite with zero pending/undefined steps and generated HTML report, source suites, server typecheck, whitespace/spec/sensitive guards and real-stack smoke/HTTP proof.
 - [ ] 2.2 Complete ordinary review, publish the branch/PR with exact-head CI/comment subscriptions and document authorization, evidence and remaining limitations.
 - [ ] 2.3 After owner review/authorization, sync and archive this change on the same branch before merge.
