@@ -485,7 +485,7 @@ jobs:
       - run: pnpm apps:prepare
       - run: node tools/ci-shards.mjs run component ${{ matrix.shard }}
       - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
+        if: success()
         with:
           name: component-${{ matrix.shard }}
           path: .ci-shards/component-${{ matrix.shard }}/
@@ -512,7 +512,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@v4
         with:
-          pattern: component-*
+          pattern: component-[0-9]*
           path: .ci-shards
       - run: node tools/ci-shards.mjs collect component
       - name: Merge every component blob under the original thresholds
@@ -818,7 +818,7 @@ jobs:
         run: node tools/ci-shards.mjs run browser ${{ matrix.shard }}
 
       - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
+        if: success()
         with:
           name: browser-${{ matrix.shard }}
           path: .ci-shards/browser-${{ matrix.shard }}/
@@ -985,7 +985,7 @@ jobs:
       - uses: actions/download-artifact@v4
         if: needs.browser-shards.result == 'success'
         with:
-          pattern: browser-*
+          pattern: browser-[0-9]*
           path: .ci-shards
       - name: Require every browser artifact and exact-once file execution
         if: needs.browser-shards.result == 'success'

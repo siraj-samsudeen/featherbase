@@ -118,7 +118,7 @@ async function execute(suite, shard) {
 }
 async function collect(suite) {
   const base = resolve(root, '.ci-shards')
-  const directories = readdirSync(base).filter(name => name.startsWith(`${suite}-`)).sort()
+  const directories = readdirSync(base).filter(name => new RegExp(`^${suite}-\\d+$`).test(name)).sort()
   const receipts = directories.map(name => {
     const directory = resolve(base, name)
     const receipt = JSON.parse(readFileSync(resolve(directory, 'receipt.json')))
