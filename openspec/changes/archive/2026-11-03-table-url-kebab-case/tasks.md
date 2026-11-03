@@ -16,3 +16,5 @@
 - [x] 3.1 Run the effective acceptance suite with zero pending/undefined steps and its HTML report; verify real HTTP and browser routes, including ambiguity and settings.
 - [x] 3.2 Run targeted regression suites, typechecks/build, strict OpenSpec validation and ordinary code review; fix relevant findings.
 - [x] 3.3 Record review evidence and prepare the tested PR with exact-head CI/comment subscriptions. Do not merge, deploy or archive before the owner's remaining gates.
+
+Finalization authority: on 2026-11-03 the manager relayed the owner's explicit instruction, “if CI is green, you should take over, fix any conflicts and merge. period.” The manager directed spec sync/archive and final-head validation on this branch, followed by independent verification and a merge commit in the manager session. This supersedes the routine finalization wait; it does not assert the owner watched review videos, waive the three-round review ceiling, or authorize production writes or manual deployment. See the [working thread](https://ampcode.com/threads/T-01a19fe5-6fe1-756b-88fa-692bc956d09f).
