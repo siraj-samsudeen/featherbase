@@ -255,6 +255,22 @@ export async function tableRelation(name: string): Promise<string> {
   return `${meta.physical_schema}.${meta.physical_relation}`
 }
 
+// Describe the same storage the row readers use, never a label-derived name.
+// Source bindings are not local relations; Settings share a composite-key store.
+export async function tableStorageIdentity(meta: TableMeta) {
+  if (meta.data_source) {
+    if (!meta.external_table) return null
+    return { schema: meta.external_schema ?? '', relation: meta.external_table,
+      row_key: [meta.external_pk || ROW_KEY], data_source: meta.data_source, discriminator: null }
+  }
+  if (meta.kind === 'settings') {
+    return { schema: PLATFORM_SCHEMA, relation: 'single_value', row_key: ['table_name', 'field'],
+      data_source: null, discriminator: { table_name: meta.name } }
+  }
+  const [schema, relation] = (await tableRelation(meta.name)).split('.')
+  return { schema, relation, row_key: [meta.row_key], data_source: null, discriminator: null }
+}
+
 // #651: where a Table's rows are stored, read straight from its definition.
 // A maintenance sweep (a rename's, a drop's) must reach every Table, even
 // one whose app is turned off, so it never passes the availability check
