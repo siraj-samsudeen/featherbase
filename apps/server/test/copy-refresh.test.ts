@@ -118,6 +118,29 @@ describe('Scheduled copied-table refresh', () => {
     expect(await sql`select row_id from background_job where method = ${schedule.method} and job_status = 'queued'`).toHaveLength(1)
   })
 
+  for (const [kind, mutation] of [
+    ['duplicate_key', "update failure_duplicate_key set code = 'S001' where code = 'S002'"],
+    ['missing_column', 'alter table failure_missing_column drop column name'],
+    ['unavailable_relation', 'drop table failure_unavailable_relation'],
+  ]) {
+    test(`a ${kind} source fails visibly without changing the target`, async ({ admin }) => {
+      const source = `failure_${kind}`
+      await changeStandin(dir, 'sales', [`create table ${source} as select * from stores`])
+      await makeCopy(admin, source)
+      const [{ n: before }] = await sql`select count(*)::int as n from import_log where ref_table = 'Scheduled Stores'`
+      await changeStandin(dir, 'sales', [mutation])
+      invalidateSources('refresh-test')
+      await sql`delete from background_job`
+      const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
+      await sql`update background_job set run_at = now(), max_attempts = 1 where method = ${schedule.method}`
+      await runOneJob()
+      expect((await sql`select outcome from job_execution where method = ${schedule.method}`)[0].outcome).toBe('error')
+      expect(await admin.get('/api/table/Scheduled%20Stores/S001')).toMatchObject({ title: 'Harbour Road' })
+      expect(await admin.get('/api/table/Scheduled%20Stores/S002')).toMatchObject({ title: 'Hill Street' })
+      expect((await sql`select count(*)::int as n from import_log where ref_table = 'Scheduled Stores'`)[0].n).toBe(before)
+    })
+  }
+
   test('source removal withdraws its pending refresh', async ({ admin }) => {
     await makeCopy(admin)
     const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
