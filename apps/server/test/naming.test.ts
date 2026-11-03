@@ -210,3 +210,84 @@ describe('#855: the per-Table counter migration', () => {
     expect((await save(admin, 'Nm Switched', { title: 'a' })).row_id).toBe('NMOLD-003')
   })
 })
+
+// #858: fixed text plus one column, e.g. PLANT-8151 from plant_code 8151.
+describe('#858: a fixed prefix plus a column', () => {
+  const PLANT = 'Nm Plant Master'
+  const plant = (admin: TestClient) =>
+    makeTable(admin, { name: PLANT, id_pattern: 'PLANT-{plant_code}', columns: ['plant_code', 'title'] })
+  const at = (id: string) => `/api/table/${encodeURIComponent(PLANT)}/${encodeURIComponent(id)}`
+
+  test('a new row is named by the prefix and the column, by form, API and import alike', async ({ admin }) => {
+    await plant(admin)
+    expect((await save(admin, PLANT, { plant_code: '8151', title: 'Chennai' })).row_id).toBe('PLANT-8151')
+    // POST /api/table is the create path imports and API clients use.
+    expect((await admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent(PLANT)}`, { plant_code: '8152' })).row_id).toBe('PLANT-8152')
+  })
+
+  test('the column is required, and is called out when blank', async ({ admin }) => {
+    await plant(admin)
+    await expect(save(admin, PLANT, { title: 'no code' })).rejects.toMatchObject({ status: 417, fields: { plant_code: expect.any(String) } })
+    expect(await admin.get<{ count: number }>(`/api/table/${encodeURIComponent(PLANT)}:count`)).toEqual({ count: 0 })
+  })
+
+  test('a second row with the same code is refused, naming the column, and the first is untouched', async ({ admin }) => {
+    await plant(admin)
+    await save(admin, PLANT, { plant_code: '8151', title: 'Chennai' })
+    for (const attempt of [
+      () => save(admin, PLANT, { plant_code: '8151', title: 'Madurai' }),
+      () => admin.post(`/api/table/${encodeURIComponent(PLANT)}`, { plant_code: '8151', title: 'Madurai' }),
+    ])
+      await expect(attempt()).rejects.toMatchObject({
+        status: 417,
+        message: expect.stringContaining('plant_code 8151'),
+        fields: { plant_code: expect.stringContaining('PLANT-8151') },
+      })
+    expect(await admin.get(at('PLANT-8151'))).toMatchObject({ title: 'Chennai' })
+  })
+
+  test('a duplicate value of a plain column-named Table is refused the same way', async ({ admin }) => {
+    await makeTable(admin, { name: FIELD_DT, id_pattern: 'field:country', columns: ['country'] })
+    await save(admin, FIELD_DT, { country: 'India' })
+    await expect(save(admin, FIELD_DT, { country: 'India' })).rejects.toMatchObject({
+      status: 417,
+      fields: { country: expect.stringContaining('India') },
+    })
+  })
+
+  test('changing the column later keeps the id; Rename moves it', async ({ admin }) => {
+    await plant(admin)
+    const row = await save(admin, PLANT, { plant_code: '8151', title: 'Chennai' })
+    const edited = await save(admin, PLANT, { row_id: 'PLANT-8151', updated_at: row.updated_at, plant_code: '8159' })
+    expect(edited).toMatchObject({ row_id: 'PLANT-8151', plant_code: '8159' })
+    await admin.post(`${at('PLANT-8151')}:rename`, { new_name: 'PLANT-8159' })
+    expect(await admin.get(at('PLANT-8159'))).toMatchObject({ plant_code: '8159', title: 'Chennai' })
+  })
+
+  test('an import check flags a code already naming a plant, repeated in the file, or missing', async ({ admin }) => {
+    await plant(admin)
+    await save(admin, PLANT, { plant_code: '8151', title: 'Chennai' })
+    const report = await admin.post<{ failed: { index: number; message: string }[] }>(
+      `/api/table/${encodeURIComponent(PLANT)}:import`,
+      { dry_run: true, rows: [{ plant_code: '8151' }, { plant_code: '8152' }, { plant_code: '8152' }, { title: 'no code' }] },
+    )
+    expect(report.failed.map((f) => f.index)).toEqual([0, 2, 3])
+    expect(report.failed[0].message).toContain('PLANT-8151')
+  })
+
+  test('the rule is accepted for a real column only', async ({ admin }) => {
+    await makeDT(admin, 'Nm Rule Check', 'hash')
+    const put = (id_pattern: string) =>
+      admin.fetch('/api/table_def/Nm%20Rule%20Check/id_pattern', { method: 'PUT', body: JSON.stringify({ id_pattern }) })
+    expect((await put('PLANT-{title}')).status).toBe(200)
+    for (const bad of ['PLANT-{missing}', 'PLANT-{title', '{title}', 'A-{title}-B', 'A-{title}{title}', 'PLANT {title}', ' P-{title}'])
+      expect((await put(bad)).status).toBe(417)
+  })
+
+  test('renaming the column carries the rule with it', async ({ admin }) => {
+    await plant(admin)
+    await admin.post(`/api/table_def/${encodeURIComponent(PLANT)}/rename_column`, { from: 'plant_code', to: 'sap_code' })
+    expect(await admin.get(`/api/table/${encodeURIComponent(PLANT)}:meta`)).toMatchObject({ id_pattern: 'PLANT-{sap_code}' })
+    expect((await save(admin, PLANT, { sap_code: '8151' })).row_id).toBe('PLANT-8151')
+  })
+})

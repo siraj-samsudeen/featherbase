@@ -364,10 +364,9 @@ registerCollectionAction('import', {
             actions.push('update')
             continue
           }
-          const name = String((row as Record<string, unknown>)[ROW_KEY] ?? '').trim()
+          const name = await checkRowForInsert(meta, row as Record<string, unknown>)
           if (name && seenNames.has(name))
             throw new AppError('ConflictError', `Duplicate name ${name} within the import`)
-          await checkRowForInsert(meta, row as Record<string, unknown>)
           if (name) seenNames.add(name)
           actions.push('insert')
         } catch (err) {
