@@ -42,13 +42,15 @@ export async function principalReach(owner: string): Promise<Reach> {
   if (owner === 'Administrator' || roles.includes('System Manager'))
     return { every_table: true, own_roles: true, own_reach: true, read: [], change: [] }
   const rows = await sql`
-    select p.ref_table as name, p.role, p.own_rows_only, p.owner_app,
+    select p.ref_table as name, p.role, p.own_rows_only,
       p.can_read, (p.can_write or p.can_create or p.can_delete) as can_change,
       to_jsonb(t)->'access_policy' as policy
     from permission p
     join table_def t on t.name = p.ref_table
     where p.tier = 'basic' and p.role in ${sql(roles)} and t.kind <> 'sub_table'
-      and (p.can_read or p.can_write or p.can_create or p.can_delete)`
+      and (p.owner_app is null or p.owner_app = any(${[...activeApps]}::text[]))
+      and (p.can_read or p.can_write or p.can_create or p.can_delete)
+    order by p.ref_table`
   let own_reach = false
   const read = new Map<string, Grant>()
   const change = new Map<string, Grant>()
@@ -59,7 +61,6 @@ export async function principalReach(owner: string): Promise<Reach> {
     into.set(table, grant)
   }
   for (const row of rows) {
-    if (row.owner_app != null && !activeApps.has(String(row.owner_app))) continue
     if (row.policy != null && !accessPolicySchema.parse(row.policy).roles.some((role) => roles.includes(role))) continue
     const table = String(row.name)
     if (!BUILT_IN.has(String(row.role))) own_reach = true
@@ -67,6 +68,6 @@ export async function principalReach(owner: string): Promise<Reach> {
     if (row.can_change) add(change, table, Boolean(row.own_rows_only))
   }
   const list = (grants: Map<string, Grant>): TableReach[] =>
-    [...grants].map(([table, g]) => ({ table, own_rows: !g.all })).sort((a, b) => (a.table < b.table ? -1 : a.table > b.table ? 1 : 0))
+    [...grants].map(([table, g]) => ({ table, own_rows: !g.all }))
   return { every_table: false, own_roles, own_reach, read: list(read), change: list(change) }
 }
