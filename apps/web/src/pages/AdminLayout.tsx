@@ -8,7 +8,7 @@ import {
   ago,
   connectEventSink,
   frequentActions,
-  mergeServerEntries,
+  replaceServerEntries,
   displayEntry,
   recentActions,
   recentSearches,
@@ -57,8 +57,13 @@ connectEventSink({
   // The queue fail-closes on this identity: only events recorded FOR this
   // user are ever posted with this user's credentials.
   currentUser: () => getSessionUser()?.row_id ?? null,
-  post: (events) => {
-    void api.post('/api/events', { events }).catch(
+  post: (events, recorded) => {
+    void api.post<{ timestamps: number[] }>('/api/events', { events }).then(
+      ({ timestamps }) => {
+        recorded(timestamps)
+        window.dispatchEvent(new Event('navigation-history-updated'))
+      },
+    ).catch(
       () => {},
     )
   },
@@ -156,21 +161,32 @@ function AdminShell() {
   }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const [barFocused, setBarFocused] = useState(false)
   const [selection, setSelection] = useState<{ query: string; id: string } | null>(null)
-
-  // #101 Phase 3: once per signed-in user, pull the server's per-key
-  // aggregates and union them into the local buffer — recents follow the
-  // user across devices; the merge is idempotent.
-  const syncedFor = useRef<string | null>(null)
+  const [, refreshHistory] = useState(0)
   useEffect(() => {
-    if (!user || syncedFor.current === user.row_id) return
-    syncedFor.current = user.row_id
+    const refresh = () => refreshHistory((version) => version + 1)
+    window.addEventListener('navigation-history-updated', refresh)
+    return () => window.removeEventListener('navigation-history-updated', refresh)
+  }, [])
+
+  // Cached destinations are not offered until the initial summary settles.
+  // A failed request unlocks the untouched cache as a best-effort fallback.
+  const [historyReadyFor, setHistoryReadyFor] = useState<string | null>(null)
+  useEffect(() => {
+    if (!user) return
+    let active = true
+    setHistoryReadyFor(null)
     api
       .get<{ entries: ServerRecentEntry[] }>('/api/events/summary')
-      .then((res) => mergeServerEntries(user.row_id, res.entries))
-      .catch(
-        () => {},
-      )
+      .then((res) => {
+        if (active) replaceServerEntries(user.row_id, res.entries)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setHistoryReadyFor(user.row_id)
+      })
+    return () => { active = false }
   }, [user?.row_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const historyReady = Boolean(user && historyReadyFor === user.row_id)
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -299,14 +315,14 @@ function AdminShell() {
   // A resolved previous query remains cached during the typing debounce;
   // it is not a result of the text currently in the input.
   const recordHits = trimmed === debounced ? docHits.data?.results ?? [] : []
-  const showRecents = Boolean(barFocused && trimmed === '' && user)
+  const showRecents = Boolean(barFocused && trimmed === '' && historyReady)
   const recentItems = showRecents && user ? uniqueByDisplay(recentActions(user.row_id, 12)).slice(0, 6) : []
   const frequentItems =
     showRecents && user
       ? uniqueByDisplay([...recentItems, ...frequentActions(user.row_id, 8)]).slice(recentItems.length, recentItems.length + 4)
       : []
   const pick = [...recentItems, ...frequentItems]
-  const searchChips = user && trimmed ? recentSearches(user.row_id, trimmed, 3) : []
+  const searchChips = historyReady && user && trimmed ? recentSearches(user.row_id, trimmed, 3) : []
   const selectedId = barFocused
     ? selection?.query === search ? selection.id : showRecents && pick[0] ? `command-recent-${encodeURIComponent(pick[0].key)}` : undefined
     : undefined
@@ -322,11 +338,11 @@ function AdminShell() {
 
   // #101 Phase 2: the sidebar's zero-keystroke recall — destinations only
   // (searches stay in the command bar, where they can be re-run).
-  const sidebarCandidates = user
+  const sidebarCandidates = historyReady && user
     ? uniqueByDisplay(recentActions(user.row_id, 20).filter((e) => e.kind !== 'search')).slice(0, SIDEBAR_RECENT_CAP)
     : []
   const recentSlots = sidebarCandidates.slice(0, 3)
-  const sidebarFrequent = user
+  const sidebarFrequent = historyReady && user
     ? uniqueByDisplay([...recentSlots, ...frequentActions(user.row_id, 12)]).slice(recentSlots.length, recentSlots.length + 2)
     : []
   const sidebarRecent = sidebarFrequent.length ? recentSlots : sidebarCandidates

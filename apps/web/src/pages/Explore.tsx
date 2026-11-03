@@ -8,6 +8,7 @@ import { adminPageTitle } from 'shared'
 import { usePeek } from '../components/Peek'
 import { cardClasses, inputClasses, pillClasses, touchTargetClasses } from '@featherbase/shop-floor'
 import { fmtCount, fmtShowing } from '@featherbase/shop-floor'
+import { RowTitle } from '../lib/row-titles'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -85,6 +86,12 @@ export function ExploreView({
     queryKey: ['navigable-tables'],
     queryFn: () => api.get<{ tables: string[] }>('/api/navigable_tables'),
   })
+  // Narrows the Start-from list: every word typed must appear in the name.
+  const [rootSearch, setRootSearch] = useState('')
+  const shownTables = useMemo(() => {
+    const words = rootSearch.toLowerCase().split(/\s+/).filter(Boolean)
+    return (tables.data?.tables ?? []).filter((t) => words.every((w) => t.toLowerCase().includes(w)))
+  }, [tables.data, rootSearch])
 
   const [step2, setStep2] = useState<Step | null>(null)
   const [step3, setStep3] = useState<Step | null>(null)
@@ -143,6 +150,22 @@ export function ExploreView({
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-0.5">
           <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+            Find a table
+          </span>
+          <input
+            type="search"
+            value={rootSearch}
+            onChange={(e) => setRootSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && shownTables[0]) changeRoot(shownTables[0])
+            }}
+            placeholder="Type to narrow…"
+            data-testid="explore-root-search"
+            className={inputClasses('w-48')}
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
             Start from
           </span>
           <select
@@ -151,8 +174,12 @@ export function ExploreView({
             data-testid="explore-root"
             className={inputClasses('w-56')}
           >
-            <option value="">Pick a table…</option>
-            {(tables.data?.tables ?? []).map((t) => (
+            <option value="">
+              {rootSearch ? `${shownTables.length} matching table${shownTables.length === 1 ? '' : 's'}` : 'Pick a table…'}
+            </option>
+            {/* the picked table stays listed while a search hides it */}
+            {root && !shownTables.includes(root) && <option value={root}>{root}</option>}
+            {shownTables.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
@@ -433,6 +460,16 @@ function Pane({
   )
 }
 
+type CardColumn = { column_name: string; label: string; column_type: string; reference_table?: string | null }
+
+/** A card cell as a person reads it: a link shows its row's title, not its id. */
+function cellText(c: CardColumn, row: Row, settings: Settings) {
+  const value = row[c.column_name]
+  if (c.column_type === 'Reference' && c.reference_table && value != null && value !== '')
+    return <RowTitle table={c.reference_table} rowId={String(value)} />
+  return formatValue(c.column_type, value, settings)
+}
+
 function PaneRow({
   row,
   columns,
@@ -442,7 +479,7 @@ function PaneRow({
   onPeek,
 }: {
   row: Row
-  columns: { column_name: string; label: string; column_type: string }[]
+  columns: CardColumn[]
   settings: Settings
   selected: boolean
   onToggle: () => void
@@ -469,7 +506,7 @@ function PaneRow({
     >
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-sm font-medium text-ink">
-          {formatValue(first.column_type, row[first.column_name], settings) || String(row.row_id)}
+          {cellText(first, row, settings) || String(row.row_id)}
         </span>
         {onPeek && (
           <button
@@ -488,7 +525,7 @@ function PaneRow({
         <div className="flex flex-wrap gap-x-3 text-xs text-ink-muted">
           {rest.slice(0, 3).map((c) => (
             <span key={c.column_name} className="truncate">
-              {formatValue(c.column_type, row[c.column_name], settings) || '—'}
+              {cellText(c, row, settings) || '—'}
             </span>
           ))}
         </div>

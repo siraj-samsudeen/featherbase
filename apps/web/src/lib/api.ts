@@ -1,5 +1,6 @@
 import type { SignInMethodKind } from 'shared'
 import { followDevice } from '@featherbase/shop-floor/theme'
+import { clearVisitJournal } from './recents'
 // Thin authenticated client for the Featherbase server API.
 
 const TOKEN_KEY = 'fc_token'
@@ -38,6 +39,7 @@ export function getSessionUser(): SessionUser | null {
 
 export function clearSession() {
   runtimeSnapshot = undefined
+  clearVisitJournal()
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
   // #380: whoever uses this browser next sees their device's theme, not the

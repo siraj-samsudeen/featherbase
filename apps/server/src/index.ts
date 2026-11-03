@@ -10,7 +10,7 @@ import { assertNotSystemWritten } from './system-written'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
-import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
+import { createTable, deleteTable, renameColumn, setIdPattern, tableStorageIdentity, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
@@ -923,11 +923,11 @@ app.post('/api/open_admin', async (c) => {
 // scoped to the caller for the same reason.
 app.post('/api/events', async (c) => {
   const events = validateEventBatch(await c.req.json().catch(() => null))
-  const inserted = await recordEvents(who(c), events)
+  const timestamps = await recordEvents(who(c), events)
   // Nudge the poster's own "Mine" feed on their personal channel (PR #104
   // review — the 'feed' channel is System Manager-only).
   publishUserEvent(who(c), 'feed_mine')
-  return c.json({ inserted })
+  return c.json({ inserted: timestamps.length, timestamps })
 })
 
 app.get('/api/events/summary', async (c) => {
@@ -2185,7 +2185,7 @@ app.get('/api/table/:table', async (c) => {
     // #738: the caller's readable levels ride beside the cached meta, never
     // inside it — the meta object is shared by every caller.
     const readable = await permittedTiers(user.row_id, meta.name, 'read')
-    return c.json({ ...meta, readable_tiers: [...readable] })
+    return c.json({ ...meta, readable_tiers: [...readable], storage_identity: await tableStorageIdentity(meta) })
   }
   if (suffix === 'count') {
     const filters = c.req.query('filters')

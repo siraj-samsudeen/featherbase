@@ -26,6 +26,29 @@ test('a named instance explicitly selects file-managed settings', () => {
   assert.equal(instanceEnvironment(instance).FEATHERBASE_INSTANCE, 'acme/shop')
 })
 
+test('local upload selection follows the actual Postgres port', () => {
+  const before = { ...process.env }
+  try {
+    process.env.FILE_STORAGE_DIR = ''
+    process.env.DATABASE_URL = 'postgres://postgres@localhost/port_selection'
+    process.env.PGPORT = '15432'
+    const implicit = instanceEnvironment()
+    process.env.DATABASE_URL = 'postgres://postgres@127.0.0.1:15432/port_selection'
+    const explicit = instanceEnvironment()
+    process.env.DATABASE_URL = 'postgres://postgres@127.0.0.1:5432/port_selection'
+    const other = instanceEnvironment()
+    assert.equal(implicit.FILE_STORAGE_DIR, explicit.FILE_STORAGE_DIR)
+    assert.notEqual(explicit.FILE_STORAGE_DIR, other.FILE_STORAGE_DIR)
+    process.env.DATABASE_URL = 'postgres://postgres@127.0.0.1:5432/port_selection?sslmode=require'
+    const tls = instanceEnvironment()
+    assert.equal(tls.FILE_STORAGE_DIR, other.FILE_STORAGE_DIR)
+    assert.equal(new URL(tls.DATABASE_URL).searchParams.get('sslmode'), 'require')
+  } finally {
+    for (const key of Object.keys(process.env)) if (!(key in before)) delete process.env[key]
+    Object.assign(process.env, before)
+  }
+})
+
 test('an unknown instance fails naming those that exist', () => {
   const base = repoWith({ apps: ['client-apps/acme/store'] })
   assert.deepEqual(listInstances(base), ['acme/shop'])

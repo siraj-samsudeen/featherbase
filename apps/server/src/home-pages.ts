@@ -1,7 +1,8 @@
 // #80: Home Pages — curated navigation. The Admin sidebar lists
 // Home Pages (one per user module + a seeded System page); each page renders
-// grouped link cards from its `links` sub-table. This module owns the two
-// server-side halves of that:
+// grouped link cards from its `links` sub-table. System discovers standalone
+// system Tables at request time, using stored links only as placement hints.
+// This module owns the two server-side halves of that:
 //
 //  1. getVisibleHomePages(user) — the ONLY thing the sidebar consumes. Role
 //     visibility and link permission-filtering are computed here, server-side,
@@ -19,6 +20,8 @@
 // as before — hiding a link never grants or revokes anything.
 import { randomUUID } from 'node:crypto'
 import { sql } from './db'
+import { AppError } from './errors'
+import { getMeta } from './meta'
 import { getRoles, permissionScope } from './permissions'
 
 // Legacy UI-027 shortcut shape, kept working: [{ label, type, link_to }].
@@ -121,6 +124,20 @@ function parseShortcuts(raw: unknown): HomePageShortcut[] {
   )
 }
 
+async function systemTableLabel(name: string): Promise<string> {
+  try {
+    return (await getMeta(name)).label || name
+  } catch (error) {
+    // A legacy override rejected by today's allowlist must not disable the
+    // entire sidebar. Metadata reads still reject it; other failures propagate.
+    if (
+      error instanceof AppError && error.type === 'ValidationError' &&
+      /^Metadata property .* cannot be overridden(?:\. Permitted properties: [a-z_]+(?:, [a-z_]+)*)?$/.test(error.message)
+    ) return name
+    throw error
+  }
+}
+
 // The caller's visible Home Pages with their permission-filtered card links —
 // the one endpoint the sidebar (and the page view) consume.
 export async function getVisibleHomePages(user: string): Promise<VisibleHomePage[]> {
@@ -156,10 +173,15 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
     linksByPage.set(l.parent as string, list)
   }
 
+  const systemTables = await sql`
+    select name from table_def where system = true and kind != 'sub_table'`
+  const systemNames = new Set(systemTables.map((r) => r.name as string).sort())
+
   // A link to a table that no longer exists (dropped by an app uninstall)
   // must not break the page — it is filtered out here. Sub-tables have no
   // list view to open, so links to them are dropped too.
-  const targets = new Set<string>()
+  // Include generated targets even when they have no stored placement hint.
+  const targets = new Set<string>(systemNames)
   for (const list of linksByPage.values())
     for (const l of list) if (l.link_to) targets.add(l.link_to)
   for (const p of pages)
@@ -196,18 +218,41 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
     // card; links before the first break form an unlabeled card.
     const cards: HomePageCard[] = []
     let current: HomePageCard | null = null
+    const isSystem = p.row_id === 'system'
+    const placed = new Set<string>()
     for (const l of linksByPage.get(p.row_id as string) ?? []) {
       if (l.type === 'Card Break') {
         current = { label: l.label || null, links: [] }
         cards.push(current)
         continue
       }
+      if (isSystem) {
+        if (!l.link_to || !systemNames.has(l.link_to) || placed.has(l.link_to)) continue
+        placed.add(l.link_to)
+      }
       if (!l.link_to || !(await canRead(l.link_to))) continue
       if (!current) {
         current = { label: null, links: [] }
         cards.push(current)
       }
-      current.links.push({ label: l.label || l.link_to, link_to: l.link_to })
+      current.links.push({
+        label: isSystem ? await systemTableLabel(l.link_to) : l.label || l.link_to,
+        link_to: l.link_to,
+      })
+    }
+
+    // Existing cards retain their order. The first Platform card is the
+    // catch-all; without that hint, create it only when a readable link needs it.
+    if (isSystem) {
+      let platform = cards.find((c) => c.label === 'Platform')
+      for (const name of systemNames) {
+        if (placed.has(name) || !(await canRead(name))) continue
+        if (!platform) {
+          platform = { label: 'Platform', links: [] }
+          cards.push(platform)
+        }
+        platform.links.push({ label: await systemTableLabel(name), link_to: name })
+      }
     }
 
     // Legacy shortcuts stay working; table shortcuts get the same read
