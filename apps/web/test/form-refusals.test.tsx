@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { pickedFile, useNodeMultipart } from './node-multipart'
+import { rowHref } from 'shared'
 
 type Admin = Parameters<typeof renderApp>[1]
 const enc = encodeURIComponent
@@ -172,7 +173,7 @@ test('primary lifecycle actions reach the amended draft from a cancelled row', a
     table: 'Frf Lifecycle', row: { item: 'tea for north depot' },
   })
   const path = `/api/table/${enc('Frf Lifecycle')}/${enc(saved.row_id)}`
-  await renderApp(`/featherbase/admin/${enc('Frf Lifecycle')}/${enc(saved.row_id)}`, admin)
+  await renderApp(rowHref('Frf Lifecycle', saved.row_id), admin)
   await user.click(await screen.findByRole('tab', { name: 'Related' }))
   await user.click(await screen.findByRole('button', { name: 'Submit' }))
   await user.click(await screen.findByRole('button', { name: 'Cancel' }))
