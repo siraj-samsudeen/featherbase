@@ -111,6 +111,10 @@ interface SheetPlan {
   check: {
     fields_updated?: number
     fields_kept?: number
+    changed: number
+    unchanged: number
+    rows_kept: number
+    conflicts: number
     tracks_changes?: boolean | null
     valid: number
     updated: number
@@ -319,11 +323,36 @@ function TargetRowCount({ i, table }: { i: number; table: string }) {
   )
 }
 
+function ImportPreviewFacts({ report }: {
+  report: Omit<NonNullable<SheetPlan['check']>, 'failed'> & { failed: { message: string }[] }
+}) {
+  return (
+    <>
+      <p>
+        {fmtCount(report.changed)} {report.changed === 1 ? 'row changes' : 'rows change'} ·{' '}
+        {fmtCount(report.unchanged)} unchanged · {fmtCount(report.inserted)} added ·{' '}
+        {fmtCount(report.skipped)} skipped · {fmtCount(report.failed.length)} refused
+      </p>
+      <p>
+        {fmtCount(report.fields_updated ?? 0)} {report.fields_updated === 1 ? 'value changes' : 'values change'} ·{' '}
+        {fmtCount(report.rows_kept)} {report.rows_kept === 1 ? 'row keeps' : 'rows keep'} your corrections ·{' '}
+        {fmtCount(report.fields_kept ?? 0)} {report.fields_kept === 1 ? 'value' : 'values'} retained ·{' '}
+        {fmtCount(report.conflicts)} new {report.conflicts === 1 ? 'conflict' : 'conflicts'}
+      </p>
+      <p className="text-xs text-ink-muted">
+        Rows keeping corrections may also have other values change. Counts describe mapped values; import automation still runs.
+      </p>
+      {report.tracks_changes === false && (
+        <Notice tone="caution" className="mt-2">This Table does not keep change history. Imports overwrite existing values, including hand edits.</Notice>
+      )}
+    </>
+  )
+}
+
 // UPS-J1.3: real counts BEFORE anything commits — a dry run over the whole
 // (deduplicated) file the moment a match key is chosen, so marking a key is
-// never a silent mode switch. React Query keys on the run's shape; the
-// sheet's cells are fixed per file load, so the mapped columns + key +
-// choice identify the rows deterministically.
+// never a silent mode switch. Include the values in the cache identity:
+// another file can have the same row count but different changes.
 function UpsertPreview({
   i,
   table,
@@ -331,6 +360,7 @@ function UpsertPreview({
   emptyCells,
   columns,
   rows,
+  skipped,
 }: {
   i: number
   table: string
@@ -338,9 +368,10 @@ function UpsertPreview({
   emptyCells: 'keep' | 'clear'
   columns: string[]
   rows: CoercedRow[]
+  skipped: number
 }) {
   const preview = useQuery({
-    queryKey: ['iw-upsert-preview', table, keyColumn, emptyCells, columns.join('·'), rows.length],
+    queryKey: ['iw-upsert-preview', table, keyColumn, emptyCells, columns, rows],
     enabled: rows.length > 0,
     staleTime: 30_000,
     queryFn: async () => {
@@ -350,7 +381,7 @@ function UpsertPreview({
         dryRun: true,
         upsert: { key_column: keyColumn, empty_cells: emptyCells, columns },
       })
-      return { updated: report.updated, inserted: report.inserted, failed: report.failed.length }
+      return report
     },
   })
   if (preview.isError) return null // e.g. no permission — rehearse/import will say so
@@ -361,15 +392,9 @@ function UpsertPreview({
       </p>
     )
   return (
-    <p className="mt-1 text-sm text-ink" data-testid={`iw-preview-${i}`}>
-      <strong>{fmtCount(preview.data.updated)}</strong> rows match existing rows and will be{' '}
-      <strong>updated</strong>; <strong>{fmtCount(preview.data.inserted)}</strong> will be added
-      {preview.data.failed > 0 && (
-        <>
-          ; <strong>{fmtCount(preview.data.failed)}</strong> will fail
-        </>
-      )}
-    </p>
+    <div className="mt-1 text-sm text-ink" data-testid={`iw-preview-${i}`}>
+      <ImportPreviewFacts report={{ ...preview.data, skipped }} />
+    </div>
   )
 }
 
@@ -668,7 +693,7 @@ function RunHistory({ table }: { table: string }) {
           data-testid={`iw-run-${idx}`}
         >
           <span>
-            {r.file_name ?? 'API import'} — {fmtCount(r.updated)} updated · {fmtCount(r.inserted)} added · {fmtCount(r.failed)}{' '}
+            {r.file_name ?? 'API import'} — {fmtCount(r.updated)} processed matches · {fmtCount(r.inserted)} added · {fmtCount(r.failed)}{' '}
             failed
           </span>
           {r.reverted_at ? (
@@ -1286,7 +1311,7 @@ export function ImportWizard() {
         if (i !== only) continue
         // #201: rehearse member by member, exactly as the import will send
         // them, so a reported row number is true against its own sheet.
-        const totals = { valid: 0, updated: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, tracks_changes: null as boolean | null }
+        const totals = { valid: 0, updated: 0, changed: 0, unchanged: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, rows_kept: 0, conflicts: 0, tracks_changes: null as boolean | null }
         const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
         for (const m of plan.members) {
           const sheet = memberSheet(plan, m)
@@ -1305,6 +1330,10 @@ export function ImportWizard() {
           })
           totals.fields_updated += report.fields_updated
           totals.fields_kept += report.fields_kept
+          totals.changed += report.changed
+          totals.unchanged += report.unchanged
+          totals.rows_kept += report.rows_kept
+          totals.conflicts += report.conflicts
           totals.tracks_changes = report.tracks_changes
           totals.valid += report.valid
           totals.updated += report.updated
@@ -2366,8 +2395,9 @@ export function ImportWizard() {
                     >
                       {plan.table} ↗
                     </a>{' '}
-                    because its columns fit this sheet — rows will be <em>added to it</em>. Pick
-                    "New Table…" above if you meant to create a separate Table.
+                    because its columns fit this sheet — {plan.key
+                      ? `matching on ${targetCols.find((c) => c.column_name === plan.key)?.label || plan.key}.`
+                      : 'rows will be added to it.'} Pick "New Table…" above if you meant to create a separate Table.
                   </div>
                 )}
                 <div className="mb-1 text-xs text-ink-muted" data-testid={`iw-mapped-count-${i}`}>
@@ -2517,7 +2547,7 @@ export function ImportWizard() {
                           data-testid={`iw-key-${i}`}
                           className="rounded border border-border px-1 py-0.5 text-sm"
                         >
-                          <option value="">— none: always add rows —</option>
+                          <option value="">— none: append every row —</option>
                           {keyOptions.map((col) => (
                             <option key={col} value={col}>
                               {keyLabel(col)}
@@ -2562,6 +2592,11 @@ export function ImportWizard() {
                         )}
                       </div>
                       {plan.key && (
+                        <p className="mt-1 text-xs text-ink-muted">
+                          Matching on {friendly(plan.key)}, rather than appending every row.
+                        </p>
+                      )}
+                      {plan.key && (
                         <UpsertPreview
                           i={i}
                           table={plan.table}
@@ -2569,6 +2604,7 @@ export function ImportWizard() {
                           emptyCells={plan.empty_cells}
                           columns={keyOptions}
                           rows={mappedRows(sheet, plan)}
+                          skipped={countDataRows(sheet.rows) - mappedRows(sheet, plan).length}
                         />
                       )}
                     </div>
@@ -2596,19 +2632,14 @@ export function ImportWizard() {
 
             {plan.check && (
               <div className="mt-2 text-sm" data-testid={`iw-check-${i}`}>
-                {/* UPS-J1.4: with a match key the rehearsal report is
-                    action-aware — updates and inserts counted apart. */}
+                {/* Matched rows are not necessarily changed rows. */}
                 {plan.check.failed.length === 0 ? (
                   <span className="text-positive">
                     ✓ All {fmtCount(plan.check.valid)} rows are ready to import
-                    {plan.key != null &&
-                      `: ${fmtCount(plan.check.updated)} will update, ${fmtCount(plan.check.inserted)} will insert`}
                   </span>
                 ) : (
                   <span className="text-negative">
                     {fmtCount(plan.check.valid)} rows ready
-                    {plan.key != null &&
-                      ` (${fmtCount(plan.check.updated)} update · ${fmtCount(plan.check.inserted)} insert)`}
                     , {fmtCount(plan.check.failed.length)} with problems:{' '}
                     {plan.check.failed
                       .slice(0, ERRORS_ON_SCREEN)
@@ -2617,14 +2648,13 @@ export function ImportWizard() {
                     {plan.check.failed.length > 5 && ` … and ${plan.check.failed.length - 5} more`}
                   </span>
                 )}
-                {plan.check.tracks_changes === false && (
+                {plan.key == null && plan.check.tracks_changes === false && (
                   <Notice tone="caution" className="mt-2">This Table does not keep change history. Imports overwrite existing values, including hand edits.</Notice>
                 )}
-                {plan.key != null && plan.check.fields_updated !== undefined && (
-                  <p className="mt-2 text-ink" data-testid={`iw-check-fields-${i}`}>
-                    {fmtCount(plan.check.fields_updated)} {plan.check.fields_updated === 1 ? 'field' : 'fields'} will update ·{' '}
-                    {fmtCount(plan.check.fields_kept ?? 0)} hand-edited {plan.check.fields_kept === 1 ? 'field' : 'fields'} will be kept and flagged.
-                  </p>
+                {plan.key != null && (
+                  <div className="mt-2 text-ink" data-testid={`iw-check-fields-${i}`}>
+                    <ImportPreviewFacts report={plan.check} />
+                  </div>
                 )}
                 {plan.check.skipped > 0 && (
                   <span className="ml-1 text-ink-muted" data-testid={`iw-check-skipped-${i}`}>
@@ -2674,7 +2704,7 @@ export function ImportWizard() {
                         number. */}
                     <span className={plan.result.failed.length ? 'text-negative' : 'text-positive'}>
                       {plan.result.updated > 0
-                        ? `Updated ${fmtCount(plan.result.updated)} and added ${fmtCount(plan.result.inserted)} rows in `
+                        ? `Recorded ${fmtCount(plan.result.updated)} processed matches and added ${fmtCount(plan.result.inserted)} rows in `
                         : `Imported ${fmtCount(plan.result.inserted)} rows into `}
                       <Link
                         to="/featherbase/admin/$table"

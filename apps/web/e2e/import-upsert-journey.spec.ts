@@ -99,7 +99,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   await session.step('J1.3: preview counts and the empty-cells choice', async ({ page }) => {
     await page.getByTestId('iw-key-0').selectOption('zone_name')
     await expect(page.getByTestId('iw-preview-0')).toContainText(
-      '8 rows match existing rows and will be updated; 0 will be added',
+      '1 row changes · 7 unchanged · 0 added',
     )
     await expect(page.getByTestId('iw-empty-cells-0')).toBeVisible()
     await expect(page.getByTestId('iw-empty-keep-0')).toBeChecked()
@@ -110,7 +110,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   await session.clickButton('Check')
   await session.step('J1.4: rehearse reports update/insert counts, writes nothing', async ({ page }) => {
     await expect(page.getByTestId('iw-check-0')).toContainText(
-      'All 8 rows are ready to import: 8 will update, 0 will insert',
+      '1 row changes · 7 unchanged · 0 added',
     )
     const count = (await (
       await request.get(`/api/table/${encodeURIComponent(DT)}:count`, { headers })
@@ -121,7 +121,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   // J1.5 — Import: completion reports updated / inserted as separate counts.
   await session.clickButton('Import 8 rows')
   await session.step('J1.5: completion reports separate counts', async ({ page }) => {
-    await expect(page.getByTestId('iw-result-0')).toContainText('Updated 8 and added 0 rows')
+    await expect(page.getByTestId('iw-result-0')).toContainText('Recorded 8 processed matches and added 0 rows')
   })
 
   // J1.6 — still 8 rows, Alpha corrected, every row keeps its original id.
@@ -245,12 +245,12 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
     await page.getByTestId('iw-map-0-0').selectOption('row_id')
     await page.getByTestId('iw-key-0').selectOption('row_id') // Row ID as the key
     await expect(page.getByTestId('iw-preview-0')).toContainText(
-      '2 rows match existing rows and will be updated; 0 will be added; 1 will fail',
+      '1 row changes · 1 unchanged · 0 added · 0 skipped · 1 refused',
     )
   })
   await session.clickButton('Import 3 rows')
   await session.step('the keyed re-import updates in place', async ({ page }) => {
-    await expect(page.getByTestId('iw-result-0')).toContainText('Updated 2 and added 0 rows')
+    await expect(page.getByTestId('iw-result-0')).toContainText('Recorded 2 processed matches and added 0 rows')
     await expect(page.getByTestId('iw-result-0')).toContainText('1 failed')
   })
   const afterKeyed = (await (
