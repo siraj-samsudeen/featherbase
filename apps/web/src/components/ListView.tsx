@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowDisplayTitle } from 'shared'
-import { ApiError, api, getSessionUser, listResource } from '../lib/api'
+import { ApiError, api, getSessionUser, getToken, listResource } from '../lib/api'
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
@@ -136,6 +136,7 @@ export function ListView({
   useEffect(() => setConflictsOpen(false), [table])
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsUnsaved, setSettingsUnsaved] = useState(false)
+  const settingsWrite = useRef(Promise.resolve())
   const [makingDefault, setMakingDefault] = useState<'saving' | 'failed' | null>(null)
   // UI-012: bulk selection state.
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -238,13 +239,22 @@ export function ListView({
   // now, but the list would open the old way next time.
   function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement> }) {
     if (!settingsLoaded) return
-    api
-      .put(`/api/user_settings/${encodeURIComponent(table)}`, {
-        sort: next.sort !== undefined ? next.sort : sort,
-        ...(next.arrangement ?? arrangement),
+    const token = getToken()
+    const snapshot = {
+      sort: next.sort !== undefined ? next.sort : sort,
+      ...(next.arrangement ?? arrangement),
+    }
+    // Settings are whole snapshots. Keep writes in interaction order so a
+    // slower earlier request cannot restore an obsolete sort or column set.
+    settingsWrite.current = settingsWrite.current
+      .then(() => {
+        // A queued edit belongs to the sign-in that made it. api.put reads
+        // the current token, so discard it if that sign-in has ended.
+        if (getToken() !== token) return
+        return api.put(`/api/user_settings/${encodeURIComponent(table)}`, snapshot)
       })
-      .then(() => setSettingsUnsaved(false))
-      .catch(() => setSettingsUnsaved(true))
+      .then(() => { if (getToken() === token) setSettingsUnsaved(false) })
+      .catch(() => { if (getToken() === token) setSettingsUnsaved(true) })
   }
 
   const columns = meta.data ? viewColumns(meta.data, arrangement) : []
