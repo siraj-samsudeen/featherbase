@@ -149,6 +149,35 @@ test('7: preview counts protected and updated fields without writing', async ({ 
   expect(await admin.get(`${path}/A`)).toEqual(before)
   expect((await conflicts(admin)).conflicts).toEqual([])
 })
+
+for (const scenario of [
+  { name: 'current values are unchanged', city: 'South', phone: '111', changed: 0, rows_kept: 0, fields_kept: 0, conflicts: 0 },
+  { name: 'previous source retains the correction', city: 'North', phone: '111', changed: 0, rows_kept: 1, fields_kept: 1, conflicts: 0 },
+  { name: 'new source raises a retained-value conflict', city: 'East', phone: '111', changed: 0, rows_kept: 1, fields_kept: 1, conflicts: 1 },
+  { name: 'a changed row can retain a correction', city: 'East', phone: '222', changed: 1, rows_kept: 1, fields_kept: 1, conflicts: 1 },
+]) {
+  test(`#851 preview: ${scenario.name}`, async ({ admin }) => {
+    await correction(admin)
+    await admin.post(`${path}:import`, { rows: [{ row_id: 'B', code: 'B', city: 'West', phone: '333' }] })
+    const before = await admin.get(`${path}?fields=${encodeURIComponent('["row_id","city","phone","updated_at"]')}`)
+    expect(await admin.post(`${path}:import`, {
+      key_column: 'code', dry_run: true,
+      rows: [
+        { code: 'A', city: scenario.city, phone: scenario.phone },
+        { code: 'B', city: 'West', phone: '333' },
+        { code: 'C', city: 'New', phone: '444' },
+      ],
+    })).toMatchObject({
+      valid: 3, updated: 2, inserted: 1, failed: [],
+      changed: scenario.changed, unchanged: 2 - scenario.changed,
+      fields_updated: scenario.changed, rows_kept: scenario.rows_kept,
+      fields_kept: scenario.fields_kept, conflicts: scenario.conflicts,
+    })
+    expect(await admin.get(`${path}?fields=${encodeURIComponent('["row_id","city","phone","updated_at"]')}`)).toEqual(before)
+    expect((await conflicts(admin)).conflicts).toEqual([])
+  })
+}
+
 test('7: a Table without history warns in preview and keeps overwrite semantics', async ({ admin }) => {
   await correction(admin)
   await sql`update table_def set track_changes = false where name = ${table}`
