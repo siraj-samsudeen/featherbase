@@ -28,6 +28,9 @@ describe('Scheduled copied-table refresh', () => {
     const path = '/api/table/Scheduled%20Stores:copy_schedule'
     expect(await admin.get(path)).toBeNull()
     const write = '/api/table/Scheduled%20Stores:set_copy_schedule'
+    await expect(admin.post(write, { cadence: 'every minute', enabled: true })).rejects.toMatchObject({ status: 417 })
+    await expect(admin.post('/api/table/Person:set_copy_schedule', { cadence: 'hourly', enabled: true })).rejects.toMatchObject({ status: 404 })
+    expect(await admin.get(path)).toBeNull()
     const schedule = await admin.post<{ row_id: string; method: string; cadence: string }>(write, { cadence: 'hourly', enabled: true })
     expect(schedule).toMatchObject({ cadence: 'hourly', enabled: true })
     const changed = await admin.post(write, { cadence: 'daily', enabled: false })
@@ -51,7 +54,8 @@ describe('Scheduled copied-table refresh', () => {
     await makeCopy(admin)
     await sql`delete from background_job`
     const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
-    await sql`update background_job set run_at = now() where method = ${schedule.method}`
+    // A caller-controlled payload cannot redirect this privileged handler.
+    await sql`update background_job set run_at = now(), payload = '{"target":"Person"}'::jsonb where method = ${schedule.method}`
     expect(await runOneJob()).toBe(true)
     const [execution] = await sql`select outcome, result from job_execution where method = ${schedule.method}`
     expect(execution.outcome).toBe('success')

@@ -51,7 +51,8 @@ function registerCopyRefresh(method: string): void {
     const actor = `copy-refresh:${method.slice('copy_refresh_'.length)}`
     const user: SessionUser = { row_id: actor, kind: 'service_account', email: null, full_name: 'Scheduled copy refresh' }
     const result = await runAsSystemActor(actor, () => copyAgain(user, String(link.target_table)))
-    ctx.setResult(JSON.stringify(result))
+    const summary = `${result.inserted} inserted · ${result.changed} changed · ${result.unchanged} unchanged · ${result.conflicts} conflicts · ${result.deleted_at_source} deleted at source · ${result.back_at_source} back at source · batch ${result.run_id}`
+    ctx.setResult(summary)
     if (result.conflicts) {
       try {
         await actionTransaction(async () => {
@@ -65,13 +66,16 @@ function registerCopyRefresh(method: string): void {
         })
       } catch {
         // The copy is committed: a mail outage must not retry the import.
-        ctx.setResult(`${JSON.stringify(result)} · Conflict notice could not be queued`)
+        ctx.setResult(`${summary} · Conflict notice could not be queued`)
       }
     }
   })
 }
 
 export async function registerCopyRefreshJobs(): Promise<void> {
+  // Let the existing startup migration check report a database awaiting 0008.
+  const [schema] = await sql`select to_regclass('featherbase.copy_refresh_schedule') as relation`
+  if (!schema.relation) return
   for (const row of await sql`select scheduled_job from featherbase.copy_refresh_schedule`)
     registerCopyRefresh(String(row.scheduled_job))
 }

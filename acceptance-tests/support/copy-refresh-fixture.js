@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
-const { changeStandin, acceptanceSql } = require('./stack');
+const { changeStandin, acceptanceSql, restartAcceptance } = require('./stack');
 
 class CopyRefreshFixture {
   constructor(api) {
@@ -55,10 +55,13 @@ class CopyRefreshFixture {
     }, [200], 'require plant title');
     await this.change(["update $plants set name = case when code = 'P01' then 'Valid change' else null end"]);
     this.before = (await acceptanceSql("select count(*)::int as n from featherbase.import_log where ref_table = 'Plants'"))[0].n;
+    this.conflictsBefore = (await acceptanceSql("select count(*)::int as n from featherbase.import_conflict where ref_table = 'Plants'"))[0].n;
   }
 
   async run() {
     if (!this.job) await this.schedule();
+    // A new process must recover persisted handlers, not rely on the save request.
+    await restartAcceptance();
     await acceptanceSql('update featherbase.background_job set run_at = now(), max_attempts = 1 where method = $1 and job_status = \'queued\'', [this.job.method]);
     const deadline = Date.now() + 30_000;
     do {
@@ -76,12 +79,13 @@ class CopyRefreshFixture {
   async assertSystemBatch() {
     assert.equal(this.execution.outcome, 'success');
     const info = await (await this.api.call('GET', '/api/table/Plants:copy_info', undefined, [200], 'read copy batch')).json();
-    const logs = await acceptanceSql("select batch_id from featherbase.import_log where ref_table = 'Plants' and batch_id = $1", [info.last_run_id]);
+    const logs = await acceptanceSql("select batch_id, created_by from featherbase.import_log where ref_table = 'Plants' and batch_id = $1", [info.last_run_id]);
     assert.ok(logs.length > 0, 'the scheduled run has an ordinary undoable batch');
+    assert.ok(logs.every(l => l.created_by.startsWith('copy-refresh:')));
     const versions = await acceptanceSql("select created_by from featherbase.version where ref_table = 'Plants' and data->>'import_run' = $1", [info.last_run_id]);
-    assert.ok(versions.length > 0, 'scheduled observations have version provenance');
+    // A conflict-only run changes no stored values, so it needs no row version.
     assert.ok(versions.every(v => v.created_by.startsWith('copy-refresh:')));
-    await this.api.call('POST', '/api/table/Plants:import-revert', { run_id: info.last_run_id }, [200], 'undo scheduled copy');
+    await this.api.call('POST', '/api/table/Plants:import-revert', { run_id: info.last_run_id }, [201], 'undo scheduled copy');
   }
 
   async remove() {

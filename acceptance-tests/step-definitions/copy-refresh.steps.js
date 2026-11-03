@@ -57,6 +57,7 @@ Then('the request is refused and Plants has no new schedule', async function () 
 
 Given('the user corrected plant P01 in the copied Plants table', async function () {
   await plants(this);
+  this.responsible = await this.person('responsible administrator', ['System Manager']);
   await this.plants.correct();
 });
 
@@ -100,7 +101,7 @@ Then('the execution reports two unchanged rows and no changed rows', async funct
 });
 
 Then('the responsible administrators receive a notice naming Plants and its new conflict count', async function () {
-  const notices = await acceptanceSql("select subject, body from featherbase.email_queue where subject = 'Copy refresh conflicts: Plants'");
+  const notices = await acceptanceSql("select subject, body from featherbase.email_queue where subject = 'Copy refresh conflicts: Plants' and recipient = $1", [this.responsible.email]);
   assert.ok(notices.length > 0);
   assert.ok(notices.some(n => n.body.includes('1 new conflict')));
   assert.ok(notices.every(n => !n.body.includes('Warehouse rose') && !n.body.includes('Personal rose')));
@@ -114,7 +115,7 @@ Then('the execution fails and Plants still has its previous values', async funct
 
 Then('no batch or conflict from that failed run is retained', async function () {
   assert.equal((await acceptanceSql("select count(*)::int as n from featherbase.import_log where ref_table = 'Plants'"))[0].n, this.plants.before);
-  assert.equal((await acceptanceSql("select row_id from featherbase.import_conflict where ref_table = 'Plants'")).length, 0);
+  assert.equal((await acceptanceSql("select count(*)::int as n from featherbase.import_conflict where ref_table = 'Plants'"))[0].n, this.plants.conflictsBefore);
 });
 
 Then('plant P01 is marked deleted at source in an undoable system-attributed batch', async function () {
