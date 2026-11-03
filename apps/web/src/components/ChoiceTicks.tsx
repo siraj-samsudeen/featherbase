@@ -95,6 +95,16 @@ export function ChoiceTicks({
           data-testid={listTestId}
           className={cardClasses('absolute left-0 z-10 mt-1 max-h-72 w-56 max-w-[calc(100vw-2rem)] overflow-y-auto p-2')}
         >
+          <div className="mb-1 flex gap-1 border-b border-border pb-1">
+            <button
+              type="button"
+              onClick={() => change(choices)}
+              data-testid="choices-select-all"
+              className={touchRowClasses('rounded px-2 py-1 text-sm text-action hover:bg-subtle')}
+            >
+              Select all
+            </button>
+          </div>
           {choices.map((c) => (
             <label key={c} className={touchRowClasses('flex items-center gap-2 rounded px-2 py-1 text-sm text-ink')}>
               <input type="checkbox" checked={shown.includes(c)} onChange={(e) => toggle(c, e.target.checked)} />
