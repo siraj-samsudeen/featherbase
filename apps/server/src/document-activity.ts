@@ -5,6 +5,7 @@ import { tableRelation } from './table-engine'
 import { AppError } from './errors'
 import { PLATFORM_SCHEMA } from './platform-schema'
 import { displayName } from './people-directory'
+import { SYSTEM_ACTOR_LABELS } from 'shared'
 
 // Platform records that name one row by its id in plain text, beside a column
 // naming its Table: its timeline, attachments, shares, assignments, tags,
@@ -100,12 +101,16 @@ export async function documentActivity(table: string, name: string, user: string
   ])
   // Only authors of this already-authorized row's activity are resolved.
   // This does not grant the caller access to the Person directory or emails.
-  const ids = [...new Set([...comments, ...versions].map(entry => String(entry.created_by)))]
+  const creator = visibleDoc.created_by == null ? null : String(visibleDoc.created_by)
+  const ids = [...new Set([...comments, ...versions].map(entry => String(entry.created_by)).concat(creator ?? []))]
   const actors = ids.length ? await sql`
     select row_id, full_name, username from person where row_id in ${sql(ids)}
     union all select row_id, label as full_name, null as username from service_account where row_id in ${sql(ids)}` : []
   const names = new Map(actors.map(actor => [String(actor.row_id), displayName(actor)]))
-  const withAuthor = (entry: Record<string, unknown>) => ({ ...entry, author_name: names.get(String(entry.created_by)) ?? 'Unknown person' })
+  const withAuthor = (entry: Record<string, unknown>) => ({
+    ...entry,
+    author_name: names.get(String(entry.created_by)) ?? SYSTEM_ACTOR_LABELS[String(entry.created_by)] ?? 'Unknown person',
+  })
   const visibleVersions = versions.map((version) => {
     const data = version.data as { changed?: [string, unknown, unknown][]; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown } } | null
     return {
@@ -117,5 +122,7 @@ export async function documentActivity(table: string, name: string, user: string
       },
     }
   })
-  return { comments: comments.map(withAuthor), versions: visibleVersions }
+  // #829: who made the row, and when, opens its Activity.
+  const created = creator && visibleDoc.created_at ? withAuthor({ created_by: creator, created_at: visibleDoc.created_at }) : null
+  return { created, comments: comments.map(withAuthor), versions: visibleVersions }
 }
