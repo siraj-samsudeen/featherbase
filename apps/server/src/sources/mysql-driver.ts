@@ -108,6 +108,8 @@ function buildWhere(filters: SourceFilter[]): { text: string; values: unknown[] 
   for (const f of filters) {
     const col = quoteIdent(f.column)
     switch (f.op) {
+      case 'related':
+        throw new AppError('ValidationError', 'Related filters are not supported by this source engine')
       case '=':
         parts.push(`${col} = ?`)
         values.push(f.value)
@@ -611,7 +613,9 @@ function mapMysqlType(dataType: string, columnType: string, maxLength: number | 
       return 'Data'
     case 'char':
     case 'varchar':
-      return maxLength != null && maxLength <= 140 ? 'Data' : 'Text'
+      // A declared length is one-line text however long the limit (#795): a
+      // varchar(255) name is still a name. Only unbounded text is long text.
+      return maxLength != null ? 'Data' : 'Text'
     default:
       return 'Text'
   }

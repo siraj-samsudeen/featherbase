@@ -1,7 +1,4 @@
-// Recent actions (issue #101, Phase 1): a per-user localStorage ring buffer
-// of what the operator visited — rows, filtered lists, reports, searches —
-// feeding the awesomebar's recents groups. Client-side only by design; the
-// server-side `user_event` log is a later phase of the same issue.
+// Per-user warm history cache, reconciled with the server on app load.
 
 import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle, choiceLabel } from 'shared'
 import type { ColumnDef } from './meta'
@@ -48,8 +45,17 @@ function save(user: string, entries: RecentEntry[]): void {
   }
 }
 
-export function recordAction(user: string, action: RecentAction, now = Date.now()): void {
-  const entries = loadAll(user)
+// Unlike the transport queue this journal survives a flush, including failed
+// delivery and a summary captured before a successful POST. Only a summary
+// containing a visit confirms it. It has the same bounds as the visible cache.
+const unconfirmed = new Map<string, { entries: RecentEntry[]; remote?: RecentEntry[] }>()
+
+/** A completed session must not contribute visits to a later sign-in. */
+export function clearVisitJournal(): void {
+  unconfirmed.clear()
+}
+
+function remember(entries: RecentEntry[], action: RecentAction, now: number): void {
   const existing = entries.find((e) => e.key === action.key)
   if (existing) {
     Object.assign(existing, action)
@@ -61,7 +67,15 @@ export function recordAction(user: string, action: RecentAction, now = Date.now(
       entries.splice(0, entries.length - MAX_ENTRIES)
     }
   }
+}
+
+export function recordAction(user: string, action: RecentAction, now = Date.now()): void {
+  const entries = loadAll(user)
+  remember(entries, action, now)
   save(user, entries)
+  const journal = unconfirmed.get(user) ?? { entries: [] }
+  remember(journal.entries, action, now)
+  unconfirmed.set(user, journal)
   enqueueServerEvent(user, action, now)
 }
 
@@ -81,7 +95,7 @@ export function recordAction(user: string, action: RecentAction, now = Date.now(
 interface ServerEventSink {
   /** The user the transport would authenticate as right now. */
   currentUser: () => string | null
-  post: (events: Array<Record<string, unknown>>) => void
+  post: (events: Array<Record<string, unknown>>, recorded: (timestamps: number[]) => void) => void
   beacon: (events: Array<Record<string, unknown>>) => void
 }
 
@@ -95,8 +109,14 @@ function flush(useBeacon = false): void {
     clearTimeout(flushTimer)
     flushTimer = null
   }
-  if (!sink || queue.length === 0) return
+  if (!sink) return
   const current = sink.currentUser()
+  // A departing session's unconfirmed visits must not leak into a later
+  // sign-in. Its cache remains available only if that sign-in's summary fails.
+  for (const owner of unconfirmed.keys()) {
+    if (owner !== current) unconfirmed.delete(owner)
+  }
+  if (queue.length === 0) return
   // Fail closed: whatever does not belong to the authenticated session is
   // dropped — delivery is best-effort, attribution is not.
   const mine = current ? queue.filter((q) => q.owner === current) : []
@@ -104,7 +124,28 @@ function flush(useBeacon = false): void {
   if (mine.length === 0) return
   const batch = mine.slice(0, 50).map((q) => q.event)
   if (useBeacon) sink.beacon(batch)
-  else sink.post(batch)
+  else {
+    const owner = current!
+    const journal = unconfirmed.get(owner)
+    sink.post(batch, (timestamps) => {
+      // A late acknowledgement must not mutate a later session, even when
+      // the same person signs back in before the POST completes.
+      if (!journal || unconfirmed.get(owner) !== journal || sink?.currentUser() !== owner) return
+      const cached = loadAll(owner)
+      for (const entries of [journal.entries, cached]) {
+        for (const entry of entries) {
+          entry.visits = [...new Set(entry.visits.map((at) => {
+            const index = batch.findIndex((event) => event.key === entry.key && event.at === at)
+            return index < 0 ? at : timestamps[index]
+          }))].sort((a, b) => a - b)
+        }
+      }
+      // Delivery does not retire a visit: a summary captured before the POST
+      // can still arrive later. Reconcile against the latest actual snapshot.
+      if (journal.remote) replaceServerEntries(owner, journal.remote)
+      else save(owner, cached)
+    })
+  }
   if (mine.length > 50) {
     queue = mine.slice(50)
     flushTimer = setTimeout(() => flush(), FLUSH_DELAY_MS)
@@ -153,11 +194,9 @@ export interface ServerRecentEntry {
   visits: number[]
 }
 
-/** Cross-device merge: union the server's per-key aggregates into the local
- *  buffer (visits merged, deduplicated, capped — same shape both sides). */
-export function mergeServerEntries(user: string, remote: ServerRecentEntry[]): void {
-  if (remote.length === 0) return
-  const entries = loadAll(user)
+/** Replace cached history, folding this document's unconfirmed visits on top. */
+export function replaceServerEntries(user: string, remote: ServerRecentEntry[]): void {
+  const entries: RecentEntry[] = []
   for (const r of remote) {
     if (!['row', 'list', 'page', 'search'].includes(r.kind) || !r.key) continue
     const existing = entries.find((e) => e.key === r.key)
@@ -171,12 +210,32 @@ export function mergeServerEntries(user: string, remote: ServerRecentEntry[]): v
         label: r.label || r.key,
         sub: r.sub,
         path: r.path,
-        visits: r.visits.slice(-MAX_VISITS),
+        visits: [...new Set(r.visits)].sort((a, b) => a - b).slice(-MAX_VISITS),
       })
     }
   }
-  entries.sort((a, b) => lastVisit(a) - lastVisit(b))
-  entries.splice(0, Math.max(0, entries.length - MAX_ENTRIES))
+  const journal = unconfirmed.get(user) ?? { entries: [] }
+  journal.remote = entries.map((entry) => ({ ...entry, visits: [...entry.visits] }))
+  const pending: RecentEntry[] = []
+  for (const local of journal.entries) {
+    const confirmed = entries.find((e) => e.key === local.key)
+    const visits = local.visits.filter((at) => !confirmed?.visits.includes(at))
+    if (visits.length) pending.push({ ...local, visits })
+  }
+  journal.entries = pending
+  unconfirmed.set(user, journal)
+  for (const local of pending) {
+    const existing = entries.find((e) => e.key === local.key)
+    if (existing) {
+      Object.assign(existing, local, { visits: [...new Set([...existing.visits, ...local.visits])].sort((a, b) => a - b).slice(-MAX_VISITS) })
+    } else {
+      entries.push(local)
+    }
+  }
+  if (entries.length > MAX_ENTRIES) {
+    entries.sort((a, b) => lastVisit(a) - lastVisit(b))
+    entries.splice(0, entries.length - MAX_ENTRIES)
+  }
   save(user, entries)
 }
 
@@ -267,7 +326,7 @@ export function actionForLocation(
   const segs = m[1].split('/').map((s) => decodeURIComponent(s)).filter(Boolean)
   if (segs.length === 0) return null
 
-  const staticTitle = segs.length === 1 ? adminPageTitle(segs[0]) : undefined
+  const staticTitle = segs.length === 1 && !UNRECORDED.has(segs[0]) ? adminPageTitle(segs[0]) : undefined
   if (staticTitle)
     return { kind: 'page', key: `page:${segs[0]}`, label: staticTitle, path: pathname }
 

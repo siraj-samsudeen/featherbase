@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DevError, instanceEnvironment, main as start, prepareInstance, resolveInstance } from './dev.mjs'
+import { DevError, instanceEnvironment, main as start, prepareInstance, resetInstance, resolveInstance } from './dev.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const groups = {
@@ -21,6 +21,8 @@ const help = {
           featherbase start
   health  Report readiness, optional setup and operational faults.
           featherbase health [--json]
+  reset   Start clean: preview deletion; --yes confirms it.
+          featherbase reset [<client>/<instance>] [--yes]
 
 Start here: setup, then start, then sign in as Administrator / admin (local development only).
 Next: featherbase <command> --help
@@ -41,6 +43,13 @@ Read the same server-owned checks used by the browser; no changes or prompts.
 Exit 0 means ready to explore; exit 1 means an operational fault or required setup.
 Uses the same DATABASE_URL / .env.local selection as setup and start.
 Next: follow each finding's next action, then run featherbase health again.`,
+  reset: `featherbase reset [<client>/<instance>] [--yes]
+Start clean: remove only the selected local development database and isolated
+uploads. Without --yes, describe the target and file count, change nothing and
+exit 1. Stop connected servers first; reset never kills them or runs setup.
+Refuses remote targets, non-development database stamps and custom/shared storage.
+Legacy shared uploads are never deleted. Uses setup/start's DATABASE_URL selection.
+Next: featherbase setup`,
 }
 
 function advancedHelp(group) {
@@ -57,7 +66,7 @@ console requires an interactive terminal. Apps are installed only by explicit na
 async function main(argv) {
   const [action, ...args] = argv.filter((arg) => arg !== '--')
   if (!action || action === '--help' || action === 'help') return console.log(help.root)
-  if (!['setup', 'start', 'health', 'advanced'].includes(action)) throw new DevError(`Unknown command "${action}". Run featherbase --help`)
+  if (!['setup', 'start', 'health', 'reset', 'advanced'].includes(action)) throw new DevError(`Unknown command "${action}". Run featherbase --help`)
   if (action === 'advanced') {
     const [group, operation, ...rest] = args
     if (!group || group === '--help') return console.log(advancedHelp())
@@ -69,6 +78,17 @@ async function main(argv) {
   }
   if (args.includes('--help')) return console.log(help[action])
   if (action === 'start') return start(args)
+  if (action === 'reset') {
+    let name
+    for (const arg of args) {
+      if (arg === '--yes') continue
+      if (arg.startsWith('-')) throw new DevError(`Unknown option ${arg}. Run featherbase reset --help`)
+      if (name) throw new DevError('Name only one instance. Run featherbase reset --help')
+      name = arg
+    }
+    const instance = resolveInstance(name)
+    return resetInstance(instance, instanceEnvironment(instance), args.includes('--yes'))
+  }
   for (const arg of args) if (action !== 'health' || arg !== '--json') throw new DevError(`Unknown option ${arg}. Run featherbase ${action} --help`)
   if (action === 'health') return delegate(['health', ...args])
   await prepareInstance(resolveInstance(), { ...instanceEnvironment(), ALLOW_MOCK_OAUTH: '1' })

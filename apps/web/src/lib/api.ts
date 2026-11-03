@@ -1,4 +1,5 @@
 import type { SignInMethodKind } from 'shared'
+import { clearVisitJournal } from './recents'
 import { followDevice } from './theme-paint'
 // Thin authenticated client for the Featherbase server API.
 
@@ -38,6 +39,7 @@ export function getSessionUser(): SessionUser | null {
 
 export function clearSession() {
   runtimeSnapshot = undefined
+  clearVisitJournal()
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
   // #380: whoever uses this browser next sees their device's theme, not the
@@ -140,8 +142,8 @@ export const api = {
   // API surface design (#61): PATCH, not PUT, for row updates — Tables gain
   // columns at runtime via Custom Field, and a PUT from a client that read a
   // row before a column existed would silently null it on write. `put` stays
-  // for the handful of full-replace endpoints that aren't row data (e.g.
-  // /api/user_settings, a per-user preferences blob).
+  // for the handful of endpoints that aren't row data (e.g. /api/user_settings,
+  // a per-user preferences blob whose saves merge top-level keys).
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   put: <T>(path: string, body: unknown) =>

@@ -111,3 +111,16 @@ test('#80: sidebar flip — landing, System page cards, All tables', async ({ se
     await expect(nav.getByText('Role', { exact: true })).toBeVisible()
   })
 })
+
+test('#831: generated System links open their canonical destinations', async ({ session }) => {
+  for (const table of ['Sign In Method', 'Data Source', 'System Settings']) {
+    await session.visit('/admin/home/system')
+    await session.step(`open ${table} from its generated card`, async ({ page }) => {
+      const link = page.getByTestId(`home-link-${table}`)
+      await expect(link).toHaveAttribute('href', `/featherbase/admin/${encodeURIComponent(table)}`)
+      await link.click()
+      await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(table)}$`))
+    })
+    await session.assertHas(`[data-testid="${table === 'System Settings' ? 'form-view' : 'list-view'}"]`)
+  }
+})

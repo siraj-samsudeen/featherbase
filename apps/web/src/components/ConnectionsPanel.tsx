@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { listResource } from '../lib/api'
 import { listColumns, useMeta } from '../lib/meta'
+import { listFields } from '../lib/list-view-columns'
 import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Connection } from '../lib/connections'
 import { usePeek } from './Peek'
@@ -143,7 +144,7 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
     queryFn: () =>
       listResource(connection.table, {
         filters: connection.filters,
-        fields: columns.map((c) => c.column_name),
+        fields: listFields(columns),
         limit_page_length: 8,
       }),
   })

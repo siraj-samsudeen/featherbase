@@ -131,6 +131,21 @@ async function lockAccount(id: string) {
   if (!row) throw new AppError('NotFoundError', `Service account ${id} not found`)
 }
 
+export async function renameServiceAccount(id: string, label: string, actor: string): Promise<ServiceAccount> {
+  const name = cleanLabel(label)
+  await withTransaction(async () => {
+    await lockAccount(id)
+    await sql`update service_account set label = ${name}, updated_at = now(), updated_by = ${actor} where row_id = ${id}`
+  }).catch((err) => {
+    // The same unique index guards both creation and renaming, including races.
+    if ((err as { code?: string })?.code === '23505')
+      throw new AppError('ConflictError', `A service account named "${name}" already exists`)
+    throw err
+  })
+  await logActivity(actor, `service_account_renamed ${id}`)
+  return getServiceAccount(id)
+}
+
 // Disabling dead-ends every token the account owns (resolveAccessToken
 // checks the owner's enabled flag) without destroying them.
 export async function setServiceAccountEnabled(id: string, enabled: boolean, actor: string): Promise<ServiceAccount> {

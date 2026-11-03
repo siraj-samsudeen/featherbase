@@ -22,6 +22,7 @@ import { join, resolve } from 'node:path'
 // still uses the browser Playwright installed for itself.
 const CHROMIUM_BINARIES = [
   'chrome-linux/chrome',
+  'chrome-linux64/chrome',
   'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
   'chrome-win/chrome.exe',
 ]

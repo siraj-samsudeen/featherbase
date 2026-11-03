@@ -52,6 +52,75 @@ is connected.
 - **THEN** the request is refused, naming the table that is not on the list
 - **AND** neither allowed table is connected
 
+### Requirement: Incomplete table restrictions explain how to qualify a name
+
+Saving a data source SHALL refuse an SQL table restriction that lacks its namespace, giving correction guidance on the restriction field: schema and table for Postgres, database and table for MySQL, catalog, schema and table for DuckDB warehouses. CSV folders SHALL continue to accept exact relative filenames without a namespace; a default namespace SHALL NOT fill in an incomplete restriction.
+
+#### Scenario Outline: An incomplete restriction is refused before it is saved
+
+```gherkin
+Given the user manages a "<engine>" source with default namespace "<default>"
+When the user saves its table restriction as "<entry>"
+Then saving is refused with restriction-field guidance to use "<format>"
+And the source is not registered
+
+Examples:
+  | engine   | default   | entry             | format               |
+  | postgres | public    | stores            | schema.table         |
+  | postgres |           | stores            | schema.table         |
+  | mysql    | shop      | stores            | database.table       |
+  | duckdb   | gold.main | stores            | catalog.schema.table |
+  | duckdb   | gold      | main.stores       | catalog.schema.table |
+  | postgres | public    | public.ok,stores  | schema.table         |
+```
+
+#### Scenario Outline: An explicit restriction saves without contacting its source
+
+```gherkin
+Given the user manages a "<engine>" source with default namespace ""
+When the user saves its table restriction as "<entry>"
+Then the source is registered with exactly that restriction
+
+Examples:
+  | engine     | entry                 |
+  | postgres   | public.stores         |
+  | mysql      | shop.stores           |
+  | duckdb     | gold.main.stores      |
+  | csv-folder | stores.csv            |
+  | csv-folder | finance/stores.csv    |
+```
+
+#### Scenario: A refused edit preserves the saved restriction
+
+```gherkin
+Given a Postgres source is registered with restriction "public.stores"
+When the user changes its restriction to "public.stores,stores"
+Then saving is refused with restriction-field guidance to use "schema.table"
+And its stored restriction is still "public.stores"
+```
+
+### Requirement: Stored incomplete restrictions never gain implied access
+
+An existing incomplete restriction SHALL remain unchanged and SHALL NOT gain access through a default namespace; a refusal SHALL explain how to correct it. An exact allowed entry in the same stored restriction SHALL continue to work.
+
+#### Scenario: A stored bare name remains refused with correction guidance
+
+```gherkin
+Given a Postgres source already stores the restriction "stores" for its public stores table
+When the user tries to connect the public stores table
+Then connection is refused with guidance to use "schema.table"
+And its stored restriction is still "stores"
+```
+
+#### Scenario: A qualified entry still works beside an old incomplete entry
+
+```gherkin
+Given a Postgres source already stores the restriction "stores,public.stores" for its public stores table
+When the user tries to connect the public stores table
+Then the public stores table connects
+And its stored restriction is still "stores,public.stores"
+```
+
 ### Requirement: A data source that is in use can't be removed
 
 A data source SHALL NOT be removed while any table is still connected
@@ -409,6 +478,49 @@ And a bin on the shelf titled "Top"
 And the user may read bins but not shelves
 When the user opens that bin's relationship map
 Then the user does not see "Top"
+
+### Requirement: Explore follows linked rows within one connected Postgres source
+
+The user SHALL explore direct links within one Postgres data source over all matching upstream records, with exact totals and groups and the same access restrictions at every step. Other sources, indirect links and requests beyond the existing limits SHALL remain refused; selecting records and summing values remain unchanged.
+
+#### Scenario: All connected floors appear before selecting a store
+
+```gherkin
+Given a connected Postgres source has North with two floors, South with one floor and Empty with none
+When the user explores stores followed by floors without selecting a store
+Then the user sees the three linked floors with a total of three
+```
+
+#### Scenario: Selecting a store narrows its floors
+
+```gherkin
+Given a connected Postgres source has North with two floors, South with one floor and Empty with none
+When the user explores floors for North
+Then the user sees only North's two floors with a total of two
+```
+
+#### Scenario: Selecting an empty store shows no floors
+
+```gherkin
+Given a connected Postgres source has North with two floors, South with one floor and Empty with none
+When the user explores floors for Empty
+Then the user sees no floors with a total of zero
+```
+
+#### Scenario: An empty upstream search shows no floors
+
+```gherkin
+Given a connected Postgres source has North with two floors, South with one floor and Empty with none
+When the user explores floors for stores matching "Missing" without selecting a store
+Then the connected result has no floors with a total of zero
+```
+
+#### Scenario: A store beyond the displayed page still contributes its floors
+
+```gherkin
+Given a connected Postgres source has more than five hundred stores
+When the user explores floors without selecting a store from that source
+Then floors linked to stores beyond the displayed page contribute to the exact result
 ```
 
 ### Requirement: Connecting a table picks the column that names its rows
@@ -430,9 +542,9 @@ Then the user sees the shelf as "Top"
 
 ### Requirement: A connected table's list shows what a row is about
 
-Beside each row's ID, a connected table's list SHALL show its title and up
-to four more of its columns, in the source's order. It leaves out the columns
-that only record when a row was created or changed, and by whom.
+A connected table's list SHALL show its title and up to four more of its
+columns, in the source's order. It leaves out the columns that only record
+when a row was created or changed, and by whom.
 
 #### Scenario: The shelf list leaves out when each shelf was created
 
@@ -486,4 +598,20 @@ And a Postgres database of shelves and the bins on each shelf
 And only its bin table connected, as "Bin"
 When the user opens a bin and takes the offer to connect the shelf table
 Then the user sees the shelf table chosen, ready to connect
+```
+
+### Requirement: A text column with a declared length is one-line text
+
+Connecting a table SHALL make a text column with a declared length one-line
+text, however long its limit. Only text with no limit is long text.
+
+#### Scenario: The parcel's sender reads on one line
+
+```gherkin
+Given a connected database of parcels on racks, where every parcel has a sender of up to 500 characters
+And a parcel labelled "Blue box" on the rack "Top"
+And the user may read parcels and racks
+When the user opens that parcel
+Then the user sees its sender on one line
+And the user sees its instructions as long text
 ```
