@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { buttonClasses, cardClasses, touchRowClasses } from './ui'
+import { SearchInput, buttonClasses, cardClasses, touchRowClasses } from './ui'
 import { ChevronDown } from './ui/icons'
+
+const SEARCH_AFTER = 8
 
 /** #820: a button that opens a list of a Choice column's choices to tick. The
  *  quick filter box and Add filter both use it. */
@@ -68,9 +70,21 @@ export function ChoiceTicks({
   }
 
   function toggle(choice: string, on: boolean) {
+    tickAll([choice], on)
+  }
+
+  // A list longer than this can be searched; Select all and Clear then act on
+  // the choices found, and ticks the search hides stay as they are.
+  const searchable = choices.length > SEARCH_AFTER
+  const [query, setQuery] = useState('')
+  const found = searchable ? choices.filter((c) => c.toLowerCase().includes(query.trim().toLowerCase())) : choices
+
+  function tickAll(these: string[], on: boolean) {
     const next = new Set(shown)
-    if (on) next.add(choice)
-    else next.delete(choice)
+    for (const c of these) {
+      if (on) next.add(c)
+      else next.delete(c)
+    }
     change(choices.filter((c) => next.has(c)))
   }
 
@@ -95,10 +109,20 @@ export function ChoiceTicks({
           data-testid={listTestId}
           className={cardClasses('absolute left-0 z-10 mt-1 max-h-72 w-56 max-w-[calc(100vw-2rem)] overflow-y-auto p-2')}
         >
+          {searchable && (
+            <SearchInput
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search…"
+              aria-label={`Search ${label} choices`}
+              data-testid="choices-search"
+              className="mb-1"
+            />
+          )}
           <div className="mb-1 flex gap-1 border-b border-border pb-1">
             <button
               type="button"
-              onClick={() => change(choices)}
+              onClick={() => tickAll(found, true)}
               data-testid="choices-select-all"
               className={touchRowClasses('rounded px-2 py-1 text-sm text-action hover:bg-subtle')}
             >
@@ -106,14 +130,14 @@ export function ChoiceTicks({
             </button>
             <button
               type="button"
-              onClick={() => change([])}
+              onClick={() => tickAll(found, false)}
               data-testid="choices-clear"
               className={touchRowClasses('rounded px-2 py-1 text-sm text-action hover:bg-subtle')}
             >
               Clear
             </button>
           </div>
-          {choices.map((c) => (
+          {found.map((c) => (
             <label key={c} className={touchRowClasses('flex items-center gap-2 rounded px-2 py-1 text-sm text-ink')}>
               <input type="checkbox" checked={shown.includes(c)} onChange={(e) => toggle(c, e.target.checked)} />
               {c}
