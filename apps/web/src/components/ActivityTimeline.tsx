@@ -43,10 +43,21 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
       <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
         Activity
       </div>
-      {entries.length === 0 && (
+      {entries.length === 0 && !activity.data?.created && (
         <p className="text-xs text-ink-subtle">No activity yet</p>
       )}
       <ol className="space-y-3">
+        {/* #829: who made the row opens its activity, e.g. "Google sign-in created this". */}
+        {activity.data?.created && (
+          <li className="flex gap-2 text-sm" data-testid="activity-created">
+            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-ink-subtle" />
+            <div className="min-w-0 flex-1 text-xs text-ink-muted">
+              <span className="font-medium text-ink"><PrincipalName id={activity.data.created.created_by} /></span>{' '}
+              created this ·{' '}
+              <span className="whitespace-nowrap" data-testid="activity-created-time">{fmtInstant(activity.data.created.created_at)}</span>
+            </div>
+          </li>
+        )}
         {entries.map((e, i) => (
           <li key={i} className="flex gap-2 text-sm" data-testid={`activity-${e.kind}`}>
             <span
