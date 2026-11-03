@@ -30,7 +30,7 @@ While a replacement search is being resolved, the command bar SHALL NOT offer or
 
 ```gherkin
 Given the user is searching for Person in the command bar
-When the user replaces the search with Sign In Method and immediately activates the search
+When the user replaces the search with Sign In Meth and immediately activates the search
 Then the previous Person record is not opened
 ```
 
