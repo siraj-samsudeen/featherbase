@@ -50,6 +50,13 @@ and now diverges from Frappe wherever Frappe doesn't serve this platform's own
 users. This section is featherbase's own standing rules; the shared process
 above comes from the template through Copier.
 
+### Default change mode
+
+Use **autopilot** for new and resumed changes unless the owner explicitly selects
+build or learning mode. This overrides the `change-modes` skill's build default
+for this repository. Autopilot removes per-test stops, not required owner decisions
+or approvals for reviews, merges, deployments or destructive actions.
+
 ### Project stage
 
 Pre-release: every interface is provisional and nothing outside this repo

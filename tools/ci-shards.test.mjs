@@ -26,7 +26,7 @@ function collectorFixture(t, suite) {
   writeFileSync(resolve(web, 'package.json'), '{"name":"web","type":"module"}')
   writeFileSync(resolve(web, 'vitest.config.mjs'), 'export default { test: { include: ["src/*.test.ts"] } }')
   writeFileSync(resolve(web, 'playwright.config.mjs'), 'export default { testDir: "./e2e" }')
-  for (let shard = 1; shard <= 3; shard++) {
+  for (let shard = 1; shard <= shardCount; shard++) {
     const file = suite === 'component' ? `src/${shard}.test.ts` : `e2e/${shard}.spec.ts`
     const runner = suite === 'component' ? 'vitest' : '@playwright/test'
     writeFileSync(resolve(web, file), `import { test } from '${runner}'; test('example', () => {})`)
@@ -35,7 +35,7 @@ function collectorFixture(t, suite) {
     mkdirSync(resolve(producer, 'coverage'), { recursive: true })
     writeFileSync(resolve(producer, artifact), '{}')
     writeFileSync(resolve(producer, 'receipt.json'), JSON.stringify({
-      suite, head, total: 3, shard, files: [file],
+      suite, head, total: shardCount, shard, files: [file],
       artifacts: { [artifact]: createHash('sha256').update('{}').digest('hex') },
     }))
   }
@@ -57,7 +57,7 @@ test('collector CLI ignores merged coverage artifacts from previous attempts', a
     for (let attempt = 0; attempt < 2; attempt++) {
       const result = collect()
       assert.equal(result.status, 0, result.stderr)
-      assert.match(result.stdout, /Verified 3 .* producers: exact-once inventory/)
+      assert.match(result.stdout, new RegExp(`Verified ${shardCount} .* producers: exact-once inventory`))
     }
     assert.equal(readFileSync(resolve(web, suite === 'component'
       ? '.vitest-web-reports/component-3.json' : '.nyc_output/e2e-browser-3-e2e-example.json'), 'utf8'), '{}')
@@ -69,7 +69,8 @@ test('collector CLI rejects invalid producer inputs', async t => {
     const cases = [
       ['missing producer', /Missing or duplicate producers/, dir => rmSync(dir, { recursive: true })],
       ['failed producer without receipt', /ENOENT/, dir => rmSync(resolve(dir, 'receipt.json'))],
-      ['duplicate producer', /Unexpected producer directory/, dir => cpSync(dir, `${dir.slice(0, -1)}4`, { recursive: true })],
+      ['duplicate producer', /Unexpected producer directory/, dir => cpSync(dir,
+        resolve(dir, '..', `${suite}-${shardCount + 1}`), { recursive: true })],
       ['altered artifact', /Altered or missing artifacts/, dir => writeFileSync(resolve(dir,
         suite === 'component' ? 'blob.json' : 'coverage/e2e-example.json'), '{"changed":true}')],
       ['previous-head producer', /Stale producer/, null, receipt => { receipt.head = 'previous-head' }],
@@ -111,8 +112,8 @@ test('configured component and browser files partition exactly once, including f
 
 test('the merge accepts exactly one successful producer per shard and every file once', () => {
   const files = ['a', 'b', 'c', 'd', 'e']
-  const receipts = [['a', 'e'], ['b'], ['c', 'd']].map((files, i) => ({
-    suite: 'component', head: 'head', total: 3, shard: i + 1, files, artifacts: { 'blob.json': 'digest' },
+  const receipts = [['a', 'e'], ['b'], ['c'], ['d']].map((files, i) => ({
+    suite: 'component', head: 'head', total: shardCount, shard: i + 1, files, artifacts: { 'blob.json': 'digest' },
   }))
   const check = value => validate(value, 'component', files, 'head')
   check(receipts)

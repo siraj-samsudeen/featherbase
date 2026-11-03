@@ -13,12 +13,11 @@
 # Shape of the gate. `changes` (tools/ci-scope.mjs) picks the suites a PR needs
 # from its paths; everything runs on main and on whatever it cannot place:
 #
-#   changes ──> checks ───────────────────────┐
-#           ──> unit-server 1/3, 2/3, 3/3 ────┤
-#           ──> release-preflight-pg18 ───────┼──> unit
-#           ──> unit-web ─────────────────────┤
-#           ──> app-tests ────────────────────┤
-#           ──> e2e ──> coverage-merged ──────┘
+#   changes -> unit-server (3), PG18 preflight -> coverage-server
+#           -> component-shards (4), web-support -> unit-web
+#           -> browser-shards (4), acceptance, served -> e2e
+#   unit-web + e2e -> coverage-merged
+#   checks + unit suites + app-tests + coverage gates -> unit
 #
 #   docs and prose      checks' fast half only
 #   client-apps/**      app-tests: the app's tests and platform tests
@@ -430,15 +429,7 @@ jobs:
       - name: Collect runtime component coverage against the real server
         run: pnpm --filter web exec vitest run --config ../../tools/vitest.runtime-components.config.ts
 
-      - name: Build instrumented Tasker for HTTP coverage
-        run: VITE_COVERAGE=true npm run build --prefix example-apps/tasker
-
-      - name: Collect runtime HTTP coverage
-        run: >-
-          pnpm --filter server exec vitest run
-          --config ../../example-apps/tasker/vitest.integration.config.ts
-
-      - name: Upload runtime unit and integration coverage
+      - name: Upload runtime unit and component coverage
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
@@ -446,7 +437,6 @@ jobs:
           path: |
             coverage/tasker/unit/coverage-final.json
             coverage/tasker/components/coverage-final.json
-            coverage/tasker/integration/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
@@ -525,15 +515,13 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # The verdict for the unit layer, under the name the ruleset requires. A job
-  # may be skipped only if `changes` said so. Merging needs no database: Vitest
-  # replays the shards' results and coverage from their blob reports without
-  # running globalSetup.
+  # A lightweight final verdict under the name the ruleset requires. Coverage
+  # merging runs as soon as its producers finish, not after the slowest suite.
   unit:
-    needs: [changes, checks, unit-server, unit-web, release-preflight-pg18, app-tests, coverage-merged]
+    needs: [changes, checks, unit-server, unit-web, release-preflight-pg18, app-tests, coverage-server, coverage-merged]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Fail if a check or suite failed, or skipped when it should have run
         env:
@@ -542,10 +530,11 @@ jobs:
           PREFLIGHT: ${{ needs.release-preflight-pg18.result }}/${{ needs.changes.outputs.server }}
           UNIT_WEB: ${{ needs.unit-web.result }}/${{ needs.changes.outputs.web }}
           APP_TESTS: ${{ needs.app-tests.result }}/${{ needs.changes.outputs.client_apps == 'false' && needs.changes.outputs.tasker_tests == 'false' && 'false' || 'true' }}
+          COVERAGE_SERVER: ${{ needs.coverage-server.result }}/${{ needs.changes.outputs.server }}
           COVERAGE_MERGED: ${{ needs.coverage-merged.result }}/${{ needs.changes.outputs.coverage_merged }}
         run: |
           status=0
-          for name in UNIT_SERVER PREFLIGHT UNIT_WEB APP_TESTS COVERAGE_MERGED; do
+          for name in UNIT_SERVER PREFLIGHT UNIT_WEB APP_TESTS COVERAGE_SERVER COVERAGE_MERGED; do
             value=${!name}; result=${value%%/*}; wanted=${value#*/}
             echo "$name: $result (wanted: ${wanted:-unknown, so yes})"
             if [ "$result" = success ] || { [ "$result" = skipped ] && [ "$wanted" = false ]; }; then continue; fi
@@ -555,26 +544,31 @@ jobs:
           [ "$CHECKS" = success ] || status=1
           exit $status
 
-      # Only a run of the server suite has shards to merge. The preflight's report
-      # alone would read as far below the floor.
+  # Merging needs no database: Vitest replays the shards' results and coverage
+  # without running globalSetup. Only the server switch permits skipping it.
+  coverage-server:
+    needs: [changes, unit-server, release-preflight-pg18]
+    if: ${{ !cancelled() && needs.changes.outputs.server != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Require successful server shards and PostgreSQL 18 preflight
+        if: needs.unit-server.result != 'success' || needs.release-preflight-pg18.result != 'success'
+        run: exit 1
+
       - uses: actions/checkout@v4
-        if: ${{ needs.unit-server.result == 'success' }}
 
       - uses: pnpm/action-setup@v4
-        if: ${{ needs.unit-server.result == 'success' }}
 
       - uses: actions/setup-node@v4
-        if: ${{ needs.unit-server.result == 'success' }}
         with:
           node-version: '26.13.0'
           cache: pnpm
 
       - name: Install dependencies
-        if: ${{ needs.unit-server.result == 'success' }}
         run: pnpm install --frozen-lockfile
 
       - uses: actions/download-artifact@v4
-        if: ${{ needs.unit-server.result == 'success' }}
         with:
           pattern: server-blob-*
           path: apps/server/.vitest-reports
@@ -583,11 +577,12 @@ jobs:
       # Fails below the server's coverage.thresholds, exactly as the
       # unsharded `test:coverage` did.
       - name: Merge server shards and enforce coverage thresholds
-        if: ${{ needs.unit-server.result == 'success' }}
         env:
           # Keep the driver in the denominator. Merging never connects.
           MYSQL_TEST_URL: mysql://root@127.0.0.1:3306
-        run: pnpm --filter server exec vitest run --merge-reports=.vitest-reports --coverage
+        run: |
+          for report in blob-1 blob-2 blob-3 release-pg18; do test -s "apps/server/.vitest-reports/$report.json"; done
+          pnpm --filter server exec vitest run --merge-reports=.vitest-reports --coverage
 
   # Production runs PostgreSQL 18.6, where the release preflight has checks
   # that only exist there (publish_generated_columns, #399). The full suite
@@ -839,7 +834,7 @@ jobs:
 
   acceptance:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.e2e != 'false' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.e2e != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
@@ -861,8 +856,17 @@ jobs:
           node-version: '26.13.0'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm apps:prepare
+      # HTTP coverage is collected before acceptance rebuilds packages.
+      - name: Build independent runtime test packages with coverage
+        env:
+          VITE_COVERAGE: 'true'
+        run: pnpm apps:prepare
       - run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: Collect runtime HTTP coverage
+        run: >-
+          pnpm --filter server exec vitest run
+          --config ../../example-apps/tasker/vitest.integration.config.ts
 
       # Acceptance also runs the packaged delivery proof. Its development seed
       # checks PostgreSQL's actual server address; Docker forwarding is not local.
@@ -892,18 +896,20 @@ jobs:
           path: acceptance-tests/reports/
           if-no-files-found: ignore
 
-      - name: Upload packaged acceptance coverage
+      - name: Upload runtime integration coverage
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: runtime-packaged-coverage
-          path: coverage/tasker/packaged/
+          name: runtime-integration-coverage
+          path: |
+            coverage/tasker/integration/
+            coverage/tasker/packaged/
           if-no-files-found: error
           retention-days: 1
 
   served:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.e2e != 'false' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.e2e != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -1039,8 +1045,8 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: runtime-packaged-coverage
-          path: coverage/tasker/packaged
+          name: runtime-integration-coverage
+          path: coverage/tasker
 
       - name: Install runtime coverage reporter
         run: npm ci --prefix example-apps/tasker --no-audit --no-fund

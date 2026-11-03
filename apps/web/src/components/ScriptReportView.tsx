@@ -11,6 +11,7 @@ interface FilterDef {
   label: string
   column_type: string
   choices?: string
+  default?: unknown
 }
 interface ScriptReportMeta {
   name: string
@@ -28,14 +29,14 @@ function FilterControl({
   onChange,
 }: {
   def: FilterDef
-  value: string
+  value: unknown
   onChange: (v: string) => void
 }) {
   const testid = `sr-filter-${def.column_name}`
   if (def.column_type === 'Choice') {
     const opts = (def.choices ?? '').split('\n')
     return (
-      <select className={inputClasses()} data-testid={testid} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select className={inputClasses()} data-testid={testid} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
         {opts.map((o) => (
           <option key={o} value={o}>
             {o || '(any)'}
@@ -50,7 +51,7 @@ function FilterControl({
         <input
           type="checkbox"
           data-testid={testid}
-          checked={value === '1'}
+          checked={value === true || value === 1 || value === '1'}
           onChange={(e) => onChange(e.target.checked ? '1' : '')}
         />
       </label>
@@ -61,7 +62,7 @@ function FilterControl({
       className={inputClasses()}
       type={type}
       data-testid={testid}
-      value={value}
+      value={String(value ?? '')}
       onChange={(e) => onChange(e.target.value)}
     />
   )
@@ -72,7 +73,20 @@ export function ScriptReportView({ name }: { name: string }) {
     queryKey: ['script-report', name],
     queryFn: () => api.get<ScriptReportMeta>(`/api/script_report/${encodeURIComponent(name)}`),
   })
-  const [values, setValues] = useState<Record<string, string>>({})
+  if (meta.isError)
+    return (
+      <div className={cardClasses('p-4 text-sm text-negative')} data-testid="script-report-error">
+        {meta.error instanceof ApiError ? meta.error.message : 'Report not found'}
+      </div>
+    )
+  if (!meta.data) return <div className="p-4 text-ink-subtle">Loading…</div>
+  return <ScriptReportForm key={name} meta={meta.data} />
+}
+
+function ScriptReportForm({ meta }: { meta: ScriptReportMeta }) {
+  const [values, setValues] = useState<Record<string, unknown>>(() =>
+    Object.fromEntries(meta.filters.map((f) => [f.column_name, f.default ?? ''])),
+  )
   const [result, setResult] = useState<RunResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
@@ -82,8 +96,12 @@ export function ScriptReportView({ name }: { name: string }) {
     setError(null)
     try {
       const filters: Record<string, unknown> = {}
-      for (const [k, v] of Object.entries(values)) if (v !== '') filters[k] = v === '1' ? true : v
-      setResult(await api.post<RunResult>('/api/run_script_report', { report: name, filters }))
+      for (const f of meta.filters) {
+        const v = values[f.column_name]
+        if (v !== '' && v != null)
+          filters[f.column_name] = f.column_type === 'Check' ? v === true || v === 1 || v === '1' : v
+      }
+      setResult(await api.post<RunResult>('/api/run_script_report', { report: meta.name, filters }))
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to run report')
       setResult(null)
@@ -93,27 +111,19 @@ export function ScriptReportView({ name }: { name: string }) {
   }
 
   useEffect(() => {
-    if (meta.data) void run()
+    void run()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meta.data?.name])
-
-  if (meta.isError)
-    return (
-      <div className={cardClasses('p-4 text-sm text-negative')} data-testid="script-report-error">
-        {meta.error instanceof ApiError ? meta.error.message : 'Report not found'}
-      </div>
-    )
-  if (!meta.data) return <div className="p-4 text-ink-subtle">Loading…</div>
+  }, [])
 
   return (
     <div data-testid="script-report" className="space-y-4">
       <h1 className="text-lg font-semibold text-ink" data-testid="script-report-title">
-        {meta.data.name}
+        {meta.name}
       </h1>
 
-      {meta.data.filters.length > 0 && (
+      {meta.filters.length > 0 && (
         <div className={cardClasses('flex flex-wrap items-end gap-3 p-3')} data-testid="script-report-filters">
-          {meta.data.filters.map((f) => (
+          {meta.filters.map((f) => (
             <div key={f.column_name}>
               <label className={labelClasses()}>{f.label}</label>
               <FilterControl

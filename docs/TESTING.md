@@ -78,6 +78,18 @@ depends on). `unit` and `e2e` report on every PR, so never add a workflow-level
 `paths` filter to `test.yml`. The checks also fail a PR that changes an app's
 `version` to one not greater than `main`'s (`pnpm check:app-versions`).
 
+The component and browser suites each use four CI shards, with a separate
+runner and PostgreSQL service per shard. Files still run sequentially within
+each shard: their server and instance-wide state is shared. `unit-web` merges
+all four Vitest blobs and enforces the component suite's unchanged coverage
+floor; `coverage-merged` combines that report with every browser shard.
+Acceptance and served-page tests run in separate jobs. Acceptance executes the
+packaged delivery proof with coverage, so CI does not invoke it again.
+The required `e2e` check aggregates browser, acceptance and served-page results;
+only an explicit scope decision permits skipped suites. Server coverage merges
+as soon as its three shards and PostgreSQL 18 preflight finish, leaving `unit`
+as a lightweight final verdict rather than another serial setup/merge step.
+
 A scoped PR can break what it did not run; that shows on `main`, which runs it all.
 
 ## The sandbox model
@@ -363,8 +375,9 @@ own guarded `*_e2e` database as described above. Reports live at the repository
 root under `coverage/tasker/`, never inside the fingerprinted runtime app.
 Do not rebuild or edit an app while a server using its artifact is running:
 installed versions require their exact fingerprint. CI collects the HTTP layer
-on the runtime-support runner and packaged coverage from the proof that the
-effective-spec acceptance suite already executes, without a second proof run.
+on the acceptance runner before rebuilding packages. Packaged coverage comes
+from the proof that the effective-spec acceptance suite already executes,
+without a second proof run.
 It publishes the merged runtime report alongside the web report. The runtime
 merger requires every line, statement and function
 to be covered, comparing exact counts rather than rounded percentages. It also

@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url'
 
 const root = resolve(import.meta.dirname, '..')
 const web = resolve(root, 'apps/web')
-export const shardCount = 3
+export const shardCount = 4
 const suites = ['component', 'browser']
 function run(args, capture = false) {
   const result = spawnSync('pnpm', ['--filter', 'web', 'exec', ...args], {

@@ -394,14 +394,14 @@ export function signIn<
     assertHas(selector: string): S
   },
 >(session: S): S {
-  // Ordinary journey setup, not a test of the sign-in landing. Use an
-  // explicit destination: on a fresh shard the welcome offer can still be
-  // pending when the sidebar appears. The login/first-run specs exercise
-  // the default landing independently rather than relying on earlier files.
+  // This is an authentication precondition, not a first-run setup journey.
+  // An explicit return address prevents a pending setup offer from taking over
+  // the next page on a fresh shard with no other System Manager yet.
+  // The Admin index chooses a Home Page; assert the shell, not a specific page.
   return session
-    .visit('/login?next=/featherbase/admin/all-tables')
+    .visit('/featherbase/login?next=/featherbase/admin')
     .fillIn('Email or username', ADMIN_USER)
     .fillIn('Password', ADMIN_PWD)
     .clickButton('Sign in')
-    .assertHas('[data-testid="table-nav"]')
+    .assertHas('[data-testid="import-data-link"]')
 }
