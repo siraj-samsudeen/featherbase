@@ -17,6 +17,14 @@ Every signed-in Tasker member SHALL be able to see, create and change shared pro
 
 Tasker SHALL admit only people explicitly granted membership; signing into Featherbase alone SHALL NOT give access to its work. Removing membership SHALL refuse subsequent access without deleting the work.
 
+Tasker membership alone SHALL NOT grant entry to Featherbase's platform workspace.
+
+#### Scenario: Membership opens only the app
+
+- **WHEN** a person with Tasker membership and no platform workspace grant signs in
+- **THEN** Tasker is available and Featherbase is not offered as a destination
+- **AND** a direct request to open the platform workspace is refused
+
 #### Scenario: Membership is removed
 
 - **WHEN** the user's membership is removed while a task is open

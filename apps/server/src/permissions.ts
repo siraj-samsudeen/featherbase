@@ -159,7 +159,8 @@ export async function assertPermission(
  * at its own root owns: its installation declares pages of its own
  * (declaresOwnPages, read from the installed_app row, so it never depends on
  * the app's files loading). Such an
- * app's Tables (enabled or not) are reached through the app: every reader of
+ * app's Tables and its contributed grants on core Tables are reached through
+ * the app: every reader of
  * an app reads its entry Table, so counting them would hand the Admin to
  * everyone who can open an app. An app without pages of its own is used
  * through the Admin, so its Tables still count. App Tables are still listed
@@ -183,11 +184,11 @@ export async function tableAccessFor(
   )
   const names = (pick: (r: (typeof active)[number]) => boolean) =>
     [...new Set(active.filter(pick).map((r) => r.ref_table as string))].sort()
-  const appTables = await tablesOfAppsWithOwnPages()
+  const ownPages = await appsWithOwnPages()
   const shared = await sql`
     select distinct share_table from share
     where (person = ${principal} or service_account = ${principal}) and read = true`
-  const ownGrant = active.some((r) => r.role !== 'All' && !appTables.has(String(r.ref_table)))
+  const ownGrant = active.some((r) => r.role !== 'All' && !ownPages.tables.has(String(r.ref_table)) && (r.owner_app == null || !ownPages.names.has(String(r.owner_app))))
   return {
     readable: names((r) => r.can_read),
     // Read through a role of the principal's own, never only through All: an
@@ -195,15 +196,18 @@ export async function tableAccessFor(
     readableByOwnRole: names((r) => r.can_read && r.role !== 'All'),
     creatable: names((r) => r.can_create),
     ownGrant,
-    admin: ownGrant || shared.some((r) => !appTables.has(String(r.share_table))),
+    admin: ownGrant || shared.some((r) => !ownPages.tables.has(String(r.share_table))),
   }
 }
 
-/** #659: the Tables of installed apps that declare pages of their own,
- *  enabled or not, loaded here or not, read through the ledger's one decoder. */
-async function tablesOfAppsWithOwnPages(): Promise<Set<string>> {
-  const rows = await sql`select tables, runtime_package, manifest from installed_app`
-  return new Set(rows.filter(declaresOwnPages).flatMap((r) => asNameList(r.tables)))
+/** #659: installation declarations remain authoritative when code is missing
+ *  or disabled. Both owned Tables and contributed grants belong in the app. */
+async function appsWithOwnPages(): Promise<{ names: Set<string>; tables: Set<string> }> {
+  const rows = (await sql`select name, tables, runtime_package, manifest from installed_app`).filter(declaresOwnPages)
+  return {
+    names: new Set(rows.map((row) => String(row.name))),
+    tables: new Set(rows.flatMap((row) => asNameList(row.tables))),
+  }
 }
 
 /** Administrator, or a principal of either kind holding System Manager. */
