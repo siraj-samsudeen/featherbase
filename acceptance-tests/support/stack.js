@@ -27,7 +27,10 @@ const BOOT_TIMEOUT_MS = 240_000;
 // Same host and credentials as the developer's database, under its own name.
 function acceptanceDatabaseUrl() {
   const url = new URL(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@127.0.0.1:5432/featherbase');
-  url.pathname = '/featherbase_acceptance_e2e';
+  const name = process.env.ACCEPTANCE_DATABASE_NAME ?? 'featherbase_acceptance_e2e';
+  if (!/^featherbase_[a-z0-9_]+_e2e$/.test(name))
+    throw new Error('ACCEPTANCE_DATABASE_NAME must be a disposable featherbase_*_e2e database');
+  url.pathname = `/${name}`;
   return url.toString();
 }
 
