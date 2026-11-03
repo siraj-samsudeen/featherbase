@@ -31,7 +31,7 @@ async function openStandin(dir: string, token: string): Promise<MotherDuckSessio
   const instance = await DuckDBInstance.create(':memory:')
   // Each session reads its own copy, so a test can change a database file while
   // a session is open (DuckDB locks an attached file); Refresh opens a new session.
-  const copies = mkdtempSync(path.join(tmpdir(), 'fb-md-session-'))
+  const copies = mkdtempSync(path.join(tmpdir(), `fb-md-session-${path.basename(dir)}-`))
   const copyOf = (file: string) => {
     const target = path.join(copies, `${Math.random().toString(36).slice(2)}-${path.basename(file)}`)
     copyFileSync(file, target)

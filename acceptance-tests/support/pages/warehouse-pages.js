@@ -287,6 +287,29 @@ class CopiedWarehousePage {
     if (!res.ok()) throw new Error(`copy again refused: ${res.status()} ${await res.text()}`);
     await this.page.getByTestId('copy-result').waitFor();
   }
+
+  async undoLastCopy() {
+    await this.page.goto('/featherbase/admin/imports');
+    await this.page.getByTestId(`ib-target-${this.table}`).first().waitFor();
+    await this.page.goto(`/featherbase/admin/import?table=${encodeURIComponent(this.table)}`);
+    await this.page.getByTestId('iw-revert-open-h0').click();
+    await this.page.getByTestId('iw-revert-confirm-h0').click();
+    await this.page.getByTestId('iw-revert-result-h0').waitFor();
+  }
+
+  async attemptCopyAgain() {
+    const response = this.page.waitForResponse(res => res.url().endsWith(':copy_again') && res.request().method() === 'POST');
+    await this.page.getByTestId('copy-again').click();
+    const res = await response;
+    const body = await res.json();
+    return { status: res.status(), message: body.error?.message ?? '' };
+  }
+
+  async showsAtomicFailure() {
+    const notice = this.page.getByTestId('copy-bar').getByText(/Copy failed; no rows changed/);
+    await notice.waitFor();
+    return notice.isVisible();
+  }
 }
 
 module.exports = { ConnectWarehousePage, WarehouseSourcePage, DataSourcesSidebar, WarehouseBrowserPage, WarehouseCopyPage, CopiedWarehousePage };

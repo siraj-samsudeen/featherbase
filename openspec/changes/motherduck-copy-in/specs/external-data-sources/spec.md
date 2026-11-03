@@ -222,7 +222,11 @@ And a correction made in that form is saved
 
 Copy again SHALL update an unedited value from the warehouse, add new source
 rows and keep a person's correction, using the saved source-column mappings.
-These examples do not define changed-row counts, failure atomicity or undo.
+Manual and scheduled refreshes SHALL use the same serialized source observation
+and atomic apply: a source-read failure or refused row SHALL leave target rows,
+conflicts, import history and copy provenance unchanged. This does not change
+the best-effort behavior of unrelated ordinary imports. Matched updates SHALL
+be reported separately from actually changed and unchanged matched rows.
 
 #### Scenario: Copy again updates an unedited store and adds a new store
 
@@ -232,6 +236,51 @@ And the warehouse changes the unedited store "S001" and adds store "S004"
 When the user chooses Copy again on the native copy
 Then store "S001" has the changed warehouse name
 And store "S004" is available as an ordinary native row
+And store "S002" still has the person's correction
+```
+
+#### Scenario: A refused new store leaves the earlier source changes unapplied
+
+```gherkin
+Given a native store copy with a person's correction to store "S002"
+And the warehouse changes the unedited store "S001" and adds store "S004"
+And the native copy refuses the new store "S004"
+When the user attempts Copy again on the native copy
+Then the failed copy explains that no rows changed
+And the original three stores remain without the new warehouse changes
+And store "S002" still has the person's correction
+```
+
+### Requirement: Saved source mappings survive a later column rename
+
+Renaming a copied key or data column through Columns SHALL retain its source
+identity so the next copy still updates the same native rows.
+
+#### Scenario: Copy again follows renamed native columns
+
+```gherkin
+Given a native store copy with a person's correction to store "S002"
+And the copied key and trading-name columns have been renamed
+And the warehouse changes the unedited store "S001" and adds store "S004"
+When the user chooses Copy again on the native copy
+Then the renamed columns contain the updated and added stores
+And store "S002" still has the person's correction
+```
+
+### Requirement: Copies are discoverable and undoable as ordinary imports
+
+Each copy SHALL appear in Past imports as one run. Undo SHALL use the existing
+import rules: remove inserted rows, restore updated values including the
+deleted-at-source marker, and protect rows edited after the import. Undoing
+the initial rows does not delete the native Table.
+
+#### Scenario: Undo restores the rows changed by Copy again
+
+```gherkin
+Given a native store copy with a person's correction to store "S002"
+And the warehouse changes the unedited store "S001" and adds store "S004"
+When the user copies again and undoes that copy from its import history
+Then the original three stores remain without the new warehouse changes
 And store "S002" still has the person's correction
 ```
 
