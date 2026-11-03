@@ -7,6 +7,82 @@ const DOC = 'quokka-recent-doc'
 // title is its first readable value — never the id above.
 const DOC_TITLE = 'searchable'
 
+test('#827: typed results follow keyboard selection across groups', async ({ session }) => {
+  await session.visit('/featherbase/admin/table/person')
+  await session.step('choose the Table, new row, record and command with plain arrows', async ({ page }) => {
+    const bar = page.getByRole('textbox', { name: 'Search or type a command' })
+    for (const [target, path] of [
+      ['awesomebar-table', '/featherbase/admin/table/person'],
+      ['awesomebar-new', '/featherbase/admin/table/person/new'],
+      ['awesomebar-doc', '/featherbase/admin/table/table/row/Person'],
+    ]) {
+      await page.keyboard.press('Meta+k')
+      await bar.fill('person')
+      await expect(page.getByTestId('awesomebar-doc')).toBeVisible()
+      const choices = page.getByTestId('awesomebar-results').locator('a, button')
+      const count = await choices.count()
+      for (let i = 0; i < count; i++) {
+        await bar.press('ArrowDown')
+        await expect(choices.nth(i)).toHaveAttribute('aria-selected', 'true')
+        await expect(bar).toHaveAttribute('aria-activedescendant', await choices.nth(i).getAttribute('id') ?? '')
+      }
+      // Wrap in both directions before choosing the requested group.
+      await bar.press('ArrowDown')
+      await expect(choices.first()).toHaveAttribute('aria-selected', 'true')
+      await bar.press('ArrowUp')
+      await expect(choices.last()).toHaveAttribute('aria-selected', 'true')
+      for (let i = 0; i < count; i++) {
+        if (await page.getByTestId(target).getAttribute('aria-selected') === 'true') break
+        await bar.press('ArrowUp')
+      }
+      await expect(page.getByTestId(target)).toHaveAttribute('aria-selected', 'true')
+      // Modified arrows must not change the result selection.
+      await bar.press('Meta+ArrowDown')
+      await expect(page.getByTestId(target)).toHaveAttribute('aria-selected', 'true')
+      await bar.press('Enter')
+      await expect(page).toHaveURL(new RegExp(`${path}$`))
+      await expect(page.getByTestId('awesomebar-results')).toBeHidden()
+      await expect(bar).not.toBeFocused()
+    }
+    await page.keyboard.press('Meta+k')
+    await bar.fill('go to')
+    await expect(page.getByTestId('awesomebar-cmd-home')).toBeVisible()
+    await bar.press('ArrowDown')
+    await expect(page.getByTestId('awesomebar-cmd-home')).toHaveAttribute('aria-selected', 'true')
+    await bar.press('Enter')
+    await expect(page).toHaveURL(/\/featherbase\/admin(?:\/home\/home)?$/)
+    await expect(page.getByTestId('awesomebar-results')).toBeHidden()
+    await page.keyboard.press('Meta+k')
+    await bar.fill('pers')
+    await expect(page.getByTestId('awesomebar-recent-search')).toBeVisible()
+    await bar.press('ArrowDown')
+    await expect(page.getByTestId('awesomebar-recent-search')).toHaveAttribute('aria-selected', 'true')
+    await bar.press('Enter')
+    await expect(bar).toBeFocused()
+    await expect(bar).toHaveValue('person')
+    await bar.press('Escape')
+    await expect(page.getByTestId('awesomebar-results')).toBeHidden()
+    await page.keyboard.press('Meta+k')
+    await expect(bar).toBeFocused()
+    await expect(page.getByTestId('awesomebar-results')).toBeVisible()
+  })
+})
+
+test('#827: a replacement search cannot activate the previous query record', async ({ session }) => {
+  await session.visit('/featherbase/admin/all-tables')
+  await session.step('replace a resolved query and press Enter within its debounce window', async ({ page }) => {
+    const bar = page.getByRole('textbox', { name: 'Search or type a command' })
+    await page.keyboard.press('Meta+k')
+    await bar.fill('person')
+    await expect(page.getByTestId('awesomebar-doc')).toBeVisible()
+    await bar.fill('Sign In Meth')
+    await bar.press('Enter')
+    await expect(bar).not.toBeFocused()
+    await expect(page).not.toHaveURL(/\/all-tables$/)
+    expect(decodeURIComponent(new URL(page.url()).pathname)).not.toContain('/table/table/row/Person')
+  })
+})
+
 for (const activation of ['pointer', 'Enter', 'focused link'] as const) {
   for (const alreadyOpen of [false, true]) {
     test(`#822: ${activation} dismisses a Table destination${alreadyOpen ? ' already open' : ''}`, async ({ session }) => {

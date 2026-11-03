@@ -81,6 +81,41 @@ class CommandBar {
       document.querySelector('[data-testid="awesomebar"] input')?.value === '');
     await this.expectUnobstructedList();
   }
+
+  async searchPerson() {
+    await this.page.goto('/featherbase/admin/all-tables');
+    await this.page.getByTestId('all-tables-link').waitFor();
+    await this.open();
+    await this.input().fill('Person');
+    await this.page.getByTestId('awesomebar-doc').waitFor();
+  }
+
+  async choosePersonResult(kind) {
+    const target = this.page.getByTestId(kind === 'new' ? 'awesomebar-new' : 'awesomebar-doc');
+    const count = await this.dropdown().getByRole('option').count();
+    for (let i = 0; i < count; i++) {
+      await this.input().press('ArrowDown');
+      if (await target.getAttribute('aria-selected') === 'true') break;
+    }
+    await expect(target).toHaveAttribute('aria-selected', 'true');
+    await this.input().press('Enter');
+  }
+
+  async expectPersonForm(kind) {
+    await expect(this.page).toHaveURL(new RegExp(kind === 'new' ? '/admin/table/person/new$' : '/admin/table/table/row/Person$'));
+    await this.page.getByTestId('form-view').waitFor();
+    await this.dropdown().waitFor({ state: 'hidden' });
+  }
+
+  async replacePersonSearch() {
+    await this.input().fill('Sign In Meth');
+    await this.input().press('Enter');
+  }
+
+  async expectReplacementSearch() {
+    await expect(this.page).not.toHaveURL(/\/all-tables$/);
+    assert.notEqual(decodeURIComponent(new URL(this.page.url()).pathname), '/featherbase/admin/table/table/row/Person');
+  }
 }
 
 module.exports = { CommandBar };
