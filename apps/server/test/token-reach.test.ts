@@ -1,5 +1,7 @@
 import { expect } from 'vitest'
 import { test } from './pg-test'
+import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
 
 // #852: before a token is issued, the Access tokens screen says what its owner
 // can reach, so a token that can do nothing useful is caught before it is used.
@@ -90,4 +92,19 @@ test('a role that grants nothing reaches nothing beyond what every account can',
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Empty Role' } })
   await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Empty Role'] })
   expect(await admin.get<Reach>(reachOf(account.row_id))).toMatchObject({ own_roles: true, own_reach: false, change: [] })
+})
+
+test('a Table whose mandatory access admits none of the owner\'s roles is not reached', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Reach Vault', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await sql`update table_def set access_policy='{"version":1,"roles":["Vault Member"]}'::jsonb where name='Reach Vault'`
+  invalidateMeta('Reach Vault')
+  const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'reach-vault' })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Vault Reader' } })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Vault Member' } })
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Reach Vault', role: 'Vault Reader', can_read: true } })
+  await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Vault Reader'] })
+  expect(names((await admin.get<Reach>(reachOf(account.row_id))).read)).not.toContain('Reach Vault')
+
+  await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Vault Reader', 'Vault Member'] })
+  expect(names((await admin.get<Reach>(reachOf(account.row_id))).read)).toContain('Reach Vault')
 })
