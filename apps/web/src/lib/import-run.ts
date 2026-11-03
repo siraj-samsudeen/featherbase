@@ -40,10 +40,14 @@ interface ImportRunReport {
   // Dry runs: rows that passed validation. Real runs: inserted + updated.
   valid: number
   updated: number
+  changed: number
+  unchanged: number
   inserted: number
   failed: ImportFailure[]
   fields_updated: number
   fields_kept: number
+  rows_kept: number
+  conflicts: number
   tracks_changes: boolean | null
 }
 
@@ -105,9 +109,13 @@ export async function sendImportRun(opts: {
   const failed: ImportFailure[] = [...dupFailed]
   let valid = 0
   let updated = 0
+  let changed = 0
+  let unchanged = 0
   let inserted = 0
   let fieldsUpdated = 0
   let fieldsKept = 0
+  let rowsKept = 0
+  let conflicts = 0
   let tracksChanges: boolean | null = null
   const parts = Math.ceil(send.length / IMPORT_CHUNK)
   for (let at = 0; at < send.length; at += IMPORT_CHUNK) {
@@ -118,8 +126,12 @@ export async function sendImportRun(opts: {
       valid?: number
       fields_updated?: number
       fields_kept?: number
+      rows_kept?: number
+      conflicts?: number
       tracks_changes?: boolean
       updated?: number
+      changed?: number
+      unchanged?: number
       inserted?: number
       failed: { index: number; message: string; fields?: Record<string, string> }[]
     }>(`/api/table/${encodeURIComponent(opts.table)}:import`, {
@@ -130,9 +142,13 @@ export async function sendImportRun(opts: {
     })
     fieldsUpdated += res.fields_updated ?? 0
     fieldsKept += res.fields_kept ?? 0
+    rowsKept += res.rows_kept ?? 0
+    conflicts += res.conflicts ?? 0
     if (res.tracks_changes !== undefined) tracksChanges = res.tracks_changes
     valid += res.valid ?? 0
     updated += res.updated ?? 0
+    changed += res.changed ?? 0
+    unchanged += res.unchanged ?? 0
     // A keyless dry run reports no per-action counts: every valid row is an
     // insert. Real runs always report inserted.
     inserted += res.inserted ?? res.valid ?? 0
@@ -144,5 +160,5 @@ export async function sendImportRun(opts: {
   }
   failed.sort((a, b) => a.sourceIndex - b.sourceIndex)
   if (!opts.dryRun) valid = inserted + updated
-  return { valid, updated, inserted, failed, fields_updated: fieldsUpdated, fields_kept: fieldsKept, tracks_changes: tracksChanges }
+  return { valid, updated, changed, unchanged, inserted, failed, fields_updated: fieldsUpdated, fields_kept: fieldsKept, rows_kept: rowsKept, conflicts, tracks_changes: tracksChanges }
 }
