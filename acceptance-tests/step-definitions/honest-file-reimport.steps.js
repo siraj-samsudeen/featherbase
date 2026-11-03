@@ -213,3 +213,17 @@ Then('undoing that import reports that the 61 matched rows had no values changed
   assert.equal(text.split('no changes to undo').length - 1, 61, 'All 61 matches must be classified unchanged by undo');
   assert.equal(await zoneCount(this), 61);
 });
+
+Given('the user can read and append the zones but cannot change existing zones', async function () {
+  await importedZones(this, { appendOnly: true });
+});
+When('the user checks overlap before appending the identical zones file', async function () {
+  this.reimport.analysis = await analyzeRestrictedKeys(this);
+});
+Then('all 61 rows are reported as overlapping without an available matching key', async function () {
+  assert.deepEqual(this.reimport.analysis, {
+    key_candidates: [{ column: 'zone_code', matched: 61, complete: true, can_match: false }],
+  });
+  assert.equal(await zoneCount(this), 61);
+  assert.deepEqual(await populations(this), Object.fromEntries(this.reimport.rows.map(row => [row.zone_code, row.population])));
+});
