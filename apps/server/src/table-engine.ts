@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { DEFAULT_ID_PATTERN, prettifyLabel, tableSlug } from 'shared'
+import { DEFAULT_ID_PATTERN, namingColumn, prettifyLabel, renameNamingColumn, tableSlug } from 'shared'
 import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
@@ -164,12 +164,15 @@ function validateIdPattern(pattern: string, columnNames: string[]): void {
       throw bad('An opaque id pattern names a short lowercase prefix ending in _, e.g. opaque:psn_')
     return
   }
-  if (pattern.startsWith('field:')) {
-    const column = pattern.slice('field:'.length)
-    if (!columnNames.includes(column))
-      throw bad(`Naming column ${column} is not a column of this Table`)
+  // #858: field:<column>, or a prefix then {<column>}.
+  const naming = namingColumn(pattern)
+  if (naming) {
+    if (!columnNames.includes(naming.column))
+      throw bad(`Naming column ${naming.column} is not a column of this Table`)
     return
   }
+  if (pattern.includes('{') || pattern.includes('}'))
+    throw bad('A prefixed id names one column after its prefix, e.g. PLANT-{plant_code}')
   if (!pattern.includes('.')) throw bad(`Unsupported id pattern ${pattern}`)
   const [prefix, mask] = [
     pattern.slice(0, pattern.indexOf('.')),
@@ -1023,11 +1026,12 @@ export async function renameColumn(
     // pattern would stop resolving and the list would lose its title.
     if (meta.title_column === from)
       await tx`update table_def set title_column = ${target} where name = ${meta.name}`
-    // `field:<column>` is the one id pattern that names a column (see
-    // document.ts). Left stale it stops resolving, and every new row fails
-    // with "Naming field glor is required" for a column that is gone.
-    if (meta.id_pattern === `field:${from}`)
-      await tx`update table_def set id_pattern = ${`field:${target}`} where name = ${meta.name}`
+    // The column rules (`field:<column>`, `PREFIX-{<column>}`, see
+    // document.ts) name a column. Left stale one stops resolving, and every new
+    // row fails with "Naming field glor is required" for a column that is gone.
+    const idPattern = renameNamingColumn(meta.id_pattern, from, target)
+    if (idPattern !== meta.id_pattern)
+      await tx`update table_def set id_pattern = ${idPattern} where name = ${meta.name}`
     // #651: an Admin override (a relabel, a hidden flag) belongs to the
     // column, not to its old name.
     await tx`update metadata_override set column_name = ${target} where table_name = ${meta.name} and column_name = ${from}`

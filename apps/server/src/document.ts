@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { opaqueId } from './opaque-id'
-import { DEFAULT_ID_PATTERN, tableSchemaToZod, zodFieldErrors } from 'shared'
+import { DEFAULT_ID_PATTERN, idFromColumn, namingColumn, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { assertMandatoryAccess, hasMandatoryRowAccess } from './mandatory-access'
 import { sql } from './db'
 import { AppError } from './errors'
@@ -128,8 +128,9 @@ async function resolveRowId(
   // file's own reference codes become row ids, verbatim, and the series is
   // NOT consumed for them (IMP-R6: the pattern is the promise, so unsupplied
   // rows simply continue the series). 'prompt' keeps its required-id error
-  // and 'field:' keeps naming from its declared column.
-  if (rule !== 'prompt' && !rule.startsWith('field:')) {
+  // and a column rule (#858) keeps naming from its declared column.
+  const naming = namingColumn(rule)
+  if (rule !== 'prompt' && !naming) {
     const supplied = String(values[ROW_KEY] ?? '').trim()
     if (supplied) return supplied
   }
@@ -142,14 +143,22 @@ async function resolveRowId(
       })
     return rowId
   }
-  if (rule.startsWith('field:')) {
-    const columnName = rule.slice('field:'.length)
-    const value = String(own(values, columnName) ?? '').trim()
-    if (!value)
-      throw new AppError('ValidationError', `Naming field ${columnName} is required`, {
-        [columnName]: `${columnName} is required for naming`,
+  if (naming) {
+    const { prefix, column } = naming
+    const value = String(own(values, column) ?? '').trim()
+    const rowId = idFromColumn(prefix, value)
+    if (!rowId)
+      throw new AppError('ValidationError', `Naming field ${column} is required`, {
+        [column]: `${column} is required for naming`,
       })
-    return value
+    // #858: a second row with the same value would take an id already in use;
+    // say which column clashes rather than "Duplicate value for row_id".
+    const [taken] = await tx`select 1 from ${tx(await tableRelation(meta.name))} where ${tx(meta.row_key)} = ${rowId}`
+    if (taken)
+      throw new AppError('ValidationError', `${meta.name} with ${column} ${value} already exists`, {
+        [column]: `${rowId} is already taken`,
+      })
+    return rowId
   }
   if (rule === 'integer') return nextInSeries(tx, meta, '', (n) => String(n))
   if (rule.includes('.#')) {

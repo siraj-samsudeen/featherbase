@@ -5,7 +5,7 @@ import { accessPolicySchema } from './access-policy'
 import { AppError } from './errors'
 import { sql, withTransaction } from './db'
 import { provisionApp } from './app-lifecycle'
-import { tableSchemaToZod } from 'shared'
+import { namingColumn, renameNamingColumn, tableSchemaToZod } from 'shared'
 import { changeColumnType, columnSchema, createTable, deleteTable, isSafeTypeChange, pgType, quoteRelation, renameColumn, renameTable, STANDARD_COLUMNS, storedRelation, tableDefSchema, updateTable, type TableDef } from './table-engine'
 import { ensureHomePageForTable } from './home-pages'
 import { COLUMN_TYPE_VALUES, defaultValueFor, invalidateMeta, physicalRowKey } from './meta'
@@ -132,7 +132,7 @@ function renameLinks(state: TableDef[], from: string, to: string) {
 function renameColumnIn(table: TableDef, from: string, to: string) {
   columnIn(table, from, `renameColumn ${table.name}.${from}`).column_name = to
   if (table.title_column === from) table.title_column = to
-  if (table.id_pattern === `field:${from}`) table.id_pattern = `field:${to}`
+  table.id_pattern = renameNamingColumn(table.id_pattern, from, to)
 }
 function setProperties(target: Column, values: Alterable) {
   for (const [key, value] of Object.entries(values)) {
@@ -243,7 +243,7 @@ function forward(app: string, state: TableDef[], op: Operation) {
       const index = table.columns.indexOf(columnIn(table, name, what))
       if (!same(table.columns[index], op.column)) refuse(`${what} must declare the column as it stood before the drop`)
       if (op.position !== undefined && op.position !== index + 1) refuse(`${what}: the column stood at position ${index + 1}, not ${op.position}`)
-      if (table.title_column === name || table.id_pattern === `field:${name}`) refuse(`${what}: it is the Table's title column or names its rows`)
+      if (table.title_column === name || namingColumn(table.id_pattern)?.column === name) refuse(`${what}: it is the Table's title column or names its rows`)
       if (name === 'amended_from' && table.is_submittable) refuse(`${what}: a submittable Table keeps amended_from`)
       if (table.columns.length === 1) refuse(`${what}: a Table keeps at least one column`)
       table.columns.splice(index, 1)
