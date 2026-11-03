@@ -84,6 +84,14 @@ function buildWhere(filters: SourceFilter[], startAt = 1): { text: string; value
   for (const f of filters) {
     const col = quoteIdent(f.column)
     switch (f.op) {
+      case 'related': {
+        const { binding, filters: targetFilters } = f.value
+        const target = buildWhere(targetFilters, n)
+        parts.push(`${col} in (select ${quoteIdent(binding.pk)} from ${relation(binding)} where ${target.text})`)
+        values.push(...target.values)
+        n += target.values.length
+        break
+      }
       case '=':
         parts.push(`${col} = $${n++}`)
         values.push(f.value)
@@ -193,17 +201,16 @@ export const postgresDriver: SourceDriver = {
        join information_schema.tables t
          on t.table_schema = c.table_schema and t.table_name = c.table_name
         and t.table_type = 'BASE TABLE'
+       -- Primary keys from pg_constraint: information_schema's constraint views
+       -- list only tables the login owns, so a read-only login saw none.
        left join (
-         select kcu.table_schema, kcu.table_name, kcu.column_name,
-                count(*) over (partition by kcu.table_schema, kcu.table_name) as pk_size
-         from information_schema.table_constraints tc
-         join information_schema.key_column_usage kcu
-           on kcu.constraint_catalog = tc.constraint_catalog
-          and kcu.constraint_schema = tc.constraint_schema
-          and kcu.constraint_name = tc.constraint_name
-          and kcu.table_schema = tc.table_schema
-          and kcu.table_name = tc.table_name
-         where tc.constraint_type = 'PRIMARY KEY'
+         select ns.nspname as table_schema, cl.relname as table_name, a.attname as column_name,
+                cardinality(con.conkey) as pk_size
+         from pg_constraint con
+         join pg_class cl on cl.oid = con.conrelid
+         join pg_namespace ns on ns.oid = cl.relnamespace
+         join pg_attribute a on a.attrelid = con.conrelid and a.attnum = any(con.conkey)
+         where con.contype = 'p'
        ) pk on pk.table_schema = c.table_schema and pk.table_name = c.table_name
           and pk.column_name = c.column_name
        where c.table_schema not in ('pg_catalog', 'information_schema')
