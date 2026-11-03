@@ -1297,19 +1297,19 @@ async function recordVersion(
 type ChildInput = ReturnType<typeof pickChildInputs>[number]
 
 async function accessChildSummaries(tx: typeof sql, meta: TableMeta, parent: string, inputs: ChildInput[]) {
+  // Untracked parents are left to recordVersion, which records nothing.
   const out = new Map<string, string | null>()
-  if (!meta.track_changes || UNVERSIONED.has(meta.name)) return out
   for (const input of inputs) {
     if (!(await isSecurityTable(input.childTable))) continue
     const childMeta = await getMeta(input.childTable)
-    const column = childMeta.title_column || childMeta.columns.find((c) => !NO_COLUMN_TYPES.has(c.column_type))?.column_name
-    if (!column) continue
+    // A Sub-table has at least one column; its title, else its first one, names a row.
+    const column = childMeta.title_column ?? childMeta.columns.find((c) => !NO_COLUMN_TYPES.has(c.column_type))!.column_name
     const rows = await tx`
-      select ${tx(column)} as name from ${tx(await tableRelation(childMeta.name))}
+      select ${tx(column)}::text as name from ${tx(await tableRelation(childMeta.name))}
       where parent = ${parent} and parenttype = ${meta.name} and parentfield = ${input.columnName}
+        and ${tx(column)} is not null
       order by position`
-    const names = rows.map((r) => r.name).filter((v) => v != null && v !== '').map(String)
-    out.set(input.columnName, names.length ? names.join(', ') : null)
+    out.set(input.columnName, rows.map((r) => r.name as string).join(', ') || null)
   }
   return out
 }
@@ -1324,7 +1324,8 @@ async function accessChildChanges(
   const after = await accessChildSummaries(tx, meta, parent, inputs)
   const changes: [string, unknown, unknown][] = []
   for (const [column, now] of after) {
-    const was = before.get(column) ?? null
+    // The same inputs were summarised before the save, so the key is there.
+    const was = before.get(column)
     if (was !== now) changes.push([column, was, now])
   }
   return changes
