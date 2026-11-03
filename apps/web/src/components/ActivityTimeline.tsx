@@ -81,10 +81,10 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
                   {e.resolution && <li className="break-words">{columnLabel(e.resolution.field)}: {e.resolution.decision === 'keep' ? `kept the current value instead of ${fmt(e.resolution.field, e.resolution.incoming)}` : 'accepted the source; future imports can update this field'}</li>}
                   {e.changes.length === 0 && !e.importRun && !e.resolution && <li>row updated</li>}
                   {e.changes.map(([column, from, to], j) => (
-                    <li key={j}>
-                      <span className="font-medium text-ink">{column}</span>:{' '}
-                      <span className={columnType(column) === 'JSON' ? 'break-all' : 'whitespace-nowrap'}>{fmt(column, from)}</span> →{' '}
-                      <span className={columnType(column) === 'JSON' ? 'break-all' : 'whitespace-nowrap'}>{fmt(column, to)}</span>
+                    <li key={j} className="[overflow-wrap:anywhere]">
+                      <span className="font-medium text-ink">{columnLabel(column)}</span>:{' '}
+                      <span className={columnType(column) === 'JSON' ? 'break-all' : 'whitespace-pre-wrap [overflow-wrap:anywhere]'}>{fmt(column, from)}</span> →{' '}
+                      <span className={columnType(column) === 'JSON' ? 'break-all' : 'whitespace-pre-wrap [overflow-wrap:anywhere]'}>{fmt(column, to)}</span>
                     </li>
                   ))}
                 </ul>
