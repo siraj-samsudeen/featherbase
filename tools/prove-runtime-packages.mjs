@@ -299,9 +299,9 @@ try {
   await page.getByRole('textbox', { name: 'Description', exact: true }).fill('Delivered after the core artifact was frozen.')
   await page.getByRole('button', { name: 'Save task', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Edit task', exact: true })).toBeVisible()
-  await page.getByRole('textbox', { name: 'Add comment' }).fill('Verified in the independently built Tasker package.')
-  await page.getByRole('button', { name: 'Comment' }).click()
-  await expect(page.getByTestId('task-activity')).toContainText('Verified in the independently built Tasker package.')
+  await page.getByRole('textbox', { name: 'Your update' }).fill('Verified in the independently built Tasker package.')
+  await page.getByRole('button', { name: 'Post update' }).click()
+  await expect(page.getByRole('article').filter({ hasText: 'Verified in the independently built Tasker package.' })).toBeVisible()
   await expect(page.getByTestId('task-activity')).toContainText('description: empty → Delivered after the core artifact was frozen.')
   const inspectorBox = await page.getByRole('complementary', { name: 'Task details' }).boundingBox()
   const captureBox = await capture.boundingBox()
@@ -328,6 +328,7 @@ try {
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('tasker-compact-inspector-open'))).toBe(true)
     const lockedAt = await page.evaluate(() => ({
       top: document.documentElement.scrollTop,
+      bodyTop: document.body.scrollTop,
       locked: document.documentElement.classList.contains('tasker-compact-inspector-open'),
       overflow: getComputedStyle(document.body).overflow,
     }))
@@ -340,13 +341,23 @@ try {
     await inspector.hover()
     await page.mouse.wheel(0, 250)
     assert.equal(await page.evaluate(() => document.documentElement.scrollTop), lockedAt.top)
+    assert.equal(await page.evaluate(() => document.body.scrollTop), lockedAt.bodyTop)
     await inspector.evaluate(element => { element.scrollTop = 100 })
     assert((await inspector.evaluate(element => element.scrollTop)) > 0)
   }
   await page.getByRole('link', { name: 'Close' }).click()
   await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('tasker-compact-inspector-open'))).toBe(false)
-  await page.evaluate(() => window.scrollTo(0, 200))
-  assert((await page.evaluate(() => window.scrollY)) > 0)
+  assert(await page.evaluate(() => {
+    // The shared shell may scroll body rather than the viewport. Both must
+    // unlock after the mobile inspector closes.
+    for (const element of [document.scrollingElement, document.body, document.getElementById('root')]) {
+      if (element && element.scrollHeight > element.clientHeight) {
+        element.scrollTop = 200
+        if (element.scrollTop > 0) return true
+      }
+    }
+    return false
+  }), 'The application page did not unlock for scrolling after closing Inspector')
   await page.screenshot({ path: resolve(output, 'mobile.png'), fullPage: true })
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
   const packageFilter = encodeURIComponent(JSON.stringify([['task_title', '=', 'Package-delivered stock review']]))
@@ -446,7 +457,7 @@ try {
   await expect(page.getByRole('heading', { name: 'Tasker v1 upgrade fixture' })).toBeVisible()
   const plan = await api('/api/preview_app_upgrade', { name: 'tasker', version: taskerPackage.version })
   assert.equal(plan.currentVersion, '0.0.1')
-  assert.deepEqual(plan.tables, ['tasker.project'])
+  assert.deepEqual(plan.tables, ['tasker.project', 'tasker.discussion', 'tasker.task', 'tasker.recurrence'])
   assert.equal(plan.migrations[0].id, 'project_description')
   // Restart before commit does not silently upgrade.
   await stop()
@@ -460,6 +471,8 @@ try {
   await start(upgradePaths)
   assert.equal((await api('/api/apps')).installed.find(a => a.name === 'tasker').activationPending, true)
   await api('/api/upgrade_app', upgrade)
+  const upgradeAdmin = await api('/api/table/Person/Administrator')
+  await api('/api/save_row', { table: 'Person', row: { row_id: 'Administrator', updated_at: upgradeAdmin.updated_at, roles: [...upgradeAdmin.roles, { role: 'Tasker Member' }] } }, 201)
   await api('/api/activate_app_upgrade', { name: 'tasker', version: taskerPackage.version })
   await refuseStaleCore(409)
   await staleCore.screenshot({ path: resolve(output, 'stale-core-form-after-upgrade.png'), fullPage: true })
@@ -492,7 +505,7 @@ try {
   }, { id: projectId, version: taskerPackage.version })
   assert.equal(browserRead.status, 200)
   assert.equal(browserRead.row.description, description)
-  assert.deepEqual(await api(`/api/table/tasker.task/${preservedTask.row_id}`), preservedTask)
+  assert.deepEqual(await api(`/api/table/tasker.task/${preservedTask.row_id}`), { ...preservedTask, shared: true, parent_task: null, recurrence: null, occurrence_key: null, completed_at: null })
   const coreFilesFilter = encodeURIComponent(JSON.stringify([['ref_table', '=', 'tasker.task'], ['ref_name', '=', preservedTask.row_id]]))
   assert.equal((await api(`/api/table/File?filters=${coreFilesFilter}`)).total, 0, 'Refused stale uploads left a File document')
   await page.setViewportSize({ width: 1440, height: 960 })

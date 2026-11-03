@@ -49,6 +49,9 @@ async function healthCommand(environment: string) {
 
 describe('the checks (5.1)', () => {
   test('a fresh local instance treats file-managed settings as optional', async () => {
+    // A restored test database can be older than a job's first-run grace
+    // period. This scenario starts with freshly enabled, never-run jobs.
+    await sql`update scheduled_job set updated_at = now() where last_run_at is null`
     await sql`delete from instance_settings_apply`
     await withVariable('FEATHERBASE_INSTANCE', '', async () => {
       const health = await instanceHealth({ environment: 'development', record: false })
@@ -362,6 +365,7 @@ describe('history: only changes of state are recorded (5.2)', () => {
 
 describe('the health API (5.3, 5.4)', () => {
   test('a System Manager sees every check with its history; the count is the failing checks', async ({ admin }) => {
+    await sql`update scheduled_job set updated_at = now() where last_run_at is null`
     await sql`delete from instance_settings_apply`
     await sql`delete from health_check_event`
     const health = await admin.get<{

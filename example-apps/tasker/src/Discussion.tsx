@@ -6,7 +6,7 @@ import { discussionKey, lastChanged, needsAttention, questionState, repliesTo, u
 import { Markdown } from './Markdown'
 
 const seenKey = ['task-management', 'discussion-seen']
-export function Discussion({ taskId }: { taskId: string }) {
+export function Discussion({ taskId, shared }: { taskId: string; shared: boolean }) {
   const me = getSessionUser()?.row_id ?? ''
   const [target, setTarget] = useState(() => new URLSearchParams(location.hash.slice(1)).get('question'))
   const lastScrolled = useRef<string | null>(null)
@@ -62,7 +62,7 @@ export function Discussion({ taskId }: { taskId: string }) {
       if (await save({ task: taskId, kind, body: body.trim(), reply_needed_from: kind === 'Question' ? respondent || null : null })) setBody('')
     }}>
       <Field label="Message type"><Select value={kind} onChange={event => setKind(event.target.value as 'Update' | 'Question')}><option>Update</option><option>Question</option></Select></Field>
-      {kind === 'Question' && <Field label="Reply needed from"><Select value={respondent} onChange={event => setRespondent(event.target.value)}><option value="">Anyone</option>{people.data?.data.filter(person => person.row_id !== me).map(person => <option key={person.row_id} value={person.row_id}>{person.full_name}</option>)}</Select></Field>}
+      {kind === 'Question' && <Field label="Reply needed from"><Select value={respondent} onChange={event => setRespondent(event.target.value)}><option value="">{shared ? 'Anyone' : 'Only you until shared'}</option>{shared && people.data?.data.filter(person => person.row_id !== me).map(person => <option key={person.row_id} value={person.row_id}>{person.full_name}</option>)}</Select></Field>}
       <Field label={kind === 'Question' ? 'Your question' : 'Your update'}><textarea className={inputClasses()} rows={3} value={body} onChange={event => setBody(event.target.value)} required /></Field>
       <Button type="submit" variant="primary" disabled={busy || !body.trim()}>Post {kind.toLowerCase()}</Button>
     </form>
@@ -78,7 +78,7 @@ export function Discussion({ taskId }: { taskId: string }) {
           {unread && <span className="text-action">Unread</span>}
         </div>
         <Markdown>{root.body}</Markdown>
-        {root.kind === 'Question' && <p className="text-ink-muted">Reply needed from: {root.reply_needed_from ? name(root.reply_needed_from) : 'Anyone'}</p>}
+        {root.kind === 'Question' && <p className="text-ink-muted">Reply needed from: {!shared ? 'Only you until this task is shared' : root.reply_needed_from ? name(root.reply_needed_from) : 'Anyone'}</p>}
         <ol className="space-y-3 border-l border-border pl-4">{repliesTo(root, all).map(reply => <li key={reply.row_id}><p><strong>{name(reply.created_by)}</strong> · {fmtDateTime(new Date(reply.created_at))}</p><Markdown>{reply.body}</Markdown></li>)}</ol>
         <div className="flex flex-wrap gap-2">
           {unread && <Button onClick={() => void markRead(root)}>Mark read</Button>}

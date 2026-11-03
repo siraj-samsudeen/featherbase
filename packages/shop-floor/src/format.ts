@@ -180,3 +180,10 @@ export function fmtClockTime(d: Date): string {
 export function fmtDateTime(d: Date): string {
   return `${fmtDate(localIsoDay(d))} ${fmtClockTime(d)}`
 }
+
+/** ISO calendar date in a named timezone, for date-based schedules. */
+export function localCalendarDate(instant: number, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA-u-ca-iso8601-nu-latn', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(instant)
+  const part = (type: string) => parts.find(value => value.type === type)!.value
+  return `${part('year')}-${part('month')}-${part('day')}`
+}

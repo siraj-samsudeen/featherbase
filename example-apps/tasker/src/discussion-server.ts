@@ -24,6 +24,9 @@ export async function prepareDiscussion(ctx: Context) {
     if (!members.some(member => member.row_id === row.reply_needed_from)) ctx.reject('Choose a current team member or Anyone')
   }
   // Root before task: question edits and replies acquire shared locks in the same order.
-  await ctx.documents.get('tasker.task', String(row.task))
+  const task = await ctx.documents.get('tasker.task', String(row.task))
+  const rootTask = task.parent_task ? await ctx.documents.get('tasker.task', String(task.parent_task)) : task
+  if (!rootTask.shared && row.kind === 'Question' && row.reply_needed_from && row.reply_needed_from !== ctx.user)
+    ctx.reject('Share the task before asking someone else to reply')
   if (ctx.isNew && row.resolved) ctx.reject('A new question starts waiting for a reply')
 }

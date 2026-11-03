@@ -49,3 +49,13 @@ Task and subtask discussion SHALL be visible only to people who can access that 
 
 - **WHEN** an administrator who is not the creator opens their attention list or requests a private task's conversation
 - **THEN** the private question is neither disclosed nor counted for them
+
+### Requirement: Private questions do not imply team visibility
+
+A private task's question composer SHALL explain that only its creator can see the question until sharing. It SHALL NOT offer other members as respondents, and direct requests naming another respondent SHALL be refused until the task is shared.
+
+#### Scenario: Ask a question while planning privately
+
+- **WHEN** the creator writes a question on their private task
+- **THEN** the respondent control shows that only the creator can see it until sharing
+- **AND** no teammate can be selected

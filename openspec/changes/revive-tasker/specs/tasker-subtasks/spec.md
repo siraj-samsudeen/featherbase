@@ -36,3 +36,13 @@ A parent SHALL be marked Done only when every subtask is Done or Cancelled. Fini
 
 - **WHEN** every subtask is Done or Cancelled
 - **THEN** the parent remains open until the user explicitly marks it Done
+
+### Requirement: Reopen the parent before its completed steps
+
+Reopening a subtask of a completed parent SHALL be refused until the parent is reopened. Parent completion controls SHALL be unavailable while subtasks remain open, with an explanation of the unfinished work.
+
+#### Scenario: Reopen a completed step
+
+- **WHEN** the member reopens a step whose parent is still Done
+- **THEN** the step remains settled
+- **AND** the member is told to reopen the parent first

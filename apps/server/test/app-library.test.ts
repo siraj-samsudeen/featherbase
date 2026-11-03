@@ -29,6 +29,19 @@ test('the manager catalog offers repository apps without registering their code'
   expect(result.available).not.toContain('tasker')
 })
 
+test('an invalid source declaration is not offered for installation', async ({ admin }) => {
+  const root = await sourceRepository()
+  try {
+    await writeFile(resolve(root, 'example-apps/other/featherbase.json'), '{invalid')
+    await discoverAppLibrary([], root)
+    expect((await admin.get<{ catalog: unknown[] }>('/api/apps')).catalog).toEqual([])
+    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 417 })
+  } finally {
+    await discoverAppLibrary([], null)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('an explicit choice builds a trusted source app before installing it', async ({ admin }) => {
   const root = await sourceRepository()
   try {

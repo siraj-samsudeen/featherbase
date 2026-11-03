@@ -2,9 +2,9 @@
 
 ## Purpose
 
-The Inbox holds tasks nobody has placed yet. The user moves each one to where it
-belongs: a project (a named group of shared work) or one person's personal list
-(the team-visible list of tasks that belong to that person).
+The Inbox holds the user's private captures awaiting organisation. The user
+keeps them in a private personal list or deliberately moves them into a shared
+project.
 
 ## Requirements
 

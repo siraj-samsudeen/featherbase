@@ -1,3 +1,6 @@
+import { TASK_STATES } from './task-states'
+import { Recurrence } from './RecurrenceControls'
+import { Subtasks } from './Subtasks'
 import { Attention } from './Attention'
 import { Discussion } from './Discussion'
 import { Button, cardClasses, buttonClasses } from '@featherbase/shop-floor'
@@ -27,6 +30,10 @@ type DetailMode = 'compact' | 'inspector' | 'focus'
 interface Task {
   row_id: string
   task_title: string
+  shared: boolean
+  created_by: string
+  parent_task: string | null
+  recurrence: string | null
   description: string | null
   task_state: string
   is_done: boolean
@@ -63,6 +70,10 @@ interface TaskVersion {
 const TASK_FIELDS = [
   'row_id',
   'task_title',
+  'shared',
+  'created_by',
+  'parent_task',
+  'recurrence',
   'description',
   'task_state',
   'is_done',
@@ -74,7 +85,7 @@ const TASK_FIELDS = [
   'updated_at',
 ]
 
-const STATES = ['Not started', 'In progress', 'Blocked', 'On hold', 'Done', 'Cancelled']
+const STATES = TASK_STATES
 const FOCUS_SETTINGS = 'Task Management Focus'
 const PROJECT_SETTINGS = 'tasker.projects'
 const PREFERENCE_SETTINGS = 'tasker.preferences'
@@ -216,26 +227,34 @@ export function TaskManagementPage() {
       }),
   })
 
-  const allTasks = tasks.data?.data ?? []
+  const storedTasks = tasks.data?.data ?? []
+  const parentsById = new Map(storedTasks.map(task => [task.row_id, task]))
+  const allTasks = storedTasks.map(task => {
+    const parent = task.parent_task && parentsById.get(task.parent_task)
+    return parent ? { ...task, project: parent.project, shared: parent.shared } : task
+  })
+  const openChildren = new Map<string, number>()
+  for (const task of allTasks) if (task.parent_task && !['Done', 'Cancelled'].includes(task.task_state))
+    openChildren.set(task.parent_task, (openChildren.get(task.parent_task) ?? 0) + 1)
   const byId = new Map(allTasks.map((task) => [task.row_id, task]))
   const latestExplanation = new Map<string, string>()
   for (const comment of comments.data?.data ?? [])
     latestExplanation.set(comment.ref_name, comment.content)
   const focusIds = (focus.data?.settings?.task_ids ?? []).filter((id) => byId.has(id))
   const focusSet = new Set(focusIds)
-  const inbox = allTasks.filter((task) => !task.project && !task.personal_tasks_owner)
+  const inbox = allTasks.filter((task) => !task.parent_task && !task.shared && !task.project && !task.personal_tasks_owner)
   const focused = focusIds.map((id) => byId.get(id)!)
   const myWork = [
     ...focused,
     ...allTasks.filter((task) => task.assigned_to === me && !focusSet.has(task.row_id)),
   ]
-  const projectRows = allTasks.filter((task) => task.project === selectedProject)
-  const personalRows = allTasks.filter((task) => task.personal_tasks_owner === personalOwner)
+  const projectRows = allTasks.filter((task) => !task.parent_task && task.project === selectedProject)
+  const personalRows = allTasks.filter((task) => !task.shared && task.personal_tasks_owner === personalOwner)
   const allProjects = projects.data?.data ?? []
   const projectById = new Map(allProjects.map((project) => [project.row_id, project]))
   const projectTaskCounts = new Map(allProjects.map((project) => [
     project.row_id,
-    allTasks.filter((task) => task.project === project.row_id).length,
+    allTasks.filter((task) => !task.parent_task && task.project === project.row_id).length,
   ]))
   const starredProjectIds = (projectPreferences.data?.settings?.project_ids ?? []).filter((id) => projectById.has(id))
   const starredProjectSet = new Set(starredProjectIds)
@@ -243,7 +262,7 @@ export function TaskManagementPage() {
   const people = peopleWithTaskResponsibility(users.data?.people ?? [], allTasks, me)
   const savedViews = parseSavedTaskViews(savedViewPreferences.data?.settings)
   const activeSavedView = savedViews.find((savedView) => savedView.id === activeSavedViewId)
-  const activeTogetherTasks = allTasks.filter((task) => !['Done', 'Cancelled'].includes(task.task_state))
+  const activeTogetherTasks = allTasks.filter((task) => task.shared && !['Done', 'Cancelled'].includes(task.task_state))
 
   function copySetup(setup: TaskViewSetup): TaskViewSetup {
     return {
@@ -519,7 +538,7 @@ export function TaskManagementPage() {
       id: 'personal',
       label: 'Personal tasks',
       icon: 'personal',
-      count: allTasks.filter((task) => task.personal_tasks_owner === me).length,
+      count: allTasks.filter((task) => !task.shared && task.personal_tasks_owner === me).length,
     },
   ]
   const filteredInbox = filterTasks(inbox, taskViewSetup)
@@ -631,10 +650,10 @@ export function TaskManagementPage() {
           >
             <label className="sr-only" htmlFor="quick-capture">Quick capture</label>
             <input
-              id="quick-capture"
+              id="quick-capture" readOnly={saving}
               value={capture}
               onChange={(event) => setCapture(event.target.value)}
-              placeholder="What do you need to remember?"
+              placeholder="Capture a private task, just for you…"
               className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm outline-none focus:border-[var(--color-action)] focus:ring-2 focus:ring-[var(--color-action)]/15"
               autoFocus={view === 'inbox'}
             />
@@ -648,7 +667,7 @@ export function TaskManagementPage() {
 
           {toolbarFor(inbox, filteredInbox, { kind: 'inbox' }, 'Inbox', true)}
           {filteredInbox.length
-            ? <TaskList tasks={filteredInbox} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+            ? <TaskList openChildren={openChildren} tasks={filteredInbox} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
             : <NoTaskMatches total={inbox.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
         </section>
       )}
@@ -660,9 +679,9 @@ export function TaskManagementPage() {
           {toolbarFor(myWork, filteredMyWork, { kind: 'work' }, 'My Work', true)}
           <h3 className="mt-5 mb-3 font-semibold">My Focus</h3>
           {filteredMyWork.filter(task => focusSet.has(task.row_id)).length === 0 && <p className="text-ink-muted text-sm">Choose Focus on a task to keep it here.</p>}
-          <TaskList tasks={filteredMyWork.filter(task => focusSet.has(task.row_id))} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} onMove={moveFocus} />
+          <TaskList openChildren={openChildren} tasks={filteredMyWork.filter(task => focusSet.has(task.row_id))} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} onMove={moveFocus} />
           <h3 className="mt-5 mb-3 font-semibold">Also assigned to me</h3>
-          <TaskList tasks={filteredMyWork.filter(task => !focusSet.has(task.row_id))} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+          <TaskList openChildren={openChildren} tasks={filteredMyWork.filter(task => !focusSet.has(task.row_id))} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
           {!filteredMyWork.length && <NoTaskMatches total={myWork.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
         </section>
       )}
@@ -676,7 +695,7 @@ export function TaskManagementPage() {
             if (!rows.length) return null
             return <div key={owner ?? 'unassigned'} className="mb-7">
               <h3 className="mb-2 pointer-fine:text-sm font-semibold">{owner ? personName(people.find(person => person.row_id === owner)) : 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
-              <TaskList tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+              <TaskList openChildren={openChildren} tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
             </div>
           })}
           {!filteredTogether.length && <NoTaskMatches total={activeTogetherTasks.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
@@ -698,12 +717,12 @@ export function TaskManagementPage() {
                 <ProjectDescription key={selectedProject} project={projectById.get(selectedProject)!} onSaved={refresh} />
                 <form className="tasker-composer" onSubmit={async (event) => { event.preventDefault(); const title = projectTask; try { await createTask(title, { project: selectedProject }); setProjectTask('') } catch { /* shown above */ } }}>
                   <label className="sr-only" htmlFor="project-task">Add task to project</label>
-                  <input id="project-task" value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm" autoFocus />
+                  <input id="project-task" readOnly={saving} value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm" autoFocus />
                   <Button type="submit" variant="primary"  disabled={saving || !projectTask.trim()}>Add</Button>
                 </form>
                 {toolbarFor(projectRows, filteredProjectRows, { kind: 'project', projectId: selectedProject }, 'This project', false)}
                 {filteredProjectRows.length
-                  ? <TaskList tasks={filteredProjectRows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+                  ? <TaskList openChildren={openChildren} tasks={filteredProjectRows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
                   : <NoTaskMatches total={projectRows.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
               </>
             ) : <>
@@ -734,19 +753,19 @@ export function TaskManagementPage() {
 
       {view === 'personal' && (
         <section aria-labelledby="personal-heading">
-          <SectionTitle id="personal-heading" title="Personal tasks" hint="Team-visible individual task lists" />
+          <SectionTitle id="personal-heading" title="Personal tasks" hint="Your personal tasks are visible only to you" />
           <label className="mb-4 flex items-center gap-2 pointer-fine:text-xs text-[var(--color-ink-muted)]">
             Show tasks for
-            <select aria-label="Personal tasks owner" value={personalOwner} onChange={(event) => setPersonalOwner(event.target.value)} className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 pointer-fine:text-sm text-[var(--color-ink)]">{people.map((user) => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}</select>
+            <select aria-label="Personal tasks owner" value={personalOwner} onChange={(event) => setPersonalOwner(event.target.value)} className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 pointer-fine:text-sm text-[var(--color-ink)]">{people.filter(user => user.row_id === me).map((user) => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}</select>
           </label>
           <form className={cardClasses("mb-5 flex gap-2 p-3")} onSubmit={async (event) => { event.preventDefault(); const title = capture; try { await createTask(title, { personal_tasks_owner: personalOwner }); setCapture('') } catch { /* shown above */ } }}>
             <label className="sr-only" htmlFor="personal-capture">Add personal task</label>
-            <input id="personal-capture" value={capture} onChange={(event) => setCapture(event.target.value)} placeholder="Add a personal task" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm" autoFocus />
+            <input id="personal-capture" readOnly={saving} value={capture} onChange={(event) => setCapture(event.target.value)} placeholder="Add a personal task" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 pointer-fine:text-sm" autoFocus />
             <Button type="submit" variant="primary"  disabled={saving || !capture.trim()}>Add</Button>
           </form>
           {toolbarFor(personalRows, filteredPersonalRows, { kind: 'personal', owner: personalOwner }, `${personalOwner}'s Personal tasks`, true)}
           {filteredPersonalRows.length
-            ? <TaskList tasks={filteredPersonalRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+            ? <TaskList openChildren={openChildren} tasks={filteredPersonalRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
             : <NoTaskMatches total={personalRows.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
         </section>
       )}
@@ -773,11 +792,11 @@ export function TaskManagementPage() {
                 if (!rows.length) return null
                 return <div key={owner ?? 'unassigned'} className="mb-7">
                   <h3 className="mb-2 pointer-fine:text-sm font-semibold">{owner ? personName(people.find(person => person.row_id === owner)) : 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
-                  <TaskList tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
+                  <TaskList openChildren={openChildren} tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
                 </div>
               })}
             </> : filteredSavedViewTasks.length
-              ? <TaskList tasks={filteredSavedViewTasks} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
+              ? <TaskList openChildren={openChildren} tasks={filteredSavedViewTasks} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
               : null}
             {!filteredSavedViewTasks.length && <NoTaskMatches total={savedViewBaseTasks.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
           </> : <>
@@ -1037,7 +1056,7 @@ function TaskFilterControls({ filters, people, projects, showProjects, onFilters
 
 function FilterGroup({ label, values, labels = new Map(), selected, onToggle, firstControl }: {
   label: string
-  values: string[]
+  values: readonly string[]
   labels?: Map<string, string>
   selected: readonly string[]
   onToggle: (value: string) => void
@@ -1157,6 +1176,19 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     queryFn: () => api.get<Task & { description: string }>(`/api/table/tasker.task/${encodeURIComponent(id)}`),
     retry: false,
   })
+  const parent = useQuery({ queryKey: ['task-management', 'parent', task.data?.parent_task],
+    enabled: Boolean(task.data?.parent_task),
+    queryFn: () => api.get<Task>(`/api/table/tasker.task/${encodeURIComponent(task.data!.parent_task!)}`),
+  })
+  const effectiveShared = Boolean(task.data?.parent_task ? parent.data?.shared : task.data?.shared)
+  const childProgress = useQuery({ queryKey: ['task-management', 'subtasks', id], enabled: Boolean(task.data && !task.data.parent_task),
+    queryFn: () => listAllResources<{ row_id: string; task_title: string; task_state: string | null; assigned_to: string | null; updated_at: string }>('tasker.task', {
+      fields: ['row_id', 'task_title', 'task_state', 'assigned_to', 'updated_at'], filters: [['parent_task', '=', id]], order_by: 'created_at asc', limit_page_length: 200,
+    }),
+  })
+  const unfinishedChildren = (childProgress.data?.data ?? []).filter(child => !['Done', 'Cancelled'].includes(String(child.task_state)))
+  const completionBlocked = Boolean(!task.data?.is_done && !task.data?.parent_task && (childProgress.isPending || childProgress.error || unfinishedChildren.length))
+
   const taskActivity = useQuery({
     queryKey: ['task-management', 'detail-activity', id],
     queryFn: () => api.get<{ comments: TaskComment[]; versions: TaskVersion[] }>(
@@ -1232,29 +1264,30 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
       </div>
     </div>
     <h2 className="my-5 text-xl font-semibold">{task.data?.task_title ?? 'Task details'}</h2>
-    {task.error && <p role="alert">{task.error.message}</p>}
+    {task.error && <p role="alert">{task.error.message} <Button disabled={task.isFetching} onClick={() => void task.refetch()}>Try again</Button></p>}
     {task.isPending && <p role="status">Loading task…</p>}
     {error && <p role="alert">{error}</p>}
     <TaskActions key={id} task={task.data ?? { row_id: id, updated_at: '' }} disabled={!task.data || Boolean(task.error) || saving || Boolean(draft)} onCompleted={onCompleted} />
     {task.data && !task.error && <>
       <fieldset className="tasker-detail-controls" disabled={saving || Boolean(draft)}>
         <legend className="sr-only">Task workflow</legend>
-        <label>State<select aria-label="Task state" value={task.data.task_state} onChange={(event) => void patch({ task_state: event.target.value }, task.data.updated_at)}>{STATES.map(state => <option key={state}>{state}</option>)}</select></label>
+        <label>State<select aria-label="Task state" value={task.data.task_state} onChange={(event) => void patch({ task_state: event.target.value }, task.data.updated_at)}>{STATES.map(state => <option key={state} disabled={state === 'Done' && completionBlocked}>{state}</option>)}</select></label>
         <label>Responsibility<select aria-label="Task responsibility" value={task.data.assigned_to ?? ''} onChange={(event) => void patch({ assigned_to: event.target.value || null }, task.data.updated_at)}>
-          <option value="">Unassigned</option>{people.map(user => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}
+          <option value="">Unassigned</option>{people.filter(user => effectiveShared || user.row_id === me).map(user => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}
         </select></label>
-        <label>Destination<select aria-label="Task destination" value={task.data.personal_tasks_owner ? `personal:${task.data.personal_tasks_owner}` : task.data.project ? `project:${task.data.project}` : ''} onChange={(event) => {
+        <label>Destination<select disabled={Boolean(task.data.parent_task)} aria-label="Task destination" value={!effectiveShared && task.data.personal_tasks_owner ? `personal:${task.data.personal_tasks_owner}` : task.data.project ? `project:${task.data.project}` : ''} onChange={(event) => {
           const [kind, value] = event.target.value.split(':', 2)
           void patch(kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }, task.data.updated_at)
-        }}><option value="">Inbox</option>{projects.map(project => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}
-          {people.map(user => <option key={user.row_id} value={`personal:${user.row_id}`}>Personal: {personName(user)}</option>)}
+        }}><option value="" disabled={effectiveShared}>{effectiveShared ? 'Shared work' : 'Inbox'}</option>{projects.map(project => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}
+          {!effectiveShared && !task.data.parent_task && people.filter(user => user.row_id === me).map(user => <option key={user.row_id} value={`personal:${user.row_id}`}>Personal: {personName(user)}</option>)}
         </select></label>
         <div className="tasker-detail-signals">
           {!task.data.assigned_to && <Button type="button"  onClick={() => void patch({ assigned_to: me }, task.data.updated_at)}>Take it</Button>}
           <Button type="button"  aria-pressed={task.data.urgent} onClick={() => void patch({ urgent: !task.data.urgent }, task.data.updated_at)}>{task.data.urgent ? 'Urgent' : 'Not urgent'}</Button>
-          <Button type="button"  onClick={() => void patch({ is_done: !task.data.is_done }, task.data.updated_at)}>{task.data.is_done ? 'Undo Done' : 'Mark Done'}</Button>
+          <Button type="button" disabled={completionBlocked} onClick={() => void patch({ is_done: !task.data.is_done }, task.data.updated_at)}>{task.data.is_done ? 'Undo Done' : 'Mark Done'}</Button>
         </div>
       </fieldset>
+      {completionBlocked && <p className="mt-3 text-sm text-ink-muted">{unfinishedChildren.length ? 'Finish or cancel the open subtasks before marking this task Done.' : childProgress.error ? 'Subtasks could not be checked. Reopen this task to try again.' : 'Checking subtasks…'}</p>}
       {mode === 'compact' ? <div className="tasker-compact-summary">
         <Markdown>{task.data.description || 'No description yet.'}</Markdown>
         {latestActivity && <p className="mt-3 border-l-2 border-[var(--color-border)] pl-3 pointer-fine:text-xs text-[var(--color-ink-muted)]">
@@ -1297,7 +1330,11 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
         <Markdown>{task.data.description || 'No description yet. Add context when it helps.'}</Markdown>
       </div>}
 
-      <Discussion key={id} taskId={id} />
+      {task.data.parent_task && <a className="text-action underline" href={sameDocumentHash(`#task=${encodeURIComponent(task.data.parent_task)}`)}>Open parent task</a>}
+      {!task.data.parent_task && <Subtasks taskId={id} shared={task.data.shared} creator={task.data.created_by} parentState={task.data.task_state} onOpen={childId => { location.hash = `task=${encodeURIComponent(childId)}` }} />}
+      {!task.data.parent_task && <Recurrence task={task.data} onSaved={onSaved} />}
+      <p className="mt-4 text-sm text-ink-muted">{effectiveShared ? 'Shared with your team' : 'Only you can see this task'}</p>
+      <Discussion key={id} taskId={id} shared={effectiveShared} />
       <div className="mt-7 border-t border-[var(--color-border)] pt-5">
         <h3 className="mb-3 pointer-fine:text-sm font-semibold">Activity history</h3>
         {taskActivity.error && <p role="alert">Could not load discussion and history: {taskActivity.error.message}</p>}
@@ -1322,8 +1359,9 @@ function Empty({ text }: { text: string }) {
   return <div className={cardClasses("border-dashed px-4 py-10 text-center text-sm text-[var(--color-ink-muted)]")}>{text}</div>
 }
 
-function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch, onFocus, onMove, savedViewId }: {
+function TaskList({ tasks, openChildren, users, projects, focusSet, me, explanations, onPatch, onFocus, onMove, savedViewId }: {
   tasks: Task[]
+  openChildren: Map<string, number>
   users: { row_id: string; full_name?: string | null }[]
   projects: Project[]
   focusSet: Set<string>
@@ -1369,7 +1407,7 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
     const inactive = ['Blocked', 'On hold', 'Cancelled'].includes(task.task_state)
     return (
       <article key={task.row_id} className={`tasker-task-row ${task.is_done ? 'is-done' : ''}`}>
-        <input aria-label={`Mark ${task.task_title} done`} type="checkbox" checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="tasker-task-checkbox" />
+        <input aria-label={`Mark ${task.task_title} done`} type="checkbox" disabled={!task.is_done && Boolean(openChildren.get(task.row_id))} title={openChildren.get(task.row_id) ? 'Finish or cancel the subtasks first' : undefined} checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="tasker-task-checkbox" />
         <div className="tasker-task-copy">
           <a href={sameDocumentHash(savedViewId ? savedViewHash(savedViewId, task.row_id) : `#task=${encodeURIComponent(task.row_id)}`)} className={task.is_done ? 'line-through' : ''}>{task.task_title}</a>
           {explaining === task.row_id && (
@@ -1386,9 +1424,9 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
         </div>
         <div className="tasker-task-metadata">
           <select data-state={task.task_state} aria-label={`State for ${task.task_title}`} value={task.task_state ?? 'Not started'} onChange={(event) => { const taskState = event.target.value; void onPatch(task, { task_state: taskState }); if (['Blocked', 'On hold', 'Cancelled'].includes(taskState)) { setExplaining(task.row_id); setExplanation('') } }}>{STATES.map((state) => <option key={state}>{state}</option>)}</select>
-          <select aria-label={`Destination for ${task.task_title}`} value={task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }}><option value="">Inbox</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{users.map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{personName(user)}</option>)}</optgroup></select>
+          <select aria-label={`Destination for ${task.task_title}`} disabled={Boolean(task.parent_task)} value={!task.shared && task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }}><option value="" disabled={task.shared}>{task.shared ? 'Shared work' : 'Inbox'}</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{!task.shared && users.filter(user => user.row_id === me).map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{personName(user)}</option>)}</optgroup></select>
           <div className="tasker-responsibility">
-            <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })}><option value="">Unassigned</option>{users.map((user) => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}</select>
+            <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })}><option value="">Unassigned</option>{users.filter(user => task.shared || user.row_id === me).map((user) => <option key={user.row_id} value={user.row_id}>{personName(user)}</option>)}</select>
             {!task.assigned_to && me && <Button type="button" onClick={() => void onPatch(task, { assigned_to: me })} className="tasker-take-button">Take it</Button>}
           </div>
         </div>

@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Tasker is built for one small team whose members trust each other: everyone can
-see and work on every project and task. Being responsible for a task shows who
-is on it; it does not lock anyone else out.
+Tasker gives admitted members shared projects and team work alongside
+creator-only personal tasks. Responsibility identifies who is doing shared
+work; access to personal work belongs only to its creator.
 
 ## Requirements
 

@@ -24,11 +24,36 @@
         "authorization": {
           "kind": "generic"
         }
+      },
+      "start_recurrence": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "pause_recurrence": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "resume_recurrence": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       }
     },
     "tables": [
       "tasker.task",
-      "tasker.project"
+      "tasker.project",
+      "tasker.recurrence"
     ]
   },
   "migrations": [
@@ -153,6 +178,150 @@
               }
             ]
           }
+        },
+        {
+          "kind": "addAccessPolicy",
+          "table": "tasker.project",
+          "policy": {
+            "version": 1,
+            "roles": [
+              "Tasker Member"
+            ]
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "shared",
+            "label": "Shared with team",
+            "column_type": "Check",
+            "hidden": true
+          },
+          "backfill": true
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "parent_task",
+            "label": "Parent task",
+            "column_type": "Reference",
+            "reference_table": "tasker.task",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addAccessPolicy",
+          "table": "tasker.task",
+          "policy": {
+            "version": 1,
+            "roles": [
+              "Tasker Member"
+            ],
+            "shared_column": "shared",
+            "inherit_column": "parent_task"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "recurrence",
+            "label": "Recurring series",
+            "column_type": "Data",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "occurrence_key",
+            "label": "Occurrence key",
+            "column_type": "Data",
+            "unique": true,
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "tasker.task",
+          "column": {
+            "column_name": "completed_at",
+            "label": "Completed at",
+            "column_type": "Datetime",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "tasker.recurrence",
+            "label": "Recurring task",
+            "module": "Tasker",
+            "id_pattern": "REPEAT-.#####",
+            "access_policy": {
+              "version": 1,
+              "roles": [
+                "Tasker Member"
+              ],
+              "shared_column": "shared"
+            },
+            "columns": [
+              {
+                "column_name": "schedule_mode",
+                "label": "Repeats",
+                "column_type": "Choice",
+                "choices": "daily\nweekly\nmonthly\nafter_completion",
+                "reqd": true
+              },
+              {
+                "column_name": "interval",
+                "label": "Every",
+                "column_type": "Int",
+                "default_value": "1",
+                "reqd": true
+              },
+              {
+                "column_name": "anchor_date",
+                "label": "First scheduled date",
+                "column_type": "Date",
+                "reqd": true
+              },
+              {
+                "column_name": "paused",
+                "label": "Paused",
+                "column_type": "Check",
+                "default_value": "0"
+              },
+              {
+                "column_name": "active_task",
+                "label": "Active task",
+                "column_type": "Reference",
+                "reference_table": "tasker.task"
+              },
+              {
+                "column_name": "next_at",
+                "label": "Next occurrence",
+                "column_type": "Datetime"
+              },
+              {
+                "column_name": "snapshot",
+                "label": "Recurring instructions",
+                "column_type": "Long Text",
+                "reqd": true,
+                "hidden": true
+              },
+              {
+                "column_name": "shared",
+                "label": "Shared with team",
+                "column_type": "Check",
+                "hidden": true,
+                "default_value": "0"
+              }
+            ]
+          }
         }
       ]
     }
@@ -177,7 +346,13 @@
           "label": "Description",
           "column_type": "Text"
         }
-      ]
+      ],
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Tasker Member"
+        ]
+      }
     },
     {
       "name": "tasker.task",
@@ -245,8 +420,48 @@
           "label": "State before done",
           "column_type": "Data",
           "hidden": true
+        },
+        {
+          "column_name": "shared",
+          "label": "Shared with team",
+          "column_type": "Check",
+          "hidden": true
+        },
+        {
+          "column_name": "parent_task",
+          "label": "Parent task",
+          "column_type": "Reference",
+          "reference_table": "tasker.task",
+          "hidden": true
+        },
+        {
+          "column_name": "recurrence",
+          "label": "Recurring series",
+          "column_type": "Data",
+          "hidden": true
+        },
+        {
+          "column_name": "occurrence_key",
+          "label": "Occurrence key",
+          "column_type": "Data",
+          "unique": true,
+          "hidden": true
+        },
+        {
+          "column_name": "completed_at",
+          "label": "Completed at",
+          "column_type": "Datetime",
+          "hidden": true
         }
-      ]
+      ],
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Tasker Member"
+        ],
+        "shared_column": "shared",
+        "inherit_column": "parent_task"
+      }
     },
     {
       "name": "tasker.discussion",
@@ -309,12 +524,78 @@
           "hidden": true
         }
       ]
+    },
+    {
+      "name": "tasker.recurrence",
+      "label": "Recurring task",
+      "module": "Tasker",
+      "id_pattern": "REPEAT-.#####",
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Tasker Member"
+        ],
+        "shared_column": "shared"
+      },
+      "columns": [
+        {
+          "column_name": "schedule_mode",
+          "label": "Repeats",
+          "column_type": "Choice",
+          "choices": "daily\nweekly\nmonthly\nafter_completion",
+          "reqd": true
+        },
+        {
+          "column_name": "interval",
+          "label": "Every",
+          "column_type": "Int",
+          "default_value": "1",
+          "reqd": true
+        },
+        {
+          "column_name": "anchor_date",
+          "label": "First scheduled date",
+          "column_type": "Date",
+          "reqd": true
+        },
+        {
+          "column_name": "paused",
+          "label": "Paused",
+          "column_type": "Check",
+          "default_value": "0"
+        },
+        {
+          "column_name": "active_task",
+          "label": "Active task",
+          "column_type": "Reference",
+          "reference_table": "tasker.task"
+        },
+        {
+          "column_name": "next_at",
+          "label": "Next occurrence",
+          "column_type": "Datetime"
+        },
+        {
+          "column_name": "snapshot",
+          "label": "Recurring instructions",
+          "column_type": "Long Text",
+          "reqd": true,
+          "hidden": true
+        },
+        {
+          "column_name": "shared",
+          "label": "Shared with team",
+          "column_type": "Check",
+          "hidden": true,
+          "default_value": "0"
+        }
+      ]
     }
   ],
   "permissions": [
     {
       "table": "tasker.project",
-      "role": "All",
+      "role": "Tasker Member",
       "can_read": true,
       "can_write": true,
       "can_create": true,
@@ -322,7 +603,7 @@
     },
     {
       "table": "tasker.task",
-      "role": "All",
+      "role": "Tasker Member",
       "can_read": true,
       "can_write": true,
       "can_create": true,
@@ -330,7 +611,7 @@
     },
     {
       "table": "Comment",
-      "role": "All",
+      "role": "Tasker Member",
       "can_read": true,
       "can_write": true,
       "can_create": true
@@ -341,9 +622,30 @@
       "can_read": true,
       "can_create": true,
       "can_write": true
+    },
+    {
+      "table": "tasker.recurrence",
+      "role": "Tasker Member",
+      "can_create": true,
+      "can_read": true,
+      "can_write": true
     }
   ],
   "roles": [
     "Tasker Member"
+  ],
+  "jobs": [
+    {
+      "name": "repeat_tasks",
+      "cadence": "every minute",
+      "description": "Create the next due task occurrence for each active recurring series",
+      "documents": {
+        "owner_table": "tasker.recurrence",
+        "tables": [
+          "tasker.recurrence",
+          "tasker.task"
+        ]
+      }
+    }
   ]
 }

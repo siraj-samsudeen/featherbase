@@ -380,7 +380,7 @@ export async function updateTable(
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
   }
   const def = parsed.data
-  if (existing.access_policy && def.access_policy && JSON.stringify(def.access_policy) !== JSON.stringify(existing.access_policy))
+  if (existing.access_policy && def.access_policy && JSON.stringify(def.access_policy) !== JSON.stringify(accessPolicySchema.parse(existing.access_policy)))
     throw new AppError('PermissionError', 'An existing mandatory access policy cannot be changed through the schema editor')
   if (existing.access_policy) {
     def.access_policy = existing.access_policy

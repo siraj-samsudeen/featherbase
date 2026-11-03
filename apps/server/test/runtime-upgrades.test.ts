@@ -26,7 +26,7 @@ async function targetPackage() {
 
 describe('runtime upgrades', () => {
   test('an upgrade adds mandatory privacy without rewriting existing rows', async ({ admin, createUser }) => {
-    const source = resolve('../..', 'runtime-apps/other')
+    const source = resolve('../..', 'test-apps/other')
     const { directory, manifest } = await targetPackage()
     const policy = { version: 1, roles: ['System Manager'], shared_column: 'shared' }
     const shared = { column_name: 'shared', column_type: 'Check', default_value: '0' }
