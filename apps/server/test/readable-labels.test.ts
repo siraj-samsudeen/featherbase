@@ -80,6 +80,10 @@ test('HTTP custom field updates refresh the authored mapping', async ({ admin })
   await patchDoc(admin, `/api/table/Custom%20Field/${custom.row_id}`, { updated_at: custom.updated_at, choice_labels: { raw_value: 'Updated wording' } })
   const meta = await admin.get<{ columns: Record<string, unknown>[] }>(table.metaUrl)
   expect(meta.columns.find(c => c.column_name === 'api_policy')).toMatchObject({ label: 'API Policy', choice_labels: { raw_value: 'Updated wording' } })
+  const current = await admin.get<{ updated_at: string }>(`/api/table/Custom%20Field/${custom.row_id}`)
+  await expect(patchDoc(admin, `/api/table/Custom%20Field/${custom.row_id}`, {
+    updated_at: current.updated_at, choice_labels: { raw_value: 42 },
+  })).rejects.toMatchObject({ status: 417, type: 'ValidationError' })
   await sql`delete from column_def where parent = ${table.name} and column_name = 'api_policy'`
   invalidateMeta(table.name)
   await reapplyCustomFields()
