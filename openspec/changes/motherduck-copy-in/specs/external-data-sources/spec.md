@@ -222,7 +222,11 @@ And a correction made in that form is saved
 
 Copy again SHALL update an unedited value from the warehouse, add new source
 rows and keep a person's correction, using the saved source-column mappings.
-These examples do not define changed-row counts, failure atomicity or undo.
+Manual and scheduled refreshes SHALL use the same serialized source observation
+and atomic apply: a source-read failure or refused row SHALL leave target rows,
+conflicts, import history and copy provenance unchanged. This does not change
+the best-effort behavior of unrelated ordinary imports. Matched updates SHALL
+be reported separately from actually changed and unchanged matched rows.
 
 #### Scenario: Copy again updates an unedited store and adds a new store
 
@@ -232,6 +236,18 @@ And the warehouse changes the unedited store "S001" and adds store "S004"
 When the user chooses Copy again on the native copy
 Then store "S001" has the changed warehouse name
 And store "S004" is available as an ordinary native row
+And store "S002" still has the person's correction
+```
+
+#### Scenario: A refused new store leaves the earlier source changes unapplied
+
+```gherkin
+Given a native store copy with a person's correction to store "S002"
+And the warehouse changes the unedited store "S001" and adds store "S004"
+And the native copy refuses the new store "S004"
+When the user attempts Copy again on the native copy
+Then the failed copy explains that no rows changed
+And the original three stores remain without the new warehouse changes
 And store "S002" still has the person's correction
 ```
 
