@@ -102,6 +102,7 @@ WITH authored(parent, column_name, choices, labels) AS (VALUES
   ('Table', 'kind', E'table\nsub_table\nsettings', '{"table":"Table","sub_table":"Sub-table","settings":"Settings"}'),
   ('Webhook', 'webhook_event', E'after_insert\non_update\non_submit\non_cancel', '{"after_insert":"After insert","on_update":"On update","on_submit":"On submit","on_cancel":"On cancel"}'),
   ('Data Source', 'engine', E'postgres\nmysql\nduckdb\ncsv-folder', '{"postgres":"PostgreSQL","mysql":"MySQL","duckdb":"DuckDB","csv-folder":"CSV folder"}'),
+  ('Data Source', 'engine', E'postgres\nmysql\nduckdb\nmotherduck\ncsv-folder', '{"postgres":"PostgreSQL","mysql":"MySQL","duckdb":"DuckDB","motherduck":"MotherDuck","csv-folder":"CSV folder"}'),
   ('Data Source', 'conn_status', E'untested\nok\nerror', '{"untested":"Untested","ok":"Connected","error":"Error"}'),
   ('Column', 'tier', E'basic\nrestricted', '{"basic":"Basic","restricted":"Restricted"}'),
   ('Permission', 'tier', E'basic\nrestricted', '{"basic":"Basic","restricted":"Restricted"}'),

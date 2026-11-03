@@ -178,6 +178,28 @@ test('readable-label migration preserves installed wording', async ({ admin }) =
   expect(await sql`select parent, column_name, label, choice_labels from column_def order by parent, column_name`).toEqual(before)
 })
 
+test('readable-label migration recognizes the MotherDuck platform list without overwriting authored choices', async () => {
+  const choices = 'postgres\nmysql\nduckdb\nmotherduck\ncsv-folder'
+  for (const fixture of [
+    { choices, custom: false, labels: null },
+    { choices, custom: false, labels: { motherduck: 'Our warehouse' } },
+    { choices, custom: false, labels: {} },
+    { choices, custom: true, labels: null },
+    { choices: choices + '\nour_engine', custom: false, labels: null },
+  ]) {
+    await sql`update column_def set label = 'Our engine caption', choices = ${fixture.choices}, custom = ${fixture.custom},
+      choice_labels = ${fixture.labels === null ? null : sql.json(fixture.labels)}
+      where parent = 'Data Source' and column_name = 'engine'`
+    await sql.unsafe(migration)
+    const [column] = await sql`select label, choices, choice_labels from column_def where parent = 'Data Source' and column_name = 'engine'`
+    expect(column.label).toBe('Our engine caption')
+    expect(column.choices).toBe(fixture.choices)
+    expect(column.choice_labels).toEqual(fixture.labels ?? (fixture.custom || fixture.choices !== choices ? null : {
+      postgres: 'PostgreSQL', mysql: 'MySQL', duckdb: 'DuckDB', motherduck: 'MotherDuck', 'csv-folder': 'CSV folder',
+    }))
+  }
+})
+
 test('readable-label migration requires exact old platform choices', async ({ admin }) => {
   await sql`update column_def set choice_labels = null where parent in ('Sign In Method', 'Data Source', 'Table', 'Email Rule', 'Server Script', 'Webhook')`
   await sql`update column_def set choices = 'changed' where parent = 'Data Source' and column_name = 'access'`
