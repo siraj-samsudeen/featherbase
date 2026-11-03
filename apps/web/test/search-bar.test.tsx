@@ -65,6 +65,47 @@ test('The search bar opens what it finds: a matching Table offers its list and a
   await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 
+test('Plain arrow keys choose typed results in displayed order', async ({ admin }) => {
+  await seed(admin)
+  const { app, bar } = await openBar(admin)
+  fireEvent.focus(bar)
+  fireEvent.change(bar, { target: { value: 'Sb Gadget' } })
+  await screen.findByTestId('awesomebar-doc')
+  const results = screen.getByTestId('awesomebar-results')
+  const choices = Array.from(results.querySelectorAll('a, button'))
+  expect(choices.length).toBeGreaterThanOrEqual(3)
+  for (const choice of choices) {
+    fireEvent.keyDown(bar, { key: 'ArrowDown' })
+    expect(choice).toHaveAttribute('aria-selected', 'true')
+    expect(bar).toHaveAttribute('aria-activedescendant', choice.id)
+  }
+  fireEvent.keyDown(bar, { key: 'ArrowDown' })
+  expect(choices[0]).toHaveAttribute('aria-selected', 'true')
+  fireEvent.keyDown(bar, { key: 'ArrowUp' })
+  expect(choices.at(-1)).toHaveAttribute('aria-selected', 'true')
+  const create = within(results).getByTestId('awesomebar-new')
+  while (create.getAttribute('aria-selected') !== 'true') {
+    fireEvent.keyDown(bar, { key: 'ArrowUp' })
+  }
+  fireEvent.submit(bar.closest('form') as HTMLFormElement)
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Sb Gadget/new'))
+  expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument()
+})
+
+test('Replacing a query cannot activate its previous record during debounce', async ({ admin }) => {
+  await seed(admin)
+  const { app, bar } = await openBar(admin)
+  fireEvent.focus(bar)
+  fireEvent.change(bar, { target: { value: 'Zebrafinch' } })
+  await screen.findByTestId('awesomebar-doc')
+  // The replacement is not an exact Table name: the old first record would
+  // otherwise win before the ordinary 150ms typing debounce has elapsed.
+  fireEvent.change(bar, { target: { value: 'Sb Hom' } })
+  fireEvent.submit(bar.closest('form') as HTMLFormElement)
+  await waitFor(() => expect(here(app)).not.toBe('/featherbase/admin/all-tables'))
+  expect(here(app)).not.toContain('Zebrafinch-widget')
+})
+
 test('The search bar opens what it finds: Enter on an exact Table name opens that Table\'s list', async ({ admin }) => {
   await seed(admin)
   const { app, bar } = await openBar(admin)
