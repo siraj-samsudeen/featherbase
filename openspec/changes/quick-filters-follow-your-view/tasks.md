@@ -62,23 +62,23 @@ Same test file.
 - [x] 6.1 S16, component test: `The folded control says 2 filters are in use`
 - [x] 6.2 Component test: `Opening the filters shows up to four quick filters, says how many more, and lets the user add one` (changed by the owner on 02-Nov-2026: was every quick filter, then six)
 - [x] 6.3 Component test: `While folded only the count shows; opening the filters shows the filters in use, each removable`
-- [ ] 6.4 S15, browser test in 7.7: `The rows come straight after the folded filters on a phone`
+- [x] 6.4 S15, browser test in 7.7: `The rows come straight after the folded filters on a phone`
 - [x] 6.5 Component test: `On a phone, Recent folds behind the Filters button; Save view stays showing` (owner's addition)
 - [x] 6.6 Component test: `The Filters button shows an arrow that turns over when opened` (owner's addition)
-- [ ] 6.7 Add filter's column, operator and value sit on one line on a phone; checked in the browser by 7.7 (owner's addition)
+- [x] 6.7 Add filter's column, operator and value sit on one line on a phone; checked in the browser by 7.7 (owner's addition)
 
 ## 7. Browser journeys
 
 Test file: `apps/web/e2e/quick-filters.spec.ts`, headless, using the DSL fixtures. Each journey arrives by clicking, except
 the deliberate link tests in 7.5 and 7.6.
 
-- [ ] 7.1 `Switching a column on and off makes its box appear and go`
-- [ ] 7.2 `Filtering a column and hiding it keeps the filter on`
-- [ ] 7.3 `Picking a Choice in Add filter from its dropdown narrows the rows`
-- [ ] 7.4 `Picking Yes in the Active box and in Add filter shows the right rows`
-- [ ] 7.5 `A hand-edited link saying "true" shows the active rows, and one saying "maybe" shows none`
-- [ ] 7.6 `Eight possible boxes show six plus "+2 more", and a box in use stays showing`
-- [ ] 7.7 `On a phone the filters fold with a count, open stacked, and the rows come straight after them`
+- [x] 7.1 `Switching a column on and off makes its box appear and go`
+- [x] 7.2 `Filtering a column and hiding it keeps the filter on`
+- [x] 7.3 `Picking a Choice in Add filter from its dropdown narrows the rows`
+- [x] 7.4 `Picking Yes in the Active box and in Add filter shows the right rows`
+- [x] 7.5 `A hand-edited link saying "true" shows the active rows, and one saying "maybe" shows none`
+- [x] 7.6 `Eight possible boxes show six plus "+2 more", and a box in use stays showing`
+- [x] 7.7 `On a phone the filters fold with a count, open stacked, and the rows come straight after them`
 
 ## 8. UI checklist, confirmed by the separate verifier
 
@@ -114,9 +114,9 @@ Verification:
 
 ## 9. Final checks
 
-- [ ] 9.1 `pnpm --filter server test` and `pnpm --filter web test` pass
-- [ ] 9.2 `pnpm --filter web e2e` and `pnpm check:e2e-dsl` pass
-- [ ] 9.3 `pnpm --filter server typecheck` and `pnpm --filter web typecheck` pass
+- [x] 9.1 `pnpm --filter server test` and `pnpm --filter web test` pass
+- [x] 9.2 `pnpm --filter web e2e` and `pnpm check:e2e-dsl` pass
+- [x] 9.3 `pnpm --filter server typecheck` and `pnpm --filter web typecheck` pass
 - [ ] 9.4 `pnpm --filter server test:coverage`: the new Yes/No server code (`yes-no-filter.ts` and its calls) is 100% covered, and the backend stays within ADR 0017's non-regression caps (ADR 0017 superseded ADR 0016 on 02-Nov-2026); say what a run without MySQL leaves out
 - [ ] 9.5 Local code review of the server logic (the `feather-code-review` skill), findings triaged by `AGENTS.md`, at most 3 rounds
 - [ ] 9.6 `./init.sh` boots (it reads `.env.local` since main's 02-Nov-2026 update), and the QF Section Mapping list works in a headless browser
