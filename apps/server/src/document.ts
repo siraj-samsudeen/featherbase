@@ -155,7 +155,8 @@ async function resolveRowId(
   if (rule.includes('.#')) {
     const dot = rule.indexOf('.')
     const prefix = rule.slice(0, dot)
-    const digits = (rule.slice(dot + 1).match(/#/g) ?? []).length || 4
+    // rule holds '.#' after its first '.', so the mask has at least one #.
+    const digits = rule.slice(dot + 1).split('#').length - 1
     return nextInSeries(tx, meta, prefix, (n) => prefix + String(n).padStart(digits, '0'))
   }
   throw new AppError('ValidationError', `Unsupported id_pattern rule ${rule}`)
