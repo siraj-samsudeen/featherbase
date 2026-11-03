@@ -171,3 +171,26 @@ test('A link with two Floor filters opens as one chip, the address holds one fil
   fireEvent.click(screen.getByTestId('std-filter-floor'))
   expect(ticked(screen.getByTestId('std-choices-floor'))).toEqual(['Ground', 'First Floor'])
 })
+
+test('Filters on different columns, on text columns and on Yes/No columns are never merged', async ({ admin }) => {
+  await seed(admin)
+  const link = [
+    ['owner_name', 'like', '%As%'],
+    ['owner_name', 'like', '%sh%'],
+    ['active', '=', 'Yes'],
+    ['active', '!=', 'No'],
+    ['floor', 'in', ['Ground', 'First Floor']],
+    ['state', '=', 'Open'],
+  ]
+  const router = await openList(admin, link)
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R3']))
+  expect(chips()).toEqual([
+    'owner_name like %As%×',
+    'owner_name like %sh%×',
+    'active = Yes×',
+    'active != No×',
+    'floor in Ground, First Floor×',
+    'state = Open×',
+  ])
+  expect(addressFilters(router)).toEqual(link)
+})

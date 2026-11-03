@@ -15,10 +15,10 @@ Test file: `apps/web/test/choice-filters-in.test.tsx`, against the real in-proce
 
 Same test file.
 
-- [ ] 2.1 S8: `Adding Floor again opens with Ground ticked, and First Floor joins the same chip`
-- [ ] 2.2 S9: `An older link or saved view with floor = Ground takes First Floor into one chip`
-- [ ] 2.3 S10: `A link with two Floor filters opens as one chip, the address holds one filter, and the quick filter shows both ticked`
-- [ ] 2.4 Test: `Filters on different columns, on text columns and on Yes/No columns are never merged`
+- [x] 2.1 S8: `Adding Floor again opens with Ground ticked, and First Floor joins the same chip`
+- [x] 2.2 S9: `An older link or saved view with floor = Ground takes First Floor into one chip`
+- [x] 2.3 S10: `A link with two Floor filters opens as one chip, the address holds one filter, and the quick filter shows both ticked`
+- [x] 2.4 Test: `Filters on different columns, on text columns and on Yes/No columns are never merged`
 
 ## 3. The quick filter is the same filter
 
