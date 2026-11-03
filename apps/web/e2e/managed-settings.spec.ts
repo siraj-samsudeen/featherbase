@@ -52,7 +52,7 @@ test('the Google sign-in method form locks the domains the file sets, and only t
   await session
     .visit(GOOGLE)
     .assertHas('[data-testid="form-view"]')
-    .assertValue('allowed_email_domains', 'example.com,example.org')
+    .assertValue('Allowed Email Domains', 'example.com,example.org')
     .within('[data-field="allowed_email_domains"]', (input) =>
       input.assertAttribute('disabled').assertAttribute('aria-describedby'))
     .within('[data-testid="managed-allowed_email_domains"]', (hint) => hint.assertExactText(HINT))
