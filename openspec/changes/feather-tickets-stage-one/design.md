@@ -40,8 +40,10 @@ remains in the instance's control database.
 Review exposed one missing runtime seam: save validators do not run for
 generic rename or deletion. Add an optional server export `destructiveGuards`,
 keyed only by owned **Tables**, with the existing structural row/user/reject
-context. Bind it to the host's existing `before_lock` hook for rename/delete;
-it cannot grant authority or bypass permissions. Existing packages without
+context. Bind it to the host's deletion hook and a `before_rename` hook inside
+the rename transaction; it cannot grant authority or bypass permissions.
+`before_lock` is not suitable because saves and runtime reads also acquire
+those locks. Existing packages without
 the export stay unchanged. Tickets refuses both operations on all its records,
 preserving stable references and append-only events even for Administrator.
 Reusing save validators on partial rename/delete rows was rejected because
