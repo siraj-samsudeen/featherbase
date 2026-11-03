@@ -42,8 +42,17 @@ test('a pending sign-in offer never takes over a new-row deep link after readine
   }
   await screen.findByTestId('health-banner')
   await waitFor(() => expect(sessionStorage.getItem(OFFER_SETUP_KEY)).toBeNull())
-  expect(router.state.location.pathname).toBe(path)
+  expect((router.state as { location: { pathname: string } }).location.pathname).toBe(path)
   expect(screen.getByTestId('form-view')).toBeInTheDocument()
+  expect(screen.queryByTestId('welcome-setup')).not.toBeInTheDocument()
+})
+
+test('an absent sign-in offer leaves Admin home available with setup unfinished', async ({ admin }) => {
+  await noManagerEmails()
+  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'disable_leavers'`
+  const { router } = await renderApp('/featherbase/admin/home/system', admin)
+  await screen.findByTestId('health-banner')
+  expect((router.state as { location: { pathname: string } }).location.pathname).toBe('/featherbase/admin/home/system')
   expect(screen.queryByTestId('welcome-setup')).not.toBeInTheDocument()
 })
 
@@ -119,6 +128,7 @@ test('another System Manager is never offered the setup (item 18)', async ({ cre
   justSignedIn()
   await renderApp('/featherbase/admin/all-tables', manager)
   await screen.findByTestId('all-tables-link')
+  expect(screen.queryByTestId('welcome-setup')).not.toBeInTheDocument()
   expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument()
   const { router } = await renderApp('/featherbase/admin/setup/people', manager)
   await waitFor(() => expect((router.state as { location: { pathname: string } }).location.pathname).toBe('/featherbase/admin'))
@@ -162,5 +172,6 @@ test('a slow health answer never pulls the Administrator off a page they moved o
   await userEvent.click(await screen.findByTestId('all-tables-link'))
   release()
   await screen.findByTestId('health-banner')
+  expect(screen.queryByTestId('welcome-setup')).not.toBeInTheDocument()
   expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument()
 })
