@@ -13,21 +13,25 @@ const keyOf = (r: Ref) => `${r.table}\u0000${r.row_id}`
 
 let queued: Map<string, { ref: Ref; resolvers: ((title: string | null) => void)[] }> | null = null
 
+// The server takes at most this many rows per request; a full Explore pane
+// asks for more than that in one tick.
+const MAX_PER_REQUEST = 100
+
 function flush() {
-  const batch = queued!
+  const entries = [...queued!.entries()]
   queued = null
-  const refs = [...batch.values()].map((b) => b.ref)
-  api
-    .post<{ titles: Array<Ref & { title: string }> }>('/api/row_titles', { rows: refs })
-    .then(({ titles }) => {
-      const found = new Map(titles.map((t) => [keyOf(t), t.title]))
-      for (const [k, b] of batch) for (const r of b.resolvers) r(found.get(k) ?? null)
-    })
-    .catch(
-      () => {
-        for (const b of batch.values()) for (const r of b.resolvers) r(null)
-      },
-    )
+  for (let i = 0; i < entries.length; i += MAX_PER_REQUEST) {
+    const batch = entries.slice(i, i + MAX_PER_REQUEST)
+    api
+      .post<{ titles: Array<Ref & { title: string }> }>('/api/row_titles', { rows: batch.map(([, b]) => b.ref) })
+      .then(({ titles }) => {
+        const found = new Map(titles.map((t) => [keyOf(t), t.title]))
+        for (const [k, b] of batch) for (const r of b.resolvers) r(found.get(k) ?? null)
+      })
+      .catch(() => {
+        for (const [, b] of batch) for (const r of b.resolvers) r(null)
+      })
+  }
 }
 
 function loadTitle(ref: Ref): Promise<string | null> {
