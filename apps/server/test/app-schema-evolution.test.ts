@@ -39,6 +39,10 @@ async function install(admin: Client) {
 
 // Rows written through the API while 0.1.0 is installed.
 async function seed(admin: Client) {
+  for (const ref_table of ['evolve.item', 'evolve.note', 'evolve.zone'])
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table, role: 'System Manager', can_read: true, can_create: true, can_write: true, can_delete: true,
+    } })
   const save = (table: string, row: Record<string, unknown>) => admin.post('/api/save_row', { table, row })
   await save('evolve.item', { row_id: 'i1', title: 'Pallet jack', qty: 3, grade: 'C', legacy_code: 'LEG-0001', on_hold: true })
   await save('evolve.item', { row_id: 'i2', qty: 7, grade: 'A', legacy_code: 'LEG-0002', on_hold: false })

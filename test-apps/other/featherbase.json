@@ -13,5 +13,8 @@
       {"column_name": "validation_runs", "column_type": "Int", "hidden": true}
     ]
   }],
-  "permissions": [{"table": "other.task", "role": "All", "can_read": true}]
+  "permissions": [
+    {"table": "other.task", "role": "All", "can_read": true},
+    {"table": "other.task", "role": "System Manager", "can_read": true, "can_create": true, "can_write": true, "can_delete": true}
+  ]
 }

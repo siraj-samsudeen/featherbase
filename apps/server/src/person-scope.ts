@@ -6,6 +6,7 @@ import { getDoc } from './document'
 import { getList } from './query'
 import { withAppIdentity } from './app-lifecycle'
 import { AppError } from './errors'
+import { runAsSystemActor } from './system-actor'
 
 /** The instance's one scope-providing app, bound by runtime-packages. */
 export interface ScopeProviderBinding {
@@ -118,7 +119,7 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
       // A row read loads its Sub-table rows, from a Table never declared or
       // marked; refused, as action documents refuse them.
       if (meta.columns.some((column) => column.column_type === 'Sub-table')) throw new Error('Scope provider read a Table with Sub-tables')
-      return JSON.parse(JSON.stringify(await work())) as R
+      return JSON.parse(JSON.stringify(await runAsSystemActor('scope-provider', work))) as R
     })()
     pending = run
     try { return await run } catch (error) { failed = true; throw error } finally { pending = undefined }
@@ -126,11 +127,11 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
   const documents: AppScopeProviderContext['documents'] = Object.freeze({
     get: (table, rowId) => read(table, () => {
       if (typeof rowId !== 'string' || !rowId) throw new Error('A row ID is required')
-      return getDoc(table, rowId)
+      return getDoc(table, rowId, 'scope-provider')
     }),
     list: (table, args = {}) => read(table, async () => {
       if (args.filters?.some(([, operator]) => operator === 'related')) throw new Error('Scope provider lists do not support related filters')
-      return (await getList(table, args)).data
+      return (await getList(table, args, 'scope-provider')).data
     }),
   })
   try { return await fn(documents) } finally {

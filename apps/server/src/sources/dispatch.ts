@@ -251,7 +251,7 @@ async function boundScopeFilters(
   user: string,
   bind: Binding,
 ): Promise<SourceFilter[]> {
-  if (await isPrivileged(user)) return []
+  if (await isPrivileged(user, meta.name)) return []
   const upMap = await getScopeMap(user)
   if (!upMap.size) return []
   const filters: SourceFilter[] = []

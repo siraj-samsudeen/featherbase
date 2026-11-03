@@ -26,6 +26,9 @@ const capsOf = async (client: TestClient) => (await client.get<{ capabilities: C
 async function installAppWithReaderRole(admin: TestClient) {
   expect(await discoverPackages([DASH_STAND_IN])).toEqual([])
   await admin.post('/api/install_app', { name: 'feather_dash' })
+  await admin.post('/api/save_row', { table: 'Permission', row: {
+    ref_table: APP_TABLE, role: 'System Manager', can_read: true, can_create: true, can_write: true,
+  } })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: APP_TABLE, role: ROLE, can_read: true } })
 }

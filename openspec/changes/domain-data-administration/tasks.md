@@ -27,6 +27,14 @@ Use tdd and the repository's existing real Postgres rollback sandbox. Construct
 sample values inline per test; do not load the design JSON as a test fixture.
 Declare app models through Table metadata. No new frontend or simulation UI work.
 
+Prerequisite implemented: app-owned data no longer inherits platform-admin
+permission bypasses. Explicit grants and Data Scope apply to detail/list reads,
+attached comments/history and realtime event delivery. The report-scope provider
+uses an explicit server actor only inside its declared read interface. This is
+not complete-grant evaluation, bounded delegation or proposal application; the
+implementation tasks below remain open. Regression checks live in
+`apps/server/test/domain-administration.test.ts` and use real Postgres/public HTTP.
+
 - [ ] 3.1 Add approved metadata and converging migrations for per-operation/column permissions, scope and provenance, claiming migration numbers under #566. Verify fresh/local restored-database migrations and legacy access mapping.
 - [ ] 3.2 Implement complete-grant evaluation and current membership. Through public server operations, verify independent create/read/update column sets, delete, self/direct/subtree/named scopes, fail-closed missing scope and correlated tuples; assert forbidden fields never save partially.
 - [ ] 3.3 Implement bounded delegation and checked job-derived authority. Use Meera/Arun/Ravi and RA6/JA6/JA7/JA8 to verify grant boundaries, transfer, revoked authority, successor continuity and direct/indirect escalation refusal. Include shared-role edits and future appointments. Verify V29–V30: removing powers needs independently scoped revoke authority; grant-only and revoke-only authority cannot substitute for each other, and mixed replacements check both atomically.

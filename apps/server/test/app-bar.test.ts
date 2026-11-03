@@ -11,6 +11,7 @@ import { test } from './pg-test'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { pathToFileURL } from 'node:url'
 import { sql } from '../src/db'
+import { grantRole } from './fixtures'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 const ROSTER = resolve('../..', 'test-apps/fixtures/place-roster')
@@ -65,6 +66,7 @@ describe("declared bar controls: the picker's options", () => {
     expect(await discoverPackages([BAR_PROOF, ROSTER])).toEqual([])
     await admin.post('/api/install_app', { name: 'barproof' })
     await admin.post('/api/install_app', { name: 'placeroster' })
+    await grantRole(admin, { role: 'System Manager', table: 'placeroster.position', can_create: true })
     return createUser({ email: 'bar-manager@example.test', roles })
   }
   const position = (admin: TestClient, person: string, place: string, store: string) =>
@@ -91,6 +93,7 @@ describe("declared bar controls: the picker's options", () => {
     const directory = await barProof((manifest) => ({ ...manifest, bar: [{ picker: 'Store', options: 'malformed', sets: 'store' }] }))
     expect(await discoverPackages([directory, ROSTER])).toEqual([])
     await admin.post('/api/install_app', { name: 'barproof' })
+    await grantRole(admin, { role: 'System Manager', table: 'barproof.note', can_read: true })
     await expect(admin.get('/api/app_bar/barproof')).rejects.toMatchObject({ status: 500,
       message: expect.stringContaining("App barproof's read malformed answered options the bar cannot show: it must answer a list of { value, label }") })
   })
@@ -101,6 +104,7 @@ describe("declared bar controls: the picker's options", () => {
     const directory = await barProof((manifest) => ({ ...manifest, bar: [{ picker: 'Store', options: 'waiting', sets: 'store' }] }))
     expect(await discoverPackages([directory, ROSTER])).toEqual([])
     await admin.post('/api/install_app', { name: 'barproof' })
+    await grantRole(admin, { role: 'System Manager', table: 'barproof.note', can_read: true })
     await admin.post('/api/install_app', { name: 'placeroster' })
     const digest = availableRuntimeVersions().find((p) => p.name === 'barproof')!.digest
     const app = await import(`${pathToFileURL(resolve(directory, 'server.mjs')).href}?artifact=${digest}`)
@@ -132,6 +136,7 @@ describe("declared bar controls: the picker's options", () => {
     const directory = await barProof((manifest) => ({ ...manifest, bar: [{ picker: 'Store', options: 'broken', sets: 'store' }] }))
     expect(await discoverPackages([directory, ROSTER])).toEqual([])
     await admin.post('/api/install_app', { name: 'barproof' })
+    await grantRole(admin, { role: 'System Manager', table: 'barproof.note', can_read: true })
     await expect(admin.get('/api/app_bar/barproof')).rejects.toMatchObject({ status: 500 })
   })
 

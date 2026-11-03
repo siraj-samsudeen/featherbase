@@ -15,7 +15,7 @@ import { sql } from '../src/db'
 import { getRoles, hasPermission } from '../src/permissions'
 import { suspendRuntimeApp, uninstallApp } from '../src/apps'
 import { seedRoleBindings } from '../src/app-role-bindings'
-import { expectApiError } from './fixtures'
+import { expectApiError, grantRole } from './fixtures'
 
 const v1 = resolve('../..', 'test-apps/fixtures/setup-proof-v1')
 const v2 = resolve('../..', 'test-apps/fixtures/setup-proof-v2')
@@ -67,6 +67,7 @@ describe('the role check honours bindings', () => {
   test('a person_scope operation\'s read roles are held through a binding', async ({ admin, createUser }) => {
     await install(admin, { paths: [v1, roster] })
     await admin.post('/api/install_app', { name: 'placeroster' })
+    await grantRole(admin, { role: 'System Manager', table: 'placeroster.position', can_create: true })
     const staff = await createUser({ email: 'staff@example.test', roles: ['Setup Staff'] })
     await admin.post('/api/save_row', { table: 'placeroster.position', row: { row_id: 'p-1', person: staff.user, place: 'North', store: 'N1', section: 'kids' } })
     expect(await withNamedVariable('SETUPPROOF_TOKEN', TOKEN, () => staff.post(read + 'places', { payload: {} })))

@@ -1,6 +1,6 @@
 import { sql } from './db'
 import { AppError } from './errors'
-import { activeApps } from './app-lifecycle'
+import { activeApps, isProvisioningApp } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
 import { asNameList, declaresOwnPages } from './installed-app-ledger'
 
@@ -77,9 +77,8 @@ export async function permissionScope(
   table: string,
   action: PermAction,
 ): Promise<PermScope> {
-  if (user === 'Administrator') return 'all'
+  if (await isPrivileged(user, table)) return 'all'
   const roles = await getRoles(user)
-  if (roles.includes('System Manager')) return 'all'
   const rows = await sql`
     select own_rows_only, owner_app from permission
     where ref_table = ${table} and tier = 'basic'
@@ -204,8 +203,14 @@ async function tablesOfAppsWithOwnPages(): Promise<Set<string>> {
   return new Set(rows.filter(declaresOwnPages).flatMap((r) => asNameList(r.tables)))
 }
 
-/** Administrator, or a principal of either kind holding System Manager. */
-export async function isPrivileged(principal: string): Promise<boolean> {
+/** Platform administration is not a domain grant on app-owned business data. */
+export async function isPrivileged(principal: string, table?: string): Promise<boolean> {
+  if (table) {
+    const [definition] = await sql`select owner_app from table_def where name = ${table}`
+    if (definition?.owner_app) {
+      return isActingSystemActor(principal) || isProvisioningApp(String(definition.owner_app))
+    }
+  }
   if (principal === 'Administrator') return true
   return (await getRoles(principal)).includes('System Manager')
 }
@@ -269,7 +274,7 @@ export async function permittedTiers(
   table: string,
   action: 'read' | 'write' | 'create',
 ): Promise<Set<'basic' | 'restricted'>> {
-  if (await isPrivileged(user)) return new Set(['basic', 'restricted'])
+  if (await isPrivileged(user, table)) return new Set(['basic', 'restricted'])
   const roles = await getRoles(user)
   const rows = await sql`
     select tier, owner_app from permission

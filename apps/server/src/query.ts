@@ -170,7 +170,7 @@ export async function scopedWhere(
   // not disqualify a row — the restriction applies to values, so NULL passes
   // (matches the detail-read check in permissions.ts, which skips empty
   // values).
-  const bypass = await isPrivileged(user)
+  const bypass = await isPrivileged(user, table)
   // PERM-007: child rows are only as visible as the rows they hang on. The
   // Table grant says "may read rows of this shape"; the PARENT decides which
   // ones. Metadata already names every Table that can hold these rows (the
@@ -180,7 +180,7 @@ export async function scopedWhere(
   if (meta.kind === 'sub_table' && !bypass)
     extraConds.push((await parentScopeCond(meta.name, user)).frag)
   // #342: likewise a comment or an edit is only as visible as its row.
-  if (ROW_ATTACHED_TABLES.has(meta.name) && !bypass)
+  if (ROW_ATTACHED_TABLES.has(meta.name))
     extraConds.push((await attachedRowScopeCond(meta.name, user, callerFilters)).frag)
   if (!bypass) {
     const upMap = await getScopeMap(user)
@@ -425,6 +425,10 @@ async function attachedRowScopeCond(
   for (const target of targets) {
     const targetMeta = ROW_ATTACHED_TABLES.has(target) ? null : await getMeta(target).catch(() => null)
     if (!targetMeta) continue
+    if (await isPrivileged(user, target)) {
+      branches.push(sql`${rel}.ref_table = ${target}`)
+      continue
+    }
     branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
       select share_name from share where share_table = ${target} and read = true
         and (person = ${user} or service_account = ${user})))`)

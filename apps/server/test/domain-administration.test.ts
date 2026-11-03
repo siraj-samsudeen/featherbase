@@ -2,18 +2,22 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { registerApp, installApp, suspendRuntimeApp } from '../src/apps'
 import { expectApiError, grantRole, tableRef } from './fixtures'
+import { eventVisibleTo } from '../src/realtime'
 
 const employee = tableRef('contactproof.employee')
 
 describe('domain administration', () => {
-  test('platform administration alone cannot read app-owned employee contacts', async ({ admin, createUser }) => {
+  test('platform administrators read app contacts only through their domain grants', async ({ admin, createUser }) => {
     registerApp({
       name: 'contactproof',
       tables: [{ name: employee.name, id_pattern: 'prompt', columns: [
         { column_name: 'name', column_type: 'Data' },
         { column_name: 'phone', column_type: 'Data' },
       ] }],
-      fixtures: [{ table: employee.name, rows: [{ row_id: 'priya', name: 'Priya', phone: 'demo-phone-priya' }] }],
+      fixtures: [{ table: employee.name, rows: [
+        { row_id: 'priya', name: 'Priya', phone: 'demo-phone-priya' },
+        { row_id: 'ravi', name: 'Ravi', phone: 'demo-phone-ravi' },
+      ] }],
     })
     await installApp('contactproof')
     try {
@@ -28,8 +32,45 @@ describe('domain administration', () => {
       expect(await reader.get(employee.rowUrl('priya'))).toMatchObject({
         row_id: 'priya', name: 'Priya', phone: 'demo-phone-priya',
       })
+      await admin.post('/api/save_row', {
+        table: 'Data Scope',
+        row: { person: reader.user, allow_table: employee.name, for_value: 'ravi' },
+      })
+      await expectApiError(reader.get(employee.rowUrl('priya')), { status: 403 })
+      expect(await reader.get(employee.rowUrl('ravi'))).toMatchObject({ row_id: 'ravi' })
+      expect(await reader.get(employee.listUrl({ fields: ['name', 'phone'] }))).toMatchObject({
+        data: [{ name: 'Ravi', phone: 'demo-phone-ravi' }], total: 1,
+      })
+      for (const [row_id, visible] of [['priya', false], ['ravi', true]] as const) {
+        expect(await eventVisibleTo(reader.user!, {
+          channel: `list:${employee.name}`, event: 'updated', payload: { table: employee.name, row_id },
+        })).toBe(visible)
+      }
     } finally {
       // App registrations live outside the SQL rollback sandbox.
+      suspendRuntimeApp('contactproof')
+    }
+  })
+
+  test('platform administrators cannot read app contacts through their comments', async ({ admin, createUser }) => {
+    registerApp({
+      name: 'contactproof',
+      tables: [{ name: employee.name, id_pattern: 'prompt', columns: [{ column_name: 'phone', column_type: 'Data' }] }],
+      fixtures: [{ table: employee.name, rows: [{ row_id: 'priya', phone: 'demo-phone-priya' }] }],
+    })
+    await installApp('contactproof')
+    try {
+      await grantRole(admin, { role: 'Contact Reader', table: employee.name, can_read: true })
+      await grantRole(admin, { role: 'Contact Reader', table: 'Comment', can_read: true, can_create: true })
+      const reader = await createUser({ roles: ['Contact Reader'] })
+      const comment = await reader.post<{ row_id: string }>('/api/save_row', {
+        table: 'Comment', row: { ref_table: employee.name, ref_name: 'priya', content: 'Operational phone: demo-phone-priya' },
+      })
+      const comments = tableRef('Comment')
+      await expectApiError(admin.get(comments.rowUrl(comment.row_id)), { status: 403 })
+      expect(await admin.get(comments.listUrl({ filters: [['ref_table', '=', employee.name]] }))).toMatchObject({ data: [], total: 0 })
+      expect(await reader.get(comments.rowUrl(comment.row_id))).toMatchObject({ content: 'Operational phone: demo-phone-priya' })
+    } finally {
       suspendRuntimeApp('contactproof')
     }
   })

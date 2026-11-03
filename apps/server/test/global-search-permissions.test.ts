@@ -318,6 +318,7 @@ describe('global search while an app is unavailable', () => {
   async function rosterAndCustomer(admin: TestClient, createUser: CreateUserFn) {
     expect(await discoverPackages([ROSTER])).toEqual([])
     await admin.post('/api/install_app', { name: 'placeroster' })
+    await grantRole(admin, { role: 'System Manager', table: 'placeroster.position', can_create: true, can_read: true })
     await admin.post('/api/save_row', { table: 'placeroster.position', row: { row_id: 'gs-648-roster', person: 'p', place: 'North' } })
     const t = await makeTable(admin, { name: 'Gs 648 Customer', id_pattern: 'prompt', columns: ['city'] })
     await admin.post(t.url, { row_id: 'gs-648-customer', city: 'x' })

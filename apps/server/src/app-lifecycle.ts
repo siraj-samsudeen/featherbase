@@ -90,6 +90,11 @@ export function provisionApp<T>(name: string, fn: () => Promise<T>): Promise<T> 
   return appOperation(() => scope.run({ exclusive: true, provisioning: name }, fn), true)
 }
 
+/** Only installation/upgrade code enters this context; HTTP actors cannot select it. */
+export function isProvisioningApp(name: string): boolean {
+  return scope.getStore()?.provisioning === name
+}
+
 export async function assertAppAvailable(name: string, exactClientIdentity = false): Promise<void> {
   if (!name.includes('.')) return
   const owner = name.split('.')[0]

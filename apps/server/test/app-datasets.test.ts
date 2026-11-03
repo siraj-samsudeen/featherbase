@@ -20,7 +20,7 @@ import { EXTERNAL_DATABASE_URL } from './external-database'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { invalidateSources } from '../src/sources/registry'
 import { activeSnapshot, buildSnapshot, pendingMisses, recordMiss } from '../src/dataset-snapshot'
-import { expectApiError } from './fixtures'
+import { expectApiError, grantRole } from './fixtures'
 import type { RuntimeReadContext } from 'shared'
 import { withNamedVariable } from '../src/env'
 import { appSetupState } from '../src/app-settings'
@@ -87,6 +87,8 @@ async function setup(admin: TestClient, createUser: CreateUserFn, { roles = ['Da
   expect(await discoverPackages([fixture, provider])).toEqual([])
   await admin.post('/api/install_app', { name: 'datasetproof' })
   await admin.post('/api/install_app', { name: 'placeroster' })
+  await grantRole(admin, { role: 'System Manager', table: 'placeroster.position',
+    can_read: true, can_create: true, can_write: true, can_delete: true })
   invalidateSources()
   if (source) await admin.post('/api/table/Data%20Source', {
     row_id: 'datasetproof-warehouse', engine: 'postgres', url_env: SOURCE_ENV, access: 'read_only' })
@@ -449,6 +451,7 @@ describe('a cached dataset read', () => {
     expect(await discoverPackages([scopeFixture, provider])).toEqual([])
     await admin.post('/api/install_app', { name: 'scopeproof' })
     await admin.post('/api/install_app', { name: 'placeroster' })
+    await grantRole(admin, { role: 'System Manager', table: 'placeroster.position', can_create: true })
     const reader = await createUser({ email: 'places@example.test', roles: ['Scope Planner'] })
     const user = makeClient({ request: (path, init) => reader.fetch(String(path), {
       ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'scopeproof@1.0.0' },

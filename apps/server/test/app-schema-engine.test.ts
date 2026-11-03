@@ -8,6 +8,7 @@ import { provisionApp } from '../src/app-lifecycle'
 import { discoverPackages } from '../src/runtime-packages'
 import { changeColumnType, createTable, deleteTable, renameColumn, renameTable } from '../src/table-engine'
 import { applyMigrations, describeLoss, countLosses, migrationSchema } from '../src/runtime-migrations'
+import { grantRole } from './fixtures'
 
 // App Tables answer only while their app is provisioning or active.
 const shopTest = (name: string, body: () => Promise<void>) => test(name, () => provisionApp('shop', body))
@@ -430,6 +431,7 @@ describe('loss preview uses installed ownership', () => {
   test('a foreign Table aborts the preview without retaining earlier steps', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'test-apps/fixtures/evolve-v1')])
     await admin.post('/api/install_app', { name: 'evolve' })
+    await grantRole(admin, { role: 'System Manager', table: 'evolve.item', can_create: true })
     await admin.post('/api/save_row', { table: 'evolve.item', row: { row_id: 'i1', title: 'Keep this item', qty: 3 } })
     const before = await sql`select tables, migration_ledger from installed_app where name = 'evolve'`
     const migration = step([
@@ -462,6 +464,7 @@ describe('loss preview uses installed ownership', () => {
   test('an overflowing Currency backfill is reported without retaining its column', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'test-apps/fixtures/evolve-v1')])
     await admin.post('/api/install_app', { name: 'evolve' })
+    await grantRole(admin, { role: 'System Manager', table: 'evolve.item', can_create: true })
     await admin.post('/api/save_row', { table: 'evolve.item', row: { row_id: 'i1', title: 'Keep this item', qty: 3 } })
     const before = await sql`select tables, migration_ledger from installed_app where name = 'evolve'`
     await expect(countLosses('evolve', [step([
@@ -478,6 +481,7 @@ describe('loss preview uses installed ownership', () => {
   test('dropping a layout column reports no stored values', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'test-apps/fixtures/evolve-v1')])
     await admin.post('/api/install_app', { name: 'evolve' })
+    await grantRole(admin, { role: 'System Manager', table: 'evolve.item', can_create: true })
     await admin.post('/api/save_row', { table: 'evolve.item', row: { row_id: 'i1', title: 'Keep this item', qty: 3 } })
     const section = { column_name: 'details', label: 'Details', column_type: 'Section Break' }
     const migration = step([

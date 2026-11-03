@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import { installApp, registerApp, uninstallApp } from '../src/apps'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
+import { grantRole } from './fixtures'
 
 describe('PKG-R2: independent app-owned Task storage', () => {
   test('same local name and row ID do not share columns or values', async ({ admin }) => {
@@ -12,6 +13,8 @@ describe('PKG-R2: independent app-owned Task storage', () => {
         columns: [{ column_name: column, column_type: column === 'title' ? 'Data' : 'Int' }],
       }] })
       await installApp(owner)
+      await grantRole(admin, { role: 'System Manager', table: `${owner}.task`,
+        can_read: true, can_create: true, can_write: true })
     }
     try {
       await admin.post('/api/save_row', { table: 'tasker.task', row: { row_id: 'same', title: 'Review returns' } })

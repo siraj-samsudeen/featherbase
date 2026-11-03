@@ -43,7 +43,7 @@ interface Client {
  *  serves (getDoc applies every Data Scope rule), so realtime can never show
  *  a row the list would hide. */
 async function rowInScope(principal: string, table: string, rowId: string): Promise<boolean> {
-  if (await isPrivileged(principal)) return true
+  if (await isPrivileged(principal, table)) return true
   if (!(await getScopeMap(principal)).size) return true
   const { getDoc } = await import('./document')
   try {
@@ -72,7 +72,7 @@ async function deletedVisible(scope: Map<string, Set<string>>, table: string, ro
 export async function eventVisibleTo(principal: string, msg: RealtimeEvent): Promise<boolean> {
   const payload = msg.payload as { table?: unknown; row_id?: unknown } | undefined
   if (payload?.row_id == null || typeof payload.table !== 'string') return true
-  if (await isPrivileged(principal)) return true
+  if (await isPrivileged(principal, payload.table)) return true
   // Roles can change after subscribing (a service account's roles endpoint,
   // a person's form): read permission is rechecked too.
   if (!(await hasPermission(principal, payload.table, 'read'))) return false

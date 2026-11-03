@@ -320,7 +320,7 @@ export async function assertUserPermissions(
   meta: TableMeta,
   row: RowValues,
 ) {
-  if (await isPrivileged(user)) return
+  if (await isPrivileged(user, meta.name)) return
   const map = await getScopeMap(user)
   if (!map.size) return
   const linkFields = meta.columns
@@ -357,10 +357,10 @@ async function assertParentReadable(row: RowValues, user: string) {
 // them (a share shows every column). The row's activity is the way in for
 // everyone else. Privileged callers pass, as everywhere.
 async function assertAttachedRowReadable(table: string, row: RowValues, user: string) {
-  if (await isPrivileged(user)) return
   const refTable = row.ref_table ? String(row.ref_table) : ''
   const refName = row.ref_name ? String(row.ref_name) : ''
   if (!refTable || !refName) return
+  if (!ROW_ATTACHED_TABLES.has(refTable) && await isPrivileged(user, refTable)) return
   const refused = () => new AppError('PermissionError', `No read permission on this ${table} row for ${user}`)
   // A comment or file may sit on a comment, edit or file that is itself on a
   // plain row, one level deep (assertAttachedTarget); a deeper chain, which
@@ -373,7 +373,7 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
   try {
     await getDoc(refTable, refName, user)
   } catch (err) {
-    if (err instanceof AppError) throw refused()
+    if (err instanceof AppError && err.type !== 'NotFoundError') throw refused()
     throw err
   }
   if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))

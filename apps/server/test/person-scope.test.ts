@@ -11,7 +11,7 @@ import { describe, expect } from 'vitest'
 import { test as pgTest } from './pg-test'
 import { availableRuntimeVersions, discoverPackages, runPackageRead } from '../src/runtime-packages'
 import { sql } from '../src/db'
-import { expectApiError, tableRef } from './fixtures'
+import { expectApiError, grantRole, tableRef } from './fixtures'
 import { newIdentifierId } from '../src/person-identifiers'
 import { runHealthChecks } from '../src/instance-health'
 
@@ -34,7 +34,11 @@ async function fixtureModule(name: string, directory: string, file: string) {
 async function setup(admin: TestClient, createUser: CreateUserFn, { roles = ['Scope Reader'], withProvider = true, providerAt = provider } = {}) {
   expect(await discoverPackages([consumer, providerAt])).toEqual([])
   await admin.post('/api/install_app', { name: 'scopeproof' })
-  if (withProvider) await admin.post('/api/install_app', { name: 'placeroster' })
+  if (withProvider) {
+    await admin.post('/api/install_app', { name: 'placeroster' })
+    await grantRole(admin, { role: 'System Manager', table: 'placeroster.position',
+      can_read: true, can_create: true, can_write: true, can_delete: true })
+  }
   const user = await createUser({ email: 'placed@example.test', roles })
   const roster = await fixtureModule('placeroster', providerAt, 'server.mjs')
   const app = await fixtureModule('scopeproof', consumer, 'server.mjs')
@@ -228,6 +232,7 @@ export const scopeProviders = {
       expect(await discoverPackages([consumer, upgraded])).toEqual([])
       await admin.post('/api/install_app', { name: 'scopeproof' })
       await admin.post('/api/install_app', { name: 'placeroster' })
+      await grantRole(admin, { role: 'System Manager', table: 'placeroster.position', can_create: true })
       expect((await sql`select jsonb_array_length(migration_ledger) as n from installed_app where name = 'placeroster'`)[0].n).toBe(1)
       const user = await createUser({ email: 'upgraded@example.test', roles: ['Scope Reader'] })
       const seeded = await admin.fetch('/api/save_row', { method: 'POST',
