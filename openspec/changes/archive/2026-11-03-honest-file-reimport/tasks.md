@@ -22,7 +22,7 @@
 - [x] 4.2 Record representative default/suggested/keyed/correction/append/typed-confirmation states, inspect screenshots and pointer clip, and run an independent headless UI verifier at 1280px against #851's numbered checklist.
 - [x] 4.3 Run the required ordinary server/permission review, triage findings, and verify fixes, with at most three rounds. No adversarial review without consent.
 - [x] 4.4 Run `pnpm exec openspec validate honest-file-reimport --type change --strict`, publish the issue branch/PR and subscribe to exact-head CI plus PR comments. Report evidence and any failed gates to manager770; do not merge/deploy.
-- [ ] 4.5 After required approval to finalize, sync/archive on this branch, rerun relevant acceptance/spec checks and exact-head CI, and hand off the final PR state. Do not claim the owner watched media without evidence.
+- [x] 4.5 After required approval to finalize, sync/archive on this branch, rerun relevant acceptance/spec checks and exact-head CI, and hand off the final PR state. Do not claim the owner watched media without evidence.
 
 ## 5. Ordinary-review round 1 repair
 
