@@ -7,7 +7,10 @@ login, and stores none of its rows.
 
 `app.json` is the whole app: a manifest with no code. It declares one Postgres
 data source, `stylehr`, and connects thirteen tables in the **StyleHR** module,
-each with its name, its title column, its list columns and the columns left out.
+each with its name, its key and links, its title column, its list columns and the
+columns left out. The key and links agree with the HR database's own; they are
+there so `stylehr-warehouse/`, which reads the warehouse copy, can use the very
+same table entries. Change one app's entries, copy them to the other.
 Personal and tax columns (date of birth, religion, social links, health insurance
 number, PAN, TAN and the like) are left out, so no instance can read or show them.
 

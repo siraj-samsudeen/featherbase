@@ -15,6 +15,11 @@
           {
             "table": "store_store",
             "name": "Store",
+            "key": "id",
+            "links": {
+              "firm_id": "firm_firm",
+              "organization_id": "organization_organization"
+            },
             "title_column": "name",
             "list_columns": [
               "name",
@@ -27,6 +32,10 @@
           {
             "table": "store_floor",
             "name": "Floor",
+            "key": "id",
+            "links": {
+              "store_id": "store_store"
+            },
             "title_column": "label",
             "list_columns": [
               "label",
@@ -37,6 +46,11 @@
           {
             "table": "store_section",
             "name": "Section",
+            "key": "id",
+            "links": {
+              "firm_id": "firm_firm",
+              "store_id": "store_store"
+            },
             "title_column": "name",
             "list_columns": [
               "name",
@@ -47,6 +61,11 @@
           {
             "table": "store_floorsection",
             "name": "Floor Section",
+            "key": "id",
+            "links": {
+              "floor_id": "store_floor",
+              "section_id": "store_section"
+            },
             "list_columns": [
               "floor_id",
               "section_id",
@@ -57,6 +76,18 @@
           {
             "table": "employee_employee",
             "name": "Employee",
+            "key": "id",
+            "links": {
+              "area_manager_id": "employee_employee",
+              "department_id": "department_department",
+              "designation_id": "designation_designation",
+              "introducer_id": "employee_employee",
+              "old_department_id": "department_department",
+              "onboarding_store_id": "store_store",
+              "reported_to_id": "employee_employee",
+              "unique_department_id": "department_department",
+              "unique_designation_id": "designation_designation"
+            },
             "leave_out_columns": [
               "date_of_birth",
               "gender",
@@ -103,6 +134,12 @@
           {
             "table": "employee_employeedeploying",
             "name": "Deployment",
+            "key": "id",
+            "links": {
+              "employee_id": "employee_employee",
+              "firm_id": "firm_firm",
+              "floor_id": "store_floor"
+            },
             "list_columns": [
               "employee_id",
               "floor_id",
@@ -114,6 +151,11 @@
           {
             "table": "employee_employeedeploying_sections",
             "name": "Deployment Section",
+            "key": "id",
+            "links": {
+              "employeedeploying_id": "employee_employeedeploying",
+              "floorsection_id": "store_floorsection"
+            },
             "list_columns": [
               "employeedeploying_id",
               "floorsection_id"
@@ -122,6 +164,11 @@
           {
             "table": "employee_employeestoresandfirms",
             "name": "Store Assignment",
+            "key": "id",
+            "links": {
+              "firm_id": "firm_firm",
+              "store_id": "store_store"
+            },
             "list_columns": [
               "store_id",
               "firm_id",
@@ -131,6 +178,11 @@
           {
             "table": "employee_employeestoresandfirms_employee",
             "name": "Store Assignment Member",
+            "key": "id",
+            "links": {
+              "employee_id": "employee_employee",
+              "employeestoresandfirms_id": "employee_employeestoresandfirms"
+            },
             "list_columns": [
               "employee_id",
               "employeestoresandfirms_id"
@@ -139,6 +191,11 @@
           {
             "table": "designation_designation",
             "name": "Designation",
+            "key": "id",
+            "links": {
+              "firm_id": "firm_firm",
+              "organization_id": "organization_organization"
+            },
             "title_column": "name",
             "list_columns": [
               "name",
@@ -148,6 +205,11 @@
           {
             "table": "department_department",
             "name": "Department",
+            "key": "id",
+            "links": {
+              "firm_id": "firm_firm",
+              "parent_department_id": "department_department"
+            },
             "title_column": "name",
             "list_columns": [
               "name",
@@ -157,6 +219,7 @@
           {
             "table": "organization_organization",
             "name": "Organisation",
+            "key": "id",
             "title_column": "name",
             "list_columns": [
               "name",
@@ -166,6 +229,10 @@
           {
             "table": "firm_firm",
             "name": "Firm",
+            "key": "id",
+            "links": {
+              "organization_id": "organization_organization"
+            },
             "leave_out_columns": [
               "pan",
               "tan",

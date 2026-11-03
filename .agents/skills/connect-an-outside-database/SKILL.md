@@ -32,6 +32,24 @@ are the source's. Left-out columns are never connected. A column the table lacks
 or a left-out column named as the title or a list column, stops the whole install
 and nothing is connected.
 
+**A source that declares no keys or links** (a warehouse copy in MotherDuck, a
+Postgres table without constraints) needs both said, or its rows are addressed
+by their first column and nothing links (#876). Add `"key"` (the column that
+identifies a row) and `"links"` (each column and the source table it points at,
+by that table's key) to the entry:
+
+```json
+{ "table": "employee", "name": "Employee", "key": "id",
+  "links": { "designation_id": "designation", "reported_to_id": "employee" } }
+```
+
+What an app declares must agree with what the source declares, so one set of
+entries works over the live database and its warehouse copy
+(`client-apps/jeyarama/stylehr` and `stylehr-warehouse`). A key is accepted only
+on a read-only data source. A link's target needs a key from its source or from
+the same install, so connect linked tables together. A contradiction, a missing
+column or a table the source does not have stops the install.
+
 ## 1. Before connecting: can Featherbase reach it?
 
 - Many vendor databases accept only whitelisted IP addresses. Check from the
