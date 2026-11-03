@@ -75,6 +75,12 @@ choices one at a time gives the same rows as ticking them together.
 - **THEN** rows on Ground and on First Floor show
 - **AND** there is one filter in use naming both
 
+#### Scenario: An older link that leaves out Ground shows the other floors ticked
+
+- **WHEN** the user opens an older link, or a saved view, that filters Floor to anything but Ground
+- **THEN** every row not on Ground shows, and the quick filter for Floor shows the other three floors ticked
+- **AND** unticking Third Floor there leaves one filter in use, naming First Floor and Second Floor
+
 #### Scenario: A link with two Floor filters shows as one
 
 - **WHEN** the user opens a link that holds two separate filters on Floor, one for Ground and one for First Floor
