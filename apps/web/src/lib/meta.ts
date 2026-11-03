@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import { viewColumns } from './list-view-columns'
+import type { ReadingPresentation } from 'shared'
 
 export interface ColumnDef {
   row_id: string
@@ -22,6 +23,9 @@ export interface ColumnDef {
   tier: 'basic' | 'restricted'
   /** One plain line shown under the control (#473). */
   description?: string | null
+  /** On a source-bound Table: the source table this column's foreign key lands on (#796). */
+  source_fk_schema?: string | null
+  source_fk_table?: string | null
   created_by: string
   updated_by: string
   created_at: string
@@ -36,6 +40,7 @@ export interface TableMeta {
   is_submittable: boolean
   id_pattern: string
   title_column: string | null
+  reading_presentation?: ReadingPresentation | null
   sort_column: string
   sort_order: string
   track_changes: boolean
@@ -68,6 +73,14 @@ export interface TableMeta {
   /** #738: the levels of column the caller may read; served per request
    *  beside the cached meta. */
   readable_tiers?: ('basic' | 'restricted')[]
+  /** Server-resolved storage, never inferred from a display label. */
+  storage_identity?: {
+    schema: string
+    relation: string
+    row_key: string[]
+    data_source: string | null
+    discriminator: { table_name: string } | null
+  } | null
 }
 
 export const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])

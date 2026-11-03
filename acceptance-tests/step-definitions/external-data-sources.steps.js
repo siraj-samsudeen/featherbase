@@ -6,9 +6,11 @@
 
 const assert = require('node:assert/strict');
 const { Given, When, Then } = require('@cucumber/cucumber');
+const { expect } = require('playwright/test');
 const { externalSql, EXTERNAL_URL_ENV, EXTERNAL_READER, EXTERNAL_READER_PASSWORD } = require('../support/stack');
 const { SourceBrowserPage } = require('../support/pages/source-browser-page');
 const { ListPage } = require('../support/pages/list-page');
+const { FormPage } = require('../support/pages/form-page');
 
 const SCHEMA = 'shop_fixture';
 const SOURCE = 'shops';
@@ -58,9 +60,12 @@ const SHELF_SOURCE = 'shelves';
 Given('a Postgres database of shelves and the bins on each shelf', async function () {
   await externalSql(`drop schema if exists ${SHELVES} cascade`);
   await externalSql(`create schema ${SHELVES}`);
-  await externalSql(`create table ${SHELVES}.shelf (id bigint primary key, label text)`);
+  // The aisle comes before the label, so a shelf read by its first value
+  // would read as its aisle (#796); created_on is bookkeeping a list leaves out.
+  await externalSql(`create table ${SHELVES}.shelf (
+    id bigint primary key, created_on timestamptz not null default now(), aisle text, label text)`);
   await externalSql(`create table ${SHELVES}.bin (code text primary key, shelf_id bigint references ${SHELVES}.shelf(id))`);
-  await externalSql(`insert into ${SHELVES}.shelf values (7, 'Middle')`);
+  await externalSql(`insert into ${SHELVES}.shelf (id, aisle, label) values (7, 'West', 'Middle')`);
   await externalSql(`insert into ${SHELVES}.bin values ('b1', 7)`);
   this.bin = 'b1';
   for (const name of ['Bin', 'Shelf']) await this.withApi((api) => api.removeTableIfPresent(name));
@@ -75,6 +80,23 @@ Given('its shelf and bin tables connected as {string} and {string}', async funct
   await this.withApi((api) => api.call('POST', `/api/table/Data%20Source/${SHELF_SOURCE}:reflect`, {
     schema: SHELVES, tables: ['shelf', 'bin'], names: { shelf, bin },
   }, [200], 'connect the shelf and bin tables'));
+});
+
+Given('a shelf labelled {string} in the {string} aisle', async function (label, aisle) {
+  await externalSql(`update ${SHELVES}.shelf set label = $1, aisle = $2 where id = 7`, [label, aisle]);
+  this.shelf = '7';
+});
+
+Given('only its bin table connected, as {string}', async function (bin) {
+  await givenReaderSource(this, SHELF_SOURCE, SHELVES, ['shelf', 'bin']);
+  await this.withApi((api) => api.call('POST', `/api/table/Data%20Source/${SHELF_SOURCE}:reflect`, {
+    schema: SHELVES, tables: ['bin'], names: { bin },
+  }, [200], 'connect the bin table alone'));
+});
+
+Given('the user may read bins', async function () {
+  const role = await this.withApi((api) => api.readerRoleFor('Bin'));
+  await this.person('the user', [role]);
 });
 
 Given('a bin on the shelf titled {string}', async function (title) {
@@ -111,6 +133,24 @@ When('the user opens a bin', async function () {
   await page.getByTestId('form-view').waitFor();
 });
 
+When('the user opens that shelf', async function () {
+  const page = await this.actor();
+  await page.goto(`/featherbase/admin/Shelf/${this.shelf}`);
+  await page.getByTestId('form-view').waitFor();
+});
+
+When('the user opens the list of shelves', async function () {
+  this.list = new ListPage(await this.actor());
+  await this.list.open('Shelf');
+});
+
+When('the user opens a bin and takes the offer to connect the shelf table', async function () {
+  const page = await this.actor();
+  await page.goto(`/featherbase/admin/Bin/${this.bin}`);
+  await new FormPage(page).offerToConnect('Shelf').click();
+  this.sourceBrowser = new SourceBrowserPage(page);
+});
+
 When("the user opens that bin's relationship map", async function () {
   const page = await this.actor();
   await page.goto(`/featherbase/admin/map/Bin/${this.bin}`);
@@ -128,8 +168,8 @@ Then('the shop table is offered for connecting', async function () {
 Then("the user sees the database's shops listed in Featherbase", async function () {
   const list = new ListPage(await this.actor());
   await list.open(this.table);
-  const shown = await list.page.getByTestId('list-view').innerText();
-  for (const shop of SHOPS) assert.ok(shown.includes(shop), `${shop} is not listed in ${this.table}`);
+  for (const shop of SHOPS)
+    await expect(list.rows().filter({ hasText: shop }), `${shop} is not listed in ${this.table}`).toBeVisible();
 });
 
 Then('the user sees tables called {string} and {string} in Featherbase', async function (first, second) {
@@ -147,6 +187,44 @@ Then('the user sees its shelf as {string}', async function (title) {
   await box.getByText(title, { exact: true }).waitFor({ timeout: 10_000 }).catch(async () => {
     assert.fail(`the shelf box reads "${(await box.textContent()).trim()}", not "${title}"`);
   });
+});
+
+Then('the user sees the shelf as {string}', async function (title) {
+  const form = new FormPage(await this.actor());
+  await form.waitForTitle(title).catch(async () => {
+    assert.fail(`the shelf reads "${await form.title()}", not "${title}"`);
+  });
+});
+
+Then("the user sees each shelf's label and aisle", async function () {
+  const shown = await this.list.columnLabels();
+  for (const label of ['Label', 'Aisle']) assert.ok(shown.includes(label), `the list shows ${shown.join(', ')}, not ${label}`);
+});
+
+Then('the user does not see when each shelf was created', async function () {
+  const shown = await this.list.columnLabels();
+  assert.ok(!shown.some((l) => /created/i.test(l)), `the list shows ${shown.join(', ')}`);
+});
+
+Then("the user sees that its shelf's table is not connected yet", async function () {
+  const note = await new FormPage(await this.actor()).noteBeside('Shelf');
+  assert.match(note, /not connected yet/i, `beside the shelf the form says "${note}"`);
+});
+
+Then('the user is offered to connect the shelf table', async function () {
+  await new FormPage(await this.actor()).offerToConnect('Shelf').waitFor();
+});
+
+Then('the user is not offered to connect it', async function () {
+  assert.equal(await new FormPage(await this.actor()).offerToConnect('Shelf').count(), 0, 'the user is offered to connect it');
+});
+
+Then('the user sees the shelf table chosen, ready to connect', async function () {
+  const choice = this.sourceBrowser.choice(SHELVES, 'shelf');
+  await choice.waitFor();
+  await this.sourceBrowser.page.waitForFunction(
+    (el) => el.checked, await choice.elementHandle(), { timeout: 10_000 },
+  ).catch(() => assert.fail('the shelf table is not chosen'));
 });
 
 Then('the user does not see {string}', async function (text) {

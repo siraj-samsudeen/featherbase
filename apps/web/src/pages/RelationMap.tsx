@@ -3,6 +3,7 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, listColumns, metaQuery, useMeta, type ColumnDef } from '../lib/meta'
+import { listFields } from '../lib/list-view-columns'
 import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Connection } from '../lib/connections'
 import { useStepOptions } from '../lib/explore-steps'
@@ -384,6 +385,7 @@ export function RelationMap({
             cols={listColumns(m)}
             rows={[{ ...d, row_id: d.row_id ?? name }]}
             settings={settings}
+            onHop={hop}
             onPick={(n) => void navigate({ to: '/featherbase/admin/$table/$name', params: { table, name: n }, search: { prefill: undefined } })}
           />
         </div>
@@ -398,9 +400,10 @@ export function RelationMap({
               field={active.field!}
               rows={(d[active.field!.column_name] as Row[]) ?? []}
               onPick={(n) => hop(active.table, n)}
+              onHop={hop}
             />
           ) : (
-            <GroupRows connection={active.cnx!} onPick={(n) => hop(active.table, n)} />
+            <GroupRows connection={active.cnx!} onPick={(n) => hop(active.table, n)} onHop={hop} />
           )}
         </div>
       )}
@@ -480,10 +483,12 @@ function ChildRows({
   field,
   rows,
   onPick,
+  onHop,
 }: {
   field: ColumnDef
   rows: Row[]
   onPick: (name: string) => void
+  onHop: (table: string, name: string) => void
 }) {
   const childMeta = useMeta(field.row_table ?? '')
   const settings = useSettings()
@@ -493,10 +498,11 @@ function ChildRows({
     .slice(0, 5)
   return (
     <SimpleRowsTable
-      cols={cols.map((c) => ({ column_name: c.column_name, label: c.label ?? c.column_name, column_type: c.column_type }))}
+      cols={cols.map((c) => ({ column_name: c.column_name, label: c.label ?? c.column_name, column_type: c.column_type, reference_table: c.reference_table ?? null }))}
       rows={rows}
       settings={settings}
       onPick={onPick}
+      onHop={onHop}
     />
   )
 }
@@ -504,9 +510,11 @@ function ChildRows({
 function GroupRows({
   connection,
   onPick,
+  onHop,
 }: {
   connection: Connection
   onPick: (name: string) => void
+  onHop: (table: string, name: string) => void
 }) {
   const meta = useMeta(connection.table)
   const settings = useSettings()
@@ -517,14 +525,14 @@ function GroupRows({
     queryFn: () =>
       listResource(connection.table, {
         filters: connection.filters,
-        fields: columns.map((c) => c.column_name),
+        fields: listFields(columns),
         limit_page_length: 10,
       }),
   })
   if (!list.data) return <p className="px-4 py-3 text-sm text-ink-subtle">Loading…</p>
   return (
     <>
-      <SimpleRowsTable cols={columns} rows={list.data.data} settings={settings} onPick={onPick} />
+      <SimpleRowsTable cols={columns} rows={list.data.data} settings={settings} onPick={onPick} onHop={onHop} />
       {list.data.total > list.data.data.length && (
         <p className="px-4 py-2 text-xs text-ink-subtle">
           Showing {fmtCount(list.data.data.length)} of {fmtCount(list.data.total)}
@@ -539,11 +547,14 @@ function SimpleRowsTable({
   rows,
   settings,
   onPick,
+  onHop,
 }: {
-  cols: { column_name: string; label: string; column_type: string }[]
+  cols: { column_name: string; label: string; column_type: string; reference_table?: string | null }[]
   rows: Row[]
   settings: ReturnType<typeof useSettings>
   onPick: (name: string) => void
+  /** #792: a link cell moves the map to the row it names. */
+  onHop: (table: string, name: string) => void
 }) {
   return (
     <table className="w-full text-sm">
@@ -572,7 +583,7 @@ function SimpleRowsTable({
                 key={c.column_name}
                 className={`px-4 py-1.5 ${j === 0 ? 'font-medium text-action' : ''}`}
               >
-                {formatValue(c.column_type, r[c.column_name], settings) || '—'}
+                <MapCell col={c} row={r} first={j === 0} settings={settings} onHop={onHop} />
               </td>
             ))}
           </tr>
@@ -587,4 +598,43 @@ function SimpleRowsTable({
       </tbody>
     </table>
   )
+}
+
+/** One cell of the map's row lists (#792): a link reads as the linked row's
+ *  title and moves the map there; the leading column, which opens the row
+ *  itself, reads a linked title without moving the map. */
+function MapCell({
+  col,
+  row,
+  first,
+  settings,
+  onHop,
+}: {
+  col: { column_name: string; column_type: string; reference_table?: string | null }
+  row: Row
+  first: boolean
+  settings: ReturnType<typeof useSettings>
+  onHop: (table: string, name: string) => void
+}) {
+  const value = row[col.column_name]
+  const blank = value == null || String(value).trim() === ''
+  if (col.column_type === 'Reference' && col.reference_table && !blank) {
+    const title = <RowTitle table={col.reference_table} rowId={String(value)} />
+    if (first) return title
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          onHop(col.reference_table!, String(value))
+        }}
+        className="text-action hover:underline"
+      >
+        {title}
+      </button>
+    )
+  }
+  // A row with a blank title is led by its id, never a blank (#792).
+  if (first && blank && col.column_name !== 'row_id' && row.row_id) return <>{String(row.row_id)}</>
+  return <>{formatValue(col.column_type, value, settings) || '—'}</>
 }

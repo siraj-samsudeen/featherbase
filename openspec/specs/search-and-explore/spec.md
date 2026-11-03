@@ -86,6 +86,58 @@ history is private to the user and follows them across devices.
 - **WHEN** the user starts typing something they searched before
 - **THEN** that past search is offered so they can rerun it
 
+### Requirement: Navigation history follows the current instance
+
+The user's recent and frequent destinations SHALL follow the instance's saved history on each app load and sign-in, replacing the browser's remembered history even when the instance has none. Visits not yet included in that history MUST remain available.
+
+A saved visit MUST count only once even when the browser's clock differs from the instance's clock. A delivery acknowledgement alone MUST NOT discard a visit missing from an earlier history snapshot.
+
+#### Scenario: Old destinations disappear after history is cleared
+
+```gherkin
+Given the user has remembered visits to the Person destination
+And the instance has forgotten the user's visits
+When the user reloads the app
+Then the user's navigation history has no Person destination
+```
+
+#### Scenario: Current history replaces old remembered destinations
+
+```gherkin
+Given the browser remembers an old destination absent from the instance history
+And the instance remembers the user's Person destination
+When the user reloads the app
+Then the user's navigation history contains Person but not the old destination
+```
+
+#### Scenario: A new visit survives a history refresh
+
+```gherkin
+Given the user's history is loading
+When the user opens the Person destination before history finishes loading
+Then the Person destination remains in the user's navigation history
+```
+
+### Requirement: Unconfirmed cached history stays hidden
+
+The user's cached navigation history MUST remain hidden until the initial history request finishes. If that request fails, the user SHALL be offered the remembered history as a best-effort fallback.
+
+#### Scenario: Old destinations never flash while history loads
+
+```gherkin
+Given the browser remembers an old destination absent from the instance history
+When the user's history is still loading
+Then neither navigation surface offers the old destination
+```
+
+#### Scenario: Remembered destinations remain usable when history fails
+
+```gherkin
+Given the user has remembered visits to the Person destination
+When the initial history request fails
+Then both navigation surfaces offer the Person destination
+```
+
 ### Requirement: Explore chains tables and narrows them as you click
 
 Explore SHALL let the user start from a Table and add up to two more, each
@@ -285,4 +337,30 @@ When the user opens Asha's relationship map
 Then the user sees "Asha" listed with her phone "555-0142"
 When the user opens Asha's chores
 Then the user sees "Paint the fence" listed instead of "Asha"
+```
+
+### Requirement: A link in the relationship map's row lists reads by its title
+
+In the rows the relationship map lists, a cell that links to another row SHALL
+show that row's title, not its id, wherever the user may read it, and
+clicking it SHALL move the map to that row.
+
+#### Scenario: Paint the fence's assignee reads "Asha"
+
+```gherkin
+Given the user is a System Manager
+And a table of volunteers and a table of chores, each chore assigned to a volunteer
+And the chore "Paint the fence" assigned to "Asha", whose phone is "555-0142"
+When the user opens that chore's relationship map
+Then the user sees "Paint the fence" listed as assigned to "Asha"
+```
+
+#### Scenario: Clicking Asha moves the map to her
+
+```gherkin
+Given the user is a System Manager
+And a table of volunteers and a table of chores, each chore assigned to a volunteer
+And the chore "Paint the fence" assigned to "Asha", whose phone is "555-0142"
+When the user opens that chore's relationship map and clicks "Asha" in the listed row
+Then the user sees the map centered on "Asha"
 ```

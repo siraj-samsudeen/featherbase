@@ -127,14 +127,20 @@ field marked hidden SHALL not be shown at all.
 ### Requirement: Pick a linked row by typing
 
 A field that links to another Table's rows SHALL offer matching rows as the
-user types, fill the field with the one they pick, and offer a way to create
-a new row to link to.
+user types, found and shown by their title (the value that names a row, such
+as a customer's name) whenever that Table names one, rather than by their id;
+it fills the field with the one they pick, and offers a way to create a new
+row to link to.
 
 #### Scenario: Find a customer by a few letters
 
-- **WHEN** the user types "Ltd" into a customer link and picks "Globex Ltd"
-- **THEN** only customers matching "Ltd" were offered, the field shows
-  "Globex Ltd", and saving keeps it
+```gherkin
+Given the user is a System Manager
+And orders from the customers "Globex Ltd" and "Initech"
+When the user types "Ltd" into a new order's customer and picks "Globex Ltd"
+Then the user was offered only "Globex Ltd"
+And the user sees the saved order's customer as "Globex Ltd"
+```
 
 ### Requirement: Every form control can be found by its name
 
@@ -190,3 +196,16 @@ A form script is a small piece of code a developer attaches to a Table to adjust
 
 - **WHEN** the user saves a row whose on-load step changed a field
 - **THEN** the form shows the row as saved, with the value the step set
+
+### Requirement: Read a row using its configured presentation
+
+An existing read-only row with a reading presentation SHALL show its configured title, headers, body, optional attachment names and optional notice before its raw values. Unconfigured, editable and new rows SHALL retain the ordinary form.
+
+#### Scenario: Read a configured reference notice
+
+```gherkin
+Given the user can read a reference notice with a configured reading presentation
+When the user opens the reference notice
+Then the reference notice uses its configured reading presentation
+And the ordinary editable reference form remains available for writable rows
+```

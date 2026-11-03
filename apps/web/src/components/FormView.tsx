@@ -11,6 +11,7 @@ import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type Column
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
+import { useIsSystemManager } from '../lib/session'
 import { Attachments } from './Attachments'
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
@@ -23,6 +24,7 @@ import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
 import { usePeek } from './Peek'
 import { GlossaryHelp } from './GlossaryHelp'
+import { ReadingPresentation } from './ReadingPresentation'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from './ui'
 
@@ -67,6 +69,9 @@ export function FormView({
 }) {
   const isNew = name === 'new'
   const meta = useMeta(table)
+  const describedTable = useMeta(name, table === 'Table' && !isNew)
+  const storage = table === 'Table' && !isNew ? describedTable.data?.storage_identity : null
+  const [storageCopy, setStorageCopy] = useState('')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { t } = useI18n()
@@ -375,6 +380,9 @@ export function FormView({
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 
+  const reading = !isNew && rowsReadOnly ? m.reading_presentation : null
+  const RawDetails = reading ? 'details' : 'div'
+
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
@@ -417,6 +425,7 @@ export function FormView({
             <RouterLink
               to="/featherbase/admin/source/$name"
               params={{ name }}
+              search={{ connect: undefined }}
               data-testid="form-source-browser"
               className={buttonClasses()}
             >
@@ -550,6 +559,34 @@ export function FormView({
           )}
         </div>
       </div>
+      {storage && (
+        <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>
+          <span className="font-medium">Storage</span>
+          <dl className="flex flex-wrap gap-x-6 gap-y-2">
+            {Object.entries({
+              ...(storage.data_source ? { 'Data Source': storage.data_source } : {}),
+              Schema: storage.schema || '(none)', Relation: storage.relation, 'Row key': storage.row_key.join(', '),
+              ...(storage.discriminator ? { 'Table discriminator': storage.discriminator.table_name } : {}),
+            }).map(([label, value]) => (
+              <div key={label} className="flex flex-wrap items-baseline gap-2">
+                <dt className="text-ink-muted">{label}</dt>
+                <dd><code className="select-text break-all text-ink">{value}</code></dd>
+              </div>
+            ))}
+          </dl>
+          <button className={buttonClasses({ className: 'ml-auto' })} onClick={async () => {
+            try {
+              await navigator.clipboard.writeText([
+                ...(storage.data_source ? [`Data Source: ${storage.data_source}`] : []),
+                `Schema: ${storage.schema}`, `Relation: ${storage.relation}`, `Row key: ${storage.row_key.join(', ')}`,
+                ...(storage.discriminator ? [`table_name: ${storage.discriminator.table_name}`] : []),
+              ].join('\n'))
+              setStorageCopy('Copied')
+            } catch { setStorageCopy('Copy unavailable. Select the storage text to copy it.') }
+          }}>Copy storage</button>
+          <span role="status" className="text-xs text-ink-muted">{storageCopy}</span>
+        </section>
+      )}
       {/* TLC-J2.2 / TLC-R4: a real dialog that NAMES the row. Deliberately
           the same shape as the table-level confirmation in ListView (DEL-J1.2)
           — labelled, aria-modal, Escape-dismissable, destructive action on the
@@ -653,6 +690,9 @@ export function FormView({
           </button>
         </div>
       )}
+      {reading && <ReadingPresentation presentation={reading} meta={m} values={values} />}
+      <RawDetails data-testid={reading ? 'raw-details' : undefined}>
+      {reading && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t('Raw details')}</summary>}
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="min-w-0 max-w-3xl flex-1">
           {sections.map((fields, si) => (
@@ -704,6 +744,7 @@ export function FormView({
         )}
       </div>
       {!isNew && m.kind === 'table' && <RelatedTabs table={table} name={name} />}
+      </RawDetails>
     </div>
   )
 }
@@ -718,6 +759,15 @@ const ROW_ID_FIELD = {
   reqd: true,
   description: 'Rows in this table take the ID you type here. It must not already be in use.',
 } as ColumnDef
+
+// The source table a column points at when no connected table binds it yet:
+// the foreign key was recorded when the table was connected, and the column
+// becomes a link as soon as its target is connected (#796).
+export function unlinkedSourceTable(field: ColumnDef, meta: TableMeta): { table: string; key: string } | null {
+  if (!meta.data_source || !field.source_fk_table || field.column_type === 'Reference') return null
+  const schema = field.source_fk_schema ?? ''
+  return { table: field.source_fk_table, key: schema ? `${schema}.${field.source_fk_table}` : field.source_fk_table }
+}
 
 function FieldControl({
   field,
@@ -780,7 +830,32 @@ function FieldControl({
       {withFileName(t(managedHint))}
     </p>
   ) : null
-  const describedBy = [hintText ? hintId : null, managedHint ? managedId : null].filter(Boolean).join(' ')
+  // #796: a column whose source foreign key has no connected table to link
+  // to says so, and offers a System Manager the table to connect.
+  const canConnect = useIsSystemManager()
+  const unlinkedTarget = unlinkedSourceTable(field, meta)
+  const unlinkedId = `${controlId}-unlinked`
+  const unlinkedNote = unlinkedTarget ? (
+    <p id={unlinkedId} className="mt-1 text-xs text-ink-subtle" data-testid={`unlinked-${field.column_name}`}>
+      The {unlinkedTarget.table} table is not connected yet, so this isn’t a link.
+      {canConnect && (
+        <>
+          {' '}
+          <RouterLink
+            to="/featherbase/admin/source/$name"
+            params={{ name: meta.data_source! }}
+            search={{ connect: unlinkedTarget.key }}
+            className="text-action hover:underline"
+          >
+            Connect the {unlinkedTarget.table} table
+          </RouterLink>
+        </>
+      )}
+    </p>
+  ) : null
+  const describedBy = [hintText ? hintId : null, managedHint ? managedId : null, unlinkedTarget ? unlinkedId : null]
+    .filter(Boolean)
+    .join(' ')
   const common = {
     id: controlId,
     'aria-labelledby': labelId,
@@ -798,6 +873,7 @@ function FieldControl({
       {control}
       {hint}
       {managedNote}
+      {unlinkedNote}
       {preview}
       {err}
     </div>
@@ -1079,21 +1155,31 @@ function ChildGrid({
 
 
 // UI-006: debounced autocomplete over the permission-filtered list API.
-function LinkControl({
+export function LinkControl({
   field,
   value,
   onChange,
   className,
   common,
+  forFilter = false,
 }: {
   field: ColumnDef
   value: unknown
   onChange: (value: unknown) => void
   className: string
   common: Record<string, unknown>
+  /** A list filter: it only picks existing rows, never creates one. */
+  forFilter?: boolean
 }) {
   const target = field.reference_table ?? ''
-  const picker = pickerFor(target)
+  // #793: a Table with no picker of its own is searched and shown by its
+  // title column, never by its row id.
+  const targetMeta = useMeta(target)
+  const own = pickerFor(target)
+  const title = targetMeta.data?.title_column
+  const picker = own.labelField === null && own.searchField === 'row_id' && !own.peopleSearch && title
+    ? { ...own, searchField: title, labelField: title }
+    : own
   const [query, setQuery] = useState<string | null>(null) // null = not searching
   const [open, setOpen] = useState(false)
   const [options, setOptions] = useState<{ value: string; label: string }[]>([])
@@ -1108,7 +1194,8 @@ function LinkControl({
   const navigate = useNavigate()
   // #100 pattern 1: a set reference is a place you can GO — ◎ peeks at the
   // row in a slide-over, ↗ navigates to its form. Hidden while searching.
-  const hasValue = Boolean(value) && query === null
+  // A filter has its own clear control and stays a filter: no peek or open.
+  const hasValue = Boolean(value) && query === null && !forFilter
 
   function search(q: string) {
     clearTimeout(timer.current)
@@ -1147,10 +1234,14 @@ function LinkControl({
         type="text"
         role="combobox"
         aria-expanded={open}
-        placeholder={`Reference: ${target}`}
+        placeholder={forFilter ? `Filter ${field.label ?? field.column_name}…` : `Reference: ${target}`}
         value={shown}
         onFocus={() => search(query ?? (picker.labelField ? '' : shown))}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => setTimeout(() => {
+          setOpen(false)
+          // A filter shows only what it filters by: unpicked typing is dropped.
+          if (forFilter) setQuery(null)
+        }, 150)}
         onChange={(e) => {
           setQuery(e.target.value)
           search(e.target.value)
@@ -1217,15 +1308,17 @@ function LinkControl({
           {!options.length && (
             <p className="px-3 py-1.5 text-sm text-ink-subtle">No matches</p>
           )}
-          <RouterLink
-            to="/featherbase/admin/$table/$name"
-            params={{ table: target, name: 'new' }}
-            search={{ prefill: undefined }}
-            className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
-            data-testid="link-create-new"
-          >
-            + Create new {target}
-          </RouterLink>
+          {!forFilter && (
+            <RouterLink
+              to="/featherbase/admin/$table/$name"
+              params={{ table: target, name: 'new' }}
+              search={{ prefill: undefined }}
+              className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
+              data-testid="link-create-new"
+            >
+              + Create new {target}
+            </RouterLink>
+          )}
         </div>
       )}
     </div>

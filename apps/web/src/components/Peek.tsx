@@ -11,6 +11,7 @@ import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { choiceLabel } from 'shared'
 import { api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, listColumns, useMeta, type ColumnDef } from '../lib/meta'
+import { listFields } from '../lib/list-view-columns'
 import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Filter } from '../lib/connections'
 import { Indicator } from './ListView'
@@ -352,7 +353,7 @@ function PeekList({
   const meta = useMeta(table)
   const settings = useSettings()
   const columns = meta.data ? listColumns(meta.data) : []
-  const list = useQueryList(table, filters, columns.map((c) => c.column_name))
+  const list = useQueryList(table, filters, columns.length ? listFields(columns) : [])
 
   if (meta.isLoading || list.isLoading)
     return <p className="p-4 text-sm text-ink-subtle">Loading…</p>

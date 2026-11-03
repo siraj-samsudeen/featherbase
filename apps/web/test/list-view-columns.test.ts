@@ -3,7 +3,7 @@
 //   Row ID + (list columns ∪ shownCols) − hiddenCols, in the Table's column order.
 import { describe, expect, it } from 'vitest'
 import type { ColumnDef, TableMeta } from '../src/lib/meta'
-import { dataColumns, listFlagsFromView, switchColumn, viewColumns } from '../src/lib/list-view-columns'
+import { dataColumns, listFields, listFlagsFromView, switchColumn, viewColumns } from '../src/lib/list-view-columns'
 
 function column(column_name: string, extra: Partial<ColumnDef> = {}): ColumnDef {
   return {
@@ -35,6 +35,37 @@ function sectionMapping(extra: Partial<TableMeta> = {}): TableMeta {
 const names = (cols: { column_name: string }[]) => cols.map((c) => c.column_name)
 
 describe('viewColumns', () => {
+  // #792 (Decision 1): a titled Table leads with its title, not Row ID.
+  it('leads with the title column and leaves Row ID out', () => {
+    const view = viewColumns(sectionMapping({ title_column: 'floor' }), {})
+    expect(names(view)).toEqual(['floor', 'section', 'mch'])
+  })
+
+  it('leads with the title column even when it is not a list column', () => {
+    const view = viewColumns(sectionMapping({ title_column: 'notes' }), {})
+    expect(names(view)).toEqual(['notes', 'section', 'mch', 'floor'])
+  })
+
+  it('keeps the title leading when an arrangement hid it', () => {
+    const view = viewColumns(sectionMapping({ title_column: 'section' }), { hiddenCols: ['section', 'mch', 'floor'] })
+    expect(names(view)).toEqual(['section'])
+  })
+
+  it('leads with Row ID when the title column is row_id, or one the caller may not read', () => {
+    expect(names(viewColumns(sectionMapping({ title_column: 'row_id' }), {}))[0]).toBe('row_id')
+    const restricted = sectionMapping({
+      title_column: 'notes',
+      readable_tiers: ['basic'],
+      columns: [...sectionMapping().columns.filter((c) => c.column_name !== 'notes'), column('notes', { tier: 'restricted' } as Partial<ColumnDef>)],
+    } as Partial<TableMeta>)
+    expect(names(viewColumns(restricted, {}))).toEqual(['row_id', 'section', 'mch', 'floor'])
+  })
+
+  it('always fetches the row id, once', () => {
+    expect(listFields(viewColumns(sectionMapping({ title_column: 'floor' }), {}))).toEqual(['row_id', 'floor', 'section', 'mch'])
+    expect(listFields(viewColumns(sectionMapping(), {}))).toEqual(['row_id', 'section', 'mch', 'floor'])
+  })
+
   it('shows a column switched on in the Table\'s column order, not at the end', () => {
     const view = viewColumns(sectionMapping({
       columns: [column('remarks'), ...sectionMapping().columns.filter((c) => c.column_name !== 'remarks')],
