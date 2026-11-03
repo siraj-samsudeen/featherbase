@@ -221,3 +221,12 @@ test('A filter added on Floor with Ground and First Floor shows both ticked in t
   await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
   expect(ticked(openBox('floor'))).toEqual(['Ground', 'First Floor'])
 })
+
+test('Unticking First Floor in the box leaves only Ground rows, and the chip names only Ground', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin, [['floor', 'in', ['Ground', 'First Floor']]])
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
+  tick(openBox('floor'), 'First Floor')
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R2']))
+  expect(chips()).toEqual(['floor in Ground×'])
+})
