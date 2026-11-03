@@ -220,13 +220,11 @@ And a correction made in that form is saved
 
 ### Requirement: Copy again follows the source without losing corrections
 
-Copy again SHALL update an unedited value from the warehouse, add new source
-rows and keep a person's correction, using the saved source-column mappings.
-Manual and scheduled refreshes SHALL use the same serialized source observation
-and atomic apply: a source-read failure or refused row SHALL leave target rows,
-conflicts, import history and copy provenance unchanged. This does not change
-the best-effort behavior of unrelated ordinary imports. Matched updates SHALL
-be reported separately from actually changed and unchanged matched rows.
+Copy again SHALL update unedited values, add new rows and keep corrections
+using saved source mappings. Manual and scheduled refreshes SHALL serialize
+one complete source observation and apply it atomically: a read or row failure
+leaves rows, conflicts, history and provenance unchanged. Report matched,
+changed and unchanged counts separately; ordinary imports remain best-effort.
 
 #### Scenario: Copy again updates an unedited store and adds a new store
 
