@@ -74,5 +74,6 @@ Then('the user sees {string} listed instead of {string}', async function (shown,
   await this.map.page.getByTestId('map-row').filter({ hasText: shown }).first().waitFor({ timeout: 10_000 }).catch(() => {});
   const rows = await this.map.listedRows();
   assert.ok(rows.some((row) => row.includes(shown)), `the rows listed read ${JSON.stringify(rows)}, without "${shown}"`);
-  assert.ok(!rows.some((row) => row.includes(gone)), `the rows listed still include "${gone}": ${JSON.stringify(rows)}`);
+  // A listed chore may name Asha as its assignee (#792); what must go is Asha's own row, led by her title.
+  assert.ok(!rows.some((row) => row.split('\t')[0].trim() === gone), `the rows listed still include "${gone}": ${JSON.stringify(rows)}`);
 });
