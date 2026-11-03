@@ -117,9 +117,9 @@ Verification:
 - [x] 9.1 `pnpm --filter server test` and `pnpm --filter web test` pass
 - [x] 9.2 `pnpm --filter web e2e` and `pnpm check:e2e-dsl` pass
 - [x] 9.3 `pnpm --filter server typecheck` and `pnpm --filter web typecheck` pass
-- [ ] 9.4 `pnpm --filter server test:coverage`: the new Yes/No server code (`yes-no-filter.ts` and its calls) is 100% covered, and the backend stays within ADR 0017's non-regression caps (ADR 0017 superseded ADR 0016 on 02-Nov-2026); say what a run without MySQL leaves out
-- [ ] 9.5 Local code review of the server logic (the `feather-code-review` skill), findings triaged by `AGENTS.md`, at most 3 rounds
-- [ ] 9.6 `./init.sh` boots (it reads `.env.local` since main's 02-Nov-2026 update), and the QF Section Mapping list works in a headless browser
-- [ ] 9.7 `pnpm exec openspec validate quick-filters-follow-your-view --type change --strict` and `pnpm check:specs` pass before archive
-- [ ] 9.8 Report as not verified: real MotherDuck (no token here), and MySQL unless `MYSQL_TEST_URL` is available
+- [x] 9.4 `pnpm --filter server test:coverage`: the new Yes/No server code (`yes-no-filter.ts` and its calls) is 100% covered, and the backend stays within ADR 0017's non-regression caps (ADR 0017 superseded ADR 0016 on 02-Nov-2026); say what a run without MySQL leaves out
+- [x] 9.5 Local code review of the server logic (the `feather-code-review` skill), findings triaged by `AGENTS.md`, at most 3 rounds
+- [x] 9.6 `./init.sh` boots (it reads `.env.local` since main's 02-Nov-2026 update), and the QF Section Mapping list works in a headless browser
+- [x] 9.7 `pnpm exec openspec validate quick-filters-follow-your-view --type change --strict` and `pnpm check:specs` pass before archive
+- [x] 9.8 Report as not verified: real MotherDuck (no token here), and MySQL unless `MYSQL_TEST_URL` is available
 - [ ] 9.9 Prepare the PR body: the Add filter dropdowns are intentional and the owner's addition; the independent spec review was skipped because the owner reviewed the specs; other operators on a Yes/No column in a hand-changed link are deliberately not handled; the commands that verify it; how to try it
