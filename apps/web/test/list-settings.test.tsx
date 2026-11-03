@@ -10,7 +10,7 @@
 // reorders the rows, and both survive a mount that starts from nothing.
 //
 // Every test ends by waiting for the settings PUT to arrive. That is not
-// belt-and-braces: ListView fires it as `void api.put(...)`, so a test that
+// belt-and-braces: ListView queues it without awaiting the write in the event handler, so a test that
 // returns without waiting lets the request execute AFTER its sandbox
 // transaction ended — committing for real, and handing the next test (and
 // the developer's database) a pre-customized list. `settledSettings` keeps
@@ -18,6 +18,7 @@
 
 import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import { vi } from 'vitest'
+import { setSession } from '../src/lib/api'
 import { test, expect, renderApp } from './pg-test'
 
 const DT = 'Ls Settings'
@@ -147,4 +148,99 @@ test('a fresh mount restores the hidden column and the sort from the server', as
   expect(screen.queryByTestId('col-city')).not.toBeInTheDocument()
   expect(screen.getByTestId('col-title')).toBeInTheDocument()
   await waitFor(() => expect(firstRowText()).toContain('bravo'))
+})
+
+test('rapid list customizations persist the newest snapshot when an earlier request is delayed', async ({ admin }) => {
+  await seedList(admin)
+  await admin.put(`/api/user_settings/${encodeURIComponent(DT)}`, { sort: { field: 'rank', dir: 'desc' }, hiddenCols: [] })
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  let firstFinished!: () => void
+  const firstDone = new Promise<void>(resolve => { firstFinished = resolve })
+  let newerStarted = false
+  let newerFinished!: () => void
+  const newerDone = new Promise<void>(resolve => { newerFinished = resolve })
+  const real = globalThis.fetch
+  const delayed = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes(`/api/user_settings/${encodeURIComponent(DT)}`) && init?.method === 'PUT') {
+      const settings = JSON.parse(String(init.body)) as Stored['settings']
+      if (settings.sort?.dir === 'desc' && settings.hiddenCols.includes('city')) {
+        await gate
+        try { return await real(input, init) } finally { firstFinished() }
+      }
+      if (settings.sort?.dir === 'asc') {
+        newerStarted = true
+        try { return await real(input, init) } finally { newerFinished() }
+      }
+    }
+    return real(input, init)
+  })
+  try {
+    await openList(admin)
+    // The restored arrow proves initial settings have arrived before either
+    // edit. Responses are real; only the first write's dispatch is held.
+    await waitFor(() => expect(screen.getByTestId('col-rank')).toHaveTextContent('↓'))
+    await hideCity()
+    screen.getByTestId('col-rank').click()
+    await waitFor(() => expect(firstRowText()).toContain('bravo'))
+    // A serialized writer will not start its second request yet. For an
+    // overlapping writer, let that newer write commit before releasing the
+    // older one, reproducing the destructive request order deterministically.
+    if (newerStarted) await newerDone
+    release()
+    await firstDone
+    await settledSettings(admin, { sort: { field: 'rank', dir: 'asc' }, hiddenCols: ['city'] })
+    cleanup()
+    await openList(admin)
+    expect(screen.queryByTestId('col-city')).not.toBeInTheDocument()
+    await waitFor(() => expect(firstRowText()).toContain('bravo'))
+  } finally {
+    release()
+    delayed.mockRestore()
+  }
+})
+
+
+test('queued list customizations do not write into a subsequent sign-in', async ({ admin, createUser }) => {
+  await seedList(admin)
+  const nextPerson = await createUser({ email: 'list.next@example.test', roles: ['System Manager'] })
+  const settingsPath = `/api/user_settings/${encodeURIComponent(DT)}`
+  const untouched = { sort: { field: 'title', dir: 'desc' }, hiddenCols: ['rank'] }
+  await nextPerson.put(settingsPath, untouched)
+  await admin.put(settingsPath, { sort: { field: 'rank', dir: 'desc' }, hiddenCols: [] })
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  let firstFinished!: () => void
+  const firstDone = new Promise<void>(resolve => { firstFinished = resolve })
+  let firstStarted = false
+  let laterWrites = 0
+  const real = globalThis.fetch
+  const delayed = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes(settingsPath) && init?.method === 'PUT') {
+      if (!firstStarted) {
+        firstStarted = true
+        await gate
+        try { return await real(input, init) } finally { firstFinished() }
+      }
+      laterWrites++
+    }
+    return real(input, init)
+  })
+  try {
+    await openList(admin)
+    await waitFor(() => expect(screen.getByTestId('col-rank')).toHaveTextContent('↓'))
+    await hideCity()
+    await waitFor(() => expect(firstStarted).toBe(true))
+    screen.getByTestId('col-rank').click()
+    await waitFor(() => expect(firstRowText()).toContain('bravo'))
+    setSession(nextPerson.token!, { row_id: nextPerson.user!, email: null, full_name: null })
+    release()
+    await firstDone
+    await settledSettings(admin, { sort: { field: 'rank', dir: 'desc' }, hiddenCols: ['city'] })
+    expect(laterWrites).toBe(0)
+    expect((await nextPerson.get(settingsPath) as Stored).settings).toMatchObject(untouched)
+  } finally {
+    release()
+    delayed.mockRestore()
+  }
 })

@@ -7,7 +7,7 @@ import { test, expect, renderApp } from './pg-test'
 import { sql } from 'server/src/db'
 import { logActivity } from 'server/src/audit'
 import { feedVerb, groupByDay } from '../src/components/ActivityFeed'
-import { fmtTimelineDay } from '../src/lib/inr'
+import { fmtTimelineDay } from '@featherbase/shop-floor'
 
 test('verbs come from whether a filter exists', () => {
   expect(feedVerb({ kind: 'list', filtered: false })).toBe('opened')

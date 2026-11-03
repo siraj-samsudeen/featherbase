@@ -6,7 +6,7 @@ const { readFileSync } = require('node:fs');
 const path = require('node:path');
 const { default: postgres } = require('postgres');
 const { Api } = require('../api');
-const { restartAcceptance } = require('../stack');
+const { restartAcceptance, acceptanceDatabaseUrl } = require('../stack');
 
 class AppNavigation {
   constructor(page) { this.page = page; }
@@ -16,6 +16,7 @@ class AppNavigation {
     for (const name of ['tasker', 'feather_dash'])
       if (!installed.some(app => app.name === name))
         await api.call('POST', '/api/apps/prepare-install', { name }, [201], `prepare and install ${name}`);
+    await api.admitTaskerAdministrator();
   }
   static async appApi(api, name) {
     const res = await api.call('GET', '/api/apps', undefined, [200], 'installed versions');
@@ -58,9 +59,7 @@ class AppNavigation {
     await api.saveRow('Data Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'FEATHER_DASH_LOCAL_DUCKDB', access: 'read_only' });
     // An existing cached month supplies the store's human name. No warehouse
     // connection or intercepted report response is needed for navigation.
-    const url = new URL(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@127.0.0.1:5432/featherbase');
-    url.pathname = '/featherbase_acceptance_e2e';
-    const sql = postgres(url.toString(), { connection: { search_path: 'featherbase,public' } });
+    const sql = postgres(acceptanceDatabaseUrl(), { connection: { search_path: 'featherbase,public' } });
     try {
       const { datasets } = JSON.parse(readFileSync(path.resolve(__dirname, '../../../client-apps/jeyarama/dash/featherbase.json')));
       const dataset = datasets.find(entry => entry.name === 'sales_month');

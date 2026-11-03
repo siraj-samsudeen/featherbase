@@ -56,6 +56,17 @@ describe('JOB-001: enqueue + worker + drain', () => {
 })
 
 describe('Long work runs in the background', () => {
+  test('stopping a repeatedly started worker leaves queued work for a later start', async () => {
+    await setup()
+    startWorker(10)
+    startWorker(10)
+    stopWorker()
+    const id = await enqueue('ping_job', {})
+    await nudgeDueJobs()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect((await sql`select job_status from background_job where row_id = ${id}`)[0].job_status).toBe('queued')
+  })
+
   test('the worker picks up a queued job on its own, without anyone draining the queue', async () => {
     await setup()
     const id = await enqueue('ping_job', {})

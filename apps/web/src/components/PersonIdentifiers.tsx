@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
-import { fmtDate } from '../lib/inr'
+import { fmtDate } from '@featherbase/shop-floor'
 import { PrincipalName } from '../lib/people'
-import { Button, Card, Notice, Select, TextInput } from './ui'
+import { Button, Card, Notice, Select, TextInput } from '@featherbase/shop-floor'
 
 // person-resolution D3/D12: every identifier a person has had — employee
 // codes, record numbers, phone, addresses — each with its period, where it

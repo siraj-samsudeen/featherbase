@@ -1,3 +1,4 @@
+import { admitTasker } from '../../server/test/tasker-client'
 // The Admin shell's paths the merged web coverage report (ADR 0012) showed no
 // test taking: the command bar sending a name that matches nothing, its New
 // Table command, picking a Table it suggests, the phone drawer's backdrop,
@@ -119,6 +120,7 @@ test('choosing another application in the switcher goes to its address', async (
   expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
   if (await isInstalled('tasker')) await uninstallApp('tasker')
   await installApp('tasker')
+  await admitTasker(admin)
   const reports = navigationReports()
   await renderApp('/featherbase/admin', admin)
   const switcher = (await screen.findByRole('combobox', { name: 'Switch application' }, { timeout: 8000 })) as HTMLSelectElement

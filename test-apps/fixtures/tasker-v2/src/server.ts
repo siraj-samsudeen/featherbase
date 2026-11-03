@@ -1,11 +1,19 @@
+import { prepareDiscussion } from './discussion-server'
 // Featherbase runtime hook API v1. Structural contract; no core dependency.
-interface Context {
+export interface Context {
+  user: string
+  isNew: boolean
+  documents: {
+    members(table: string): Promise<{ row_id: string; full_name: string }[]>
+    get(table: string, id: string): Promise<Record<string, unknown>>
+    list(table: string, args?: { filters?: [string, string, unknown][]; fields?: string[]; limit_page_length?: number }): Promise<Record<string, unknown>[]>
+  }
   row: Record<string, unknown>
   old?: Record<string, unknown>
   reject(message: string, fields?: Record<string, string>): never
 }
 export const platformVersion = '2026-10'
-export const validators = { 'tasker.task': prepareTask }
+export const validators = { 'tasker.task': prepareTask, 'tasker.discussion': prepareDiscussion }
 export { actions } from './actions'
 
 function prepareTask(ctx: Context): void {

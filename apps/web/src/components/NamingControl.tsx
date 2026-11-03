@@ -1,4 +1,4 @@
-import { inputClasses } from './ui'
+import { inputClasses } from '@featherbase/shop-floor'
 // NAM-001: edit a Table's id_pattern — the rule that names new rows. The four
 // kinds mirror resolveName() in apps/server/src/document.ts; a series is split
 // here into a prefix and a digit count so nobody has to type ".###".

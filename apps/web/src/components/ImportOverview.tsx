@@ -1,6 +1,6 @@
 import { countDataRows, type ParsedSheet } from '../lib/parse-file'
-import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from './ui'
-import { fmtCount } from '../lib/inr'
+import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 
 // #199/#200 (issue #197): the step before any column work. A 17-sheet
 // workbook used to open straight onto 17 full column grids; this answers

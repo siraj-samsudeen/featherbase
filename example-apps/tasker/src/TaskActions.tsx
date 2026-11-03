@@ -1,3 +1,4 @@
+import { buttonClasses } from '@featherbase/shop-floor'
 import { useRef, useState } from 'react'
 import { ApiError, api, getSessionUser } from './api'
 
@@ -65,12 +66,12 @@ export function TaskActions({ task, disabled, onCompleted }: {
         ? 'This task has work history that a project cannot hold directly. Tasker will create the project and keep this task as its first task so its assignment, urgency, comments, and activity are preserved. Continue?'
         : 'Delete this accidental task permanently? This cannot be undone. Use Cancelled for retained work. Tasks with assignment, urgency, discussion, history, references, attachments or shared access cannot be deleted here.'}</p>
       <div className="tasker-editor-actions">
-        <button autoFocus type="button" className="fc-btn" disabled={busy || Boolean(pending)} onClick={() => { setConfirm(null); menu.current?.querySelector('summary')?.focus() }}>Cancel</button>
-        <button type="button" className="fc-btn-primary" disabled={busy || Boolean(pending)} onClick={() => void run(confirm, true)}>{confirm === 'promote' ? 'Continue' : 'Delete permanently'}</button>
+        <button autoFocus type="button" className={buttonClasses()} disabled={busy || Boolean(pending)} onClick={() => { setConfirm(null); menu.current?.querySelector('summary')?.focus() }}>Cancel</button>
+        <button type="button" className={buttonClasses({ variant: 'primary' })} disabled={busy || Boolean(pending)} onClick={() => void run(confirm, true)}>{confirm === 'promote' ? 'Continue' : 'Delete permanently'}</button>
       </div>
-      {error && pending && <button type="button" className="fc-btn" disabled={busy} onClick={() => void run(pending.action, pending.payload.confirm)}>Retry same request</button>}
+      {error && pending && <button type="button" className={buttonClasses()} disabled={busy} onClick={() => void run(pending.action, pending.payload.confirm)}>Retry same request</button>}
     </div></div>}
     {error && <p role="alert">{error}</p>}
-    {!confirm && pending && !busy && <button type="button" className="fc-btn" onClick={() => void run(pending.action, pending.payload.confirm)}>Retry same request</button>}
+    {!confirm && pending && !busy && <button type="button" className={buttonClasses()} onClick={() => void run(pending.action, pending.payload.confirm)}>Retry same request</button>}
   </div>
 }
