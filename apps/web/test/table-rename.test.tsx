@@ -32,6 +32,21 @@ test('renaming a Table from its list opens it under the new name, with its rows'
   expect(await screen.findByText('Chennai', undefined, { timeout: 10_000 })).toBeInTheDocument()
 })
 
+test('the list just opened stays in recently opened under the new name', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await renderApp('/featherbase/admin/table/twr-sap-plant', admin)
+  await user.click(await screen.findByTestId('rename-table', undefined, { timeout: 10_000 }))
+  const input = screen.getByTestId('rename-table-input')
+  await user.clear(input)
+  await user.type(input, NEW)
+  await user.click(screen.getByTestId('rename-table-confirm'))
+  await screen.findByRole('heading', { level: 1, name: NEW }, { timeout: 10_000 })
+  const cached = JSON.parse(localStorage.getItem(`fc-recents:${admin.user}`) ?? '[]') as { key: string; label: string; path: string }[]
+  expect(cached.map((e) => e.key)).not.toContain(`list:${OLD}?`)
+  expect(cached).toContainEqual(expect.objectContaining({ key: `list:${NEW}?`, label: NEW, path: '/featherbase/admin/table/twr-plant' }))
+})
+
 test('a name already in use is refused in the dialog, and nothing changes', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
