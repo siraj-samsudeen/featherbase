@@ -302,6 +302,14 @@ export async function getAccessToken(id: string): Promise<AccessTokenRow> {
   return row as unknown as AccessTokenRow
 }
 
+export async function renameAccessToken(id: string, label: string, actor: string): Promise<AccessTokenRow> {
+  if (!label.trim()) throw new AppError('ValidationError', 'A token needs a label')
+  const [row] = await sql`update access_token set label = ${label.trim()} where id = ${id} returning ${tokenFields()}`
+  if (!row) throw new AppError('NotFoundError', `Access token ${id} not found`)
+  await logActivity(actor, `access_token_renamed ${id}`)
+  return row as unknown as AccessTokenRow
+}
+
 // Idempotent: revoking twice keeps the first revocation stamp.
 export async function revokeAccessToken(id: string): Promise<void> {
   const [row] = await sql`
