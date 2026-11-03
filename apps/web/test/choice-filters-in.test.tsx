@@ -194,3 +194,21 @@ test('Filters on different columns, on text columns and on Yes/No columns are ne
   ])
   expect(addressFilters(router)).toEqual(link)
 })
+
+/** Opens a quick filter box's list of choices. */
+function openBox(column: string) {
+  const button = screen.getByTestId(`std-filter-${column}`)
+  if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button)
+  return screen.getByTestId(`std-choices-${column}`)
+}
+
+test('Ticking Closed in the Status box narrows the rows, and unticking it brings them all back', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  tick(openBox('state'), 'Closed')
+  await waitFor(() => expect(codes()).toEqual(['R2', 'R4', 'R6']))
+  expect(chips()).toEqual(['state in Closed×'])
+  tick(openBox('state'), 'Closed')
+  await waitFor(() => expect(codes()).toHaveLength(6))
+  expect(chips()).toEqual([])
+})
