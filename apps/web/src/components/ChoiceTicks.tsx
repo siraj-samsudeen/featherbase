@@ -104,6 +104,14 @@ export function ChoiceTicks({
             >
               Select all
             </button>
+            <button
+              type="button"
+              onClick={() => change([])}
+              data-testid="choices-clear"
+              className={touchRowClasses('rounded px-2 py-1 text-sm text-action hover:bg-subtle')}
+            >
+              Clear
+            </button>
           </div>
           {choices.map((c) => (
             <label key={c} className={touchRowClasses('flex items-center gap-2 rounded px-2 py-1 text-sm text-ink')}>
