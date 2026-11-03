@@ -6,6 +6,82 @@ const DOC = 'quokka-recent-doc'
 // title is its first readable value — never the id above.
 const DOC_TITLE = 'searchable'
 
+test('#827: typed results follow keyboard selection across groups', async ({ session }) => {
+  await session.visit('/featherbase/admin/Person')
+  await session.step('choose the Table, new row, record and command with plain arrows', async ({ page }) => {
+    const bar = page.getByRole('textbox', { name: 'Search or type a command' })
+    for (const [target, path] of [
+      ['awesomebar-table', '/featherbase/admin/Person'],
+      ['awesomebar-new', '/featherbase/admin/Person/new'],
+      ['awesomebar-doc', '/featherbase/admin/Table/Person'],
+    ]) {
+      await page.keyboard.press('Meta+k')
+      await bar.fill('person')
+      await expect(page.getByTestId('awesomebar-doc')).toBeVisible()
+      const choices = page.getByTestId('awesomebar-results').locator('a, button')
+      const count = await choices.count()
+      for (let i = 0; i < count; i++) {
+        await bar.press('ArrowDown')
+        await expect(choices.nth(i)).toHaveAttribute('aria-selected', 'true')
+        await expect(bar).toHaveAttribute('aria-activedescendant', await choices.nth(i).getAttribute('id') ?? '')
+      }
+      // Wrap in both directions before choosing the requested group.
+      await bar.press('ArrowDown')
+      await expect(choices.first()).toHaveAttribute('aria-selected', 'true')
+      await bar.press('ArrowUp')
+      await expect(choices.last()).toHaveAttribute('aria-selected', 'true')
+      for (let i = 0; i < count; i++) {
+        if (await page.getByTestId(target).getAttribute('aria-selected') === 'true') break
+        await bar.press('ArrowUp')
+      }
+      await expect(page.getByTestId(target)).toHaveAttribute('aria-selected', 'true')
+      // Modified arrows must not change the result selection.
+      await bar.press('Meta+ArrowDown')
+      await expect(page.getByTestId(target)).toHaveAttribute('aria-selected', 'true')
+      await bar.press('Enter')
+      await expect(page).toHaveURL(new RegExp(`${path}$`))
+      await expect(page.getByTestId('awesomebar-results')).toBeHidden()
+      await expect(bar).not.toBeFocused()
+    }
+    await page.keyboard.press('Meta+k')
+    await bar.fill('go to')
+    await expect(page.getByTestId('awesomebar-cmd-home')).toBeVisible()
+    await bar.press('ArrowDown')
+    await expect(page.getByTestId('awesomebar-cmd-home')).toHaveAttribute('aria-selected', 'true')
+    await bar.press('Enter')
+    await expect(page).toHaveURL(/\/featherbase\/admin(?:\/home\/home)?$/)
+    await expect(page.getByTestId('awesomebar-results')).toBeHidden()
+    await page.keyboard.press('Meta+k')
+    await bar.fill('pers')
+    await expect(page.getByTestId('awesomebar-recent-search')).toBeVisible()
+    await bar.press('ArrowDown')
+    await expect(page.getByTestId('awesomebar-recent-search')).toHaveAttribute('aria-selected', 'true')
+    await bar.press('Enter')
+    await expect(bar).toBeFocused()
+    await expect(bar).toHaveValue('person')
+    await bar.press('Escape')
+    await expect(page.getByTestId('awesomebar-results')).toBeHidden()
+    await page.keyboard.press('Meta+k')
+    await expect(bar).toBeFocused()
+    await expect(page.getByTestId('awesomebar-results')).toBeVisible()
+  })
+})
+
+test('#827: a replacement search cannot activate the previous query record', async ({ session }) => {
+  await session.visit('/featherbase/admin/all-tables')
+  await session.step('replace a resolved query and press Enter within its debounce window', async ({ page }) => {
+    const bar = page.getByRole('textbox', { name: 'Search or type a command' })
+    await page.keyboard.press('Meta+k')
+    await bar.fill('person')
+    await expect(page.getByTestId('awesomebar-doc')).toBeVisible()
+    await bar.fill('Sign In Meth')
+    await bar.press('Enter')
+    await expect(bar).not.toBeFocused()
+    await expect(page).not.toHaveURL(/\/all-tables$/)
+    expect(decodeURIComponent(new URL(page.url()).pathname)).not.toContain('/Table/Person')
+  })
+})
+
 for (const activation of ['pointer', 'Enter', 'focused link'] as const) {
   for (const alreadyOpen of [false, true]) {
     test(`#822: ${activation} dismisses a Table destination${alreadyOpen ? ' already open' : ''}`, async ({ session }) => {
@@ -82,7 +158,7 @@ test('#101: an empty command bar lists recent visits and replays them', async ({
     await expect(recents.first()).toContainText(DOC_TITLE)
     await expect(recents.first()).not.toContainText(DOC)
     await expect(recents.nth(1)).toContainText(DT)
-    await expect(recents.nth(1)).toContainText('note = searchable')
+    await expect(recents.nth(1)).toContainText('Note = searchable')
 
     // Clicking the list entry replays the URL, filters included.
     await recents.nth(1).click()
@@ -118,7 +194,7 @@ test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ s
     // Its filtered-view entry carries the filter summary and replays the URL.
     await sidebar
       .getByTestId('sidebar-recent')
-      .filter({ hasText: 'note = searchable' })
+      .filter({ hasText: 'Note = searchable' })
       .first()
       .click()
     await expect(page).toHaveURL(/filters=/)
@@ -128,7 +204,7 @@ test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ s
     await page.goto(`/admin/${encodeURIComponent(DT)}`)
     const strip = page.getByTestId('recent-strip')
     await expect(strip.getByTestId('recent-strip-row').first()).toContainText(DOC_TITLE)
-    await expect(strip.getByTestId('recent-strip-view').first()).toContainText('note = searchable')
+    await expect(strip.getByTestId('recent-strip-view').first()).toContainText('Note = searchable')
 
     // A view chip re-applies the whole filter set; a row chip opens the form.
     await strip.getByTestId('recent-strip-view').first().click()

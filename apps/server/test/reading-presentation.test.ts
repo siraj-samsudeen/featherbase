@@ -52,7 +52,7 @@ test('reading migration preserves authored labels and translated source keys', a
     values ('reading-translation', 'fr', 'body', 'Message traduit')`
   await sql`insert into email_sink (row_id, subject, body, attachment_names, attachment_b64)
     values ('pre-reading', 'Existing message', 'Original body', 'invoice.pdf', 'cGRm')`
-  await sql.unsafe(readFileSync(new URL('../migrations/0007_reading_presentation.sql', import.meta.url), 'utf8'))
+  await sql.unsafe(readFileSync(new URL('../migrations/0013_reading_presentation.sql', import.meta.url), 'utf8'))
   invalidateMeta()
   const [row] = await sql`select body, attachment_names, attachment_b64 from email_sink where row_id = 'pre-reading'`
   expect(row).toMatchObject({ body: 'Original body', attachment_names: 'invoice.pdf', attachment_b64: 'cGRm' })

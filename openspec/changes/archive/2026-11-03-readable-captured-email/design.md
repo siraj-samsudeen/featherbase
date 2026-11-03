@@ -21,8 +21,8 @@ Read messages comfortably using the generic form and existing read permissions. 
 
 ## Migration Plan
 
-Add nullable metadata to table_def, expose it through validated Table definitions (not an unvalidated generic JSON control), and configure Email Sink with readable labels and its existing subject as title. Existing messages are untouched. Removing the configuration restores the ordinary read-only form; no stored message conversion is involved. Migration 0007 has no dependency on #826's 0006: the runner sorts filenames and permits gaps; fresh migration tests boot this branch independently.
+Add nullable metadata to table_def, expose it through validated Table definitions (not an unvalidated generic JSON control), and configure Email Sink with readable labels and its existing subject as title. Existing messages are untouched. Removing the configuration restores the ordinary read-only form; no stored message conversion is involved. Migration 0013 follows the published migration inventory without importing other workers' unmerged migrations: the runner sorts filenames and permits gaps; fresh migration tests boot this branch independently.
 
 ## Open Questions
 
-None. Independent UI verification passed. Ordinary hidden-logic review is still unmet (prescribed reviewer unavailable in this orb); no code review is claimed. Owner defaults authorize sync/archive without a routine video-review pause; screenshots and clips were captured and inspected by agents, not claimed watched by Siraj. Merge and deployment remain owner-authorized actions.
+None. Independent UI verification passed. Manager reported the ordinary review findings and cleared the model-provenance hold; provenance remains unverified, without an extra review solely for identity. The migration collision is resolved by reserving 0013 against the published inventory. Owner defaults authorize sync/archive without a routine video-review pause; screenshots and clips were captured and inspected by agents, not claimed watched by Siraj. Merge and deployment remain owner-authorized actions.

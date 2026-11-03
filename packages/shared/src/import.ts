@@ -80,6 +80,7 @@ export function prettifyLabel(header: string): string {
     .replace(/\s+/g, ' ')
     .split(' ')
     .map((w) => {
+      if (/^(id|url|api|sql|json)$/i.test(w)) return w.toUpperCase()
       if (/^[A-Z0-9]+$/.test(w) && w.length <= 3) return w
       if (/^[a-z0-9]+$/.test(w) || /^[A-Z0-9]+$/.test(w))
         return w[0].toUpperCase() + w.slice(1).toLowerCase()

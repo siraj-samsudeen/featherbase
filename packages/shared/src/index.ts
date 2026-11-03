@@ -1,4 +1,5 @@
 export { tableSchemaToZod, zodFieldErrors, readingPresentationSchema, type ReadingPresentation, type ColumnDef } from './schema'
+export { choiceLabel } from './choice-label'
 export { DISPLAY_DEFAULTS } from './display-settings'
 export { calendarDay, fmtInstantIST, isCalendarDay, isLocalMidnight, localIso, wallTimeToInstant } from './dates'
 export { RESERVED_APP_ROOTS, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, ownFramePolicyPage, APP_TAB_ICONS, APP_TAB_PATH, APP_TAB_LABEL_MAX, appTabLinks, type AppTab, type AppTabIcon, type AppTabLink, ACCOUNT_ROOT, ACCOUNT_SIGN_IN_METHODS_PATH, appHref, ADMIN_STATIC_PAGES, ADMIN_UNRECORDED_ROOTS, adminPageNeedsManage, ADMIN_NAMED_PAGE_KINDS, adminPageTitle, adminPathTitle } from './app-routes'

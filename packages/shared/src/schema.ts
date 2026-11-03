@@ -20,6 +20,7 @@ export interface ColumnDef {
   column_type: string
   reference_table?: string | null
   choices?: string | null
+  choice_labels?: Record<string, string> | null
   row_table?: string | null
   reqd?: boolean
   label?: string | null

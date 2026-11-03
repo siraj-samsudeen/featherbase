@@ -14,8 +14,8 @@
 # from its paths; everything runs on main and on whatever it cannot place:
 #
 #   changes -> unit-server (3), PG18 preflight -> coverage-server
-#           -> unit-web-shards (4) -> unit-web
-#           -> browser-e2e (4), acceptance, served-e2e -> e2e
+#           -> component-shards (4), web-support -> unit-web
+#           -> browser-shards (4), acceptance, served -> e2e
 #   unit-web + e2e -> coverage-merged
 #   checks + unit suites + app-tests + coverage gates -> unit
 #
@@ -94,7 +94,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:dev
-      - run: node --test tools/featherbase.integration.test.mjs tools/orb-service.integration.test.mjs
+      - run: node --test tools/featherbase.integration.test.mjs tools/orb-service.integration.test.mjs tools/reset.test.mjs
       - run: pnpm featherbase setup
       - run: pnpm featherbase setup
       - run: pnpm featherbase start --check
@@ -112,6 +112,7 @@ jobs:
       client_apps: ${{ steps.decide.outputs.client_apps }}
       tasker_tests: ${{ steps.decide.outputs.tasker_tests }}
       coverage_merged: ${{ steps.decide.outputs.coverage_merged }}
+      shards: ${{ steps.decide.outputs.shards }}
     steps:
       # A PR checks out its merge commit, whose first parent is the base
       # branch tip — so HEAD^1..HEAD is exactly what merging would change.
@@ -132,6 +133,7 @@ jobs:
         run: |
           git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed"
           node tools/ci-scope.mjs < "$RUNNER_TEMP/changed"
+          node --input-type=module -e 'import { shardCount } from "./tools/ci-shards.mjs"; console.log(`shards=${JSON.stringify(Array.from({length: shardCount}, (_, i) => i + 1))}`)' >> "$GITHUB_OUTPUT"
 
   # Everything that needs no database: spec/catalog/guard validations and
   # both typechecks. The fast half runs on every PR; building the apps and the
@@ -196,6 +198,9 @@ jobs:
 
       - name: What runs in CI, by path
         run: node --test tools/ci-scope.test.mjs
+
+      - name: Shard producer and exact-once contracts
+        run: node --test tools/ci-shards.test.mjs
 
       - name: The version check's rules
         run: node --test tools/check-app-versions.test.mjs
@@ -361,18 +366,13 @@ jobs:
           DATABASE_URL="${DATABASE_URL%/*}/featherbase_ci2_actions_commit_e2e" TASKER_UPGRADE_ACTION_PROOF=1 pnpm --filter server test test/tasker-upgrade-action-commit.test.ts
           DATABASE_URL="${DATABASE_URL%/*}/featherbase_ci_settings_commit_e2e" SETTINGS_LOCK_COMMIT_PROOF=1 pnpm --filter server test test/managed-settings-commit.test.ts
 
-  # Component files share in-process server state and a database. Shard across
-  # runners, never parallelize files within a runner. As for the server, raw
-  # blob coverage is merged below before enforcing the unchanged suite floor.
-  unit-web-shards:
+  # Independent runtime collectors and package floors. None rebuild an app
+  # while another collector is using it on a different runner.
+  web-support:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.web != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
     env:
       NODE_ENV: test
     services:
@@ -414,30 +414,42 @@ jobs:
         run: |
           pnpm --filter server migrate
 
-      - name: Run web suite shard ${{ matrix.shard }}/4 with coverage
-        run: >-
-          pnpm --filter web exec vitest run --coverage
-          --coverage.thresholds.lines=0 --coverage.thresholds.statements=0
-          --coverage.thresholds.functions=0 --coverage.thresholds.branches=0
-          --shard=${{ matrix.shard }}/4
-          --reporter=default --reporter=blob
-          --outputFile.blob=.vitest-reports/blob-${{ matrix.shard }}.json
+      # `test:coverage` REPLACES the plain `test` rather than being added
+      # beside it: instrumenting a suite once costs about 15% of wall clock
+      # (measured back to back — web 18s→22s, shared under a second either
+      # way), where running it twice would cost 100%. Each config carries a
+      # `coverage.thresholds` floor that only ever rises (#226); Vitest exits
+      # non-zero when a suite falls below its floor, so a coverage regression
+      # fails this job exactly like a failing test does.
+      - name: Run shared and runtime unit suites with coverage
+        run: |
+          pnpm --filter shared test:coverage
+          npm run test:coverage --prefix example-apps/tasker
 
-      - name: Upload component shard report
+      - name: Collect runtime component coverage against the real server
+        run: pnpm --filter web exec vitest run --config ../../tools/vitest.runtime-components.config.ts
+
+      - name: Upload runtime unit and component coverage
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: web-blob-${{ matrix.shard }}
-          path: apps/web/.vitest-reports/
+          name: runtime-support-coverage
+          path: |
+            coverage/tasker/unit/coverage-final.json
+            coverage/tasker/components/coverage-final.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
 
-  unit-web:
-    needs: [changes, unit-web-shards]
+  component-shards:
+    needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.web != 'false' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.changes.outputs.shards || '[1]') }}
     env:
       NODE_ENV: test
     services:
@@ -447,18 +459,40 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: featherbase
-        ports:
-          - 5432:5432
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - name: Require every component shard
-        if: needs.unit-web-shards.result != 'success'
-        run: exit 1
+      - uses: actions/checkout@v4
+      - run: git fetch --no-tags --depth=1 origin +main:refs/remotes/origin/main
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm apps:prepare
+      - run: node tools/ci-shards.mjs run component ${{ matrix.shard }}
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: component-${{ matrix.shard }}
+          path: .ci-shards/component-${{ matrix.shard }}/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
 
+  # Replay all blobs without a database, enforcing the unchanged jsdom floors.
+  unit-web:
+    needs: [changes, component-shards, web-support]
+    if: ${{ !cancelled() && needs.changes.outputs.web != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Require successful producers
+        if: needs.component-shards.result != 'success' || needs.web-support.result != 'success'
+        run: exit 1
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -466,41 +500,17 @@ jobs:
           node-version: '26.13.0'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-
       - uses: actions/download-artifact@v4
         with:
-          pattern: web-blob-*
-          path: apps/web/.vitest-reports
-          merge-multiple: true
-
-      - name: Merge all component shards and enforce existing coverage thresholds
-        run: |
-          for shard in 1 2 3 4; do test -s "apps/web/.vitest-reports/blob-$shard.json"; done
-          pnpm --filter web exec vitest run --merge-reports=.vitest-reports --coverage
-
-      - name: Build independent runtime test packages
-        run: pnpm apps:prepare
-
-      - name: Migrate database
-        run: pnpm --filter server migrate
-
-      - name: Run shared and runtime unit suites with coverage
-        run: |
-          pnpm --filter shared test:coverage
-          npm run test:coverage --prefix example-apps/tasker
-
-      - name: Collect runtime component coverage against the real server
-        run: pnpm --filter web exec vitest run --config ../../tools/vitest.runtime-components.config.ts
-
-      - name: Upload component and runtime unit coverage
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+          pattern: component-[0-9]*
+          path: .ci-shards
+      - run: node tools/ci-shards.mjs collect component
+      - name: Merge every component blob under the original thresholds
+        run: pnpm --filter web exec vitest run --merge-reports=.vitest-web-reports --coverage
+      - uses: actions/upload-artifact@v4
         with:
           name: component-coverage
-          path: |
-            apps/web/.nyc_output/jsdom.json
-            coverage/tasker/unit/coverage-final.json
-            coverage/tasker/components/coverage-final.json
+          path: apps/web/.nyc_output/jsdom.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
@@ -748,17 +758,15 @@ jobs:
           path: coverage/dash-backend/
           if-no-files-found: error
 
-  # Each runner owns a complete isolated stack. Keep workers: 1: specs mutate
-  # instance-wide settings, so only separate runners/databases can run in parallel.
-  browser-e2e:
+  browser-shards:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.e2e != 'false') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: ${{ fromJSON(needs.changes.outputs.shards || '[1]') }}
     services:
       postgres:
         image: postgres:17
@@ -801,15 +809,14 @@ jobs:
       # playwright.config.ts pins workers: 1 (specs share one server and
       # database) — keep it. The trace flag is CI-only so failures leave
       # something inspectable in test-results/ for the artifact below.
-      - name: Run e2e shard ${{ matrix.shard }}/4 with coverage
-        run: pnpm --filter web coverage:e2e --shard=${{ matrix.shard }}/4 --trace retain-on-failure
+      - name: Run browser shard with coverage and execution receipt
+        run: node tools/ci-shards.mjs run browser ${{ matrix.shard }}
 
-      - name: Upload browser coverage
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
+        if: success()
         with:
-          name: browser-coverage-${{ matrix.shard }}
-          path: apps/web/.nyc_output/
+          name: browser-${{ matrix.shard }}
+          path: .ci-shards/browser-${{ matrix.shard }}/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
@@ -818,7 +825,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-artifacts-${{ matrix.shard }}
+          name: playwright-browser-${{ matrix.shard }}
           path: |
             apps/web/test-results/
             apps/web/playwright-report/
@@ -829,7 +836,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.e2e != 'false') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:17
@@ -837,13 +844,10 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: featherbase
-        ports:
-          - 5432:5432
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -852,18 +856,13 @@ jobs:
           node-version: '26.13.0'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-
-      # HTTP coverage must not depend on a browser shard's build artifacts.
+      # HTTP coverage is collected before acceptance rebuilds packages.
       - name: Build independent runtime test packages with coverage
         env:
           VITE_COVERAGE: 'true'
         run: pnpm apps:prepare
+      - run: pnpm --filter web exec playwright install --with-deps chromium
 
-      - name: Install Playwright Chromium
-        run: pnpm --filter web exec playwright install --with-deps chromium
-
-      # Collect from this job's instrumented build before acceptance rebuilds
-      # packages. Persisted counters survive those later builds (#767).
       - name: Collect runtime HTTP coverage
         run: >-
           pnpm --filter server exec vitest run
@@ -879,10 +878,9 @@ jobs:
           "$PG_BIN/initdb" -D "$RUNNER_TEMP/runtime-proof-pg" -U postgres --auth=trust
           "$PG_BIN/pg_ctl" -D "$RUNNER_TEMP/runtime-proof-pg" -l "$RUNNER_TEMP/runtime-proof-pg.log" -o "-h 127.0.0.1 -p 5433 -k $RUNNER_TEMP" -w start
 
-      # Run the effective specs unchanged. The packaged-delivery scenario calls
-      # the full apps:prove command, including build-core-first ordering. Collect
-      # its coverage here instead of executing the same proof a second time.
-      - name: Run acceptance suite including packaged runtime coverage
+      # Effective specs run on their own runner. The packaged proof invoked
+      # by acceptance supplies coverage here; do not execute it a second time.
+      - name: Run acceptance suite
         env:
           VITE_COVERAGE: 'true'
           RUNTIME_PROOF_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/featherbase_runtime_proof_e2e
@@ -909,7 +907,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  served-e2e:
+  served:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.e2e != 'false') }}
     runs-on: ubuntu-latest
@@ -921,13 +919,10 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: featherbase
-        ports:
-          - 5432:5432
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -940,8 +935,8 @@ jobs:
       - run: pnpm --filter web exec playwright install --with-deps chromium
 
       # #642: frame policies are response headers, which only the API server
-      # serving the BUILT web app sets (browser-e2e uses the Vite dev server).
-      # playwright.served.config.ts builds the app and owns
+      # serving the BUILT web app sets (the stack above serves pages from the
+      # Vite dev server). playwright.served.config.ts builds the app and owns
       # its own database, port and local embed stand-in.
       - name: Run served e2e (frame policy on real response headers)
         run: pnpm --filter web e2e:served --trace retain-on-failure
@@ -962,28 +957,53 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Keep the ruleset's required name stable. No failed or unexpectedly skipped
-  # child may turn the required check green, even when changes failed closed.
+  # Keep the required check name, and reject failed or unexpectedly skipped
+  # producers even when one of its dependencies fails before uploading.
   e2e:
-    needs: [changes, browser-e2e, acceptance, served-e2e]
+    needs: [changes, browser-shards, acceptance, served]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
-      - name: Require all browser, acceptance and served suites
+      - name: Require every requested producer
         env:
           CHANGES: ${{ needs.changes.result }}
           WANTED: ${{ needs.changes.outputs.e2e }}
-          BROWSER: ${{ needs.browser-e2e.result }}
+          BROWSER: ${{ needs.browser-shards.result }}
           ACCEPTANCE: ${{ needs.acceptance.result }}
-          SERVED: ${{ needs.served-e2e.result }}
+          SERVED: ${{ needs.served.result }}
         run: |
+          [ "$CHANGES" = success ] || exit 1
           for result in "$BROWSER" "$ACCEPTANCE" "$SERVED"; do
-            if [ "$result" = success ]; then continue; fi
-            if [ "$result" = skipped ] && [ "$CHANGES" = success ] && [ "$WANTED" = false ]; then continue; fi
-            echo "Required e2e suite did not succeed: $result (wanted: ${WANTED:-unknown, so yes})"
-            exit 1
+            [ "$result" = success ] || { [ "$result" = skipped ] && [ "$WANTED" = false ]; } || exit 1
           done
+
+      - uses: actions/checkout@v4
+        if: needs.browser-shards.result == 'success'
+      - uses: pnpm/action-setup@v4
+        if: needs.browser-shards.result == 'success'
+      - uses: actions/setup-node@v4
+        if: needs.browser-shards.result == 'success'
+        with:
+          node-version: '26.13.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        if: needs.browser-shards.result == 'success'
+      - uses: actions/download-artifact@v4
+        if: needs.browser-shards.result == 'success'
+        with:
+          pattern: browser-[0-9]*
+          path: .ci-shards
+      - name: Require every browser artifact and exact-once file execution
+        if: needs.browser-shards.result == 'success'
+        run: node tools/ci-shards.mjs collect browser
+      - uses: actions/upload-artifact@v4
+        if: needs.browser-shards.result == 'success'
+        with:
+          name: browser-coverage
+          path: apps/web/.nyc_output/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
 
   # One source-level web report, not separate component/browser percentages.
   # It reads artifacts from both suites, so `changes` only asks for it when both
@@ -1011,13 +1031,17 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: component-coverage
-          path: .
+          path: apps/web/.nyc_output
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: browser-coverage-*
+          name: browser-coverage
           path: apps/web/.nyc_output
-          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime-support-coverage
+          path: coverage/tasker
 
       - uses: actions/download-artifact@v4
         with:
