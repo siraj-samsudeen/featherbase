@@ -2,11 +2,28 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { issueSession } from '../src/auth'
+import { makeTable } from './fixtures'
 
 // #101 Phase 3: batched capture of read-side intent into user_event —
 // append-only, caller-scoped, clamped timestamps, 90-day retention.
 
 const DAY = 86_400_000
+
+describe('#873: validated Home destinations', () => {
+  test('a deleted last row yields the older usable destination', async ({ admin }) => {
+    const table = await makeTable(admin, { name: 'Resume Plant', columns: ['title'], title_column: 'title' })
+    for (const row_id of ['south', 'north']) {
+      await admin.post(table.url, { row_id, title: `${row_id} depot` })
+      const read = await admin.fetch(`${table.url}/${row_id}`)
+      await admin.post('/api/events', { events: [{ kind: 'row', key: `row:${table.name}/${row_id}`,
+        label: row_id, sub: table.name, path: `/featherbase/admin/${encodeURIComponent(table.name)}/${row_id}`,
+        claim: read.headers.get('X-Navigation-Claim') }] })
+    }
+    await admin.delete(`${table.url}/north`)
+    const home = await admin.post<{ entries: Array<{ label: string; path: string }> }>('/api/home_resume', {})
+    expect(home.entries).toEqual([expect.objectContaining({ label: 'south depot', path: '/featherbase/admin/Resume%20Plant/south' })])
+  })
+})
 
 function ev(key: string, at?: number, extra: Record<string, unknown> = {}) {
   return { kind: 'row', key, label: key, path: `/admin/X/${key}`, ...(at ? { at } : {}), ...extra }
