@@ -21,6 +21,32 @@ async function noManagerEmails() {
 /** What the sign-in page leaves behind for the Administrator. */
 const justSignedIn = () => sessionStorage.setItem(OFFER_SETUP_KEY, '1')
 
+test('a pending sign-in offer never takes over a new-row deep link after readiness resolves', async ({ admin }) => {
+  await noManagerEmails()
+  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'disable_leavers'`
+  justSignedIn()
+  let release: () => void = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url
+    if (url.includes('/api/instance-health')) await held
+    return real(input, init)
+  })
+  const path = '/featherbase/admin/Person/new'
+  const { router } = await renderApp(path, admin)
+  try {
+    expect(await screen.findByTestId('form-view')).toBeInTheDocument()
+  } finally {
+    release()
+  }
+  await screen.findByTestId('health-banner')
+  await waitFor(() => expect(sessionStorage.getItem(OFFER_SETUP_KEY)).toBeNull())
+  expect(router.state.location.pathname).toBe(path)
+  expect(screen.getByTestId('form-view')).toBeInTheDocument()
+  expect(screen.queryByTestId('welcome-setup')).not.toBeInTheDocument()
+})
+
 test('signing in welcomes the first administrator with optional next steps', async ({ admin }) => {
   await noManagerEmails()
   justSignedIn()
