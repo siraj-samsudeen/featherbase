@@ -12,5 +12,5 @@
 ## 3. Verification and delivery
 
 - [x] 3.1 Run targeted and broader source/query tests, typechecks, effective acceptance, strict OpenSpec and repository guards.
-- [ ] 3.2 Inspect real browser screenshots and interaction recording; obtain ordinary review at a pinned head.
-- [x] 3.3 Push branch, prepare PR with rationale/evidence and exact-head CI/comment subscriptions; report to manager. Leave sync/archive/merge/deployment gated.
+- [x] 3.2 Inspect real browser screenshots and interaction recording; obtain ordinary review at a pinned head. Reviews cover source 8098733f and test-only d61b5de5 with no L1/L2 findings; author-model provenance remains unverified, with that hold cleared by the owner.
+- [x] 3.3 Push branch, prepare PR with rationale/evidence and exact-head CI/comment subscriptions; report to manager. Manager authorized published-main integration and spec sync/archive; merge and deployment remain gated.
