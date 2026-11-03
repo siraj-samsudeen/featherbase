@@ -33,13 +33,13 @@ class PrototypeLibrary {
     assert.equal(await this.page.getByTestId('awesomebar-new').count(), 2);
     await this.page.getByTestId('awesomebar-table').filter({ hasText: 'Lab Project' }).click();
     await this.page.getByRole('searchbox', { name: 'Search Lab Project names', exact: true }).fill(query);
-    await this.page.getByTestId('list-rows').getByRole('link', { name: 'lab-north', exact: true }).waitFor();
+    await this.page.getByTestId('list-rows').getByRole('link', { name: 'North workshop', exact: true }).waitFor();
     this.originalCollection = this.page.url();
     assert.equal(await this.page.getByTestId('list-rows').getByText('South studio', { exact: true }).count(), 0);
   }
 
   async followRelated() {
-    await this.page.getByTestId('list-rows').getByRole('link', { name: 'lab-north', exact: true }).click();
+    await this.page.getByTestId('list-rows').getByRole('link', { name: 'North workshop', exact: true }).click();
     await this.page.getByRole('textbox', { name: 'Name', exact: true }).waitFor();
     await this.page.getByRole('link', { name: 'Related tasks →', exact: true }).click();
     await this.page.getByTestId('list-rows').getByText('Prepare workshop', { exact: true }).waitFor();
