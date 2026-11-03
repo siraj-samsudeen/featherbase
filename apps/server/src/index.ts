@@ -60,7 +60,7 @@ import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker, stopWorker, syncScheduledJobs } from './jobs'
 import { attachRealtime, closeSessionSockets, publishDocEvent, publishUserEvent } from './realtime'
 import { createAssignment } from './assign'
-import { queueEmail, sendTestEmail } from './email'
+import { mailTransport, queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
 import { MIN_PASSWORD_LENGTH, requestPasswordReset, resetPassword } from './password-reset'
 import { renderWebPage } from './website'
@@ -1184,12 +1184,21 @@ app.post('/api/set_password', async (c) => {
 app.get('/api/people/:id/identities', async (c) => {
   await assertSystemManager(who(c))
   const user = c.req.param('id')
-  const [row] = await sql`select (password_hash is not null) as has_password from person where row_id = ${user}`
+  const [row] = await sql`select (password_hash is not null) as has_password, email, expects_google_sign_in from person where row_id = ${user}`
   if (!row) throw new AppError('NotFoundError', `Person ${user} not found`)
   // Every method row, turned off or not, so an identity on a disabled method
   // still shows its name on the Person form.
   const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
-  return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
+  return c.json({
+    identities: await listIdentities(user, { includeEnded: true }),
+    has_password: row.has_password === true,
+    methods,
+    // #833: the Person's own address starts a Google invite, the panel explains
+    // an expected Google sign-in, and says where an invitation went.
+    email: row.email ?? null,
+    expects_google_sign_in: row.expects_google_sign_in === true,
+    mail_transport: mailTransport(),
+  })
 })
 
 // #667: why a person sees nothing from an app's datasets: the provider's

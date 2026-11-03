@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { prettifyLabel } from 'shared'
+import { DEFAULT_ID_PATTERN, prettifyLabel } from 'shared'
 import { inAppTransaction, sql, whenTransactionEnds, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
@@ -159,7 +159,7 @@ export type TableDef = z.infer<typeof tableDefSchema>
 function validateIdPattern(pattern: string, columnNames: string[]): void {
   const bad = (message: string) =>
     new AppError('ValidationError', message, { id_pattern: message })
-  if (pattern === 'hash' || pattern === 'prompt') return
+  if (pattern === 'hash' || pattern === 'prompt' || pattern === 'integer') return
   if (pattern.startsWith('opaque:')) {
     if (!/^[a-z]{2,8}_$/.test(pattern.slice('opaque:'.length)))
       throw bad('An opaque id pattern names a short lowercase prefix ending in _, e.g. opaque:psn_')
@@ -178,6 +178,14 @@ function validateIdPattern(pattern: string, columnNames: string[]): void {
   ]
   if (!prefix) throw bad('A series needs a prefix before the digits')
   if (!/^#+$/.test(mask)) throw bad('A series ends in # digit placeholders, e.g. ZONE-.###')
+}
+
+// #855: the key of a Table's row counter in `series`: one count per Table and
+// prefix ('' for plain numbers), never per prefix text alone, so two Tables
+// numbered alike keep separate counts. Table names hold no ':', and the
+// 'table:' marker keeps these keys apart from the old per-prefix ones.
+export function seriesKey(table: string, prefix: string): string {
+  return `table:${table}:${prefix}`
 }
 
 // NAM-001: change only how new rows are named. Deliberately narrow — the full
@@ -749,7 +757,10 @@ export async function createTable(
       module: def.module ?? 'Core',
       kind: def.kind ?? 'table',
       is_submittable: def.is_submittable ?? false,
-      id_pattern: def.id_pattern ?? 'hash',
+      // #855: a new Table numbers its rows 1, 2, 3 unless told otherwise. Child
+      // rows and a Settings Table's single row keep random ids, and a bound
+      // Table's ids come from its source.
+      id_pattern: def.id_pattern ?? ((def.kind ?? 'table') === 'table' && !def.data_source ? DEFAULT_ID_PATTERN : 'hash'),
       title_column: def.title_column ?? null,
       reading_presentation: def.reading_presentation ?? null,
       description: def.description ?? null,
@@ -1147,6 +1158,12 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
     await tx`set constraints featherbase.table_navigation_identity_unique immediate`
     await tx`update column_def set reference_table = ${to} where reference_table = ${from}`
     await tx`update column_def set row_table = ${to} where row_table = ${from}`
+    // #855: the renamed Table carries on its own counts. Counts left by a
+    // deleted Table of the new name give way first (the primary key would
+    // refuse the move); skipping taken ids keeps them from mattering.
+    await tx`delete from series where starts_with(name, ${seriesKey(to, '')})`
+    await tx`update series set name = ${seriesKey(to, '')} || substr(name, ${seriesKey(from, '').length + 1})
+             where starts_with(name, ${seriesKey(from, '')})`
     for (const child of children)
       await tx.unsafe(`update ${child} set parenttype = $1 where parenttype = $2`, [to, from])
     for (const p of pointers)
