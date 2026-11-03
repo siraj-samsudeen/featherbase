@@ -1,6 +1,8 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
 import { jobRegistrant, syncScheduledJobs } from '../jobs'
+import { assertSystemManager } from '../permissions'
+import { COPY_CADENCES } from 'shared'
 
 // A Scheduled Job row IS the schedule. Saving one re-times its queue entry
 // once the row is committed; deleting one withdraws the pending entry (a
@@ -8,9 +10,14 @@ import { jobRegistrant, syncScheduledJobs } from '../jobs'
 const controller: TableController = {
   table: 'Scheduled Job',
   hooks: {
-    before_validate: async ({ row, old, isNew, tx }) => {
+    before_validate: async ({ row, old, isNew, tx, user }) => {
       const method = String(row.method ?? old?.method ?? '').trim()
       if (!method) throw new AppError('ValidationError', 'method is required', { method: 'required' })
+      if (method.startsWith('copy_refresh_')) {
+        await assertSystemManager(user)
+        if (!COPY_CADENCES.includes(String(row.cadence ?? old?.cadence) as typeof COPY_CADENCES[number]))
+          throw new AppError('ValidationError', 'Choose a copied-table refresh cadence', { cadence: 'Every 15 minutes, hourly, every 4 hours or daily' })
+      }
       // #700, Codex round 3: a job's method is the code it runs, so it is
       // fixed once the job exists: moving it would hand one job's handler
       // another job's schedule.
@@ -33,7 +40,8 @@ const controller: TableController = {
     after_commit: async ({ row }) => {
       await syncScheduledJobs(String(row.method))
     },
-    on_trash: async ({ row, tx }) => {
+    on_trash: async ({ row, tx, user }) => {
+      if (String(row.method).startsWith('copy_refresh_')) await assertSystemManager(user)
       // #700: an app's job is the app's for as long as it is installed: it
       // goes when the app is removed or an upgrade drops it, never by hand
       // (a re-created row would no longer be the app's).
