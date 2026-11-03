@@ -4,9 +4,7 @@
 
 ### Requirement: Explore follows linked rows within one connected Postgres source
 
-Explore SHALL evaluate direct Reference relationship filters between Tables bound to the same Postgres Data Source record, including nested filters, over the complete filtered upstream set with exact counts and grouped counts, independent of displayed pages. Every nested hop SHALL enforce existing read authorization, Column tiers, Data Scope, source allowlists and platform isolation, within the existing depth and request-wide hop budgets.
-
-Relationship-filter execution across different source records, between native and connected Tables, on other engines, or through parent and Sub-table traversal SHALL remain refused, as SHALL unsupported or over-budget requests. Existing selected-row literal filtering and source sum restrictions remain unchanged.
+The server SHALL evaluate direct Reference relationship filters within one PostgreSQL Data Source record over the complete filtered upstream set, including nesting and exact counts/groups. Every hop SHALL retain read permissions, tiers, Data Scope, allowlists, platform isolation and existing budgets. Cross-source, native-bound, non-PostgreSQL, parent/via and over-budget requests SHALL be refused. Selected-row filters and sum restrictions remain unchanged.
 
 #### Scenario: All connected floors appear before selecting a store
 
