@@ -64,7 +64,7 @@ export const ACCOUNT_SIGN_IN_METHODS_PATH = `${ACCOUNT_ROOT}/sign-in-methods`
 // segment; `title` is what a person sees.
 // `manage`: only a System Manager can open the page; anyone else is sent to
 // the Admin home, so their visit is never remembered as a recent (#476 rule).
-export const ADMIN_STATIC_PAGES: readonly { slug: string; title: string; manage?: true }[] = [
+export const ADMIN_PAGES: readonly { slug: string; title: string; manage?: true; administrator?: true; unrecorded?: true }[] = [
   { slug: 'imports', title: 'Imports', manage: true },
   { slug: 'access-tokens', title: 'Access tokens' },
   { slug: 'find-person', title: 'Find a person by identifier' },
@@ -73,11 +73,19 @@ export const ADMIN_STATIC_PAGES: readonly { slug: string; title: string; manage?
   { slug: 'waiting-for-access', title: 'Waiting for access', manage: true },
   { slug: 'apps', title: 'Apps', manage: true },
   { slug: 'instance-health', title: 'Instance health', manage: true },
+  { slug: 'jobs', title: 'Jobs', manage: true, unrecorded: true },
+  { slug: 'all-tables', title: 'All tables', unrecorded: true },
+  { slug: 'import', title: 'Import Data', manage: true, unrecorded: true },
+  { slug: 'setup', title: 'Welcome', manage: true, unrecorded: true },
+  { slug: 'setup/people', title: 'Set up people', administrator: true, unrecorded: true },
 ]
+
+// Keep the recent-actions catalogue's existing membership unchanged.
+export const ADMIN_STATIC_PAGES = ADMIN_PAGES.filter((page) => !page.unrecorded)
 
 /** Does this static admin page open only for a System Manager? */
 export function adminPageNeedsManage(slug: string): boolean {
-  return ADMIN_STATIC_PAGES.some((p) => p.slug === slug && p.manage === true)
+  return ADMIN_PAGES.some((p) => p.slug === slug && p.manage === true)
 }
 
 /** Admin first segments that are real pages but not worth remembering
@@ -94,7 +102,7 @@ export const ADMIN_NAMED_PAGE_KINDS: Record<string, string> = {
 
 /** The title of a static admin page, or undefined for any other slug. */
 export function adminPageTitle(slug: string): string | undefined {
-  return ADMIN_STATIC_PAGES.find((p) => p.slug === slug)?.title
+  return ADMIN_PAGES.find((p) => p.slug === slug)?.title
 }
 
 /** The title when `path` is exactly a static admin page (any query, hash or

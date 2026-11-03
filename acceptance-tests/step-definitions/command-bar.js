@@ -63,3 +63,68 @@ When('the user replaces the search with Sign In Meth and immediately activates t
 Then('the previous Person record is not opened', async function () {
   await this.commandBar.expectReplacementSearch();
 });
+
+Given('the user manages the instance', async function () {
+  this.commandBar = new CommandBar(await this.asSystemManager());
+  await this.commandBar.visitAdmin();
+});
+
+Given('the user can read Person but cannot manage the instance', async function () {
+  const role = await this.withApi(api => api.readerRoleFor('Person'));
+  await this.person('the user', [role]);
+  this.commandBar = new CommandBar(await this.actor());
+  await this.commandBar.visitAdmin();
+});
+
+When('the user finds Instance health through the command bar', async function () {
+  await this.commandBar.findDestination('Instance health');
+});
+
+Then('the instance health page is shown without the command dropdown', async function () {
+  await this.commandBar.expectInstanceHealth();
+});
+
+When('the user finds System Settings through the command bar', async function () {
+  await this.commandBar.findDestination('System Settings');
+});
+
+Then('the existing System Settings form is shown', async function () {
+  await this.commandBar.expectExistingSettings();
+});
+
+When('the user searches for Instance health through the command bar', async function () {
+  await this.commandBar.searchDestination('Instance health');
+});
+
+Then('Instance health is not offered', async function () {
+  await this.commandBar.expectDestinationAbsent('Instance health');
+});
+
+Given('the user is searching for access in the command bar', async function () {
+  this.commandBar = new CommandBar(await this.asSystemManager());
+  await this.commandBar.searchAccess();
+});
+
+When('the user clicks outside the command bar', async function () {
+  await this.commandBar.clickOutside();
+});
+
+When('the user focuses a result and presses Escape', async function () {
+  await this.commandBar.escapeFromResult();
+});
+
+When('the user presses Escape in the search', async function () {
+  await this.commandBar.escapeFromSearch();
+});
+
+Then('its results are hidden with the search preserved', async function () {
+  await this.commandBar.expectPreservedDismissal();
+});
+
+Then('focusing the command bar shows its results again', async function () {
+  await this.commandBar.reopenPreservedSearch();
+});
+
+Then('the command shortcut shows its results again', async function () {
+  await this.commandBar.reopenPreservedSearch(true);
+});
