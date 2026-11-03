@@ -64,7 +64,8 @@ describe('the checks (5.1)', () => {
       const text = await healthCommand('development', false)
       expect(text.code).toBe(0)
       expect(text.stdout).toContain('Featherbase is ready to explore.')
-      expect(text.stdout).toContain('optional: Settings file applied')
+      expect(text.stdout).toContain('optional: Settings file applied — Settings are managed in Featherbase. A managed settings file is optional.')
+      expect(text.stdout).not.toContain('Next:')
     })
   })
 
@@ -82,7 +83,9 @@ describe('the checks (5.1)', () => {
     const text = await healthCommand('production', false)
     expect(text.code).toBe(1)
     expect(text.stdout).toContain('Complete the required setup before shared use.')
-    expect(text.stdout).toContain('setup-needed: A System Manager with an email address')
+    expect(text.stdout).toContain('setup-needed: A System Manager with an email address — No System Manager has an email address, so system notices reach nobody.')
+    expect(text.stdout).toContain('Next: Give a System Manager an email address')
+    expect(text.stdout).not.toContain('Featherbase needs attention.')
     expect(text.stdout).toContain('  Next:')
   })
 
@@ -192,7 +195,8 @@ describe('the checks (5.1)', () => {
     const text = await healthCommand('development', false)
     expect(text.code).toBe(1)
     expect(text.stdout).toContain('Featherbase needs attention.')
-    expect(text.stdout).toContain('fault: Scheduled job: disable_leavers')
+    expect(text.stdout).toContain('fault: Scheduled job: disable_leavers — The last run failed: the warehouse feed is stale')
+    expect(text.stdout).toContain('Next: Open Jobs in Admin to see the error')
 
     await sql`update scheduled_job set last_outcome = 'success' where method = 'disable_leavers'`
     expect(byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers').ok).toBe(true)
@@ -247,6 +251,14 @@ describe('the checks (5.1)', () => {
 
     await sql`update person set password_hash = ${hashPassword('a-long-rotated-secret')} where row_id = 'Administrator'`
     expect(byKey(await runHealthChecks({ environment: 'production' }), 'administrator-password').ok).toBe(true)
+  })
+
+  test('an Administrator without a password has no default-password fault', async () => {
+    await sql`update person set password_hash = null where row_id = 'Administrator'`
+    expect(byKey(await runHealthChecks({ environment: 'production' }), 'administrator-password')).toMatchObject({
+      ok: true, state: 'ready', fix: null,
+      message: 'The Administrator has no password, so it cannot sign in with one.',
+    })
   })
 
   test('an app missing a required setting or secret: one failing check per app, naming what is missing', async () => {

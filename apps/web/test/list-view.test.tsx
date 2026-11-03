@@ -24,12 +24,12 @@ const rowsEl = () => screen.getByTestId('list-rows')
 const cellTexts = (col: string) =>
   [...rowsEl().querySelectorAll(`[data-testid="cell-${col}"]`)].map((e) => e.textContent ?? '')
 
-async function seedTickets(admin: Admin, name: string, count = 3) {
+async function seedTickets(admin: Admin, name: string, count = 3, choice_labels?: Record<string, string>) {
   await admin.post('/api/table_def', {
     name,
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },
-      { column_name: 'stage', column_type: 'Choice', label: 'Stage', choices: 'Open\nClosed', in_list_view: true },
+      { column_name: 'stage', column_type: 'Choice', label: 'Stage', choices: 'Open\nClosed', choice_labels, in_list_view: true },
       { column_name: 'rank', column_type: 'Int', label: 'Rank', in_list_view: true },
     ],
   })
@@ -115,15 +115,17 @@ test('Sort by any column: clicking a heading sorts, clicking it again reverses t
 })
 
 test('Narrow the list with filters: a filter narrows the rows, shows as its own chip, and removing it brings every row back', async ({ admin }) => {
-  await seedTickets(admin, 'Lv Filtered', 4)
+  await seedTickets(admin, 'Lv Filtered', 4, { Open: 'Awaiting response' })
   await openList(admin, 'Lv Filtered')
   await waitFor(() => expect(cellTexts('title')).toHaveLength(4))
 
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'stage' } })
+  expect(within(screen.getByRole('combobox', { name: 'Filter value' })).getByRole('option', { name: 'Awaiting response' })).toHaveValue('Open')
   fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'Open' } })
   fireEvent.click(screen.getByTestId('filter-add'))
   await waitFor(() => expect(cellTexts('title')).toEqual(['row-03', 'row-01']))
   expect(screen.getAllByTestId('filter-chip')).toHaveLength(1)
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Stage = Awaiting response')
 
   // A second filter narrows further, and each chip can go on its own.
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'rank' } })

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { choiceLabel } from 'shared'
 import { api, listResource } from '../lib/api'
+import { useI18n } from '../lib/i18n'
 import { NO_COLUMN_TYPES, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { buttonClasses, inputClasses } from '@featherbase/shop-floor'
 
@@ -210,6 +212,7 @@ function AutoLayout({
   d: Row
   fmt: (v: unknown) => string
 }) {
+  const { t } = useI18n()
   const scalarColumns = m.columns.filter(
     (c) => !NO_COLUMN_TYPES.has(c.column_type) && c.column_type !== 'Sub-table' && !c.hidden,
   )
@@ -224,7 +227,9 @@ function AutoLayout({
               {c.label ?? c.column_name}
             </dt>
             <dd className="text-sm" data-print-value={c.column_name}>
-              {fmt(d[c.column_name])}
+              {c.column_type === 'Choice' && d[c.column_name] != null
+                ? choiceLabel(String(d[c.column_name]), c.choice_labels, t)
+                : fmt(d[c.column_name])}
             </dd>
           </div>
         ))}

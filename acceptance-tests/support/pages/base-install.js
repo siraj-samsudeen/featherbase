@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { expect } = require('playwright/test');
 const { Api, SYSTEM_MANAGER, signedInState } = require('../api');
 const { resetAcceptance, acceptanceSql, isolatedEnvironment, REPO_ROOT } = require('../stack');
 
@@ -323,11 +324,11 @@ class BaseInstall {
   }
   async platformName() {
     const options = this.page.getByRole('combobox', { name: 'Switch application' }).locator('option');
-    assert.ok((await options.allTextContents()).includes('Featherbase'));
+    await expect.poll(() => options.allTextContents()).toContain('Featherbase');
   }
   async taskerName() {
     const options = this.page.getByRole('combobox', { name: 'Switch application' }).locator('option');
-    assert.ok((await options.allTextContents()).includes('Tasker'));
+    await expect.poll(() => options.allTextContents()).toContain('Tasker');
   }
   async configureDash() {
     await this.inspect('feather_dash');

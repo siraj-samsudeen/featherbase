@@ -37,6 +37,7 @@ const fill = z.union([z.string(), z.number(), z.boolean()])
 const alterable = z.object({
   label: z.string().min(1).nullable(),
   choices: z.string().nullable(),
+  choice_labels: z.record(z.string(), z.string()).nullable(),
   reqd: z.boolean().nullable(),
   unique: z.boolean().nullable(),
   default_value: z.string().nullable(),
@@ -46,7 +47,7 @@ const alterable = z.object({
 }).partial().strict()
 // What only changes what people read: a step naming nothing else writes the
 // definition and no row (#663).
-const DISPLAY_ONLY = new Set(['label', 'description', 'hidden'])
+const DISPLAY_ONLY = new Set(['label', 'description', 'hidden', 'choice_labels'])
 const displayOnly = (to: z.infer<typeof alterable>) => Object.keys(to).every(key => DISPLAY_ONLY.has(key))
 
 // #651: every operation carries what it removes or replaces (a dropped Table

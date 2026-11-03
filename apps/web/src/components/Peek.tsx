@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
+import { choiceLabel } from 'shared'
 import { api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, listColumns, useMeta, type ColumnDef } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
@@ -15,6 +16,7 @@ import { connectionLabel, useConnections, type Filter } from '../lib/connections
 import { Indicator } from './ListView'
 import { iconButtonClasses, labelClasses, pillClasses } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
+import { useI18n } from '../lib/i18n'
 
 type Row = Record<string, unknown>
 
@@ -260,6 +262,7 @@ function PeekValue({
   settings: ReturnType<typeof useSettings>
   push: (f: PeekFrame) => void
 }) {
+  const { t } = useI18n()
   if (value == null || value === '') return <span className="text-ink-subtle">—</span>
   if (field.column_type === 'Reference' && field.reference_table)
     return (
@@ -272,7 +275,7 @@ function PeekValue({
       </button>
     )
   if (field.column_type === 'Check') return <span>{value ? '✓' : '✗'}</span>
-  if (field.column_type === 'Choice') return <Indicator value={String(value)} />
+  if (field.column_type === 'Choice') return <Indicator value={String(value)} label={choiceLabel(String(value), field.choice_labels, t)} />
   return <span>{formatValue(field.column_type, value, settings) || String(value)}</span>
 }
 
@@ -285,6 +288,7 @@ function PeekChildGrid({
   rows: Row[]
   push: (f: PeekFrame) => void
 }) {
+  const { t } = useI18n()
   const childMeta = useMeta(field.row_table ?? '')
   const settings = useSettings()
   if (!childMeta.data || !rows.length) return null
@@ -321,7 +325,9 @@ function PeekChildGrid({
                       {String(r[c.column_name])}
                     </button>
                   ) : (
-                    <span>{formatValue(c.column_type, r[c.column_name], settings) || '—'}</span>
+                    <span>{c.column_type === 'Choice' && r[c.column_name] != null
+                      ? choiceLabel(String(r[c.column_name]), c.choice_labels, t)
+                      : formatValue(c.column_type, r[c.column_name], settings) || '—'}</span>
                   )}
                 </td>
               ))}
@@ -342,6 +348,7 @@ function PeekList({
   filters: Filter[]
   push: (f: PeekFrame) => void
 }) {
+  const { t } = useI18n()
   const meta = useMeta(table)
   const settings = useSettings()
   const columns = meta.data ? listColumns(meta.data) : []
@@ -375,7 +382,9 @@ function PeekList({
             >
               {columns.map((c, i) => (
                 <td key={c.column_name} className={`px-3 py-1.5 ${i === 0 ? 'font-medium text-action' : ''}`}>
-                  {formatValue(c.column_type, r[c.column_name], settings) || '—'}
+                  {c.column_type === 'Choice' && r[c.column_name] != null
+                    ? choiceLabel(String(r[c.column_name]), c.choice_labels, t)
+                    : formatValue(c.column_type, r[c.column_name], settings) || '—'}
                 </td>
               ))}
             </tr>

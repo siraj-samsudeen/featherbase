@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { choiceLabel } from 'shared'
 import { api, ApiError } from '../lib/api'
 import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
+import { useI18n } from '../lib/i18n'
 
 // RPT-005: renders a server-side Code Report — its declared filter controls
 // and the columns+rows its execute() returns.
@@ -11,6 +13,7 @@ interface FilterDef {
   label: string
   column_type: string
   choices?: string
+  choice_labels?: Record<string, string> | null
   default?: unknown
 }
 interface ScriptReportMeta {
@@ -32,6 +35,7 @@ function FilterControl({
   value: unknown
   onChange: (v: string) => void
 }) {
+  const { t } = useI18n()
   const testid = `sr-filter-${def.column_name}`
   if (def.column_type === 'Choice') {
     const opts = (def.choices ?? '').split('\n')
@@ -39,7 +43,7 @@ function FilterControl({
       <select className={inputClasses()} data-testid={testid} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
         {opts.map((o) => (
           <option key={o} value={o}>
-            {o || '(any)'}
+            {o ? choiceLabel(o, def.choice_labels, t) : '(any)'}
           </option>
         ))}
       </select>
