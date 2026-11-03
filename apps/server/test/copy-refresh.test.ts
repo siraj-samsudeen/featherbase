@@ -87,6 +87,36 @@ describe('Scheduled copied-table refresh', () => {
     expect(await admin.get('/api/table/Scheduled%20Stores/S001')).toMatchObject({ title: 'Private correction' })
   })
 
+  test('a notice outage does not retry a committed refresh', async ({ admin, createUser }) => {
+    await changeStandin(dir, 'sales', ['create table outage_stores as select * from stores'])
+    await makeCopy(admin, 'outage_stores')
+    await createUser({ email: 'copy.outage840@example.test', roles: ['System Manager'] })
+    const row = await admin.get<{ updated_at: string }>('/api/table/Scheduled%20Stores/S001')
+    await admin.post('/api/save_row', { table: 'Scheduled Stores', row: { row_id: 'S001', title: 'Personal correction', updated_at: row.updated_at } })
+    await changeStandin(dir, 'sales', ["update outage_stores set name = 'New source value' where code in ('S001', 'S002')"])
+    invalidateSources('refresh-test')
+    // Fail at the real queue boundary, after the atomic copy has committed.
+    await sql`create function featherbase.refuse_refresh_notice() returns trigger language plpgsql as $$
+      begin raise exception 'notice queue unavailable'; end $$`
+    await sql`create trigger refuse_refresh_notice before insert on featherbase.email_queue
+      for each row execute function featherbase.refuse_refresh_notice()`
+    await sql`delete from background_job`
+    const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
+    await sql`update background_job set run_at = now() where method = ${schedule.method}`
+    await runOneJob()
+    const [execution] = await sql`select outcome, result from job_execution where method = ${schedule.method}`
+    expect(execution.outcome).toBe('success')
+    expect(execution.result).toContain('Conflict notice could not be queued')
+    expect(await admin.get('/api/table/Scheduled%20Stores/S001')).toMatchObject({ title: 'Personal correction' })
+    expect(await admin.get('/api/table/Scheduled%20Stores/S002')).toMatchObject({ title: 'New source value' })
+    const info = await admin.get<{ last_run_id: string }>('/api/table/Scheduled%20Stores:copy_info')
+    expect(execution.result).toContain(`batch ${info.last_run_id}`)
+    const queued = await sql`select attempts, run_at > now() as future from background_job where method = ${schedule.method} and job_status = 'queued'`
+    expect(queued).toEqual([{ attempts: 0, future: true }])
+    await admin.post('/api/table/Scheduled%20Stores:import-revert', { run_id: info.last_run_id })
+    expect(await admin.get('/api/table/Scheduled%20Stores/S002')).toMatchObject({ title: 'Hill Street' })
+  })
+
   test('a scheduled change is an undoable system observation', async ({ admin }) => {
     await changeStandin(dir, 'sales', ['create table actor_stores as select * from stores'])
     await makeCopy(admin, 'actor_stores')
@@ -168,6 +198,23 @@ describe('Scheduled copied-table refresh', () => {
     expect(await sql`select row_id from background_job where method = ${schedule.method} and job_status = 'queued'`).toHaveLength(0)
     expect(await sql`select row_id from import_log where row_id = ${log.row_id}`).toHaveLength(1)
     await admin.delete('/api/table/Data%20Source/refresh-test')
+  })
+
+  test('a stale invocation fails terminally after its schedule is removed', async ({ admin }) => {
+    await makeCopy(admin)
+    const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
+    await admin.delete(`/api/table/Scheduled%20Job/${schedule.method}`)
+    await sql`delete from background_job`
+    const info = await admin.get('/api/table/Scheduled%20Stores:copy_info')
+    const job = await admin.post<{ name: string }>('/api/enqueue_job', { method: schedule.method, repeat_every: 3600 })
+    await sql`update background_job set run_at = now() where row_id = ${job.name}`
+    await runOneJob()
+    const [finished] = await sql`select job_status, error from background_job where row_id = ${job.name}`
+    expect(finished.job_status).toBe('failed')
+    expect(finished.error).toContain('schedule has been removed')
+    expect(await admin.get('/api/table/Scheduled%20Stores:copy_info')).toEqual(info)
+    expect(await sql`select row_id from background_job where method = ${schedule.method} and job_status = 'queued'`).toHaveLength(0)
+    expect(await admin.get('/api/table/Scheduled%20Stores:copy_schedule')).toBeNull()
   })
 
   test('a removed schedule cannot restart itself after an in-flight run', async ({ admin }) => {
