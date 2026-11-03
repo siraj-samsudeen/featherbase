@@ -270,3 +270,16 @@ test('Clear unticks every choice and removes the filter', async ({ admin }) => {
   await waitFor(() => expect(codes()).toHaveLength(6))
   expect(chips()).toEqual([])
 })
+
+const RACKS = ['Shoe Rack', 'Saree Rack', 'Rack Ends']
+
+test('Searching Section\'s 12 choices for "rack", then ticking every one found, ticks only the rack sections', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  const list = openBox('section')
+  fireEvent.change(within(list).getByRole('searchbox', { name: 'Search Section choices' }), { target: { value: 'rack' } })
+  fireEvent.click(within(list).getByRole('button', { name: 'Select all' }))
+  await waitFor(() => expect(codes()).toEqual(['R2', 'R3', 'R5']))
+  expect(chips()).toEqual(['section in Shoe Rack, Saree Rack, Rack Ends×'])
+  expect(ticked(list)).toEqual(RACKS)
+})
