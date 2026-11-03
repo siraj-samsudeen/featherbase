@@ -1,5 +1,6 @@
 import { writeFile } from 'node:fs/promises'
-import { anonymousTest, adminAuth, loginAs, type APIRequestContext } from './fixtures'
+import { anonymousTest, expect, adminAuth, loginAs, type APIRequestContext } from './fixtures'
+import { ensureTable } from './fixtures-ui'
 
 // Bounded, test-only evidence for #774's unreproduced initial-Welcome failure.
 // Never record URLs with queries, arbitrary storage, auth data or response bodies.
@@ -161,6 +162,66 @@ test.afterAll(async ({ request }) => {
   for (const id of await managersWithEmail(request)) if (!switchedOff.includes(id)) await patch(request, 'Person', id, { enabled: false })
   for (const id of pausedJobs) await patch(request, 'Scheduled Job', id, { enabled: true })
 })
+
+for (const width of [375, 1280]) {
+  test(`a pending offer preserves a full-document new-row deep link at ${width}px`, async ({ session, request }) => {
+    const table = 'Setup deep link'
+    const path = `/featherbase/admin/${encodeURIComponent(table)}/new`
+    await ensureTable(request, headers, {
+      name: table, id_pattern: 'hash',
+      columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
+    })
+    // A real operational fault gives us a visible barrier proving the delayed
+    // health result has rendered, rather than a timer or a negative assertion.
+    const method = `e2e_setup_missing_handler_${width}`
+    const made = await request.post('/api/save_row', {
+      headers, data: { table: 'Scheduled Job', row: { method, cadence: 'daily', enabled: true } },
+    })
+    expect(made.status()).toBe(201)
+    const job = (await made.json()).row_id as string
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    try {
+      // As in instance-health.spec.ts, wait for the worker's actual failure,
+      // including its attempts, before the optimistic-lock cleanup can run.
+      const filters = encodeURIComponent(JSON.stringify([['method', '=', method], ['job_status', '=', 'failed']]))
+      await expect.poll(async () => {
+        const response = await request.get(`/api/table/Background%20Job?filters=${filters}`, { headers })
+        expect(response.status()).toBe(200)
+        return (await response.json()).data.length
+      }, { timeout: 15_000 }).toBe(1)
+      await session.step('hold real readiness across sign-in and the new document', async ({ page }) => {
+        await page.setViewportSize({ width, height: 1000 })
+        await page.route('**/api/instance-health', async (route) => {
+          const response = await route.fetch()
+          await held
+          await route.fulfill({ response })
+        })
+        await loginAs(page)
+        await expect(page.getByTestId('session-user')).toBeVisible()
+        expect(await page.evaluate(() => sessionStorage.getItem('featherbase.offer-setup'))).toBe('1')
+        // Deliberate full-document deep link: this is the reload boundary that
+        // the original 375px form journey crossed, not SPA navigation.
+        await page.goto(path)
+        await expect(page.getByTestId('form-view')).toBeVisible()
+        release()
+      })
+      await session
+        .assertHas('[data-testid="health-banner"]')
+        .assertPath(path)
+        .assertHas('[data-testid="form-view"]')
+        .refuteHas('[data-testid="welcome-setup"]')
+      await session.step('the spent offer stays spent when returning home', async ({ page }) => {
+        expect(await page.evaluate(() => sessionStorage.getItem('featherbase.offer-setup'))).toBeNull()
+      })
+      await session.visit('/featherbase/admin/home/system').assertHas('[data-testid="health-banner"]')
+        .assertPath('/featherbase/admin/home/system').refuteHas('[data-testid="welcome-setup"]')
+    } finally {
+      release()
+      await patch(request, 'Scheduled Job', job, { enabled: false })
+    }
+  })
+}
 
 test('the welcome guide can be deferred and resumed without treating optional setup as a fault', async ({ session }) => {
   await session.step('sign in as Administrator', async ({ page }) => {
