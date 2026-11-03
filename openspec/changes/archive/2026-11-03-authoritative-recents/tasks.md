@@ -14,4 +14,4 @@
 - [x] 3.1 Run targeted and full relevant web checks, typecheck, strict OpenSpec validation and real-server disposable reload/history checks.
 - [x] 3.2 Record and inspect screenshots and an interaction clip; obtain independent headless UI verification at 1280px against #769's checklist.
 - [x] 3.3 Commit, push, prepare the PR and subscribe to exact-head CI and PR comments; report evidence to the manager.
-- [ ] 3.4 After owner video review, sync and archive the change on this branch before merge.
+- [x] 3.4 Under the owner's recommended-default authorization relayed by the manager, sync and archive on this branch before merge. Manager-reviewed media is preserved; this does not claim the owner watched specific frames. Optional design.md remains omitted as documented in adr.md.
