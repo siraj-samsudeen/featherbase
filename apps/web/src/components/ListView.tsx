@@ -1,13 +1,14 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { rowDisplayTitle } from 'shared'
+import { choiceLabel, rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
-import { recentActions, type RecentEntry } from '../lib/recents'
+import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
 import { LinkControl } from './FormView'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
-import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, switchColumn, titleListColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
+import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, switchColumn, titleListColumn, viewColumns, type ColumnArrangement, type ListColumn } from '../lib/list-view-columns'
+import { useI18n } from '../lib/i18n'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
@@ -82,7 +83,7 @@ export function indicatorColor(value: string): string {
   return INDICATOR_PALETTE[h % INDICATOR_PALETTE.length]
 }
 
-export function Indicator({ value }: { value: string }) {
+export function Indicator({ value, label = value }: { value: string; label?: string }) {
   return (
     <span className="inline-flex items-center gap-1.5">
       <span
@@ -90,7 +91,7 @@ export function Indicator({ value }: { value: string }) {
         className="h-2 w-2 shrink-0 rounded-full"
         style={{ backgroundColor: indicatorColor(value) }}
       />
-      {value}
+      {label}
     </span>
   )
 }
@@ -1122,8 +1123,6 @@ function ListRow({
   )
 }
 
-type ListColumn = { column_name: string; label: string; column_type: string; reference_table?: string | null }
-
 // One value of a row, the same in both shapes: the first column links to the
 // row's form, a Choice reads as its status dot and words, a person shows
 // their name, and everything else goes through the display settings.
@@ -1146,6 +1145,7 @@ function ListCell({
   /** A card's meta line (the row id under the title): grey, not body ink. */
   quiet?: boolean
 }) {
+  const { t } = useI18n()
   if (first)
     return (
       <Link
@@ -1168,7 +1168,9 @@ function ListCell({
           // #792: a row with a blank title is led by its id, never a blank.
           String(row.row_id)
         ) : (
-          cell(row[col.column_name], col.column_type, settings)
+          col.column_type === 'Choice' && row[col.column_name] != null
+            ? choiceLabel(String(row[col.column_name]), col.choice_labels, t)
+            : cell(row[col.column_name], col.column_type, settings)
         )}
       </Link>
     )
@@ -1180,7 +1182,7 @@ function ListCell({
       data-testid={`cell-${col.column_name}`}
     >
       {col.column_type === 'Choice' && value != null && value !== '' ? (
-        <Indicator value={String(value)} />
+        <Indicator value={String(value)} label={choiceLabel(String(value), col.choice_labels, t)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
         <PrincipalName id={String(value)} />
       ) : col.column_type === 'Reference' && col.reference_table && !isBlank(value) ? (
@@ -1385,6 +1387,7 @@ function InlineChildGrid({
   rows: Record<string, unknown>[]
   settings: Settings
 }) {
+  const { t } = useI18n()
   const childMeta = useMeta(field.row_table ?? '')
   if (!childMeta.data) return null
   const cols = childMeta.data.columns.filter(
@@ -1421,7 +1424,9 @@ function InlineChildGrid({
                       {isPrincipalTable(c.reference_table) ? <PrincipalName id={String(r[c.column_name])} /> : String(r[c.column_name])}
                     </Link>
                   ) : (
-                    cell(r[c.column_name], c.column_type, settings)
+                    c.column_type === 'Choice' && r[c.column_name] != null
+                      ? choiceLabel(String(r[c.column_name]), c.choice_labels, t)
+                      : cell(r[c.column_name], c.column_type, settings)
                   )}
                 </td>
               ))}
@@ -1472,6 +1477,7 @@ function StandardFilters({
   filters: Filter[]
   onChange: (filters: Filter[]) => void
 }) {
+  const { t } = useI18n()
   const columns = meta.columns
     .filter(
       (f) =>
@@ -1536,7 +1542,7 @@ function StandardFilters({
               value={current(f.column_name, '=')}
               onChange={(e) => apply(f.column_name, '=', e.target.value)}
               data-testid={`std-filter-${f.column_name}`}
-              className={inputClasses('max-w-[10rem]')}
+              className={inputClasses('max-w-[20rem]')}
             >
               <option value="">All</option>
               {(f.choices ?? '')
@@ -1544,7 +1550,7 @@ function StandardFilters({
                 .filter(Boolean)
                 .map((o) => (
                   <option key={o} value={o}>
-                    {o}
+                    {choiceLabel(o, f.choice_labels, t)}
                   </option>
                 ))}
             </select>
@@ -1592,16 +1598,19 @@ export function filterValueLabel(op: string, value: unknown): string {
 /** One filter as a person reads it (#792): its column as the list's heading
  *  names it, and a link compared with one row reads as that row's title. */
 export function FilterWords({ meta, filter }: { meta: import('../lib/meta').TableMeta | undefined; filter: Filter }) {
+  const { t } = useI18n()
   const [column, op, value] = filter
   const col = meta?.columns.find((c) => c.column_name === column)
-  const label = column === 'row_id' ? 'Row ID' : (col?.label ?? column)
+  const label = column === 'row_id' ? 'Row ID' : t(col?.label ?? column)
   const linked =
     col?.column_type === 'Reference' && col.reference_table && (op === '=' || op === '!=') &&
     (typeof value === 'string' || typeof value === 'number') && String(value) !== ''
   return (
     <>
       {label} {op}{' '}
-      {linked ? <RowTitle table={col.reference_table!} rowId={String(value)} /> : filterValueLabel(op, value)}
+      {linked ? <RowTitle table={col.reference_table!} rowId={String(value)} />
+        : (op === '=' || op === '!=') && col?.column_type === 'Choice' ? choiceLabel(String(value), col.choice_labels, t)
+        : filterValueLabel(op, value)}
     </>
   )
 }
@@ -1615,6 +1624,7 @@ export function FilterBar({
   filters: Filter[]
   onChange: (filters: Filter[]) => void
 }) {
+  const { t } = useI18n()
   const fields = [
     { fieldname: 'row_id', label: 'Row ID' },
     ...meta.columns
@@ -1624,6 +1634,9 @@ export function FilterBar({
   const [field, setField] = useState('row_id')
   const [op, setOp] = useState<string>('=')
   const [value, setValue] = useState('')
+  const choice = ['=', '!='].includes(op)
+    ? meta.columns.find((c) => c.column_name === field && c.column_type === 'Choice')
+    : undefined
 
   function add() {
     if (!value.trim()) return
@@ -1637,7 +1650,7 @@ export function FilterBar({
       <div className="flex flex-wrap items-center gap-2">
         <select
           value={field}
-          onChange={(e) => setField(e.target.value)}
+          onChange={(e) => { setField(e.target.value); setValue('') }}
           aria-label="Filter by field"
           data-testid="filter-field"
           className={inputClasses('max-w-[10rem]')}
@@ -1661,7 +1674,20 @@ export function FilterBar({
             </option>
           ))}
         </select>
-        <input
+        {choice ? (
+          <select
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            aria-label="Filter value"
+            data-testid="filter-value"
+            className={inputClasses('max-w-[20rem]')}
+          >
+            <option value="">Choose a value</option>
+            {(choice.choices ?? '').split('\n').filter(Boolean).map((raw) => (
+              <option key={raw} value={raw}>{choiceLabel(raw, choice.choice_labels, t)}</option>
+            ))}
+          </select>
+        ) : <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
@@ -1669,7 +1695,7 @@ export function FilterBar({
           aria-label="Filter value"
           data-testid="filter-value"
           className={inputClasses('max-w-[10rem]')}
-        />
+        />}
         <button
           onClick={add}
           data-testid="filter-add"
@@ -1717,6 +1743,7 @@ function RecentStrip({
   meta: import('../lib/meta').TableMeta | undefined
   onApply: (filters: Filter[]) => void
 }) {
+  const { t } = useI18n()
   const user = getSessionUser()
   const entries = user ? recentActions(user.row_id, 60) : []
   const rows = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${table}/`)).slice(0, 4)
@@ -1756,6 +1783,7 @@ function RecentStrip({
           type="button"
           onClick={() => onApply(parsed)}
           data-testid="recent-strip-view"
+          title={describeFilters(JSON.stringify(parsed), meta?.columns, t)}
           className={touchRowClasses('max-w-72 truncate rounded-full bg-action-tint px-2.5 py-0.5 text-xs font-medium text-action hover:opacity-80')}
         >
           {parsed.map((f, i) => (

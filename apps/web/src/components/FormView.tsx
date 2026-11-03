@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
-import { INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
+import { choiceLabel, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
@@ -884,7 +884,7 @@ function FieldControl({
             .filter(Boolean)
             .map((o) => (
               <option key={o} value={o}>
-                {o}
+                {choiceLabel(o, field.choice_labels, t)}
               </option>
             ))}
         </select>,

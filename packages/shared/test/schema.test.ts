@@ -4,6 +4,7 @@
 // including a few surprises noted inline — see #222.
 import { describe, expect, it } from 'vitest'
 import { tableSchemaToZod, zodFieldErrors, type ColumnDef } from '../src/schema'
+import { choiceLabel } from '../src/choice-label'
 
 const col = (column_name: string, column_type: string, extra: Partial<ColumnDef> = {}): ColumnDef => ({
   column_name,
@@ -316,5 +317,25 @@ describe('tableSchemaToZod: a column named after an Object.prototype key (#436)'
   it('still requires a required constructor column', () => {
     const s = tableSchemaToZod([col('constructor', 'Data', { reqd: true })])
     expect(s.safeParse({}).success).toBe(false)
+  })
+})
+
+describe('authored Choice presentation (#826)', () => {
+  it('uses an exact authored entry without changing unmapped text', () => {
+    const labels = { raw_value: 'Readable policy' }
+    expect(choiceLabel('raw_value', labels)).toBe('Readable policy')
+    expect(choiceLabel('Keep_THIS_text', labels)).toBe('Keep_THIS_text')
+    expect(choiceLabel('constructor', labels)).toBe('constructor')
+    expect(choiceLabel('raw_value', null)).toBe('raw_value')
+  })
+
+  it('retains an installed raw-value translation ahead of new wording', () => {
+    const catalog: Record<string, string> = { raw_value: 'Garder iD', 'Readable policy': 'AUTRE texte' }
+    expect(choiceLabel('raw_value', { raw_value: 'Readable policy' }, text => catalog[text] ?? text)).toBe('Garder iD')
+  })
+
+  it('translates authored wording when no raw-value translation exists', () => {
+    const catalog: Record<string, string> = { 'Readable policy': 'Texte voulu' }
+    expect(choiceLabel('raw_value', { raw_value: 'Readable policy' }, text => catalog[text] ?? text)).toBe('Texte voulu')
   })
 })
