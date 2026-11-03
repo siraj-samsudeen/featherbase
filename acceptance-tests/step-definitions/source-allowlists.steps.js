@@ -17,6 +17,25 @@ Given('a Postgres source is registered with restriction {string}', async functio
   });
 });
 
+Given('a Postgres source already stores the restriction {string} for its public stores table', async function (entry) {
+  await this.withApi(async api => {
+    this.sourceAllowlists = new SourceAllowlists(api, 'postgres', 'public');
+    await this.sourceAllowlists.prepareLegacyRestriction(entry);
+  });
+});
+
+When('the user tries to connect the public stores table', async function () {
+  await this.sourceAllowlists.connectStores();
+});
+
+Then('connection is refused with guidance to use {string}', function (format) {
+  this.sourceAllowlists.expectConnectionRefused(format);
+});
+
+Then('the public stores table connects', async function () {
+  await this.sourceAllowlists.expectStoresConnected();
+});
+
 When('the user saves its table restriction as {string}', async function (entry) {
   await this.sourceAllowlists.saveRestriction(entry);
 });
