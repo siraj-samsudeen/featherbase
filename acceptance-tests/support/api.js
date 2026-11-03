@@ -137,6 +137,15 @@ class Api {
     return res.json();
   }
 
+  async copyWarehouse(source, choices) {
+    const res = await this.call('POST', `/api/table/Data%20Source/${encodeURIComponent(source)}:copy_create`, choices, [200], 'create native warehouse copy');
+    return res.json();
+  }
+
+  async refreshWarehouse(source, database) {
+    await this.call('POST', `/api/table/Data%20Source/${encodeURIComponent(source)}:refresh_tables`, { database }, [200], 'refresh synthetic warehouse');
+  }
+
   /** A role that may read this table (its basic columns). */
   async readerRoleFor(table) {
     const role = `${table} Reader`;

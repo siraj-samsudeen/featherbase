@@ -8,8 +8,9 @@
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { Given, When, Then } = require('@cucumber/cucumber');
-const { addStandinTable } = require('../support/stack');
-const { ConnectWarehousePage, WarehouseSourcePage, DataSourcesSidebar, WarehouseBrowserPage } = require('../support/pages/warehouse-pages');
+const { addStandinTable, changeStandin } = require('../support/stack');
+const { ConnectWarehousePage, WarehouseSourcePage, DataSourcesSidebar, WarehouseBrowserPage, CopiedWarehousePage } = require('../support/pages/warehouse-pages');
+const { FormPage } = require('../support/pages/form-page');
 
 // The stand-in's tokens (apps/server/test/motherduck-standin.ts).
 const TOKENS = {
@@ -276,4 +277,101 @@ Then('clearing the mapping search restores the edited name and omitted city', as
   await this.copy.search('');
   assert.deepEqual(await this.copy.column('name'), { name: 'store_name', label: 'Store title', description: 'Trading name', keep: true });
   assert.equal((await this.copy.column('city')).keep, false);
+});
+
+async function givenStoreWarehouse(world) {
+  const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
+  world.warehouseTable = `copy_${suffix}`;
+  world.nativeTable = `Warehouse Copy ${suffix}`;
+  changeStandin('sales', [`create table ${world.warehouseTable} as select * from stores`]);
+  await givenSource(world, ['sales']);
+}
+
+Given('a warehouse table containing three stores', async function () {
+  await givenStoreWarehouse(this);
+});
+
+When('the user creates a native copy keeping these columns', async function (choices) {
+  this.page = await this.asSystemManager();
+  this.browser = new WarehouseBrowserPage(this.page);
+  await this.browser.open(this.source);
+  await this.browser.pickDatabase('sales');
+  await this.browser.pickSchema('main');
+  await this.browser.pickTable(this.warehouseTable);
+  this.copy = await this.browser.openCopy();
+  for (const row of choices.hashes()) {
+    await this.copy.editColumn(row.Source, { name: row.Name, label: row.Label, description: row.Description });
+  }
+  await this.copy.omit('city');
+  this.copied = await this.copy.create(this.nativeTable);
+});
+
+Then('the native copy lists stores {string}, {string} and {string}', async function (first, second, third) {
+  assert.deepEqual((await this.copied.rowIds()).sort(), [first, second, third].sort());
+});
+
+Then('its ordinary row form uses the approved labels without the omitted city', async function () {
+  this.form = new FormPage(this.page);
+  await this.form.open(this.nativeTable, 'S001');
+  for (const label of ['Store code', 'Trading name', 'State code']) assert.equal(await this.form.showsField(label), true);
+  assert.equal(await this.form.showsField('city'), false);
+  assert.equal(await this.form.value('Store code'), 'S001');
+  assert.equal(await this.form.value('Trading name'), 'Harbour Road');
+});
+
+Then('a correction made in that form is saved', async function () {
+  await this.form.correct('Trading name', 'Native trading correction');
+  await this.form.open(this.nativeTable, 'S001');
+  assert.equal(await this.form.value('Trading name'), 'Native trading correction');
+});
+
+Given('a native store copy with a person\'s correction to store {string}', async function (store) {
+  await givenStoreWarehouse(this);
+  await this.withApi(async (api) => {
+    await api.copyWarehouse(this.source, {
+      database: 'sales', schema: 'main', table: this.warehouseTable, name: this.nativeTable, key: 'code',
+      columns: [
+        { source: 'code', column_name: 'store_code', label: 'Store code' },
+        { source: 'name', column_name: 'store_name', label: 'Trading name' },
+        { source: 'state_code', column_name: 'state_code', label: 'State code' },
+      ],
+    });
+    const row = await api.row(this.nativeTable, store);
+    await api.saveRow(this.nativeTable, { ...row, state_code: '32' });
+  });
+});
+
+Given('the warehouse changes the unedited store {string} and adds store {string}', async function (existing, added) {
+  assert.equal(existing, 'S001');
+  assert.equal(added, 'S004');
+  changeStandin('sales', [
+    `update ${this.warehouseTable} set name = 'Harbour Road renewed' where code = 'S001'`,
+    `insert into ${this.warehouseTable} values ('S004', 'New Quay', 'Omitted City', '07')`,
+  ]);
+  await this.withApi((api) => api.refreshWarehouse(this.source, 'sales'));
+});
+
+When('the user chooses Copy again on the native copy', async function () {
+  this.page = await this.asSystemManager();
+  this.copied = new CopiedWarehousePage(this.page, this.nativeTable);
+  await this.copied.open();
+  await this.copied.copyAgain();
+  this.form = new FormPage(this.page);
+});
+
+Then('store {string} has the changed warehouse name', async function (store) {
+  await this.form.open(this.nativeTable, store);
+  assert.equal(await this.form.value('Trading name'), 'Harbour Road renewed');
+});
+
+Then('store {string} is available as an ordinary native row', async function (store) {
+  await this.form.open(this.nativeTable, store);
+  assert.equal(await this.form.value('Store code'), store);
+  assert.equal(await this.form.value('Trading name'), 'New Quay');
+  assert.equal(await this.form.value('State code'), '07');
+});
+
+Then('store {string} still has the person\'s correction', async function (store) {
+  await this.form.open(this.nativeTable, store);
+  assert.equal(await this.form.value('State code'), '32');
 });

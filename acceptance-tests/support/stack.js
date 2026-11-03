@@ -27,7 +27,8 @@ const BOOT_TIMEOUT_MS = 240_000;
 // Same host and credentials as the developer's database, under its own name.
 function acceptanceDatabaseUrl() {
   const url = new URL(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@127.0.0.1:5432/featherbase');
-  url.pathname = '/featherbase_acceptance_e2e';
+  const name = decodeURIComponent(url.pathname.slice(1)) || 'featherbase';
+  url.pathname = `/${name.replace(/_(?:acceptance_e2e|test|e2e)$/, '')}_acceptance_e2e`;
   return url.toString();
 }
 
@@ -58,6 +59,11 @@ function motherDuckStandin(...args) {
 /** Adds a table to a stand-in database, as if the warehouse grew. */
 function addStandinTable(database, table) {
   motherDuckStandin('add', process.env.MOTHERDUCK_STANDIN, database, table);
+}
+
+/** Changes only the run's synthetic warehouse, never a hosted account. */
+function changeStandin(database, statements) {
+  motherDuckStandin('change', process.env.MOTHERDUCK_STANDIN, database, JSON.stringify(statements));
 }
 
 async function acceptanceSql(statement, parameters = []) {
@@ -186,4 +192,4 @@ AfterAll(async function () {
 
 process.on('exit', stopAll);
 
-module.exports = { BASE_URL, API_URL, resetAcceptance, restartAcceptance, acceptanceSql, isolatedEnvironment, addStandinTable, REPO_ROOT };
+module.exports = { BASE_URL, API_URL, resetAcceptance, restartAcceptance, acceptanceSql, isolatedEnvironment, addStandinTable, changeStandin, REPO_ROOT };

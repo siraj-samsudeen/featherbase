@@ -217,6 +217,17 @@ class WarehouseCopyPage {
     this.page = page;
   }
 
+  async create(name) {
+    await this.page.getByTestId('copy-name').fill(name);
+    await this.page.getByTestId('copy-key').selectOption('code');
+    const response = this.page.waitForResponse((res) => res.url().endsWith(':copy_create') && res.request().method() === 'POST');
+    await this.page.getByTestId('copy-create').click();
+    const res = await response;
+    if (!res.ok()) throw new Error(`copy creation refused: ${res.status()} ${await res.text()}`);
+    await this.page.getByTestId('list-view').waitFor();
+    return new CopiedWarehousePage(this.page, name);
+  }
+
   async editColumn(source, { name, label, description }) {
     await this.page.getByRole('textbox', { name: `Name for ${source}`, exact: true }).fill(name);
     await this.page.getByRole('textbox', { name: `Label for ${source}`, exact: true }).fill(label);
@@ -252,4 +263,30 @@ class WarehouseCopyPage {
   }
 }
 
-module.exports = { ConnectWarehousePage, WarehouseSourcePage, DataSourcesSidebar, WarehouseBrowserPage, WarehouseCopyPage };
+class CopiedWarehousePage {
+  constructor(page, table) {
+    this.page = page;
+    this.table = table;
+  }
+
+  async open() {
+    await this.page.goto(`/featherbase/admin/${encodeURIComponent(this.table)}`);
+    await this.page.getByTestId('list-view').waitFor();
+  }
+
+  async rowIds() {
+    const links = this.page.getByTestId('list-rows').getByRole('link');
+    await links.first().waitFor();
+    return links.allTextContents();
+  }
+
+  async copyAgain() {
+    const response = this.page.waitForResponse((res) => res.url().endsWith(':copy_again') && res.request().method() === 'POST');
+    await this.page.getByTestId('copy-again').click();
+    const res = await response;
+    if (!res.ok()) throw new Error(`copy again refused: ${res.status()} ${await res.text()}`);
+    await this.page.getByTestId('copy-result').waitFor();
+  }
+}
+
+module.exports = { ConnectWarehousePage, WarehouseSourcePage, DataSourcesSidebar, WarehouseBrowserPage, WarehouseCopyPage, CopiedWarehousePage };

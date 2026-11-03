@@ -39,6 +39,8 @@ Skipped: `acceptance-tests/` already exists.
 - [x] 5.4 Approved design A replaces pane/chip navigation: searchable DataList catalog and full-content catalog/preview tabs; preserve database, schema, catalog search and selected table across tab switches and copy-breadcrumb return; retain listed-when, Refresh and remembered place (checklist 12–15, 21–26)
 - [x] 5.5 Editable mapping uses DataList with real inputs and complete-collection search over source names and edited names, labels and descriptions; edits and keep choices survive filtering and remain attached to their original source column
 - [x] 5.6 Keep native ListView/FormView and all backend operations unchanged; independently verify full-content layout, breadcrumbs and the approved checklist in a headless desktop browser
+- [x] 5.7 Public copy-action tests verify persisted approved mapping/omissions/source identity, unedited source updates/new rows with native corrections retained, and existing System Manager/chosen-database refusals with positive controls
+- [x] 5.8 Executable acceptance submits copy setup into the native list/form, saves a native correction, and exercises Copy again against changed synthetic warehouse rows on a fresh guarded isolated database
 
 ## 6. Completion
 
