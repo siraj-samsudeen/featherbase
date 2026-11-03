@@ -148,3 +148,116 @@ test('saved owner helpers refuse use after their callback closes', async ({ admi
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test('a job without document access cannot hide a caught document refusal', async ({ admin }) => {
+  const dir = await fixture(`try { await ctx.documents.forEachOwner(async()=>{}) } catch {} ctx.setResult('Pretended success');`, null)
+  try {
+    expect(await discoverPackages([dir])).toEqual([])
+    await admin.post('/api/install_app', { name: 'ownerjobs' })
+    const [queued] = await sql`select row_id from background_job where method='ownerjobs.advance' and job_status='queued' order by created_at limit 1`
+    await run()
+    expect(await sql`select job_status from background_job where row_id=${queued.row_id}`).toEqual([{ job_status: 'failed' }])
+    expect(await sql`select operation from access_log where method='ownerjobs.advance:documents'`).toEqual([{ operation: 'app_access_denied' }])
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})
+
+test('a job with a non-function owner callback fails instead of succeeding silently', async ({ admin }) => {
+  const dir = await fixture('try { await ctx.documents.forEachOwner(null) } catch {}')
+  try {
+    expect(await discoverPackages([dir])).toEqual([])
+    await admin.post('/api/install_app', { name: 'ownerjobs' })
+    const [queued] = await sql`select row_id from background_job where method='ownerjobs.advance' and job_status='queued' order by created_at limit 1`
+    await run()
+    expect(await sql`select outcome from job_execution where job=${queued.row_id} and attempt=1`).toEqual([{ outcome: 'error' }])
+    const [entry] = await sql`select error from job_execution where job=${queued.row_id} and attempt=1`
+    expect(entry.error).toContain('Document owner scopes must be awaited sequentially inside the job')
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})
+
+test('a saved owner iterator refuses a new scope after its job closes', async ({ admin }) => {
+  const dir = await fixture('globalThis.__savedOwnerIterator=ctx.documents.forEachOwner')
+  try {
+    expect(await discoverPackages([dir])).toEqual([])
+    await admin.post('/api/install_app', { name: 'ownerjobs' })
+    await run()
+    const iterate = (globalThis as unknown as { __savedOwnerIterator: (callback: () => Promise<void>) => Promise<void> }).__savedOwnerIterator
+    await expect(iterate(async () => {})).rejects.toThrow('inside the job')
+    expect(await sql`select outcome from job_execution where method='ownerjobs.advance'`).toEqual([{ outcome: 'success' }])
+  } finally {
+    delete (globalThis as { __savedOwnerIterator?: unknown }).__savedOwnerIterator
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('a document job declaration must include its owner Table', async () => {
+  const dir = await fixture('', { owner_table: 'ownerjobs.note', tables: ['ownerjobs.other'] })
+  try {
+    expect(await discoverPackages([dir])).toEqual([{ path: dir, error: 'A document job must declare its owner Table' }])
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})
+
+test('a document job cannot use a membership-only Table as its private owner registry', async () => {
+  const dir = await fixture('')
+  try {
+    const { readFile } = await import('node:fs/promises')
+    const file = resolve(dir, 'featherbase.json')
+    const manifest = JSON.parse(await readFile(file, 'utf8'))
+    delete manifest.tables[0].access_policy.shared_column
+    await writeFile(file, JSON.stringify(manifest))
+    expect(await discoverPackages([dir])).toEqual([{ path: dir, error: 'A document job owner Table must declare creator privacy' }])
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})
+
+async function documentUpgrade(declaration: { owner_table: string; tables: string[] }, target: { owner_table: string; tables: string[] } | null) {
+  const { readFile, cp } = await import('node:fs/promises')
+  const prior = await fixture('', declaration)
+  const source = resolve(prior, 'featherbase.json')
+  const manifest = JSON.parse(await readFile(source, 'utf8'))
+  manifest.tables.push({ ...structuredClone(manifest.tables[0]), name: 'ownerjobs.other', label: 'Other private registry' })
+  manifest.permissions.push({ ...manifest.permissions[0], table: 'ownerjobs.other' })
+  await writeFile(source, JSON.stringify(manifest))
+  const next = await mkdtemp(resolve('test/.owner-jobs-upgrade-'))
+  await cp(prior, next, { recursive: true })
+  const pkg = JSON.parse(await readFile(resolve(next, 'package.json'), 'utf8'))
+  await writeFile(resolve(next, 'package.json'), JSON.stringify({ ...pkg, version: '2.0.0' }))
+  if (target) manifest.jobs[0].documents = target
+  else delete manifest.jobs[0].documents
+  manifest.migrations = [{ id: 'document_scope_v2', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }]
+  await writeFile(resolve(next, 'featherbase.json'), JSON.stringify(manifest))
+  return { prior, next }
+}
+
+for (const widened of ['a new Table', 'a different owner registry'] as const) {
+  test(`a kept document job cannot gain ${widened} during an upgrade`, async ({ admin }) => {
+    const allowed = widened === 'a new Table' ? ['ownerjobs.note'] : ['ownerjobs.note', 'ownerjobs.other']
+    const source = await documentUpgrade({ owner_table: 'ownerjobs.note', tables: allowed }, {
+      owner_table: widened === 'a new Table' ? 'ownerjobs.note' : 'ownerjobs.other', tables: ['ownerjobs.note', 'ownerjobs.other'],
+    })
+    try {
+      expect(await discoverPackages([source.prior])).toEqual([])
+      await admin.post('/api/install_app', { name: 'ownerjobs' })
+      expect(await discoverPackages([source.prior, source.next])).toEqual([])
+      const { loadInstalledApps } = await import('../src/apps')
+      await loadInstalledApps()
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'ownerjobs', version: '2.0.0' })).rejects.toMatchObject({
+        status: 417, message: expect.stringContaining(widened === 'a new Table' ? 'the Table ownerjobs.other' : 'a different document owner Table'),
+      })
+      expect(await sql`select package_version from installed_app where name='ownerjobs'`).toEqual([{ package_version: '1.0.0' }])
+    } finally { await rm(source.prior, { recursive: true, force: true }); await rm(source.next, { recursive: true, force: true }) }
+  })
+}
+
+for (const target of [null, { owner_table: 'ownerjobs.note', tables: ['ownerjobs.note'] }]) {
+  test(`a document upgrade preview exposes ${target ? 'narrowed Table access' : 'removed document access'}`, async ({ admin }) => {
+    const source = await documentUpgrade({ owner_table: 'ownerjobs.note', tables: ['ownerjobs.note', 'ownerjobs.other'] }, target)
+    try {
+      expect(await discoverPackages([source.prior])).toEqual([])
+      await admin.post('/api/install_app', { name: 'ownerjobs' })
+      expect(await discoverPackages([source.prior, source.next])).toEqual([])
+      const { loadInstalledApps } = await import('../src/apps')
+      await loadInstalledApps()
+      const preview = await admin.post<{ jobs: unknown[] }>('/api/preview_app_upgrade', { name: 'ownerjobs', version: '2.0.0' })
+      expect(preview.jobs).toEqual([{ change: { name: 'advance', documents: target } }])
+    } finally { await rm(source.prior, { recursive: true, force: true }); await rm(source.next, { recursive: true, force: true }) }
+  })
+}
