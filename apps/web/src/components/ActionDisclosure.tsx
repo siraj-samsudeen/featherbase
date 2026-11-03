@@ -2,8 +2,15 @@ import { useId, useRef, useState, type ReactNode } from 'react'
 import { buttonClasses, cardClasses, ChevronDown } from '@featherbase/shop-floor'
 
 /** Ordinary links/buttons keep their native keyboard behavior inside the disclosure. */
-export function ActionDisclosure({ label, children }: { label: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false)
+export function ActionDisclosure({ label, children, open: controlledOpen, onOpenChange }: {
+  label: string
+  children: ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}) {
+  const [localOpen, setLocalOpen] = useState(false)
+  const open = controlledOpen ?? localOpen
+  const setOpen = onOpenChange ?? setLocalOpen
   const button = useRef<HTMLButtonElement>(null)
   const id = useId()
   return (

@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
-import { choiceLabel, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, rowDisplayTitle, tableSchemaToZod, zodFieldErrors } from 'shared'
+import { choiceLabel, idFromColumn, namingColumn, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, rowDisplayTitle, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
 import { changeOverride, overrideControl } from '../lib/metadata-override-editor'
@@ -118,6 +118,7 @@ export function FormView({
   const [saving, setSaving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
+  const [recordActionsOpen, setRecordActionsOpen] = useState(false)
   // TLC-J2 (docs/specs/0007-table-lifecycle.md): removing the row you are
   // looking at. Deletion existed only in the list's bulk bar, so removing one
   // row meant going back, finding it again and ticking a checkbox (#252).
@@ -260,6 +261,12 @@ export function FormView({
   // it is open. A new row has nothing at the source to overwrite.
   const uncheckedSaves = Boolean(boundSource) && !isNew && !rowsReadOnly && !m.external_modified
   const asksRowId = isNew && m.id_pattern === 'prompt' && !rowsReadOnly
+  const renamable = !isNew && !boundSource && access.data?.rename && !rowManaged && !isOpaqueId(name)
+  // #858: a row named after its own column keeps its id when that column
+  // changes; the form says so and offers Rename to the id the rule gives now.
+  const naming = namingColumn(m.id_pattern)
+  const idNow = naming && rowLoaded ? idFromColumn(naming.prefix, values[naming.column]) : null
+  const idOutOfStep = renamable && idNow !== null && idNow !== name ? idNow : null
 
   async function runAction(action: 'submit' | 'cancel' | 'amend') {
     setBanner(null)
@@ -504,7 +511,7 @@ export function FormView({
               {status === 'submitted' ? 'Submitted' : status === 'cancelled' ? 'Cancelled' : 'Draft'}
             </span>
           )}
-          {!isNew && <ActionDisclosure label="Record actions">
+          {!isNew && <ActionDisclosure label="Record actions" open={recordActionsOpen} onOpenChange={setRecordActionsOpen}>
           {!isNew && (
             <RouterLink
               to="/featherbase/print/$table/$name"
@@ -529,7 +536,7 @@ export function FormView({
             </RouterLink>
           )}
           {/* A bound row's pk belongs to the source — never renameable here. */}
-          {!isNew && !renaming && !boundSource && access.data?.rename && !rowManaged && !isOpaqueId(name) && (
+          {renamable && !renaming && (
             <button
               onClick={() => {
                 setRenameValue(name)
@@ -728,6 +735,29 @@ export function FormView({
         >
           {boundSource} doesn’t record when its rows last changed, so changes made there while you
           edit are not detected. Saving replaces what is there.
+        </p>
+      )}
+      {idOutOfStep && naming && (
+        <p
+          role="note"
+          className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm text-ink"
+          data-testid="form-id-out-of-step"
+        >
+          <span>
+            This row keeps the id {name}. Its {m.columns.find((c) => c.column_name === naming.column)?.label || naming.column} now
+            gives {idOutOfStep}.
+          </span>
+          <button
+            onClick={() => {
+              setRenameValue(idOutOfStep)
+              setRenaming(true)
+              setRecordActionsOpen(true)
+            }}
+            data-testid="form-id-rename"
+            className={buttonClasses()}
+          >
+            Rename to {idOutOfStep}
+          </button>
         </p>
       )}
       {staleBanner && (

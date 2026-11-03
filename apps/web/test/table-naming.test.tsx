@@ -22,7 +22,7 @@ test('naming rows after a column stores that rule, and a new row takes its id fr
   await seed(admin)
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/naming`, admin)
   await user.selectOptions(await screen.findByTestId('naming-naming', {}, { timeout: 8000 }), 'field:code')
-  expect(screen.getByTestId('naming-naming-preview')).toHaveTextContent('Each row takes its id from code')
+  expect(screen.getByTestId('naming-naming-preview')).toHaveTextContent('Each row takes its id from Store code')
   await user.click(screen.getByTestId('naming-save'))
   expect(await screen.findByTestId('naming-saved')).toHaveTextContent('Saved')
   // The select still shows the column picked, read back from the stored rule.
