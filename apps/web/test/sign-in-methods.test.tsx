@@ -3,7 +3,7 @@
 import { vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
+import { configureDelegated, inviteGoogleRaw, linkDelegated } from 'server/test/identity-fixtures'
 import { VIEWER_ROLE } from 'server/src/sales-target'
 import { test, expect, renderApp } from './pg-test'
 
@@ -182,4 +182,41 @@ test('a pending invite can be resent, but not again within ten minutes', async (
   await userEvent.click(within(row).getByRole('button', { name: 'Resend invitation' }))
   expect(await within(panel).findByTestId('user-method-error')).toHaveTextContent('10 minutes')
   expect(await sql`select 1 from email_sink where mail_to = 'tl.resend@gmail.com'`).toHaveLength(1)
+})
+
+// #837: a claimed Google invite leads with the address, says when and how it
+// was linked and last used, and keeps Google's account number under Details.
+test('a linked Google account reads as its address, when and how it was linked, and last used', async ({ admin, createUser }) => {
+  const { sql } = await import('server/src/db')
+  const tl = await createUser({ email: 'tl.google@example.com' })
+  const claimed = await inviteGoogleRaw(tl.user!, 'tl.google@gmail.com')
+  await sql`update sign_in_identity set subject = '104116711844961612173', email = 'tl.google@gmail.com', pending_email = null,
+    linked_by = 'first-sign-in', linked_at = '2026-11-03T06:41:00Z', last_used_at = '2026-11-03T07:05:00Z' where id = ${claimed}`
+  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
+  const row = await screen.findByTestId(`user-method-${claimed}`)
+  await waitFor(() => expect(within(row).getByTestId('identity-head')).toHaveTextContent(/^Google · tl\.google@gmail\.com$/))
+  expect(within(row).getByTestId('identity-linked')).toHaveTextContent(
+    'linked 03-Nov-2026 12:11 IST at first sign-in · last signed in 03-Nov-2026 12:35 IST',
+  )
+  const details = within(row).getByTestId('identity-details')
+  expect(details).not.toHaveAttribute('open')
+  expect(details).toHaveTextContent('Google account number: 104116711844961612173')
+
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  await userEvent.click(within(row).getByRole('button', { name: 'Unlink' }))
+  expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/^Unlink tl\.google@gmail\.com\? This Google account will no longer sign in as .+\.$/))
+  confirm.mockRestore()
+})
+
+test('a link an administrator made names them, and an unused one says so', async ({ admin, createUser }) => {
+  const { sql } = await import('server/src/db')
+  const tl = await createUser({ email: 'tl.byadmin@example.com' })
+  const linked = await inviteGoogleRaw(tl.user!, 'tl.byadmin@gmail.com')
+  await sql`update sign_in_identity set subject = 'g-byadmin', email = 'tl.byadmin@gmail.com', pending_email = null,
+    linked_by = 'Administrator', linked_at = '2026-11-03T06:41:00Z', last_used_at = null where id = ${linked}`
+  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
+  const row = await screen.findByTestId(`user-method-${linked}`)
+  await waitFor(() =>
+    expect(within(row).getByTestId('identity-linked')).toHaveTextContent('linked 03-Nov-2026 12:11 IST by Administrator · not signed in with it yet'),
+  )
 })
