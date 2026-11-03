@@ -14,7 +14,7 @@ user wants both the Ground and the First Floor rows.
   `["floor","in",["Ground","First Floor"]]`.
 - **One filter per Choice column.** Adding the same column again opens with its current choices
   ticked and adds to that filter, so picking choices one at a time gives the same rows as
-  picking them together.
+  picking them together, and a link holding several filters on one Choice column opens as one.
 - **The quick filter box ticks choices too.** A tick means the choice shows. The quick box,
   "Add filter" and the chip are the same one filter, so a change in one shows at once in the
   others. Unticking every choice, or ticking every one, removes the filter.
