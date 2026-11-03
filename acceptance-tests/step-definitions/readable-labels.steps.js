@@ -1,9 +1,11 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { Given, When, Then } = require('@cucumber/cucumber');
+const { Given, When, Then, After } = require('@cucumber/cucumber');
 const { Api, signedInState } = require('../support/api');
 const { ReadableLabelsPage, UNMAPPED } = require('../support/pages/readable-labels-page');
+
+After(async function () { await this.readable?.cleanup(); });
 
 async function journey(world) {
   world.readable ??= new ReadableLabelsPage(await world.asSystemManager(), await Api.asSystemManager());

@@ -97,6 +97,7 @@ class ReadableLabelsPage {
   }
 
   async arrangeUpgrade() {
+    this.beforeLabels = await acceptanceSql("select column_name, label from featherbase.column_def where parent = 'Sign In Method' and column_name in ('client_id', 'service_url', 'new_person')");
     await acceptanceSql(`update featherbase.column_def set label = case column_name
       when 'client_id' then 'client_id' when 'service_url' then 'My endpoint wording'
       when 'new_person' then 'new_person' end
@@ -120,6 +121,14 @@ class ReadableLabelsPage {
     assert.deepEqual([...(await acceptanceSql("select label from featherbase.column_def where parent = 'Sign In Method' and column_name = 'service_url'"))], [{ label: 'My endpoint wording' }]);
     assert.deepEqual(await acceptanceSql('select * from featherbase.metadata_override order by row_id'), this.beforeOverrides);
     assert.deepEqual([...(await acceptanceSql("select translated_text from featherbase.translation where source_text = 'new_person' and language = 'fr'"))], [{ translated_text: 'Politique conservée' }]);
+  }
+
+  async cleanup() {
+    await acceptanceSql("delete from featherbase.translation where row_id like 'labels-826-%'");
+    await acceptanceSql("delete from featherbase.metadata_override where row_id = 'labels-826-override'");
+    for (const { column_name, label } of this.beforeLabels ?? [])
+      await acceptanceSql("update featherbase.column_def set label = $1 where parent = 'Sign In Method' and column_name = $2", [label, column_name]);
+    await this.api.removeTableIfPresent(this.table);
   }
 }
 
