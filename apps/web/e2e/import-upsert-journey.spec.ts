@@ -120,10 +120,18 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
     expect(count.count).toBe(8)
   })
 
-  // J1.5 — Import: completion reports updated / inserted as separate counts.
-  await session.clickButton('Import 8 rows')
-  await session.step('J1.5: completion reports separate counts', async ({ page }) => {
-    await expect(page.getByTestId('iw-result-0')).toContainText('Recorded 8 processed matches and added 0 rows')
+  // A successful single-sheet import navigates to the list, so its transient
+  // result panel is not a durable completion surface. Keep the exact counts
+  // on the real import response, followed by list, identity and log checks.
+  await session.step('J1.5: completed import reports separate counts', async ({ page }) => {
+    const completed = page.waitForResponse((response) =>
+      response.request().method() === 'POST' &&
+      response.url().endsWith(`/api/table/${encodeURIComponent(DT)}:import`),
+    )
+    await page.getByRole('button', { name: 'Import 8 rows', exact: true }).click()
+    const response = await completed
+    expect(response.ok()).toBe(true)
+    expect(await response.json()).toMatchObject({ updated: 8, inserted: 0, failed: [] })
   })
 
   // J1.6 — still 8 rows, Alpha corrected, every row keeps its original id.
