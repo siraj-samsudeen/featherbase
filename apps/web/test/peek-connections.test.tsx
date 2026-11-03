@@ -159,4 +159,76 @@ test('a selected relationship shows native rows, with ways on to the full list a
   expect(relationship).toHaveAttribute('aria-pressed', 'true')
   expect(within(related).getByTestId('list-view')).toBeVisible()
   expect(embedded.querySelectorAll('tbody a')).toHaveLength(2)
+
+  // The shared content tabs preserve actual unfinished form work while
+  // keyboard navigation selects/focuses sections, including wraparound.
+  const work = screen.getByRole('tab', { name: 'Work' })
+  await user.click(work)
+  await user.clear(screen.getByRole('textbox', { name: 'Label' }))
+  await user.type(screen.getByRole('textbox', { name: 'Label' }), 'Unfinished Asha')
+  await user.click(work)
+  await user.keyboard('{ArrowRight}')
+  expect(screen.getByRole('tab', { name: 'Related' })).toHaveFocus()
+  await user.keyboard('{End}')
+  expect(screen.getByRole('tab', { name: 'Activity' })).toHaveFocus()
+  await user.keyboard('{Home}')
+  expect(work).toHaveFocus()
+  await user.keyboard('{ArrowLeft}')
+  expect(screen.getByRole('tab', { name: 'Activity' })).toHaveFocus()
+  await user.keyboard('{ArrowRight}x')
+  expect(work).toHaveFocus()
+  expect(work).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('textbox', { name: 'Label' })).toHaveValue('Unfinished Asha')
+  expect(screen.getByTestId('form-status')).toHaveTextContent('Not saved')
+})
+
+test('relationship search and record search keep distinct paths and owner filters', async ({ admin }) => {
+  const user = userEvent.setup()
+  await admin.post('/api/table_def', {
+    name: 'Rws Project', id_pattern: 'prompt',
+    columns: [{ column_name: 'label', column_type: 'Data', label: 'Label' }],
+  })
+  await admin.post('/api/table_def', {
+    name: 'Rws Task', id_pattern: 'prompt', title_column: 'label',
+    columns: [
+      { column_name: 'label', column_type: 'Data', label: 'Label', in_list_view: true },
+      { column_name: 'project', column_type: 'Reference', reference_table: 'Rws Project' },
+      { column_name: 'review_project', column_type: 'Reference', reference_table: 'Rws Project' },
+    ],
+  })
+  for (const row of [{ row_id: 'north', label: 'North workshop' }, { row_id: 'south', label: 'South studio' }])
+    await admin.post('/api/save_row', { table: 'Rws Project', row })
+  for (const row of [
+    { row_id: 'prepare', label: 'Prepare workshop', project: 'north' },
+    { row_id: 'review', label: 'Review materials', project: 'north' },
+    { row_id: 'foreign', label: 'Review budget', project: 'south', review_project: 'south' },
+  ]) await admin.post('/api/save_row', { table: 'Rws Task', row })
+  await renderApp(`/featherbase/admin/${enc('Rws Project')}/north`, admin)
+  await user.click(await screen.findByRole('tab', { name: 'Related' }))
+  const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
+  const rows = () => screen.getByRole('region', { name: 'Related rows' })
+  await within(rows()).findByText('Review materials')
+  const recordSearch = within(rows()).getByRole('searchbox', { name: 'Search related record names' })
+  await user.type(recordSearch, 'Review')
+  await waitFor(() => expect(within(rows()).getByTestId('list-total')).toHaveTextContent('1 total'))
+  expect(within(rows()).getByText('Review materials')).toBeVisible()
+  expect(within(rows()).queryByText('Review budget')).not.toBeInTheDocument()
+  await user.clear(recordSearch)
+  await waitFor(() => expect(within(rows()).getByTestId('list-total')).toHaveTextContent('2 total'))
+  expect(within(rows()).getByText('Prepare workshop')).toBeVisible()
+
+  const pathSearch = screen.getByRole('searchbox', { name: 'Search relationships' })
+  await user.type(pathSearch, 'review_project')
+  expect(within(relationships).getAllByRole('button')).toHaveLength(1)
+  expect(screen.getByRole('region', { name: 'Search relationships' })).toHaveTextContent('1 of 2')
+  await user.click(within(relationships).getByRole('button', { name: /^Rws Task · review_project\s*0$/ }))
+  await within(rows()).findByText('No rows', { exact: false })
+  expect(within(rows()).getByTestId('list-total')).toHaveTextContent('0 total')
+  const create = within(rows()).getByTestId('list-empty-new')
+  const prefill = new URL(create.getAttribute('href')!, 'http://x').searchParams.get('prefill')!
+  expect(JSON.parse(JSON.parse(prefill) as string)).toEqual({ review_project: 'north' })
+  await user.click(screen.getByRole('button', { name: 'Clear search' }))
+  expect(pathSearch).toHaveValue('')
+  expect(within(relationships).getAllByRole('button')).toHaveLength(2)
+  expect(within(rows()).getByTestId('list-total')).toHaveTextContent('0 total')
 })
