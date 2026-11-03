@@ -1,0 +1,73 @@
+// #820: a filter on a Choice column ticks one or more of its choices (`in`),
+// and each Choice column has at most one filter, shared by Add filter, the
+// quick filter box and the chip. Against the real in-process server.
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { test, expect, renderApp } from './pg-test'
+
+type Admin = Parameters<typeof renderApp>[1]
+
+const T = 'Section Mapping'
+const enc = encodeURIComponent
+
+const FLOORS = ['Ground', 'First Floor', 'Second Floor', 'Third Floor']
+const SECTIONS = [
+  'Sarees', 'Shawls', 'Shirts', 'Shoe Rack', 'Kids', 'Toys',
+  'Saree Rack', 'Bags', 'Belts', 'Rack Ends', 'Watches', 'Perfume',
+]
+
+// code, floor, state (labelled Status; status is a reserved name), section, owner, active
+const ROWS: [string, string, string, string, string, boolean][] = [
+  ['R1', 'Ground', 'Open', 'Sarees', 'Asha', true],
+  ['R2', 'Ground', 'Closed', 'Shoe Rack', 'Ravi', false],
+  ['R3', 'First Floor', 'Open', 'Saree Rack', 'Ashok', true],
+  ['R4', 'First Floor', 'Closed', 'Shirts', 'Meena', true],
+  ['R5', 'Second Floor', 'Open', 'Rack Ends', 'Kumar', false],
+  ['R6', 'Third Floor', 'Closed', 'Toys', 'Lata', true],
+]
+
+async function seed(admin: Admin) {
+  await admin.post('/api/table_def', {
+    name: T,
+    columns: [
+      { column_name: 'code', column_type: 'Data', label: 'Code', in_list_view: true },
+      { column_name: 'floor', column_type: 'Choice', label: 'Floor', choices: FLOORS.join('\n'), in_list_view: true },
+      { column_name: 'state', column_type: 'Choice', label: 'Status', choices: 'Open\nClosed', in_list_view: true },
+      { column_name: 'section', column_type: 'Choice', label: 'Section', choices: SECTIONS.join('\n'), in_list_view: true },
+      { column_name: 'owner_name', column_type: 'Data', label: 'Owner', in_list_view: true },
+      { column_name: 'active', column_type: 'Check', label: 'Active', in_list_view: true },
+    ],
+  })
+  for (const [code, floor, state, section, owner_name, active] of ROWS)
+    await admin.post('/api/save_row', { table: T, row: { code, floor, state, section, owner_name, active } })
+}
+
+async function openList(admin: Admin, filters?: unknown[]) {
+  await renderApp(`/featherbase/admin/${enc(T)}${filters ? `?filters=${enc(JSON.stringify(filters))}` : ''}`, admin)
+  await screen.findByTestId('list-view', {}, { timeout: 8000 })
+  await screen.findByTestId('list-rows')
+  await waitFor(() => expect(codes().length).toBeGreaterThan(0))
+}
+
+const codes = () =>
+  [...screen.getByTestId('list-rows').querySelectorAll('[data-testid="cell-code"]')].map((e) => e.textContent ?? '').sort()
+
+const options = (testId: string) =>
+  [...screen.getByTestId(testId).querySelectorAll('option')].map((o) => o.getAttribute('value'))
+
+const tickNames = (list: HTMLElement) =>
+  within(list).getAllByRole('checkbox').map((c) => c.getAttribute('aria-label') ?? c.closest('label')?.textContent ?? '')
+
+/** Picks a column in Add filter and opens its list of choices. */
+function addFilterOn(column: string) {
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: column } })
+  fireEvent.click(screen.getByTestId('filter-value'))
+  return screen.getByTestId('filter-choices')
+}
+
+test('Adding a filter on Status offers its choices to tick, and only in', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  const list = addFilterOn('state')
+  expect(options('filter-op')).toEqual(['in'])
+  expect(tickNames(list)).toEqual(['Open', 'Closed'])
+})
