@@ -41,12 +41,13 @@ test('content tabs retain drafts and expose keyboard navigation and the current 
 test('searchable collections match the complete supplied list and can clear no-results', async () => {
   function Example() {
     const [query, setQuery] = useState('')
-    return <SearchableList label="Search sources" items={['South studio', 'North workshop']} query={query} onQueryChange={setQuery} getSearchText={(row) => row}>
+    return <SearchableList label="Search sources" placeholder="Search" items={['South studio', 'North workshop']} query={query} onQueryChange={setQuery} getSearchText={(row) => row}>
       {(rows) => <ul>{rows.map((row) => <li key={row}>{row}</li>)}</ul>}
     </SearchableList>
   }
   const user = userEvent.setup()
   render(<Example />)
+  expect(screen.getByRole('searchbox', { name: 'Search sources' })).toHaveAttribute('placeholder', 'Search')
   await user.type(screen.getByRole('searchbox', { name: 'Search sources' }), ' NORTH ')
   expect(screen.getByText('North workshop')).toBeInTheDocument()
   expect(screen.queryByText('South studio')).not.toBeInTheDocument()
