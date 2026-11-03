@@ -157,3 +157,29 @@ test('a long sheet previews its first fifty rows, then the failing rows past the
   expect(screen.queryByTestId('iw-preview-row-0-55')).not.toBeInTheDocument()
   clearSession()
 })
+
+test('#851 a changed database invalidates a previously typed import count', async ({ admin }) => {
+  clearSession()
+  await admin.post('/api/table_def', { name: 'Iwr Zone', columns: [
+    { column_name: 'zone_name', column_type: 'Data' },
+    { column_name: 'pop', column_type: 'Int' },
+  ] })
+  const rows = Array.from({ length: 22 }, (_, i) => ({ zone_name: `Z${i}`, pop: 100 + i }))
+  await admin.post('/api/table/Iwr%20Zone:import', { rows })
+  await renderApp('/featherbase/admin/import?table=Iwr%20Zone', admin)
+  await upload(['zone_name,pop', ...rows.map((r, i) => `${r.zone_name},${r.pop + (i < 21 ? 7 : 0)}`)].join('\n'))
+  const user = userEvent.setup()
+  await user.selectOptions(await screen.findByTestId('iw-key-0'), 'zone_name')
+  await user.click(screen.getByTestId('iw-import'))
+  expect(await screen.findByTestId('iw-confirm-updates')).toHaveTextContent('Type 21 to confirm')
+  await admin.post('/api/table/Iwr%20Zone:import', { key_column: 'zone_name', rows: [{ zone_name: 'Z21', pop: 999 }] })
+  await user.type(screen.getByTestId('iw-confirm-input'), '21')
+  await user.click(screen.getByTestId('iw-confirm-go'))
+  await waitFor(() => expect(screen.getByTestId('iw-confirm-updates')).toHaveTextContent('Type 22 to confirm'))
+  expect(screen.getByTestId('iw-confirm-input')).toHaveValue('')
+  expect(screen.getByTestId('iw-confirm-go')).toBeDisabled()
+  expect(await admin.get('/api/table/Iwr%20Zone?fields=["zone_name","pop"]&order_by=zone_name%20asc')).toMatchObject({
+    total: 22, data: expect.arrayContaining([{ zone_name: 'Z0', pop: 100 }]),
+  })
+  clearSession()
+})
