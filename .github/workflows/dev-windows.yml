@@ -10,6 +10,8 @@ on:
       - tools/dev.mjs
       - tools/featherbase.mjs
       - tools/featherbase.test.mjs
+      - tools/reset.test.mjs
+      - tools/reset-fixture.mjs
       - tools/prepare-apps.mjs
       - client-apps/*/*/scripts/seed-made-up.mts
       - package.json
@@ -69,6 +71,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm check:dev
+          node --test tools/reset.test.mjs
 
       - name: From nothing to a ready server with its apps installed
         run: pnpm dev jeyarama/dash --check

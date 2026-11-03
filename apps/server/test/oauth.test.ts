@@ -73,6 +73,37 @@ function redeem(api: TestClient, code: string | null, cookie: string) {
 }
 
 describe('PLAT-006: OAuth sign-in (mock provider)', () => {
+  test('a producer-issued login challenge expires after ten minutes', async ({ api }) => {
+    await setClientId('')
+    await setAllowedDomains('*')
+    const started = Math.floor(Date.now() / 1000) * 1000
+    try {
+      for (const seconds of [599, 601]) {
+        vi.setSystemTime(started)
+        const email = `elapsed-${seconds}@example.test`
+        const { state, cookie } = await beginLogin(api)
+        const approved = await api.fetch(approveUrl(state, email, 'Elapsed Login'), { headers: { cookie } })
+        expect(approved.status).toBe(302)
+        vi.setSystemTime(started + seconds * 1000)
+        const callback = await api.fetch(approved.headers.get('location')!, { headers: { cookie } })
+        if (seconds === 599) {
+          expect(callback.status).toBe(302)
+          const session = await redeem(api, handoffCode(callback), sidCookie(callback))
+          expect(session.status).toBe(200)
+          expect(await session.json()).toMatchObject({ user: { email } })
+        } else {
+          expect(callback.status).toBe(401)
+          expect(await callback.json()).toEqual({ error: { type: 'AuthenticationError', message: 'Token expired' } })
+          expect(callback.headers.get('location')).toBeNull()
+          expect(sidCookie(callback)).toBe('')
+          expect(await sql`select row_id from person where email = ${email}`).toEqual([])
+        }
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   test('Google sign-in gives the sid cookie the configured session lifetime', async ({ api }) => {
     await setAllowedDomains('*')
     for (const hours of [1, 720]) {

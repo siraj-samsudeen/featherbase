@@ -3,7 +3,7 @@ import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PrincipalName, isOpaqueId, usePrincipalName } from '../lib/people'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { buttonClasses, cardClasses, inputClasses } from './ui'
-import { fmtInstantIST } from '../lib/inr'
+import { fmtInstant } from '../lib/inr'
 
 interface CommentRow {
   row_id: string
@@ -157,7 +157,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
             <div className="min-w-0 flex-1">
               <div className="text-xs text-ink-muted">
                 <span className="font-medium text-ink" data-testid="comment-author"><PrincipalName id={c.created_by} /></span>{' '}
-                <span data-testid="comment-time">{fmtInstantIST(c.created_at)}</span>
+                <span data-testid="comment-time">{fmtInstant(c.created_at)}</span>
               </div>
               <div className="whitespace-pre-wrap break-words text-sm text-ink" data-testid="comment-content">
                 {renderContent(c.content)}

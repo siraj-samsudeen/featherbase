@@ -86,6 +86,7 @@ test('the Share form offers the same two pickers', async ({ admin }) => {
 test('service accounts are listed by name, never by their svc_ id', async ({ admin }) => {
   const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-web-list' })
   await renderApp('/featherbase/admin/access-tokens', admin)
+  await userEvent.click(await screen.findByRole('tab', { name: 'Service accounts' }))
   const row = await screen.findByTestId(`sa-${account.row_id}`)
   expect(row).toHaveTextContent('svc-web-list')
   expect(row.textContent).not.toContain(account.row_id)
@@ -112,8 +113,11 @@ test('names, not ids: a comment by a person shows their name and initials', asyn
 test('the Person list shows each person’s name in its first column', async ({ admin, createUser }) => {
   const ravi = await createUser({ email: 'ravi.list@example.com', fullName: 'Ravi Menon' })
   await renderApp('/featherbase/admin/Person', admin)
-  await waitFor(() => expect(screen.getAllByTestId('principal-name').some((n) => n.textContent === 'Ravi Menon')).toBe(true))
-  const table = screen.getAllByTestId('principal-name')[0].closest('table') as HTMLElement
+  // #792: the list leads with Person's title column, the full name, as the link to the row.
+  const link = await screen.findByRole('link', { name: 'Ravi Menon' })
+  expect(link.getAttribute('href')).toContain(encodeURIComponent(ravi.user!))
+  const table = link.closest('table') as HTMLElement
+  expect(within(table).getAllByRole('columnheader')[0]).not.toHaveTextContent('Row ID')
   expect(within(table).queryByText(ravi.user!)).toBeNull()
 })
 
