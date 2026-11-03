@@ -95,8 +95,15 @@ async function zoneCount(world) {
 async function populations(world) {
   return world.withApi(async api => {
     const fields = encodeURIComponent('["zone_code","population"]');
-    const response = await api.call('GET', `/api/table/${encodeURIComponent(world.reimport.table)}?fields=${fields}&limit_page_length=1000`, undefined, [200], 'read populations');
-    return Object.fromEntries((await response.json()).data.map(row => [row.zone_code, row.population]));
+    const rows = [];
+    for (let start = 0; ; ) {
+      const response = await api.call('GET', `/api/table/${encodeURIComponent(world.reimport.table)}?fields=${fields}&order_by=row_id%20asc&limit_page_length=500&limit_start=${start}`, undefined, [200], 'read populations');
+      const page = await response.json();
+      rows.push(...page.data);
+      if (page.data.length === 0 || rows.length >= page.total) break;
+      start += page.data.length;
+    }
+    return Object.fromEntries(rows.map(row => [row.zone_code, row.population]));
   });
 }
 
