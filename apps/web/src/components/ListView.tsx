@@ -1865,6 +1865,12 @@ export function FilterBar({
   }
 
   function add() {
+    if (ticks) {
+      if (!picks.length) return
+      onChange([...filters, [field, 'in', picks]])
+      setPicks([])
+      return
+    }
     if (!value.trim()) return
     const v = op === 'like' ? `%${value.trim()}%` : value.trim()
     onChange([...filters, [field, op, v]])
