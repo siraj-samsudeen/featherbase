@@ -250,12 +250,20 @@ async function findPrincipal(id: string): Promise<{ row_id: string; kind: Princi
   return row ? { row_id: String(row.row_id), kind: row.kind as PrincipalKind, enabled: row.enabled === true } : null
 }
 
+function cleanAccessTokenLabel(label: string): string {
+  const name = label.trim()
+  if (!name) throw new AppError('ValidationError', 'A token needs a label')
+  if ([...name].length > 140)
+    throw new AppError('ValidationError', 'A token label must be at most 140 characters')
+  return name
+}
+
 export async function issueAccessToken(
   owner: string,
   label: string,
   expiresAt?: Date | null,
 ): Promise<{ token: string } & AccessTokenRow> {
-  if (!label.trim()) throw new AppError('ValidationError', 'A token needs a label')
+  const name = cleanAccessTokenLabel(label)
   if (expiresAt && !(expiresAt.getTime() > Date.now()))
     throw new AppError('ValidationError', 'expires_at must be in the future')
   const principal = await findPrincipal(owner)
@@ -264,7 +272,7 @@ export async function issueAccessToken(
   const token = TOKEN_PREFIX + randomBytes(32).toString('base64url')
   const [row] = await sql`
     insert into access_token (id, label, person, service_account, token_hash, expires_at)
-    values (${'tok_' + randomBytes(6).toString('hex')}, ${label.trim()},
+    values (${'tok_' + randomBytes(6).toString('hex')}, ${name},
             ${principal.kind === 'person' ? owner : null}, ${principal.kind === 'service_account' ? owner : null},
             ${hashToken(token)}, ${expiresAt ?? null})
     returning ${tokenFields()}`
@@ -303,8 +311,8 @@ export async function getAccessToken(id: string): Promise<AccessTokenRow> {
 }
 
 export async function renameAccessToken(id: string, label: string, actor: string): Promise<AccessTokenRow> {
-  if (!label.trim()) throw new AppError('ValidationError', 'A token needs a label')
-  const [row] = await sql`update access_token set label = ${label.trim()} where id = ${id} returning ${tokenFields()}`
+  const name = cleanAccessTokenLabel(label)
+  const [row] = await sql`update access_token set label = ${name} where id = ${id} returning ${tokenFields()}`
   if (!row) throw new AppError('NotFoundError', `Access token ${id} not found`)
   await logActivity(actor, `access_token_renamed ${id}`)
   return row as unknown as AccessTokenRow

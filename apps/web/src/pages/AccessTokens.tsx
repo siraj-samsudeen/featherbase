@@ -148,6 +148,8 @@ export function AccessTokens() {
         label: name,
       }),
     onSuccess: async () => {
+      if (renaming?.kind === 'account')
+        await qc.invalidateQueries({ queryKey: ['principal-name', renaming.id] })
       await refresh()
       setRenaming(null)
     },
