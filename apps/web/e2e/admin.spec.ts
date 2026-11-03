@@ -115,3 +115,35 @@ signedInTest('a cached list remains usable when settings and recent-history read
       }).toEqual({ field: 'title', dir: 'asc' })
     })
 })
+
+signedInTest('an offline return never revives a list after metadata access is denied', async ({ session, page, request }) => {
+  const headers = await adminAuth(request)
+  const table = 'Offline Denied List'
+  expect((await request.post('/api/table_def', { headers, data: {
+    name: table, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
+  } })).status()).toBe(201)
+  expect((await request.post('/api/save_row', { headers, data: { table, row: { title: 'Previously readable row' } } })).status()).toBe(201)
+  await session.visit(`/featherbase/admin/${encodeURIComponent(table)}`)
+    .assertHas('[data-testid="list-rows"]', { text: 'Previously readable row' })
+    .step('receive a definitive denial before returning offline', async () => {
+      await page.getByTestId('session-user').click()
+      await page.getByTestId('account-sign-in-methods').click()
+      await expect(page.getByTestId('sign-in-methods')).toBeVisible()
+      await page.route(`**/api/table/${encodeURIComponent(table)}:meta`, route => route.fulfill({
+        status: 403, json: { error: { type: 'PermissionError', message: 'Read access revoked' } },
+      }))
+      await page.goBack()
+      await expect(page.getByTestId('list-error')).toHaveText('Read access revoked')
+      await page.getByTestId('session-user').click()
+      await page.getByTestId('account-sign-in-methods').click()
+      await expect(page.getByTestId('sign-in-methods')).toBeVisible()
+      await page.context().setOffline(true)
+      try {
+        await page.goBack()
+        await expect(page.locator('main')).not.toContainText('Previously readable row')
+        await expect(page.getByTestId('list-rows')).toHaveCount(0)
+      } finally {
+        await page.context().setOffline(false)
+      }
+    })
+})
