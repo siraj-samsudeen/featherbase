@@ -7,7 +7,7 @@
 const assert = require('node:assert/strict');
 const { Given, When, Then } = require('@cucumber/cucumber');
 const { expect } = require('playwright/test');
-const { externalSql } = require('../support/stack');
+const { externalSql, EXTERNAL_URL_ENV } = require('../support/stack');
 const { givenReaderSource, grantReader } = require('../support/outside-db');
 const { SourceBrowserPage } = require('../support/pages/source-browser-page');
 const { ListPage } = require('../support/pages/list-page');
