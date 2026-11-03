@@ -300,7 +300,7 @@ export function ReportView({
   // is unique, so no row repeats or goes missing at a page boundary when many
   // rows tie on the view's own sort; the view's order is restored afterwards.
   async function allRows(): Promise<Row[]> {
-    if (data.length >= matching) return data
+    if (rows.data && data.length >= matching) return data
     const fields = groupBy ? listArgs.fields : [...new Set([...listArgs.fields, 'updated_at'])]
     const all: Row[] = []
     for (let start = 0; ; start += PAGE) {
