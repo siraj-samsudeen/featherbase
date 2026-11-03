@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { tableSlug } from '../../packages/shared/src/app-routes'
 import type { CommandDestinations } from 'shared'
 import { initialLabRows, labTables, labScenarios, type LabScenario } from './src/gallery/fixtures'
 
@@ -92,7 +93,7 @@ function syntheticApi(): Plugin {
           if (request.method === 'GET' && /^\/api\/workflow\/(Lab Project|Lab Task)\/[\w-]+$/.test(path)) return send({ workflow: null })
           if (request.method === 'GET' && /^\/api\/tags\/(Lab Project|Lab Task)\/[\w-]+$/.test(path)) return send({ tags: [] })
           if (request.method === 'GET' && /^\/api\/activity\/(Lab Project|Lab Task)\/[\w-]+$/.test(path)) return send({ comments: [], versions: [] })
-          const meta = labTables.find((t) => path === `/api/table/${t.name}:meta`)
+          const meta = labTables.find((t) => path === `/api/table/${t.name}:meta` || path === `/api/table/${tableSlug(t.name)}:meta`)
           if (request.method === 'GET' && meta) return send(meta)
           if (request.method === 'GET' && path === '/api/table/Table') return send({ data: labTables.map((t) => ({ row_id: t.name, module: 'UI Lab', system: false })), total: labTables.length })
           if (request.method === 'GET' && ['/api/table/Client Script', '/api/table/File', '/api/table/ToDo'].includes(path)) return send({ data: [], total: 0 })
