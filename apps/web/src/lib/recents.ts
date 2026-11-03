@@ -267,7 +267,7 @@ export function actionForLocation(
   const segs = m[1].split('/').map((s) => decodeURIComponent(s)).filter(Boolean)
   if (segs.length === 0) return null
 
-  const staticTitle = segs.length === 1 ? adminPageTitle(segs[0]) : undefined
+  const staticTitle = segs.length === 1 && !UNRECORDED.has(segs[0]) ? adminPageTitle(segs[0]) : undefined
   if (staticTitle)
     return { kind: 'page', key: `page:${segs[0]}`, label: staticTitle, path: pathname }
 

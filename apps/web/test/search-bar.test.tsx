@@ -197,3 +197,23 @@ test('A past search comes back in the empty bar: arrow keys choose it and Enter 
   fireEvent.keyDown(bar, { key: 'Escape' })
   expect(document.activeElement).not.toBe(bar)
 })
+
+test('#737 reopening the command bar discovers Tables added in the same session', async ({ admin }) => {
+  await seed(admin)
+  const { bar } = await openBar(admin)
+  fireEvent.focus(bar)
+  fireEvent.change(bar, { target: { value: 'Sb Gadget' } })
+  await screen.findByTestId('awesomebar-table')
+  fireEvent.keyDown(bar, { key: 'Escape' })
+
+  await admin.post('/api/table_def', {
+    name: 'Sb Added Later',
+    columns: [{ column_name: 'title', column_type: 'Data' }],
+  })
+  fireEvent.focus(bar)
+  fireEvent.change(bar, { target: { value: 'Sb Added Later' } })
+  await waitFor(() => {
+    const tables = screen.getAllByTestId('awesomebar-table')
+    expect(tables.map((t) => t.textContent)).toEqual([expect.stringContaining('Sb Added Later')])
+  })
+})
