@@ -5,6 +5,7 @@ import { setSession } from '../lib/api'
 import { paintSavedTheme } from '../lib/theme'
 import { createPrototypeRouter } from './PrototypeApp'
 import { RelatedWorkspacePrototype } from './RelatedWorkspacePrototype'
+import { PrototypeLibrary } from './PrototypeLibrary'
 import '../index.css'
 
 // This entry is served only by the dev-only no-proxy prototype server. Its
@@ -17,7 +18,8 @@ if (handshake.headers.get('x-featherbase-synthetic') !== 'true') {
 setSession('synthetic-ui-lab', { row_id: 'Administrator', full_name: 'Synthetic designer', email: null })
 paintSavedTheme()
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-const router = createPrototypeRouter(<RelatedWorkspacePrototype />)
+const relatedExample = new URLSearchParams(window.location.search).get('example') === 'related'
+const router = createPrototypeRouter(relatedExample ? <RelatedWorkspacePrototype /> : <PrototypeLibrary />)
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>,
 )

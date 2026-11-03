@@ -3,6 +3,7 @@ import { AppError } from './errors'
 import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
 import { assertAppAvailable } from './app-lifecycle'
 import { resolvedRelation } from './platform-schema'
+import type { ReadingPresentation } from 'shared'
 import { METADATA_OVERRIDE_PROPERTIES, METADATA_OVERRIDE_BOOLEAN_VALUES } from 'shared'
 
 // Column types the engine understands (columns generated in META-002/003).
@@ -104,6 +105,7 @@ export interface TableMeta {
   is_submittable: boolean
   id_pattern: string
   title_column: string | null
+  reading_presentation?: ReadingPresentation | null
   sort_column: string
   sort_order: string
   track_changes: boolean
