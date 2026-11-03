@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 import {
   Button,
   buttonClasses,
@@ -19,17 +19,54 @@ import {
   ToastProvider,
   useToast,
   type DataColumn,
+  Breadcrumbs,
+  ContentTabs,
+  SearchableList,
 } from '../components/ui'
 import { fmtCount, fmtINR, fmtPct } from '../lib/inr'
 import { ChartColumn, ExternalLink, House, ListChecks, Moon, Plus, Sun, UserRound } from '../components/ui/icons'
 
+const ExampleSearch = createContext('')
+const EXAMPLES: Record<string, { files: string[]; keywords?: string }> = {
+  Buttons: { files: ['Button'], keywords: 'primary secondary danger quiet' },
+  Fields: { files: ['Field'], keywords: 'TextInput PasswordInput SearchInput Select' },
+  'Status, in words': { files: ['StatusPill'] }, Notices: { files: ['Notice'] },
+  'Card, empty state, loading': { files: ['Card', 'EmptyState', 'Skeleton'] },
+  'Report headline': { files: ['Headline'] },
+  'List (a table when wide, cards on a phone)': { files: ['DataList'] },
+  'Content navigation': { files: ['Breadcrumbs', 'ContentTabs', 'SearchableList'] },
+  'Tab bar (phone only)': { files: ['TabBar'] }, Toasts: { files: ['Toast'] },
+}
+
+function matchesExample(title: string, query: string) {
+  const example = EXAMPLES[title]
+  return `${title} ${example.files.join(' ')} ${example.keywords ?? ''}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
+}
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
+  const query = useContext(ExampleSearch)
+  if (!matchesExample(title, query)) return null
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-xs font-bold uppercase tracking-wide text-ink-muted">{title}</h2>
+      {EXAMPLES[title].files.map((file) => <code key={file} className="text-xs text-ink-subtle">apps/web/src/components/ui/{file}.tsx</code>)}
       {children}
     </section>
   )
+}
+
+function NavigationDemo() {
+  const [tab, setTab] = useState('examples')
+  const [query, setQuery] = useState('')
+  return <div className="flex min-h-0 flex-col gap-3">
+    <Breadcrumbs items={[{ label: 'Library', href: '/prototype.html' }, { label: 'Navigation examples' }]} />
+    <ContentTabs label="Content navigation example" value={tab} onChange={setTab} tabs={[
+      { id: 'examples', label: 'Examples', content: <SearchableList label="Search navigation examples" items={['North workshop', 'South studio']} query={query} onQueryChange={setQuery} getSearchText={(item) => item}>
+        {(items) => items.length ? <ul className="space-y-2 text-sm">{items.map((item) => <li key={item}>{item}</li>)}</ul> : <EmptyState title="No matching examples" body="Clear the search to restore the examples." />}
+      </SearchableList> },
+      { id: 'usage', label: 'Reuse', content: <p className="text-sm">Keep the search and editable state mounted when switching sections. Use server filters for paginated Table records.</p> },
+    ]} />
+  </div>
 }
 
 function ToastDemo() {
@@ -75,6 +112,7 @@ const LINE_COLUMNS: DataColumn<Line>[] = [
 ]
 
 export function Gallery() {
+  const [query, setQuery] = useState('')
   const [dark, setDark] = useState(document.documentElement.dataset.theme === 'dark')
   function flip() {
     const next = !dark
@@ -82,8 +120,9 @@ export function Gallery() {
     setDark(next)
   }
   return (
+    <ExampleSearch.Provider value={query}>
     <ToastProvider>
-      <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 bg-canvas px-4 py-6 text-ink">
+      <div className="flex min-w-0 flex-col gap-6 bg-canvas text-ink">
         <header className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-bold">Components</h1>
           <Button onClick={flip} icon={dark ? <Sun aria-hidden size={18} /> : <Moon aria-hidden size={18} />}>
@@ -91,6 +130,11 @@ export function Gallery() {
           </Button>
         </header>
 
+        <div className="sticky top-0 z-10 flex items-center gap-2 bg-canvas py-2">
+          <div className="min-w-0 flex-1"><SearchInput aria-label="Search components" placeholder="Search components by name or purpose" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
+          {query && <Button onClick={() => setQuery('')}>Clear search</Button>}
+        </div>
+        {!Object.keys(EXAMPLES).some((title) => matchesExample(title, query)) && <EmptyState title="No matching components" body="Try another name or purpose, or clear the search." />}
         <Section title="Buttons">
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" icon={<Plus aria-hidden size={18} />}>Start a checklist</Button>
@@ -197,6 +241,10 @@ export function Gallery() {
           />
         </Section>
 
+        <Section title="Content navigation">
+          <NavigationDemo />
+        </Section>
+
         <Section title="Tab bar (phone only)">
           <div className="mx-auto w-full max-w-sm overflow-hidden rounded-card border border-border">
             <TabBar
@@ -216,7 +264,8 @@ export function Gallery() {
         <Section title="Toasts">
           <ToastDemo />
         </Section>
-      </main>
+      </div>
     </ToastProvider>
+    </ExampleSearch.Provider>
   )
 }

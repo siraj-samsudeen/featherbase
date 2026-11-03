@@ -20,8 +20,10 @@ const { BeforeAll, AfterAll } = require('@cucumber/cucumber');
 const REPO_ROOT = path.resolve(__dirname, '../..');
 const API_PORT = Number(process.env.ACCEPTANCE_API_PORT ?? 8030);
 const WEB_PORT = Number(process.env.ACCEPTANCE_WEB_PORT ?? 5203);
+const PROTOTYPE_PORT = Number(process.env.ACCEPTANCE_PROTOTYPE_PORT ?? 5383);
 const BASE_URL = `http://localhost:${WEB_PORT}`;
 const API_URL = `http://localhost:${API_PORT}`;
+const PROTOTYPE_URL = `http://localhost:${PROTOTYPE_PORT}`;
 const BOOT_TIMEOUT_MS = 240_000;
 
 // Same host and credentials as the developer's database, under its own name.
@@ -179,7 +181,7 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
   // A second run started while one is going would answer its boot checks from
   // the first run's servers, reset the database under them, and then lose
   // them when the first run ends: both fail with lists that never show.
-  for (const [port, name] of [[API_PORT, 'ACCEPTANCE_API_PORT'], [WEB_PORT, 'ACCEPTANCE_WEB_PORT']]) {
+  for (const [port, name] of [[API_PORT, 'ACCEPTANCE_API_PORT'], [WEB_PORT, 'ACCEPTANCE_WEB_PORT'], [PROTOTYPE_PORT, 'ACCEPTANCE_PROTOTYPE_PORT']]) {
     if (await portTaken(port))
       throw new Error(
         `port ${port} is already in use, most likely by another acceptance run. ` +
@@ -197,8 +199,12 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
     WEB_PORT: String(WEB_PORT),
     API_PORT: String(API_PORT),
   });
+  const prototype = start('prototype', ['--filter', 'web', 'exec', 'vite', '--config', 'vite.prototype.config.ts'], {
+    PROTOTYPE_PORT: String(PROTOTYPE_PORT),
+  });
   await waitFor(`${API_URL}/api/ping`, api, 'The API');
   await waitFor(BASE_URL, web, 'The web app');
+  await waitFor(`${PROTOTYPE_URL}/__lab/scenario`, prototype, 'The synthetic prototype');
 });
 
 AfterAll(async function () {
@@ -209,6 +215,6 @@ AfterAll(async function () {
 process.on('exit', stopAll);
 
 module.exports = {
-  BASE_URL, API_URL, resetAcceptance, restartAcceptance, acceptanceSql, isolatedEnvironment, REPO_ROOT,
+  BASE_URL, API_URL, PROTOTYPE_URL, resetAcceptance, restartAcceptance, acceptanceSql, isolatedEnvironment, REPO_ROOT,
   externalSql, EXTERNAL_URL_ENV, EXTERNAL_READER, EXTERNAL_READER_PASSWORD,
 };
