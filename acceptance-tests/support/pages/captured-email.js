@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { expect } = require('playwright/test');
-const { acceptanceSql } = require('../stack');
+const { acceptanceSql, restartAcceptance } = require('../stack');
 const { Api } = require('../api');
 
 const NORMAL_BODY = 'Hello Priya,\n\nYour invoice is ready.\nThank you,\nAccounts';
@@ -96,6 +96,7 @@ class CapturedEmail {
       { column_name: 'title', column_type: 'Data' },
       { column_name: 'message', column_type: 'Text' },
     ] }, [{ row_id: 'notice', title: 'Editable title', message: 'Editable body' }]);
+    await restartAcceptance();
   }
 
   async openReference() {

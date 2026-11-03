@@ -8,6 +8,7 @@ import { deleteStored } from './storage'
 import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation, resolvedRelation, tableName } from './platform-schema'
+import { readingPresentationSchema } from 'shared'
 
 export { tableName }
 
@@ -124,6 +125,7 @@ export const tableDefSchema = z.object({
   is_submittable: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   id_pattern: optionalString,
   title_column: optionalString,
+  reading_presentation: readingPresentationSchema.nullish(),
   description: optionalString,
   // #74: platform-table flag. Accepted here so migrations and seeds can set
   // it through createTable; the public /api/table_def routes REJECT it — a
@@ -194,6 +196,14 @@ function targetOf(f: TableDef['columns'][number]): string | undefined {
 
 function validateDef(def: TableDef) {
   const errs: Record<string, string> = {}
+  const reading = def.reading_presentation
+  if (reading) {
+    const columns = new Set(def.columns.filter(f => !['Section Break', 'Column Break', 'Sub-table'].includes(f.column_type)).map(f => f.column_name))
+    columns.add('created_at')
+    columns.add('updated_at')
+    for (const name of [reading.title, ...reading.headers, reading.body, reading.attachment_names].filter((name): name is string => Boolean(name)))
+      if (!columns.has(name)) errs.reading_presentation = `Reading column ${name} is not a value column of this Table`
+  }
   // EDS-3/BV4/VDT-4: a source binding is only coherent for plain collection
   // Tables — no sub_tables, no settings, no submit lifecycle (the source has
   // no docstatus), no Sub-table columns (child rows can't live on a source).
@@ -399,6 +409,7 @@ export async function updateTable(
       reference_table: name,
       hidden: true,
     })
+  if (def.reading_presentation === undefined) def.reading_presentation = existing.reading_presentation
   validateDef(def)
   if (def.id_pattern)
     validateIdPattern(def.id_pattern, def.columns.map((f) => f.column_name))
@@ -460,6 +471,7 @@ export async function updateTable(
       is_submittable: def.is_submittable ?? existing.is_submittable,
       id_pattern: def.id_pattern ?? existing.id_pattern,
       title_column: def.title_column ?? null,
+      ...(def.reading_presentation !== undefined ? { reading_presentation: def.reading_presentation } : {}),
       description: def.description ?? null,
       // Only when given: an update that leaves it out keeps the Table's choice.
       ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
@@ -695,6 +707,7 @@ export async function createTable(
       is_submittable: def.is_submittable ?? false,
       id_pattern: def.id_pattern ?? 'hash',
       title_column: def.title_column ?? null,
+      reading_presentation: def.reading_presentation ?? null,
       description: def.description ?? null,
       system: def.system ?? false,
     }
