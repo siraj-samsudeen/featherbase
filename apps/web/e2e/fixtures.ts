@@ -394,10 +394,12 @@ export function signIn<
     assertHas(selector: string): S
   },
 >(session: S): S {
-  // The post-login landing path varies with home-recall state
-  // (/admin/home/home, a recent Table, …) — assert the admin shell instead.
+  // This is an authentication precondition, not a first-run setup journey.
+  // An explicit return address prevents a pending setup offer from taking over
+  // the next page on a fresh shard with no other System Manager yet.
+  // The Admin index chooses a Home Page; assert the shell, not a specific page.
   return session
-    .visit('/login')
+    .visit('/featherbase/login?next=/featherbase/admin')
     .fillIn('Email or username', ADMIN_USER)
     .fillIn('Password', ADMIN_PWD)
     .clickButton('Sign in')
