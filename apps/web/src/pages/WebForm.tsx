@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
-import type { WebFormColumn, WebFormConfig } from 'shared'
+import { choiceLabel, type WebFormColumn, type WebFormConfig } from 'shared'
 import { api, ApiError } from '../lib/api'
+import { useI18n } from '../lib/i18n'
 import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
 
 // WEB-002: a public, session-less form. Fetches its column config and creates
@@ -16,6 +17,7 @@ function Column({
   value: string
   onChange: (v: string) => void
 }) {
+  const { t } = useI18n()
   const testid = `wf-field-${def.column_name}`
   const common = { id: testid, 'data-testid': testid, className: inputClasses(), value, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => onChange(e.target.value) }
   if (def.column_type === 'Long Text' || def.column_type === 'Text') return <textarea rows={4} {...common} />
@@ -29,7 +31,7 @@ function Column({
           .filter(Boolean)
           .map((choice) => (
             <option key={choice} value={choice}>
-              {choice}
+              {choiceLabel(choice, def.choice_labels, t)}
             </option>
           ))}
       </select>
