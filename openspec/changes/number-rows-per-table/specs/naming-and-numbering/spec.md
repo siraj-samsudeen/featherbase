@@ -31,9 +31,9 @@ take numbers from each other.
 #### Scenario: Two tables with the same prefix both start at 001
 
 ```gherkin
-Given two tables "Plant" and "Plant Copy" both named by a series with the prefix "PLANT-" and three digits
-When the user adds a plant to each
-Then each plant is numbered PLANT-001
+Given two tables "Store" and "Store Copy" both named by a series with the prefix "STORE-" and three digits
+When the user adds a store to each
+Then each store is numbered STORE-001
 ```
 
 ### Requirement: A number already in the table is skipped
@@ -45,8 +45,8 @@ being refused.
 #### Scenario: An imported row already holds the next number
 
 ```gherkin
-Given a table "Plant" whose rows are numbered 1, 2, 3
-And the user has added plant 1 and imported a plant with the id 2
-When the user adds another plant
+Given a table "Bin" whose rows are numbered 1, 2, 3
+And the user has added bin 1 and imported a bin with the id 2
+When the user adds another bin
 Then it is numbered 3
 ```
