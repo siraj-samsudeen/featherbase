@@ -47,7 +47,7 @@ function save(user: string, entries: RecentEntry[]): void {
 // Unlike the transport queue this journal survives a flush, including failed
 // delivery and a summary captured before a successful POST. Only a summary
 // containing a visit confirms it. It has the same bounds as the visible cache.
-const unconfirmed = new Map<string, RecentEntry[]>()
+const unconfirmed = new Map<string, { entries: RecentEntry[]; remote?: RecentEntry[] }>()
 
 /** A completed session must not contribute visits to a later sign-in. */
 export function clearVisitJournal(): void {
@@ -72,9 +72,9 @@ export function recordAction(user: string, action: RecentAction, now = Date.now(
   const entries = loadAll(user)
   remember(entries, action, now)
   save(user, entries)
-  const pending = unconfirmed.get(user) ?? []
-  remember(pending, action, now)
-  unconfirmed.set(user, pending)
+  const journal = unconfirmed.get(user) ?? { entries: [] }
+  remember(journal.entries, action, now)
+  unconfirmed.set(user, journal)
   enqueueServerEvent(user, action, now)
 }
 
@@ -94,7 +94,7 @@ export function recordAction(user: string, action: RecentAction, now = Date.now(
 interface ServerEventSink {
   /** The user the transport would authenticate as right now. */
   currentUser: () => string | null
-  post: (events: Array<Record<string, unknown>>) => void
+  post: (events: Array<Record<string, unknown>>, recorded: (timestamps: number[]) => void) => void
   beacon: (events: Array<Record<string, unknown>>) => void
 }
 
@@ -123,7 +123,28 @@ function flush(useBeacon = false): void {
   if (mine.length === 0) return
   const batch = mine.slice(0, 50).map((q) => q.event)
   if (useBeacon) sink.beacon(batch)
-  else sink.post(batch)
+  else {
+    const owner = current!
+    const journal = unconfirmed.get(owner)
+    sink.post(batch, (timestamps) => {
+      // A late acknowledgement must not mutate a later session, even when
+      // the same person signs back in before the POST completes.
+      if (!journal || unconfirmed.get(owner) !== journal || sink?.currentUser() !== owner) return
+      const cached = loadAll(owner)
+      for (const entries of [journal.entries, cached]) {
+        for (const entry of entries) {
+          entry.visits = [...new Set(entry.visits.map((at) => {
+            const index = batch.findIndex((event) => event.key === entry.key && event.at === at)
+            return index < 0 ? at : timestamps[index]
+          }))].sort((a, b) => a - b)
+        }
+      }
+      // Delivery does not retire a visit: a summary captured before the POST
+      // can still arrive later. Reconcile against the latest actual snapshot.
+      if (journal.remote) replaceServerEntries(owner, journal.remote)
+      else save(owner, cached)
+    })
+  }
   if (mine.length > 50) {
     queue = mine.slice(50)
     flushTimer = setTimeout(() => flush(), FLUSH_DELAY_MS)
@@ -192,13 +213,16 @@ export function replaceServerEntries(user: string, remote: ServerRecentEntry[]):
       })
     }
   }
+  const journal = unconfirmed.get(user) ?? { entries: [] }
+  journal.remote = entries.map((entry) => ({ ...entry, visits: [...entry.visits] }))
   const pending: RecentEntry[] = []
-  for (const local of unconfirmed.get(user) ?? []) {
+  for (const local of journal.entries) {
     const confirmed = entries.find((e) => e.key === local.key)
     const visits = local.visits.filter((at) => !confirmed?.visits.includes(at))
     if (visits.length) pending.push({ ...local, visits })
   }
-  unconfirmed.set(user, pending)
+  journal.entries = pending
+  unconfirmed.set(user, journal)
   for (const local of pending) {
     const existing = entries.find((e) => e.key === local.key)
     if (existing) {

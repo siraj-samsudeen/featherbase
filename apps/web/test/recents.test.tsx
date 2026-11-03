@@ -77,6 +77,61 @@ describe('recordAction / recentActions', () => {
 })
 
 describe('authoritative history during delivery', () => {
+  it.each(['before', 'after'] as const)('does not count a clock-skewed visit twice when its summary arrives %s acknowledgement', (timing) => {
+    const owner = `history-skew-${timing}`
+    let acknowledge: ((timestamps: number[]) => void) | undefined
+    connectEventSink({
+      currentUser: () => owner,
+      post: (_events, recorded?: (timestamps: number[]) => void) => { acknowledge = recorded },
+      beacon: () => {},
+    })
+    recordAction(owner, row('NEW'), NOW + 60_000)
+    flushPendingEvents()
+    if (timing === 'after') acknowledge?.([NOW])
+    replaceServerEntries(owner, [{ ...row('NEW'), visits: [NOW] }])
+    if (timing === 'before') acknowledge?.([NOW])
+    expect(recentActions(owner, 10)).toEqual([{ ...row('NEW'), visits: [NOW] }])
+    expect(frequentActions(owner, 10, NOW)).toEqual([])
+    replaceServerEntries(owner, [])
+    expect(recentActions(owner, 10)).toEqual([])
+  })
+
+  it.each(['before', 'after', 'failed'] as const)('preserves distinct visits across a stale snapshot when acknowledgement is %s', (timing) => {
+    const owner = `history-skew-stale-${timing}`
+    let acknowledge!: (timestamps: number[]) => void
+    connectEventSink({
+      currentUser: () => owner,
+      post: (_events, recorded) => { acknowledge = recorded },
+      beacon: () => {},
+    })
+    recordAction(owner, row('NEW'), NOW + 60_000)
+    flushPendingEvents()
+    recordAction(owner, row('NEW'), NOW + 61_000)
+    if (timing === 'before') acknowledge([NOW])
+    replaceServerEntries(owner, [{ ...row('NEW'), visits: [NOW - 1000] }])
+    if (timing === 'after') acknowledge([NOW])
+    const deliveredAt = timing === 'failed' ? NOW + 60_000 : NOW
+    expect(recentActions(owner, 10)).toEqual([{ ...row('NEW'), visits: [NOW - 1000, deliveredAt, NOW + 61_000] }])
+    expect(frequentActions(owner, 10, NOW)[0].visits).toHaveLength(3)
+  })
+
+  it('ignores an acknowledgement from an ended session of the same person', () => {
+    const owner = 'history-late-ack'
+    let acknowledge!: (timestamps: number[]) => void
+    connectEventSink({
+      currentUser: () => owner,
+      post: (_events, recorded) => { acknowledge = recorded },
+      beacon: () => {},
+    })
+    recordAction(owner, row('NEW'), NOW + 60_000)
+    flushPendingEvents()
+    clearSession()
+    replaceServerEntries(owner, [])
+    recordAction(owner, row('NEW'), NOW + 60_000)
+    acknowledge([NOW])
+    expect(recentActions(owner, 10)).toEqual([{ ...row('NEW'), visits: [NOW + 60_000] }])
+  })
+
   it.each(['queued', 'in-flight', 'failed', 'delivered'] as const)('keeps a %s visit missing from a stale summary', async (delivery) => {
     const owner = `history-${delivery}`
     let finish!: () => void

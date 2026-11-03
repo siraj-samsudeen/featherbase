@@ -90,6 +90,8 @@ history is private to the user and follows them across devices.
 
 The user's recent and frequent destinations SHALL follow the instance's saved history on each app load and sign-in, replacing the browser's remembered history even when the instance has none. Visits not yet included in that history MUST remain available.
 
+A saved visit MUST count only once even when the browser's clock differs from the instance's clock. A delivery acknowledgement alone MUST NOT discard a visit missing from an earlier history snapshot.
+
 #### Scenario: Old destinations disappear after history is cleared
 
 ```gherkin

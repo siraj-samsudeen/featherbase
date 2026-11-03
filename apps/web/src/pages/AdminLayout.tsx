@@ -56,8 +56,13 @@ connectEventSink({
   // The queue fail-closes on this identity: only events recorded FOR this
   // user are ever posted with this user's credentials.
   currentUser: () => getSessionUser()?.row_id ?? null,
-  post: (events) => {
-    void api.post('/api/events', { events }).catch(
+  post: (events, recorded) => {
+    void api.post<{ timestamps: number[] }>('/api/events', { events }).then(
+      ({ timestamps }) => {
+        recorded(timestamps)
+        window.dispatchEvent(new Event('navigation-history-updated'))
+      },
+    ).catch(
       () => {},
     )
   },
@@ -154,6 +159,12 @@ function AdminShell() {
   }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const [barFocused, setBarFocused] = useState(false)
   const [selection, setSelection] = useState<{ query: string; id: string } | null>(null)
+  const [, refreshHistory] = useState(0)
+  useEffect(() => {
+    const refresh = () => refreshHistory((version) => version + 1)
+    window.addEventListener('navigation-history-updated', refresh)
+    return () => window.removeEventListener('navigation-history-updated', refresh)
+  }, [])
 
   // Cached destinations are not offered until the initial summary settles.
   // A failed request unlocks the untouched cache as a best-effort fallback.
