@@ -16,25 +16,51 @@ let watched: MediaQueryList | null = null
 let painted: HTMLElement | null = null
 const target = () => painted ?? document.documentElement
 
-/** Paint onto `element` from now on, instead of the document's root. */
+// #668: an app's page is told the theme the person sees, light or dark, never
+// the raw choice. The bar writes it on the app's root (an app may style with
+// `html[data-featherbase-theme=dark]` and need no script) and announces each
+// change on window, once it first paints and once per change after:
+//
+//   window.addEventListener('featherbase:theme-change', (event) => {
+//     const { theme } = event.detail   // 'light' or 'dark'
+//   })
+//
+// The app's own `data-theme` stays the app's. Featherbase's own pages paint
+// their root's `data-theme` and get neither.
+export const THEME_CHANGE_EVENT = 'featherbase:theme-change'
+export const APP_THEME_ATTRIBUTE = 'data-featherbase-theme'
+type Painted = 'light' | 'dark'
+let announced: Painted | null = null
+
+/** Paint onto `element` from now on, instead of the document's root, and tell
+ *  the app's page of each theme painted. The caller paints next (the bar's
+ *  mount paints the saved choice), so the app hears the first theme once. */
 export function paintOnto(element: HTMLElement) {
   painted = element
-  paint()
+  announced = null
 }
 
 function deviceIsDark(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia(DARK_QUERY).matches
 }
 
+function show(theme: Painted) {
+  target().dataset.theme = theme
+  if (!painted || theme === announced) return
+  announced = theme
+  document.documentElement.setAttribute(APP_THEME_ATTRIBUTE, theme)
+  window.dispatchEvent(new CustomEvent<{ theme: Painted }>(THEME_CHANGE_EVENT, { detail: { theme } }))
+}
+
 function paint() {
-  target().dataset.theme = choice === 'device' ? (deviceIsDark() ? 'dark' : 'light') : choice
+  show(choice === 'device' ? (deviceIsDark() ? 'dark' : 'light') : choice)
   watchDevice()
 }
 
 // Repaint when the device flips between light and dark (an evening switch, a
 // phone's automatic mode) while the choice is "same as device".
 function onDeviceChange() {
-  if (choice === 'device') target().dataset.theme = deviceIsDark() ? 'dark' : 'light'
+  if (choice === 'device') show(deviceIsDark() ? 'dark' : 'light')
 }
 function watchDevice() {
   if (typeof window.matchMedia !== 'function') return
@@ -58,6 +84,3 @@ export function paintedChoice(): Theme {
 export function followDevice() {
   paintTheme('device')
 }
-
-/** Shared bar broadcasts a person's selected theme to the app page. */
-export const THEME_CHANGE_EVENT = 'featherbase:theme-change'

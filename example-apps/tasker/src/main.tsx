@@ -7,8 +7,8 @@ import './style.css'
 
 paintTheme('device')
 window.addEventListener(THEME_CHANGE_EVENT, (event) => {
-  const theme = (event as CustomEvent<Theme>).detail
-  if (THEMES.includes(theme)) paintTheme(theme)
+  const theme = (event as CustomEvent<{ theme: 'light' | 'dark' }>).detail?.theme
+  if (theme === 'light' || theme === 'dark') paintTheme(theme)
 })
 
 const root = createRoot(document.getElementById('root')!)

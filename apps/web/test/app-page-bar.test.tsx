@@ -16,6 +16,7 @@ import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { setSession } from '../src/lib/api'
 import { BAR_CHANGE_EVENT } from '../src/lib/bar-address'
 import { mountBar } from '../src/bar/mount'
+import { APP_THEME_ATTRIBUTE, THEME_CHANGE_EVENT } from '@featherbase/shop-floor/theme'
 import { PHONE_QUERY } from '../src/components/TopBar'
 import { test, expect } from './pg-test'
 
@@ -171,6 +172,24 @@ test("the bar's theme is painted on the bar, never on the app's page", async ({ 
   await userEvent.click(await bar.findByTestId('theme-dark'))
   await waitFor(() => expect(bar.getByTestId('bar-theme-root')).toHaveAttribute('data-theme', 'dark'))
   expect(document.documentElement.getAttribute('data-theme')).toBe(before)
+})
+
+// #668: the app's page is told the theme the person sees, through the
+// attribute on its root and the documented event (unit cases: app-theme.test.ts).
+test(`choosing a theme in the bar tells the app through ${APP_THEME_ATTRIBUTE} and the ${THEME_CHANGE_EVENT} event`, async ({ admin, createUser }) => {
+  const heard: unknown[] = []
+  const listen = (event: Event) => heard.push((event as CustomEvent).detail)
+  window.addEventListener(THEME_CHANGE_EVENT, listen)
+  try {
+    const bar = openAppPage(await readerOf(admin, createUser))
+    expect(document.documentElement.getAttribute(APP_THEME_ATTRIBUTE)).toBe('light')
+    await userEvent.click(await bar.findByTestId('theme-dark'))
+    await waitFor(() => expect(document.documentElement.getAttribute(APP_THEME_ATTRIBUTE)).toBe('dark'))
+    expect(heard).toEqual([{ theme: 'light' }, { theme: 'dark' }])
+  } finally {
+    window.removeEventListener(THEME_CHANGE_EVENT, listen)
+    document.documentElement.removeAttribute(APP_THEME_ATTRIBUTE)
+  }
 })
 
 test("the bar's stylesheet lives in its own shadow root, not in the app's page", async ({ admin, createUser }) => {

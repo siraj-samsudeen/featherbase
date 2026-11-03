@@ -29,7 +29,7 @@ test('choosing a theme broadcasts it to an installed app without painting its ro
   window.addEventListener(THEME_CHANGE_EVENT, receive)
   try {
     applyTheme('dark')
-    expect(selected).toEqual(['dark'])
+    expect(selected).toEqual([{ theme: 'dark' }])
     expect(bar.dataset.theme).toBe('dark')
     expect(document.documentElement.dataset.theme).toBe('light')
   } finally {

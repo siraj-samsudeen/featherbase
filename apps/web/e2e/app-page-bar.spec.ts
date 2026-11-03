@@ -252,6 +252,45 @@ for (const [what, query] of [['no store', ''], ['a store that is not theirs', '?
   })
 }
 
+// #668: the app's page follows the person's theme, not the device's. The
+// fixture page styles a box from `data-featherbase-theme` on its root and
+// writes what the `featherbase:theme-change` event told it into that box.
+test.describe('on a dark device', () => {
+  test.use({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark' })
+
+  test("the app's page follows the person's light choice, and a switch to dark reaches it without a reload", async ({ session, page, request }) => {
+    await onAppPage(page, await reader(request, 'Bar Follow Theme'))
+    const follower = page.locator('#theme-follower')
+    const followerIsLight = () => follower.evaluate((el) => {
+      const [r, g, b] = getComputedStyle(el).backgroundColor.match(/\d+/g)!.map(Number)
+      return (r + g + b) / 3 > 128
+    })
+    await session.step('choosing light in the bar paints the app light, though the device is dark', async () => {
+      await page.getByTestId('theme-light').click()
+      await expect(follower).toHaveText('light')
+      expect(await followerIsLight()).toBe(true)
+    })
+    await session.step('a refresh keeps it: the app reads light from its root on load', async () => {
+      await page.reload()
+      await expect(page.getByTestId('session-user')).toBeVisible()
+      await expect(follower).toHaveText('light')
+      expect(await page.evaluate(() => document.documentElement.dataset.featherbaseTheme)).toBe('light')
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/app-theme-light-on-dark-device.png` })
+    })
+    await session.step('switching to dark reaches the same document, and the app keeps its own styling', async () => {
+      await page.evaluate(() => ((window as unknown as { b668: boolean }).b668 = true))
+      await page.getByTestId('theme-dark').click()
+      await expect(follower).toHaveText('dark')
+      expect(await followerIsLight()).toBe(false)
+      expect(await page.evaluate(() => (window as unknown as { b668?: boolean }).b668)).toBe(true)
+      expect(await page.evaluate(() => [document.documentElement.getAttribute('data-theme'), getComputedStyle(document.body).backgroundColor]))
+        .toEqual(['app-owned', 'rgb(250, 245, 230)'])
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/app-theme-dark.png` })
+      await page.getByTestId('theme-device').click()
+    })
+  })
+})
+
 test('signed out, an app page still sends the person to sign in', async ({ page }) => {
   await page.goto(`${PAGE}?store=S103`)
   await expect(page).toHaveURL(`${APP}/featherbase/login?next=${encodeURIComponent('/barproof/?store=S103')}`)
