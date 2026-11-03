@@ -14,10 +14,14 @@ const enc = encodeURIComponent
 async function seed(admin: { post: <T>(p: string, b: unknown) => Promise<T> }) {
   await admin.post('/api/table_def', {
     name: 'Pc Customer',
+    // #855: distinct prefixes keep a customer's id and a product's id apart on
+    // the peek, now that both would otherwise be numbered 1.
+    id_pattern: 'PCC-.##',
     columns: [{ column_name: 'label', column_type: 'Data', label: 'Label', in_list_view: true }],
   })
   await admin.post('/api/table_def', {
     name: 'Pc Product',
+    id_pattern: 'PCP-.##',
     columns: [{ column_name: 'label', column_type: 'Data', label: 'Label', in_list_view: true }],
   })
   await admin.post('/api/table_def', {

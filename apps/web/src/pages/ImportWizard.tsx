@@ -5,7 +5,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // imports this file — a strict useSearch would need the route object back)
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminPageTitle } from 'shared'
-import { applyColumnCombines, autoMapImportColumns, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, idPatternFor, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
+import { DEFAULT_ID_PATTERN, applyColumnCombines, autoMapImportColumns, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
@@ -89,8 +89,8 @@ interface SheetPlan {
   similar: { name: string; mapped: number; total: number } | null
   inferred: InferredTableDef
   // NAM-001, new-Table mode: the new Table's id_pattern, edited through the
-  // same NamingControl the Table Builder uses. null = keep the inferred
-  // default (a series derived from the Table name).
+  // same NamingControl the Table Builder uses. null = the default, plain
+  // numbers 1, 2, 3 (#855).
   id_pattern: string | null
   // per file column: target column_name in the existing Table, 'name' for
   // the Row ID (UPS-R4 — the file's own codes become the ids), or null (skip)
@@ -1323,7 +1323,7 @@ export function ImportWizard() {
   }
 
   function planIdPattern(plan: SheetPlan): string {
-    return plan.id_pattern ?? idPatternFor(plan.table)
+    return plan.id_pattern ?? DEFAULT_ID_PATTERN
   }
 
   // The mapped target columns of an existing-mode run — the `columns` the

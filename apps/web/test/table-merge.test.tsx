@@ -217,7 +217,7 @@ test('a source larger than one page merges all of its rows, not the first page',
   await waitFor(() => expect(screen.getByTestId('tm-map-glor')).toHaveValue('floor'))
   await user.click(screen.getByTestId('tm-go'))
 
-  await screen.findByTestId('tm-outcome', undefined, { timeout: 30_000 })
+  await screen.findByTestId('tm-outcome', undefined, { timeout: 55_000 })
   // 2 from the seed + 520 here, every one of them, checked against the
   // database the merge actually wrote to.
   const page = await admin.get<{ total: number }>(
@@ -226,7 +226,8 @@ test('a source larger than one page merges all of its rows, not the first page',
   expect(page.total).toBe(523)
 // 520 rows through the real server: slower than the suite default on a busy
 // machine (#527), so this one test gets more time; no assertion changes.
-}, 30_000)
+// #855: numbered Tables take one counter update per row, so 60s, not 30s.
+}, 60_000)
 
 test('a source emptied between pages finishes with the rows already read', async ({ admin }) => {
   const user = userEvent.setup()
@@ -250,13 +251,14 @@ test('a source emptied between pages finishes with the rows already read', async
   })
   try {
     await user.click(screen.getByTestId('tm-go'))
-    expect(await screen.findByTestId('tm-outcome', undefined, { timeout: 30_000 })).toHaveTextContent('Merged 500 rows')
+    expect(await screen.findByTestId('tm-outcome', undefined, { timeout: 55_000 })).toHaveTextContent('Merged 500 rows')
     expect(await admin.get(`/api/table/${encodeURIComponent(SRC)}:count`)).toEqual({ count: 0 })
     expect(await admin.get(`/api/table/${encodeURIComponent(DST)}:count`)).toEqual({ count: 501 })
   } finally {
     concurrent.mockRestore()
   }
-}, 30_000)
+// 500 rows through the real server, like the test above (#527, #855).
+}, 60_000)
 
 describe('Merged values are converted to fit, or the row is reported as failed', () => {
   test('a text value that is not a number is reported as a failed row and not stored', async ({ admin }) => {
