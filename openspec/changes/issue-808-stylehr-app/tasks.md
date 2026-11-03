@@ -4,9 +4,9 @@ Skipped: `acceptance-tests/` exists. Uses #782's outside-database harness and #7
 
 ## 2. Step definitions — each: fails for the right reason → implement → passes → commit
 
-- [ ] 2.1 external-data-sources: "an app that connects its shelf table as …, titled by its … and listing only its …" and "…, titled by its …, listing only its …, and leaving out its …" (a manifest over the shelves database, the reader login granted)
-- [ ] 2.2 external-data-sources: "the app is installed", "the user installs the app", "the app is not installed", "the user is told the shelf table has no column …"
-- [ ] 2.3 external-data-sources: "the user sees each shelf's aisle", "the user does not see each shelf's label", "no table called … is in Featherbase"
+- [x] 2.1 external-data-sources: "an app that connects its shelf table as …, titled by its … and listing only its …" and "…, titled by its …, listing only its …, and leaving out its …" (a manifest over the shelves database, the reader login granted)
+- [x] 2.2 external-data-sources: "the app is installed", "the user installs the app", "the app is not installed", "the user is told the shelf table has no column …"
+- [x] 2.3 external-data-sources: "the user sees each shelf's aisle", "the user does not see each shelf's label", "no table called … is in Featherbase"
 
 ## 3. Implementation
 
