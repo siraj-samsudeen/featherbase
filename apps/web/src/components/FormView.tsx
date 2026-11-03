@@ -7,6 +7,7 @@ import { pickerFor } from '../lib/pickers'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
 import { useRealtime } from '../lib/realtime'
+import { useNavigationVisit } from '../lib/recents'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
@@ -75,11 +76,12 @@ export function FormView({
   const navigate = useNavigate()
   const { t } = useI18n()
 
+  const docPath = `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`
+  const visit = useNavigationVisit(docPath)
   const doc = useQuery({
-    queryKey: ['doc', table, name],
+    queryKey: visit ? ['doc', table, name, visit.key] : ['doc', table, name],
     enabled: Boolean(meta.data) && !isNew,
-    queryFn: () =>
-      api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
+    queryFn: () => visit ? visit.read<Row>() : api.get<Row>(docPath),
   })
 
   // #465 D5: the fields the instance settings file set are read-only here,

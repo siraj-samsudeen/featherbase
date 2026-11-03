@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, type CommandDestinations, type CommandPageDestination } from 'shared'
@@ -14,6 +14,7 @@ import {
   recentSearches,
   uniqueByDisplay,
   recordAction,
+  NavigationVisitContext,
   type RecentEntry,
   type ServerRecentEntry,
 } from '../lib/recents'
@@ -27,7 +28,7 @@ import { PHONE_QUERY, TopBar } from '../components/TopBar'
 import { PeekProvider } from '../components/Peek'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel } from '../lib/row-titles'
-import { metaQuery } from '../lib/meta'
+import { metaQuery, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
 import { KindIcon } from '../lib/kind-icons'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
@@ -134,6 +135,29 @@ function AdminShell() {
   const navigationKey = (location.state as { __TSR_key?: string; key?: string } | undefined)?.__TSR_key
     ?? (location.state as { key?: string } | undefined)?.key
     ?? location.href
+  const visit = useMemo(() => {
+    const action = actionForLocation(location.pathname, location.search as Record<string, unknown>)
+    const table = action?.kind === 'list' ? action.label : action?.kind === 'row' ? action.sub : undefined
+    if (!user || !action || !table) return null
+    const owner = user.row_id
+    const rowId = action.kind === 'row' ? action.label : undefined
+    const path = `/api/table/${encodeURIComponent(table)}${rowId ? `/${encodeURIComponent(rowId)}` : ':meta'}`
+    let recorded = false
+    return {
+      // A revisit needs a fresh read even when a previous route is cached.
+      key: crypto.randomUUID(),
+      path,
+      read: async <T,>() => {
+        const { data, claim } = await api.getNavigation<T>(path)
+        const meta = rowId ? await queryClient.fetchQuery(metaQuery(table)) : data as TableMeta
+        if (!recorded && getSessionUser()?.row_id === owner) {
+          recorded = true
+          recordAction(owner, { ...(actionForLocation(location.pathname, location.search as Record<string, unknown>, meta.columns, t) ?? action), claim })
+        }
+        return data
+      },
+    }
+  }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const recordedNavigation = useRef<string | null>(null)
   useEffect(() => {
     if (!user) return
@@ -142,29 +166,10 @@ function AdminShell() {
     recordedNavigation.current = id
     const action = actionForLocation(location.pathname, location.search as Record<string, unknown>)
     if (!action) return
-    // A list or row names a Table; it is remembered only once that Table's
-    // metadata has loaded. A path that is not a Table (`/admin/people`) 404s
-    // and is never offered back.
     // The same rule for a page only a System Manager can open: anyone else is
     // sent home, so the page is never offered back to them (#476).
     if (action.kind === 'page' && adminPageNeedsManage(action.key.slice('page:'.length)) && !canManage) return
-    const table = action.kind === 'list' ? action.label : action.kind === 'row' ? action.sub : undefined
-    if (!table) {
-      recordAction(user.row_id, action)
-      return
-    }
-    const owner = user.row_id
-    const rowId = action.kind === 'row' ? action.label : undefined
-    // A fresh authorized read captures lifetime identity before the event is
-    // queued. Cached metadata cannot attest a visit to a recreated Table.
-    api.getNavigation(`/api/table/${encodeURIComponent(table)}${rowId ? `/${encodeURIComponent(rowId)}` : ':meta'}`).then(
-      async ({ claim }) => {
-        const meta = await queryClient.fetchQuery(metaQuery(table))
-        if (getSessionUser()?.row_id !== owner) return
-        recordAction(owner, { ...(actionForLocation(location.pathname, location.search as Record<string, unknown>, meta.columns, t) ?? action), claim })
-      },
-      () => {},
-    ).catch(() => {})
+    if (action.kind !== 'list' && action.kind !== 'row') recordAction(user.row_id, action)
   }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const [barFocused, setBarFocused] = useState(false)
   const [selection, setSelection] = useState<{ query: string; id: string } | null>(null)
@@ -886,7 +891,9 @@ function AdminShell() {
         {/* Page canvas */}
         <main className="min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:p-6">
           <div className="mx-auto max-w-5xl">
-            <Outlet />
+            <NavigationVisitContext.Provider value={visit}>
+              <Outlet />
+            </NavigationVisitContext.Provider>
           </div>
         </main>
       </div>

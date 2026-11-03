@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
+import { useNavigationVisit } from './recents'
 import { viewColumns } from './list-view-columns'
 import type { ReadingPresentation } from 'shared'
 
@@ -122,7 +123,18 @@ export function metaQuery(table: string) {
 }
 
 export function useMeta(table: string, enabled = true) {
-  return useQuery({ ...metaQuery(table), enabled: enabled && Boolean(table) })
+  const visit = useNavigationVisit(`/api/table/${encodeURIComponent(table)}:meta`)
+  return useQuery({
+    ...metaQuery(table),
+    ...(visit ? {
+      queryKey: ['meta', table, visit.key],
+      queryFn: () => visit.read<TableMeta>(),
+      // Filter navigation must not remove the control being edited. Only
+      // the fresh read above records a visit; this is display-only schema.
+      placeholderData: (previous: TableMeta | undefined) => previous?.name === table ? previous : undefined,
+    } : {}),
+    enabled: enabled && Boolean(table),
+  })
 }
 
 // Columns for a list view: Row ID first, then the Table's list columns (or

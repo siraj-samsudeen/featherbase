@@ -1,7 +1,20 @@
 // Per-user warm history cache, reconciled with the server on app load.
 
+import { createContext, useContext } from 'react'
 import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle, choiceLabel } from 'shared'
 import type { ColumnDef } from './meta'
+
+/** The route's own read records its authorized visit before exposing data. */
+export const NavigationVisitContext = createContext<{
+  key: string
+  path: string
+  read: <T>() => Promise<T>
+} | null>(null)
+
+export function useNavigationVisit(path: string) {
+  const visit = useContext(NavigationVisitContext)
+  return visit?.path === path ? visit : null
+}
 
 export type RecentKind = 'row' | 'list' | 'page' | 'search'
 
