@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { quoteIdent } from './sql-identifier'
 import { z } from 'zod'
+import { accessPolicySchema } from './access-policy'
 import { AppError } from './errors'
 import { sql, withTransaction } from './db'
 import { provisionApp } from './app-lifecycle'
@@ -53,7 +54,8 @@ const displayOnly = (to: z.infer<typeof alterable>) => Object.keys(to).every(key
 // or column as it stood, an altered column's `from`), so a history replays
 // backward from the final declaration as well as forward from the installed
 // one.
-const operationSchema = z.discriminatedUnion('kind', [
+export const operationSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('addAccessPolicy'), table: z.string(), policy: accessPolicySchema }).strict(),
   z.object({ kind: z.literal('addTable'), table: tableDefSchema }).strict(),
   z.object({ kind: z.literal('dropTable'), table: tableDefSchema, destructive: z.boolean().optional() }).strict(),
   z.object({ kind: z.literal('addColumn'), table: z.string(), column, position: z.number().int().min(1).optional(), backfill: fill.optional() }).strict(),
@@ -157,6 +159,18 @@ function checkColumns(app: string, state: TableDef[], table: TableDef, columns: 
 
 function forward(app: string, state: TableDef[], op: Operation) {
   switch (op.kind) {
+    case 'addAccessPolicy': {
+      mustOwn(app, op.table)
+      const table = tableIn(state, op.table, 'addAccessPolicy')
+      if (table.access_policy) refuse('The Table already has mandatory access')
+      if (table.data_source || (table.kind && table.kind !== 'table')) refuse('Mandatory access requires a local collection')
+      for (const [name, type] of [[op.policy.shared_column, 'Check'], [op.policy.inherit_column, 'Reference']])
+        if (name && !table.columns.some(c => c.column_name === name && c.column_type === type))
+          refuse(`Mandatory access column ${name} must be ${type}`)
+      table.access_policy = structuredClone(op.policy)
+      return
+    }
+
     case 'addTable': {
       const what = `addTable ${op.table.name}`
       mustOwn(app, op.table.name)
@@ -248,6 +262,13 @@ function forward(app: string, state: TableDef[], op: Operation) {
 
 function backward(state: TableDef[], op: Operation) {
   switch (op.kind) {
+    case 'addAccessPolicy': {
+      const table = tableIn(state, op.table, 'addAccessPolicy')
+      if (!same(table.access_policy, op.policy)) refuse('Mandatory access does not match the declared policy')
+      delete table.access_policy
+      return
+    }
+
     case 'addTable': {
       const table = tableIn(state, op.table.name, `addTable ${op.table.name}`)
       if (!same(table, op.table)) refuse(`addTable ${op.table.name} does not match the Table as declared after it`)
@@ -412,7 +433,7 @@ export async function countLosses(owner: string, migrations: PackageMigration[],
 async function definition(name: string): Promise<TableDef> {
   const [table] = await sql`select * from table_def where name = ${name}`
   const columns = await sql`select * from column_def where parent = ${name} order by position`
-  return tableDefSchema.parse({ ...table, columns })
+  return tableDefSchema.parse({ ...table, access_policy: table.access_policy ?? undefined, columns })
 }
 
 async function owned(name: string, owner: string, what: string): Promise<Stored> {
@@ -448,6 +469,14 @@ async function writeFill(found: Stored, table: string, column: Column, value: un
 
 async function applyOperation(owner: string, op: Operation, actor: string, base: Omit<Loss, 'table'>, ownsClient: boolean): Promise<Loss | null> {
   switch (op.kind) {
+    case 'addAccessPolicy': {
+      await owned(op.table, owner, 'addAccessPolicy')
+      const def = await definition(op.table)
+      if (def.access_policy) refuse('The Table already has mandatory access')
+      await updateTable(op.table, { ...def, access_policy: op.policy })
+      return null
+    }
+
     case 'addTable': {
       const meta = await createTable(op.table, owner)
       await sql`update installed_app set tables = tables || ${sql.json([meta.name])} where name = ${owner}`

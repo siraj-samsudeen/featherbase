@@ -1,3 +1,4 @@
+import { admitTasker } from '../../server/test/tasker-client'
 import { resolve } from 'node:path'
 import { beforeEach, afterEach, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
@@ -39,6 +40,7 @@ test('public credential exchanges and logout do not bootstrap with an expired sa
 test('generic core form can read and save a versioned runtime row', async ({ admin }) => {
   await discoverPackages([resolve('../..', 'example-apps/tasker')])
   await admin.post('/api/install_app', { name: 'tasker' })
+  await admitTasker(admin)
   const row = await saveDoc('tasker.project', { project_name: 'Southern 37 cartons', description: '**Keep** this text' }, 'Administrator', 'insert')
   await renderApp(`/featherbase/admin/tasker.project/${row.row_id}`, admin)
   expect(await screen.findByDisplayValue('Southern 37 cartons')).toBeInTheDocument()

@@ -6,7 +6,7 @@ import type { TableMeta } from '../lib/meta'
 import { PrincipalName } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
 import { formatDateTime, formatValue, useSettings } from '../lib/settings'
-import { Button, Notice, cardClasses, touchLinkClasses } from './ui'
+import { Button, Notice, cardClasses, touchLinkClasses } from '@featherbase/shop-floor'
 
 interface ImportConflict {
   id: string

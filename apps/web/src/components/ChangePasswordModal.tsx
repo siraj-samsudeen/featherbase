@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ApiError, api } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from './ui'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
 
 // #72: change the signed-in person's own password. Posts { password } to
 // /api/set_password (the endpoint scopes to the caller when no user is given).

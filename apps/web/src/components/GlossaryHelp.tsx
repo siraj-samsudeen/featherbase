@@ -2,8 +2,8 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import { createPortal } from 'react-dom'
 import { Link } from '@tanstack/react-router'
 import { GLOSSARY_PATH, termAnchor, termsDescribing, useGlossary, type GlossaryTerm } from '../lib/glossary'
-import { cx, iconButtonClasses } from './ui'
-import { CircleHelp } from './ui/icons'
+import { cx, iconButtonClasses } from '@featherbase/shop-floor'
+import { CircleHelp } from '@featherbase/shop-floor'
 
 // #629: a "?" after a Table name or a column label that a glossary term
 // describes. Pressing it opens the term in place; Escape, a press outside or

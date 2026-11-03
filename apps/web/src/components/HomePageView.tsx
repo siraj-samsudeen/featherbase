@@ -2,7 +2,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useHomePages, type HomePageShortcut } from '../lib/home-pages'
 import { ActivityFeed } from './ActivityFeed'
 import { ResumeStrip, RoutineCard } from './HomeRecall'
-import { cardClasses, touchRowClasses } from './ui'
+import { cardClasses, touchRowClasses } from '@featherbase/shop-floor'
 
 // UI-027 / #80: a Home Page renders its grouped link cards (curated in the
 // `links` sub-table through the generic FormView — no dedicated editor) plus
