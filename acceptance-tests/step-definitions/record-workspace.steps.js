@@ -55,7 +55,7 @@ Given('the user reads Tenkasi with collaboration enabled but no collaboration gr
   await plant(this);
   const role = await this.withApi(async api => {
     for (const property of ['enable_assignments', 'enable_tags', 'enable_files', 'enable_discussion'])
-      await api.saveRow('Metadata Override', { row_id: `plant-${property}`, table_name: 'Plant', property, value: 'true' });
+      await api.saveRow('Metadata Override', { table_name: 'Plant', property, value: 'true' });
     return api.readerRoleFor('Plant');
   });
   await this.person('the user', [role]);
@@ -72,7 +72,7 @@ Then('the existing collaboration is readable without collaboration mutation cont
 Then('the user can still consult its audit history', async function () { await this.workspace.audit(); });
 Given('the Plant Table explicitly enables tags alone', async function () {
   await plant(this);
-  await this.withApi(api => api.saveRow('Metadata Override', { row_id: 'plant-enable-tags', table_name: 'Plant', property: 'enable_tags', value: 'true' }));
+  await this.withApi(api => api.saveRow('Metadata Override', { table_name: 'Plant', property: 'enable_tags', value: 'true' }));
 });
 When('the user labels Tenkasi with a tag', async function () { await this.workspace.tagPlant(); });
 Then('the tag is saved and the other empty collaboration features stay absent', async function () { await this.workspace.onlyTags(); });

@@ -436,7 +436,7 @@ try {
   // #800: this proof exercises upload authorization, so explicitly enable
   // that optional UI before freezing the pre-upgrade form.
   await api('/api/save_row', { table: 'Metadata Override', row: {
-    row_id: 'runtime-proof-task-files', table_name: 'tasker.task', property: 'enable_files', value: 'true',
+    table_name: 'tasker.task', property: 'enable_files', value: 'true',
   } }, 201)
   await api('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: preservedTask.row_id, content: 'Retain this evidence' } }, 201)
   await page.goto(`${origin}/tasker/`)
