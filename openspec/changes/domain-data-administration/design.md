@@ -37,8 +37,8 @@ bootstrap sequence below explains their purpose and ordering.
 with V01–V09: no delegation, bounded grant, held edit, approval, self-approval
 refusal, column refusal, department/store boundaries and self-service. Then add
 revocation, transfer, continuity, conflict, escalation and complete-grant cases.
-V24 is explicitly labelled an **unresolved default**; do not turn it into
-a production assertion until the policy is decided. This list is a starting
+V22–V24 now record agreed policies: shared contacts through any authorised
+membership, per-row bulk outcomes, and approval independent of direct-edit rights. This list is a starting
 acceptance dataset, not exhaustive concurrency or legacy-permission coverage.
 
 Translate these values into inline setup inside the repository's real Postgres
@@ -162,6 +162,16 @@ save of that row. This does not split an indivisible business operation into
 independent writes. Define transaction/savepoint and retry mechanics during
 implementation; no aggregate success response may hide partial refusal.
 
+Owner decision: approval authority is independent of direct-edit permission. A
+holder of scoped Employee Contact Approver authority may approve a valid correction
+without Employee Contact Admin. Approval authorises only the reviewed proposal
+and its permitted columns/records, never a general write. At application, recheck
+the maker's current edit authority and the reviewer's current approval authority,
+including scope and columns. No self-approval, stale overwrite or substituted
+payload is permitted. Use an explicitly checked approval operation through the
+normal validation/save/automation transaction, not an unrestricted bypass.
+The exact approval-column representation remains an implementation contract.
+
 Scope modes: self (linked identity, not creator), direct reports, reporting
 subtree (excluding self), named stores, named departments, and explicit all.
 Named department grants do not follow their holder to a new department. Relative
@@ -226,9 +236,6 @@ production architecture:
 - A responsibility template offers fixed read/update sets in the prototype.
   Narrower column combinations are represented by a new reusable role in this
   first model, rather than silently modifying a role shared by other grantees.
-- Approval requires both an Approver assignment and authority to apply the
-  affected update. The example gives Meera both. Approver-only application needs
-  an explicit production decision, not a hidden privileged writer.
 - Current membership uses the instance business date with exclusive end dates.
   Historical reporting uses its requested date but cannot rewrite past authority.
 - The prototype evaluates synthetic state in the browser and saves progress and
@@ -497,7 +504,7 @@ stale capabilities without rechecking their source job and binding.
 | Rule | Target / operation | Details | Maker condition | Outcome |
 |---|---|---|---|---|
 | AR1 — Store manager corrections | T1 — Employee / Update | C4 — phone; C5 — emergency_contact | Current AU1 holder, target fully in SC1 | Apply and log |
-| AR2 — Delegated corrections | T1 — Employee / Update | C4 — phone; C5 — emergency_contact | Authorised non-officeholder changing another person's record in SC1 | Require AU1 holder with R2 and current apply authority |
+| AR2 — Delegated corrections | T1 — Employee / Update | C4 — phone; C5 — emergency_contact | Authorised non-officeholder changing another person's record in SC1 | Require current AU1 holder with R2 approval authority covering the affected records/columns; R1 not required |
 | AR3 — Self contact maintenance | T1 — Employee / Update | C4 — phone | Maker is linked person, holds R6, scope SC3 | Apply and log |
 
 Each Details selection expands into Approval Rule Column rows. Delegation has no
@@ -584,7 +591,7 @@ This is a staged design, with explicit gates before implementation tasks below:
 
 1. Validate the sample-data cases against the business example and revise these artifacts.
    Confirm the HR field set. Apply the agreed per-row bulk outcomes and shared
-   contact policy (one authorised membership is sufficient). Resolve approver-only authority, role-definition changes,
+   contact policy (one authorised membership is sufficient). Implement independent approval authority; resolve role-definition changes,
    binding changes and multi-level delegation termination under #617/#627.
 2. Finish the app contracts and a concrete schema migration plan. Job binding
    changes can themselves widen authority and must trigger the same checks as job
@@ -631,5 +638,5 @@ retaining protections against ordinary account/role edits and automation bypass.
 ## Open Questions
 
 Resolve the production gates above: Employee/Person field ownership, resolver
-and capability contracts, approver-only application and migration mapping. UI presentation questions are no longer part of
+and capability contracts, approval-authority representation and migration mapping. UI presentation questions are no longer part of
 this handoff. Owner review of the simulation was not completed.

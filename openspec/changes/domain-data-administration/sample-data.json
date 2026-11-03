@@ -1124,10 +1124,10 @@
     {
       "id": "V24",
       "name": "Approver-only authority",
-      "setup": "Approver holds R2 but no R1 update authority",
-      "action": "Approve a valid pending contact correction",
-      "expected": "Prototype default refuses; final approver-only application contract needs decision.",
-      "policy": "unresolved_default"
+      "setup": "Base + RA6 and pending CP1. In this isolated variant remove JC1/derived RA1 so Meera holds scoped R2 approval authority but no R1 direct-edit permission. Her approval authority covers E3 and C4.",
+      "action": "Meera approves CP1; separately attempt an ordinary direct contact edit as Meera.",
+      "expected": "Apply the reviewed CP1 after rechecking Arun\u2019s current edit authority and Meera\u2019s approval scope/columns; record both identities and run normal validation/save hooks. Refuse the separate direct edit. Approval grants no general editing power or self-approval.",
+      "policy": "agreed"
     },
     {
       "id": "V25",

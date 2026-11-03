@@ -68,3 +68,13 @@ Approval requirements SHALL apply equally to ordinary edits, imports and other w
 
 - **WHEN** the user imports a permitted contact correction governed by an approval requirement
 - **THEN** it becomes a held proposal rather than changing the live contact immediately
+
+### Requirement: Approval authority is independent of direct editing
+
+A user authorised to approve a correction SHALL be able to approve it without permission to edit the affected information directly. Approval SHALL cover only the reviewed correction within the user's permitted records and details, while the maker's current editing authority remains required.
+
+#### Scenario: Reviewer has approval responsibility only
+
+- **WHEN** the user has approval responsibility for a store's employee phone corrections but no direct editing permission, and another currently authorised user submits a valid correction
+- **THEN** the reviewer may approve that correction under the applicable approval rules
+- **AND** the reviewer still cannot directly edit employee phone details through that approval responsibility
