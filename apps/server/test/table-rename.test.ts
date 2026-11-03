@@ -124,6 +124,24 @@ describe('#871: renaming a custom Table', () => {
     expect((await admin.post<{ row_id: string }>('/api/save_row', { table: NEW, row: { sap_code: '8152' } })).row_id).toBeTruthy()
   })
 
+  test('a change of case alone keeps the rows where they are', async ({ admin }) => {
+    await plants(admin)
+    expect(await rename(admin, OLD, 'Trn sap plant')).toMatchObject({ name: 'Trn sap plant' })
+    expect(await admin.get(`${url('Trn sap plant')}/PLANT-8151`)).toMatchObject({ city: 'Chennai' })
+  })
+
+  test('a Table an installed app lists is not renamed here', async ({ admin }) => {
+    await plants(admin)
+    await sql`insert into installed_app (name, tables) values ('trnapp', ${sql.json([OLD])})`
+    await expectApiError(rename(admin, OLD, NEW), { status: 417, message: expect.stringContaining('belongs to the installed app trnapp') })
+    expect(await admin.get(`${url(OLD)}:meta`)).toMatchObject({ name: OLD })
+  })
+
+  test('a request without a new name is refused', async ({ admin }) => {
+    await plants(admin)
+    await expectApiError(admin.post(`/api/table_def/${encodeURIComponent(OLD)}/rename`, {}), { status: 417, message: expect.stringContaining('Expected { to }') })
+  })
+
   test('renaming to the same name changes nothing', async ({ admin }) => {
     await plants(admin)
     expect(await rename(admin, OLD, OLD)).toMatchObject({ name: OLD })
