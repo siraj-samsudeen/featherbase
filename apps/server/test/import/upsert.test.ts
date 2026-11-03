@@ -938,6 +938,31 @@ describe('#851 permission-safe matching suggestions', () => {
     expect(await response.json()).toEqual({ key_candidates: [] })
   })
 
+  test('a readable restricted key needs its own write-tier grant', async ({ admin, createUser }) => {
+    await setup(admin, { columns: [
+      { column_name: 'zone', column_type: 'Data', tier: 'restricted' },
+      { column_name: 'pop', column_type: 'Int' },
+    ] })
+    await admin.post(PATH, { rows: [{ zone: 'Alpha', pop: 12000 }, { zone: 'Bravo', pop: 8400 }] })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, tier: 'basic', can_read: true, can_write: true, can_create: true,
+    } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, tier: 'restricted', can_read: true, can_write: false,
+    } })
+    const user = await createUser({ roles: [ROLE] })
+    const before = await importState()
+    const report = await user.post(PATH, {
+      analyze_keys: true, columns: ['zone', 'pop'], rows: [{ zone: 'Alpha', pop: 12000 }, { zone: 'Bravo', pop: 8400 }],
+    })
+    expect(report).toEqual({ key_candidates: [
+      { column: 'zone', matched: 2, complete: true, can_match: false },
+      { column: 'pop', matched: 2, complete: true, can_match: true },
+    ] })
+    expect(await importState()).toEqual(before)
+  })
+
   test('analysis does not disclose overlap with another person’s rows', async ({ admin, createUser }) => {
     await setup(admin)
     await seed(admin)
