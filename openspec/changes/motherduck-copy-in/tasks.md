@@ -42,6 +42,14 @@ Skipped: `acceptance-tests/` already exists.
 - [x] 5.7 Public copy-action tests verify persisted approved mapping/omissions/source identity, unedited source updates/new rows with native corrections retained, and existing System Manager/chosen-database refusals with positive controls
 - [x] 5.8 Executable acceptance submits copy setup into the native list/form, saves a native correction, and exercises Copy again against changed synthetic warehouse rows on a fresh guarded isolated database
 
+## 5a. Finish the existing copy contract
+
+- [ ] 5a.1 Public regression and executable acceptance for later key/non-key rename; repair provenance in the existing rename transaction
+- [ ] 5a.2 Public regression and acceptance for one discoverable undoable copy run; use existing import undo rules, including deletion markers and native corrections
+- [ ] 5a.3 Verify copied rows begin with a false deletion marker, source return clears it, and users cannot edit the managed marker
+- [ ] 5a.4 Bound source reads and prove multipart/empty-source/row-failure behavior without changing existing best-effort import semantics
+- [ ] 5a.5 Measure PR-specific missing backend paths and rerun canonical coverage without changing baselines/exclusions or duplicating #762/#802
+
 ## 6. Completion
 
 - [ ] 6.1 Full acceptance suite and `pnpm --filter server test` pass; coverage baselines hold (ADR 0017)

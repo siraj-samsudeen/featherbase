@@ -235,6 +235,39 @@ And store "S004" is available as an ordinary native row
 And store "S002" still has the person's correction
 ```
 
+### Requirement: Saved source mappings survive a later column rename
+
+Renaming a copied key or data column through Columns SHALL retain its source
+identity so the next copy still updates the same native rows.
+
+#### Scenario: Copy again follows renamed native columns
+
+```gherkin
+Given a native store copy with a person's correction to store "S002"
+And the copied key and trading-name columns have been renamed
+And the warehouse changes the unedited store "S001" and adds store "S004"
+When the user chooses Copy again on the native copy
+Then the renamed columns contain the updated and added stores
+And store "S002" still has the person's correction
+```
+
+### Requirement: Copies are discoverable and undoable as ordinary imports
+
+Each copy SHALL appear in Past imports as one run. Undo SHALL use the existing
+import rules: remove inserted rows, restore updated values including the
+deleted-at-source marker, and protect rows edited after the import. Undoing
+the initial rows does not delete the native Table.
+
+#### Scenario: Undo restores the rows changed by Copy again
+
+```gherkin
+Given a native store copy with a person's correction to store "S002"
+And the warehouse changes the unedited store "S001" and adds store "S004"
+When the user copies again and undoes that copy from its import history
+Then the original three stores remain without the new warehouse changes
+And store "S002" still has the person's correction
+```
+
 ### Requirement: Browsing reopens where each person left off
 
 Opening a source's browser SHALL return each person to the database and
