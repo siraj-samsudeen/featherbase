@@ -70,7 +70,7 @@ test('the trail leads back to the original order in one click', async ({ admin }
   await hopOrderToCustomerToOtherOrder(admin)
   fireEvent.click(within(screen.getByTestId('map-trail')).getByTestId('map-trail-0'))
   await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('First order'), { timeout: 3000 })
-  expect(screen.getByTestId('map-forward-Rm Customer')).toHaveTextContent('cust-1')
+  await waitFor(() => expect(screen.getByTestId('map-forward-Rm Customer')).toHaveTextContent('Asha Stores'))
 })
 
 test('a copied single-encoded trail restores titles and a removed stop safely falls back to its id', async ({ admin }) => {

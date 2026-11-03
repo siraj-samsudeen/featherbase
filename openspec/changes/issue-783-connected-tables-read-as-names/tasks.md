@@ -4,19 +4,19 @@ Skipped: `acceptance-tests/` exists. Uses #782's outside-database harness (merge
 
 ## 2. Step definitions — each: fails for the right reason → implement → passes → commit
 
-- [ ] 2.1 external-data-sources: "a Postgres database of shelves and the bins on each shelf"
-- [ ] 2.2 external-data-sources: "a data source for that database"
-- [ ] 2.3 external-data-sources: "the user connects its shelf and bin tables, naming them …" (Browse page object: the name box)
-- [ ] 2.4 external-data-sources: "the user sees tables called … in Featherbase"
-- [ ] 2.5 external-data-sources: "its shelf and bin tables connected as …" and "a bin on the shelf titled …"
-- [ ] 2.6 external-data-sources: "the user opens a bin" and "its link to a shelf labelled …"
-- [ ] 2.7 external-data-sources: "the user opens that bin's relationship map" and "its shelf as …"
+- [x] 2.1 external-data-sources: "a Postgres database of shelves and the bins on each shelf"
+- [x] 2.2 external-data-sources: "a data source for that database"
+- [x] 2.3 external-data-sources: "the user connects its shelf and bin tables, naming them …" (Browse page object: the name box)
+- [x] 2.4 external-data-sources: "the user sees tables called … in Featherbase"
+- [x] 2.5 external-data-sources: "its shelf and bin tables connected as …" and "a bin on the shelf titled …"
+- [x] 2.6 external-data-sources: "the user opens a bin" and "its link to a shelf labelled …"
+- [x] 2.7 external-data-sources: "the user opens that bin's relationship map" and "its shelf as …"
 
 ## 3. Implementation
 
-- [ ] 3.1 Browse screen: an editable proposed name per connectable table, sent as `names`
-- [ ] 3.2 Reflect accepts `names`; link labels drop the trailing "id" (written while prototyping; proved by 2.4 and 2.6)
-- [ ] 3.3 `rowTitles` reads source-bound titles through the scoped list (written while prototyping; proved by 2.7)
+- [x] 3.1 Browse screen: an editable proposed name per connectable table, sent as `names`; the relationship map's wide link boxes show the linked row's title (the spec's map scenario needs it; #794 point 2 delivered here)
+- [x] 3.2 Reflect accepts `names`; link labels drop the trailing "id" (written while prototyping; proved by 2.4 and 2.6)
+- [x] 3.3 `rowTitles` reads source-bound titles through the scoped list (written while prototyping; proved by 2.7)
 - [ ] 3.4 Server integration tests: `apps/server/test/sources-postgres-names.test.ts`
 
 ## 4. Completion
