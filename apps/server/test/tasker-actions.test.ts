@@ -1,3 +1,4 @@
+import { getDoc, saveDoc } from '../src/document'
 import { resolve } from 'node:path'
 import { expect } from 'vitest'
 import { test as base } from './pg-test'
@@ -10,13 +11,15 @@ import { expectApiError } from './fixtures'
 
 const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(taskerClient(admin)),
-  createUser: async ({ createUser }, use) => use(async options => taskerClient(await createUser(options))),
+  createUser: async ({ createUser }, use) => use(async options => taskerClient(await createUser({ ...options, roles: [...new Set([...(options?.roles ?? []), 'Tasker Member'])] }))),
 })
 
 async function install() {
   expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
   if (await isInstalled('tasker')) await uninstallApp('tasker')
   await installApp('tasker')
+  const admin = await getDoc('Person', 'Administrator', 'Administrator')
+  await saveDoc('Person', { ...admin, roles: [...admin.roles as Record<string, unknown>[], { role: 'Tasker Member' }] }, 'Administrator')
 }
 const envelope = (task: Record<string, unknown>, confirm = false) => ({
   idempotencyKey: crypto.randomUUID(), payload: { row_id: task.row_id, updated_at: task.updated_at, confirm },

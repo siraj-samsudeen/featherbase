@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { ComponentPropsWithRef, ReactNode } from 'react'
 import { cx, recipe } from './cx'
 import { LoaderCircle } from './icons'
 
@@ -42,7 +42,7 @@ export function buttonClasses({
   )
 }
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ComponentPropsWithRef<'button'> {
   variant?: ButtonVariant
   block?: boolean
   /** Shows a spinner, keeps the label, and refuses clicks until it settles. */

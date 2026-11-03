@@ -5,7 +5,7 @@
 // get neither. The real bar over the fixture app is in app-page-bar.test.tsx.
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-type Paint = typeof import('../src/lib/theme-paint')
+type Paint = typeof import('@featherbase/shop-floor/theme')
 
 let deviceDark = false
 let deviceListeners: (() => void)[] = []
@@ -20,7 +20,7 @@ function flipDevice(dark: boolean) {
 /** A fresh copy of the painting module, as each page load has. */
 async function freshPaint(): Promise<Paint> {
   vi.resetModules()
-  return import('../src/lib/theme-paint')
+  return import('@featherbase/shop-floor/theme')
 }
 
 /** The bar's own root, as the bar's mount gives it. */

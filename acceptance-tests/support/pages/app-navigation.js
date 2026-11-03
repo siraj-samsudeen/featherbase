@@ -16,6 +16,7 @@ class AppNavigation {
     for (const name of ['tasker', 'feather_dash'])
       if (!installed.some(app => app.name === name))
         await api.call('POST', '/api/apps/prepare-install', { name }, [201], `prepare and install ${name}`);
+    await api.admitTaskerAdministrator();
   }
   static async appApi(api, name) {
     const res = await api.call('GET', '/api/apps', undefined, [200], 'installed versions');

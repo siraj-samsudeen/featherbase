@@ -4,7 +4,7 @@
 // view (full engine type list), the cards speak spreadsheet.
 import { useShellTables } from '../lib/session'
 import { BuilderColumn, ColumnVerdict, slugify } from '../lib/column-rules'
-import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, pillClasses } from './ui'
+import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, pillClasses } from '@featherbase/shop-floor'
 
 // The engine's types behind words a spreadsheet user already has. Types the
 // cards don't offer (Sub-table, layout breaks, …) still render as a raw
