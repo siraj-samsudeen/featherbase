@@ -1155,7 +1155,8 @@ export function LinkControl({
   const navigate = useNavigate()
   // #100 pattern 1: a set reference is a place you can GO — ◎ peeks at the
   // row in a slide-over, ↗ navigates to its form. Hidden while searching.
-  const hasValue = Boolean(value) && query === null
+  // A filter has its own clear control and stays a filter: no peek or open.
+  const hasValue = Boolean(value) && query === null && !forFilter
 
   function search(q: string) {
     clearTimeout(timer.current)
@@ -1194,10 +1195,14 @@ export function LinkControl({
         type="text"
         role="combobox"
         aria-expanded={open}
-        placeholder={`Reference: ${target}`}
+        placeholder={forFilter ? `Filter ${field.label ?? field.column_name}…` : `Reference: ${target}`}
         value={shown}
         onFocus={() => search(query ?? (picker.labelField ? '' : shown))}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => setTimeout(() => {
+          setOpen(false)
+          // A filter shows only what it filters by: unpicked typing is dropped.
+          if (forFilter) setQuery(null)
+        }, 150)}
         onChange={(e) => {
           setQuery(e.target.value)
           search(e.target.value)

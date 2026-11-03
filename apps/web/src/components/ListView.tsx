@@ -1489,7 +1489,7 @@ function StandardFilters({
                 field={f}
                 value={current(f.column_name, '=')}
                 onChange={(v) => apply(f.column_name, '=', String(v ?? ''))}
-                className={inputClasses('max-w-[12rem]')}
+                className={inputClasses('max-w-[10rem]')}
                 common={{ 'data-testid': `std-filter-${f.column_name}` }}
                 forFilter
               />
