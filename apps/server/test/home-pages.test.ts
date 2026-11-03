@@ -321,10 +321,12 @@ describe('System membership comes from the current catalogue', () => {
   })
 
   test('a legacy disallowed override leaves System navigation available', async ({ admin }) => {
-    // Persisted before the override allowlist: cover hinted and discovered links.
+    // Persisted before the allowlist: cover hinted/discovered links and both
+    // override scopes, including #774's permitted-properties diagnostic suffix.
     for (const name of ['Person', 'Sign In Method']) {
       await sql`insert into metadata_override ${sql({
-        row_id: `hp-legacy-${name}`, table_name: name, property: 'system', value: 'false',
+        row_id: `hp-legacy-${name}`, table_name: name,
+        column_name: name === 'Person' ? 'email' : null, property: 'system', value: 'false',
       })}`
       invalidateMeta(name)
     }
@@ -334,6 +336,19 @@ describe('System membership comes from the current catalogue', () => {
     expect(links).toContainEqual({ label: 'Sign In Method', link_to: 'Sign In Method' })
     // Navigation resilience does not relax the metadata validation policy.
     expect((await admin.fetch('/api/table/Person:meta')).status).toBe(417)
+  })
+
+  test('System label resolution preserves unrelated metadata refusals', async ({ admin }) => {
+    // Migration-owned settings metadata remains while its namespace is unavailable.
+    // This is not an app-manifest fixture: apps cannot declare system Tables.
+    await sql`insert into table_def ${sql({
+      name: 'hp_unavailable.Settings', kind: 'settings', system: true, label: 'Unavailable settings',
+    })}`
+    const response = await admin.fetch('/api/home_pages')
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ error: {
+      type: 'PermissionError', message: 'App hp_unavailable is disabled or unavailable',
+    } })
   })
 
   test('generated links use effective labels after the viewer passes visibility checks', async ({ admin, createUser }) => {

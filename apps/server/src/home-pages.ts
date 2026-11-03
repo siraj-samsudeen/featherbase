@@ -132,7 +132,7 @@ async function systemTableLabel(name: string): Promise<string> {
     // entire sidebar. Metadata reads still reject it; other failures propagate.
     if (
       error instanceof AppError && error.type === 'ValidationError' &&
-      /^Metadata property .* cannot be overridden$/.test(error.message)
+      /^Metadata property .* cannot be overridden(?:\. Permitted properties: [a-z_]+(?:, [a-z_]+)*)?$/.test(error.message)
     ) return name
     throw error
   }
