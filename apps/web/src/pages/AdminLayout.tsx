@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage } from 'shared'
-import { api, getSessionUser } from '../lib/api'
+import { ApiError, api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
   ago,
@@ -27,7 +27,7 @@ import { PHONE_QUERY, TopBar } from '../components/TopBar'
 import { PeekProvider } from '../components/Peek'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel } from '../lib/row-titles'
-import { metaQuery } from '../lib/meta'
+import { metaQuery, type TableMeta } from '../lib/meta'
 import { KindIcon } from '../lib/kind-icons'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
@@ -215,12 +215,15 @@ function AdminShell() {
   //   g then d    go to the Admin home
   useEffect(() => {
     let leader = 0 // timestamp of a recent 'g' press
-    // Only a successfully resolved Table route has a canonical identity in
-    // its context; fixed pages and failed resolutions have none (#515).
+    // The metadata boundary and the shell share this QueryClient. A URL
+    // spelling alone is never a canonical identity; fixed pages have none.
     function currentTable(): string | null {
-      const match = router.state.matches.find((m) => m.context && 'table' in m.context && m.status === 'success')
-      const table = (match?.context as { table?: string } | undefined)?.table
-      return table ?? null
+      const match = router.state.matches.find((m) => 'table' in m.params && m.status === 'success')
+      const table = (match?.params as { table?: string } | undefined)?.table
+      if (!table) return null
+      const state = queryClient.getQueryState<TableMeta>(metaQuery(table).queryKey)
+      if (state?.error instanceof ApiError && state.error.status < 500) return null
+      return state?.data?.name ?? null
     }
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null
@@ -259,7 +262,7 @@ function AdminShell() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [navigate, router])
+  }, [navigate, router, queryClient])
 
   // #101 Phase 5: the "Last search" resume tile hands its query to the
   // command bar — prefilled and focused, ready to re-run.

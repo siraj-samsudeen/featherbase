@@ -1,11 +1,11 @@
-import { useEffect, useMemo } from 'react'
+import { createContext, useContext, useEffect, useMemo, type ComponentType } from 'react'
 import {
   Link,
   Outlet,
   createRootRoute,
   createRoute,
   redirect,
-  type ErrorComponentProps,
+  useParams,
 } from '@tanstack/react-router'
 import { parseFilters, tableSlug } from 'shared'
 import { LoginPage } from './pages/Login'
@@ -22,7 +22,7 @@ import { crossesFramePolicy } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
-import { metaQuery } from './lib/meta'
+import { useMeta, type TableMeta } from './lib/meta'
 import { ReportView } from './components/ReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
@@ -90,10 +90,8 @@ const tableAddress = {
   params: {
     stringify: stringifyTableParams<{ table: string }>,
   },
-  beforeLoad: async ({ params, location }: { params: { table: string }; location: { href: string } }) => {
+  beforeLoad: ({ location }: { location: { href: string } }) => {
     if (!getToken()) throw redirect({ href: loginHref(location.href) })
-    const tableMeta = await metaQuery(params.table).queryFn()
-    return { table: tableMeta.name, tableMeta }
   },
   errorComponent: TableAddressError,
 }
@@ -103,7 +101,34 @@ const rowAddress = {
   params: { stringify: stringifyTableParams<{ table: string; name: string }> },
 }
 
-function TableAddressError({ error }: ErrorComponentProps) {
+const resolvedTable = createContext<TableMeta | null>(null)
+
+function useTableAddress() {
+  const tableMeta = useContext(resolvedTable)
+  if (!tableMeta) throw new Error('Table pages must render inside their metadata boundary')
+  return { table: tableMeta.name, tableMeta }
+}
+
+// Resolve through the surrounding QueryClient, just like every metadata
+// consumer. Cached destinations can mount offline; new destinations still
+// wait for metadata before any canonical-name operation can run.
+function tablePage(Page: ComponentType) {
+  return function TablePageBoundary() {
+    const { table } = useParams({ strict: false }) as { table: string }
+    const meta = useMeta(table)
+    // A failed refresh may retain data. Connectivity loss can use it, but a
+    // definitive refusal (notably ambiguity or deletion) must not mount it.
+    if (meta.error instanceof ApiError && meta.error.status < 500)
+      return <TableAddressError error={meta.error} />
+    if (!meta.data) {
+      if (meta.error) return <TableAddressError error={meta.error} />
+      return <p className="p-4 text-ink-muted">Loading…</p>
+    }
+    return <resolvedTable.Provider value={meta.data}><Page /></resolvedTable.Provider>
+  }
+}
+
+function TableAddressError({ error }: { error: unknown }) {
   if (error instanceof ApiError && error.status === 404 && /^Table .* not found$/.test(error.message))
     return <AdminPageNotFound />
   return <p role="alert" className="p-4 text-negative">{error instanceof Error ? error.message : 'Could not open this Table'}</p>
@@ -160,10 +185,10 @@ const portalListRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/portal/$table',
   ...tableAddress,
-  component: PortalListRouteComponent,
+  component: tablePage(PortalListRouteComponent),
 })
 function PortalListRouteComponent() {
-  const { table } = portalListRoute.useRouteContext()
+  const { table } = useTableAddress()
   return <PortalListPage key={table} table={table} />
 }
 
@@ -171,10 +196,10 @@ const portalDocRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/portal/$table/$name',
   ...rowAddress,
-  component: PortalDocRouteComponent,
+  component: tablePage(PortalDocRouteComponent),
 })
 function PortalDocRouteComponent() {
-  const { table } = portalDocRoute.useRouteContext()
+  const { table } = useTableAddress()
   const { name } = portalDocRoute.useParams()
   return <PortalRowPage key={`${table}/${name}`} table={table} name={name} />
 }
@@ -234,11 +259,11 @@ const printRoute = createRoute({
   validateSearch: (search: Record<string, unknown>) => ({
     format: searchString(search.format),
   }),
-  component: PrintPage,
+  component: tablePage(PrintPage),
 })
 
 function PrintPage() {
-  const { table } = printRoute.useRouteContext()
+  const { table } = useTableAddress()
   const { name } = printRoute.useParams()
   const { format } = printRoute.useSearch()
   const navigate = printRoute.useNavigate()
@@ -337,11 +362,11 @@ const columnsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'table/$table/columns',
   ...tableAddress,
-  component: () => (
+  component: tablePage(() => (
     <div data-testid="table-page">
-      <ManageOnly><ColumnEditor table={columnsRoute.useRouteContext().table} /></ManageOnly>
+      <ManageOnly><ColumnEditor table={useTableAddress().table} /></ManageOnly>
     </div>
-  ),
+  )),
 })
 
 // #208: merge this Table's rows into another, column by column.
@@ -349,11 +374,11 @@ const mergeRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'table/$table/merge',
   ...tableAddress,
-  component: () => (
+  component: tablePage(() => (
     <div data-testid="table-page">
-      <ManageOnly><TableMerge table={mergeRoute.useRouteContext().table} /></ManageOnly>
+      <ManageOnly><TableMerge table={useTableAddress().table} /></ManageOnly>
     </div>
-  ),
+  )),
 })
 
 // UI-002/UI-003: the generic ListView renders every Table; filters are
@@ -365,11 +390,11 @@ const tableRoute = createRoute({
   validateSearch: (search: Record<string, unknown>) => ({
     filters: searchString(search.filters),
   }),
-  component: TableListPage,
+  component: tablePage(TableListPage),
 })
 
 function TableListPage() {
-  const { table, tableMeta } = tableRoute.useRouteContext()
+  const { table, tableMeta } = useTableAddress()
   const { filters } = tableRoute.useSearch()
   const navigate = tableRoute.useNavigate()
   // SET-001: a Settings Table has no list — open its one row directly.
@@ -408,11 +433,11 @@ const reportRoute = createRoute({
   validateSearch: (search: Record<string, unknown>) => ({
     report: searchString(search.report),
   }),
-  component: ReportPage,
+  component: tablePage(ReportPage),
 })
 
 function ReportPage() {
-  const { table } = reportRoute.useRouteContext()
+  const { table } = useTableAddress()
   const { report } = reportRoute.useSearch()
   const navigate = reportRoute.useNavigate()
   return (
@@ -435,11 +460,11 @@ const kanbanRoute = createRoute({
   validateSearch: (search: Record<string, unknown>) => ({
     group_by: searchString(search.group_by),
   }),
-  component: KanbanPage,
+  component: tablePage(KanbanPage),
 })
 
 function KanbanPage() {
-  const { table } = kanbanRoute.useRouteContext()
+  const { table } = useTableAddress()
   const { group_by } = kanbanRoute.useSearch()
   const navigate = kanbanRoute.useNavigate()
   return (
@@ -459,11 +484,11 @@ const calendarRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'table/$table/view/calendar',
   ...tableAddress,
-  component: CalendarPage,
+  component: tablePage(CalendarPage),
 })
 
 function CalendarPage() {
-  const { table } = calendarRoute.useRouteContext()
+  const { table } = useTableAddress()
   return (
     <div data-testid="table-page">
       <CalendarView key={table} table={table} />
@@ -476,11 +501,11 @@ const ganttRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'table/$table/view/gantt',
   ...tableAddress,
-  component: GanttPage,
+  component: tablePage(GanttPage),
 })
 
 function GanttPage() {
-  const { table } = ganttRoute.useRouteContext()
+  const { table } = useTableAddress()
   return (
     <div data-testid="table-page">
       <GanttView key={table} table={table} />
@@ -497,11 +522,11 @@ const checklistRoute = createRoute({
   validateSearch: (search: Record<string, unknown>) => ({
     run: searchString(search.run),
   }),
-  component: ChecklistPage,
+  component: tablePage(ChecklistPage),
 })
 
 function ChecklistPage() {
-  const { table } = checklistRoute.useRouteContext()
+  const { table } = useTableAddress()
   const { run } = checklistRoute.useSearch()
   const navigate = checklistRoute.useNavigate()
   return (
@@ -685,11 +710,11 @@ const namingRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'table/$table/naming',
   ...tableAddress,
-  component: NamingPage,
+  component: tablePage(NamingPage),
 })
 
 function NamingPage() {
-  const { table } = namingRoute.useRouteContext()
+  const { table } = useTableAddress()
   return (
     <div data-testid="table-page">
       <TableNaming key={table} table={table} />
@@ -702,11 +727,11 @@ const permissionsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'table/$table/permissions',
   ...tableAddress,
-  component: PermissionsPage,
+  component: tablePage(PermissionsPage),
 })
 
 function PermissionsPage() {
-  const { table } = permissionsRoute.useRouteContext()
+  const { table } = useTableAddress()
   return (
     <div data-testid="table-page">
       <PermissionManager key={table} table={table} />
@@ -738,11 +763,11 @@ const docRoute = createRoute({
   validateSearch: (search: Record<string, unknown>) => ({
     prefill: searchString(search.prefill),
   }),
-  component: TableFormPage,
+  component: tablePage(TableFormPage),
 })
 
 function TableFormPage() {
-  const { table } = docRoute.useRouteContext()
+  const { table } = useTableAddress()
   const { name } = docRoute.useParams()
   const { prefill } = docRoute.useSearch()
   // #102 review: the raw prefill string is part of the key — navigating
@@ -767,11 +792,11 @@ const newRowRoute = createRoute({
   path: 'table/$table/new',
   ...tableAddress,
   validateSearch: (search: Record<string, unknown>) => ({ prefill: searchString(search.prefill) }),
-  component: NewRowPage,
+  component: tablePage(NewRowPage),
 })
 
 function NewRowPage() {
-  const { table } = newRowRoute.useRouteContext()
+  const { table } = useTableAddress()
   const { prefill } = newRowRoute.useSearch()
   const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
   return <div data-testid="doc-page"><FormView key={`${table}/new/${prefill ?? ''}`} table={table} name="" isNew prefill={parsedPrefill} /></div>
@@ -829,11 +854,11 @@ const mapRoute = createRoute({
   validateSearch: (search: Record<string, unknown>) => ({
     trail: search.trail,
   }),
-  component: MapPage,
+  component: tablePage(MapPage),
 })
 
 function MapPage() {
-  const { table } = mapRoute.useRouteContext()
+  const { table } = useTableAddress()
   const { name } = mapRoute.useParams()
   const { trail } = mapRoute.useSearch()
   return (

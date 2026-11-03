@@ -292,7 +292,18 @@ export async function resolveTableName(input: string): Promise<string> {
     slugs = map
     if (generation === loadedAt) slugCache = map
   }
-  const matches = slugs.get(tableSlug(input)) ?? []
+  let matches = slugs.get(tableSlug(input)) ?? []
+  if (!matches.length) {
+    // DEL-R9: a readable address must still reach the canonical deletion
+    // testimony in getMeta. Live names (exact or normalized) always win
+    // over history. Do not cache graves: deletion audit is written after
+    // metadata invalidation, and a database mid-upgrade may lack access_log.
+    const graves = await sql<{ name: string }[]>`
+      select distinct ref_table as name from access_log
+      where operation = 'delete_table' and ref_table is not null`.catch(() => [])
+    if (graves.some((grave) => grave.name === input)) return input
+    matches = graves.map((grave) => grave.name).filter((name) => tableSlug(name) === tableSlug(input))
+  }
   if (matches.length > 1)
     throw new AppError(
       'ConflictError',
