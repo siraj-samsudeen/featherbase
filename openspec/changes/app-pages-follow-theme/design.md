@@ -23,7 +23,9 @@ document's root element, and dispatches **`featherbase:theme-change`** on `windo
 once when it first paints and once each time the painted theme changes (a choice, the server correcting a
 stale browser copy, or the device flipping under "same as device"). An app may style with
 `html[data-featherbase-theme=dark]` and need no script, or read the attribute on load and listen for the
-event.
+event. On a browser with no saved copy of the person's choice yet, the first theme is the device's and is
+corrected moments later, exactly as the bar itself is; an app that follows the latest event ends on the
+person's choice.
 
 *Rejected:* the event alone, because an app script that runs before the bar's module script would miss the
 first paint and have nothing to read; writing the app's own `data-theme`, because that attribute is the
