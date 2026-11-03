@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
-import { api } from './api'
+import { useMemo } from 'react'
+import { onlineManager, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, getToken } from './api'
 import { useNavigationVisit } from './recents'
 import { viewColumns } from './list-view-columns'
 import type { ReadingPresentation } from 'shared'
@@ -123,15 +124,29 @@ export function metaQuery(table: string) {
 }
 
 export function useMeta(table: string, enabled = true) {
+  const client = useQueryClient()
   const visit = useNavigationVisit(`/api/table/${encodeURIComponent(table)}:meta`)
+  // A failed save changing credentials must not remount this arrival's query.
+  const token = useMemo(getToken, [visit?.key])
   return useQuery({
     ...metaQuery(table),
     ...(visit ? {
-      queryKey: ['meta', table, visit.key],
+      queryKey: ['meta', table, token, visit.key],
       queryFn: () => visit.read<TableMeta>(),
       // Filter navigation must not remove the control being edited. Only
       // the fresh read above records a visit; this is display-only schema.
-      placeholderData: (previous: TableMeta | undefined) => previous?.name === table ? previous : undefined,
+      placeholderData: (previous: TableMeta | undefined, previousQuery) => {
+        if (previous?.name === table && previousQuery?.queryKey[2] === token
+          && previousQuery.state.status === 'success') return previous
+        if (onlineManager.isOnline()) return undefined
+        // An offline remount may display its own last successful schema,
+        // never another sign-in's cache or data predating a definitive denial.
+        const cached = client.getQueryCache().findAll({ queryKey: ['meta', table, token] })
+          .sort((a, b) => Math.max(b.state.dataUpdatedAt, b.state.errorUpdatedAt)
+            - Math.max(a.state.dataUpdatedAt, a.state.errorUpdatedAt)
+            || b.state.errorUpdatedAt - a.state.errorUpdatedAt)[0]
+        return cached?.state.status === 'success' ? client.getQueryData<TableMeta>(cached.queryKey) : undefined
+      },
     } : {}),
     enabled: enabled && Boolean(table),
   })

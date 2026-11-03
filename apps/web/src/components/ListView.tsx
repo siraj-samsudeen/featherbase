@@ -23,6 +23,8 @@ import { ImportConflicts } from './ImportConflicts'
 
 export type Filter = [string, string, unknown]
 
+type ListSettings = ColumnArrangement & { sort: { field: string; dir: 'asc' | 'desc' } | null }
+
 // Deliberately WITHOUT 'related' (NAV-002): the FilterBar's free-text value
 // input cannot author a relationship spec, so offering the operator here
 // could only produce malformed filters. Related filters arrive via links
@@ -112,13 +114,19 @@ export function ListView({
   // #410: New is offered only to someone the server would let create a row here.
   const canAddRows = Boolean(caps?.manage || caps?.creatable.includes(table))
   const queryClient = useQueryClient()
+  const settingsKey = ['list-settings', table, getToken()]
+  // Offline remounts need the confirmed arrangement to select the same row
+  // cache, not a default-sort/column cache that may never have been fetched.
+  const savedSettings = queryClient.getQueryData<{ settings: ListSettings | null }>(settingsKey)?.settings
   // usable-on-any-device "Lists fit a phone": below 40rem the rows are cards.
   const narrow = useMediaQuery(NARROW_QUERY)
-  const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
+  const [sort, setSort] = useState<ListSettings['sort']>(savedSettings?.sort ?? null)
   const [start, setStart] = useState(0)
   // UI-013 / #738: per-user saved settings — sort, and which columns show,
   // kept as columns switched on and off on top of the Table's list columns.
-  const [arrangement, setArrangement] = useState<Required<ColumnArrangement>>({ shownCols: [], hiddenCols: [] })
+  const [arrangement, setArrangement] = useState<Required<ColumnArrangement>>({
+    shownCols: savedSettings?.shownCols ?? [], hiddenCols: savedSettings?.hiddenCols ?? [],
+  })
   const [colPickerOpen, setColPickerOpen] = useState(false)
   // #738: the Show columns menu grows into the space below its button and no
   // further, so it ends on screen; it scrolls inside only when that is short.
@@ -209,19 +217,18 @@ export function ListView({
     setSettingsLoaded(false)
     setSettingsUnsaved(false)
     api
-      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[]; shownCols?: string[] } | null }>(
+      .get<{ settings: ListSettings | null }>(
         `/api/user_settings/${encodeURIComponent(table)}`,
       )
       .then((res) => {
         if (cancelled) return
+        queryClient.setQueryData(settingsKey, res)
         const s = res.settings
-        if (s) {
-          if (s.sort) setSort(s.sort)
-          setArrangement({
-            shownCols: Array.isArray(s.shownCols) ? s.shownCols : [],
-            hiddenCols: Array.isArray(s.hiddenCols) ? s.hiddenCols : [],
-          })
-        }
+        setSort(s?.sort ?? null)
+        setArrangement({
+          shownCols: Array.isArray(s?.shownCols) ? s.shownCols : [],
+          hiddenCols: Array.isArray(s?.hiddenCols) ? s.hiddenCols : [],
+        })
         setSettingsLoaded(true)
       })
       .catch(
@@ -251,7 +258,9 @@ export function ListView({
         // A queued edit belongs to the sign-in that made it. api.put reads
         // the current token, so discard it if that sign-in has ended.
         if (getToken() !== token) return
-        return api.put(`/api/user_settings/${encodeURIComponent(table)}`, snapshot)
+        return api.put(`/api/user_settings/${encodeURIComponent(table)}`, snapshot).then(() => {
+          if (getToken() === token) queryClient.setQueryData(settingsKey, { settings: snapshot })
+        })
       })
       .then(() => { if (getToken() === token) setSettingsUnsaved(false) })
       .catch(() => { if (getToken() === token) setSettingsUnsaved(true) })
@@ -301,7 +310,7 @@ export function ListView({
       }),
   })
 
-  if (meta.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
+  if (meta.isPending) return <p className="text-sm text-ink-subtle">Loading…</p>
   // DEL-R9: the server's not-found can carry a tombstone ("X was deleted by
   // … on …") — show its words, not a generic shrug.
   if (meta.isError)
