@@ -42,10 +42,11 @@ async function seed(admin: Admin) {
 }
 
 async function openList(admin: Admin, filters?: unknown[]) {
-  await renderApp(`/featherbase/admin/${enc(T)}${filters ? `?filters=${enc(JSON.stringify(filters))}` : ''}`, admin)
+  const { router } = await renderApp(`/featherbase/admin/${enc(T)}${filters ? `?filters=${enc(JSON.stringify(filters))}` : ''}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   await screen.findByTestId('list-rows')
   await waitFor(() => expect(codes().length).toBeGreaterThan(0))
+  return router
 }
 
 const codes = () =>
@@ -153,20 +154,20 @@ test('An older link or saved view with floor = Ground takes First Floor into one
   expect(chips()).toEqual(['floor in Ground, First Floor×'])
 })
 
+type Router = Awaited<ReturnType<typeof openList>>
+
 /** The filters the page address holds; the router keeps them as a JSON string. */
-function addressFilters(): unknown[] {
-  const raw = new URLSearchParams(window.location.search).get('filters')
-  if (!raw) return []
-  const once = JSON.parse(raw) as unknown
-  return (typeof once === 'string' ? JSON.parse(once) : once) as unknown[]
+function addressFilters(router: Router): unknown[] {
+  const raw = (router.state as { location: { search: { filters?: string } } }).location.search.filters
+  return raw ? (JSON.parse(raw) as unknown[]) : []
 }
 
 test('A link with two Floor filters opens as one chip, the address holds one filter, and the quick filter shows both ticked', async ({ admin }) => {
   await seed(admin)
-  await openList(admin, [['floor', '=', 'Ground'], ['floor', 'in', ['First Floor']]])
+  const router = await openList(admin, [['floor', '=', 'Ground'], ['floor', 'in', ['First Floor']]])
   await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
   expect(chips()).toEqual(['floor in Ground, First Floor×'])
-  await waitFor(() => expect(addressFilters()).toEqual([['floor', 'in', ['Ground', 'First Floor']]]))
+  await waitFor(() => expect(addressFilters(router)).toEqual([['floor', 'in', ['Ground', 'First Floor']]]))
   fireEvent.click(screen.getByTestId('std-filter-floor'))
   expect(ticked(screen.getByTestId('std-choices-floor'))).toEqual(['Ground', 'First Floor'])
 })
