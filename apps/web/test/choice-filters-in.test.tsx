@@ -140,3 +140,15 @@ test('Adding Floor again opens with Ground ticked, and First Floor joins the sam
   await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
   expect(chips()).toEqual(['floor in Ground, First Floor×'])
 })
+
+test('An older link or saved view with floor = Ground takes First Floor into one chip', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin, [['floor', '=', 'Ground']])
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R2']))
+  const list = addFilterOn('floor')
+  expect(ticked(list)).toEqual(['Ground'])
+  tick(list, 'First Floor')
+  fireEvent.click(screen.getByTestId('filter-add'))
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
+  expect(chips()).toEqual(['floor in Ground, First Floor×'])
+})
