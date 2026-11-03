@@ -13,4 +13,4 @@
 - [x] 3.2 Independently verify the issue checklist at desktop width and inspect a real-pointer/keyboard recording.
 - [x] 3.3 Prepare a tested PR with exact-head CI and comment subscriptions; leave archive, merge and deployment gated by the owner.
 
-PR: https://github.com/siraj-samsudeen/featherbase/pull/824. Local validation and independent UI verification passed. Remote CI is subscribed, not yet claimed green. Owner video review and archive remain pending; no merge or deployment performed.
+PR: https://github.com/siraj-samsudeen/featherbase/pull/824. Local validation and independent UI verification passed. The implementation head's complete test workflow passed. The manager inspected the before/after/replay screenshots and interaction clip, presented the evidence, and conveyed Siraj's explicit authorization to finalize and merge this small fix once gates pass. This records authorization, not a claim that Siraj watched particular frames. Specs are synced and the change is archived on the same PR branch; finalization-head CI remains a merge gate. The manager owns merge; no manual deployment is authorized or performed.
