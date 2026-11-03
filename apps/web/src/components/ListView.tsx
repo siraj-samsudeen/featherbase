@@ -23,7 +23,8 @@ import { PrincipalName, usePrincipalLabels } from '../lib/people'
 import { Button, DataCards, NARROW_QUERY, ViewToggle, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp, ChevronDown } from '@featherbase/shop-floor'
 import { GlossaryHelp } from './GlossaryHelp'
-import { fmtCount } from '@featherbase/shop-floor'
+import { ChoiceTicks } from './ChoiceTicks'
+import { fmtCount } from '../lib/inr'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
 import { ActionDisclosure } from './ActionDisclosure'
@@ -1840,21 +1841,27 @@ export function FilterBar({
         fieldname: f.column_name,
         label: f.label ?? f.column_name,
         choices: choicesOf(f),
-        choice_labels: f.choice_labels,
+        ticks: f.column_type === 'Choice',
       })),
   ]
   const [field, setField] = useState('row_id')
   const [op, setOp] = useState<string>('=')
   const [value, setValue] = useState('')
-  // #742: a column with set values is picked from, and only matched or not.
-  const picking = fields.find((f) => f.fieldname === field)
-  const choices = picking?.choices ?? null
-  const ops: readonly string[] = choices ? ['=', '!='] : OPS
+  const [picks, setPicks] = useState<string[]>([])
+  const column = fields.find((f) => f.fieldname === field)
+  // #742: a Yes/No column is picked from, and only matched or not. #820: a
+  // Choice column ticks one or more of its choices.
+  const choices = column?.choices ?? null
+  const ticks = Boolean(column?.ticks)
+  const ops: readonly string[] = ticks ? ['in'] : choices ? ['=', '!='] : OPS
 
   function pickField(next: string) {
     setField(next)
     setValue('')
-    if (fields.find((f) => f.fieldname === next)?.choices && op !== '!=') setOp('=')
+    setPicks([])
+    const to = fields.find((f) => f.fieldname === next)
+    if (to?.ticks) setOp('in')
+    else if ((to?.choices && op !== '!=') || op === 'in') setOp('=')
   }
 
   function add() {
@@ -1894,7 +1901,18 @@ export function FilterBar({
             </option>
           ))}
         </select>
-        {choices ? (
+        {ticks ? (
+          <ChoiceTicks
+            label={column!.label}
+            choices={choices!}
+            ticked={picks}
+            onChange={setPicks}
+            buttonText={picks.length ? `${picks.length} selected` : 'Value'}
+            testId="filter-value"
+            listTestId="filter-choices"
+            className={FILTER_PART}
+          />
+        ) : choices ? (
           <select
             value={value}
             onChange={(e) => setValue(e.target.value)}
