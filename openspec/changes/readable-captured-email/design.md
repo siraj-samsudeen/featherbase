@@ -9,7 +9,7 @@ Read messages comfortably using the generic form and existing read permissions. 
 ## Decisions
 
 1. Add one nullable `reading_presentation` JSON metadata value with a fixed schema: title, headers, body and optional attachment-names column roles, plus an optional configured notice. Reuse existing column labels, translations and value formatting. A per-model renderer violates the platform invariant; a full layout DSL or multiple modes is unnecessary.
-2. Only existing read-only rows use this reading presentation. Writable/new rows keep their ordinary editable form. Raw controls remain the same controls under a closed disclosure, so system-written protections stay intact.
+2. Only existing read-only rows use this reading presentation. Writable/new rows keep their ordinary editable form. Raw controls and unchanged secondary record context sit under a closed disclosure, so system-written protections stay intact and unrelated empty collaboration cards do not distract from the message.
 3. Render text through React escaping and pre-wrap/overflow-wrap, not sanitized HTML or an iframe. There is no stored rich content contract to justify parsing. Attachment names are displayed as the stored list, never split into fictional individual downloadable files.
 4. Leave metadata override allowlists alone: use physical Table metadata, validated through the existing Table definition contract. System-written Table metadata remains platform-owned. #800 owns collaboration suppression and will be reconciled at its integration gate, not duplicated here.
 
@@ -21,8 +21,8 @@ Read messages comfortably using the generic form and existing read permissions. 
 
 ## Migration Plan
 
-Add nullable metadata to table_def, register it on Table metadata, and configure Email Sink with readable labels and its existing subject as title. Existing messages are untouched. Removing the configuration restores the ordinary read-only form; no stored message conversion is involved.
+Add nullable metadata to table_def, expose it through validated Table definitions (not an unvalidated generic JSON control), and configure Email Sink with readable labels and its existing subject as title. Existing messages are untouched. Removing the configuration restores the ordinary read-only form; no stored message conversion is involved. Migration 0007 has no dependency on #826's 0006: the runner sorts filenames and permits gaps; fresh migration tests boot this branch independently.
 
 ## Open Questions
 
-None. Independent UI verification and owner merge/video gates remain.
+None. Independent UI verification passed. Ordinary hidden-logic review is still unmet (prescribed reviewer unavailable in this orb); no code review is claimed. Owner defaults authorize sync/archive without a routine video-review pause; screenshots and clips were captured and inspected by agents, not claimed watched by Siraj. Merge and deployment remain owner-authorized actions.
