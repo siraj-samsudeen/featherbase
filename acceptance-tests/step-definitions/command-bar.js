@@ -34,3 +34,32 @@ When('the user replays that past search from the command bar', async function ()
 Then('the search remains available to edit and run', async function () {
   await this.commandBar.expectEditableSearchAndRun();
 });
+
+Given('the user is searching for Person in the command bar', async function () {
+  this.commandBar = new CommandBar(await this.asSystemManager());
+  await this.commandBar.searchPerson();
+});
+
+When('the user chooses the new Person row result using the arrow keys and Enter', async function () {
+  await this.commandBar.choosePersonResult('new');
+});
+
+Then('a blank Person form is shown without the command dropdown', async function () {
+  await this.commandBar.expectPersonForm('new');
+});
+
+When('the user chooses the Person definition record using the arrow keys and Enter', async function () {
+  await this.commandBar.choosePersonResult('record');
+});
+
+Then('the Person definition form is shown without the command dropdown', async function () {
+  await this.commandBar.expectPersonForm('record');
+});
+
+When('the user replaces the search with Sign In Meth and immediately activates the search', async function () {
+  await this.commandBar.replacePersonSearch();
+});
+
+Then('the previous Person record is not opened', async function () {
+  await this.commandBar.expectReplacementSearch();
+});
