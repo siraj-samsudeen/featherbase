@@ -46,6 +46,22 @@ const EXPIRY_CHOICES = [
   { label: '1 year', days: 365 },
 ]
 
+// #852: what a token for an owner would reach, from GET /api/access_tokens/reach.
+interface Reach {
+  every_table: boolean
+  own_roles: boolean
+  read: string[]
+  change: string[]
+}
+
+const SHOWN_TABLES = 6
+
+function tableList(names: string[]): string {
+  if (names.length === 0) return 'nothing'
+  const shown = names.slice(0, SHOWN_TABLES).join(', ')
+  return names.length > SHOWN_TABLES ? `${shown} and ${names.length - SHOWN_TABLES} more` : shown
+}
+
 // Keep these states aligned with credential resolution, not just revocation.
 function tokenState(t: Token): 'active' | 'revoked' | 'expired' | 'owner disabled' {
   if (t.revoked_at) return 'revoked'
@@ -95,6 +111,8 @@ export function AccessTokens() {
   const [labelEdited, setLabelEdited] = useState(false)
   const [owner, setOwner] = useState('')
   const [expiryDays, setExpiryDays] = useState(0)
+  // #852: a token that never expires is issued only on a second, deliberate press.
+  const [askedNoExpiry, setAskedNoExpiry] = useState(false)
   const [issued, setIssued] = useState<{ token: string; label: string } | null>(null)
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
@@ -105,8 +123,15 @@ export function AccessTokens() {
     setLabelEdited(false)
     setOwner(forOwner)
     setExpiryDays(0)
+    setAskedNoExpiry(false)
     setIssuing(true)
   }
+
+  const reach = useQuery({
+    queryKey: ['token-reach', owner],
+    enabled: issuing && Boolean(owner),
+    queryFn: () => api.get<Reach>(`/api/access_tokens/reach?owner=${encodeURIComponent(owner)}`),
+  })
 
   const issue = useMutation({
     mutationFn: () =>
@@ -449,7 +474,9 @@ export function AccessTokens() {
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault()
-              if (label.trim() && !issue.isPending) issue.mutate()
+              if (!label.trim() || issue.isPending) return
+              if (expiryDays === 0 && !askedNoExpiry) setAskedNoExpiry(true)
+              else issue.mutate()
             }}
           >
             <fieldset disabled={issue.isPending} className="space-y-4">
@@ -486,7 +513,10 @@ export function AccessTokens() {
                 <Select
                   data-testid="token-expiry"
                   value={expiryDays}
-                  onChange={(e) => setExpiryDays(Number(e.target.value))}
+                  onChange={(e) => {
+                    setExpiryDays(Number(e.target.value))
+                    setAskedNoExpiry(false)
+                  }}
                 >
                   {EXPIRY_CHOICES.map((c) => (
                     <option key={c.days} value={c.days}>
@@ -496,6 +526,35 @@ export function AccessTokens() {
                 </Select>
               </Field>
             </fieldset>
+            {reach.data && (
+              <div className="space-y-1 rounded border border-border bg-subtle px-3 py-2 text-sm" data-testid="token-reach">
+                {reach.data.every_table ? (
+                  <p>This token can read and change every Table: its owner is a System Manager.</p>
+                ) : (
+                  <>
+                    <p>Can read: {tableList(reach.data.read)}</p>
+                    <p>Can change: {tableList(reach.data.change)}</p>
+                  </>
+                )}
+              </div>
+            )}
+            {reach.data && !reach.data.every_table && (!reach.data.own_roles || reach.data.read.length === 0) && (
+              <Notice tone="caution">
+                <p data-testid="token-reach-warning">
+                  {reach.data.own_roles
+                    ? 'This token cannot read any Table, so it can do nothing yet.'
+                    : `${ownerName(owner)} has no role of its own, so this token reaches only what every account can. Give it a role before using the token.`}
+                </p>
+              </Notice>
+            )}
+            {askedNoExpiry && expiryDays === 0 && (
+              <Notice tone="caution">
+                <p data-testid="token-no-expiry">
+                  This token never expires: it keeps working until someone revokes it. Press Issue without expiry to go
+                  ahead, or choose an expiry.
+                </p>
+              </Notice>
+            )}
             {issue.isError && (
               <Notice tone="negative">
                 <p data-testid="issue-error">{issue.error.message}</p>
@@ -512,7 +571,7 @@ export function AccessTokens() {
                 loading={issue.isPending}
                 disabled={!label.trim()}
               >
-                Issue token
+                {askedNoExpiry && expiryDays === 0 ? 'Issue without expiry' : 'Issue token'}
               </Button>
             </div>
           </form>
