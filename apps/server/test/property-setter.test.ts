@@ -18,17 +18,14 @@ async function makeDT(admin: TestClient) {
 }
 
 async function addLabelSetter(admin: TestClient) {
-  return admin.fetch('/api/save_row', {
+  return admin.fetch('/api/table/Metadata%20Override', {
     method: 'POST',
     body: JSON.stringify({
-      table: 'Metadata Override',
-      row: {
-        row_id: `${DT}-title-label`,
-        table_name: DT,
-        column_name: 'title',
-        property: 'label',
-        value: 'Headline',
-      },
+      row_id: `${DT}-title-label`,
+      table_name: DT,
+      column_name: 'title',
+      property: 'label',
+      value: 'Headline',
     }),
   })
 }
@@ -36,9 +33,8 @@ async function addLabelSetter(admin: TestClient) {
 describe('CUST-002: metadata overrides', () => {
   test('refuses a column label used as its name', async ({ admin }) => {
     await makeDT(admin)
-    await expectApiError(admin.post('/api/save_row', {
-      table: 'Metadata Override',
-      row: { row_id: 'ps-invalid-column', table_name: DT, column_name: 'Title', property: 'label', value: 'Headline' },
+    await expectApiError(admin.post('/api/table/Metadata%20Override', {
+      row_id: 'ps-invalid-column', table_name: DT, column_name: 'Title', property: 'label', value: 'Headline',
     }), { status: 417, type: 'ValidationError', message: expect.stringContaining(`Column Title not found on Table ${DT}`) })
     await expectApiError(admin.get('/api/table/Metadata%20Override/ps-invalid-column'), { status: 404 })
   })
@@ -61,9 +57,8 @@ describe('CUST-002: metadata overrides', () => {
   for (const [value, expected] of [['true', true], ['false', false], ['1', true], ['0', false]] as const) {
     test(`applies boolean text ${value}`, async ({ admin }) => {
       await makeDT(admin)
-      await admin.post('/api/save_row', {
-        table: 'Metadata Override',
-        row: { row_id: `${DT}-title-reqd`, table_name: DT, column_name: 'title', property: 'reqd', value },
+      await admin.post('/api/table/Metadata%20Override', {
+        row_id: `${DT}-title-reqd`, table_name: DT, column_name: 'title', property: 'reqd', value,
       })
       const meta = await getMeta(DT)
       expect(meta.columns.find((column) => column.column_name === 'title')?.reqd).toBe(expected)
@@ -78,9 +73,8 @@ describe('CUST-002: metadata overrides', () => {
   ]) {
     test(`refuses invalid ${property} value ${String(value)}`, async ({ admin }) => {
       await makeDT(admin)
-      const error = await expectApiError(admin.post('/api/save_row', {
-        table: 'Metadata Override',
-        row: { row_id: 'ps-invalid-boolean', table_name: DT, column_name: 'title', property, value },
+      const error = await expectApiError(admin.post('/api/table/Metadata%20Override', {
+        row_id: 'ps-invalid-boolean', table_name: DT, column_name: 'title', property, value,
       }), { status: 417, type: 'ValidationError' })
       for (const allowed of ['true', 'false', '1', '0']) expect(error.message).toContain(allowed)
       await expectApiError(admin.get('/api/table/Metadata%20Override/ps-invalid-boolean'), { status: 404 })
@@ -90,9 +84,8 @@ describe('CUST-002: metadata overrides', () => {
   for (const column of [null, 'title']) {
     test(`lists permitted properties for ${column ? 'column' : 'Table'} overrides`, async ({ admin }) => {
       await makeDT(admin)
-      const error = await expectApiError(admin.post('/api/save_row', {
-        table: 'Metadata Override',
-        row: { row_id: 'ps-invalid-property', table_name: DT, column_name: column, property: 'unique', value: 'true' },
+      const error = await expectApiError(admin.post('/api/table/Metadata%20Override', {
+        row_id: 'ps-invalid-property', table_name: DT, column_name: column, property: 'unique', value: 'true',
       }), { status: 417, type: 'ValidationError' })
       expect(error.message.split('Permitted properties: ')[1]).toBe(column
         ? 'label, hidden, reqd, read_only, in_list_view, default_value, choices'
