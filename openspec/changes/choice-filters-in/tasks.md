@@ -24,11 +24,11 @@ Same test file.
 
 Same test file.
 
-- [ ] 3.1 S4: `Ticking Closed in the Status box narrows the rows, and unticking it brings them all back`
-- [ ] 3.2 S11: `A filter added on Floor with Ground and First Floor shows both ticked in the Floor box`
-- [ ] 3.3 S12: `Unticking First Floor in the box leaves only Ground rows, and the chip names only Ground`
-- [ ] 3.4 S13: `Ticking every floor in the box removes the Floor filter, and every row shows`
-- [ ] 3.5 Test: `The box reads All with no filter, and "2 selected" with two choices ticked`
+- [x] 3.1 S4: `Ticking Closed in the Status box narrows the rows, and unticking it brings them all back`
+- [x] 3.2 S11: `A filter added on Floor with Ground and First Floor shows both ticked in the Floor box`
+- [x] 3.3 S12: `Unticking First Floor in the box leaves only Ground rows, and the chip names only Ground`
+- [x] 3.4 S13: `Ticking every floor in the box removes the Floor filter, and every row shows`
+- [x] 3.5 Test: `The box reads All with no filter, and "2 selected" with two choices ticked`
 
 ## 4. Long lists of choices
 

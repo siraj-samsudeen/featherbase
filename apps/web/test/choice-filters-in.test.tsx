@@ -239,3 +239,12 @@ test('Ticking every floor in the box removes the Floor filter, and every row sho
   await waitFor(() => expect(codes()).toHaveLength(6))
   expect(chips()).toEqual([])
 })
+
+test('The box reads All with no filter, and "2 selected" with two choices ticked', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  expect(screen.getByTestId('std-filter-floor')).toHaveTextContent(/^All$/)
+  tick(openBox('floor'), 'Ground', 'First Floor')
+  await waitFor(() => expect(screen.getByTestId('std-filter-floor')).toHaveTextContent(/^2 selected$/))
+  expect(screen.getByTestId('std-filter-floor')).toHaveAccessibleName('Floor: 2 selected')
+})
