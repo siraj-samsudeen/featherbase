@@ -387,3 +387,79 @@ test('a script that names its run gets that run ID back', async ({ admin }) => {
   await makeTable(admin, { name: table, columns: ['code'] })
   expect(await admin.post(`${path}:import`, { rows: [{ code: 'A' }], context: { run_id: 'nightly-load' } })).toMatchObject({ run_id: 'nightly-load' })
 })
+
+// #865: renaming a column is a normal clean-up right after a first import. The
+// correction, its history, the remembered source and any open conflict must
+// all follow the new name, or the next import silently overwrites the person.
+describe('#865: a renamed column keeps its corrections', () => {
+  const renameCity = (admin: TestClient) =>
+    admin.post(`/api/table_def/${encodeURIComponent(table)}/rename_column`, { from: 'city', to: 'town' })
+  const loadTown = (admin: TestClient, town: string, run_id: string) =>
+    admin.post(`${path}:import`, { key_column: 'code', rows: [{ code: 'A', town }], context: { run_id } })
+
+  test('re-importing the unchanged source keeps the correction, and the preview says nothing will change', async ({ admin }) => {
+    await correction(admin)
+    await renameCity(admin)
+    // Before #865 this preview read fields_updated: 1: the correction would be overwritten.
+    const preview = await admin.post(`${path}:import`, { key_column: 'code', rows: [{ code: 'A', town: 'North' }], dry_run: true })
+    expect(preview).toMatchObject({ fields_updated: 0, fields_kept: 0 })
+    await loadTown(admin, 'North', 'after-rename')
+    expect((await admin.get<Record<string, unknown>>(`${path}/A`)).town).toBe('South')
+    expect((await conflicts(admin)).conflicts).toEqual([])
+  })
+
+  test('a different source value raises a conflict under the new name instead of overwriting', async ({ admin }) => {
+    await correction(admin)
+    await renameCity(admin)
+    await loadTown(admin, 'East', 'after-rename')
+    expect((await admin.get<Record<string, unknown>>(`${path}/A`)).town).toBe('South')
+    const raised = (await conflicts(admin)).conflicts
+    expect(raised).toHaveLength(1)
+    expect(raised[0]).toMatchObject({ field: 'town', incoming: 'East' })
+  })
+
+  test('the history, the remembered source and an open conflict all name the new column', async ({ admin }) => {
+    await correction(admin)
+    await load(admin, 'East', 'before-rename')
+    await renameCity(admin)
+    const activity = await admin.get<{ versions: { data: { changed?: unknown[][] } }[] }>(`/api/activity/${encodeURIComponent(table)}/A`)
+    const named = activity.versions.flatMap((v) => (v.data.changed ?? []).map((c) => c[0]))
+    expect(named).toContain('town')
+    expect(named).not.toContain('city')
+    const [source] = await sql`select values from featherbase.import_source where ref_table = ${table} and ref_name = 'A' order by created_at desc limit 1`
+    expect(Object.keys(source.values as object)).toContain('town')
+    expect(Object.keys(source.values as object)).not.toContain('city')
+    const open = (await conflicts(admin)).conflicts
+    expect(open.map((c) => c.field)).toEqual(['town'])
+    // Keeping mine on the renamed conflict is recorded under the new name, and
+    // the same source after it raises nothing new.
+    await admin.post(`${path}:resolve-import-conflict`, { conflict_id: open[0].id, decision: 'keep' })
+    await loadTown(admin, 'East', 'same-after-rename')
+    expect((await conflicts(admin)).conflicts).toEqual([])
+    expect((await admin.get<Record<string, unknown>>(`${path}/A`)).town).toBe('South')
+  })
+
+  test('a resolution recorded before the rename follows the new name', async ({ admin }) => {
+    await correction(admin)
+    await load(admin, 'East', 'second')
+    const [conflict] = (await conflicts(admin)).conflicts
+    await admin.post(`${path}:resolve-import-conflict`, { conflict_id: conflict.id, decision: 'source' })
+    await renameCity(admin)
+    const activity = await admin.get<{ versions: { data: { resolution?: { field: string } } }[] }>(`/api/activity/${encodeURIComponent(table)}/A`)
+    expect(activity.versions.flatMap((v) => (v.data.resolution ? [v.data.resolution.field] : []))).toEqual(['town'])
+    // The source owns the field after "use the import's value", so it still follows the source.
+    await loadTown(admin, 'West', 'third')
+    expect((await admin.get<Record<string, unknown>>(`${path}/A`)).town).toBe('West')
+    expect((await conflicts(admin)).conflicts).toEqual([])
+  })
+
+  test('another Table with the same column name keeps its own history', async ({ admin }) => {
+    const other = 'Import Corrections Other'
+    await makeTable(admin, { name: other, columns: ['code', 'city'] })
+    await admin.post(`/api/table/${encodeURIComponent(other)}:import`, { rows: [{ row_id: 'B', code: 'B', city: 'North' }], context: { run_id: 'other' } })
+    await correction(admin)
+    await renameCity(admin)
+    const [source] = await sql`select values from featherbase.import_source where ref_table = ${other} and ref_name = 'B'`
+    expect(Object.keys(source.values as object)).toContain('city')
+  })
+})
