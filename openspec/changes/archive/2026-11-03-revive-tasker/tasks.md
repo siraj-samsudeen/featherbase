@@ -43,5 +43,7 @@
 - [x] 6.3 Run feather-code-review for hidden access, migration and scheduling logic, at most two Codex rounds; fix blockers and record remaining findings.
 - [x] 6.4 Prove the new app version's install, upgrade, fingerprints and retained data; do not modify an installed artifact under its old version.
 - [x] 6.5 Reconcile existing Tasker changes without marking unverified owner exploration complete; update main spec purpose text that still describes shared personal lists when the implementation lands.
-- [ ] 6.6 After all implementation and verification, archive this completed change in the same single PR and run pnpm check:specs; retain the draft PR until owner screenshot acceptance. Archive follows the owner’s completed-build review under the current change-modes workflow.
+- [x] 6.6 After all implementation and verification, archive this completed change in the same single PR and run pnpm check:specs; retain the draft PR until owner screenshot acceptance. Archive follows the owner’s completed-build review under the current change-modes workflow.
 - [ ] 6.7 Select trial members and instance and follow docs/DEPLOY.md; verify the exact deployed commit with ordinary members and record the handoff. Leave this task open until rollout is actually completed or explicitly moved to a tracked follow-up by the owner.
+
+The owner authorized PR completion and merge on 3-Nov-2026. Target-instance inventory (1.3) and trial deployment (6.7) remain unverified rollout work tracked in issue #563; archiving the implementation does not mark either complete.
