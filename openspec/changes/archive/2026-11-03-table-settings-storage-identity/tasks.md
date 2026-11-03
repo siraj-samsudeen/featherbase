@@ -13,4 +13,4 @@
 
 - [x] 3.1 Run focused regressions, server/web/shared checks, relevant full suites, the effective acceptance suite with zero pending steps and an HTML report, and boot/smoke checks.
 - [x] 3.2 Have an independent headless verifier inspect the issue checklist at desktop width 1280, with screenshots and pointer/keyboard copy clip; inspect all final evidence and fix differences.
-- [ ] 3.3 Run strict OpenSpec validation, publish the PR and exact-head CI subscriptions, and report evidence and CDC limitation to the manager. Sync/archive only after the owner has watched review evidence; merge and deployment remain outside this worker's authorization.
+- [x] 3.3 Run strict OpenSpec validation, publish the PR and exact-head CI subscriptions, and report evidence and CDC limitation to the manager. Manager authorized sync/archive without a routine owner-view pause on 03-Nov-2026; builder and independent verification are recorded, owner inspection is not claimed. Merge and deployment remain outside this worker's authorization.
