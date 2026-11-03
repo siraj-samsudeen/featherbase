@@ -1,0 +1,70 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "tickets",
+  "title": "Tickets",
+  "server": "dist/server.mjs",
+  "client": "dist/client",
+  "entryTable": "tickets.ticket",
+  "roles": ["Tickets Support"],
+  "settings": [
+    {"name": "support_users", "required": false},
+    {"name": "verification_admins", "required": false},
+    {"name": "fulfillment_admins", "required": false},
+    {"name": "approval_routes", "required": false},
+    {"name": "restricted_resources", "required": false}
+  ],
+  "actions": {"version": 2, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.progress"], "operations": {
+    "create": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "edit": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "verify": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "decide": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "fulfill": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "evidence": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "link": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "note": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "resolve": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "reopen": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
+  }},
+  "reads": {"version": 1, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.progress"], "operations": {
+    "session": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "queue": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "detail": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
+  }},
+  "tables": [
+    {"name": "tickets.ticket", "label": "Ticket", "module": "Tickets", "id_pattern": "FT-.#####", "title_column": "title", "columns": [
+      {"column_name": "title", "label": "Public summary", "column_type": "Data", "reqd": true, "in_list_view": true},
+      {"column_name": "owner", "label": "Requester", "column_type": "Data", "reqd": true},
+      {"column_name": "kind", "label": "Kind", "column_type": "Choice", "choices": "generic\naccess\nfreshness\nquality\nreport\nsource\nschema\npipeline\nbackfill", "default_value": "generic", "in_list_view": true},
+      {"column_name": "ticket_state", "label": "State", "column_type": "Choice", "choices": "New\nNeeds verification\nAwaiting approval\nApproved\nRejected\nPolicy review\nIn progress\nResolved", "default_value": "New", "in_list_view": true},
+      {"column_name": "assigned_to", "label": "Assigned to", "column_type": "Data"},
+      {"column_name": "public_update", "label": "Public update", "column_type": "Text"}
+    ]},
+    {"name": "tickets.request", "label": "Private request", "module": "Tickets", "columns": [
+      {"column_name": "original", "label": "Original request", "column_type": "Text", "reqd": true},
+      {"column_name": "details_json", "label": "Structured request", "column_type": "Text"},
+      {"column_name": "verification_key", "label": "Recipient revision", "column_type": "Data", "hidden": true},
+      {"column_name": "approval_key", "label": "Scope revision", "column_type": "Data", "hidden": true}
+    ]},
+    {"name": "tickets.event", "label": "Support event", "module": "Tickets", "id_pattern": "FTE-.########", "columns": [
+      {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket"},
+      {"column_name": "operation", "label": "Operation", "column_type": "Data"},
+      {"column_name": "text", "label": "Event", "column_type": "Text"},
+      {"column_name": "by", "label": "Actor", "column_type": "Data"},
+      {"column_name": "at", "label": "Time", "column_type": "Data"}
+    ]},
+    {"name": "tickets.progress", "label": "Public progress", "module": "Tickets", "id_pattern": "FTP-.########", "columns": [
+      {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket"},
+      {"column_name": "text", "label": "Update", "column_type": "Text"},
+      {"column_name": "by", "label": "Actor", "column_type": "Data"},
+      {"column_name": "at", "label": "Time", "column_type": "Data"}
+    ]}
+  ],
+  "permissions": [
+    {"table": "tickets.ticket", "role": "All", "can_read": true, "can_write": true, "can_create": true},
+    {"table": "tickets.request", "role": "All", "own_rows_only": true, "can_read": true, "can_write": true, "can_create": true},
+    {"table": "tickets.request", "role": "Tickets Support", "can_read": true, "can_write": true, "can_create": true},
+    {"table": "tickets.event", "role": "Tickets Support", "can_read": true, "can_create": true},
+    {"table": "tickets.progress", "role": "All", "can_read": true, "can_create": true}
+  ]
+}

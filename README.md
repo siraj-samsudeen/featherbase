@@ -185,6 +185,37 @@ featherbase advanced apps install-app <explicit-app-name>
 
 There is no public marketplace or automatic download of unreviewed code.
 
+### Explicit opt-in: Feather Tickets
+
+Tickets is a separate product app in `example-apps/tickets`, not the Helpdesk
+sample. Build it with `npm ci --prefix example-apps/tickets` followed by
+`npm run build --prefix example-apps/tickets`. Add that folder's absolute path
+to the JSON array `FEATHERBASE_APP_PATHS` in your untracked `.env.local`, restart
+the server, then choose Tickets in app administration (or run
+`featherbase advanced apps install-app tickets`). Ordinary startup does not
+install it or create sample requests.
+
+Requesters share public ticket summaries and progress. Original request details
+stay with the submitter and support; employee verification and investigation
+evidence remain support-only. Give staff the `Tickets Support` role and configure
+the app's settings with person IDs, not display names: `support_users`,
+`verification_admins` and `fulfillment_admins` are JSON arrays; `approval_routes`
+maps regions to arrays of alternative approvers; `restricted_resources` is a
+JSON array of restricted resource names. Missing authority or routing blocks
+access decisions. Use the existing App Setting/instance-settings interface.
+
+For an explicitly disposable, local development instance only:
+
+```bash
+node tools/seed-tickets-development.mjs --url=http://127.0.0.1:8000
+```
+
+This opt-in walkthrough creates fictional people and requests through the real
+server. It refuses remote destinations, non-development databases and queues
+containing real requests. It never connects to StyleHR, email, MotherDuck or
+GitHub. Stage one records manual verification, decisions, fulfillment and
+investigation; live integrations are a separate stage.
+
 ### Boot and smoke-test for contributors
 
 `./init.sh` installs checkout dependencies, bootstraps local Postgres where
