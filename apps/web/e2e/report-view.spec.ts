@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 
 const DT = 'RPT Task'
@@ -58,7 +59,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('RPT-001: group by Select shows correct counts and sums; column picker works', async ({
   session,
 }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
   await session.step('open the report, group by status, and verify counts/sums/columns', async ({ page }) => {
     // Enter through the list view's Report button.
     await page.getByTestId('open-report').click()
@@ -131,7 +132,7 @@ test.describe('Report toolbar responsiveness', () => {
   test.use({ viewport: { width: 375, height: 812 } })
 
   test('keeps every Report control reachable on a phone without Admin overflow', async ({ session }) => {
-    await session.visit(`/admin/${encodeURIComponent(DT)}/view/report`).assertHas('[data-testid="report-view"]')
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/view/report`).assertHas('[data-testid="report-view"]')
     await session.step('the Report toolbar fits the phone width and every control is reachable', async ({ page }) => {
       await assertReportToolbarFits(page)
     })
@@ -142,7 +143,7 @@ test.describe('Report toolbar desktop layout', () => {
   test.use({ viewport: { width: 1280, height: 800 } })
 
   test('keeps every Report control reachable on desktop without Admin overflow', async ({ session }) => {
-    await session.visit(`/admin/${encodeURIComponent(DT)}/view/report`).assertHas('[data-testid="report-view"]')
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/view/report`).assertHas('[data-testid="report-view"]')
     await session.step('the Report toolbar fits the desktop width and every control is reachable', async ({ page }) => {
       await assertReportToolbarFits(page)
 

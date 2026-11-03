@@ -4,6 +4,7 @@
 // message each panel shows on a refusal was never seen. Every refusal here is
 // a real answer from the in-process server — a person who does not exist, a
 // row deleted underneath the open form — never a stubbed response.
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
@@ -23,7 +24,7 @@ async function seedRow(admin: Admin): Promise<string> {
 }
 
 async function openRow(admin: Admin, rowId: string) {
-  await renderApp(`/featherbase/admin/${ENC}/${rowId}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/row/${rowId}`, admin)
   await screen.findByTestId('form-view')
 }
 

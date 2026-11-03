@@ -11,6 +11,7 @@
 // The server is the real in-process one, so "every row lands under the
 // target's spelling" is checked against the database the merge wrote to.
 
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, vi } from 'vitest'
@@ -54,7 +55,7 @@ async function seed(admin: Admin) {
 }
 
 async function openMerge(admin: Admin) {
-  await renderApp(`/featherbase/admin/${encodeURIComponent(SRC)}/merge`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(SRC))}/merge`, admin)
   await screen.findByTestId('table-merge')
 }
 

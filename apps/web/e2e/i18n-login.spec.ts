@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { anonymousTest as test, expect, adminAuth } from './fixtures'
 import { clearTranslations, seedTranslations } from './translations'
 
@@ -71,7 +72,7 @@ test('I18N-002: stored language applied on login + configured date format', asyn
 
   // The date renders THROUGH the System-Settings formatter — DD-Mon-YYYY, the
   // one display form (#380) — never the raw ISO string.
-  await session.visit(`/admin/${encodeURIComponent(DT)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
   await session.step('the due date cell renders through the date formatter', async ({ page }) => {
     await expect(page.getByTestId('cell-due').first()).toHaveText('09-Mar-2026')
   })

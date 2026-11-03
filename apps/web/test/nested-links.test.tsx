@@ -6,6 +6,7 @@ import { vi } from 'vitest'
 import { fireEvent } from '@testing-library/dom'
 import type { TestClient } from 'feather-testing-postgres'
 import { test, expect, renderApp } from './pg-test'
+import { rowHref } from 'shared'
 
 type Saved = { row_id: string }
 const enc = encodeURIComponent
@@ -35,7 +36,7 @@ async function seedOrders(admin: TestClient) {
 
 test('a link cell in nested rows offers matching rows, and the picked one is saved', async ({ admin }) => {
   const order = await seedOrders(admin)
-  await renderApp(`/featherbase/admin/${enc('Nest Order')}/${order.row_id}`, admin)
+  await renderApp(rowHref('Nest Order', order.row_id), admin)
   fireEvent.click(await screen.findByTestId('add-row-lines', {}, { timeout: 8000 }))
   const cell = await screen.findByLabelText('Lines, Customer, row 1')
   expect(cell).toHaveAttribute('role', 'combobox')
@@ -56,7 +57,7 @@ test('a link cell in nested rows offers matching rows, and the picked one is sav
 
 test('text typed in a nested link cell but never picked is not saved', async ({ admin }) => {
   const order = await seedOrders(admin)
-  await renderApp(`/featherbase/admin/${enc('Nest Order')}/${order.row_id}`, admin)
+  await renderApp(rowHref('Nest Order', order.row_id), admin)
   fireEvent.click(await screen.findByTestId('add-row-lines', {}, { timeout: 8000 }))
   fireEvent.change(await screen.findByLabelText('Lines, Customer, row 1'), { target: { value: 'Initech' } })
   fireEvent.blur(screen.getByLabelText('Lines, Customer, row 1'))
@@ -71,7 +72,7 @@ test('text typed in a nested link cell but never picked is not saved', async ({ 
 
 test("a person's role is picked from the roles that exist", async ({ admin }) => {
   const person = await admin.post<Saved>('/api/save_row', { table: 'Person', row: { email: 'nested-role@example.test', enabled: true } })
-  await renderApp(`/featherbase/admin/Person/${enc(person.row_id)}`, admin)
+  await renderApp(rowHref('Person', person.row_id), admin)
   fireEvent.click(await screen.findByTestId('add-row-roles', {}, { timeout: 8000 }))
   const cell = await screen.findByRole('combobox', { name: /Role, row 1$/ })
   fireEvent.change(cell, { target: { value: 'Sys' } })
@@ -82,7 +83,7 @@ test("a person's role is picked from the roles that exist", async ({ admin }) =>
 
 test("a cell's error goes once the grid changes, and unpicked text leaves the cell when it is left", async ({ admin }) => {
   const order = await seedOrders(admin)
-  await renderApp(`/featherbase/admin/${enc('Nest Order')}/${order.row_id}`, admin)
+  await renderApp(rowHref('Nest Order', order.row_id), admin)
   fireEvent.click(await screen.findByTestId('add-row-lines', {}, { timeout: 8000 }))
   screen.getByTestId('form-save').click()
   await waitFor(() => expect(screen.getByTestId('error-lines-0-customer')).toBeVisible())
@@ -103,7 +104,7 @@ test("a cell's error goes once the grid changes, and unpicked text leaves the ce
 test('emptying an optional nested link cell removes the link when saved', async ({ admin }) => {
   await seedOrders(admin)
   const order = await admin.post<Saved>('/api/save_row', { table: 'Nest Order', row: { label: 'o2', notes: [{ about: 'Formco' }] } })
-  await renderApp(`/featherbase/admin/${enc('Nest Order')}/${order.row_id}`, admin)
+  await renderApp(rowHref('Nest Order', order.row_id), admin)
   const cell = await screen.findByLabelText('Notes, About, row 1', {}, { timeout: 8000 })
   await waitFor(() => expect(cell).toHaveValue('Formco'))
   fireEvent.change(cell, { target: { value: '' } })
@@ -117,7 +118,7 @@ test('emptying an optional nested link cell removes the link when saved', async 
 
 test('leaving a nested reference field then closing its form releases pending callbacks', async ({ admin }) => {
   const order = await seedOrders(admin)
-  const view = await renderApp(`/featherbase/admin/${enc('Nest Order')}/${order.row_id}`, admin)
+  const view = await renderApp(rowHref('Nest Order', order.row_id), admin)
   fireEvent.click(await screen.findByTestId('add-row-lines', {}, { timeout: 8000 }))
   const cell = await screen.findByLabelText('Lines, Customer, row 1')
   const browserWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')!
@@ -139,7 +140,7 @@ test('leaving a nested reference field then closing its form releases pending ca
 
 test('a reference search that finishes after leaving the cell cannot reopen its picker', async ({ admin }) => {
   const order = await seedOrders(admin)
-  await renderApp(`/featherbase/admin/${enc('Nest Order')}/${order.row_id}`, admin)
+  await renderApp(rowHref('Nest Order', order.row_id), admin)
   fireEvent.click(await screen.findByTestId('add-row-lines', {}, { timeout: 8000 }))
   const cell = await screen.findByLabelText('Lines, Customer, row 1')
   fireEvent.focusIn(cell)

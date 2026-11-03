@@ -299,7 +299,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
 
 function EmailSinkLink() {
   return (
-    <RouterLink to="/featherbase/admin/$table" params={{ table: 'Email Sink' }} search={{ filters: undefined }} className="text-action underline">
+    <RouterLink to="/featherbase/admin/table/$table" params={{ table: 'Email Sink' }} search={{ filters: undefined }} className="text-action underline">
       Email Sink
     </RouterLink>
   )

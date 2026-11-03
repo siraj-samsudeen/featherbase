@@ -4,9 +4,8 @@ const assert = require('node:assert/strict');
 const { createHash, randomUUID } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
-const { default: postgres } = require('postgres');
 const { Api } = require('../api');
-const { restartAcceptance, acceptanceDatabaseUrl } = require('../stack');
+const { restartAcceptance, acceptanceSql } = require('../stack');
 
 class AppNavigation {
   constructor(page) { this.page = page; }
@@ -59,17 +58,14 @@ class AppNavigation {
     await api.saveRow('Data Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'FEATHER_DASH_LOCAL_DUCKDB', access: 'read_only' });
     // An existing cached month supplies the store's human name. No warehouse
     // connection or intercepted report response is needed for navigation.
-    const sql = postgres(acceptanceDatabaseUrl(), { connection: { search_path: 'featherbase,public' } });
-    try {
-      const { datasets } = JSON.parse(readFileSync(path.resolve(__dirname, '../../../client-apps/jeyarama/dash/featherbase.json')));
-      const dataset = datasets.find(entry => entry.name === 'sales_month');
-      const version = createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16);
-      const id = randomUUID();
-      await sql`insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, activated_at, row_count)
-        values (${id}, 'feather_dash.sales_month', ${version}, 'active', now(), now(), 2)`;
-      for (const [store_code, store_name] of [['9901', 'Hill Road'], ['9902', 'Lakeside']])
-        await sql`insert into app_dataset_row (snapshot_id, row) values (${id}, ${sql.json({ store_code, store_name })})`;
-    } finally { await sql.end(); }
+    const { datasets } = JSON.parse(readFileSync(path.resolve(__dirname, '../../../client-apps/jeyarama/dash/featherbase.json')));
+    const dataset = datasets.find(entry => entry.name === 'sales_month');
+    const version = createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16);
+    const id = randomUUID();
+    await acceptanceSql(`insert into featherbase.dataset_snapshot (row_id, dataset, definition_version, state, built_at, activated_at, row_count)
+      values ($1, 'feather_dash.sales_month', $2, 'active', now(), now(), 2)`, [id, version]);
+    for (const [store_code, store_name] of [['9901', 'Hill Road'], ['9902', 'Lakeside']])
+      await acceptanceSql('insert into featherbase.app_dataset_row (snapshot_id, row) values ($1, $2::jsonb)', [id, { store_code, store_name }]);
   }
   async tasker() { await this.page.goto('/tasker/'); }
   async dash() { await this.page.goto('/feather_dash/'); }

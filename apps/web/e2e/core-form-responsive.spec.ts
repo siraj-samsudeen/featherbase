@@ -1,10 +1,11 @@
+import { tableSlug } from 'shared'
 import { anonymousTest as test, expect, adminAuth, ADMIN_PWD, waitForRealtime, type Page } from './fixtures'
 import { ensureTable } from './fixtures-ui'
 
 const table = 'Responsive row editor'
 const name = 'Stock-review-with-a-long-unbroken-identifier-3783'
 const url = `/api/table/${encodeURIComponent(table)}/${name}`
-const newFormPath = `/featherbase/admin/${encodeURIComponent(table)}/new`
+const newFormPath = `/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}/new`
 const fileName = `stock-review-${'x'.repeat(70)}.txt`
 
 test.beforeAll(async ({ request }) => {
@@ -71,7 +72,7 @@ for (const width of [375, 1440]) {
       await page.screenshot({ path: `../../dist/core-responsive-${width}-blank.png` })
     })
 
-    await session.visit(`/featherbase/admin/${encodeURIComponent(table)}/${name}`)
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}/row/${name}`)
     await session.step('an external save while open shows the stale banner, contained', async ({ page }) => {
       await expect(page.locator('[data-field=title]')).toBeVisible()
       const headers = await adminAuth(request)

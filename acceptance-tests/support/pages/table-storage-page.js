@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { rowHref } = require('../../../packages/shared/src/app-routes.ts');
 const { acceptanceSql, restartAcceptance } = require('../stack');
 
 class TableStoragePage {
@@ -37,7 +38,7 @@ class TableStoragePage {
   }
 
   async open() {
-    await this.page.goto(`/featherbase/admin/Table/${encodeURIComponent(this.table)}`);
+    await this.page.goto(rowHref('Table', this.table));
     await this.page.getByTestId('form-view').waitFor();
   }
 

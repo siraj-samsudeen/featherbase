@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, type APIRequestContext } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
@@ -46,7 +47,7 @@ test.afterEach(async ({ request }) => {
 test('a misspelled column is renamed, and its rows come with it', async ({ session, request }) => {
   const token = await adminToken(request)
   await session
-    .visit(`/admin/${encodeURIComponent(DT)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     .clickLink('Edit columns')
     .assertHas('[data-testid="column-editor"]')
     .assertHas('[data-testid="ce-row-glor"]')
@@ -69,7 +70,7 @@ test('a misspelled column is renamed, and its rows come with it', async ({ sessi
 })
 
 test('a rename that collides is refused, in place, with the reason', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/columns`)
 
   await session
     .within('[data-testid="ce-row-glor"]', (row) =>
@@ -86,7 +87,7 @@ test('a rename that collides is refused, in place, with the reason', async ({ se
 
 test('a column is added to a Table that already has rows', async ({ session, request }) => {
   const token = await adminToken(request)
-  await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/columns`)
 
   await session
     .fillIn('Label', 'Aisle Code')
@@ -109,7 +110,7 @@ test('a column is added to a Table that already has rows', async ({ session, req
 })
 
 test('a name the server would reject is caught before the round trip', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/columns`)
 
   await session
     .fillIn('Label', 'Glor')
@@ -134,7 +135,7 @@ test('a name the server would reject is caught before the round trip', async ({ 
 
 test('a label is changed without touching the column or its data', async ({ session, request }) => {
   const token = await adminToken(request)
-  await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/columns`)
 
   await session
     .within('[data-testid="ce-row-glor"]', (row) =>
@@ -153,7 +154,7 @@ test('a label is changed without touching the column or its data', async ({ sess
 
 test('a system Table refuses the whole editor', async ({ session }) => {
   await session
-    .visit('/admin/Import%20Log/columns')
+    .visit('/featherbase/admin/table/import-log/columns')
     .assertHas('[data-testid="ce-system"]', { text: 'system Table' })
     .refuteHas('[data-testid="ce-add"]')
     .refuteHas('[data-testid="ce-rename-file_name"]')
@@ -163,7 +164,7 @@ test.describe('phone layout', () => {
   test.use({ viewport: { width: 375, height: 812 } })
 
   test('keeps the Columns table inside its own scroll area and Rename reachable', async ({ session }) => {
-    await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/columns`)
 
     await session
       .within('main', (main) => main.assertNoHorizontalOverflow({ tolerance: 0 }))
@@ -188,7 +189,7 @@ test.describe('phone layout', () => {
       },
     })
     expect(put.ok()).toBe(true)
-    await session.visit(`/admin/${encodeURIComponent(DT)}/columns`).assertHas('[data-testid="ce-in-list-glor"]')
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/columns`).assertHas('[data-testid="ce-in-list-glor"]')
     await session.step('measure each In list tick against the screen', async ({ page }) => {
       for (const id of ['ce-in-list-glor', 'ce-in-list-pop', 'ce-in-list-responsible_delivery_region']) {
         const box = (await page.getByTestId(id).boundingBox())!

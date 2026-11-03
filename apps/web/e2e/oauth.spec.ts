@@ -132,7 +132,7 @@ test('a Google account nobody set up lands on the sign-in page with a plain mess
   // Its own never-seen address and account ID, so no earlier spec's person or
   // link can let it in.
   const stranger = `oauth.e2e.stranger.${Date.now()}@gmail.com`
-  const next = '/featherbase/admin/Person'
+  const next = '/featherbase/admin/table/person'
   // The isolated provider returns to the configured admin address; begin on
   // that same origin so the saved destination belongs to the returning tab.
   const origin = process.env.E2E_ISOLATED === '1' ? `http://admin.localhost:${process.env.E2E_WEB_PORT ?? '5193'}` : ''

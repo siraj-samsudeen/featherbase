@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { anonymousTest as test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
@@ -69,7 +70,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   // J1.1 — the existing Table's list view → Import: the wizard opens with
   // the Table preselected (IMP-R7's entry variant, unchanged).
   await signIn(session)
-    .visit(`/admin/${encodeURIComponent(DT)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     .assertHas('[data-testid="open-import"]')
   await session.step('J1.1: Import from the list view preselects the Table', async ({ page }) => {
     await page.getByTestId('open-import').click()
@@ -126,7 +127,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
 
   // J1.6 — still 8 rows, Alpha corrected, every row keeps its original id.
   await session
-    .assertPath(`/featherbase/admin/${encodeURIComponent(DT)}`)
+    .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     .assertHas('[data-testid="list-rows"]', { text: 'Alpha' })
   const after = (await (
     await request.get(

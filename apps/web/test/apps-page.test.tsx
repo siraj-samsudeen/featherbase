@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
@@ -106,7 +107,7 @@ test('explicit preparation shows progress, installs only after building, and off
     const roles = screen.getByRole('link', { name: 'Configure role mappings' })
     for (const [link, table] of [[settings, 'App Setting'], [roles, 'App Role Binding']] as const) {
       const url = new URL(link.getAttribute('href')!, 'http://test')
-      expect(decodeURIComponent(url.pathname)).toBe(`/featherbase/admin/${table}`)
+      expect(decodeURIComponent(url.pathname)).toBe(`/featherbase/admin/table/${tableSlug(table)}`)
       expect(JSON.parse(url.searchParams.get('filters')!)).toEqual([['app', '=', 'other']])
     }
     expect(screen.getByRole('region', { name: 'Other tasks details' })).toHaveTextContent('Installed on this instance.')

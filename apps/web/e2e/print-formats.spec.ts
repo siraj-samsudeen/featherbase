@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 const DT = 'Pf DT'
@@ -58,7 +59,7 @@ test('PRN-002: default format respected; a second format renders differently', a
   session,
 }) => {
   // No format named → the default (Invoice) is used, interpolated.
-  await session.visit(`/print/${encodeURIComponent(DT)}/${docName}`)
+  await session.visit(`/featherbase/print/${encodeURIComponent(tableSlug(DT))}/${docName}`)
   await session.step('the default (Invoice) format renders, interpolated', async ({ page }) => {
     await expect(page.getByTestId('print-format-body')).toHaveAttribute('data-format', 'Pf Invoice')
     await expect(page.getByTestId('tpl-invoice')).toBeVisible()
@@ -76,13 +77,13 @@ test('PRN-002: default format respected; a second format renders differently', a
   })
 
   // The picker choice is a shareable URL.
-  await session.visit(`/print/${encodeURIComponent(DT)}/${docName}?format=Pf%20Receipt`)
+  await session.visit(`/featherbase/print/${encodeURIComponent(tableSlug(DT))}/${docName}?format=Pf%20Receipt`)
   await session.step('the format query param alone renders the Receipt', async ({ page }) => {
     await expect(page.getByTestId('tpl-receipt')).toBeVisible()
   })
 
   // Explicitly choosing Standard (auto) falls back to the metadata layout.
-  await session.visit(`/print/${encodeURIComponent(DT)}/${docName}`)
+  await session.visit(`/featherbase/print/${encodeURIComponent(tableSlug(DT))}/${docName}`)
   await session.step('choosing Standard falls back to the auto layout', async ({ page }) => {
     await page.getByTestId('print-format-picker').selectOption('standard')
     await expect(page.getByTestId('print-auto-layout')).toBeVisible()

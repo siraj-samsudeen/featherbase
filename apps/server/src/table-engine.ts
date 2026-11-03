@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { DEFAULT_ID_PATTERN, prettifyLabel } from 'shared'
+import { DEFAULT_ID_PATTERN, prettifyLabel, tableSlug } from 'shared'
 import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
@@ -638,6 +638,19 @@ async function clearChangedListOverrides(
     where table_name = ${name} and property = 'in_list_view' and column_name in ${tx(changed)}`
 }
 
+// Serialize the ownership check with its metadata write, including nested
+// app-install/upgrade transactions. A single lock avoids acquiring several
+// slug locks in opposite orders when an app materializes multiple Tables.
+async function assertTableAddressAvailable(tx: TxSql, name: string, from?: string): Promise<void> {
+  await tx`select pg_advisory_xact_lock(hashtextextended('featherbase.table-url-ownership', 821))`
+  const tables = await tx<{ name: string }[]>`select name from table_def`
+  const owner = tables.find((table) => table.name !== from && tableSlug(table.name) === tableSlug(name))
+  if (owner)
+    throw new AppError('ConflictError', `Table ${name} would share its address with ${owner.name}`, {
+      name: `The address "${tableSlug(name)}" already belongs to ${owner.name}`,
+    })
+}
+
 export async function createTable(
   input: unknown,
   ownerApp?: string,
@@ -765,6 +778,7 @@ export async function createTable(
       description: def.description ?? null,
       system: def.system ?? false,
     }
+    await assertTableAddressAvailable(tx, def.name)
     if (def.decides_scope) tableRow.decides_scope = true
     if (def.access_policy) tableRow.access_policy = def.access_policy
     if (qualified) {
@@ -1110,6 +1124,7 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
   const schema = quoteIdent(meta.physical_schema)
   const relation = `${schema}.${quoteIdent(relationName)}`
   await sql.begin(async (tx) => {
+    await assertTableAddressAvailable(tx, to, from)
     await tx.unsafe(`alter table ${quoteRelation(`${meta.physical_schema}.${meta.physical_relation}`)} rename to ${quoteIdent(relationName)}`)
     // Names Postgres built from the relation (its primary key, and on 18 its
     // NOT NULL constraints): a fresh Table under the new name has them so.
