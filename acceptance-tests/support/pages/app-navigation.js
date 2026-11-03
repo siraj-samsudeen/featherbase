@@ -16,11 +16,7 @@ class AppNavigation {
     for (const name of ['tasker', 'feather_dash'])
       if (!installed.some(app => app.name === name))
         await api.call('POST', '/api/apps/prepare-install', { name }, [201], `prepare and install ${name}`);
-    // This scenario explicitly grants its setup actor access; installation alone
-    // must never admit administrators to member-only app data.
-    const admin = await api.row('Person', 'Administrator');
-    if (!admin.roles.some(entry => entry.role === 'Tasker Member'))
-      await api.saveRow('Person', { ...admin, roles: [...admin.roles, { role: 'Tasker Member' }] });
+    await api.admitTaskerAdministrator();
   }
   static async appApi(api, name) {
     const res = await api.call('GET', '/api/apps', undefined, [200], 'installed versions');

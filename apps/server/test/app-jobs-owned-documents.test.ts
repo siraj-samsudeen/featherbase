@@ -369,3 +369,45 @@ test('a document job skips a disabled creator who retains app membership', async
     expect(await res.json()).toMatchObject({ total: 1, data: [{ row_id: note.row_id, body: 'Retain disabled work', created_by: owner.user }] })
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
+
+test('a document job cannot declare an embedded sub-table as a transactional document', async () => {
+  const dir = await fixture('', { owner_table: 'ownerjobs.note', tables: ['ownerjobs.note', 'ownerjobs.line'] })
+  try {
+    const { readFile } = await import('node:fs/promises')
+    const file = resolve(dir, 'featherbase.json')
+    const manifest = JSON.parse(await readFile(file, 'utf8'))
+    manifest.tables.push({ name: 'ownerjobs.line', label: 'Embedded line', kind: 'sub_table', columns: [{ column_name: 'body', column_type: 'Data' }] })
+    await writeFile(file, JSON.stringify(manifest))
+    expect(await discoverPackages([dir])).toEqual([{ path: dir, error: 'A document job may name only its app’s declared stored Tables' }])
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})
+
+test('an upgrade adding a document job exposes its private document access in the preview', async ({ admin }) => {
+  const { readFile, cp } = await import('node:fs/promises')
+  const prior = await fixture('')
+  const next = await mkdtemp(resolve('test/.owner-job-new-'))
+  try {
+    await cp(prior, next, { recursive: true })
+    const sourceFile = resolve(prior, 'featherbase.json')
+    const source = JSON.parse(await readFile(sourceFile, 'utf8'))
+    source.jobs = []
+    await writeFile(sourceFile, JSON.stringify(source))
+    await writeFile(resolve(prior, 'server.mjs'), "export const platformVersion='2026-10';export const jobs={}")
+    const nextFile = resolve(next, 'featherbase.json')
+    const target = JSON.parse(await readFile(nextFile, 'utf8'))
+    target.migrations = [{ id: 'new_document_job', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }]
+    await writeFile(nextFile, JSON.stringify(target))
+    const pkg = JSON.parse(await readFile(resolve(next, 'package.json'), 'utf8'))
+    await writeFile(resolve(next, 'package.json'), JSON.stringify({ ...pkg, version: '2.0.0' }))
+    expect(await discoverPackages([prior])).toEqual([])
+    await admin.post('/api/install_app', { name: 'ownerjobs' })
+    expect(await discoverPackages([prior, next])).toEqual([])
+    const { loadInstalledApps } = await import('../src/apps')
+    await loadInstalledApps()
+    const preview = await admin.post<{ jobs: unknown[] }>('/api/preview_app_upgrade', { name: 'ownerjobs', version: '2.0.0' })
+    expect(preview.jobs).toEqual([{ add: {
+      name: 'advance', cadence: 'hourly', description: 'Advance owned notes', grants: [],
+      documents: { owner_table: 'ownerjobs.note', tables: ['ownerjobs.note'] },
+    } }])
+  } finally { await rm(prior, { recursive: true, force: true }); await rm(next, { recursive: true, force: true }) }
+})

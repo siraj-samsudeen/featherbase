@@ -69,6 +69,5 @@ Then('the shop table is offered for connecting', async function () {
 Then("the user sees the database's shops listed in Featherbase", async function () {
   const list = new ListPage(await this.actor());
   await list.open(this.table);
-  const shown = await list.page.getByTestId('list-view').innerText();
-  for (const shop of SHOPS) assert.ok(shown.includes(shop), `${shop} is not listed in ${this.table}`);
+  await list.expectText(SHOPS);
 });
