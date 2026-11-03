@@ -87,7 +87,7 @@ test('Filtering a column and hiding it keeps the filter on', async ({ session })
   })
   await session
     .assertHas('[data-testid="list-total"]', { text: '2 total' })
-    .assertHas('[data-testid="filter-chip"]', { text: 'floor = Ground' })
+    .assertHas('[data-testid="filter-chip"]', { text: 'Floor = Ground' })
   await session.step('remove the chip, then switch Floor back on', async ({ page }) => {
     await page.getByTestId('filter-chip').getByLabel('Remove filter').click()
     await expect(page.getByTestId('list-total')).toHaveText('3 total')
@@ -105,7 +105,7 @@ test('Picking a Choice in Add filter from its dropdown narrows the rows', async 
   })
   await session
     .assertHas('[data-testid="list-total"]', { text: '2 total' })
-    .assertHas('[data-testid="filter-chip"]', { text: 'floor = Ground' })
+    .assertHas('[data-testid="filter-chip"]', { text: 'Floor = Ground' })
 })
 
 test('Picking Yes in the Active box and in Add filter shows the right rows', async ({ session }) => {
@@ -129,7 +129,7 @@ test('Picking Yes in the Active box and in Add filter shows the right rows', asy
   })
   await session
     .assertHas('[data-testid="list-total"]', { text: '1 total' })
-    .assertHas('[data-testid="filter-chip"]', { text: 'active = No' })
+    .assertHas('[data-testid="filter-chip"]', { text: 'Active = No' })
 })
 
 // Deliberate deep links: the journey is a link someone changed by hand.
@@ -139,7 +139,7 @@ test('A hand-edited link saying "true" shows the active rows, and one saying "ma
     .assertHas('[data-testid="list-total"]', { text: '3 total' })
   await session
     .visit(`/admin/${enc(BOXES)}?filters=${enc(JSON.stringify([['active', '=', 'maybe']]))}`)
-    .assertHas('[data-testid="filter-chip"]', { text: 'active = maybe' })
+    .assertHas('[data-testid="filter-chip"]', { text: 'Active = maybe' })
   await session.step('no rows, and no error', async ({ page }) => {
     await expect(page.getByTestId('list-total')).toHaveText('0 total')
     await expect(page.getByRole('alert')).toHaveCount(0)

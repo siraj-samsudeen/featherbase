@@ -93,7 +93,7 @@ test('A filter on a hidden column stays on, shows as in use, and can be removed'
   await waitFor(() => expect(screen.queryByTestId('std-filter-floor')).not.toBeInTheDocument())
   expect(sections().sort()).toEqual(['Sarees', 'Shawls'])
   const chip = screen.getByTestId('filter-chip')
-  expect(chip).toHaveTextContent('floor = Ground')
+  expect(chip).toHaveTextContent('Floor = Ground')
 
   fireEvent.click(within(chip).getByLabelText('Remove filter'))
   await waitFor(() => expect(sections()).toHaveLength(3))
@@ -129,7 +129,7 @@ test('Picking First narrows the rows and shows as in use; picking All brings the
   await waitFor(() => expect(sections()).toHaveLength(3))
   fireEvent.change(screen.getByTestId('std-filter-floor'), { target: { value: 'First' } })
   await waitFor(() => expect(sections()).toEqual(['Shirts']))
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent('floor = First')
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Floor = First')
   fireEvent.change(screen.getByTestId('std-filter-floor'), { target: { value: '' } })
   await waitFor(() => expect(sections()).toHaveLength(3))
   expect(screen.queryByTestId('filter-chip')).not.toBeInTheDocument()
@@ -176,7 +176,7 @@ test('A Yes/No box stores the word Yes or No in the page address, as Choice does
   await openList(admin, `?filters=${enc(JSON.stringify([['active', '=', 'No']]))}`)
   await waitFor(() => expect(sections()).toEqual(['Shirts']))
   expect(screen.getByTestId('std-filter-active')).toHaveValue('No')
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent('active = No')
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Active = No')
 })
 
 const options = (testId: string) =>
@@ -191,7 +191,7 @@ test('Adding Floor = Ground narrows the rows, and removing it brings them all ba
   fireEvent.click(screen.getByTestId('filter-add'))
   await waitFor(() => expect(sections().sort()).toEqual(['Sarees', 'Shawls']))
   const chip = screen.getByTestId('filter-chip')
-  expect(chip).toHaveTextContent('floor = Ground')
+  expect(chip).toHaveTextContent('Floor = Ground')
   fireEvent.click(within(chip).getByLabelText('Remove filter'))
   await waitFor(() => expect(sections()).toHaveLength(3))
 })
@@ -213,7 +213,7 @@ test('An added filter on Active finds the active rows, and its chip reads Yes', 
   fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'Yes' } })
   fireEvent.click(screen.getByTestId('filter-add'))
   await waitFor(() => expect(sections().sort()).toEqual(['Sarees', 'Shawls']))
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent('active = Yes')
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Active = Yes')
 })
 
 test('Choice and Yes/No columns offer only = and !=, and moving to one resets another operator to =', async ({ admin }) => {
