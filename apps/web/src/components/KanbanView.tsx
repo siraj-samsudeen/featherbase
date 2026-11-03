@@ -120,7 +120,7 @@ export function KanbanView({
             </select>
           </label>
           <RouterLink
-            to="/featherbase/admin/$table"
+            to="/featherbase/admin/table/$table"
             params={{ table }}
             search={{ filters: undefined }}
             className={buttonClasses()}
@@ -163,7 +163,7 @@ export function KanbanView({
                   }`}
                 >
                   <RouterLink
-                    to="/featherbase/admin/$table/$name"
+                    to="/featherbase/admin/table/$table/row/$name"
                     search={{ prefill: undefined }}
                     params={{ table, name: String(row.row_id) }}
                     className="font-medium text-action hover:underline"

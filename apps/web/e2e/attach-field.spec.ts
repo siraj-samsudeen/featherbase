@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 
 const DT = 'UI Attach DT'
@@ -41,7 +42,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 
 test('UI-023: Attach Image uploads, previews, persists the URL, and clears', async ({ session }) => {
   await session
-    .visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`)
     .assertHas('[data-testid="attach-btn-photo"]')
 
   await session.step(

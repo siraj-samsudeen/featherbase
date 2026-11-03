@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { anonymousTest as test, test as signedInTest, expect, ADMIN_PWD, adminAuth } from './fixtures'
 
 test('a lost connection during sign-in explains the failure and allows another attempt', async ({ session, page }) => {
@@ -66,7 +67,7 @@ test('UI-001: full login flow into the Admin shell', async ({ session }) => {
     await page.getByTestId('table-nav').getByText('Person', { exact: true }).click()
   })
   await session
-    .assertPath('/featherbase/admin/Person')
+    .assertPath('/featherbase/admin/table/person')
     .assertHas('[data-testid="table-page"]', { text: 'Person' })
 
   // Deep link survives reload (token persisted)
@@ -93,7 +94,7 @@ signedInTest('a cached list remains usable when settings and recent-history read
   } })
   expect(made.status()).toBe(201)
   expect((await request.post('/api/save_row', { headers, data: { table, row: { title: 'Locally cached row' } } })).status()).toBe(201)
-  await session.visit(`/featherbase/admin/${encodeURIComponent(table)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}`)
     .assertHas('[data-testid="list-rows"]', { text: 'Locally cached row' })
     .step('open the account page, then return with the connection lost', async () => {
       await page.getByTestId('session-user').click()
@@ -131,18 +132,17 @@ signedInTest('an offline return retains the saved list arrangement', async ({ pa
   expect((await request.put(`/api/user_settings/${encodeURIComponent(table)}`, { headers,
     data: { sort: { field: 'title', dir: 'asc' }, hiddenCols: ['note'] },
   })).status()).toBe(200)
-  // Let settings win the arrival race: no default-arrangement row query may
-  // accidentally warm a second cache that conceals the offline reset.
-  let release!: () => void
-  const metadata = new Promise<void>(resolve => { release = resolve })
-  const metaPath = `**/api/table/${encodeURIComponent(table)}:meta`
-  await page.route(metaPath, async route => { await metadata; await route.continue() })
+  // The route now resolves metadata before mounting settings consumers. Block
+  // default-arrangement reads so they cannot warm a cache masking a reset.
+  const rowsPath = `**/api/table/${encodeURIComponent(table)}?*`
+  await page.route(rowsPath, route => {
+    const order = new URL(route.request().url()).searchParams.get('order_by')
+    return order?.startsWith('updated_at') ? route.abort() : route.continue()
+  })
   try {
     const settings = page.waitForResponse(r => r.url().endsWith(`/api/user_settings/${encodeURIComponent(table)}`))
-    await page.goto(`/featherbase/admin/${encodeURIComponent(table)}`)
+    await page.goto(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}`)
     await settings
-    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
-    release()
     await expect(page.getByTestId('list-rows').locator('tr').first()).toContainText('Alpha cached')
     await expect(page.getByTestId('col-title')).toContainText('↑')
     await expect(page.getByTestId('col-note')).toHaveCount(0)
@@ -171,9 +171,8 @@ signedInTest('an offline return retains the saved list arrangement', async ({ pa
     await expect(page.getByTestId('col-title')).toContainText('↓')
     await expect(page.getByTestId('col-note')).toHaveCount(0)
   } finally {
-    release()
     await page.context().setOffline(false)
-    await page.unroute(metaPath)
+    await page.unroute(rowsPath)
   }
 })
 
@@ -184,17 +183,17 @@ signedInTest('an offline return never revives a list after metadata access is de
     name: table, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
   } })).status()).toBe(201)
   expect((await request.post('/api/save_row', { headers, data: { table, row: { title: 'Previously readable row' } } })).status()).toBe(201)
-  await session.visit(`/featherbase/admin/${encodeURIComponent(table)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}`)
     .assertHas('[data-testid="list-rows"]', { text: 'Previously readable row' })
     .step('receive a definitive denial before returning offline', async () => {
       await page.getByTestId('session-user').click()
       await page.getByTestId('account-sign-in-methods').click()
       await expect(page.getByTestId('sign-in-methods')).toBeVisible()
-      await page.route(`**/api/table/${encodeURIComponent(table)}:meta`, route => route.fulfill({
+      await page.route(`**/api/table/${encodeURIComponent(tableSlug(table))}:meta`, route => route.fulfill({
         status: 403, json: { error: { type: 'PermissionError', message: 'Read access revoked' } },
       }))
       await page.goBack()
-      await expect(page.getByTestId('list-error')).toHaveText('Read access revoked')
+      await expect(page.getByRole('alert')).toHaveText('Read access revoked')
       await page.getByTestId('session-user').click()
       await page.getByTestId('account-sign-in-methods').click()
       await expect(page.getByTestId('sign-in-methods')).toBeVisible()

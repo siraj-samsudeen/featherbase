@@ -1,4 +1,5 @@
 import { describe, expect } from 'vitest'
+import { rowHref, tableHref } from 'shared'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { issueSession } from '../src/auth'
@@ -19,7 +20,7 @@ async function visit(client: TestClient, table: string, row?: string) {
   expect(read.status).toBe(200)
   const event = { kind: row ? 'row' : 'list', key: row ? `row:${table}/${row}` : `list:${table}?`,
     label: row ?? table, ...(row ? { sub: table } : {}),
-    path: `/featherbase/admin/${encodeURIComponent(table)}${row ? `/${row}` : ''}`,
+    path: row ? rowHref(table, row) : tableHref(table),
     at: Date.now(), claim: read.headers.get('X-Navigation-Claim') }
   expect(event.claim).toBeTruthy()
   return event
@@ -112,7 +113,7 @@ describe('#873: validated Home destinations', () => {
     await admin.delete(victim.defUrl)
     await admin.post(`${table.url}/south:rename`, { new_name: 'north' })
     expect((await admin.post<Home>('/api/home_resume', {})).entries).toEqual([
-      expect.objectContaining({ path: '/featherbase/admin/Resume%20Plant/north', label: 'Surviving depot' }),
+      expect.objectContaining({ path: '/featherbase/admin/table/resume-plant/row/north', label: 'Surviving depot' }),
     ])
     expect((await admin.get<Feed>('/api/activity_feed')).items.some(item => item.destination_state === 'unavailable')).toBe(true)
     expect(await sql`select * from user_event order by row_id`).toEqual(testimony)
@@ -133,11 +134,11 @@ describe('#873: validated Home destinations', () => {
       await admin.post(`${table.url}/north:rename`, { new_name: 'rolledback' })
       throw new Error('later action failed')
     })).rejects.toThrow('later action failed')
-    expect((await admin.post<Home>('/api/home_resume', {})).entries[0].path).toBe('/featherbase/admin/Resume%20Plant/north')
+    expect((await admin.post<Home>('/api/home_resume', {})).entries[0].path).toBe('/featherbase/admin/table/resume-plant/row/north')
     await admin.post(`${table.url}/north:rename`, { new_name: 'central' })
     await admin.post(table.url, { row_id: 'north', title: 'Wrong replacement' })
     const home = await admin.post<Home>('/api/home_resume', {})
-    expect(home.entries).toEqual([expect.objectContaining({ path: '/featherbase/admin/Resume%20Plant/central', label: 'North depot' })])
+    expect(home.entries).toEqual([expect.objectContaining({ path: '/featherbase/admin/table/resume-plant/row/central', label: 'North depot' })])
     expect(await sql`select * from user_event`).toEqual(original)
   })
 
@@ -177,13 +178,15 @@ describe('#873: validated Home destinations', () => {
     const def = { name: 'depot.plant', label: 'Plant', title_column: 'title', columns: [{ column_name: 'title', column_type: 'Data' }] }
     await createTable(def, 'depot')
     await admin.post('/api/table/depot.plant', { row_id: 'north', title: 'North depot' })
-    const events = [await visit(admin, def.name), await visit(admin, def.name, 'north')]
+    // A pre-canonical list and a current row must both replay through the
+    // new grammar, without rewriting either original event's path.
+    const events = [{ ...await visit(admin, def.name), path: '/featherbase/admin/depot.plant' }, await visit(admin, def.name, 'north')]
     await admin.post('/api/events', { events })
     const original = await sql`select * from user_event order by row_id`
     await renameTable(def.name, 'depot.store', 'depot')
     await createTable(def, 'depot')
     const home = await admin.post<Home>('/api/home_resume', {})
-    expect(home.entries.map(e => e.path).sort()).toEqual(['/featherbase/admin/depot.store', '/featherbase/admin/depot.store/north'])
+    expect(home.entries.map(e => e.path).sort()).toEqual(['/featherbase/admin/table/depot.store', '/featherbase/admin/table/depot.store/row/north'])
     expect(await sql`select * from user_event order by row_id`).toEqual(original)
     // Delivery after rename uses the original captured claim, not the reused name.
     await admin.post('/api/events', { events })
@@ -199,7 +202,7 @@ describe('#873: validated Home destinations', () => {
       throw new Error('upgrade failed')
     })).rejects.toThrow('upgrade failed')
     invalidateMeta()
-    expect((await admin.post<Home>('/api/home_resume', {})).entries[0].path).toBe('/featherbase/admin/depot.plant')
+    expect((await admin.post<Home>('/api/home_resume', {})).entries[0].path).toBe('/featherbase/admin/table/depot.plant')
   }))
 
   test('missing or forged claims cannot become destinations', async ({ admin, createUser }) => {
@@ -248,7 +251,7 @@ describe('#873: validated Home destinations', () => {
     await user.post('/api/events', { events: [event] })
     const home = await user.post<Home>('/api/home_resume', {})
     expect(home.entries).toHaveLength(1)
-    expect(home.entries[0].path).toBe('/featherbase/admin/Resume%20Plant/north')
+    expect(home.entries[0].path).toBe('/featherbase/admin/table/resume-plant/row/north')
     expect(JSON.stringify(home)).not.toContain('Confidential depot')
     const scope = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Data Scope', row: {
       person: user.user, allow_table: table.name, for_value: 'south',
@@ -313,13 +316,21 @@ describe('#873: validated Home destinations', () => {
     const filters = JSON.stringify([['title', '=', 'North depot']])
     const filtered = { ...event, key: `list:${table.name}/kanban?${filters}`,
       path: `${event.path}/view/kanban?filters=${encodeURIComponent(filters)}`, sub: 'North depots' }
-    const home = await admin.post<Home>('/api/home_resume', { hints: [filtered] })
-    expect(home.entries).toEqual([expect.objectContaining({ path: filtered.path, sub: 'North depots' })])
+    // TanStack serializes a validated JSON-valued string with an outer JSON
+    // quote; typed URLs also accept the raw JSON spelling. Both mean the
+    // identical filter, not permission to replay a different query.
+    for (const path of [filtered.path, `${event.path}/view/kanban?filters=${encodeURIComponent(JSON.stringify(filters))}`]) {
+      const home = await admin.post<Home>('/api/home_resume', { hints: [{ ...filtered, path }] })
+      expect(home.entries).toEqual([expect.objectContaining({ path: filtered.path, sub: 'North depots' })])
+    }
     expect(await sql`select * from user_event`).toEqual([])
     for (const invalid of [
       { ...event, claim: null }, { ...event, key: `list:${table.name}/bad-mode?` },
       { ...event, key: 'list:Another Table?' }, { ...event, kind: 'row', key: `row:${table.name}/north` },
       { ...filtered, path: event.path },
+      { ...filtered, path: `${event.path}/view/kanban?filters=not-json` },
+      { ...filtered, path: `${filtered.path}&filters=${encodeURIComponent(filters)}` },
+      { ...filtered, path: `${event.path}/view/kanban?untrusted=yes` },
     ]) expect((await admin.post<Home>('/api/home_resume', { hints: [invalid] })).entries).toEqual([])
   })
 
@@ -403,12 +414,12 @@ describe('#873: validated Home destinations', () => {
       await admin.post(table.url, { row_id, title: `${row_id} depot` })
       const read = await admin.fetch(`${table.url}/${row_id}`, { headers: { 'X-Navigation-Visit': '1' } })
       await admin.post('/api/events', { events: [{ kind: 'row', key: `row:${table.name}/${row_id}`,
-        label: row_id, sub: table.name, path: `/featherbase/admin/${encodeURIComponent(table.name)}/${row_id}`,
+        label: row_id, sub: table.name, path: rowHref(table.name, row_id),
         claim: read.headers.get('X-Navigation-Claim') }] })
     }
     await admin.delete(`${table.url}/north`)
     const home = await admin.post<{ entries: Array<{ label: string; path: string }> }>('/api/home_resume', {})
-    expect(home.entries).toEqual([expect.objectContaining({ label: 'south depot', path: '/featherbase/admin/Resume%20Plant/south' })])
+    expect(home.entries).toEqual([expect.objectContaining({ label: 'south depot', path: '/featherbase/admin/table/resume-plant/row/south' })])
   })
 })
 

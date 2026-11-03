@@ -70,7 +70,7 @@ it('an authorized visit retains its lifetime through concurrent native lifecycle
         expect((await request('/api/events', { events: [event] })).status).toBe(200)
         const home = await (await request('/api/home_resume', {})).json()
         if (kind === 'delete') expect(home.entries).toEqual([])
-        else expect(home.entries[0]).toMatchObject({ path: `/featherbase/admin/nav873.depot/${row}`, label: 'Original depot' })
+        else expect(home.entries[0]).toMatchObject({ path: `/featherbase/admin/table/nav873.depot/row/${row}`, label: 'Original depot' })
       }
     })
   } finally {
@@ -118,7 +118,7 @@ it.each(['rename', 'delete', 'table deletion'])('a visit waiting behind %s canno
     } finally { release() }
     await mutation
     const response = await read
-    expect(response.status).toBe(kind === 'table deletion' ? 200 : 404)
+    expect(response.status).toBe(404)
     expect(response.headers.get('X-Navigation-Claim')).toBeNull()
     expect(await sql`select id from navigation_row_target`).toEqual([])
   } finally { await scratch.close() }

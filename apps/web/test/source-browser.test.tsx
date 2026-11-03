@@ -46,7 +46,7 @@ test('the Gantt view skips malformed external dates without hiding valid neighbo
   })
   const rows = await admin.get<{ data: { row_id: string; start: string; end: string }[] }>(`/api/table/External%20Schedule?fields=${encodeURIComponent(JSON.stringify(['row_id', 'start', 'end']))}`)
   expect(rows.data).toContainEqual(expect.objectContaining({ row_id: 'bad-start', start: 'not-a-date' }))
-  await renderApp('/featherbase/admin/External%20Schedule/view/gantt', admin)
+  await renderApp('/featherbase/admin/table/external-schedule/view/gantt', admin)
   expect(await screen.findByTestId('gantt-bar-good')).toHaveAttribute('data-start', '2026-11-01')
   expect(screen.getByTestId('gantt-bar-good')).toHaveAttribute('data-end', '2026-11-02')
   for (const id of ['bad-start', 'bad-month', 'bad-end'])
@@ -98,7 +98,7 @@ test('opening a source with a table already connected shows that table linked to
   await user.click(link)
   await waitFor(() =>
     expect(decodeURIComponent((router.state as { location: { pathname: string } }).location.pathname)).toBe(
-      '/featherbase/admin/Earlier Depot',
+      '/featherbase/admin/table/earlier-depot',
     ),
   )
 })

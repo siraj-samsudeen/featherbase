@@ -82,7 +82,7 @@ import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uni
 import { packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { discoverAppLibrary, appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { documentActivity } from './document-activity'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -1094,7 +1094,7 @@ app.get('/api/activity_feed', async (c) => {
           kind: 'change',
           label,
           sub,
-          path: sub && label ? `/featherbase/admin/${sub}/${label}` : '',
+          path: sub && label ? rowHref(sub, label) : '',
           at: new Date(r.at as string).toISOString(),
           count: Number(r.count),
         }

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { expect } = require('playwright/test');
 
 const TABLE = 'Sign In Method';
-const LIST_PATH = `/featherbase/admin/${encodeURIComponent(TABLE)}`;
+const LIST_PATH = '/featherbase/admin/table/sign-in-method';
 
 class CommandBar {
   constructor(page) { this.page = page; }
@@ -104,7 +104,7 @@ class CommandBar {
   }
 
   async expectPersonForm(kind) {
-    await expect(this.page).toHaveURL(new RegExp(kind === 'new' ? '/admin/Person/new$' : '/admin/Table/Person$'));
+    await expect(this.page).toHaveURL(new RegExp(kind === 'new' ? '/admin/table/person/new$' : '/admin/table/table/row/Person$'));
     await this.page.getByTestId('form-view').waitFor();
     await this.dropdown().waitFor({ state: 'hidden' });
   }
@@ -116,7 +116,7 @@ class CommandBar {
 
   async expectReplacementSearch() {
     await expect(this.page).not.toHaveURL(/\/all-tables$/);
-    assert.notEqual(decodeURIComponent(new URL(this.page.url()).pathname), '/featherbase/admin/Table/Person');
+    assert.notEqual(decodeURIComponent(new URL(this.page.url()).pathname), '/featherbase/admin/table/table/row/Person');
   }
 
   async visitAdmin() {
@@ -157,7 +157,7 @@ class CommandBar {
   }
 
   async expectExistingSettings() {
-    await expect(this.page).toHaveURL(/\/featherbase\/admin\/System(?:%20| )Settings$/);
+    await expect(this.page).toHaveURL(/\/featherbase\/admin\/table\/system-settings$/);
     const form = this.page.getByTestId('form-view');
     await expect(form).toBeVisible();
     await expect(form.getByTestId('form-status')).toHaveText('Saved');

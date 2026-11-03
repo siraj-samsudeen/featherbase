@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { rowHref } from 'shared'
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { getMeta, invalidateMeta, physicalRowKey } from './meta'
@@ -340,7 +341,7 @@ async function notifyPendingApprovers(
   if (approvers.length === 0) return
 
   const actions = outgoing.map((t) => t.action).join(', ')
-  const link = `/featherbase/admin/${encodeURIComponent(table)}/${encodeURIComponent(name)}`
+  const link = rowHref(table, name)
   const subject = `Approval required: ${table} ${name}`
   const body =
     `${table} ${name} has entered the "${state}" state and is awaiting your action.\n\n` +

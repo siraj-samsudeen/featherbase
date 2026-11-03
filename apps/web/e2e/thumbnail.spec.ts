@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import zlib from 'node:zlib'
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
@@ -77,7 +78,7 @@ test.afterEach(async ({ request }) => cleanupFiles(request))
 // DSL's verbs, so the whole attach/verify round trip stays in one named
 // step; session.visit carries the plain navigation.
 test('FILE-004: image attachment gets a thumbnail; text does not', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${DOC}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`)
   await session.step('an image attachment gets a decodable thumbnail; a text file does not', async ({ page }) => {
     await expect(page.getByTestId('attachments-panel')).toBeVisible()
 

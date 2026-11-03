@@ -48,8 +48,12 @@ describe('CUST-005: export/import customizations', () => {
 
   test('re-creates them on import after they are deleted', async ({ admin }) => {
     await setup(admin)
+    const emptyDefault = await admin.post<{ row_id: string }>('/api/table/Metadata%20Override', {
+      table_name: DT, column_name: 'priority', property: 'default_value', value: null,
+    })
     const bundle = await exportCustomizations(DT)
     // Delete the customizations.
+    await admin.delete(`/api/table/Metadata%20Override/${encodeURIComponent(emptyDefault.row_id)}`)
     await admin.delete(`/api/table/Custom%20Field/${encodeURIComponent(`${DT}-priority`)}`)
     await admin.delete(
       `/api/table/Metadata%20Override/${encodeURIComponent(`${DT}-title-reqd`)}`,
@@ -60,12 +64,18 @@ describe('CUST-005: export/import customizations', () => {
 
     // Import brings them back.
     const counts = await importCustomizations(bundle, 'Administrator')
-    expect(counts).toEqual({ custom_fields: 1, property_setters: 1 })
+    expect(counts).toEqual({ custom_fields: 1, property_setters: 2 })
     meta = await getMeta(DT)
     const priority = meta.columns.find((f) => f.column_name === 'priority')
     expect(priority).toMatchObject({ column_name: 'priority', column_type: 'Choice', label: 'Priority' })
     expect(priority?.choices).toBe('Low\nHigh')
+    expect(priority?.default_value).toBeNull()
     expect(meta.columns.find((f) => f.column_name === 'title')?.reqd).toBe(true)
+    const created = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: DT, row: { title: 'No imported default' },
+    })
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`))
+      .toMatchObject({ title: 'No imported default', priority: null })
     // The backing column exists again.
     const [col] = await sql`select 1 from information_schema.columns where table_name = 'cust5_srv' and column_name = 'priority'`
     expect(col).toEqual({ '?column?': 1 })

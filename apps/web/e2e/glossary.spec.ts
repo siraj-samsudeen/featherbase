@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth } from './fixtures'
 
 // A real document is needed: the glossary link scrolls to its hash target.
@@ -18,7 +19,7 @@ test('in-place help opens its term in the glossary and closes the popover', asyn
   expect(term.status()).toBe(201)
   // Deep link only supplies the starting table; the glossary itself is
   // reached by its real help link, not a hand-built destination URL.
-  await session.visit(`/featherbase/admin/${encodeURIComponent(table)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}`)
     .clickButton('What is Cycle count?')
     .clickLink('Open in the glossary')
     .step('the glossary displays the chosen term at its hash target', async ({ page }) => {

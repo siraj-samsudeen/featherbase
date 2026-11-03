@@ -1,5 +1,5 @@
 import { sign, verify } from 'hono/jwt'
-import { rowDisplayTitle, adminPathTitle } from 'shared'
+import { rowDisplayTitle, adminPathTitle, rowHref, tableHref } from 'shared'
 import { sql, withTransaction } from './db'
 import { jwtSecret } from './auth'
 import { AppError } from './errors'
@@ -46,7 +46,7 @@ export async function captureNavigation(user: string, table: string, rowId?: str
   else await assertPermission(user, table, 'read')
   return withTransaction(async () => {
     const [definition] = await sql`select navigation_identity from table_def where name = ${table} for share`
-    if (!definition) return null
+    if (!definition) throw new AppError('NotFoundError', `Table ${table} not found`)
     const meta = await getMeta(table)
     let row: string | undefined
     if (rowId !== undefined) {
@@ -76,21 +76,35 @@ export async function captureNavigation(user: string, table: string, rowId?: str
 }
 
 function originalRoute(event: NavigationEvent, binding: Binding): string | null {
-  const prefix = `/featherbase/admin/${encodeURIComponent(binding.originalTable)}`
+  // Immutable history can contain the old spelling; replay always uses the
+  // current canonical route. This does not register an old URL alias.
+  const historicalPrefix = `/featherbase/admin/${encodeURIComponent(binding.originalTable)}`
+  const path = canonicalPath(event.path)
   if (event.kind === 'row') {
     if (!binding.row || event.key !== `row:${binding.originalTable}/${binding.originalRow}`) return null
-    return `${prefix}/${encodeURIComponent(binding.originalRow!)}`
+    const canonical = rowHref(binding.originalTable, binding.originalRow!)
+    return path === canonical || path === `${historicalPrefix}/${encodeURIComponent(binding.originalRow!)}` ? canonical : null
   }
   if (event.kind !== 'list' || binding.row || !event.key.startsWith(`list:${binding.originalTable}`)) return null
   const tail = event.key.slice(`list:${binding.originalTable}`.length)
   const match = /^(?:\/(\w+))?\?(.*)$/.exec(tail)
   if (!match) return null
-  return `${prefix}${match[1] ? `/view/${match[1]}` : ''}${match[2] ? `?filters=${encodeURIComponent(match[2])}` : ''}`
+  const suffix = `${match[1] ? `/view/${match[1]}` : ''}${match[2] ? `?filters=${encodeURIComponent(match[2])}` : ''}`
+  const canonical = `${tableHref(binding.originalTable)}${suffix}`
+  return path === canonical || path === `${historicalPrefix}${suffix}` ? canonical : null
 }
 
 function canonicalPath(path: string | undefined): string | null {
   if (!path?.startsWith('/featherbase/admin/')) return null
   const url = new URL(path, 'https://navigation.invalid')
+  if (url.searchParams.size === 1 && url.searchParams.has('filters')) {
+    let filters = url.searchParams.get('filters')!
+    try {
+      const parsed: unknown = JSON.parse(filters)
+      if (typeof parsed === 'string') filters = parsed
+    } catch { /* An invalid filter cannot match the attested route below. */ }
+    return `${url.pathname}?filters=${encodeURIComponent(filters)}`
+  }
   return url.pathname + url.search
 }
 
@@ -100,7 +114,7 @@ export async function bindNavigation(user: string, event: NavigationEvent): Prom
   try { payload = await verify(event.claim, jwtSecret(), 'HS256') } catch { return { unavailable: true } }
   const binding = payload.binding as Binding | undefined
   if (payload.purpose !== 'navigation' || payload.user !== user || !binding || !uuid.test(binding.table)
-    || (binding.row && !uuid.test(binding.row)) || originalRoute(event, binding) !== canonicalPath(event.path)) return { unavailable: true }
+    || (binding.row && !uuid.test(binding.row)) || !originalRoute(event, binding)) return { unavailable: true }
   const resolved = await resolveNavigation(user, { ...event, destination: binding })
   return resolved.state === 'unavailable' ? { unavailable: true } : binding
 }
@@ -160,10 +174,10 @@ export async function resolveNavigation(user: string, event: NavigationEvent): P
     } else await assertPermission(user, table, 'read')
     const original = binding ?? { table: '', originalTable: table, originalRow: rowId, ...(rowId ? { row: 'legacy' } : {}) }
     const oldPath = originalRoute(event, original)
-    if (!oldPath || oldPath !== canonicalPath(event.path)) return unavailable
+    if (!oldPath) return unavailable
     const path = event.kind === 'row'
-      ? `/featherbase/admin/${encodeURIComponent(table)}/${encodeURIComponent(rowId!)}`
-      : oldPath.replace(`/featherbase/admin/${encodeURIComponent(original.originalTable)}`, `/featherbase/admin/${encodeURIComponent(table)}`)
+      ? rowHref(table, rowId!)
+      : oldPath.replace(tableHref(original.originalTable), tableHref(table))
     return { state: 'available', path, label, ...(rowId ? { sub: table } : event.sub ? { sub: event.sub } : {}) }
   } catch (error) {
     if (!expectedRefusal(error)) throw error

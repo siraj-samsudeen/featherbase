@@ -1,6 +1,7 @@
 'use strict';
 
 const { expect } = require('playwright/test');
+const { tableHref } = require('../../../packages/shared/src/app-routes.ts');
 const { acceptanceSql } = require('../stack');
 
 class NavigationHistory {
@@ -14,13 +15,13 @@ class NavigationHistory {
   }
 
   async remember(label = 'Person') {
-    await this.page.evaluate(label => {
+    await this.page.evaluate(({ label, path }) => {
       const user = JSON.parse(localStorage.getItem('fc_user'));
       localStorage.setItem(`fc-recents:${user.row_id}`, JSON.stringify([{
         kind: 'list', key: `list:${label}?`, label,
-        path: `/featherbase/admin/${label}`, visits: [Date.now() - 2000, Date.now() - 1000],
+        path, visits: [Date.now() - 2000, Date.now() - 1000],
       }]));
-    }, label);
+    }, { label, path: tableHref(label) });
   }
 
   async forget() {
@@ -32,7 +33,7 @@ class NavigationHistory {
     const token = await this.page.evaluate(() => localStorage.getItem('fc_token'));
     const response = await this.page.request.post('/api/events', {
       headers: { Authorization: `Bearer ${token}` },
-      data: { events: [{ kind: 'list', key: 'list:Person?', label: 'Person', path: '/featherbase/admin/Person', at: Date.now() - 1000 }] },
+      data: { events: [{ kind: 'list', key: 'list:Person?', label: 'Person', path: tableHref('Person'), at: Date.now() - 1000 }] },
     });
     expect(response.ok()).toBeTruthy();
   }
@@ -62,8 +63,8 @@ class NavigationHistory {
   async visitPerson() {
     // A client navigation keeps the initial summary in flight.
     await this.page.getByRole('textbox', { name: 'Search or type a command' }).fill('Person');
-    await this.page.getByTestId('awesomebar-table').and(this.page.locator('[href="/featherbase/admin/Person"]')).click();
-    await expect(this.page).toHaveURL(/\/admin\/Person$/);
+    await this.page.getByTestId('awesomebar-table').and(this.page.locator(`[href="${tableHref('Person')}"]`)).click();
+    await expect(this.page).toHaveURL(/\/admin\/table\/person$/);
     await expect.poll(() => this.page.evaluate(() => {
       const user = JSON.parse(localStorage.getItem('fc_user'));
       return JSON.parse(localStorage.getItem(`fc-recents:${user.row_id}`) ?? '[]').some(entry => entry.label === 'Person');
@@ -80,7 +81,7 @@ class NavigationHistory {
   }
 
   async expectDestination(label, present) {
-    const sidebar = this.page.getByTestId('sidebar-recents').locator(`a[href="/featherbase/admin/${label}"]`);
+    const sidebar = this.page.getByTestId('sidebar-recents').locator(`a[href="${tableHref(label)}"]`);
     await expect(sidebar).toHaveCount(present ? 1 : 0);
     await this.page.getByRole('textbox', { name: 'Search or type a command' }).click();
     await this.page.getByRole('textbox', { name: 'Search or type a command' }).fill('');

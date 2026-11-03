@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
+const { tableHref, rowHref } = require('../../../packages/shared/src/app-routes.ts');
 const { acceptanceSql, REPO_ROOT } = require('../stack');
 const { ListPage } = require('./list-page');
 
@@ -52,7 +53,7 @@ class ReadableLabelsPage {
   async openPolicy() {
     const row = await this.api.saveRow(this.table, { policy: this.raw });
     this.rowId = row.row_id;
-    await this.page.goto(`/featherbase/admin/${encodeURIComponent(this.table)}/${encodeURIComponent(this.rowId)}`);
+    await this.page.goto(rowHref(this.table, this.rowId));
     await this.page.getByTestId('form-view').waitFor();
   }
 
@@ -62,7 +63,7 @@ class ReadableLabelsPage {
   }
 
   async chooseAndSave() {
-    await this.page.goto(`/featherbase/admin/${encodeURIComponent(this.table)}/new`);
+    await this.page.goto(`${tableHref(this.table)}/new`);
     await this.policyControl().waitFor();
     await this.policyControl().selectOption(RAW);
     const saved = this.page.waitForResponse(r => r.url().includes('/api/save_row') && r.request().method() === 'POST');

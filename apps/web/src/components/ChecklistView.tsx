@@ -4,7 +4,7 @@ import { Link as RouterLink } from '@tanstack/react-router'
 import { choiceLabel } from 'shared'
 import { ApiError, api, getToken, listResource } from '../lib/api'
 import { useI18n } from '../lib/i18n'
-import { isRowsReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
+import { isRowsReadOnly, metaQuery, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { buttonClasses, cardClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
 import { fmtCount, fmtDate, timelineDayKey } from '@featherbase/shop-floor'
 
@@ -67,7 +67,7 @@ export function ChecklistSwitch({ table, meta }: { table: string; meta?: TableMe
   if (!shape.binding) return null
   return (
     <RouterLink
-      to="/featherbase/admin/$table/view/checklist"
+      to="/featherbase/admin/table/$table/view/checklist"
       params={{ table }}
       search={{ run: undefined }}
       className={buttonClasses()}
@@ -106,7 +106,7 @@ function useChecklistShape(meta: TableMeta | undefined): {
   // so the cache is shared and a Table already on screen costs no fetch.
   const children = useQueries({
     queries: subCols.map((sub) => ({
-      queryKey: ['meta', sub.row_table!],
+      queryKey: metaQuery(sub.row_table!).queryKey,
       queryFn: () =>
         api.get<TableMeta>(`/api/table/${encodeURIComponent(sub.row_table!)}:meta`),
       staleTime: 60_000,
@@ -222,8 +222,8 @@ function RunList({
         <div className="flex items-center gap-2">
           {!binding.readOnly && (
             <RouterLink
-              to="/featherbase/admin/$table/$name"
-              params={{ table, name: 'new' }}
+              to="/featherbase/admin/table/$table/new"
+              params={{ table }}
               search={{ prefill: undefined }}
               className={buttonClasses({ variant: 'primary' })}
               data-testid="checklist-new"
@@ -231,7 +231,7 @@ function RunList({
               + New
             </RouterLink>
           )}
-          <RouterLink to="/featherbase/admin/$table" params={{ table }} search={{ filters: undefined }} className={buttonClasses()}>
+          <RouterLink to="/featherbase/admin/table/$table" params={{ table }} search={{ filters: undefined }} className={buttonClasses()}>
             List
           </RouterLink>
         </div>

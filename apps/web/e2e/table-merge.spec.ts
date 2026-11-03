@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, type APIRequestContext } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
@@ -70,7 +71,7 @@ test.afterEach(async ({ request }) => {
 })
 
 test('folding pairs what it can, and refuses to guess the rest', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(SRC)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(SRC))}`)
   await session.step('open the merge screen and pick the target', async ({ page }) => {
     await page.getByTestId('open-merge').click()
     await expect(page.getByTestId('table-merge')).toBeVisible()
@@ -93,7 +94,7 @@ test('folding pairs what it can, and refuses to guess the rest', async ({ sessio
 
 test('the user pairs Glor with Floor, and every row lands', async ({ session, request }) => {
   const token = await adminToken(request)
-  await session.visit(`/admin/${encodeURIComponent(SRC)}/merge`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(SRC))}/merge`)
   await session.step('pick the target, pair Glor with Floor, and merge', async ({ page }) => {
     await page.getByTestId('tm-target').selectOption(DST)
 
@@ -130,7 +131,7 @@ test('the user pairs Glor with Floor, and every row lands', async ({ session, re
 
 test('a column left behind is left behind, and nothing else moves', async ({ session, request }) => {
   const token = await adminToken(request)
-  await session.visit(`/admin/${encodeURIComponent(SRC)}/merge`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(SRC))}/merge`)
   await session.step('deliberately drop pop, then merge', async ({ page }) => {
     await page.getByTestId('tm-target').selectOption(DST)
     // Deliberately drop pop.
@@ -151,7 +152,7 @@ test('a column left behind is left behind, and nothing else moves', async ({ ses
 })
 
 test('a merge is an import, so it appears in the history and can be undone', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(SRC)}/merge`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(SRC))}/merge`)
   await session.step('merge, then find it in the batches view', async ({ page }) => {
     await page.getByTestId('tm-target').selectOption(DST)
     await page.getByTestId('tm-map-glor').selectOption('floor')
@@ -178,7 +179,7 @@ test('a merge is an import, so it appears in the history and can be undone', asy
 })
 
 test('nothing can be merged until a target and a column are chosen', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(SRC)}/merge`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(SRC))}/merge`)
   await session.step('the merge button stays disabled until a target and a column exist', async ({ page }) => {
     await expect(page.getByTestId('tm-go')).toBeDisabled()
 

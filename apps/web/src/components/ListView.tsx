@@ -5,7 +5,7 @@ import { choiceLabel, rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, getToken, listResource } from '../lib/api'
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
-import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, metaQuery, useMeta } from '../lib/meta'
 import { dataColumns, defaultColumnNames, isShown, listFlagsFromView, switchColumn, viewColumns, type ColumnArrangement, type ListColumn } from '../lib/list-view-columns'
 import { useI18n } from '../lib/i18n'
 import { useRealtime } from '../lib/realtime'
@@ -358,8 +358,8 @@ export function ListView({
         <>
           {' — '}
           <Link
-            to="/featherbase/admin/$table/$name"
-            params={{ table, name: 'new' }}
+            to="/featherbase/admin/table/$table/new"
+            params={{ table }}
             search={{ prefill: undefined }}
             className="text-action underline"
             data-testid="list-empty-new"
@@ -390,7 +390,7 @@ export function ListView({
     setMakingDefault('saving')
     try {
       await api.put(`/api/table_def/${encodeURIComponent(table)}`, listFlagsFromView(meta.data, arrangement))
-      await queryClient.invalidateQueries({ queryKey: ['meta', table] })
+      await queryClient.invalidateQueries({ queryKey: metaQuery(table).queryKey.slice(0, 3) })
       const cleared = { shownCols: [], hiddenCols: [] }
       setArrangement(cleared)
       persist({ arrangement: cleared })
@@ -615,8 +615,8 @@ export function ListView({
             meta.data?.kind !== 'settings' &&
             meta.data?.kind !== 'sub_table' && (
             <Link
-              to="/featherbase/admin/$table/$name"
-              params={{ table, name: 'new' }}
+              to="/featherbase/admin/table/$table/new"
+              params={{ table }}
               search={{ prefill: undefined }}
               className={buttonClasses({ variant: 'primary' })}
               data-testid="list-new"
@@ -625,7 +625,7 @@ export function ListView({
             </Link>
           )}
           <Link
-            to="/featherbase/admin/$table/view/report"
+            to="/featherbase/admin/table/$table/view/report"
             params={{ table }}
             search={{ report: undefined }}
             className={buttonClasses()}
@@ -661,7 +661,7 @@ export function ListView({
               platform's) and on bound ones (their storage is the source's). */}
           {canShapeColumns && (
             <Link
-              to="/featherbase/admin/$table/columns"
+              to="/featherbase/admin/table/$table/columns"
               params={{ table }}
               className={buttonClasses()}
               data-testid="open-columns"
@@ -672,7 +672,7 @@ export function ListView({
           {/* #208: two Tables that turned out to be the same thing. */}
           {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && (
             <Link
-              to="/featherbase/admin/$table/merge"
+              to="/featherbase/admin/table/$table/merge"
               params={{ table }}
               className={buttonClasses()}
               data-testid="open-merge"
@@ -682,7 +682,7 @@ export function ListView({
           )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
-              to="/featherbase/admin/$table/view/kanban"
+              to="/featherbase/admin/table/$table/view/kanban"
               params={{ table }}
               search={{ group_by: undefined }}
               className={buttonClasses()}
@@ -693,7 +693,7 @@ export function ListView({
           )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Date') && (
             <Link
-              to="/featherbase/admin/$table/view/calendar"
+              to="/featherbase/admin/table/$table/view/calendar"
               params={{ table }}
               className={buttonClasses()}
               data-testid="open-calendar"
@@ -704,7 +704,7 @@ export function ListView({
           {/* UI-022: Gantt needs two Date columns (start + end). */}
           {(meta.data?.columns ?? []).filter((f) => f.column_type === 'Date').length >= 2 && (
             <Link
-              to="/featherbase/admin/$table/view/gantt"
+              to="/featherbase/admin/table/$table/view/gantt"
               params={{ table }}
               className={buttonClasses()}
               data-testid="open-gantt"
@@ -721,7 +721,7 @@ export function ListView({
                   never for a Table whose rows the platform writes (#432). */}
               {!isSystemWritten(meta.data) && (
                 <Link
-                  to="/featherbase/admin/naming/$table"
+                  to="/featherbase/admin/table/$table/naming"
                   params={{ table }}
                   className={buttonClasses()}
                   data-testid="open-naming"
@@ -730,7 +730,7 @@ export function ListView({
                 </Link>
               )}
               <Link
-                to="/featherbase/admin/permissions/$table"
+                to="/featherbase/admin/table/$table/permissions"
                 params={{ table }}
                 className={buttonClasses()}
                 data-testid="open-permissions"
@@ -1165,7 +1165,7 @@ function ListCell({
   if (first)
     return (
       <Link
-        to="/featherbase/admin/$table/$name"
+        to="/featherbase/admin/table/$table/row/$name"
         search={{ prefill: undefined }}
         params={{ table, name: String(row.row_id) }}
         className={touchLinkClasses(`font-medium text-action hover:underline ${
@@ -1413,7 +1413,7 @@ function InlineChildGrid({
                 <td key={c.column_name} className="px-3 py-1 text-ink">
                   {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
                     <Link
-                      to="/featherbase/admin/$table/$name"
+                      to="/featherbase/admin/table/$table/row/$name"
                       search={{ prefill: undefined }}
                         params={{ table: c.reference_table, name: String(r[c.column_name]) }}
                       className="text-action hover:underline"
@@ -1721,7 +1721,7 @@ function RecentStrip({
       {rows.map((r) => (
         <Link
           key={r.key}
-          to="/featherbase/admin/$table/$name"
+          to="/featherbase/admin/table/$table/row/$name"
           params={{ table, name: r.label }}
           search={{ prefill: undefined }}
           data-testid="recent-strip-row"

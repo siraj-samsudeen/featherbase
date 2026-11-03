@@ -94,7 +94,7 @@ class BaseInstall {
   async configurationReachable() {
     await this.details().getByRole('link', { name: 'Configure role mappings', exact: true }).waitFor();
     await this.details().getByRole('link', { name: 'Configure settings', exact: true }).click();
-    await this.page.waitForURL('**/App%20Setting?*');
+    await this.page.waitForURL(`**${ADMIN}/table/app-setting?*`);
   }
   async preparationSucceeded() {
     await this.page.getByRole('status').filter({ hasText: 'Preparing the package' }).waitFor();
@@ -339,7 +339,7 @@ class BaseInstall {
     await this.call('POST', '/api/save_row', { table: 'App Setting', row: { row_id: 'feather_dash.dive_version', value: 'initial-version' } }, [201]);
   }
   async editableVersion() {
-    await this.open(`${ADMIN}/App%20Setting/feather_dash.dive_version`);
+    await this.open(`${ADMIN}/table/app-setting/row/feather_dash.dive_version`);
     const input = this.page.getByLabel('Value', { exact: true });
     assert.equal(await input.isEnabled(), true);
     await input.fill('acceptance-version');
@@ -351,7 +351,7 @@ class BaseInstall {
     assert.equal(row.value, 'acceptance-version');
   }
   async lockedIdentifier() {
-    await this.open(`${ADMIN}/App%20Setting/feather_dash.dive_id`);
+    await this.open(`${ADMIN}/table/app-setting/row/feather_dash.dive_id`);
     const input = this.page.getByLabel('Value', { exact: true });
     await input.waitFor();
     assert.ok(await input.isDisabled() || await input.getAttribute('readonly') !== null);

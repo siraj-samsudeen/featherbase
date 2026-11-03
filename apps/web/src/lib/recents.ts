@@ -1,19 +1,24 @@
 // Per-user warm history cache, reconciled with the server on app load.
 
 import { createContext, useContext } from 'react'
-import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle, choiceLabel } from 'shared'
+import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle, choiceLabel, tableSlug } from 'shared'
 import type { ColumnDef } from './meta'
 
 /** The route's own read records its authorized visit before exposing data. */
 export const NavigationVisitContext = createContext<{
   key: string
+  table: string
   path: string
   read: <T>() => Promise<T>
 } | null>(null)
 
 export function useNavigationVisit(path: string) {
   const visit = useContext(NavigationVisitContext)
-  return visit?.path === path ? visit : null
+  // The boundary reads a slug; descendants operate on the resolved name.
+  // Only the Table spelling changes: the resource kind and row remain exact.
+  const slugPath = (value: string) => value.replace(/^(\/api\/table\/)([^/]+?)(:meta$|\/)/,
+    (_, prefix, table, suffix) => `${prefix}${encodeURIComponent(tableSlug(decodeURIComponent(table)))}${suffix}`)
+  return visit && slugPath(visit.path) === slugPath(path) ? visit : null
 }
 
 export type RecentKind = 'row' | 'list' | 'page' | 'search'
@@ -335,6 +340,8 @@ const UNRECORDED = new Set<string>(ADMIN_UNRECORDED_ROOTS)
 export function actionForLocation(
   pathname: string,
   search: Record<string, unknown>,
+  canonicalTable?: string,
+  navigatedPath?: string,
   columns?: Pick<ColumnDef, 'column_name' | 'label' | 'column_type' | 'choice_labels'>[],
   t?: (text: string) => string,
 ): RecentAction | null {
@@ -360,12 +367,19 @@ export function actionForLocation(
   }
   if (UNRECORDED.has(segs[0]) || pageKind) return null
 
-  const table = segs[0]
+  // Only metadata can supply an identity for a Table address. Never record
+  // the slug as its label/key, nor interpret a fixed page as a Table.
+  if (segs[0] !== 'table' || !segs[1] || !canonicalTable) return null
+  const table = canonicalTable
   const filtersJson = typeof search.filters === 'string' ? search.filters : undefined
-  if (segs.length === 1 || segs[1] === 'view') {
-    const mode = segs[1] === 'view' ? segs[2] : undefined
+  const query = Object.entries(search)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(typeof value === 'string' ? value : JSON.stringify(value))}`)
+    .join('&')
+  const href = navigatedPath ?? (query ? `${pathname}?${query}` : pathname)
+  if (segs.length === 2 || (segs.length === 4 && segs[2] === 'view')) {
+    const mode = segs[2] === 'view' ? segs[3] : undefined
     const sub = [mode, describeFilters(filtersJson, columns, t)].filter(Boolean).join(' · ') || undefined
-    const href = filtersJson ? `${pathname}?filters=${encodeURIComponent(filtersJson)}` : pathname
     return {
       kind: 'list',
       key: `list:${table}${mode ? `/${mode}` : ''}?${filtersJson ?? ''}`,
@@ -374,13 +388,13 @@ export function actionForLocation(
       path: href,
     }
   }
-  if (segs.length === 2 && segs[1] !== 'new') {
+  if (segs.length === 4 && segs[2] === 'row') {
     return {
       kind: 'row',
-      key: `row:${table}/${segs[1]}`,
-      label: segs[1],
+      key: `row:${table}/${segs[3]}`,
+      label: segs[3],
       sub: table,
-      path: pathname,
+      path: href,
     }
   }
   return null

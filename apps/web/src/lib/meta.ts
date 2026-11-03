@@ -1,9 +1,9 @@
-import { useMemo } from 'react'
+import { useContext, useMemo } from 'react'
 import { onlineManager, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getToken } from './api'
-import { useNavigationVisit } from './recents'
+import { NavigationVisitContext, useNavigationVisit } from './recents'
 import { viewColumns } from './list-view-columns'
-import type { ReadingPresentation } from 'shared'
+import { tableSlug, type ReadingPresentation } from 'shared'
 
 export interface ColumnDef {
   row_id: string
@@ -117,7 +117,7 @@ export function isRowsReadOnly(meta: TableMeta | undefined): boolean {
  *  that must know a Table exists before acting (the recents recorder). */
 export function metaQuery(table: string) {
   return {
-    queryKey: ['meta', table],
+    queryKey: ['meta', tableSlug(table), getToken(), table],
     queryFn: () => api.get<TableMeta>(`/api/table/${encodeURIComponent(table)}:meta`),
     staleTime: 60_000,
   }
@@ -125,23 +125,29 @@ export function metaQuery(table: string) {
 
 export function useMeta(table: string, enabled = true) {
   const client = useQueryClient()
+  const arrival = useContext(NavigationVisitContext)
   const visit = useNavigationVisit(`/api/table/${encodeURIComponent(table)}:meta`)
   // A failed save changing credentials must not remount this arrival's query.
-  const token = useMemo(getToken, [visit?.key])
+  const token = useMemo(getToken, [arrival?.key])
+  const address = arrival?.table ?? table
   return useQuery({
     ...metaQuery(table),
+    // A slug boundary and its canonical-name consumers share this query;
+    // metadata from another sign-in never supplies a route's schema.
+    queryKey: ['meta', tableSlug(table), token, address],
     ...(visit ? {
-      queryKey: ['meta', table, token, visit.key],
+      queryKey: ['meta', tableSlug(table), token, address, visit.key],
       queryFn: () => visit.read<TableMeta>(),
       // Filter navigation must not remove the control being edited. Only
       // the fresh read above records a visit; this is display-only schema.
       placeholderData: (previous: TableMeta | undefined, previousQuery) => {
-        if (previous?.name === table && previousQuery?.queryKey[2] === token
+        if (previous && tableSlug(previous.name) === tableSlug(table) && previousQuery?.queryKey[2] === token
+          && previousQuery.queryKey[3] === address
           && previousQuery.state.status === 'success') return previous
         if (onlineManager.isOnline()) return undefined
         // An offline remount may display its own last successful schema,
         // never another sign-in's cache or data predating a definitive denial.
-        const cached = client.getQueryCache().findAll({ queryKey: ['meta', table, token] })
+        const cached = client.getQueryCache().findAll({ queryKey: ['meta', tableSlug(table), token, address] })
           .sort((a, b) => Math.max(b.state.dataUpdatedAt, b.state.errorUpdatedAt)
             - Math.max(a.state.dataUpdatedAt, a.state.errorUpdatedAt)
             || b.state.errorUpdatedAt - a.state.errorUpdatedAt)[0]

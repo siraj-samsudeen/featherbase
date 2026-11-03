@@ -3,6 +3,7 @@ const { expect } = require('playwright/test');
 const { execFileSync } = require('node:child_process');
 const { Api } = require('../api');
 const { AppNavigation } = require('./app-navigation');
+const { tableHref, rowHref } = require('../../../packages/shared/src/app-routes.ts');
 const { acceptanceSql, restartAcceptance, isolatedEnvironment, REPO_ROOT } = require('../stack');
 
 const PLANT = 'tasker.homeplant';
@@ -34,7 +35,7 @@ class HomeDestinations {
   async visit(row, table = this.table) {
     const response = await this.call('GET', `/api/table/${encodeURIComponent(table)}${row ? `/${row}` : ':meta'}`, undefined, { 'X-Navigation-Visit': '1' });
     const event = { kind: row ? 'row' : 'list', key: row ? `row:${table}/${row}` : `list:${table}?`,
-      label: row || table, sub: row ? table : undefined, path: `/featherbase/admin/${encodeURIComponent(table)}${row ? `/${row}` : ''}`,
+      label: row || table, sub: row ? table : undefined, path: row ? rowHref(table, row) : tableHref(table),
       claim: response.headers()['x-navigation-claim'], at: Date.now() };
     await this.call('POST', '/api/events', { events: [event] });
     this.events.push(event);
@@ -109,7 +110,7 @@ class HomeDestinations {
   async resume(table = DEPOT, row = 'north', title = 'North depot') {
     await this.row(title);
     await this.tile().click();
-    await expect(this.page).toHaveURL(new RegExp(`/admin/${table}/${row}$`));
+    await expect(this.page).toHaveURL(url => url.pathname === rowHref(table, row));
     await expect(this.page.getByTestId('form-view')).toContainText(title);
   }
   async legacy() {

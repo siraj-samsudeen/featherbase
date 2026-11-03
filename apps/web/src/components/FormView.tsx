@@ -9,7 +9,7 @@ import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
 import { useRealtime } from '../lib/realtime'
 import { useNavigationVisit } from '../lib/recents'
-import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, metaQuery, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
@@ -64,12 +64,13 @@ export function FormView({
   table,
   name,
   prefill,
+  isNew = false,
 }: {
   table: string
   name: string
   prefill?: Row
+  isNew?: boolean
 }) {
-  const isNew = name === 'new'
   const meta = useMeta(table)
   const describedTable = useMeta(name, table === 'Table' && !isNew)
   const storage = table === 'Table' && !isNew ? describedTable.data?.storage_identity : null
@@ -263,7 +264,7 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       if (action === 'amend') {
-        navigate({ to: '/featherbase/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
+        navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
       } else {
         setBanner('Done')
       }
@@ -283,7 +284,7 @@ export function FormView({
       )
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       setRenaming(false)
-      navigate({ to: '/featherbase/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
     } catch (err) {
       setBanner(err instanceof ApiError ? err.message : 'Rename failed')
     }
@@ -310,7 +311,7 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await refreshWaitingAfterSave(queryClient, table)
-      navigate({ to: '/featherbase/admin/$table', params: { table }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table', params: { table }, search: { filters: undefined } })
     } catch (err) {
       setDeleteError(err instanceof ApiError ? err.message : 'Delete failed')
       setDeleteBusy(false)
@@ -359,9 +360,9 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
       if (editingOverride) {
-        await queryClient.invalidateQueries({ queryKey: ['meta', String(saved.table_name)] })
+        await queryClient.invalidateQueries({ queryKey: metaQuery(String(saved.table_name)).queryKey.slice(0, 3) })
         if (typeof baseline.table_name === 'string' && baseline.table_name !== saved.table_name)
-          await queryClient.invalidateQueries({ queryKey: ['meta', baseline.table_name] })
+          await queryClient.invalidateQueries({ queryKey: metaQuery(baseline.table_name).queryKey.slice(0, 3) })
       }
       await refreshWaitingAfterSave(queryClient, table)
       // #414: a person's name is cached per id for the heading, breadcrumb
@@ -370,7 +371,7 @@ export function FormView({
       if (!isNew) await queryClient.invalidateQueries({ queryKey: ['row-title', table, name] })
       if (isNew) {
         navigate({
-          to: '/featherbase/admin/$table/$name',
+          to: '/featherbase/admin/table/$table/row/$name',
           params: { table, name: String(saved.row_id) },
           search: { prefill: undefined },
         })
@@ -406,7 +407,7 @@ export function FormView({
         <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>Admin</RouterLink>
         <span aria-hidden="true">/</span>
         <RouterLink
-          to="/featherbase/admin/$table"
+          to="/featherbase/admin/table/$table"
           params={{ table }}
           search={{ filters: undefined }}
           className={touchLinkClasses('hover:underline')}
@@ -477,7 +478,7 @@ export function FormView({
           {/* #100 pattern 6: walk this row's relational neighborhood. */}
           {!isNew && m.kind !== 'settings' && (
             <RouterLink
-              to="/featherbase/admin/map/$table/$name"
+              to="/featherbase/admin/table/$table/row/$name/map"
               params={{ table, name }}
               search={{ trail: undefined }}
               data-testid="form-map"
@@ -713,7 +714,7 @@ export function FormView({
       )}
       {editingOverride && !isNew && typeof baseline.table_name === 'string' && (
         <RouterLink
-          to="/featherbase/admin/$table"
+          to="/featherbase/admin/table/$table"
           params={{ table: baseline.table_name }}
           search={{ filters: undefined }}
           className={touchLinkClasses('mb-4 inline-flex text-sm text-accent hover:underline')}
@@ -1347,7 +1348,7 @@ function LinkControl({
             onMouseDown={(e) => {
               e.preventDefault()
               navigate({
-                to: '/featherbase/admin/$table/$name',
+                to: '/featherbase/admin/table/$table/row/$name',
                 params: { table: target, name: String(value) },
                 search: { prefill: undefined },
               })
@@ -1385,8 +1386,8 @@ function LinkControl({
             <p className="px-3 py-1.5 text-sm text-ink-subtle">No matches</p>
           )}
           <RouterLink
-            to="/featherbase/admin/$table/$name"
-            params={{ table: target, name: 'new' }}
+            to="/featherbase/admin/table/$table/new"
+            params={{ table: target }}
             search={{ prefill: undefined }}
             className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
             data-testid="link-create-new"

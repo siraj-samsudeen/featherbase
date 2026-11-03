@@ -36,8 +36,8 @@ test('My activity: honest verbs, page titles, a List icon, "You" as the subject'
   const filters = JSON.stringify([['status', '=', 'Overdue']])
   await me.post('/api/events', {
     events: [
-      { kind: 'list', key: 'list:Task?', label: 'Task', path: '/featherbase/admin/Task', claim },
-      { kind: 'list', key: `list:Task?${filters}`, label: 'Task', sub: 'status = Overdue', path: `/featherbase/admin/Task?filters=${encodeURIComponent(filters)}`, claim },
+      { kind: 'list', key: 'list:Task?', label: 'Task', path: '/featherbase/admin/table/task', claim },
+      { kind: 'list', key: `list:Task?${filters}`, label: 'Task', sub: 'status = Overdue', path: `/featherbase/admin/table/task?filters=${encodeURIComponent(filters)}`, claim },
       { kind: 'list', key: 'list:access-tokens?', label: 'access-tokens', path: '/featherbase/admin/access-tokens' },
     ],
   })

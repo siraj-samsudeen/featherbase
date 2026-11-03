@@ -250,7 +250,7 @@ describe('runtime upgrades', () => {
       expect(await sql`select navigation_identity from table_def where name = 'other.task'`).toEqual(identity)
       expect(await sql`select name from table_def where name = 'other.depot'`).toEqual([])
       const resume = () => admin.post<{ entries: { path: string }[] }>('/api/home_resume', {})
-      expect((await resume()).entries.map(e => e.path).sort()).toEqual(['/featherbase/admin/other.task', '/featherbase/admin/other.task/north'])
+      expect((await resume()).entries.map(e => e.path).sort()).toEqual(['/featherbase/admin/table/other.task', '/featherbase/admin/table/other.task/row/north'])
       await sql`alter table other.task drop column notes`
       await admin.post('/api/upgrade_app', body)
       await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
@@ -258,7 +258,7 @@ describe('runtime upgrades', () => {
       expect((await resume()).entries).toEqual([])
       const refreshed = await admin.fetch('/api/home_resume', { method: 'POST', body: '{}', headers: { 'X-Featherbase-App-Version': 'other@2.0.0' } })
       expect(refreshed.status).toBe(200)
-      expect(((await refreshed.json()) as { entries: { path: string }[] }).entries.map(e => e.path).sort()).toEqual(['/featherbase/admin/other.depot', '/featherbase/admin/other.depot/north'])
+      expect(((await refreshed.json()) as { entries: { path: string }[] }).entries.map(e => e.path).sort()).toEqual(['/featherbase/admin/table/other.depot', '/featherbase/admin/table/other.depot/row/north'])
       expect(await sql`select * from user_event order by row_id`).toEqual(testimony)
     } finally { await rm(directory, { recursive: true, force: true }) }
   })

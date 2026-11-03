@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, type CommandDestinations, type CommandPageDestination } from 'shared'
-import { api, getSessionUser } from '../lib/api'
+import { ApiError, api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
   ago,
@@ -136,7 +136,9 @@ function AdminShell({ wide }: { wide: boolean }) {
     ?? (location.state as { key?: string } | undefined)?.key
     ?? location.href
   const visit = useMemo(() => {
-    const action = actionForLocation(location.pathname, location.search as Record<string, unknown>)
+    const tableSegment = /^\/featherbase\/admin\/table\/([^/]+)/.exec(location.pathname)?.[1]
+    const action = actionForLocation(location.pathname, location.search as Record<string, unknown>,
+      tableSegment ? decodeURIComponent(tableSegment) : undefined, location.href)
     const table = action?.kind === 'list' ? action.label : action?.kind === 'row' ? action.sub : undefined
     if (!user || !action || !table) return null
     const owner = user.row_id
@@ -146,13 +148,15 @@ function AdminShell({ wide }: { wide: boolean }) {
     return {
       // A revisit needs a fresh read even when a previous route is cached.
       key: crypto.randomUUID(),
+      table,
       path,
       read: async <T,>() => {
         const { data, claim } = await api.getNavigation<T>(path)
         const meta = rowId ? await queryClient.fetchQuery(metaQuery(table)) : data as TableMeta
         if (!recorded && getSessionUser()?.row_id === owner) {
           recorded = true
-          recordAction(owner, { ...(actionForLocation(location.pathname, location.search as Record<string, unknown>, meta.columns, t) ?? action), claim })
+          const resolved = actionForLocation(location.pathname, location.search as Record<string, unknown>, meta.name, location.href, meta.columns, t)
+          if (resolved) recordAction(owner, { ...resolved, claim })
         }
         return data
       },
@@ -260,13 +264,17 @@ function AdminShell({ wide }: { wide: boolean }) {
   //   g then d    go to the Admin home
   useEffect(() => {
     let leader = 0 // timestamp of a recent 'g' press
-    // The Table the open page belongs to, from the matched route's own
-    // `$table` param: a fixed Admin page (Jobs, All tables, …) has none, so the
-    // new-row shortcut does nothing there (#515).
+    // The metadata boundary and the shell share this QueryClient. A URL
+    // spelling alone is never a canonical identity; fixed pages have none.
     function currentTable(): string | null {
-      const match = router.state.matches.find((m) => 'table' in (m.params as Record<string, unknown>))
+      const match = router.state.matches.find((m) => 'table' in m.params && m.status === 'success')
       const table = (match?.params as { table?: string } | undefined)?.table
-      return table ?? null
+      if (!table) return null
+      const key = metaQuery(table).queryKey
+      const state = queryClient.getQueryState<TableMeta>(visit
+        ? [...key.slice(0, 3), visit.table, ...(visit.path.endsWith(':meta') ? [visit.key] : [])] : key)
+      if (state?.error instanceof ApiError && state.error.status < 500) return null
+      return state?.data?.name ?? null
     }
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null
@@ -290,7 +298,7 @@ function AdminShell({ wide }: { wide: boolean }) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault()
         const dt = currentTable()
-        if (dt) navigate({ to: '/featherbase/admin/$table/$name', params: { table: dt, name: 'new' }, search: { prefill: undefined } })
+        if (dt) navigate({ to: '/featherbase/admin/table/$table/new', params: { table: dt }, search: { prefill: undefined } })
         return
       }
       // Leader-key navigation only when not typing into a field.
@@ -307,7 +315,7 @@ function AdminShell({ wide }: { wide: boolean }) {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [navigate, router])
+  }, [navigate, router, queryClient, visit])
 
   // #101 Phase 5: the "Last search" resume tile hands its query to the
   // command bar — prefilled and focused, ready to re-run.
@@ -408,7 +416,7 @@ function AdminShell({ wide }: { wide: boolean }) {
   function openDoc(hit: SearchHit) {
     recordSearch(search.trim())
     dismissSearch()
-    navigate({ to: '/featherbase/admin/$table/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
+    navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
   }
 
   function openPage(page: CommandPageDestination) {
@@ -435,7 +443,7 @@ function AdminShell({ wide }: { wide: boolean }) {
       ?? tables?.find((d) => d.label.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       dismissSearch()
-      navigate({ to: '/featherbase/admin/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
       return
     }
     const doc = recordHits[0]
@@ -447,10 +455,10 @@ function AdminShell({ wide }: { wide: boolean }) {
     if (page) openPage(page)
     else if (suggestions[0]) {
       dismissSearch()
-      navigate({ to: '/featherbase/admin/$table', params: { table: suggestions[0].row_id }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table', params: { table: suggestions[0].row_id }, search: { filters: undefined } })
     } else {
       dismissSearch()
-      navigate({ to: '/featherbase/admin/$table', params: { table: q }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table', params: { table: q }, search: { filters: undefined } })
     }
   }
 
@@ -643,7 +651,7 @@ function AdminShell({ wide }: { wide: boolean }) {
                 <Link
                   key={d.row_id}
                   {...resultProps(`table-${d.row_id}`)}
-                  to="/featherbase/admin/$table"
+                  to="/featherbase/admin/table/$table"
                   params={{ table: d.row_id }}
                   search={{ filters: undefined }}
                   onClick={dismissSearch}
@@ -662,9 +670,9 @@ function AdminShell({ wide }: { wide: boolean }) {
                 <Link
                   key={`new-${d.row_id}`}
                   {...resultProps(`new-${d.row_id}`)}
-                  to="/featherbase/admin/$table/$name"
+                  to="/featherbase/admin/table/$table/new"
                   search={{ prefill: undefined }}
-                  params={{ table: d.row_id, name: 'new' }}
+                  params={{ table: d.row_id }}
                   onClick={dismissSearch}
                   data-testid="awesomebar-new"
                   className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"

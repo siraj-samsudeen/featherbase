@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { rowHref } = require('../../../packages/shared/src/app-routes.ts');
 const { PROTOTYPE_URL, BASE_URL } = require('../stack');
 
 class PrototypeLibrary {
@@ -70,7 +71,7 @@ class PrototypeLibrary {
   }
 
   async rowForm() {
-    await this.page.goto(`${PROTOTYPE_URL}/featherbase/admin/Lab%20Project/lab-north`);
+    await this.page.goto(`${PROTOTYPE_URL}${rowHref('Lab Project', 'lab-north')}`);
     await this.page.getByRole('textbox', { name: 'Region', exact: true }).waitFor();
   }
 
@@ -164,7 +165,7 @@ class PrototypeLibrary {
   }
 
   async connectReal() {
-    await this.page.goto(`${BASE_URL}/featherbase/admin/Lab%20Project/lab-north`);
+    await this.page.goto(`${BASE_URL}${rowHref('Lab Project', 'lab-north')}`);
     await this.page.getByRole('textbox', { name: 'Region', exact: true }).waitFor();
   }
 

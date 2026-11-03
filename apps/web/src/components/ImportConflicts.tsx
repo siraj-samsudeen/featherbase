@@ -66,7 +66,7 @@ export function ImportConflicts({ table, meta }: { table: string; meta: TableMet
           <article key={conflict.id} className={cardClasses('min-w-0 p-4')} data-testid="import-conflict">
             <div className="mb-3 min-w-0">
               <Link
-                to="/featherbase/admin/$table/$name"
+                to="/featherbase/admin/table/$table/row/$name"
                 params={{ table, name: conflict.row_id }}
                 search={{ prefill: undefined }}
                 className={touchLinkClasses('max-w-full break-words font-semibold')}

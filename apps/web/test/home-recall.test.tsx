@@ -32,7 +32,7 @@ function habit(days: number) {
       key: 'list:Customer?rtn',
       label: 'Customer',
       sub: 'region = South',
-      path: '/featherbase/admin/Customer',
+      path: '/featherbase/admin/table/customer',
       at: now - d * DAY,
     })
     events.push({
@@ -58,7 +58,7 @@ test('signing out hides the previous person’s recalled destinations and routin
   await admin.post('/api/table_def', { name: 'Private Work', columns: [{ column_name: 'title', column_type: 'Data' }] })
   const read = await admin.fetch('/api/table/Private%20Work:meta', { headers: { 'X-Navigation-Visit': '1' } })
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
-  recordAction(admin.user!, { kind: 'list', key: 'list:Private Work?', label: 'Private Work', path: '/featherbase/admin/Private%20Work', claim: read.headers.get('X-Navigation-Claim')! })
+  recordAction(admin.user!, { kind: 'list', key: 'list:Private Work?', label: 'Private Work', path: '/featherbase/admin/table/private-work', claim: read.headers.get('X-Navigation-Claim')! })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createRouter({ routeTree: createRootRoute() })
   const content = () => <QueryClientProvider client={client}><RouterContextProvider router={router}>
@@ -135,7 +135,7 @@ test('clicking a chip navigates to the destination it stands for', async ({ crea
   within(chips).getAllByTestId('workspace-chip')[0].click()
   await waitFor(() =>
     expect((router.state as { location: { pathname: string } }).location.pathname).toBe(
-      '/featherbase/admin/Customer',
+      '/featherbase/admin/table/customer',
     ),
   )
 })
@@ -158,11 +158,11 @@ test('the Last view tile opens the list it names', async ({ createUser }) => {
   const user = await createUser({ roles: ['System Manager'] })
   const { recordAction } = await import('../src/lib/recents')
   const read = await user.fetch('/api/table/Person:meta', { headers: { 'X-Navigation-Visit': '1' } })
-  recordAction(user.user!, { kind: 'list', key: 'list:Person?', label: 'Person', path: '/featherbase/admin/Person', claim: read.headers.get('X-Navigation-Claim')! })
+  recordAction(user.user!, { kind: 'list', key: 'list:Person?', label: 'Person', path: '/featherbase/admin/table/person', claim: read.headers.get('X-Navigation-Claim')! })
   const { router } = await openHome(user)
   ;(await screen.findByTestId('resume-tile-view')).click()
   await waitFor(() =>
-    expect((router.state as { location: { pathname: string } }).location.pathname).toBe('/featherbase/admin/Person'),
+    expect((router.state as { location: { pathname: string } }).location.pathname).toBe('/featherbase/admin/table/person'),
   )
 })
 
@@ -190,15 +190,15 @@ test('after opening a row, then a list, then running a search, the home page has
   const here = (r: { router: unknown }) =>
     decodeURIComponent((r.router as { state: { location: { pathname: string } } }).state.location.pathname)
 
-  const app = await renderApp('/featherbase/admin/Hr%20Shelf/shelf-quokka', admin)
+  const app = await renderApp('/featherbase/admin/table/hr-shelf/row/shelf-quokka', admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
-  await app.router.navigate({ to: '/featherbase/admin/Hr%20Aisle' })
+  await app.router.navigate({ to: '/featherbase/admin/table/hr-aisle' })
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   const bar = screen.getByLabelText('Search or type a command')
   fireEvent.focus(bar)
   fireEvent.change(bar, { target: { value: 'Quokka' } })
   fireEvent.click(await screen.findByTestId('awesomebar-doc'))
-  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Hr Shelf/shelf-quokka'))
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/table/hr-shelf/row/shelf-quokka'))
 
   await app.router.navigate({ to: '/featherbase/admin' })
   await screen.findByTestId('resume-tile-row', {}, { timeout: 8000 })
@@ -209,10 +209,10 @@ test('after opening a row, then a list, then running a search, the home page has
 
   // One click each.
   within(strip).getByTestId('resume-tile-view').click()
-  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Hr Aisle'))
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/table/hr-aisle'))
   await app.router.navigate({ to: '/featherbase/admin' })
   ;(await screen.findByTestId('resume-tile-row')).click()
-  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Hr Shelf/shelf-quokka'))
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/table/hr-shelf/row/shelf-quokka'))
   await app.router.navigate({ to: '/featherbase/admin' })
   ;(await screen.findByTestId('resume-tile-search')).click()
   await waitFor(() => expect(screen.getByLabelText('Search or type a command')).toHaveValue('Quokka'))

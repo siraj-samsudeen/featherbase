@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 const DT = 'CS E2E Order'
@@ -45,7 +46,7 @@ test.beforeAll(async ({ request }) => {
 // CUST-003: a client script auto-fills a field on change.
 // The field is `[data-field]`-addressed with no label, so it stays in steps.
 test('CUST-003: a client script auto-fills a field on change', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
   await session.step('open a new document', async ({ page }) => {
     await page.getByTestId('list-new').click()
   })
@@ -66,7 +67,7 @@ test('CUST-003: a client script auto-fills a field on change', async ({ session 
 
 // CUST-003: a broken client script surfaces an error but does not crash the Admin.
 test('CUST-003: a broken client script surfaces an error without crashing', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT_BAD)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT_BAD))}`)
   await session.step('open a new document', async ({ page }) => {
     await page.getByTestId('list-new').click()
   })

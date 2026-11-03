@@ -402,6 +402,83 @@ describe('a dropped Table takes its grants with it', () => {
   })
 })
 
+describe('#821: qualified app Table slug ownership', () => {
+  const table = (name: string, label = 'Original task label') => ({ name, label, id_pattern: 'prompt', columns: [{ column_name: 'title', label: 'Title', column_type: 'Data' }] })
+  async function artifact(version: string, tables: ReturnType<typeof table>[], operations: unknown[] = []) {
+    const directory = await mkdtemp(resolve('test/.slugpolicy-'))
+    await writeFile(resolve(directory, 'package.json'), JSON.stringify({ name: '@featherbase-fixtures/slugpolicy', version }))
+    await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify({
+      manifestVersion: 1, platformVersion: '2026-10', name: 'slugpolicy', title: 'Slug policy',
+      entryTable: tables[0].name, tables, permissions: [],
+      ...(operations.length ? { migrations: [{ id: 'evolve', fromVersion: '0.1.0', toVersion: version, operations }] } : {}),
+    }))
+    return directory
+  }
+  const snapshot = async () => ({
+    tables: await sql`select * from table_def where name like 'slugpolicy.%' order by name`,
+    columns: await sql`select * from column_def where parent like 'slugpolicy.%' order by parent, position`,
+    app: await sql`select * from installed_app where name = 'slugpolicy'`,
+    physical: await sql`select table_name from information_schema.tables where table_schema = 'slugpolicy' order by table_name`,
+  })
+
+  test('install refuses distinct qualified storage names sharing a slug, atomically', async ({ admin }) => {
+    const directory = await artifact('0.1.0', [table('slugpolicy.task_item'), table('slugpolicy.task__item', 'Second task label')])
+    try {
+      expect(await discoverPackages([directory])).toEqual([])
+      const before = await snapshot()
+      await expect(admin.post('/api/install_app', { name: 'slugpolicy' })).rejects.toMatchObject({ status: 409 })
+      expect(await snapshot()).toEqual(before)
+      expect(await sql`select to_regnamespace('slugpolicy') as stranded`).toEqual([{ stranded: null }])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('own separator-only rename remains allowed and preserves rows and labels', async ({ admin }) => {
+    const original = table('slugpolicy.task_item')
+    const renamed = { ...original, name: 'slugpolicy.task__item' }
+    const first = await artifact('0.1.0', [original])
+    const next = await artifact('0.2.0', [renamed], [{ kind: 'renameTable', from: original.name, to: renamed.name }])
+    try {
+      await discoverPackages([first])
+      await admin.post('/api/install_app', { name: 'slugpolicy' })
+      await admin.post('/api/save_row', { table: original.name, row: { row_id: 'kept', title: 'Do not merge or trim me' } })
+      await discoverPackages([first, next])
+      await loadInstalledApps()
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'slugpolicy', version: '0.2.0' })
+      await admin.post('/api/upgrade_app', { name: 'slugpolicy', version: '0.2.0', planId: plan.planId })
+      await admin.post('/api/activate_app_upgrade', { name: 'slugpolicy', version: '0.2.0' })
+      expect(await sql`select name, label from table_def where name like 'slugpolicy.%'`).toEqual([{ name: renamed.name, label: original.label }])
+      expect(await sql`select row_id, title from slugpolicy.task__item`).toEqual([{ row_id: 'kept', title: 'Do not merge or trim me' }])
+      expect(await sql`select to_regclass('slugpolicy.task_item') as old`).toEqual([{ old: null }])
+    } finally { for (const directory of [first, next]) await rm(directory, { recursive: true, force: true }) }
+  })
+
+  for (const operation of ['add', 'rename'] as const) {
+    test(`${operation} upgrade refuses another Table's slug and leaves installed identities intact`, async ({ admin }) => {
+      const original = table('slugpolicy.task_item')
+      const other = table('slugpolicy.other', 'Keep this other label')
+      const collision = { ...other, name: 'slugpolicy.task__item' }
+      const first = await artifact('0.1.0', [original, other])
+      const next = await artifact('0.2.0', operation === 'add' ? [original, other, collision] : [original, collision], [
+        operation === 'add' ? { kind: 'addTable', table: collision } : { kind: 'renameTable', from: other.name, to: collision.name },
+      ])
+      try {
+        await discoverPackages([first])
+        await admin.post('/api/install_app', { name: 'slugpolicy' })
+        await admin.post('/api/save_row', { table: original.name, row: { row_id: 'kept', title: 'Original row' } })
+        await admin.post('/api/save_row', { table: other.name, row: { row_id: 'other', title: 'Other row' } })
+        const before = await snapshot()
+        await discoverPackages([first, next])
+        await loadInstalledApps()
+        await expect(admin.post('/api/preview_app_upgrade', { name: 'slugpolicy', version: '0.2.0' })).rejects.toMatchObject({ status: 409 })
+        expect(await snapshot()).toEqual(before)
+        expect(await sql`select row_id, title from slugpolicy.task_item`).toEqual([{ row_id: 'kept', title: 'Original row' }])
+        expect(await sql`select row_id, title from slugpolicy.other`).toEqual([{ row_id: 'other', title: 'Other row' }])
+        expect(await sql`select to_regclass('slugpolicy.task__item') as stranded`).toEqual([{ stranded: null }])
+      } finally { for (const directory of [first, next]) await rm(directory, { recursive: true, force: true }) }
+    })
+  }
+})
+
 describe('the release guard and the rehearsal report losses per instance', () => {
   test('the release guard counts what the shipped upgrade would remove, never the values', async ({ admin }) => {
     await install(admin)

@@ -59,23 +59,23 @@ describe('#101: GET /api/activity_feed', () => {
     })
     const created = await admin.post<{ updated_at: string }>('/api/save_row', {
       table: 'Feed DT',
-      row: { row_id: 'feed-row', title: 'v1' },
+      row: { row_id: 'feed / row?#%', title: 'v1' },
     })
     await admin.post('/api/save_row', {
       table: 'Feed DT',
-      row: { row_id: 'feed-row', title: 'v2', updated_at: created.updated_at },
+      row: { row_id: 'feed / row?#%', title: 'v2', updated_at: created.updated_at },
     })
     await logActivity('Administrator', 'login', { full_name: 'Administrator' })
     // A read event that must NOT surface in the team scope.
     await admin.post('/api/events', {
-      events: [{ kind: 'row', key: 'row:Feed DT/feed-row', label: 'feed-row' }],
+      events: [{ kind: 'row', key: 'row:Feed DT/feed / row?#%', label: 'feed / row?#%' }],
     })
 
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>(
       '/api/activity_feed?scope=team',
     )
-    const change = feed.items.find((i) => i.kind === 'change' && i.label === 'feed-row')
-    expect(change).toMatchObject({ sub: 'Feed DT', path: '/featherbase/admin/Feed DT/feed-row' })
+    const change = feed.items.find((i) => i.kind === 'change' && i.label === 'feed / row?#%')
+    expect(change).toMatchObject({ sub: 'Feed DT', path: '/featherbase/admin/table/feed-dt/row/feed%20%2F%20row%3F%23%25' })
     expect(feed.items.some((i) => i.kind === 'login')).toBe(true)
     expect(feed.items.every((i) => !['row', 'list', 'page', 'search'].includes(i.kind as string))).toBe(
       true,

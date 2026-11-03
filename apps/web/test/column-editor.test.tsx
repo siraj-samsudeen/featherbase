@@ -13,6 +13,7 @@
 // a rename here performs the real DDL and the assertion that the rows came
 // with it is a real one.
 
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
@@ -41,7 +42,7 @@ async function seed(admin: Admin, extra: Record<string, unknown> = {}) {
 }
 
 async function openEditor(admin: Admin, table = DT) {
-  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/columns`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(table)}/columns`, admin)
   await screen.findByTestId('column-editor')
 }
 

@@ -65,7 +65,7 @@ async function seed(admin: { post: <T>(p: string, b: unknown) => Promise<T> }) {
 
 test('peek at a connection: its rows, then one row with its lines, a deeper link, and back out', async ({ admin }) => {
   const { asha, saree, order } = await seed(admin)
-  await renderApp(`/featherbase/admin/${enc('Pc Customer')}/${asha.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/pc-customer/row/${asha.row_id}`, admin)
   await screen.findByTestId('connections-panel', {}, { timeout: 10_000 })
   expect(await screen.findByTestId('connection-count-Pc Order')).toHaveTextContent('2')
 
@@ -108,7 +108,7 @@ test('peek at a connection: its rows, then one row with its lines, a deeper link
 
 test("a peeked record's own connections open as a list, and ↗ on a list opens the filtered list itself", async ({ admin }) => {
   const { asha } = await seed(admin)
-  await renderApp(`/featherbase/admin/${enc('Pc Customer')}/${asha.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/pc-customer/row/${asha.row_id}`, admin)
   await screen.findByTestId('connections-panel', {}, { timeout: 10_000 })
   fireEvent.click(screen.getByTestId('connection-peek-Pc Order'))
   const list = await screen.findByTestId('peek-panel-0')
@@ -135,7 +135,7 @@ test("a peeked record's own connections open as a list, and ↗ on a list opens 
 test('related tabs open a short list of the rows that point here, with ways on to the full list and a new row', async ({ admin }) => {
   const user = userEvent.setup()
   const { asha, order } = await seed(admin)
-  await renderApp(`/featherbase/admin/${enc('Pc Customer')}/${asha.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/pc-customer/row/${asha.row_id}`, admin)
   const tab = await screen.findByTestId('related-tab-Pc Order', {}, { timeout: 10_000 })
   expect(within(tab).getByTestId('related-count-Pc Order')).toHaveTextContent('2')
   await user.click(tab)
@@ -144,10 +144,10 @@ test('related tabs open a short list of the rows that point here, with ways on t
   await waitFor(() =>
     expect(embedded.querySelectorAll('tbody a')).toHaveLength(2),
   )
-  expect(embedded.querySelector(`a[href$="/${enc('Pc Order')}/${order.row_id}"]`)).not.toBeNull()
+  expect(embedded.querySelector(`a[href$="/table/pc-order/row/${enc(order.row_id)}"]`)).not.toBeNull()
   expect(within(embedded).getByTestId('embedded-open-list')).toHaveAttribute(
     'href',
-    expect.stringContaining(`/featherbase/admin/${enc('Pc Order')}`),
+    expect.stringContaining(`/featherbase/admin/table/pc-order`),
   )
   const create = within(embedded).getByTestId('embedded-new')
   expect(create).toHaveTextContent('+ New Pc Order')
