@@ -11,11 +11,12 @@ import { AppError } from '../errors'
 import { importRows } from '../actions/collection-import'
 import { actionTransaction } from '../action-transaction'
 import { sql } from '../db'
-import { getMeta } from '../meta'
+import { getMeta, type TableMeta } from '../meta'
 import { createTable, tableRelation } from '../table-engine'
 import type { SessionUser } from '../auth'
 import { getSource } from './registry'
 import { mapDuckType, quoteIdentifier, run, stream } from './duckdb-driver'
+import type { SourceConfig } from './types'
 
 /** Each import call takes at most this many rows (collection-import.ts MAX_ROWS). */
 const PART = 10_000
@@ -31,6 +32,21 @@ export interface CopyResult {
 
 const relation = (database: string, schema: string, table: string) =>
   [database, schema, table].map(quoteIdentifier).join('.')
+
+/** Source I/O precedes all app mutations, including first-time Table creation. */
+async function withSourceRows<T>(cfg: SourceConfig, query: string, key: string, apply: (folder: string, parts: number) => Promise<T>): Promise<T> {
+  const folder = await mkdtemp(join(tmpdir(), 'fb-copy-'))
+  try {
+    let parts = 0
+    for await (const chunk of stream(cfg, query)) {
+      for (let i = 0; i < chunk.length; i += PART) {
+        const rows = chunk.slice(i, i + PART).map(r => ({ ...r, row_id: String(r[key] ?? '').trim(), [DELETED_AT_SOURCE]: false }))
+        await writeFile(join(folder, String(++parts)), JSON.stringify(rows))
+      }
+    }
+    return await apply(folder, parts)
+  } finally { await rm(folder, { recursive: true, force: true }) }
+}
 
 /** How many rows, how many distinct values and how many empty ones a column has. */
 export async function checkKey(sourceName: string, database: string, schema: string, table: string, column: string) {
@@ -57,27 +73,31 @@ export async function createCopy(
     `select column_name, data_type from duckdb_columns() where database_name = ? and schema_name = ? and table_name = ?`,
     [input.database, input.schema, input.table])
   const typeOf = new Map(types.map((t) => [String(t.column_name), mapDuckType(String(t.data_type))]))
-  await createTable({
-    name: input.name,
-    id_pattern: 'prompt',
-    description: `Copied from ${input.source} · ${input.database}.${input.schema}.${input.table}`,
-    columns: [
-      ...input.columns.map((c) => ({
-        column_name: c.column_name,
-        label: c.label || c.column_name,
-        // Codes keep every digit: a warehouse text column stays text.
-        column_type: typeOf.get(c.source) === 'Text' ? 'Long Text' : (typeOf.get(c.source) ?? 'Data'),
-        description: c.description || undefined,
-        source_column: c.source,
-        unique: c.source === input.key || undefined,
-      })),
-      { column_name: DELETED_AT_SOURCE, label: 'Deleted at source', column_type: 'Check', read_only: true, default_value: '0',
-        description: 'Set when the row is no longer in the source table; cleared if it comes back' },
-    ],
-  })
-  await sql`insert into featherbase.table_copy (target_table, data_source, database, source_schema, source_table, key_column)
-            values (${input.name}, ${input.source}, ${input.database}, ${input.schema}, ${input.table}, ${keyColumn.column_name})`
-  return { table: input.name, result: await copyAgain(user, input.name) }
+  const select = input.columns.map(c => `${quoteIdentifier(c.source)} as ${quoteIdentifier(c.column_name)}`).join(', ')
+  return withSourceRows(cfg, `select ${select} from ${relation(input.database, input.schema, input.table)}`, keyColumn.column_name, (folder, parts) => actionTransaction(async () => {
+    await createTable({
+      name: input.name,
+      id_pattern: 'prompt',
+      description: `Copied from ${input.source} · ${input.database}.${input.schema}.${input.table}`,
+      columns: [
+        ...input.columns.map((c) => ({
+          column_name: c.column_name,
+          label: c.label || c.column_name,
+          // Codes keep every digit: a warehouse text column stays text.
+          column_type: typeOf.get(c.source) === 'Text' ? 'Long Text' : (typeOf.get(c.source) ?? 'Data'),
+          description: c.description || undefined,
+          source_column: c.source,
+          unique: c.source === input.key || undefined,
+        })),
+        { column_name: DELETED_AT_SOURCE, label: 'Deleted at source', column_type: 'Check', read_only: true, default_value: '0',
+          description: 'Set when the row is no longer in the source table; cleared if it comes back' },
+      ],
+    })
+    await sql`insert into featherbase.table_copy (target_table, data_source, database, source_schema, source_table, key_column)
+              values (${input.name}, ${input.source}, ${input.database}, ${input.schema}, ${input.table}, ${keyColumn.column_name})`
+    const result = await applyCopy(user, input.name, (await copyInfo(input.name))!, await getMeta(input.name), folder, parts)
+    return { table: input.name, result }
+  }))
 }
 
 export async function copyInfo(target: string) {
@@ -99,69 +119,62 @@ export async function copyAgain(user: SessionUser, target: string): Promise<Copy
     const key = columns.find(c => c.column_name === copy.key_column)
     if (!key?.source_column) throw new AppError('ValidationError', `The key column ${copy.key_column} of ${target} is missing`)
     const select = columns.map(c => `${quoteIdentifier(c.source_column!)} as ${quoteIdentifier(c.column_name)}`).join(', ')
-    const folder = await mkdtemp(join(tmpdir(), 'fb-copy-'))
-    try {
-      let parts = 0
-      // Files contain only a chunk each; no warehouse-sized rows/key array.
-      // A late source read failure has not changed any target row or history.
-      for await (const chunk of stream(cfg, `select ${select} from ${relation(String(copy.database), String(copy.source_schema), String(copy.source_table))}`)) {
-        for (let i = 0; i < chunk.length; i += PART) {
-          const rows = chunk.slice(i, i + PART).map(r => ({ ...r, row_id: String(r[key.column_name] ?? '').trim(), [DELETED_AT_SOURCE]: false }))
-          await writeFile(join(folder, String(++parts)), JSON.stringify(rows))
-        }
-      }
-      return await actionTransaction(async () => {
-        // Lock metadata/provenance before applying; a concurrent rename/delete
-        // must not change the mappings halfway through this copy.
-        await sql`select name from table_def where name = ${target} for update`
-        const current = await copyInfo(target)
-        if (JSON.stringify(current) !== JSON.stringify(copy) || JSON.stringify((await getMeta(target)).columns) !== JSON.stringify(meta.columns))
-          throw new AppError('ConflictError', 'The copy changed while the source was read; try Copy again')
-        const runId = `copy-${randomUUID()}`
-        const seen = `copy_seen_${randomUUID().replaceAll('-', '')}`
-        await sql`create temporary table ${sql(seen)} (row_id text primary key) on commit drop`
-        const result: CopyResult = { run_id: runId, inserted: 0, updated: 0, changed: 0, unchanged: 0, failed: 0, conflicts: 0, deleted_at_source: 0, back_at_source: 0, first_errors: [] }
-        const relationName = await tableRelation(target)
-        const [before] = await sql`select count(*)::int as n from ${sql(relationName)} where ${sql(DELETED_AT_SOURCE)} is true`
-        let partNumber = 0
-        const apply = async (rows: Record<string, unknown>[], mapped: string[]) => {
-          const part = await importRows({ table: target, user, args: {
-            rows, key_column: 'row_id', empty_cells: 'clear', columns: mapped,
-            context: { run_id: runId, batch_id: runId, file_name: `${copy.data_source} · ${copy.database}.${copy.source_schema}.${copy.source_table}`, part: ++partNumber },
-          } }, [DELETED_AT_SOURCE])
-          if (part.failed.length)
-            throw new AppError('ValidationError', `Copy failed; no rows changed: ${part.failed.slice(0, 5).map(f => `${rows[f.index].row_id}: ${f.message}`).join('; ')}`)
-          return part
-        }
-        for (let i = 1; i <= parts; i++) {
-          const rows: Record<string, unknown>[] = JSON.parse(await readFile(join(folder, String(i)), 'utf8'))
-          // Duplicate/blank keys refuse the entire copy, not last-one-wins.
-          if (rows.some(r => !r.row_id)) throw new AppError('ValidationError', 'Copy key values must not be empty')
-          const accepted = await sql`insert into ${sql(seen)} ${sql(rows.map(r => ({ row_id: String(r.row_id) })))} on conflict do nothing returning row_id`
-          if (accepted.length !== rows.length) throw new AppError('ValidationError', 'Copy key values must be unique')
-          const part = await apply(rows, [...columns.map(c => c.column_name), DELETED_AT_SOURCE])
-          result.inserted += part.inserted ?? 0
-          result.updated += part.updated ?? 0
-          result.changed += part.changed ?? 0
-          result.unchanged += part.unchanged ?? 0
-        }
-        // Missing rows use exactly the import save/version/undo chain too.
-        let afterKey = ''
-        while (true) {
-          const gone = await sql`select row_id from ${sql(relationName)} t where ${sql(DELETED_AT_SOURCE)} is not true and row_id > ${afterKey}
-            and not exists (select 1 from ${sql(seen)} s where s.row_id = t.row_id) order by row_id limit ${PART}`
-          if (!gone.length) break
-          const part = await apply(gone.map(r => ({ row_id: r.row_id, [DELETED_AT_SOURCE]: true })), [DELETED_AT_SOURCE])
-          result.deleted_at_source += part.updated ?? 0
-          afterKey = String(gone[gone.length - 1].row_id)
-        }
-        const [after] = await sql`select count(*)::int as n from ${sql(relationName)} where ${sql(DELETED_AT_SOURCE)} is true`
-        result.back_at_source = Math.max(0, Number(before.n) + result.deleted_at_source - Number(after.n))
-        const [conflicts] = await sql`select count(*)::int as n from featherbase.import_conflict where ref_table = ${target} and run_id = ${runId} and closed is not true`
-        result.conflicts = Number(conflicts.n)
-        await sql`update featherbase.table_copy set last_copied_at = clock_timestamp(), last_run_id = ${runId} where target_table = ${target}`
-        return result
-      })
-    } finally { await rm(folder, { recursive: true, force: true }) }
+    return withSourceRows(cfg, `select ${select} from ${relation(String(copy.database), String(copy.source_schema), String(copy.source_table))}`, key.column_name,
+      (folder, parts) => actionTransaction(() => applyCopy(user, target, copy, meta, folder, parts)))
   })
+}
+
+/** The caller's transaction owns metadata, rows, triggers, history and provenance. */
+async function applyCopy(user: SessionUser, target: string, copy: NonNullable<Awaited<ReturnType<typeof copyInfo>>>, meta: TableMeta, folder: string, parts: number): Promise<CopyResult> {
+  const columns = meta.columns.filter(c => c.source_column)
+  // Lock metadata/provenance before applying; a concurrent rename/delete
+  // must not change the mappings halfway through this copy.
+  await sql`select name from table_def where name = ${target} for update`
+  const current = await copyInfo(target)
+  if (JSON.stringify(current) !== JSON.stringify(copy) || JSON.stringify((await getMeta(target)).columns) !== JSON.stringify(meta.columns))
+    throw new AppError('ConflictError', 'The copy changed while the source was read; try Copy again')
+  const runId = `copy-${randomUUID()}`
+  const seen = `copy_seen_${randomUUID().replaceAll('-', '')}`
+  await sql`create temporary table ${sql(seen)} (row_id text primary key) on commit drop`
+  const result: CopyResult = { run_id: runId, inserted: 0, updated: 0, changed: 0, unchanged: 0, failed: 0, conflicts: 0, deleted_at_source: 0, back_at_source: 0, first_errors: [] }
+  const relationName = await tableRelation(target)
+  const [before] = await sql`select count(*)::int as n from ${sql(relationName)} where ${sql(DELETED_AT_SOURCE)} is true`
+  let partNumber = 0
+  const apply = async (rows: Record<string, unknown>[], mapped: string[]) => {
+    const part = await importRows({ table: target, user, args: {
+      rows, key_column: 'row_id', empty_cells: 'clear', columns: mapped,
+      context: { run_id: runId, batch_id: runId, file_name: `${copy.data_source} · ${copy.database}.${copy.source_schema}.${copy.source_table}`, part: ++partNumber },
+    } }, [DELETED_AT_SOURCE])
+    if (part.failed.length)
+      throw new AppError('ValidationError', `Copy failed; no rows changed: ${part.failed.slice(0, 5).map(f => `${rows[f.index].row_id}: ${f.message}`).join('; ')}`)
+    return part
+  }
+  for (let i = 1; i <= parts; i++) {
+    const rows: Record<string, unknown>[] = JSON.parse(await readFile(join(folder, String(i)), 'utf8'))
+    // Duplicate/blank keys refuse the entire copy, not last-one-wins.
+    if (rows.some(r => !r.row_id)) throw new AppError('ValidationError', 'Copy key values must not be empty')
+    const accepted = await sql`insert into ${sql(seen)} ${sql(rows.map(r => ({ row_id: String(r.row_id) })))} on conflict do nothing returning row_id`
+    if (accepted.length !== rows.length) throw new AppError('ValidationError', 'Copy key values must be unique')
+    const part = await apply(rows, [...columns.map(c => c.column_name), DELETED_AT_SOURCE])
+    result.inserted += part.inserted ?? 0
+    result.updated += part.updated ?? 0
+    result.changed += part.changed ?? 0
+    result.unchanged += part.unchanged ?? 0
+  }
+  // Missing rows use exactly the import save/version/undo chain too.
+  let afterKey = ''
+  while (true) {
+    const gone = await sql`select row_id from ${sql(relationName)} t where ${sql(DELETED_AT_SOURCE)} is not true and row_id > ${afterKey}
+      and not exists (select 1 from ${sql(seen)} s where s.row_id = t.row_id) order by row_id limit ${PART}`
+    if (!gone.length) break
+    const part = await apply(gone.map(r => ({ row_id: r.row_id, [DELETED_AT_SOURCE]: true })), [DELETED_AT_SOURCE])
+    result.deleted_at_source += part.updated ?? 0
+    afterKey = String(gone[gone.length - 1].row_id)
+  }
+  const [after] = await sql`select count(*)::int as n from ${sql(relationName)} where ${sql(DELETED_AT_SOURCE)} is true`
+  result.back_at_source = Math.max(0, Number(before.n) + result.deleted_at_source - Number(after.n))
+  const [conflicts] = await sql`select count(*)::int as n from featherbase.import_conflict where ref_table = ${target} and run_id = ${runId} and closed is not true`
+  result.conflicts = Number(conflicts.n)
+  await sql`update featherbase.table_copy set last_copied_at = clock_timestamp(), last_run_id = ${runId} where target_table = ${target}`
+  return result
 }

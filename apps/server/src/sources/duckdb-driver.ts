@@ -37,10 +37,26 @@ function loadDuckdb(): Promise<DuckDBModule> {
 
 interface InstanceEntry {
   instance: import('@duckdb/node-api').DuckDBInstance
-  url: string
   close?: () => void
+  secret?: string
 }
-const instances = new Map<string, Promise<InstanceEntry>>()
+interface CachedInstance {
+  key: string
+  ready: Promise<InstanceEntry>
+  readers: number
+  retired: boolean
+}
+const instances = new Map<string, CachedInstance>()
+
+function closeUnused(entry: CachedInstance) {
+  if (entry.retired && entry.readers === 0)
+    void entry.ready.then(e => e.close ? e.close() : e.instance.closeSync()).catch(() => {})
+}
+
+function retire(entry: CachedInstance) {
+  entry.retired = true
+  closeUnused(entry)
+}
 
 function requireUrl(cfg: SourceConfig): string {
   if (!cfg.url_env)
@@ -73,39 +89,39 @@ async function storedToken(cfg: SourceConfig): Promise<{ token: string; key: str
   return { token: decryptSecret(ciphertext), key: `${ciphertext}|${JSON.stringify(cfg.databases)}` }
 }
 
-// The token each open session was made with, so a query's error is scrubbed of it.
-const sessionTokens = new Map<string, string>()
-
-async function motherDuckInstanceFor(cfg: SourceConfig): Promise<InstanceEntry> {
-  const { token, key } = await storedToken(cfg)
-  sessionTokens.set(cfg.name, token)
-  const cached = await instances.get(cfg.name)?.catch(() => null)
-  if (cached && cached.url === key) return cached
-  cached?.close?.()
-  const entry = openSourceSession(token, cfg.databases)
-    .then((session) => ({ instance: session.instance, url: key, close: () => session.close() }))
-  instances.set(cfg.name, entry)
-  return entry
+async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry & { release(): void }> {
+  const credentials = cfg.engine === 'motherduck' ? await storedToken(cfg) : null
+  const key = credentials?.key ?? requireUrl(cfg)
+  let cached = instances.get(cfg.name)
+  // No await between observing the key and publishing the in-flight open.
+  // Replaced sessions drain their readers instead of closing live connections.
+  if (!cached || cached.key !== key) {
+    if (cached) retire(cached)
+    const ready = credentials
+      ? openSourceSession(credentials.token, cfg.databases).then(session => ({ instance: session.instance, secret: credentials.token, close: () => session.close() }))
+      : loadDuckdb().then(async ({ DuckDBInstance }) => ({ instance: await DuckDBInstance.create(key, isMotherDuck(key) ? undefined : { access_mode: 'READ_ONLY' }), secret: key }))
+    cached = { key, ready, readers: 0, retired: false }
+    instances.set(cfg.name, cached)
+  }
+  const lease = cached
+  lease.readers++
+  const release = () => { lease.readers--; closeUnused(lease) }
+  try { return { ...await lease.ready, release } }
+  catch (error) {
+    release()
+    // An old failed open must never evict a newer replacement.
+    if (instances.get(cfg.name) === lease) {
+      instances.delete(cfg.name)
+      retire(lease)
+    }
+    wrapError(cfg, error, credentials?.token)
+  }
 }
 
-async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry> {
-  if (cfg.engine === 'motherduck') return motherDuckInstanceFor(cfg)
-  const url = requireUrl(cfg)
-  const cached = await instances.get(cfg.name)?.catch(() => null)
-  if (cached && cached.url === url) return cached
-  const entry = (async () => {
-    const { DuckDBInstance } = await loadDuckdb()
-    const instance = await DuckDBInstance.create(url, isMotherDuck(url) ? undefined : { access_mode: 'READ_ONLY' })
-    return { instance, url }
-  })()
-  instances.set(cfg.name, entry)
-  return entry
-}
-
-function wrapError(cfg: SourceConfig, err: unknown): never {
+function wrapError(cfg: SourceConfig, err: unknown, secret?: string): never {
   if (err instanceof AppError) throw err
   const message = err instanceof Error ? err.message : String(err)
-  const secret = cfg.engine === 'motherduck' ? sessionTokens.get(cfg.name) : cfg.url_env ? readNamedVariable(cfg.url_env) : undefined
+  secret ??= cfg.url_env ? readNamedVariable(cfg.url_env) : undefined
   throw new AppError(
     'DataSourceError',
     `Data source ${cfg.name} failed: ${secret ? message.split(secret).join(cfg.engine === 'motherduck' ? '[token]' : `$${cfg.url_env}`) : message}`,
@@ -115,9 +131,10 @@ function wrapError(cfg: SourceConfig, err: unknown): never {
 // JSON-safe rows: getRowObjectsJson() renders BIGINT/DECIMAL as strings and
 // DATE/TIMESTAMP as ISO-ish strings — exactly what the read-only Admin needs.
 export async function run(cfg: SourceConfig, text: string, params: unknown[]): Promise<SourceRow[]> {
+  let lease: Awaited<ReturnType<typeof instanceFor>> | undefined
   try {
-    const { instance } = await instanceFor(cfg)
-    const conn = await instance.connect()
+    lease = await instanceFor(cfg)
+    const conn = await lease.instance.connect()
     try {
       const reader = await conn.runAndReadAll(text, params as never[])
       return reader.getRowObjectsJson() as SourceRow[]
@@ -125,16 +142,17 @@ export async function run(cfg: SourceConfig, text: string, params: unknown[]): P
       conn.closeSync()
     }
   } catch (err) {
-    wrapError(cfg, err)
-  }
+    return wrapError(cfg, err, lease?.secret)
+  } finally { lease?.release() }
 }
 
 /** One source observation, fetched in native chunks instead of materializing
  * the whole warehouse in JavaScript. Closing also handles an aborted caller. */
 export async function* stream(cfg: SourceConfig, text: string): AsyncGenerator<SourceRow[]> {
+  let lease: Awaited<ReturnType<typeof instanceFor>> | undefined
   try {
-    const { instance } = await instanceFor(cfg)
-    const conn = await instance.connect()
+    lease = await instanceFor(cfg)
+    const conn = await lease.instance.connect()
     try {
       const result = await conn.stream(text)
       try {
@@ -145,7 +163,8 @@ export async function* stream(cfg: SourceConfig, text: string): AsyncGenerator<S
         }
       } finally { result.closeSync() }
     } finally { conn.closeSync() }
-  } catch (err) { wrapError(cfg, err) }
+  } catch (err) { wrapError(cfg, err, lease?.secret) }
+  finally { lease?.release() }
 }
 
 function quoteIdent(name: string): string {
@@ -343,8 +362,7 @@ export const duckdbDriver: SourceDriver = {
   dispose(sourceName) {
     const entry = instances.get(sourceName)
     instances.delete(sourceName)
-    sessionTokens.delete(sourceName)
-    void entry?.then((e) => (e.close ? e.close() : e.instance.closeSync())).catch(() => {})
+    if (entry) retire(entry)
   },
 }
 

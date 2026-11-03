@@ -217,6 +217,10 @@ describe('Copy a warehouse table into Featherbase', () => {
       await deleteTable('Concurrent Copy')
       await admin.delete(`${SOURCES}/tc-concurrent`)
       await admin.post('/api/logout', {})
+      await sql`delete from featherbase.revoked_session where jti = ${session.user.sign_in!.session_id}`
+      await sql`delete from featherbase.import_log where ref_table = 'Concurrent Copy'`
+      await sql`delete from featherbase.import_source where ref_table = 'Concurrent Copy'`
+      await sql`delete from featherbase.version where ref_table = 'Concurrent Copy'`
     }
   })
 
