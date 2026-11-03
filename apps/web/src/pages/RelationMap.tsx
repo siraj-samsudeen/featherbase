@@ -8,7 +8,7 @@ import { connectionLabel, useConnections, type Connection } from '../lib/connect
 import { useStepOptions } from '../lib/explore-steps'
 import { buttonClasses, cardClasses } from '../components/ui'
 import { fmtCount } from '../lib/inr'
-import { RowTitle } from '../lib/row-titles'
+import { RowTitle, useRowTitle } from '../lib/row-titles'
 
 type Row = Record<string, unknown>
 
@@ -320,7 +320,7 @@ export function RelationMap({
                 className="hover:stroke-action"
               />
               <text x={52} y={nodeY(i) + 20} fontSize={12.5} fontWeight={600} fill="var(--color-ink)">
-                {truncate(f.row_id, 20)}
+                <SvgRowTitle table={f.table} rowId={f.row_id} max={22} />
               </text>
               <text x={52} y={nodeY(i) + 35} fontSize={12} fill="var(--color-ink-muted)">
                 {truncate(f.table, 24)}
@@ -411,6 +411,11 @@ function parseTrail(raw: unknown): [string, string][] {
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n - 1)}…` : s
+}
+
+/** A linked row's title inside SVG text, its id until the title arrives. */
+function SvgRowTitle({ table, rowId, max }: { table: string; rowId: string; max: number }) {
+  return <>{truncate(useRowTitle(table, rowId) ?? rowId, max)}</>
 }
 
 function ChildRows({
