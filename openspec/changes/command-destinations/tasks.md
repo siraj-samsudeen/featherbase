@@ -1,7 +1,7 @@
 ## 1. Acceptance examples
 
-- [ ] 1.1 Write the executable destination and query-preserving dismissal steps; run them red for the missing behavior.
-- [ ] 1.2 Add public HTTP inventory controls and a route-family coverage guard, including settings, more than 200 Tables, child Tables, scoped resources and unavailable apps.
+- [x] 1.1 Write the executable destination and query-preserving dismissal steps; run them red for the missing behavior.
+- [x] 1.2 Add public HTTP inventory controls and a route-family coverage guard, including settings, more than 200 Tables, child Tables, scoped resources and unavailable apps.
 
 ## 2. Implementation
 
