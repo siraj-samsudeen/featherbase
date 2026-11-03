@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { jobTitle } from 'shared'
+import { adminPageTitle, jobTitle } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { fmtInstantIST } from '../lib/inr'
 import { JobMonitor } from '../components/JobMonitor'
@@ -264,7 +264,7 @@ export function Jobs() {
   return (
     <div className="space-y-6" data-testid="jobs-page">
       <div>
-        <h1 className="text-lg font-semibold text-ink">Jobs</h1>
+        <h1 className="text-lg font-semibold text-ink">{adminPageTitle('jobs')}</h1>
         <p className="text-sm text-ink-muted">
           Scheduled jobs run on their own. A run that fails or refuses emails every System Manager.
         </p>
