@@ -453,6 +453,15 @@ describe('#865: a renamed column keeps its corrections', () => {
     expect((await conflicts(admin)).conflicts).toEqual([])
   })
 
+  test('undoing an import made before the rename restores the renamed column', async ({ admin }) => {
+    await makeTable(admin, { name: table, columns: ['code', 'city'] })
+    await admin.post(`${path}:import`, { rows: [{ row_id: 'A', code: 'A', city: 'North' }], context: { run_id: 'first' } })
+    await load(admin, 'East', 'second')
+    await renameCity(admin)
+    expect(await admin.post(`${path}:import-revert`, { run_id: 'second' })).toMatchObject({ restored: 1, failed: [] })
+    expect((await admin.get<Record<string, unknown>>(`${path}/A`)).town).toBe('North')
+  })
+
   test('another Table with the same column name keeps its own history', async ({ admin }) => {
     const other = 'Import Corrections Other'
     await makeTable(admin, { name: other, columns: ['code', 'city'] })
