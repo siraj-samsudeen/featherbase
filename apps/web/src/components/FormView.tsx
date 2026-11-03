@@ -11,6 +11,7 @@ import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type Column
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
+import { useIsSystemManager } from '../lib/session'
 import { Attachments } from './Attachments'
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
@@ -417,6 +418,7 @@ export function FormView({
             <RouterLink
               to="/featherbase/admin/source/$name"
               params={{ name }}
+              search={{ connect: undefined }}
               data-testid="form-source-browser"
               className={buttonClasses()}
             >
@@ -719,6 +721,15 @@ const ROW_ID_FIELD = {
   description: 'Rows in this table take the ID you type here. It must not already be in use.',
 } as ColumnDef
 
+// The source table a column points at when no connected table binds it yet:
+// the foreign key was recorded when the table was connected, and the column
+// becomes a link as soon as its target is connected (#796).
+export function unlinkedSourceTable(field: ColumnDef, meta: TableMeta): { table: string; key: string } | null {
+  if (!meta.data_source || !field.source_fk_table || field.column_type === 'Reference') return null
+  const schema = field.source_fk_schema ?? ''
+  return { table: field.source_fk_table, key: schema ? `${schema}.${field.source_fk_table}` : field.source_fk_table }
+}
+
 function FieldControl({
   field,
   value,
@@ -780,7 +791,32 @@ function FieldControl({
       {withFileName(t(managedHint))}
     </p>
   ) : null
-  const describedBy = [hintText ? hintId : null, managedHint ? managedId : null].filter(Boolean).join(' ')
+  // #796: a column whose source foreign key has no connected table to link
+  // to says so, and offers a System Manager the table to connect.
+  const canConnect = useIsSystemManager()
+  const unlinkedTarget = unlinkedSourceTable(field, meta)
+  const unlinkedId = `${controlId}-unlinked`
+  const unlinkedNote = unlinkedTarget ? (
+    <p id={unlinkedId} className="mt-1 text-xs text-ink-subtle" data-testid={`unlinked-${field.column_name}`}>
+      The {unlinkedTarget.table} table is not connected yet, so this isn’t a link.
+      {canConnect && (
+        <>
+          {' '}
+          <RouterLink
+            to="/featherbase/admin/source/$name"
+            params={{ name: meta.data_source! }}
+            search={{ connect: unlinkedTarget.key }}
+            className="text-action hover:underline"
+          >
+            Connect the {unlinkedTarget.table} table
+          </RouterLink>
+        </>
+      )}
+    </p>
+  ) : null
+  const describedBy = [hintText ? hintId : null, managedHint ? managedId : null, unlinkedTarget ? unlinkedId : null]
+    .filter(Boolean)
+    .join(' ')
   const common = {
     id: controlId,
     'aria-labelledby': labelId,
@@ -798,6 +834,7 @@ function FieldControl({
       {control}
       {hint}
       {managedNote}
+      {unlinkedNote}
       {preview}
       {err}
     </div>

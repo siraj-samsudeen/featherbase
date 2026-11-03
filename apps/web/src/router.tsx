@@ -627,14 +627,19 @@ const allTablesRoute = createRoute({
 const sourceBrowserRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'source/$name',
+  // #796: `connect=<schema.table>` opens with that table loaded and chosen.
+  validateSearch: (search: Record<string, unknown>) => ({
+    connect: searchString(search.connect),
+  }),
   component: SourceBrowserPage,
 })
 
 function SourceBrowserPage() {
   const { name } = sourceBrowserRoute.useParams()
+  const { connect } = sourceBrowserRoute.useSearch()
   return (
     <div data-testid="table-page">
-      <SourceBrowser key={name} name={name} />
+      <SourceBrowser key={`${name}\u0000${connect ?? ''}`} name={name} connect={connect} />
     </div>
   )
 }
