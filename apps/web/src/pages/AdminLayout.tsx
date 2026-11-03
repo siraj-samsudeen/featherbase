@@ -318,20 +318,27 @@ function AdminShell() {
     if (user && q) recordAction(user.row_id, { kind: 'search', key: `search:${q.toLowerCase()}`, label: q, path: '' })
   }
 
+  function dismissSearch() {
+    setSearch('')
+    // Clear row matches immediately, not after the typing debounce.
+    setDebounced('')
+    setBarFocused(false)
+    searchRef.current?.blur()
+  }
+
   function openRecent(entry: RecentEntry) {
     if (entry.kind === 'search') {
       setSearch(entry.label)
+      searchRef.current?.focus()
       return
     }
-    setSearch('')
-    setBarFocused(false)
-    searchRef.current?.blur()
+    dismissSearch()
     router.history.push(entry.path)
   }
 
   function openDoc(hit: SearchHit) {
     recordSearch(search.trim())
-    setSearch('')
+    dismissSearch()
     navigate({ to: '/featherbase/admin/$table/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
   }
 
@@ -349,7 +356,7 @@ function AdminShell() {
     recordSearch(q)
     const dtHit = tables?.find((d) => d.row_id.toLowerCase() === q.toLowerCase())
     if (dtHit) {
-      setSearch('')
+      dismissSearch()
       navigate({ to: '/featherbase/admin/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
       return
     }
@@ -358,6 +365,7 @@ function AdminShell() {
       openDoc(doc)
       return
     }
+    dismissSearch()
     navigate({ to: '/featherbase/admin/$table', params: { table: q }, search: { filters: undefined } })
   }
 
@@ -467,7 +475,10 @@ function AdminShell() {
                   key={s.key}
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setSearch(s.label)}
+                  onClick={() => {
+                    setSearch(s.label)
+                    searchRef.current?.focus()
+                  }}
                   data-testid="awesomebar-recent-search"
                   className="flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint"
                 >
@@ -483,7 +494,7 @@ function AdminShell() {
                   key={cmd.id}
                   type="button"
                   onClick={() => {
-                    setSearch('')
+                    dismissSearch()
                     cmd.run()
                   }}
                   data-testid={`awesomebar-cmd-${cmd.id}`}
@@ -501,7 +512,7 @@ function AdminShell() {
                   to="/featherbase/admin/$table"
                   params={{ table: d.row_id }}
                   search={{ filters: undefined }}
-                  onClick={() => setSearch('')}
+                  onClick={dismissSearch}
                   data-testid="awesomebar-table"
                   className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
                 >
@@ -519,7 +530,7 @@ function AdminShell() {
                   to="/featherbase/admin/$table/$name"
                   search={{ prefill: undefined }}
                   params={{ table: d.row_id, name: 'new' }}
-                  onClick={() => setSearch('')}
+                  onClick={dismissSearch}
                   data-testid="awesomebar-new"
                   className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
                 >
