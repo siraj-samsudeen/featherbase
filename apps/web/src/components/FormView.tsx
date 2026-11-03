@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
 import { choiceLabel, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
-import { pickerFor } from '../lib/pickers'
+import { pickerFor, referenceLabel, usesRowTitle } from '../lib/pickers'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
 import { useRealtime } from '../lib/realtime'
@@ -1179,7 +1179,9 @@ function LinkControl({
   const target = field.reference_table ?? ''
   const box = useRef<HTMLInputElement>(null)
   const [place, setPlace] = useState<{ top: number; left: number; width: number } | null>(null)
-  const picker = pickerFor(target)
+  const targetMeta = useMeta(target)
+  const titled = usesRowTitle(target)
+  const picker = pickerFor(target, targetMeta.data?.title_column)
   const [query, setQuery] = useState<string | null>(null) // null = not searching
   const [open, setOpen] = useState(false)
   const [options, setOptions] = useState<{ value: string; label: string }[]>([])
@@ -1227,12 +1229,16 @@ function LinkControl({
           return
         }
         const label = picker.labelField
-        const res = await listResource<Record<string, unknown> & { row_id: string }>(target, {
-          filters: [...picker.filters, ...(q ? [[picker.searchField, 'like', `%${q}%`]] : [])],
-          fields: label ? ['row_id', label] : ['row_id'],
-          limit_page_length: 10,
-        })
-        setOptions(res.data.map((r) => ({ value: r.row_id, label: label ? String(r[label] ?? '') || r.row_id : r.row_id })))
+        const searchFields = titled && q && label && label !== 'row_id'
+          ? [picker.searchField, 'row_id'] : [picker.searchField]
+        const responses = await Promise.all(searchFields.map((searchField) =>
+          listResource<Record<string, unknown> & { row_id: string }>(target, {
+            filters: [...picker.filters, ...(q ? [[searchField, 'like', `%${q}%`]] : [])],
+            fields: label && label !== 'row_id' ? ['row_id', label] : ['row_id'],
+            limit_page_length: 10,
+          })))
+        const rows = [...new Map(responses.flatMap((res) => res.data).map((row) => [row.row_id, row])).values()].slice(0, 10)
+        setOptions(rows.map((r) => ({ value: r.row_id, label: titled ? referenceLabel(r.row_id, label ? r[label] : null) : label ? String(r[label] ?? '') || r.row_id : r.row_id })))
         openList()
       } catch {
         setOptions([])
@@ -1243,7 +1249,9 @@ function LinkControl({
   const principalName = usePrincipalName(picker.peopleSearch && value ? String(value) : null)
   const valueLabel = picker.peopleSearch
     ? value ? principalLabel(String(value), principalName, principalName === null) : null
-    : picker.labelField && current.data ? String(current.data[picker.labelField] ?? '') || null : null
+    : picker.labelField && current.data ? titled
+      ? referenceLabel(String(value), current.data[picker.labelField])
+      : String(current.data[picker.labelField] ?? '') || null : null
   const shown = query ?? valueLabel ?? String(value ?? '')
 
   return (

@@ -22,6 +22,15 @@ const SPECS: Record<string, PickerSpec> = {
   'Service Account': { searchField: 'label', labelField: 'label', filters: [] },
 }
 
-export function pickerFor(table: string): PickerSpec {
-  return SPECS[table] ?? { searchField: 'row_id', labelField: null, filters: [] }
+export function pickerFor(table: string, titleColumn?: string | null): PickerSpec {
+  return SPECS[table] ?? { searchField: titleColumn || 'row_id', labelField: titleColumn || null, filters: [] }
+}
+
+export function usesRowTitle(table: string): boolean {
+  return !Object.hasOwn(SPECS, table)
+}
+
+export function referenceLabel(id: string, title: unknown): string {
+  const name = title == null ? '' : String(title).trim()
+  return name && name !== id ? `${name} (${id})` : id
 }
