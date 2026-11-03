@@ -18,8 +18,13 @@ async function seedOrders(admin: TestClient) {
     columns: [{ column_name: 'customer', column_type: 'Reference', label: 'Customer', reference_table: 'Nest Customer', reqd: true }],
   })
   await admin.post('/api/table_def', {
+    name: 'Nest Note', kind: 'sub_table',
+    columns: [{ column_name: 'about', column_type: 'Reference', label: 'About', reference_table: 'Nest Customer' }],
+  })
+  await admin.post('/api/table_def', {
     name: 'Nest Order',
     columns: [
+      { column_name: 'notes', column_type: 'Sub-table', label: 'Notes', row_table: 'Nest Note' },
       { column_name: 'label', column_type: 'Data', label: 'Label' },
       { column_name: 'lines', column_type: 'Sub-table', label: 'Lines', row_table: 'Nest Line' },
     ],
@@ -92,4 +97,18 @@ test("a cell's error goes once the grid changes, and unpicked text leaves the ce
   fireEvent.change(screen.getByLabelText('Lines, Customer, row 1'), { target: { value: 'Initech' } })
   fireEvent.focusOut(screen.getByLabelText('Lines, Customer, row 1'))
   await waitFor(() => expect(screen.getByLabelText('Lines, Customer, row 1')).toHaveValue('Acme Ltd'))
+})
+
+test('emptying an optional nested link cell removes the link when saved', async ({ admin }) => {
+  await seedOrders(admin)
+  const order = await admin.post<Saved>('/api/save_row', { table: 'Nest Order', row: { label: 'o2', notes: [{ about: 'Formco' }] } })
+  await renderApp(`/featherbase/admin/${enc('Nest Order')}/${order.row_id}`, admin)
+  const cell = await screen.findByLabelText('Notes, About, row 1', {}, { timeout: 8000 })
+  await waitFor(() => expect(cell).toHaveValue('Formco'))
+  fireEvent.change(cell, { target: { value: '' } })
+  fireEvent.focusOut(cell)
+  screen.getByTestId('form-save').click()
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+  const stored = await admin.get<{ notes: { about: string | null }[] }>(`/api/table/${enc('Nest Order')}/${order.row_id}`)
+  expect(stored.notes.map((n) => n.about ?? null)).toEqual([null])
 })

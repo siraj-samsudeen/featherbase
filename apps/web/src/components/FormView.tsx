@@ -1260,6 +1260,9 @@ function LinkControl({
         }}
         onChange={(e) => {
           setQuery(e.target.value)
+          // In a grid, emptying the cell removes the link (Codex on #874);
+          // other typed text still has to be picked.
+          if (floating && e.target.value === '') onChange(null)
           search(e.target.value)
         }}
         className={`${className} ${hasValue ? 'pr-14' : ''}`}
