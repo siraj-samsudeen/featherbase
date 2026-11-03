@@ -5,6 +5,7 @@ import {
   createRootRoute,
   createRoute,
   redirect,
+  useRouter,
 } from '@tanstack/react-router'
 import { parseFilters } from 'shared'
 import { LoginPage } from './pages/Login'
@@ -243,6 +244,7 @@ const adminIndexRoute = createRoute({
 })
 
 function AdminIndexPage() {
+  const router = useRouter()
   const navigate = adminIndexRoute.useNavigate()
   const pages = useHomePages()
   const caps = useCapabilities()
@@ -251,8 +253,11 @@ function AdminIndexPage() {
   // the link they were sent. An empty Home Page would be the same dead end.
   const sharedOnly = Boolean(caps && !caps.manage && !caps.own_grant)
   useEffect(() => {
+    // Another effect may already have chosen setup while this index remains
+    // mounted. Never let its stale Home redirect overwrite that destination.
+    if (router.latestLocation.pathname.replace(/\/$/, '') !== adminRoute.fullPath) return
     if (first && caps && !sharedOnly) void navigate({ to: '/featherbase/admin/home/$name', params: { name: first.row_id }, replace: true })
-  }, [first, caps, sharedOnly, navigate])
+  }, [first, caps, sharedOnly, navigate, router])
   if (!pages.data || !caps) return null
   if (sharedOnly)
     return (
