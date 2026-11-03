@@ -297,6 +297,7 @@ pnpm test                        # workspace suites (prepare app fixtures first)
 pnpm smoke                       # server + web smoke tests against running stack
 pnpm --filter server typecheck   # also: pnpm --filter web typecheck
 pnpm check:specs                 # OpenSpec specifications and active changes
+pnpm check:audit                 # no high or critical advisory in production dependencies
 ```
 
 ## Source map
