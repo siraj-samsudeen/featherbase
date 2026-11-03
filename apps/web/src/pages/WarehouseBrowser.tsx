@@ -15,7 +15,7 @@ export function WarehouseBrowser({ name, ...context }: { name: string } & Browse
   const queryClient = useQueryClient()
   const settings = useSettings()
   const { database, schema, table, tableSchema, query = '', columnQuery = '', databaseQuery = '', schemaQuery = '' } = context
-  const tab = context.tab === 'preview' && table ? 'preview' : 'catalog'
+  const tab = context.tab === 'preview' ? 'preview' : 'catalog'
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const source = useQuery({
@@ -76,7 +76,9 @@ export function WarehouseBrowser({ name, ...context }: { name: string } & Browse
         { label: 'Data Source', href: '/featherbase/admin/Data%20Source' },
         { label: name, href: `/featherbase/admin/Data%20Source/${encodeURIComponent(name)}` },
         { label: database ?? 'Browse tables', href: tab === 'preview' ? browserHref(name, { ...context, tab: 'catalog' }) : undefined },
-        ...(tab === 'preview' ? [{ label: tableSchema ?? schema ?? '', href: browserHref(name, { ...context, tab: 'catalog' }) }, { label: table! }] : []),
+        ...(tab === 'preview' ? table
+          ? [{ label: tableSchema ?? schema ?? '', href: browserHref(name, { ...context, tab: 'catalog' }) }, { label: table }]
+          : [{ label: 'Preview' }] : []),
       ]} />
       <header><h1 className="text-xl font-semibold text-ink">Browse tables</h1><p className="text-sm text-ink-muted">{name} · MotherDuck · read only</p></header>
       {refreshError && <Notice tone="negative">{refreshError}</Notice>}
