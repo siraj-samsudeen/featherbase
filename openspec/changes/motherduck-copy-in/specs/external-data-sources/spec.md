@@ -32,8 +32,8 @@ columns each one has, with a type Featherbase proposes for each column. A
 database table with no single column that uniquely identifies each row SHALL
 be shown as unusable for connecting, saying why. A warehouse declares no such
 column for any table, so a warehouse table SHALL be browsable all the same:
-its schema, then the table, then a preview of how many rows and columns it
-has and its first rows.
+the user can search all its tables within a database and schema, then preview
+a chosen table's size, columns and first rows.
 
 #### Scenario: A table with no way to address a row
 
@@ -157,6 +157,44 @@ reads, and choosing a database opens it in the browser.
 Given a MotherDuck source reading the databases "sales" and "stock"
 When the user looks at the sidebar
 Then it shows the source with "sales" and "stock" under it
+```
+
+### Requirement: Return to the same warehouse context
+
+Moving between the catalog and a preview, or returning from copy setup,
+SHALL retain the chosen database, schema, search and table.
+
+#### Scenario: The filtered catalog and chosen preview stay available
+
+```gherkin
+Given the user is previewing "stores" in "main" of "sales" after searching for "STORES"
+When the user returns to the warehouse catalog
+Then the catalog still shows only "stores" in "main" of "sales" for the search "STORES"
+And the user can reopen the preview of "stores" without choosing it again
+```
+
+#### Scenario: Returning from copy setup restores the chosen preview
+
+```gherkin
+Given the user is previewing "stores" in "main" of "sales" after searching for "STORES"
+When the user opens copy setup and follows the breadcrumb back to "stores"
+Then the same preview of "stores" is selected
+And the catalog still shows only "stores" in "main" of "sales" for the search "STORES"
+```
+
+### Requirement: Search copy choices without losing edits
+
+A builder SHALL be able to search all copy mappings by their source name,
+edited name, label or description. Searching SHALL preserve edits and keep
+choices against the original source column, even while that column is hidden.
+
+#### Scenario: A search for another column keeps the edited copy choices
+
+```gherkin
+Given the user has edited the copy mapping for "stores" in "main" of "sales"
+When the user searches the mapping for "STATE_CODE"
+Then only the mapping for "state_code" is offered
+And clearing the mapping search restores the edited name and omitted city
 ```
 
 ### Requirement: Browsing reopens where each person left off
