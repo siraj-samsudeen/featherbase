@@ -143,7 +143,7 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
     queryFn: () =>
       listResource(connection.table, {
         filters: connection.filters,
-        fields: columns.map((c) => c.column_name),
+        fields: ['row_id', ...columns.map((c) => c.column_name).filter((n) => n !== 'row_id')],
         limit_page_length: 8,
       }),
   })

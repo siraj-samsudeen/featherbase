@@ -8,7 +8,7 @@ import { connectionLabel, useConnections, type Connection } from '../lib/connect
 import { useStepOptions } from '../lib/explore-steps'
 import { buttonClasses, cardClasses } from '../components/ui'
 import { fmtCount } from '../lib/inr'
-import { RowTitle } from '../lib/row-titles'
+import { RowTitle, useRowTitle } from '../lib/row-titles'
 
 type Row = Record<string, unknown>
 
@@ -50,6 +50,7 @@ export function RelationMap({
   const meta = useMeta(table)
   const cnx = useConnections(table, name)
   const navigate = useNavigate()
+  const settings = useSettings()
   const [openGroup, setOpenGroup] = useState<number | null>(null)
   // Option C of the Explore entry-point exploration: hand this row's
   // neighborhood to the cross-filter Explore. The chain is the first step of
@@ -250,15 +251,6 @@ export function RelationMap({
                 stroke="var(--color-border-control)"
                 strokeWidth={1.2}
               />
-              <text
-                x={277}
-                y={(nodeY(i) + NODE_H / 2 + cy + NODE_H / 2) / 2 - 6}
-                textAnchor="middle"
-                fontSize={12}
-                fill="var(--color-ink-subtle)"
-              >
-                {truncate(f.label, 15)} →
-              </text>
             </g>
           ))}
           {groups.map((g, i) => (
@@ -271,15 +263,6 @@ export function RelationMap({
                 stroke="var(--color-border-control)"
                 strokeWidth={1.2}
               />
-              <text
-                x={608}
-                y={(nodeY(i) + NODE_H / 2 + cy + NODE_H / 2) / 2 - 6}
-                textAnchor="middle"
-                fontSize={12}
-                fill="var(--color-ink-subtle)"
-              >
-                {g.kind === 'child' ? 'contains →' : `← ${truncate(g.cnx?.column ?? '', 12)}`}
-              </text>
             </g>
           ))}
           {/* center */}
@@ -320,10 +303,11 @@ export function RelationMap({
                 className="hover:stroke-action"
               />
               <text x={52} y={nodeY(i) + 20} fontSize={12.5} fontWeight={600} fill="var(--color-ink)">
-                {truncate(f.row_id, 20)}
+                <SvgRowTitle table={f.table} rowId={f.row_id} max={22} />
               </text>
+              {/* the relationship lives in the box, not on the line, so it is never cut */}
               <text x={52} y={nodeY(i) + 35} fontSize={12} fill="var(--color-ink-muted)">
-                {truncate(f.table, 24)}
+                {truncate(f.label === f.table ? f.table : `${f.label} · ${f.table}`, 26)}
               </text>
             </g>
           ))}
@@ -356,7 +340,7 @@ export function RelationMap({
                 {truncate(g.label, 20)}
               </text>
               <text x={672} y={nodeY(i) + 35} fontSize={12} fill="var(--color-ink-muted)">
-                {g.kind === 'child' ? 'child rows' : 'backlink'}
+                {g.kind === 'child' ? 'child rows' : truncate(`via ${columnWords(g.cnx?.column ?? '')}`, 24)}
               </text>
               <text
                 x={848}
@@ -372,6 +356,22 @@ export function RelationMap({
           ))}
         </svg>
       </div>
+      {/* Nothing opened: the slot below shows the centre row itself, the way
+          an opened collection shows its rows. */}
+      {!active && (
+        <div className={cardClasses('mt-3 overflow-x-auto')} data-testid="map-self-row">
+          <div className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            {table} — this row; open a collection above to list it here
+          </div>
+          <SimpleRowsTable
+            cols={listColumns(m)}
+            rows={[{ ...d, row_id: d.row_id ?? name }]}
+            settings={settings}
+            onHop={hop}
+            onPick={(n) => void navigate({ to: '/featherbase/admin/$table/$name', params: { table, name: n }, search: { prefill: undefined } })}
+          />
+        </div>
+      )}
       {active && (
         <div className={cardClasses('mt-3 overflow-x-auto')} data-testid="map-group-rows">
           <div className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
@@ -382,9 +382,10 @@ export function RelationMap({
               field={active.field!}
               rows={(d[active.field!.column_name] as Row[]) ?? []}
               onPick={(n) => hop(active.table, n)}
+              onHop={hop}
             />
           ) : (
-            <GroupRows connection={active.cnx!} onPick={(n) => hop(active.table, n)} />
+            <GroupRows connection={active.cnx!} onPick={(n) => hop(active.table, n)} onHop={hop} />
           )}
         </div>
       )}
@@ -413,14 +414,27 @@ function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n - 1)}…` : s
 }
 
+/** A link column as words: `reported_to_id` → "Reported To". */
+function columnWords(column: string): string {
+  return column.replace(/_?id$/i, '').split('_').filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1)).join(' ') || column
+}
+
+/** A linked row's title inside SVG text, its id until the title arrives. */
+function SvgRowTitle({ table, rowId, max }: { table: string; rowId: string; max: number }) {
+  return <>{truncate(useRowTitle(table, rowId) ?? rowId, max)}</>
+}
+
 function ChildRows({
   field,
   rows,
   onPick,
+  onHop,
 }: {
   field: ColumnDef
   rows: Row[]
   onPick: (name: string) => void
+  onHop: (table: string, name: string) => void
 }) {
   const childMeta = useMeta(field.row_table ?? '')
   const settings = useSettings()
@@ -434,6 +448,7 @@ function ChildRows({
       rows={rows}
       settings={settings}
       onPick={onPick}
+      onHop={onHop}
     />
   )
 }
@@ -441,9 +456,11 @@ function ChildRows({
 function GroupRows({
   connection,
   onPick,
+  onHop,
 }: {
   connection: Connection
   onPick: (name: string) => void
+  onHop: (table: string, name: string) => void
 }) {
   const meta = useMeta(connection.table)
   const settings = useSettings()
@@ -454,14 +471,14 @@ function GroupRows({
     queryFn: () =>
       listResource(connection.table, {
         filters: connection.filters,
-        fields: columns.map((c) => c.column_name),
+        fields: ['row_id', ...columns.map((c) => c.column_name).filter((n) => n !== 'row_id')],
         limit_page_length: 10,
       }),
   })
   if (!list.data) return <p className="px-4 py-3 text-sm text-ink-subtle">Loading…</p>
   return (
     <>
-      <SimpleRowsTable cols={columns} rows={list.data.data} settings={settings} onPick={onPick} />
+      <SimpleRowsTable cols={columns} rows={list.data.data} settings={settings} onPick={onPick} onHop={onHop} />
       {list.data.total > list.data.data.length && (
         <p className="px-4 py-2 text-xs text-ink-subtle">
           Showing {fmtCount(list.data.data.length)} of {fmtCount(list.data.total)}
@@ -476,11 +493,14 @@ function SimpleRowsTable({
   rows,
   settings,
   onPick,
+  onHop,
 }: {
-  cols: { column_name: string; label: string; column_type: string }[]
+  cols: { column_name: string; label: string; column_type: string; reference_table?: string | null }[]
   rows: Row[]
   settings: ReturnType<typeof useSettings>
   onPick: (name: string) => void
+  /** A link cell moves the map to the row it names. */
+  onHop: (table: string, name: string) => void
 }) {
   return (
     <table className="w-full text-sm">
@@ -509,7 +529,20 @@ function SimpleRowsTable({
                 key={c.column_name}
                 className={`px-4 py-1.5 ${j === 0 ? 'font-medium text-action' : ''}`}
               >
-                {formatValue(c.column_type, r[c.column_name], settings) || '—'}
+                {c.column_type === 'Reference' && c.reference_table && r[c.column_name] != null && r[c.column_name] !== ''
+                  ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onHop(c.reference_table!, String(r[c.column_name]))
+                      }}
+                      className="text-action hover:underline"
+                    >
+                      <RowTitle table={c.reference_table} rowId={String(r[c.column_name])} />
+                    </button>
+                  )
+                  : formatValue(c.column_type, r[c.column_name], settings) || '—'}
               </td>
             ))}
           </tr>
