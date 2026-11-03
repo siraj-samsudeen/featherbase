@@ -9,5 +9,7 @@
 
 - [x] 2.1 Run effective acceptance scenarios with zero undefined/pending steps and an HTML report; run meaningful server regressions, typecheck, and strict OpenSpec validation.
 - [x] 2.2 Verify saves, edits, refusals, unchanged persisted state after refusal, and effective metadata through the separately running HTTP server on disposable fixtures.
-- [ ] 2.3 Complete required ordinary code review and triage findings. Local Codex/Claude CLI and authentication are unavailable; inspect exact-head GitHub Codex review without claiming the local-review requirement ran.
+- [ ] 2.3 Complete required ordinary code review and triage findings. Exact-head GitHub Codex review found no issues at 179dbbdc. Manager-supplied ordinary Claude review at that head reports no level-1/2 findings and 86 passing HTTP tests; level-3 observations are recorded only in the PR body. Author/reviewer model provenance is still unverified, so the prescribed different-Claude requirement is not claimed met.
 - [x] 2.4 Commit/push, open one PR, subscribe to exact-head CI and PR comments, and report evidence to the manager. Leave merge/deploy/archive gated on owner review.
+- [x] 2.5 Sync the three implemented validation requirements and unchanged executable examples to the main capability spec; validate main specs and the active change.
+- [ ] 2.6 After final integration checks and resolution of the required-review gate, archive this change on the same branch and rerun effective acceptance without duplicate active-delta scenarios. Do not merge or deploy.
