@@ -16,3 +16,6 @@ export { useMediaQuery } from './useMediaQuery'
 
 export * from './icons'
 export * from './format'
+export { Breadcrumbs } from './Breadcrumbs'
+export { ContentTabs } from './ContentTabs'
+export { SearchableList } from './SearchableList'

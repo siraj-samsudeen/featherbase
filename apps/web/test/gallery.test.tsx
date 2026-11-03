@@ -1,14 +1,111 @@
-// The component gallery (#380, /gallery.html on the dev server): the page
-// renders every shared primitive, flips the theme, and raises both toasts.
-// No e2e spec opens it — gallery.html is outside the app's routes — so this is
-// its only test (ADR 0012 merged web coverage). Pure UI: no server, no data.
+// The gallery renders shared primitives; the prototype starter retains drafts
+// while switching to an actual metadata-driven list.
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, test } from 'vitest'
+import { createRootRoute } from '@tanstack/react-router'
+import { renderApp } from 'feather-testing-postgres/react'
+import { test as databaseTest } from './pg-test'
 import { Gallery } from '../src/gallery/Gallery'
+import { PrototypeLibrary } from '../src/gallery/PrototypeLibrary'
+import { useState } from 'react'
+import { Breadcrumbs, ContentTabs, SearchableList, TextInput } from '@featherbase/shop-floor'
 
 afterEach(() => {
   delete document.documentElement.dataset.theme
+})
+
+databaseTest('screen starter retains its search and draft while the native list remembers its filter', async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: 'Lab Project',
+    columns: [{ column_name: 'region', column_type: 'Data', label: 'Region', in_list_view: true }],
+  })
+  const user = userEvent.setup()
+  const originalLocation = window.location.href
+  window.history.replaceState(null, '', '/prototype.html')
+  try {
+    await renderApp('/prototype.html', {
+      routeTree: createRootRoute({ component: PrototypeLibrary }),
+      token: admin.token,
+      user: { row_id: admin.user! },
+    })
+    await user.type(await screen.findByRole('textbox', { name: 'Note for Project records' }), 'Retain this plan')
+    await user.type(screen.getByRole('searchbox', { name: 'Search screen starters' }), 'Project')
+    expect(screen.queryByRole('link', { name: 'Related tasks' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Project records' })).toHaveAttribute('href', '/featherbase/admin/Lab%20Project')
+
+    await user.click(screen.getByRole('tab', { name: 'Native Table list' }))
+    await screen.findByTestId('list-view')
+    await user.type(screen.getByRole('searchbox', { name: 'Search Lab Project names' }), 'South')
+    const location = new URL(window.location.href)
+    expect(location.searchParams.get('labTab')).toBe('records')
+    expect(JSON.parse(location.searchParams.get('labFilters')!)).toEqual([['name', 'like', '%South%']])
+
+    await user.click(screen.getByRole('tab', { name: 'Component gallery' }))
+    expect(screen.getByRole('heading', { name: 'Components' })).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Screen starter' }))
+    expect(screen.getByRole('searchbox', { name: 'Search screen starters' })).toHaveValue('Project')
+    expect(screen.getByRole('textbox', { name: 'Note for Project records' })).toHaveValue('Retain this plan')
+    await user.click(screen.getByRole('tab', { name: 'Native Table list' }))
+    expect(screen.getByRole('searchbox', { name: 'Search Lab Project names' })).toHaveValue('South')
+  } finally {
+    window.history.replaceState(null, '', originalLocation)
+  }
+})
+
+test('content tabs retain drafts and expose keyboard navigation and the current breadcrumb', async () => {
+  function Example() {
+    const [tab, setTab] = useState('edit')
+    return <><Breadcrumbs items={[{ label: 'Catalog', href: '/catalog?search=North' }, { label: 'Mapping' }]} />
+      <ContentTabs label="Example sections" value={tab} onChange={setTab} tabs={[
+        { id: 'edit', label: 'Mapping', content: <TextInput aria-label="Destination column" /> },
+        { id: 'preview', label: 'Preview', content: <p>Preview rows</p> },
+        { id: 'help', label: 'Help', content: <p>Reuse locations</p> },
+      ]} /></>
+  }
+  const user = userEvent.setup()
+  render(<Example />)
+  expect(screen.getByRole('link', { name: 'Catalog' })).toHaveAttribute('href', '/catalog?search=North')
+  expect(screen.getByText('Mapping', { selector: '[aria-current="page"]' })).toBeInTheDocument()
+  await user.type(screen.getByRole('textbox', { name: 'Destination column' }), 'customer_code')
+  await user.click(screen.getByRole('tab', { name: 'Mapping' }))
+  await user.keyboard('{ArrowLeft}')
+  expect(screen.getByRole('tab', { name: 'Help' })).toHaveFocus()
+  expect(screen.queryByRole('textbox', { name: 'Destination column' })).not.toBeInTheDocument()
+  await user.keyboard('{Home}')
+  expect(screen.getByRole('textbox', { name: 'Destination column' })).toHaveValue('customer_code')
+  await user.keyboard('{End}{ArrowLeft}')
+  expect(screen.getByRole('tab', { name: 'Preview' })).toHaveFocus()
+})
+
+test('searchable collections match the complete supplied list and can clear no-results', async () => {
+  function Example() {
+    const [query, setQuery] = useState('')
+    return <SearchableList label="Search sources" placeholder="Search" items={['South studio', 'North workshop']} query={query} onQueryChange={setQuery} getSearchText={(row) => row}>
+      {(rows) => <ul>{rows.map((row) => <li key={row}>{row}</li>)}</ul>}
+    </SearchableList>
+  }
+  const user = userEvent.setup()
+  render(<Example />)
+  expect(screen.getByRole('searchbox', { name: 'Search sources' })).toHaveAttribute('placeholder', 'Search')
+  await user.type(screen.getByRole('searchbox', { name: 'Search sources' }), ' NORTH ')
+  expect(screen.getByText('North workshop')).toBeInTheDocument()
+  expect(screen.queryByText('South studio')).not.toBeInTheDocument()
+  expect(screen.getByRole('status')).toHaveTextContent('1 of 2')
+  await user.type(screen.getByRole('searchbox', { name: 'Search sources' }), 'missing')
+  expect(screen.getByRole('status')).toHaveTextContent('0 of 2')
+  await user.click(screen.getByRole('button', { name: 'Clear search' }))
+  expect(screen.getByText('South studio')).toBeInTheDocument()
+  expect(screen.getByRole('status')).toHaveTextContent('2 of 2')
+})
+
+test('filters component examples by purpose', async () => {
+  const user = userEvent.setup()
+  render(<Gallery />)
+  await user.type(screen.getByRole('searchbox', { name: 'Search components' }), 'list')
+  expect(screen.getByRole('heading', { name: 'List (a table when wide, cards on a phone)' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Buttons' })).not.toBeInTheDocument()
+  expect(screen.getByText('apps/web/src/components/ui/DataList.tsx')).toBeInTheDocument()
 })
 
 test('shows every section, flips light and dark, and raises both toasts', async () => {

@@ -144,6 +144,49 @@ reported separately. With the pnpm fallback, add `--silent` when stdout must
 be only JSON. Help needs no database: `featherbase --help`, or add `--help`
 to any action.
 
+### Prototype with native components
+
+Before inventing a control, browse `/gallery.html` on the development server.
+Search by name/purpose; each working specimen names its source. Import shared
+controls from `@featherbase/shop-floor` (`packages/shop-floor/src`), with `src/index.css` and the native
+query/router/theme providers. `TabBar` is phone navigation; `ContentTabs` is
+full-content section navigation. `Breadcrumbs` accepts context-preserving links.
+`SearchableList` searches an entire supplied collection, not a loaded page of
+remote results. Its render callback can mount `DataList`; cell callbacks accept
+real `TextInput`/`Select` controls, so an editable mapping needs no second grid.
+
+For the resettable synthetic starter, run from this checkout:
+
+```bash
+pnpm --filter web exec vite --config vite.prototype.config.ts
+```
+
+Open `/prototype.html` on the printed address (default port 5373; override
+`PROTOTYPE_PORT`). In an Amp orb, run that command as a supervised service and
+share its portal. The prototype server needs no database or credentials and has
+**no live API proxy**. Unknown API/file/socket actions are refused. Its separate
+origin holds synthetic identity and in-memory records; never enter real tokens.
+Normal dev-server launch refuses to initialize this entry. Production builds
+include neither its entry nor its fixtures.
+
+`src/gallery/prototype-main.tsx` is the composition point: pass a React screen
+to `createPrototypeRouter` from `PrototypeApp.tsx`. It uses actual `AdminLayout`
+with opt-in wide content; normal routes keep their existing sizing. Use generic
+`ListView`/`FormView` for metadata Tables, `DataList` for non-Table collections.
+`fixtures.ts` defines Lab Project and related Lab Task metadata/records. Scenario
+controls change their responses to populated/empty/loading/error/permission-limited;
+Reset data restores synthetic records, not planning-note drafts. Give every new
+long collection visible search and keep return context in breadcrumbs/URLs.
+
+For integration, keep those same screen imports, define the corresponding Table
+through the existing API, and open it on the **normal isolated development API**.
+Do not add a live-forwarding switch to fixture mode. The acceptance journey in
+`acceptance-tests/support/pages/prototype-library.js` compares native field
+order, labels, types and geometry across both origins, then saves and reloads
+the real form. Synthetic approval is not proof of permissions, persistence,
+concurrency or deployment readiness. Grow this library from consumer needs;
+do not fork native renderers or build a second design system.
+
 ### Configuration and troubleshooting
 
 All actions use `.env.local` at the repository root. Real environment
