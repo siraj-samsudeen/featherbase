@@ -69,7 +69,11 @@ function syntheticApi(): Plugin {
           if (request.method === 'GET' && path.startsWith('/api/user_settings/')) return send({ settings: null })
           if (request.method === 'GET' && path === '/api/saved_views') return send({ views: [] })
           if (request.method === 'GET' && path === '/api/search') return send({ results: [] })
-          if (request.method === 'POST' && ['/api/events', '/api/set_theme'].includes(path)) return send({ ok: true })
+          if (request.method === 'POST' && path === '/api/set_theme') return send({ ok: true })
+          if (request.method === 'POST' && path === '/api/events') {
+            const timestamps = (body.events as unknown[]).map(() => Date.now())
+            return send({ inserted: timestamps.length, timestamps })
+          }
           if (request.method === 'POST' && path === '/api/row_titles') {
             const requested = body.rows as { table: string; row_id: string }[]
             return send({ titles: requested.flatMap((ref) => {
