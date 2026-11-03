@@ -259,3 +259,14 @@ test('Ticking every floor at once, then unticking Ground, shows every row not on
   await waitFor(() => expect(codes()).toEqual(['R3', 'R4', 'R5', 'R6']))
   expect(chips()).toEqual(['floor in First Floor, Second Floor, Third Floor×'])
 })
+
+test('Clear unticks every choice and removes the filter', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin, [['floor', 'in', ['Ground', 'First Floor']]])
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
+  const list = openBox('floor')
+  fireEvent.click(within(list).getByRole('button', { name: 'Clear' }))
+  expect(ticked(list)).toEqual([])
+  await waitFor(() => expect(codes()).toHaveLength(6))
+  expect(chips()).toEqual([])
+})
