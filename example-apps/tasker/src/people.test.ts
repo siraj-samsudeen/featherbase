@@ -2,17 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { ApiError } from './api'
 import { listVisiblePeople } from './people'
 
-// #437: Person read is no longer granted to every signed-in principal, so a
-// Tasker user may be refused the people list. The pickers then offer the
-// people this user can see (themselves and people already on tasks) and say
-// why, instead of failing.
+// The member directory exposes names without broad Person read access.
+// A refused directory remains a restricted picker rather than a page crash.
 describe('the people list behind the Tasker pickers', () => {
-  it('passes the people through when the user may read Person', async () => {
+  it('passes the people through when the user may read the member directory', async () => {
     const people = [{ row_id: 'psn_a', full_name: 'Asha' }]
     expect(await listVisiblePeople(async () => ({ data: people }))).toEqual({ people, limited: false })
   })
 
-  it('a refused Person read (403) is an empty, limited list, not an error', async () => {
+  it('a refused member-directory read (403) is an empty, limited list, not an error', async () => {
     expect(await listVisiblePeople(async () => { throw new ApiError('No permission', 403) })).toEqual({ people: [], limited: true })
   })
 

@@ -4,8 +4,7 @@ import { connectionLabel, useConnections, type Connection } from '../lib/connect
 import { useMeta } from '../lib/meta'
 import { usePeek } from './Peek'
 import { ListView, type Filter } from './ListView'
-import { Breadcrumbs, Button, SearchableList, SearchInput, buttonClasses } from './ui'
-import { fmtCount } from '../lib/inr'
+import { Breadcrumbs, Button, SearchableList, SearchInput, buttonClasses, fmtCount } from '@featherbase/shop-floor'
 
 const connectionKey = (connection: Connection) => JSON.stringify([connection.table, connection.column, connection.via])
 

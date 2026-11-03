@@ -28,7 +28,7 @@ import { usePeek } from './Peek'
 import { GlossaryHelp } from './GlossaryHelp'
 import { ReadingPresentation } from './ReadingPresentation'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
-import { ContentTabs, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from './ui'
+import { ContentTabs, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 
@@ -1195,6 +1195,13 @@ function LinkControl({
     queryFn: () => api.get<Record<string, unknown>>(`/api/table/${encodeURIComponent(target)}/${encodeURIComponent(String(value))}`),
   })
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const blurTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const searchVersion = useRef(0)
+  useEffect(() => () => {
+    clearTimeout(timer.current)
+    clearTimeout(blurTimer.current)
+    searchVersion.current++
+  }, [])
   const peek = usePeek()
   const navigate = useNavigate()
   // #100 pattern 1: a set reference is a place you can GO — ◎ peeks at the
@@ -1221,12 +1228,14 @@ function LinkControl({
   }
 
   function search(q: string) {
+    const version = ++searchVersion.current
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
       try {
         if (picker.peopleSearch) {
           // Name, @username, address or employee code — never the id.
           const res = await api.get<{ people: { row_id: string; label: string }[] }>(`/api/people/pick?q=${encodeURIComponent(q)}`)
+          if (version !== searchVersion.current) return
           setOptions(res.people.map((p) => ({ value: p.row_id, label: p.label })))
           openList()
           return
@@ -1237,10 +1246,11 @@ function LinkControl({
           fields: label ? ['row_id', label] : ['row_id'],
           limit_page_length: 10,
         })
+        if (version !== searchVersion.current) return
         setOptions(res.data.map((r) => ({ value: r.row_id, label: label ? String(r[label] ?? '') || r.row_id : r.row_id })))
         openList()
       } catch {
-        setOptions([])
+        if (version === searchVersion.current) setOptions([])
       }
     }, 150)
   }
@@ -1264,7 +1274,9 @@ function LinkControl({
         onBlur={() => {
           // A search still waiting must not reopen the list on a cell left behind.
           clearTimeout(timer.current)
-          setTimeout(() => {
+          searchVersion.current++
+          clearTimeout(blurTimer.current)
+          blurTimer.current = setTimeout(() => {
             setOpen(false)
             // In a grid, text typed but never picked goes, so the cell shows
             // what will be saved.

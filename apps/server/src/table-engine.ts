@@ -4,6 +4,7 @@ import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
+import { accessPolicySchema, policyColumns } from './access-policy'
 import { logAccess } from './audit'
 import { deleteStored } from './storage'
 import { asNameList } from './installed-app-ledger'
@@ -115,6 +116,7 @@ export const columnSchema = z.object({
 })
 
 export const tableDefSchema = z.object({
+  access_policy: accessPolicySchema.nullish().transform(value => value ?? undefined).optional(),
   name: z
     .string()
     .regex(/^(?:[A-Za-z][A-Za-z0-9 ]{0,60}|[a-z][a-z0-9_]{0,30}\.[a-z][a-z0-9_]{0,30})$/, 'invalid Table name'),
@@ -198,6 +200,13 @@ function targetOf(f: TableDef['columns'][number]): string | undefined {
 
 function validateDef(def: TableDef) {
   const errs: Record<string, string> = {}
+  if (def.access_policy) {
+    if (def.data_source || (def.kind && def.kind !== 'table')) errs.access_policy = 'Mandatory access requires a local collection'
+    if (def.access_policy.shared_column && !def.columns.some(c => c.column_name === def.access_policy!.shared_column && c.column_type === 'Check'))
+      errs.access_policy = 'The shared column must be a Check column'
+    if (def.access_policy.inherit_column && !def.columns.some(c => c.column_name === def.access_policy!.inherit_column && c.column_type === 'Reference'))
+      errs.access_policy = 'The inherited access column must be a Reference column'
+  }
   const reading = def.reading_presentation
   if (reading) {
     const columns = new Set(def.columns.filter(f => !['Section Break', 'Column Break', 'Sub-table'].includes(f.column_type)).map(f => f.column_name))
@@ -399,6 +408,20 @@ export async function updateTable(
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
   }
   const def = parsed.data
+  if (existing.access_policy && def.access_policy && JSON.stringify(def.access_policy) !== JSON.stringify(accessPolicySchema.parse(existing.access_policy)))
+    throw new AppError('PermissionError', 'An existing mandatory access policy cannot be changed through the schema editor')
+  if (existing.access_policy) {
+    def.access_policy = existing.access_policy
+    for (const name of policyColumns(existing.access_policy)) {
+      const before = existing.columns.find(column => column.column_name === name)
+      const after = def.columns.find(column => column.column_name === name)
+      if (!before || !after || before.column_type !== after.column_type ||
+          (before.reference_table ?? null) !== (after.reference_table ?? null) ||
+          (before.default_value ?? null) !== (after.default_value ?? null) ||
+          Boolean(before.reqd) !== Boolean(after.reqd))
+        throw new AppError('PermissionError', 'Columns that define mandatory access cannot be removed or redefined')
+    }
+  }
   // person-identities (D9): a Person email is unique ignoring case through the
   // index user_email_lower_uq. A column-level `unique` would re-add the
   // case-sensitive user_email_uq beside it, so it is refused here.
@@ -493,6 +516,7 @@ export async function updateTable(
       description: def.description ?? null,
       // Only when given: an update that leaves it out keeps the Table's choice.
       ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
+      ...(def.access_policy !== undefined ? { access_policy: def.access_policy } : {}),
       updated_at: new Date(),
     })} where name = ${name}`
 
@@ -731,6 +755,7 @@ export async function createTable(
       system: def.system ?? false,
     }
     if (def.decides_scope) tableRow.decides_scope = true
+    if (def.access_policy) tableRow.access_policy = def.access_policy
     if (qualified) {
       tableRow.label = def.label ?? def.name.split('.')[1]
       tableRow.owner_app = ownerApp
@@ -793,6 +818,7 @@ export async function createTable(
 export async function deleteTable(name: string, user = 'Administrator', opts: { ownerApp?: string } = {}): Promise<void> {
   const meta = await getMeta(name)
   assertNotSystemWritten(meta, 'deleted')
+  if (meta.access_policy) throw new AppError('PermissionError', 'A protected Table must retain its access policy for private history')
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be deleted`)
 
@@ -911,6 +937,8 @@ export async function renameColumn(
   user = 'Administrator',
 ): Promise<TableMeta> {
   const meta = await getMeta(table)
+  if (policyColumns(meta.access_policy).includes(from))
+    throw new AppError('PermissionError', 'A column that defines mandatory access cannot be renamed')
   assertNotSystemWritten(meta, 'renamed or changed')
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be changed`)
@@ -1120,6 +1148,8 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
 // (SAFE_TYPE_CHANGES); anything else is refused.
 export async function changeColumnType(table: string, column: string, to: string): Promise<TableMeta> {
   const meta = await getMeta(table)
+  if (policyColumns(meta.access_policy).includes(column))
+    throw new AppError('PermissionError', 'A column that defines mandatory access cannot change type')
   assertNotSystemWritten(meta, 'changed')
   if (meta.system || meta.data_source)
     throw new AppError('ValidationError', `${meta.name}'s column types are not changed here`)

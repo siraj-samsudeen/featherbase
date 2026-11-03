@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, listResource } from '../lib/api'
 import { useRowCapabilities } from '../lib/row-capabilities'
-import { cardClasses, iconButtonClasses, touchLinkClasses, touchRowClasses } from './ui'
+import { cardClasses, iconButtonClasses, touchLinkClasses, touchRowClasses } from '@featherbase/shop-floor'
 
 interface FileRow {
   row_id: string

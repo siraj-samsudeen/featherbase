@@ -364,10 +364,15 @@ describe('#101: GET /api/activity_feed', () => {
   })
 
   test("'team' counts one person's long run of edits in full, and reaches the change before it", async ({ admin }) => {
-    const base = Date.now() - 3_600_000
+    const [{ latest }] = await sql`select greatest(
+      (select max(created_at) from version),
+      (select max(created_at) from activity_log)
+    ) as latest`
+    const base = new Date(latest ?? Date.now()).getTime() + 1000
     const at = (s: number) => new Date(base + s * 1000)
     // Newest first: 45 edits of one row, then (older) one edit of another.
-    // An hour ago, so nothing else in the run's span can sit between them.
+    // After persisted activity, so a restored database's age cannot place
+    // an unrelated change inside this synthetic run.
     await sql`insert into version ${sql([
       { row_id: 'feed-run-older', created_by: 'Administrator', updated_by: 'Administrator', created_at: at(0), updated_at: at(0), status: 'draft', ref_table: 'Feed Run DT', ref_name: 'run-b', data: '{}' },
       ...Array.from({ length: 45 }, (_, i) => ({

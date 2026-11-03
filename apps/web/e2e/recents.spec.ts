@@ -17,7 +17,9 @@ test('#827: typed results follow keyboard selection across groups', async ({ ses
     ]) {
       await page.keyboard.press('Meta+k')
       await bar.fill('person')
-      await expect(page.getByTestId('awesomebar-doc')).toBeVisible()
+      const record = page.getByRole('option', { name: 'Person Table definition', exact: true })
+      await expect(record).toBeVisible()
+      const targetChoice = target === 'awesomebar-doc' ? record : page.getByTestId(target)
       const choices = page.getByTestId('awesomebar-results').locator('a, button')
       const count = await choices.count()
       for (let i = 0; i < count; i++) {
@@ -31,13 +33,13 @@ test('#827: typed results follow keyboard selection across groups', async ({ ses
       await bar.press('ArrowUp')
       await expect(choices.last()).toHaveAttribute('aria-selected', 'true')
       for (let i = 0; i < count; i++) {
-        if (await page.getByTestId(target).getAttribute('aria-selected') === 'true') break
+        if (await targetChoice.getAttribute('aria-selected') === 'true') break
         await bar.press('ArrowUp')
       }
-      await expect(page.getByTestId(target)).toHaveAttribute('aria-selected', 'true')
+      await expect(targetChoice).toHaveAttribute('aria-selected', 'true')
       // Modified arrows must not change the result selection.
       await bar.press('Meta+ArrowDown')
-      await expect(page.getByTestId(target)).toHaveAttribute('aria-selected', 'true')
+      await expect(targetChoice).toHaveAttribute('aria-selected', 'true')
       await bar.press('Enter')
       await expect(page).toHaveURL(new RegExp(`${path}$`))
       await expect(page.getByTestId('awesomebar-results')).toBeHidden()
@@ -73,7 +75,7 @@ test('#827: a replacement search cannot activate the previous query record', asy
     const bar = page.getByRole('textbox', { name: 'Search or type a command' })
     await page.keyboard.press('Meta+k')
     await bar.fill('person')
-    await expect(page.getByTestId('awesomebar-doc')).toBeVisible()
+    await expect(page.getByRole('option', { name: 'Person Table definition', exact: true })).toBeVisible()
     await bar.fill('Sign In Meth')
     await bar.press('Enter')
     await expect(bar).not.toBeFocused()

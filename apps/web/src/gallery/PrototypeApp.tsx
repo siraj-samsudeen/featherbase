@@ -5,7 +5,7 @@ import { parseFilters } from 'shared'
 import { AdminLayout } from '../pages/AdminLayout'
 import { ListView, type Filter } from '../components/ListView'
 import { FormView } from '../components/FormView'
-import { Breadcrumbs, Button, Notice, SearchInput, Select, Skeleton } from '../components/ui'
+import { Breadcrumbs, Button, Notice, SearchInput, Select, Skeleton } from '@featherbase/shop-floor'
 import { labScenarios, type LabScenario } from './fixtures'
 
 /** Uses server filters, not a search of the currently loaded page. */

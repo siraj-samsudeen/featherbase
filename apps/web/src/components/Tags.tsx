@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses, pillClasses, touchTargetClasses } from './ui'
+import { buttonClasses, cardClasses, inputClasses, pillClasses, touchTargetClasses } from '@featherbase/shop-floor'
 
 // UI-017: free-form tags on a row.
 export function Tags({ table, name, readOnly = false }: { table: string; name: string; readOnly?: boolean }) {

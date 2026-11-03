@@ -4,9 +4,9 @@ import { Link as RouterLink } from '@tanstack/react-router'
 import { choiceLabel } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { useMeta } from '../lib/meta'
+import { buttonClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 import { useI18n } from '../lib/i18n'
-import { buttonClasses, inputClasses, pillClasses } from './ui'
-import { fmtCount } from '../lib/inr'
 
 type Row = Record<string, unknown>
 

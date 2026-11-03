@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PrincipalName } from '../lib/people'
-import { cardClasses } from './ui'
+import { cardClasses, fmtInstant } from '@featherbase/shop-floor'
 import { activityQuery, AuthorInitials, type VersionRow } from './Comments'
-import { fmtInstant } from '../lib/inr'
 import { useMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 

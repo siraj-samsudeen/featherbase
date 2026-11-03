@@ -35,9 +35,9 @@ import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
-import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '../components/ui'
-import { Bell, BookOpen, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
-import { fmtCount } from '../lib/inr'
+import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { Bell, BookOpen, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 
 interface SearchHit {
   table: string

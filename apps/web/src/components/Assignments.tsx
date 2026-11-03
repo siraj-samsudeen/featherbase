@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, listResource } from '../lib/api'
 import { ShownName } from '../lib/people'
-import { buttonClasses, cardClasses, inputClasses } from './ui'
+import { buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
 
 interface ToDoRow {
   row_id: string

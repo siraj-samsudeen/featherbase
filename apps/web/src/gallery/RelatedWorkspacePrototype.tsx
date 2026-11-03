@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Breadcrumbs, ContentTabs, SearchableList, SearchInput, Button, buttonClasses } from '../components/ui'
+import { Breadcrumbs, ContentTabs, SearchableList, SearchInput, Button, buttonClasses } from '@featherbase/shop-floor'
 import { FormView } from '../components/FormView'
 import { ListView, type Filter } from '../components/ListView'
 import { useConnections, type Connection } from '../lib/connections'

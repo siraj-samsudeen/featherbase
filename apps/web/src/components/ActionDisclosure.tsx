@@ -1,6 +1,5 @@
 import { useId, useRef, useState, type ReactNode } from 'react'
-import { buttonClasses, cardClasses } from './ui'
-import { ChevronDown } from './ui/icons'
+import { buttonClasses, cardClasses, ChevronDown } from '@featherbase/shop-floor'
 
 /** Ordinary links/buttons keep their native keyboard behavior inside the disclosure. */
 export function ActionDisclosure({ label, children }: { label: string; children: ReactNode }) {
