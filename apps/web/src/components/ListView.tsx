@@ -1697,9 +1697,24 @@ function RecentStrip({
 }) {
   const { t } = useI18n()
   const meta = useMeta(table)
+  const queryClient = useQueryClient()
   const user = getSessionUser()
   const entries = user ? recentActions(user.row_id, 60) : []
-  const rows = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${table}/`)).slice(0, 4)
+  const remembered = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${table}/`)).slice(0, 8)
+  // #741: history outlives rows. Offer only rows the server still has for this
+  // reader (row_titles answers for those alone), and none until it has said.
+  const ids = remembered.map((e) => e.label)
+  const present = useQuery({
+    queryKey: ['recent-strip-rows', table, ids],
+    enabled: ids.length > 0,
+    queryFn: async () => {
+      const { titles } = await api.post<{ titles: Array<{ table: string; row_id: string; title: string }> }>(
+        '/api/row_titles', { rows: ids.map((row_id) => ({ table, row_id })) })
+      for (const t of titles) queryClient.setQueryData(['row-title', table, t.row_id], t.title)
+      return new Set(titles.map((t) => t.row_id))
+    },
+  })
+  const rows = remembered.filter((e) => present.data?.has(e.label)).slice(0, 4)
   const views = entries
     .map((e) => {
       if (e.kind !== 'list' || !e.key.startsWith(`list:${table}?`)) return null
