@@ -26,7 +26,7 @@ async function seedMerch(admin: Client) {
 }
 
 async function rememberRow(admin: Client, at: number) {
-  const read = await admin.fetch(`/api/table/${encodeURIComponent(MERCH)}/${encodeURIComponent(MERCH_ROW)}`)
+  const read = await admin.fetch(`/api/table/${encodeURIComponent(MERCH)}/${encodeURIComponent(MERCH_ROW)}`, { headers: { 'X-Navigation-Visit': '1' } })
   expect(read.status).toBe(200)
   const claim = read.headers.get('X-Navigation-Claim')!
   expect(claim).toBeTruthy()
@@ -98,7 +98,7 @@ test('My activity: under a day heading, the kind icon, "You opened …", repeats
 
 test('My activity titles an opened row from its values', async ({ admin }) => {
   await seedMerch(admin)
-  const read = await admin.fetch(`/api/table/${encodeURIComponent(MERCH)}/${encodeURIComponent(MERCH_ROW)}`)
+  const read = await admin.fetch(`/api/table/${encodeURIComponent(MERCH)}/${encodeURIComponent(MERCH_ROW)}`, { headers: { 'X-Navigation-Visit': '1' } })
   expect(read.status).toBe(200)
   await admin.post('/api/events', {
     events: [{ kind: 'row', key: `row:${MERCH}/${MERCH_ROW}`, label: MERCH_ROW, sub: MERCH,

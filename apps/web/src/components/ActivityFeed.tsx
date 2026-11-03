@@ -77,16 +77,24 @@ export function ActivityFeed() {
   // Live invalidation: 'feed' is the payload-free team ping (the server only
   // grants that channel to System Managers); 'feed_mine' arrives on the
   // caller's own channel when one of their event batches lands.
+  const [navigationPending, setNavigationPending] = useState(false)
   const user = getSessionUser()
   useRealtime(
     [...(isSystemManager ? ['feed'] : []), ...(user ? [`user:${user.row_id}`, 'navigation'] : [])],
     (e) => {
+      if (e.channel === 'navigation' && e.event === 'invalidated') {
+        setNavigationPending(true)
+        void queryClient.cancelQueries({ queryKey: ['activity-feed', 'mine'] })
+        return
+      }
+      if (e.channel === 'feed' && scope === 'mine') return
       if (e.event === 'changed' || e.event === 'feed_mine')
         void queryClient.invalidateQueries({ queryKey: ['activity-feed'] })
+      if (e.channel === 'navigation') setNavigationPending(false)
     },
   )
 
-  const items = feed.data?.items ?? []
+  const items = scope === 'mine' && (navigationPending || feed.isFetching || feed.isError) ? [] : feed.data?.items ?? []
 
   return (
     <div className={cardClasses('overflow-hidden')} data-testid="activity-feed">

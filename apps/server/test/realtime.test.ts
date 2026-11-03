@@ -27,6 +27,22 @@ function collect(): { events: RealtimeEvent[]; stop: () => void } {
 }
 
 describe('realtime event bus', () => {
+  test('a bulk mutation hides stale navigation immediately and coalesces its refresh', async () => {
+    // Let any prior mutation's bounded refresh finish before this burst.
+    await new Promise(resolve => setTimeout(resolve, 300))
+    const { events, stop } = collect()
+    try {
+      for (let i = 0; i < 500; i++) publishDocEvent('Task', `TASK-${i}`, 'updated')
+      expect(events.filter(e => e.channel === 'navigation')).toEqual([
+        { channel: 'navigation', event: 'invalidated', payload: undefined },
+      ])
+      await expect.poll(() => events.filter(e => e.channel === 'navigation')).toEqual([
+        { channel: 'navigation', event: 'invalidated', payload: undefined },
+        { channel: 'navigation', event: 'changed', payload: undefined },
+      ])
+    } finally { stop() }
+  })
+
   test('publishDocEvent emits both list and doc channel events', () => {
     const { events, stop } = collect()
     publishDocEvent('Task', 'TASK-1', 'created')

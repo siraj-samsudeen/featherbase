@@ -199,7 +199,7 @@ describe('runtime upgrades', () => {
       await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'north', quantity: 17 } })
       const events = []
       for (const row of [undefined, 'north']) {
-        const read = await admin.fetch(`/api/table/other.task${row ? `/${row}` : ':meta'}`)
+        const read = await admin.fetch(`/api/table/other.task${row ? `/${row}` : ':meta'}`, { headers: { 'X-Navigation-Visit': '1' } })
         expect(read.status).toBe(200)
         events.push({ kind: row ? 'row' : 'list', key: row ? 'row:other.task/north' : 'list:other.task?',
           label: row ?? 'other.task', path: `/featherbase/admin/other.task${row ? `/${row}` : ''}`, claim: read.headers.get('X-Navigation-Claim') })

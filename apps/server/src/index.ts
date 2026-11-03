@@ -2196,7 +2196,7 @@ app.get('/api/table/:table', async (c) => {
     const meta = await getMeta(table)
     await assertPermission(user.row_id, meta.name, 'read')
     return withTransaction(async () => {
-      const claim = await captureNavigation(user.row_id, table)
+      const claim = c.req.header('X-Navigation-Visit') === '1' ? await captureNavigation(user.row_id, table) : null
       const meta = await getMeta(table)
       // #738: the caller's readable levels ride beside the cached meta, never
       // inside it — the meta object is shared by every caller.
@@ -2263,6 +2263,7 @@ app.get('/api/table/:table/:name', async (c) => {
       throw new AppError('NotFoundError', `No readable row action ":${suffix}"`)
     return c.json(await action.handler({ table, name, args: c.req.query(), user }))
   }
+  if (c.req.header('X-Navigation-Visit') !== '1') return c.json(await getDoc(table, name, user.row_id))
   return withTransaction(async () => {
     const claim = await captureNavigation(user.row_id, table, name)
     const doc = await getDoc(table, name, user.row_id)

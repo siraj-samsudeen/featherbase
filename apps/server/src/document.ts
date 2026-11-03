@@ -1636,6 +1636,10 @@ async function renameDocImpl(
     await assertChildRowsWritable(stx, meta, oldName, user)
     // Rename the row itself.
     await tx`update ${tx(tbl)} set ${tx(meta.row_key)} = ${target}, updated_at = now() where ${tx(meta.row_key)} = ${oldName}`
+    // Reference-to-Table sweeps can have removed the former target row.
+    // Its retired lifetime must not collide with the row moving into its ID.
+    await tx`update navigation_row_target set retired = true
+      where table_identity = ${definition.navigation_identity} and row_id = ${target} and not retired`
     await tx`update navigation_row_target set row_id = ${target}
       where table_identity = ${definition.navigation_identity} and row_id = ${oldName} and not retired`
 

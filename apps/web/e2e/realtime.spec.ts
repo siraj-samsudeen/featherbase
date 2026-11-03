@@ -105,9 +105,15 @@ test('RT-001: a doc created in one session appears in another session list', asy
     // does not mean the home feed has mounted or finished its initial read.
     await expect(page.getByTestId('feed-item').first()).toBeVisible()
     await waitForRealtime(page, 'user:Administrator')
+    const visited = await a.request.get(`/api/table/${encodeURIComponent(DT)}/${uniq}`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Navigation-Visit': '1' },
+    })
+    expect(visited.status()).toBe(200)
+    const claim = visited.headers()['x-navigation-claim']
+    expect(claim).toBeTruthy()
     const recorded = await a.request.post('/api/events', {
       headers: { Authorization: `Bearer ${token}` },
-      data: { events: [{ kind: 'row', key: `row:${DT}/${uniq}`, label: uniq, sub: DT, path: `/featherbase/admin/${encodeURIComponent(DT)}/${uniq}` }] },
+      data: { events: [{ kind: 'row', key: `row:${DT}/${uniq}`, label: uniq, sub: DT, path: `/featherbase/admin/${encodeURIComponent(DT)}/${uniq}`, claim }] },
     })
     expect(recorded.status()).toBe(200)
     await expect(page.getByTestId('activity-feed')).toContainText(uniq)
@@ -202,4 +208,50 @@ test('RT-003: an @mention pops the mentioned user unread count live', async ({ b
   expect(startCount).toBe(0)
   await ctxA.close()
   await ctxB.close()
+})
+
+test('Home coalesces a bulk edit while subscribed to team activity', async ({ browser }) => {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  const session = createSession(page)
+  let teamFrames = 0
+  page.on('websocket', socket => socket.on('framereceived', ({ payload }) => {
+    const frame = JSON.parse(String(payload))
+    if (frame.channel === 'feed') teamFrames++
+  }))
+  try {
+    await session.step('sign in as Administrator', () => loginAs(page, 'Administrator', ADMIN_PWD))
+    const token = await page.evaluate(() => localStorage.getItem('fc_token'))
+    const headers = { Authorization: `Bearer ${token}` }
+    const rows = Array.from({ length: 20 }, (_, i) => `rt-bulk-${Date.now()}-${i}`)
+    for (const row_id of rows) {
+      const response = await page.request.post(`/api/table/${encodeURIComponent(DT)}`, {
+        headers, data: { row_id, title: 'Before bulk edit' },
+      })
+      expect(response.status()).toBe(201)
+    }
+    await session.visit('/featherbase/admin').assertHas('[data-testid="home-page"]')
+    await session.step('wait for Home and team subscriptions to settle', async () => {
+      await waitForRealtime(page, 'feed')
+      await waitForRealtime(page, 'navigation')
+      await expect(page.getByTestId('feed-tab-mine')).toBeVisible()
+      await page.waitForLoadState('networkidle')
+    })
+    let projections = 0
+    page.on('request', request => {
+      if (new URL(request.url()).pathname === '/api/home_resume') projections++
+    })
+    teamFrames = 0
+    await session.step('a bulk edit refreshes Home once, not once per team ping', async () => {
+      const response = await page.request.post(`/api/table/${encodeURIComponent(DT)}:bulk-edit`, {
+        headers, data: { rows, values: { title: 'After bulk edit' } },
+      })
+      expect(response.status()).toBe(201)
+      expect(await response.json()).toEqual({ changed: 20 })
+      await expect.poll(() => teamFrames).toBe(20)
+      await expect.poll(() => projections).toBeGreaterThan(0)
+      await page.waitForLoadState('networkidle')
+      expect(projections).toBe(1)
+    })
+  } finally { await context.close() }
 })

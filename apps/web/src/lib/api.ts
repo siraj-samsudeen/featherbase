@@ -139,7 +139,7 @@ export const api = {
   get: <T>(path: string) => request<T>(path),
   getNavigation: async <T>(path: string) => {
     const navigation: { claim?: string } = {}
-    const data = await request<T>(path, {}, navigation)
+    const data = await request<T>(path, { headers: { 'X-Navigation-Visit': '1' } }, navigation)
     return { data, claim: navigation.claim }
   },
   post: <T>(path: string, body?: unknown) =>

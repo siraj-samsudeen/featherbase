@@ -42,6 +42,7 @@ export function ResumeStrip() {
   const user = getSessionUser()
   const client = useQueryClient()
   const [revision, setRevision] = useState(0)
+  const [navigationPending, setNavigationPending] = useState(false)
   useEffect(() => {
     const refresh = () => setRevision(v => v + 1)
     window.addEventListener('navigation-history-updated', refresh)
@@ -56,12 +57,24 @@ export function ResumeStrip() {
       hints: user ? recentActions(user.row_id, 40).map(e => ({ ...e, at: e.visits.at(-1) })) : [],
     }),
   })
-  useRealtime(user ? [`user:${user.row_id}`, 'navigation'] : [], () => {
-    void client.invalidateQueries({ queryKey: ['home-resume'] })
+  useRealtime(user ? [`user:${user.row_id}`, 'navigation'] : [], event => {
+    // The shared socket forwards all channels watched by any component.
+    // Team-feed writes and unrelated row subscriptions are not Home changes.
+    const subscribed = event.channel === 'system' && event.event === 'subscribed'
+      && (event.payload as { channels?: string[] } | undefined)?.channels?.includes('navigation')
+    if (event.channel !== 'navigation' && !subscribed
+      && !(event.channel === `user:${user?.row_id}` && event.event === 'feed_mine')) return
+    if (event.event === 'invalidated') {
+      setNavigationPending(true)
+      void client.cancelQueries({ queryKey: ['home-resume'] })
+    } else {
+      void client.invalidateQueries({ queryKey: ['home-resume'] })
+      if (event.channel === 'navigation' || subscribed) setNavigationPending(false)
+    }
   })
   if (!user) return null
   // Never flash a cached destination while a required recheck is outstanding.
-  const entries = !projection.isFetching && !projection.isError ? projection.data?.entries ?? [] : []
+  const entries = !navigationPending && !projection.isFetching && !projection.isError ? projection.data?.entries ?? [] : []
   const lastRow = entries.find((e) => e.kind === 'row')
   const lastView = entries.find((e) => e.kind === 'list' || e.kind === 'page')
   const lastSearch = entries.find((e) => e.kind === 'search')

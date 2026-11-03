@@ -856,16 +856,25 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
       if (f.column_type !== 'Sub-table') continue
       const children = await tx<{ row_id: string }[]>`
         delete from ${tx(await storedRelation(f.row_table!))} where parenttype = ${meta.name} returning row_id`
+      if (children.length) await tx`update navigation_row_target set retired = true
+        where table_identity = (select navigation_identity from table_def where name = ${f.row_table!})
+          and row_id in ${tx(children.map(r => r.row_id))} and not retired`
       if (children.length) removedFiles.push(...await tx<{ file_url: string | null }[]>`
         delete from file where ref_table = ${f.row_table!} and ref_name in ${tx(children.map((r) => r.row_id))}
         returning file_url`)
     }
     removedFiles.push(...await tx<{ file_url: string | null }[]>`
       delete from file where ref_table = ${meta.name} returning file_url`)
-    for (const p of pointers)
-      await tx`
+    for (const p of pointers) {
+      const removed = await tx<{ row_id: string }[]>`
         delete from ${tx(await storedRelation(p.parent))}
-        where ${tx(p.column_name)} = ${meta.name}`
+        where ${tx(p.column_name)} = ${meta.name} returning row_id`
+      if (removed.length) await tx`update navigation_row_target set retired = true
+        where table_identity = (select navigation_identity from table_def where name = ${p.parent})
+          and row_id in ${tx(removed.map(r => r.row_id))} and not retired`
+    }
+    await tx`update navigation_row_target set retired = true
+      where table_identity = (select navigation_identity from table_def where name = ${meta.name}) and not retired`
     await tx`delete from column_def where parent = ${meta.name}`
     await tx`delete from table_def where name = ${meta.name}`
     // DEL-R6/BV1: a bound Table sheds its binding, never its source's
@@ -949,6 +958,9 @@ export async function renameColumn(
   const hasStorage = pgType(column.column_type) !== null && meta.kind !== 'settings'
 
   await sql.begin(async (tx) => {
+    // Match navigation capture's definition -> relation ordering; ALTER
+    // must not hold the relation while waiting for the definition it reads.
+    await tx`select name from table_def where name = ${meta.name} for update`
     if (hasStorage)
       await tx.unsafe(`alter table ${relation} rename column ${quoteIdent(from)} to ${quoteIdent(target)}`)
     await tx`update column_def set column_name = ${target}

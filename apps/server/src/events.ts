@@ -69,6 +69,11 @@ export async function recordEvents(user: string, events: IncomingEvent[]): Promi
   await sql`
     delete from user_event
     where occurred_at < now() - make_interval(days => ${RETENTION_DAYS})`
+  // Navigation metadata is not testimony. Retired lifetimes can disappear
+  // once no retained event refers to them; never infer/backfill old events.
+  await sql`delete from navigation_row_target target where retired and not exists (
+    select 1 from user_event where destination->>'row' = target.id::text
+  )`
   return rows.map((row) => row.occurred_at.getTime())
 }
 

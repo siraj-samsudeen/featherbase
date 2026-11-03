@@ -155,10 +155,19 @@ export function publishDocEvent(
   publishNavigationChange()
 }
 
-// Payload-free invalidation: no Table/row existence or title is disclosed.
-// Home must obtain a fresh, caller-authorized projection after any mutation.
+let navigationRefresh: ReturnType<typeof setTimeout> | undefined
+
+// Hide stale destinations immediately, but resolve at most one projection
+// per burst instead of up to 500 refetches for a bulk mutation. Both signals
+// are payload-free: no Table/row existence or title is disclosed.
 export function publishNavigationChange(): void {
-  publish('navigation', 'changed')
+  if (navigationRefresh) return
+  publish('navigation', 'invalidated')
+  navigationRefresh = setTimeout(() => {
+    navigationRefresh = undefined
+    publish('navigation', 'changed')
+  }, 250)
+  navigationRefresh.unref()
 }
 
 export function publishUserEvent(user: string, event: string, payload?: unknown): void {

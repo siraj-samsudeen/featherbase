@@ -3,6 +3,7 @@
 // show their title, and the Team tab names the person with their main role.
 
 import { screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { sql } from 'server/src/db'
 import { logActivity } from 'server/src/audit'
@@ -31,7 +32,7 @@ test('My activity: honest verbs, page titles, a List icon, "You" as the subject'
 }) => {
   const me = await createUser({ roles: ['System Manager'], fullName: 'Sample Person' })
   await me.post('/api/table_def', { name: 'Task', columns: [{ column_name: 'title', column_type: 'Data' }] })
-  const claim = (await me.fetch('/api/table/Task:meta')).headers.get('X-Navigation-Claim')
+  const claim = (await me.fetch('/api/table/Task:meta', { headers: { 'X-Navigation-Visit': '1' } })).headers.get('X-Navigation-Claim')
   const filters = JSON.stringify([['status', '=', 'Overdue']])
   await me.post('/api/events', {
     events: [
@@ -60,7 +61,7 @@ test('My activity: honest verbs, page titles, a List icon, "You" as the subject'
 test('#873 deleted Table history is struck through and noninteractive, while unproven history is unavailable', async ({ createUser }) => {
   const me = await createUser({ roles: ['System Manager'] })
   await me.post('/api/table_def', { name: 'Former Plant', columns: [{ column_name: 'title', column_type: 'Data' }] })
-  const read = await me.fetch('/api/table/Former%20Plant:meta')
+  const read = await me.fetch('/api/table/Former%20Plant:meta', { headers: { 'X-Navigation-Visit': '1' } })
   await me.post('/api/events', { events: [
     { kind: 'list', key: 'list:Former Plant?', label: 'Former Plant', path: '/featherbase/admin/Former%20Plant', claim: read.headers.get('X-Navigation-Claim') },
     { kind: 'row', key: 'row:Unknown/north', label: 'Hidden title', path: '/featherbase/admin/Unknown/north' },
@@ -81,6 +82,31 @@ test('#873 deleted Table history is struck through and noninteractive, while unp
     expect(within(row).queryByRole('link')).toBeNull()
     expect(row.querySelector('time')).not.toBeNull()
   }
+})
+
+test('a failed personal-history recheck cannot restore cached destinations', async ({ createUser }) => {
+  const me = await createUser({ roles: ['System Manager'] })
+  await me.post('/api/table_def', { name: 'Earlier Plant', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  const read = await me.fetch('/api/table/Earlier%20Plant:meta', { headers: { 'X-Navigation-Visit': '1' } })
+  await me.post('/api/events', { events: [{ kind: 'list', key: 'list:Earlier Plant?', label: 'Earlier Plant',
+    path: '/featherbase/admin/Earlier%20Plant', claim: read.headers.get('X-Navigation-Claim') }] })
+  const { queryClient } = await renderApp('/featherbase/admin', me)
+  const feed = await screen.findByTestId('activity-feed')
+  await waitFor(() => expect(feed).toHaveTextContent('Earlier Plant'))
+  await sql`delete from has_role where parent = ${me.user!}`
+  // A failed HTTP recheck after access loss must not revive the old cache.
+  const original = globalThis.fetch
+  const outage = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    if (String(input).startsWith('/api/activity_feed'))
+      return Promise.resolve(new Response('Service unavailable', { status: 503 }))
+    return original(input, init)
+  })
+  try {
+    await queryClient.invalidateQueries({ queryKey: ['activity-feed', 'mine'] })
+    await waitFor(() => expect(queryClient.getQueryState(['activity-feed', 'mine'])?.status).toBe('error'))
+    expect(feed).not.toHaveTextContent('Earlier Plant')
+    expect(feed.querySelector('button[data-testid="feed-object"]')).toBeNull()
+  } finally { outage.mockRestore() }
 })
 
 test('Team tab: name, then main role; nameless person falls back to the email local part', async ({

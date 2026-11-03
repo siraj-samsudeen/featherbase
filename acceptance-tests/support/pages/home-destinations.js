@@ -26,13 +26,13 @@ class HomeDestinations {
     for (const [row_id, title] of [['north', 'North depot'], ['south', 'South depot']])
       await this.admin.call('POST', `/api/table/${PLANT}`, { row_id, title }, [201], 'fixture row');
   }
-  async call(method, path, data) {
-    const response = await this.page.request.fetch(path, { method, data, headers: { ...this.admin.headers, Authorization: `Bearer ${this.token}` } });
+  async call(method, path, data, headers = {}) {
+    const response = await this.page.request.fetch(path, { method, data, headers: { ...this.admin.headers, Authorization: `Bearer ${this.token}`, ...headers } });
     expect(response.ok(), await response.text()).toBeTruthy();
     return response;
   }
   async visit(row, table = this.table) {
-    const response = await this.call('GET', `/api/table/${encodeURIComponent(table)}${row ? `/${row}` : ':meta'}`);
+    const response = await this.call('GET', `/api/table/${encodeURIComponent(table)}${row ? `/${row}` : ':meta'}`, undefined, { 'X-Navigation-Visit': '1' });
     const event = { kind: row ? 'row' : 'list', key: row ? `row:${table}/${row}` : `list:${table}?`,
       label: row || table, sub: row ? table : undefined, path: `/featherbase/admin/${encodeURIComponent(table)}${row ? `/${row}` : ''}`,
       claim: response.headers()['x-navigation-claim'], at: Date.now() };

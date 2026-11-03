@@ -41,6 +41,9 @@ function expectedRefusal(error: unknown) {
 // Capture only while holding the same definition -> native-row lock order as
 // rename/delete. Claims attest an authorized read, never grant future access.
 export async function captureNavigation(user: string, table: string, rowId?: string): Promise<string | null> {
+  // Refused readers must not lock the destination or create navigation state.
+  if (rowId !== undefined) await getDoc(table, rowId, user)
+  else await assertPermission(user, table, 'read')
   return withTransaction(async () => {
     const [definition] = await sql`select navigation_identity from table_def where name = ${table} for share`
     if (!definition) return null
@@ -49,16 +52,21 @@ export async function captureNavigation(user: string, table: string, rowId?: str
     if (rowId !== undefined) {
       if (meta.data_source || meta.kind !== 'table') return null
       const [stored] = await sql`select created_at from ${sql(await tableRelation(table))}
-        where ${sql(meta.row_key)} = ${rowId} for update`
+        where ${sql(meta.row_key)} = ${rowId} for key share`
       if (!stored?.created_at) return null
+      // renameDoc takes FOR UPDATE and changes the primary key; deleteDoc
+      // takes FOR UPDATE before deletion. Both conflict with KEY SHARE,
+      // whereas ordinary non-key updates and concurrent visits need not wait.
       await getDoc(table, rowId, user)
       await sql`update navigation_row_target set retired = true
         where table_identity = ${definition.navigation_identity} and row_id = ${rowId}
           and not retired and born_at <> ${stored.created_at}`
-      const [pointer] = await sql`insert into navigation_row_target (table_identity, row_id, born_at)
+      const [inserted] = await sql`insert into navigation_row_target (table_identity, row_id, born_at)
         values (${definition.navigation_identity}, ${rowId}, ${stored.created_at})
-        on conflict (table_identity, row_id) where not retired do update set row_id = excluded.row_id
+        on conflict (table_identity, row_id) where not retired do nothing
         returning id`
+      const pointer = inserted ?? (await sql`select id from navigation_row_target
+        where table_identity = ${definition.navigation_identity} and row_id = ${rowId} and not retired`)[0]
       row = pointer.id as string
     } else await assertPermission(user, table, 'read')
     const binding: Binding = { table: definition.navigation_identity as string, originalTable: table,

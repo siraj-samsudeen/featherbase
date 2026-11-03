@@ -12,7 +12,7 @@ describe('#101: GET /api/activity_feed', () => {
   test("'mine' returns the caller's trail newest-first", async ({ admin }) => {
     const table = await makeTable(admin, { name: 'X', columns: ['title'] })
     await admin.post(table.url, { row_id: 'A' })
-    const read = await admin.fetch(table.rowUrl('A'))
+    const read = await admin.fetch(table.rowUrl('A'), { headers: { 'X-Navigation-Visit': '1' } })
     const now = Date.now()
     await admin.post('/api/events', {
       events: [
@@ -31,7 +31,7 @@ describe('#101: GET /api/activity_feed', () => {
   test("another user's 'mine' feed never includes the caller's trail", async ({ admin, createUser }) => {
     const table = await makeTable(admin, { name: 'X', columns: ['title'] })
     await admin.post(table.url, { row_id: 'feed-private-row' })
-    const read = await admin.fetch(table.rowUrl('feed-private-row'))
+    const read = await admin.fetch(table.rowUrl('feed-private-row'), { headers: { 'X-Navigation-Visit': '1' } })
     await admin.post('/api/events', {
       events: [
         { kind: 'row', key: 'row:X/feed-private-row', label: 'feed-private-row', path: '/featherbase/admin/X/feed-private-row', at: Date.now() - 1000, claim: read.headers.get('X-Navigation-Claim') },
@@ -274,7 +274,7 @@ describe('#101: GET /api/activity_feed', () => {
   // collapsed before the limit so a page never fills with repeats.
   test("'mine' collapses consecutive repeats into one row with a count and the latest time", async ({ admin }) => {
     const table = await makeTable(admin, { name: 'Task', columns: ['title'] })
-    const read = await admin.fetch(table.metaUrl)
+    const read = await admin.fetch(table.metaUrl, { headers: { 'X-Navigation-Visit': '1' } })
     const now = Date.now()
     const explore = { kind: 'page', key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore' }
     await admin.post('/api/events', {
@@ -305,7 +305,7 @@ describe('#101: GET /api/activity_feed', () => {
       table: 'Feed Merch Map',
       row: { row_id: '1517|040802006', store_code: '1517', material_group: '040802006', mch_subcategory: 'Kurti Z' },
     })
-    const read = await admin.fetch('/api/table/Feed%20Merch%20Map/1517%7C040802006')
+    const read = await admin.fetch('/api/table/Feed%20Merch%20Map/1517%7C040802006', { headers: { 'X-Navigation-Visit': '1' } })
     await admin.post('/api/events', {
       events: [{ kind: 'row', key: 'row:Feed Merch Map/1517|040802006', label: '1517|040802006', sub: 'Feed Merch Map', path: '/featherbase/admin/Feed%20Merch%20Map/1517%7C040802006', claim: read.headers.get('X-Navigation-Claim') }],
     })

@@ -15,7 +15,7 @@ import type { TestClient } from 'feather-testing-postgres'
 const DAY = 86_400_000
 
 async function visit(client: TestClient, table: string, row?: string) {
-  const read = await client.fetch(`/api/table/${encodeURIComponent(table)}${row ? `/${row}` : ':meta'}`)
+  const read = await client.fetch(`/api/table/${encodeURIComponent(table)}${row ? `/${row}` : ':meta'}`, { headers: { 'X-Navigation-Visit': '1' } })
   expect(read.status).toBe(200)
   const event = { kind: row ? 'row' : 'list', key: row ? `row:${table}/${row}` : `list:${table}?`,
     label: row ?? table, ...(row ? { sub: table } : {}),
@@ -28,6 +28,72 @@ type Home = { entries: Array<{ label: string; path: string }> }
 type Feed = { items: Array<{ label: string; path: string; destination_state: string; sub?: string }> }
 
 describe('#873: validated Home destinations', () => {
+  test('ordinary reads do not capture visits; read-only callers can explicitly record their authorized visit', async ({ admin, createUser }) => {
+    const table = await makeTable(admin, { name: 'Resume Plant', columns: ['title'] })
+    await admin.post(table.url, { row_id: 'north', title: 'North depot' })
+    const reader = await createUserWithRole(admin, createUser, { role: 'Resume reader', table: table.name, can_read: true })
+    for (const path of [table.metaUrl, table.rowUrl('north')]) {
+      const read = await reader.fetch(path)
+      expect(read.status).toBe(200)
+      expect(read.headers.get('X-Navigation-Claim')).toBeNull()
+    }
+    expect(await sql`select id from navigation_row_target`).toEqual([])
+    const event = await visit(reader, table.name, 'north')
+    await reader.post('/api/events', { events: [event] })
+    expect((await reader.post<Home>('/api/home_resume', {})).entries[0].path).toBe(event.path)
+  })
+
+  test('singleton settings reads never manufacture a native row lifetime', async ({ admin }) => {
+    const table = await makeTable(admin, { name: 'Resume Settings', kind: 'settings', columns: ['title'] })
+    const response = await admin.fetch(table.rowUrl(table.name), { headers: { 'X-Navigation-Visit': '1' } })
+    expect(response.status).toBe(200)
+    expect(response.headers.get('X-Navigation-Claim')).toBeNull()
+    const event = { kind: 'row', key: `row:${table.name}/${table.name}`, label: table.name,
+      path: `/featherbase/admin/Resume%20Settings/Resume%20Settings` }
+    await admin.post('/api/events', { events: [event] })
+    // Pre-claim history may have recorded the singleton through its row API.
+    await sql`update user_event set destination = null`
+    await sql`update table_def set created_at = now() - interval '1 day' where name = ${table.name}`
+    expect((await admin.post<Home>('/api/home_resume', {})).entries).toEqual([])
+    expect((await admin.get<Feed>('/api/activity_feed')).items[0]).toMatchObject({ destination_state: 'unavailable', path: '' })
+  })
+
+  test('list destinations recheck current read permission for persisted events and signed hints', async ({ admin, createUser }) => {
+    const table = await makeTable(admin, { name: 'Resume Plant', columns: ['title'] })
+    const user = await createUserWithRole(admin, createUser, { role: 'Resume reader', table: table.name, can_read: true })
+    const event = await visit(user, table.name)
+    await user.post('/api/events', { events: [event] })
+    expect((await user.post<Home>('/api/home_resume', {})).entries[0].path).toBe(event.path)
+    await sql`delete from has_role where parent = ${user.user!}`
+    expect((await user.fetch(table.metaUrl, { headers: { 'X-Navigation-Visit': '1' } })).status).toBe(403)
+    expect((await user.post<Home>('/api/home_resume', { hints: [{ ...event, at: event.at + 1 }] })).entries).toEqual([])
+    expect((await user.get<Feed>('/api/activity_feed')).items[0]).toMatchObject({ destination_state: 'unavailable', path: '', label: 'Unavailable destination' })
+  })
+
+  test('sweep deletion cannot collide with a later rename, and retired targets follow event retention', async ({ admin }) => {
+    const victim = await makeTable(admin, { name: 'Resume Deleted', columns: ['title'] })
+    const table = await makeTable(admin, { name: 'Resume Plant', columns: [
+      'title', { column_name: 'target', column_type: 'Reference', reference_table: 'Table' },
+    ], title_column: 'title' })
+    await admin.post(table.url, { row_id: 'south', title: 'Surviving depot' })
+    await admin.post(table.url, { row_id: 'north', title: 'Deleted depot', target: victim.name })
+    const events = [await visit(admin, table.name, 'south'), await visit(admin, table.name, 'north')]
+    await admin.post('/api/events', { events })
+    const testimony = await sql`select * from user_event order by row_id`
+    await admin.delete(victim.defUrl)
+    await admin.post(`${table.url}/south:rename`, { new_name: 'north' })
+    expect((await admin.post<Home>('/api/home_resume', {})).entries).toEqual([
+      expect.objectContaining({ path: '/featherbase/admin/Resume%20Plant/north', label: 'Surviving depot' }),
+    ])
+    expect((await admin.get<Feed>('/api/activity_feed')).items.some(item => item.destination_state === 'unavailable')).toBe(true)
+    expect(await sql`select * from user_event order by row_id`).toEqual(testimony)
+    expect((await sql`select id from navigation_row_target where retired`)).toHaveLength(1)
+    await sql`update user_event set occurred_at = now() - interval '91 days' where ref_key = ${events[1].key}`
+    await admin.post('/api/events', { events: [{ kind: 'search', key: 'search:depot', label: 'depot' }] })
+    expect(await sql`select id from navigation_row_target where retired`).toEqual([])
+    expect((await admin.post<Home>('/api/home_resume', {})).entries.find(entry => entry.path.endsWith('/north'))?.label).toBe('Surviving depot')
+  })
+
   test('row rename follows the original lifetime after old-ID reuse', async ({ admin }) => {
     const table = await makeTable(admin, { name: 'Resume Plant', columns: ['title'], title_column: 'title' })
     await admin.post(table.url, { row_id: 'north', title: 'North depot' })
@@ -47,7 +113,10 @@ describe('#873: validated Home destinations', () => {
   })
 
   test('delayed delivery never binds a replacement Table', async ({ admin }) => {
-    const def = { name: 'Resume Plant', columns: ['title'] }
+    await makeTable(admin, { name: 'Resume Detail', kind: 'sub_table', columns: ['title'] })
+    const def = { name: 'Resume Plant', columns: ['title',
+      { column_name: 'details', column_type: 'Sub-table', row_table: 'Resume Detail' },
+    ] }
     const table = await makeTable(admin, def)
     await admin.post(table.url, { row_id: 'north', title: 'North depot' })
     const event = await visit(admin, table.name, 'north')
@@ -212,9 +281,9 @@ describe('#873: validated Home destinations', () => {
     const event = await visit(admin, table.name)
     const filters = JSON.stringify([['title', '=', 'North depot']])
     const filtered = { ...event, key: `list:${table.name}/kanban?${filters}`,
-      path: `${event.path}/view/kanban?filters=${encodeURIComponent(filters)}` }
+      path: `${event.path}/view/kanban?filters=${encodeURIComponent(filters)}`, sub: 'North depots' }
     const home = await admin.post<Home>('/api/home_resume', { hints: [filtered] })
-    expect(home.entries).toEqual([expect.objectContaining({ path: filtered.path })])
+    expect(home.entries).toEqual([expect.objectContaining({ path: filtered.path, sub: 'North depots' })])
     expect(await sql`select * from user_event`).toEqual([])
     for (const invalid of [
       { ...event, claim: null }, { ...event, key: `list:${table.name}/bad-mode?` },
@@ -263,7 +332,7 @@ describe('#873: validated Home destinations', () => {
     ] })).entries
     expect(entries).toHaveLength(3)
     expect(entries.map(e => e.path)).toEqual(['', '/featherbase/admin/explore', event.path])
-    for (const path of ['https://evil.example/', '/featherbase/admin/not-a-page'])
+    for (const path of [undefined, 'https://evil.example/', '/featherbase/admin/not-a-page'])
       expect((await admin.post<Home>('/api/home_resume', { hints: [{ kind: 'page', key: 'page:unknown', path }] })).entries).toEqual([])
   })
 
@@ -280,7 +349,7 @@ describe('#873: validated Home destinations', () => {
     const table = await makeTable(admin, { name: 'Resume Plant', columns: ['title'], title_column: 'title' })
     for (const row_id of ['south', 'north']) {
       await admin.post(table.url, { row_id, title: `${row_id} depot` })
-      const read = await admin.fetch(`${table.url}/${row_id}`)
+      const read = await admin.fetch(`${table.url}/${row_id}`, { headers: { 'X-Navigation-Visit': '1' } })
       await admin.post('/api/events', { events: [{ kind: 'row', key: `row:${table.name}/${row_id}`,
         label: row_id, sub: table.name, path: `/featherbase/admin/${encodeURIComponent(table.name)}/${row_id}`,
         claim: read.headers.get('X-Navigation-Claim') }] })
