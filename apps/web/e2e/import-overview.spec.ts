@@ -165,8 +165,22 @@ test('only the chosen sheet reaches the column step, and importing it leaves the
 
     await page.getByTestId('iw-new-name-0').fill(PICKED_DT)
     await page.getByTestId('iw-import').click()
-    await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
+    // A single imported target opens its list; the wizard's result is only
+    // transient. Verify the durable destination instead of racing navigation.
+    await expect(page.getByTestId('list-rows').locator('tr')).toHaveCount(2)
+    await expect(page.getByTestId('list-rows')).toContainText('P-1')
+    await expect(page.getByTestId('list-rows')).toContainText('P-2')
   })
+  await session.assertPath(`/featherbase/admin/${encodeURIComponent(PICKED_DT)}`)
+
+  const imported = await request.get(`/api/table/${encodeURIComponent(PICKED_DT)}?fields=${encodeURIComponent('["ov_ref","ov_amount"]')}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  expect(imported.status()).toBe(200)
+  const rows = ((await imported.json()) as { data: { ov_ref: string; ov_amount: number }[] }).data
+  expect(rows.map(({ ov_ref, ov_amount }) => ({ ov_ref, ov_amount })))
+    .toEqual(expect.arrayContaining([{ ov_ref: 'P-1', ov_amount: 10 }, { ov_ref: 'P-2', ov_amount: 20 }]))
+  expect(rows).toHaveLength(2)
 
   // The three sheets left unselected created nothing — the defect that made
   // one import produce eleven unwanted Tables.
