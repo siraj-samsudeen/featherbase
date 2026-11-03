@@ -90,3 +90,77 @@ test('a report that does not exist says so instead of loading forever', async ({
   const error = await screen.findByTestId('script-report-error')
   expect(error.textContent).toMatch(/No Such Report|not found/i)
 })
+
+const DEFAULT_REPORT = 'Web SR Defaults'
+registerScriptReport({
+  name: DEFAULT_REPORT,
+  filters: [
+    { column_name: 'n', label: 'N', column_type: 'Int', default: 0 },
+    { column_name: 'one', label: 'One', column_type: 'Int', default: 1 },
+    { column_name: 'kind', label: 'Kind', column_type: 'Choice', choices: '\nsmall\nlarge', default: 'small' },
+    { column_name: 'enabled', label: 'Enabled', column_type: 'Check', default: false },
+    { column_name: 'only_active', label: 'Only active', column_type: 'Check', default: true },
+    { column_name: 'since', label: 'Since', column_type: 'Date', default: '2026-10-01' },
+    { column_name: 'note', label: 'Note', column_type: 'Data', default: 'starting note' },
+    { column_name: 'empty', label: 'Empty', column_type: 'Data', default: null },
+    { column_name: 'absent', label: 'Absent', column_type: 'Data' },
+  ],
+  execute: async (filters) => ({ columns: ['filters'], rows: [{ filters: JSON.stringify(filters) }] }),
+})
+
+async function seedDefaults(admin: { post: (p: string, b: unknown) => Promise<unknown> }) {
+  await admin.post('/api/save_row', {
+    table: 'Report',
+    row: { row_id: DEFAULT_REPORT, ref_table: 'Person', report_type: 'Script Report', report_script: DEFAULT_REPORT },
+  })
+}
+
+test('the first run uses the declared defaults', async ({ admin }) => {
+  await seedDefaults(admin)
+  await renderApp(`/featherbase/admin/script-report/${encodeURIComponent(DEFAULT_REPORT)}`, admin)
+  const rows = await screen.findByTestId('script-report-rows')
+  expect(JSON.parse(rows.textContent!)).toEqual({
+    n: 0, one: 1, kind: 'small', enabled: false, only_active: true, since: '2026-10-01', note: 'starting note',
+  })
+  expect(screen.getByTestId('sr-filter-n')).toHaveValue(0)
+  expect(screen.getByTestId('sr-filter-kind')).toHaveValue('small')
+  expect(screen.getByTestId('sr-filter-enabled')).not.toBeChecked()
+  expect(screen.getByTestId('sr-filter-only_active')).toBeChecked()
+  expect(screen.getByTestId('sr-filter-since')).toHaveValue('2026-10-01')
+  expect(screen.getByTestId('sr-filter-empty')).toHaveValue('')
+  expect(screen.getByTestId('sr-filter-absent')).toHaveValue('')
+})
+
+test('later runs preserve explicitly cleared defaults', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seedDefaults(admin)
+  const app = await renderApp(`/featherbase/admin/script-report/${encodeURIComponent(DEFAULT_REPORT)}`, admin)
+  await screen.findByTestId('script-report-rows')
+  await user.clear(screen.getByTestId('sr-filter-n'))
+  await user.selectOptions(screen.getByTestId('sr-filter-kind'), '')
+  await user.click(screen.getByTestId('sr-filter-only_active'))
+  await user.clear(screen.getByTestId('sr-filter-note'))
+  await user.type(screen.getByTestId('sr-filter-note'), '1')
+  await app.queryClient.invalidateQueries({ queryKey: ['script-report', DEFAULT_REPORT] })
+  await user.click(screen.getByTestId('script-report-run'))
+  await waitFor(() => expect(JSON.parse(screen.getByTestId('script-report-rows').textContent!)).toEqual({
+    one: 1, enabled: false, since: '2026-10-01', note: '1',
+  }))
+  expect(screen.getByTestId('sr-filter-n')).toHaveValue(null)
+  expect(screen.getByTestId('sr-filter-kind')).toHaveValue('')
+  expect(screen.getByTestId('sr-filter-only_active')).not.toBeChecked()
+})
+
+test('report navigation starts from the destination defaults', async ({ admin }) => {
+  await seed(admin)
+  await seedDefaults(admin)
+  const app = await renderApp(`/featherbase/admin/script-report/${encodeURIComponent(DEFAULT_REPORT)}`, admin)
+  await screen.findByTestId('script-report-rows')
+  await userEvent.setup().clear(screen.getByTestId('sr-filter-n'))
+  await app.router.navigate({ to: `/featherbase/admin/script-report/${encodeURIComponent(REPORT)}` })
+  await waitFor(() => expect(screen.getByTestId('script-report-rows')).toHaveTextContent('0anyfalse—'))
+  expect(screen.getByTestId('sr-filter-n')).toHaveValue(null)
+  await app.router.navigate({ to: `/featherbase/admin/script-report/${encodeURIComponent(DEFAULT_REPORT)}` })
+  await waitFor(() => expect(screen.getByTestId('sr-filter-n')).toHaveValue(0))
+  await waitFor(() => expect(JSON.parse(screen.getByTestId('script-report-rows').textContent!)).toMatchObject({ n: 0, kind: 'small' }))
+})

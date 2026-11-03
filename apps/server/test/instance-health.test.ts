@@ -43,7 +43,7 @@ async function apply(file: unknown = { settings: { 'System Settings': { app_name
 async function healthCommand(environment: string, json = true) {
   const previous = config.environment
   config.environment = environment
-  try { return await runMain(main, ['health', ...(json ? ['--json'] : [])]) }
+  try { return await runMain(main, json ? ['health', '--json'] : ['health']) }
   finally { config.environment = previous }
 }
 
@@ -68,7 +68,7 @@ describe('the checks (5.1)', () => {
 
   test('CLI health fails for required hosted readiness', async () => {
     await noManagerEmails()
-    await sql`update person set password_hash = ${hashPassword('health-rotated-password')} where row_id = 'Administrator'`
+    await sql`update person set password_hash = ${hashPassword('a-long-rotated-secret')} where row_id = 'Administrator'`
     const result = await healthCommand('production')
     expect(result.code).toBe(1)
     expect(JSON.parse(result.stdout).checks).toContainEqual(expect.objectContaining({
@@ -80,6 +80,7 @@ describe('the checks (5.1)', () => {
     expect(text.stdout).toContain('setup-needed: A System Manager with an email address — No System Manager has an email address, so system notices reach nobody.')
     expect(text.stdout).toContain('Next: Give a System Manager an email address')
     expect(text.stdout).not.toContain('Featherbase needs attention.')
+    expect(text.stdout).toContain('  Next:')
   })
 
   test('a System Manager with an email address: failing with none, passing once one has an address', async ({ createUser }) => {
