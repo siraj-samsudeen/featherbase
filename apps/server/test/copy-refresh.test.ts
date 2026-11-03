@@ -40,10 +40,14 @@ describe('Scheduled copied-table refresh', () => {
   })
 
   test('ordinary editors cannot administer a refresh', async ({ admin, createUser }) => {
-    await grantRole(admin, { role: 'Refresh Editor', table: ['Scheduled Job', 'Person'], can_read: true, can_write: true, can_create: true })
+    await makeCopy(admin)
+    const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
+    await grantRole(admin, { role: 'Refresh Editor', table: ['Scheduled Job', 'Person'], can_read: true, can_write: true, can_create: true, can_delete: true })
     const user = await createUser({ roles: ['Refresh Editor'] })
     await expect(user.post('/api/table/Person:set_copy_schedule', { enabled: true, cadence: 'hourly' })).rejects.toMatchObject({ status: 403 })
     await expect(user.post('/api/save_row', { table: 'Scheduled Job', row: { method: 'copy_refresh_fake', cadence: 'hourly', enabled: true } })).rejects.toMatchObject({ status: 403 })
+    await expect(user.delete(`/api/table/Scheduled%20Job/${schedule.method}`)).rejects.toMatchObject({ status: 403 })
+    expect(await admin.get('/api/table/Scheduled%20Stores:copy_schedule')).toMatchObject({ enabled: true })
   })
 
   test('a refresh rejects the every-minute cadence through ordinary job editing', async ({ admin }) => {
