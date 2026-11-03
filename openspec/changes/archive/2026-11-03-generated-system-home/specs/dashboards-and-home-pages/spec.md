@@ -4,16 +4,12 @@
 
 ### Requirement: A home page groups links into cards
 
-A home page SHALL show its links grouped into headed cards in the order
-they were curated, and hide any link to a Table the viewer can't read rather
-than showing it disabled. Links curated before the first named card still
-sit under a heading. On System, curated groups are optional placement hints:
-unplaced system Tables appear under Platform in stable name order. A System
-link uses its Table's effective label, or its name when no label exists;
-changing the displayed label SHALL NOT change which Table it opens.
-If a persisted legacy override is rejected by the metadata-property allowlist,
-System SHALL retain the canonical name as its label without disabling navigation.
-This fallback SHALL NOT suppress unrelated failures or relax metadata validation.
+Home pages SHALL group readable links under headings in curated order, including
+links before the first named card. System SHALL use groups only as placement
+hints, appending unplaced Tables under Platform in stable name order. System
+links SHALL use effective labels, or names if absent, without changing destinations;
+a legacy override rejected by the property allowlist SHALL fall back to the name,
+preserving other errors and metadata validation.
 
 #### Scenario: A hidden link
 
