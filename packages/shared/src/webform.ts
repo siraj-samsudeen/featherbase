@@ -4,6 +4,7 @@ export interface WebFormColumn {
   column_type: string
   reference_table: string | null
   choices: string | null
+  choice_labels?: Record<string, string> | null
   reqd: boolean
 }
 
