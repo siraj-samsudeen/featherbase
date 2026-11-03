@@ -21,6 +21,33 @@ class ImportWizardPage {
     await this.page.getByTestId('import-wizard').waitFor();
   }
 
+  /** Enter from the existing table's list, just as a returning importer does. */
+  async openForTable(table) {
+    await this.page.goto(`/featherbase/admin/${encodeURIComponent(table)}`);
+    await this.page.getByTestId('open-import').click();
+    await this.page.getByTestId('import-wizard').waitFor();
+  }
+
+  async matchOn(column) {
+    await this.page.getByTestId('iw-key-0').selectOption(column);
+    await this.page.getByTestId('iw-preview-0').waitFor();
+  }
+
+  async check() {
+    await this.page.getByTestId('iw-check').click();
+    await this.page.getByTestId('iw-check-0').waitFor();
+  }
+
+  async previewText(checked = false) {
+    return (await this.page.getByTestId(checked ? 'iw-check-0' : 'iw-preview-0').innerText()).replace(/\s+/g, ' ');
+  }
+
+  async explainsMatchingOn(label) {
+    const explanation = (await this.card.innerText()).replace(/\s+/g, ' ');
+    return ['match', 'matching', 'matched', 'matches'].some(verb => explanation.toLowerCase().includes(`${verb} on ${label.toLowerCase()}`))
+      && !/rows (?:will be |are )?(?:appended|added to it)|always adds? (?:new )?rows/i.test(explanation);
+  }
+
   /** Drops a CSV file onto the wizard. */
   async dropCsv(fileName, csv) {
     await this.page.getByTestId('iw-file-input').setInputFiles({

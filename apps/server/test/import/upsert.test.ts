@@ -818,3 +818,65 @@ describe('Add new rows or update the ones that match: the rehearsal', () => {
     ])
   })
 })
+
+describe('#851 permission-safe matching suggestions', () => {
+  test('analysis reports normalized full and partial coverage without importing', async ({ admin }) => {
+    await setup(admin)
+    await seed(admin)
+    const before = await importState()
+    const analyze = (rows: Record<string, unknown>[], columns = ['zone', 'pop']) =>
+      admin.post<{ key_candidates: { column: string; matched: number; complete: boolean }[] }>(PATH, {
+        analyze_keys: true, rows, columns,
+      })
+    const full = await analyze([{ zone: ' Alpha ', pop: 12000 }, { zone: 'Bravo', pop: 8400 }])
+    expect(full.key_candidates).toEqual([
+      { column: 'zone', matched: 2, complete: true },
+      { column: 'pop', matched: 2, complete: true },
+    ])
+    const partial = await analyze([{ zone: 'Alpha' }, { zone: 'New' }], ['zone'])
+    expect(partial.key_candidates).toEqual([{ column: 'zone', matched: 1, complete: false }])
+    expect(await importState()).toEqual(before)
+  })
+
+  test('analysis excludes blank, repeated and ambiguous candidates', async ({ admin }) => {
+    await setup(admin)
+    await admin.post(PATH, { rows: [{ zone: 'Twin', pop: 1 }, { zone: 'Twin ', pop: 2 }] })
+    for (const rows of [[{ zone: 'Twin' }], [{ zone: 'New' }, { zone: ' New ' }], [{ zone: 'New' }, {}]]) {
+      const report = await admin.post<{ key_candidates: unknown[] }>(PATH, { analyze_keys: true, columns: ['zone'], rows })
+      expect(report.key_candidates).toEqual([])
+    }
+  })
+
+  test('analysis cannot advertise a column outside the reader tier', async ({ admin, createUser }) => {
+    await setup(admin, { columns: [
+      { column_name: 'zone', column_type: 'Data', tier: 'restricted' },
+      { column_name: 'pop', column_type: 'Int' },
+    ] })
+    await admin.post(PATH, { rows: [{ zone: 'Alpha', pop: 12000 }] })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, can_read: true, can_write: true, can_create: true,
+    } })
+    const user = await createUser({ roles: [ROLE] })
+    const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
+      analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }],
+    }) })
+    expect(response.status).toBe(201)
+    expect(await response.json()).toEqual({ key_candidates: [] })
+  })
+
+  test('analysis does not disclose overlap with another person’s rows', async ({ admin, createUser }) => {
+    await setup(admin)
+    await seed(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, can_read: true, can_write: true, can_create: true, own_rows_only: true,
+    } })
+    const user = await createUser({ roles: [ROLE] })
+    const response = await user.fetch(PATH, { method: 'POST', body: JSON.stringify({
+      analyze_keys: true, columns: ['zone'], rows: [{ zone: 'Alpha' }],
+    }) })
+    expect(response.status).toBe(201)
+    expect(await response.json()).toEqual({ key_candidates: [] })
+  })
+})
