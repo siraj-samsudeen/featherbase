@@ -1152,6 +1152,14 @@
       "action": "Arun directly edits platform access holdings or system-written audit history",
       "expected": "Refuse; removing app decides_scope does not unlock either platform access or system-written tables.",
       "policy": "agreed"
+    },
+    {
+      "id": "V28",
+      "name": "Operational contacts do not change account access",
+      "setup": "Base. Separately create a synthetic sign-in/recovery phone for Priya using the existing account model; its initial value may equal E3.phone. Account identifiers are not Employee contact columns.",
+      "action": "Meera corrects E3.phone through her authorised employee contact operation.",
+      "expected": "Only the operational Employee phone changes under applicable approval rules. Sign-in/recovery identifiers and verification state remain unchanged; Meera gains no account-management permission. Account changes require their separate verified flow.",
+      "policy": "agreed"
     }
   ],
   "reference_checks": {

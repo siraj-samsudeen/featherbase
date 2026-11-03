@@ -167,6 +167,16 @@ For a bulk submission of independent changes, the system SHALL process permitted
 - **THEN** the nine permitted corrections proceed under their approval rules and the other correction is rejected
 - **AND** the result identifies each correction's outcome without claiming pending corrections have already been applied
 
+### Requirement: Employee contact maintenance does not change account access
+
+Maintaining operational employee contact details SHALL NOT change sign-in or account-recovery details or grant account-management authority. Account access changes SHALL remain subject to their separate authorisation and verification process.
+
+#### Scenario: Work phone matches a sign-in phone
+
+- **WHEN** the user corrects an employee's operational phone number and the old number also happens to be used for account access
+- **THEN** only the operational contact changes under the applicable approval rules
+- **AND** the employee's sign-in and recovery details remain unchanged
+
 ## MODIFIED Requirements
 
 ### Requirement: Only a System Manager changes who can do what

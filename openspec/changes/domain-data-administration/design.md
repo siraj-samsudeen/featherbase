@@ -172,6 +172,14 @@ payload is permitted. Use an explicitly checked approval operation through the
 normal validation/save/automation transaction, not an unrestricted bypass.
 The exact approval-column representation remains an implementation contract.
 
+Owner decision (3 November 2026): operational employee contact details are
+separate from sign-in and account-recovery details. A domain contact correction
+changes only the employee contact record, even if its old value matches an
+account identifier. It neither updates sign-in/recovery identifiers nor grants
+account-management rights. Account changes use their separate verified flow.
+Employee-to-Person physical mapping remains implementation design; do not infer
+that authentication secrets must live directly on the Person row.
+
 Scope modes: self (linked identity, not creator), direct reports, reporting
 subtree (excluding self), named stores, named departments, and explicit all.
 Named department grants do not follow their holder to a new department. Relative
@@ -226,8 +234,9 @@ The owner authorised choosing reasonable defaults to make the prototype usable.
 The following defaults are editable here and must not be represented as settled
 production architecture:
 
-- Employee is app-owned and references platform Person. Phone and emergency
-  contact live on Employee; sign-in and platform secrets remain on Person.
+- The proposed physical mapping is app-owned Employee linked to platform Person.
+  Separation of operational contacts from sign-in/recovery details is now agreed;
+  exact account-table and column mapping must follow the current platform model.
 - App metadata is represented below as small relational logical tables. Physical
   storage names, reference types and migration ordering remain design work.
 - The app exposes a read-only membership resolver and a job-capability resolver.
@@ -238,9 +247,8 @@ production architecture:
   first model, rather than silently modifying a role shared by other grantees.
 - Current membership uses the instance business date with exclusive end dates.
   Historical reporting uses its requested date but cannot rewrite past authority.
-- The prototype evaluates synthetic state in the browser and saves progress and
-  form drafts to browser local storage. Reset clears that progress. There is no
-  real API, notification, credential or database write; it is an interaction experiment.
+- The discarded prototype was a browser-only experiment; it supplied no server
+  enforcement, real credential changes or database verification.
 
 ## Proposed logical records
 
@@ -637,6 +645,6 @@ retaining protections against ordinary account/role edits and automation bypass.
 
 ## Open Questions
 
-Resolve the production gates above: Employee/Person field ownership, resolver
+Resolve the production gates above: physical Employee/Person mapping and the initial HR field set, resolver
 and capability contracts, approval-authority representation and migration mapping. UI presentation questions are no longer part of
 this handoff. Owner review of the simulation was not completed.
