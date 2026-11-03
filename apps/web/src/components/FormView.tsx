@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
-import { INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
+import { choiceLabel, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
@@ -23,6 +23,7 @@ import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
 import { usePeek } from './Peek'
 import { GlossaryHelp } from './GlossaryHelp'
+import { ReadingPresentation } from './ReadingPresentation'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from './ui'
 
@@ -68,6 +69,9 @@ export function FormView({
   isNew?: boolean
 }) {
   const meta = useMeta(table)
+  const describedTable = useMeta(name, table === 'Table' && !isNew)
+  const storage = table === 'Table' && !isNew ? describedTable.data?.storage_identity : null
+  const [storageCopy, setStorageCopy] = useState('')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { t } = useI18n()
@@ -376,6 +380,9 @@ export function FormView({
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 
+  const reading = !isNew && rowsReadOnly ? m.reading_presentation : null
+  const RawDetails = reading ? 'details' : 'div'
+
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
@@ -551,6 +558,34 @@ export function FormView({
           )}
         </div>
       </div>
+      {storage && (
+        <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>
+          <span className="font-medium">Storage</span>
+          <dl className="flex flex-wrap gap-x-6 gap-y-2">
+            {Object.entries({
+              ...(storage.data_source ? { 'Data Source': storage.data_source } : {}),
+              Schema: storage.schema || '(none)', Relation: storage.relation, 'Row key': storage.row_key.join(', '),
+              ...(storage.discriminator ? { 'Table discriminator': storage.discriminator.table_name } : {}),
+            }).map(([label, value]) => (
+              <div key={label} className="flex flex-wrap items-baseline gap-2">
+                <dt className="text-ink-muted">{label}</dt>
+                <dd><code className="select-text break-all text-ink">{value}</code></dd>
+              </div>
+            ))}
+          </dl>
+          <button className={buttonClasses({ className: 'ml-auto' })} onClick={async () => {
+            try {
+              await navigator.clipboard.writeText([
+                ...(storage.data_source ? [`Data Source: ${storage.data_source}`] : []),
+                `Schema: ${storage.schema}`, `Relation: ${storage.relation}`, `Row key: ${storage.row_key.join(', ')}`,
+                ...(storage.discriminator ? [`table_name: ${storage.discriminator.table_name}`] : []),
+              ].join('\n'))
+              setStorageCopy('Copied')
+            } catch { setStorageCopy('Copy unavailable. Select the storage text to copy it.') }
+          }}>Copy storage</button>
+          <span role="status" className="text-xs text-ink-muted">{storageCopy}</span>
+        </section>
+      )}
       {/* TLC-J2.2 / TLC-R4: a real dialog that NAMES the row. Deliberately
           the same shape as the table-level confirmation in ListView (DEL-J1.2)
           — labelled, aria-modal, Escape-dismissable, destructive action on the
@@ -654,6 +689,9 @@ export function FormView({
           </button>
         </div>
       )}
+      {reading && <ReadingPresentation presentation={reading} meta={m} values={values} />}
+      <RawDetails data-testid={reading ? 'raw-details' : undefined}>
+      {reading && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t('Raw details')}</summary>}
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="min-w-0 max-w-3xl flex-1">
           {sections.map((fields, si) => (
@@ -705,6 +743,7 @@ export function FormView({
         )}
       </div>
       {!isNew && m.kind === 'table' && <RelatedTabs table={table} name={name} />}
+      </RawDetails>
     </div>
   )
 }
@@ -833,7 +872,7 @@ function FieldControl({
             .filter(Boolean)
             .map((o) => (
               <option key={o} value={o}>
-                {o}
+                {choiceLabel(o, field.choice_labels, t)}
               </option>
             ))}
         </select>,

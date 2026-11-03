@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { prettifyLabel } from 'shared'
 import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
@@ -8,6 +9,7 @@ import { deleteStored } from './storage'
 import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation, resolvedRelation, tableName } from './platform-schema'
+import { readingPresentationSchema } from 'shared'
 
 export { tableName }
 
@@ -96,6 +98,7 @@ export const columnSchema = z.object({
   // Sub-table -> the sub-table's Table name.
   reference_table: optionalString,
   choices: optionalString,
+  choice_labels: z.record(z.string(), z.string()).nullish(),
   row_table: optionalString,
   reqd: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   unique: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
@@ -124,6 +127,7 @@ export const tableDefSchema = z.object({
   is_submittable: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   id_pattern: optionalString,
   title_column: optionalString,
+  reading_presentation: readingPresentationSchema.nullish(),
   description: optionalString,
   // #74: platform-table flag. Accepted here so migrations and seeds can set
   // it through createTable; the public /api/table_def routes REJECT it — a
@@ -194,6 +198,14 @@ function targetOf(f: TableDef['columns'][number]): string | undefined {
 
 function validateDef(def: TableDef) {
   const errs: Record<string, string> = {}
+  const reading = def.reading_presentation
+  if (reading) {
+    const columns = new Set(def.columns.filter(f => !['Section Break', 'Column Break', 'Sub-table'].includes(f.column_type)).map(f => f.column_name))
+    columns.add('created_at')
+    columns.add('updated_at')
+    for (const name of [reading.title, ...reading.headers, reading.body, reading.attachment_names].filter((name): name is string => Boolean(name)))
+      if (!columns.has(name)) errs.reading_presentation = `Reading column ${name} is not a value column of this Table`
+  }
   // EDS-3/BV4/VDT-4: a source binding is only coherent for plain collection
   // Tables — no sub_tables, no settings, no submit lifecycle (the source has
   // no docstatus), no Sub-table columns (child rows can't live on a source).
@@ -251,6 +263,22 @@ export async function tableRelation(name: string): Promise<string> {
   if (!meta.owner_app || !meta.physical_schema || !meta.physical_relation)
     throw new AppError('ValidationError', `Table ${name} has no app storage mapping`)
   return `${meta.physical_schema}.${meta.physical_relation}`
+}
+
+// Describe the same storage the row readers use, never a label-derived name.
+// Source bindings are not local relations; Settings share a composite-key store.
+export async function tableStorageIdentity(meta: TableMeta) {
+  if (meta.data_source) {
+    if (!meta.external_table) return null
+    return { schema: meta.external_schema ?? '', relation: meta.external_table,
+      row_key: [meta.external_pk || ROW_KEY], data_source: meta.data_source, discriminator: null }
+  }
+  if (meta.kind === 'settings') {
+    return { schema: PLATFORM_SCHEMA, relation: 'single_value', row_key: ['table_name', 'field'],
+      data_source: null, discriminator: { table_name: meta.name } }
+  }
+  const [schema, relation] = (await tableRelation(meta.name)).split('.')
+  return { schema, relation, row_key: [meta.row_key], data_source: null, discriminator: null }
 }
 
 // #651: where a Table's rows are stored, read straight from its definition.
@@ -399,6 +427,7 @@ export async function updateTable(
       reference_table: name,
       hidden: true,
     })
+  if (def.reading_presentation === undefined) def.reading_presentation = existing.reading_presentation
   validateDef(def)
   if (def.id_pattern)
     validateIdPattern(def.id_pattern, def.columns.map((f) => f.column_name))
@@ -460,6 +489,7 @@ export async function updateTable(
       is_submittable: def.is_submittable ?? existing.is_submittable,
       id_pattern: def.id_pattern ?? existing.id_pattern,
       title_column: def.title_column ?? null,
+      ...(def.reading_presentation !== undefined ? { reading_presentation: def.reading_presentation } : {}),
       description: def.description ?? null,
       // Only when given: an update that leaves it out keeps the Table's choice.
       ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
@@ -470,9 +500,10 @@ export async function updateTable(
       const old = before.get(f.column_name)
       const row: Record<string, unknown> = {
         position: i + 1,
-        label: f.label ?? f.column_name,
+        label: f.label ?? prettifyLabel(f.column_name),
         reference_table: f.reference_table ?? null,
         choices: f.choices ?? null,
+        choice_labels: f.choice_labels == null ? null : tx.json(f.choice_labels),
         row_table: f.row_table ?? null,
         reqd: f.reqd ?? false,
         unique: f.unique ?? false,
@@ -695,6 +726,7 @@ export async function createTable(
       is_submittable: def.is_submittable ?? false,
       id_pattern: def.id_pattern ?? 'hash',
       title_column: def.title_column ?? null,
+      reading_presentation: def.reading_presentation ?? null,
       description: def.description ?? null,
       system: def.system ?? false,
     }
@@ -719,10 +751,11 @@ export async function createTable(
         parent: def.name,
         position: i + 1,
         column_name: f.column_name,
-        label: f.label ?? f.column_name,
+        label: f.label ?? prettifyLabel(f.column_name),
         column_type: f.column_type,
         reference_table: f.reference_table ?? null,
         choices: f.choices ?? null,
+        choice_labels: f.choice_labels == null ? null : tx.json(f.choice_labels),
         row_table: f.row_table ?? null,
         reqd: f.reqd ?? false,
         unique: f.unique ?? false,
@@ -946,6 +979,7 @@ export async function renameColumn(
     // column, not to its old name.
     await tx`update metadata_override set column_name = ${target} where table_name = ${meta.name} and column_name = ${from}`
     await renameInGlossary(tx, meta.name, { table: meta.name, column: from }, { table: meta.name, column: target })
+    await renameInImportHistory(tx, meta.name, from, target)
     await tx`update table_def set updated_at = ${new Date()} where name = ${meta.name}`
   })
 
@@ -955,6 +989,23 @@ export async function renameColumn(
     row_id: meta.name,
   }).catch(() => {})
   return getMeta(meta.name)
+}
+
+// #865: an import decides who owns a field from the row's history, the source
+// values it remembers and its open conflicts, all keyed by column name. Left
+// under the old name, a person's correction reads as never made and the next
+// import overwrites it without a conflict.
+async function renameInImportHistory(tx: TxSql, table: string, from: string, to: string) {
+  await tx`update version set data = jsonb_set(data, '{changed}', (
+      select jsonb_agg(case when c->>0 = ${from} then jsonb_set(c, '{0}', to_jsonb(${to}::text)) else c end order by i)
+      from jsonb_array_elements(data->'changed') with ordinality as e(c, i)))
+    where ref_table = ${table} and jsonb_typeof(data->'changed') = 'array'
+      and jsonb_path_exists(data->'changed', '$[*] ? (@[0] == $f)', jsonb_build_object('f', ${from}::text))`
+  await tx`update version set data = jsonb_set(data, '{resolution,field}', to_jsonb(${to}::text))
+    where ref_table = ${table} and data->'resolution'->>'field' = ${from}`
+  await tx`update featherbase.import_source set values = (values - ${from}::text) || jsonb_build_object(${to}::text, values->${from}::text)
+    where ref_table = ${table} and values ? ${from}::text`
+  await tx`update featherbase.import_conflict set field = ${to} where ref_table = ${table} and field = ${from}`
 }
 
 // #629: a glossary term describes Tables and columns by name, in its links

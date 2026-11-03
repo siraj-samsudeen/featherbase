@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
+import { choiceLabel } from 'shared'
 import { ApiError, api, getToken, listResource } from '../lib/api'
+import { useI18n } from '../lib/i18n'
 import { isRowsReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
 import { fmtCount, fmtDate, timelineDayKey } from '../lib/inr'
@@ -174,6 +176,7 @@ function RunList({
   binding: Binding
   onOpen: (name: string) => void
 }) {
+  const { t } = useI18n()
   const fields = [
     ...new Set(
       [
@@ -256,7 +259,7 @@ function RunList({
                   <span className="font-semibold text-ink">
                     {String(row[binding.titleCol] ?? row.row_id)}
                   </span>
-                  {status && <span className={pillClasses()}>{status}</span>}
+                  {status && <span className={pillClasses()}>{choiceLabel(status, binding.statusCol?.choice_labels, t)}</span>}
                 </div>
                 {parts && (
                   <>
@@ -302,6 +305,7 @@ function RunPane({
   binding: Binding
   onBack: () => void
 }) {
+  const { t } = useI18n()
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -373,6 +377,7 @@ function RunPane({
   // elsewhere. The server-side gate may refuse; its message lands in `error`.
   const choices = (binding.statusCol?.choices ?? '').split('\n').map((c) => c.trim()).filter(Boolean)
   const currentStatus = binding.statusCol ? String(doc.data?.[binding.statusCol.column_name] ?? '') : ''
+  const statusLabel = choiceLabel(currentStatus, binding.statusCol?.choice_labels, t)
   const nextStatus = choices[choices.indexOf(currentStatus) + 1]
   // A run that has reached the LAST declared status has nowhere left to
   // advance, which is what "finished" means here — the checklists app makes
@@ -402,7 +407,7 @@ function RunPane({
           </h1>
           <span className="text-xs text-ink-muted">
             {name}
-            {currentStatus ? ` · ${currentStatus}` : ''}
+            {currentStatus ? ` · ${statusLabel}` : ''}
           </span>
         </div>
         {parts && (
@@ -420,7 +425,7 @@ function RunPane({
           className="rounded border border-border bg-subtle px-3 py-2 text-xs text-ink-muted"
           data-testid="checklist-locked"
         >
-          {currentStatus} — this run is final and can no longer be changed.
+          {statusLabel} — this run is final and can no longer be changed.
         </p>
       )}
 
@@ -555,7 +560,7 @@ function RunPane({
           onClick={() => saveItems(items, { [binding.statusCol!.column_name]: nextStatus })}
           data-testid="checklist-submit"
         >
-          Mark {nextStatus}
+          Mark {choiceLabel(nextStatus, binding.statusCol.choice_labels, t)}
         </button>
       )}
     </div>

@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
 // imports this file — a strict useSearch would need the route object back)
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { adminPageTitle } from 'shared'
 import { applyColumnCombines, autoMapImportColumns, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, idPatternFor, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
@@ -1557,7 +1558,7 @@ export function ImportWizard() {
 
   return (
     <div data-testid="import-wizard" className="max-w-4xl">
-      <h1 className="mb-4 text-xl font-semibold text-ink">Import Data</h1>
+      <h1 className="mb-4 text-xl font-semibold text-ink">{adminPageTitle('import')}</h1>
 
       <div
         data-testid="iw-dropzone"

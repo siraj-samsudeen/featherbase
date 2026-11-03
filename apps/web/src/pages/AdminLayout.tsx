@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage } from 'shared'
+import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, type CommandDestinations, type CommandPageDestination } from 'shared'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
   ago,
   connectEventSink,
   frequentActions,
-  mergeServerEntries,
+  replaceServerEntries,
   displayEntry,
   recentActions,
   recentSearches,
@@ -18,7 +18,7 @@ import {
   type ServerRecentEntry,
 } from '../lib/recents'
 import { useHomePages } from '../lib/home-pages'
-import { useCapabilities, useShellKind, useShellTables } from '../lib/session'
+import { useCapabilities, useShellKind } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
@@ -28,6 +28,7 @@ import { PeekProvider } from '../components/Peek'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel } from '../lib/row-titles'
 import { metaQuery, type TableMeta } from '../lib/meta'
+import { useI18n } from '../lib/i18n'
 import { KindIcon } from '../lib/kind-icons'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
@@ -56,8 +57,13 @@ connectEventSink({
   // The queue fail-closes on this identity: only events recorded FOR this
   // user are ever posted with this user's credentials.
   currentUser: () => getSessionUser()?.row_id ?? null,
-  post: (events) => {
-    void api.post('/api/events', { events }).catch(
+  post: (events, recorded) => {
+    void api.post<{ timestamps: number[] }>('/api/events', { events }).then(
+      ({ timestamps }) => {
+        recorded(timestamps)
+        window.dispatchEvent(new Event('navigation-history-updated'))
+      },
+    ).catch(
       () => {},
     )
   },
@@ -111,6 +117,7 @@ function AdminShell() {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
+  const { t } = useI18n()
   const user = getSessionUser()
   // The command bar's theme commands; the bar's own toggle is in TopBar.
   const { set: setTheme } = useThemeChoice()
@@ -149,7 +156,7 @@ function AdminShell() {
     const owner = user.row_id
     queryClient.fetchQuery(metaQuery(decodeURIComponent(tableSegment))).then(
       (meta) => {
-        const resolved = actionForLocation(location.pathname, search, meta.name, location.href)
+        const resolved = actionForLocation(location.pathname, search, meta.name, location.href, meta.columns, t)
         if (resolved) recordAction(owner, resolved)
       },
       () => {},
@@ -157,21 +164,32 @@ function AdminShell() {
   }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const [barFocused, setBarFocused] = useState(false)
   const [selection, setSelection] = useState<{ query: string; id: string } | null>(null)
-
-  // #101 Phase 3: once per signed-in user, pull the server's per-key
-  // aggregates and union them into the local buffer — recents follow the
-  // user across devices; the merge is idempotent.
-  const syncedFor = useRef<string | null>(null)
+  const [, refreshHistory] = useState(0)
   useEffect(() => {
-    if (!user || syncedFor.current === user.row_id) return
-    syncedFor.current = user.row_id
+    const refresh = () => refreshHistory((version) => version + 1)
+    window.addEventListener('navigation-history-updated', refresh)
+    return () => window.removeEventListener('navigation-history-updated', refresh)
+  }, [])
+
+  // Cached destinations are not offered until the initial summary settles.
+  // A failed request unlocks the untouched cache as a best-effort fallback.
+  const [historyReadyFor, setHistoryReadyFor] = useState<string | null>(null)
+  useEffect(() => {
+    if (!user) return
+    let active = true
+    setHistoryReadyFor(null)
     api
       .get<{ entries: ServerRecentEntry[] }>('/api/events/summary')
-      .then((res) => mergeServerEntries(user.row_id, res.entries))
-      .catch(
-        () => {},
-      )
+      .then((res) => {
+        if (active) replaceServerEntries(user.row_id, res.entries)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setHistoryReadyFor(user.row_id)
+      })
+    return () => { active = false }
   }, [user?.row_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const historyReady = Boolean(user && historyReadyFor === user.row_id)
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -191,7 +209,13 @@ function AdminShell() {
       void queryClient.invalidateQueries({ queryKey: ['unread-count'] })
   })
 
-  const tables = useShellTables()
+  const destinations = useQuery({
+    queryKey: ['command-destinations', user?.row_id],
+    queryFn: () => api.get<CommandDestinations>('/api/command_destinations'),
+    enabled: barFocused,
+  })
+  const inventory = destinations.isError ? undefined : destinations.data
+  const tables = inventory?.tables
   const caps = useCapabilities()
   const canManage = caps?.manage === true
   // #429: the count beside "Waiting for access"; asked only by a System Manager.
@@ -207,6 +231,18 @@ function AdminShell() {
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
+  const commandFormRef = useRef<HTMLFormElement>(null)
+
+  useEffect(() => {
+    function onPointerDown(event: PointerEvent) {
+      if (!commandFormRef.current?.contains(event.target as Node)) {
+        setBarFocused(false)
+        setSelection(null)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [])
 
   // UI-015: global keyboard shortcuts.
   //   Ctrl/Cmd+K  focus the command bar (command palette)
@@ -233,6 +269,8 @@ function AdminShell() {
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
+        setBarFocused(true)
+        setSelection(null)
         searchRef.current?.focus()
         searchRef.current?.select()
         return
@@ -270,6 +308,8 @@ function AdminShell() {
     function onPrefill(e: Event) {
       const q = (e as CustomEvent<string>).detail
       if (typeof q === 'string') setSearch(q)
+      setBarFocused(true)
+      setSelection(null)
       searchRef.current?.focus()
     }
     window.addEventListener('fc:prefill-search', onPrefill)
@@ -302,14 +342,14 @@ function AdminShell() {
   // A resolved previous query remains cached during the typing debounce;
   // it is not a result of the text currently in the input.
   const recordHits = trimmed === debounced ? docHits.data?.results ?? [] : []
-  const showRecents = Boolean(barFocused && trimmed === '' && user)
+  const showRecents = Boolean(barFocused && trimmed === '' && historyReady)
   const recentItems = showRecents && user ? uniqueByDisplay(recentActions(user.row_id, 12)).slice(0, 6) : []
   const frequentItems =
     showRecents && user
       ? uniqueByDisplay([...recentItems, ...frequentActions(user.row_id, 8)]).slice(recentItems.length, recentItems.length + 4)
       : []
   const pick = [...recentItems, ...frequentItems]
-  const searchChips = user && trimmed ? recentSearches(user.row_id, trimmed, 3) : []
+  const searchChips = historyReady && user && trimmed ? recentSearches(user.row_id, trimmed, 3) : []
   const selectedId = barFocused
     ? selection?.query === search ? selection.id : showRecents && pick[0] ? `command-recent-${encodeURIComponent(pick[0].key)}` : undefined
     : undefined
@@ -325,11 +365,11 @@ function AdminShell() {
 
   // #101 Phase 2: the sidebar's zero-keystroke recall — destinations only
   // (searches stay in the command bar, where they can be re-run).
-  const sidebarCandidates = user
+  const sidebarCandidates = historyReady && user
     ? uniqueByDisplay(recentActions(user.row_id, 20).filter((e) => e.kind !== 'search')).slice(0, SIDEBAR_RECENT_CAP)
     : []
   const recentSlots = sidebarCandidates.slice(0, 3)
-  const sidebarFrequent = user
+  const sidebarFrequent = historyReady && user
     ? uniqueByDisplay([...recentSlots, ...frequentActions(user.row_id, 12)]).slice(recentSlots.length, recentSlots.length + 2)
     : []
   const sidebarRecent = sidebarFrequent.length ? recentSlots : sidebarCandidates
@@ -343,6 +383,7 @@ function AdminShell() {
     // Clear row matches immediately, not after the typing debounce.
     setDebounced('')
     setBarFocused(false)
+    setSelection(null)
     searchRef.current?.blur()
   }
 
@@ -363,6 +404,14 @@ function AdminShell() {
     navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
   }
 
+  function openPage(page: CommandPageDestination) {
+    recordSearch(search.trim())
+    dismissSearch()
+    // Runtime apps and pages with their own frame policy need a full load.
+    if (page.kind === 'App' || page.kind === 'App tab' || ownFramePolicyPage(page.href)) window.location.assign(page.href)
+    else router.history.push(page.href)
+  }
+
   // Explicit selection uses the same activation as a pointer or Tab/Enter.
   // Without it, preserve the exact-Table/first-record Enter defaults.
   function runSearch(e: React.FormEvent) {
@@ -376,6 +425,7 @@ function AdminShell() {
     if (!q) return
     recordSearch(q)
     const dtHit = tables?.find((d) => d.row_id.toLowerCase() === q.toLowerCase())
+      ?? tables?.find((d) => d.label.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       dismissSearch()
       navigate({ to: '/featherbase/admin/table/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
@@ -386,8 +436,15 @@ function AdminShell() {
       openDoc(doc)
       return
     }
-    dismissSearch()
-    navigate({ to: '/featherbase/admin/table/$table', params: { table: q }, search: { filters: undefined } })
+    const page = pageHits.find((page) => [page.label, ...(page.aliases ?? [])].some((label) => label.toLowerCase() === q.toLowerCase())) ?? pageHits[0]
+    if (page) openPage(page)
+    else if (suggestions[0]) {
+      dismissSearch()
+      navigate({ to: '/featherbase/admin/table/$table', params: { table: suggestions[0].row_id }, search: { filters: undefined } })
+    } else {
+      dismissSearch()
+      navigate({ to: '/featherbase/admin/table/$table', params: { table: q }, search: { filters: undefined } })
+    }
   }
 
   // User tables surface before system tables in suggestions (stable sort
@@ -395,12 +452,14 @@ function AdminShell() {
   const suggestions =
     search.trim().length > 0
       ? (tables ?? [])
-          .filter((d) => d.row_id.toLowerCase().includes(search.trim().toLowerCase()))
+          .filter((d) => [d.row_id, d.label].some((label) => label.toLowerCase().includes(trimmed.toLowerCase())))
           .sort((a, b) => Number(a.system) - Number(b.system))
-          .slice(0, 7)
       : []
   // #432: a Table whose rows only the platform writes is never offered as "New".
-  const creatableSuggestions = suggestions.filter((d) => !d.system_written)
+  const creatableSuggestions = suggestions.filter((d) => d.can_create)
+  const pageHits = trimmed
+    ? (inventory?.pages ?? []).filter((page) => [page.label, ...(page.aliases ?? [])].some((label) => label.toLowerCase().includes(trimmed.toLowerCase())))
+    : []
 
   // Command actions surfaced through the command bar (the ⌘K palette).
   const commands = [
@@ -418,11 +477,23 @@ function AdminShell() {
   // The command bar: inline in the top bar from sm up, its own row on a phone.
   const commandBar = (
         <form
+          ref={commandFormRef}
           onSubmit={runSearch}
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape') return
+            e.preventDefault()
+            e.stopPropagation()
+            if (e.target instanceof HTMLElement) e.target.blur()
+            setBarFocused(false)
+            setSelection(null)
+          }}
           // #489 item 11: the recents close only when focus leaves the whole
           // command bar, so Tab from the input reaches them (visual order).
           onBlur={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setBarFocused(false)
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+              setBarFocused(false)
+              setSelection(null)
+            }
           }}
           className="relative w-full sm:min-w-0 sm:flex-1 sm:mx-auto sm:max-w-4xl"
           data-testid="awesomebar"
@@ -438,11 +509,8 @@ function AdminShell() {
               setBarFocused(true)
               setSelection(null)
             }}
+            onClick={() => setBarFocused(true)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.currentTarget.blur()
-                return
-              }
               // Modified arrows belong to the input's native text editing.
               if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.nativeEvent.isComposing) return
               if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
@@ -470,6 +538,7 @@ function AdminShell() {
             ⌘K
           </kbd>
           {barFocused && (suggestions.length > 0 ||
+            pageHits.length > 0 ||
             commandHits.length > 0 ||
             recordHits.length > 0 ||
             (showRecents && pick.length > 0) ||
@@ -478,7 +547,7 @@ function AdminShell() {
               id="command-results"
               role="listbox"
               aria-label="Search results"
-              className={cardClasses('absolute z-20 mt-1 w-full overflow-hidden py-1 [&_[aria-selected=true]]:bg-action-tint')}
+              className={cardClasses('absolute z-20 mt-1 max-h-[min(70vh,32rem)] w-full overflow-y-auto py-1 [&_[aria-selected=true]]:bg-action-tint')}
               data-testid="awesomebar-results"
               onMouseDown={(e) => e.preventDefault()}
             >
@@ -540,6 +609,26 @@ function AdminShell() {
                   <span className="text-action">›</span> {cmd.label}
                 </button>
               ))}
+              {pageHits.length > 0 && (
+                <h2 data-testid="awesomebar-pages-heading" className="px-3 pt-2 text-xs font-semibold text-ink-muted">Pages</h2>
+              )}
+              {pageHits.map((page) => (
+                <a
+                  key={page.href}
+                  {...resultProps(`page-${page.href}`)}
+                  href={page.href}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+                    e.preventDefault()
+                    openPage(page)
+                  }}
+                  data-testid="awesomebar-page"
+                  className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
+                >
+                  {page.label}
+                  <span className="ml-2 text-xs text-ink-muted">{page.kind}</span>
+                </a>
+              ))}
               {suggestions.length > 0 && (
                 <h2 data-testid="awesomebar-tables-heading" className="px-3 pt-2 text-xs font-semibold text-ink-muted">Tables</h2>
               )}
@@ -554,8 +643,8 @@ function AdminShell() {
                   data-testid="awesomebar-table"
                   className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
                 >
-                  {d.row_id}
-                  <span className="ml-2 text-xs text-ink-muted">{d.module} module · open list</span>
+                  {d.label}
+                  <span className="ml-2 text-xs text-ink-muted">{d.module} module · {d.kind === 'settings' ? 'settings' : 'open list'}</span>
                 </Link>
               ))}
               {/* UI-014: "new X" action for matched Tables */}
@@ -573,7 +662,7 @@ function AdminShell() {
                   data-testid="awesomebar-new"
                   className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
                 >
-                  <span className="text-action">+</span> New {d.row_id} row
+                  <span className="text-action">+</span> New {d.label} row
                 </Link>
               ))}
               {/* UI-014: row hits */}

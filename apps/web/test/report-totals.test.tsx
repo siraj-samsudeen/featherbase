@@ -95,20 +95,34 @@ test('the export has every matching row and the same totals', async ({ admin }) 
   await seed(admin)
   const blobs = captureDownloads()
   await openReport(admin)
-  await userEvent.selectOptions(screen.getByTestId('report-groupby'), 'region')
-  await waitFor(() =>
-    expect(within(groupHeader('South')).getByTestId('group-count')).toHaveTextContent('(201)'),
-  )
-  await userEvent.click(screen.getByTestId('export-csv'))
-  await waitFor(() => expect(blobs).toHaveLength(1))
-  const lines = (await textOf(blobs[0])).split('\n')
-  expect(lines).toHaveLength(1 + 2 + 501 + 1)
-  // Every row once: 501 distinct names under the two group lines.
-  const names = lines.slice(1, -1).filter((l) => !/^(North|South) \(/.test(l)).map((l) => l.split(',')[0])
-  expect(new Set(names).size).toBe(501)
-  expect(lines[1]).toBe('North (300),,600')
-  expect(lines[302]).toBe('South (201),,603')
-  expect(lines.at(-1)).toBe('Total (501),,1203')
+  // Summary and row-page requests are independent: exporting before the
+  // grouped page arrives must not mistake its pending state for zero rows.
+  const realFetch = globalThis.fetch
+  let releaseRows!: () => void
+  const rowGate = new Promise<void>((resolve) => { releaseRows = resolve })
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (new URL(String(input), 'http://localhost').searchParams.get('order_by') === 'region asc')
+      await rowGate
+    return realFetch(input, init)
+  })
+  try {
+    await userEvent.selectOptions(screen.getByTestId('report-groupby'), 'region')
+    await waitFor(() =>
+      expect(within(groupHeader('South')).getByTestId('group-count')).toHaveTextContent('(201)'),
+    )
+    await userEvent.click(screen.getByTestId('export-csv'))
+    await waitFor(() => expect(blobs).toHaveLength(1))
+    const lines = (await textOf(blobs[0])).split('\n')
+    expect(lines).toHaveLength(1 + 2 + 501 + 1)
+    // Every row once: 501 distinct names under the two group lines.
+    const names = lines.slice(1, -1).filter((l) => !/^(North|South) \(/.test(l)).map((l) => l.split(',')[0])
+    expect(new Set(names).size).toBe(501)
+    expect(lines[1]).toBe('North (300),,600')
+    expect(lines[302]).toBe('South (201),,603')
+    expect(lines.at(-1)).toBe('Total (501),,1203')
+  } finally {
+    releaseRows()
+  }
 
   // Ungrouped export reads pages by id but must restore newest-change-first
   // order. Put the lexically last id first by date: sorting by id would fail.

@@ -16,7 +16,7 @@ test('root help works without database configuration', () => {
   const result = command()
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /Featherbase/)
-  for (const action of ['setup', 'start', 'health']) assert.match(result.stdout, new RegExp(`^ +featherbase ${action}`, 'm'))
+  for (const action of ['setup', 'start', 'health', 'reset']) assert.match(result.stdout, new RegExp(`^ +featherbase ${action}`, 'm'))
 })
 
 test('a registered executable runs outside the checkout without a database', () => {
@@ -36,13 +36,13 @@ test('a registered executable runs outside the checkout without a database', () 
     })
     assert.equal(result.status, 0, result.error?.message || result.stderr || 'registered command failed')
     assert.match(result.stdout, /Featherbase/)
-    for (const action of ['setup', 'start', 'health']) assert.match(result.stdout, new RegExp(`^ +featherbase ${action}`, 'm'))
+    for (const action of ['setup', 'start', 'health', 'reset']) assert.match(result.stdout, new RegExp(`^ +featherbase ${action}`, 'm'))
   } finally {
     rmSync(prefix, { recursive: true, force: true })
   }
 })
 
-for (const action of ['setup', 'start', 'health', 'advanced']) {
+for (const action of ['setup', 'start', 'health', 'reset', 'advanced']) {
   test(`${action} help needs no database`, () => {
     const result = command(action, '--help')
     assert.equal(result.status, 0, result.stderr)

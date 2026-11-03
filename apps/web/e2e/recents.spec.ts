@@ -159,7 +159,7 @@ test('#101: an empty command bar lists recent visits and replays them', async ({
     await expect(recents.first()).toContainText(DOC_TITLE)
     await expect(recents.first()).not.toContainText(DOC)
     await expect(recents.nth(1)).toContainText(DT)
-    await expect(recents.nth(1)).toContainText('note = searchable')
+    await expect(recents.nth(1)).toContainText('Note = searchable')
 
     // Clicking the list entry replays the URL, filters included.
     await recents.nth(1).click()
@@ -195,7 +195,7 @@ test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ s
     // Its filtered-view entry carries the filter summary and replays the URL.
     await sidebar
       .getByTestId('sidebar-recent')
-      .filter({ hasText: 'note = searchable' })
+      .filter({ hasText: 'Note = searchable' })
       .first()
       .click()
     await expect(page).toHaveURL(/filters=/)
@@ -205,7 +205,7 @@ test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ s
     await page.goto(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     const strip = page.getByTestId('recent-strip')
     await expect(strip.getByTestId('recent-strip-row').first()).toContainText(DOC_TITLE)
-    await expect(strip.getByTestId('recent-strip-view').first()).toContainText('note = searchable')
+    await expect(strip.getByTestId('recent-strip-view').first()).toContainText('Note = searchable')
 
     // A view chip re-applies the whole filter set; a row chip opens the form.
     await strip.getByTestId('recent-strip-view').first().click()

@@ -55,6 +55,27 @@ test('a Date change reads as the days, and money the Indian way', async ({ admin
   expect(screen.getByTestId('activity-time')).toHaveClass('whitespace-nowrap')
 })
 
+// #637: the Admin home's feed reads an event on the viewer's own clock, so the
+// row's own panel must too. Before, the panel always read IST: a viewer on UTC
+// saw 07:25 in the feed and 12:55 IST beside the row for the same edit.
+test('#637: an edit and a comment read on the viewer\'s own clock, naming its zone', async ({ admin }) => {
+  const rowId = await editedRow(admin)
+  await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: T, ref_name: rowId, content: 'Keys handed over' } })
+  await sql`update version set created_at = '2026-11-03T07:25:00Z' where ref_table = ${T} and ref_name = ${rowId}`
+  await sql`update comment set created_at = '2026-11-03T07:40:00Z' where ref_table = ${T} and ref_name = ${rowId}`
+  const before = process.env.TZ
+  process.env.TZ = 'UTC'
+  try {
+    await renderApp(`/featherbase/admin/table/${tableSlug(decodeURIComponent(ENC))}/row/${rowId}`, admin)
+    const timeline = await screen.findByTestId('activity-timeline', {}, { timeout: 10_000 })
+    await waitFor(() => expect(within(timeline).getAllByTestId('activity-time').map((t) => t.textContent)).toContain('03-Nov-2026 07:25 UTC'))
+    expect(within(timeline).getAllByTestId('activity-time').map((t) => t.textContent)).toContain('03-Nov-2026 07:40 UTC')
+    expect(await screen.findByTestId('comment-time')).toHaveTextContent(/^03-Nov-2026 07:40 UTC$/)
+  } finally {
+    process.env.TZ = before
+  }
+})
+
 test('nested JSON history shows both saved values and allows long values to wrap', async ({ admin }) => {
   await admin.post('/api/table_def', { name: T, columns: [
     { column_name: 'extra', label: 'Extra', column_type: 'JSON' },

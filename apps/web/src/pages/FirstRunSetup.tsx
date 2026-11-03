@@ -40,15 +40,13 @@ export function useSetupOffer(enabled: boolean): void {
   const navigate = useNavigate()
   const health = useInstanceHealth(enabled)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  // Where the sign-in landed. Once the Administrator has moved on, the offer
-  // is spent: a slow answer must never pull them off a page (Codex review).
-  const landing = useRef(pathname)
   const decided = useRef(false)
   useEffect(() => {
     if (decided.current || !enabled) return
     // The Admin index sends a sign-in on to the first Home Page by itself;
-    // that is still the landing.
-    const stillLanding = pathname === landing.current || pathname === '/featherbase/admin' || pathname.startsWith('/featherbase/admin/home/')
+    // that is still the landing. A full reload on any other page must spend
+    // the offer too: a pending health answer must never take over a deep link.
+    const stillLanding = pathname === '/featherbase/admin' || pathname.startsWith('/featherbase/admin/home/')
     if (!stillLanding) {
       decided.current = true
       takeSetupOffer()

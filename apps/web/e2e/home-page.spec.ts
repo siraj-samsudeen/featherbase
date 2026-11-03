@@ -1,4 +1,4 @@
-import { tableSlug } from 'shared'
+import { tableHref, tableSlug } from 'shared'
 import { test, expect, adminAuth } from './fixtures'
 
 const DT = 'WS E2E Task'
@@ -111,4 +111,17 @@ test('#80: sidebar flip — landing, System page cards, All tables', async ({ se
     await page.getByTestId('system-group-toggle').click()
     await expect(nav.getByText('Role', { exact: true })).toBeVisible()
   })
+})
+
+test('#831: generated System links open their canonical destinations', async ({ session }) => {
+  for (const table of ['Sign In Method', 'Data Source', 'System Settings']) {
+    await session.visit('/admin/home/system')
+    await session.step(`open ${table} from its generated card`, async ({ page }) => {
+      const link = page.getByTestId(`home-link-${table}`)
+      await expect(link).toHaveAttribute('href', tableHref(table))
+      await link.click()
+      await expect(page).toHaveURL(new RegExp(`${tableHref(table)}$`))
+    })
+    await session.assertHas(`[data-testid="${table === 'System Settings' ? 'form-view' : 'list-view'}"]`)
+  }
 })

@@ -163,3 +163,23 @@ test("the list's Explore button opens a chain of the dependents ticked under it"
   await waitFor(() => expect((router.state as { location: { pathname: string } }).location.pathname).toBe('/featherbase/admin/explore'))
   await waitFor(() => expect(screen.getByTestId('explore-pane2')).toBeInTheDocument())
 })
+
+test('typing narrows the Start-from list, Enter starts from the first match, and links read as titles', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await renderApp('/featherbase/admin/explore', admin)
+  const root = await screen.findByTestId('explore-root')
+  await waitFor(() => expect(within(root).getAllByRole('option').map((o) => o.textContent)).toContain('Ec Purchase'))
+
+  await user.type(screen.getByTestId('explore-root-search'), 'ec purch')
+  const shown = within(root).getAllByRole('option').map((o) => o.textContent)
+  expect(shown).toEqual(['1 matching table', 'Ec Purchase'])
+
+  await user.keyboard('{Enter}')
+  // Picking a root moves the page address, which renders the picker afresh.
+  await waitFor(() => expect(screen.getByTestId('explore-root')).toHaveValue('Ec Purchase'))
+  // A purchase's supplier shows the supplier's title, never its id.
+  const pane1 = await screen.findByTestId('explore-pane1')
+  await waitFor(() => expect(pane1).toHaveTextContent('Acme'))
+  expect(pane1).not.toHaveTextContent('sup-a')
+})
