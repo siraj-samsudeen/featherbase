@@ -18,9 +18,8 @@ class MetadataOverrides {
   }
 
   async save(values) {
-    const response = await this.api.call('POST', '/api/save_row', {
-      table: 'Metadata Override',
-      row: { row_id: this.id, table_name: this.table, ...values },
+    const response = await this.api.call('POST', '/api/table/Metadata%20Override', {
+      row_id: this.id, table_name: this.table, ...values,
     });
     this.result = { status: response.status(), body: await response.json() };
     return this.result;

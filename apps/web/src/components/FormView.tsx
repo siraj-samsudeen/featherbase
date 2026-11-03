@@ -4,6 +4,7 @@ import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
 import { choiceLabel, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
+import { changeOverride, overrideControl } from '../lib/metadata-override-editor'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
 import { useRealtime } from '../lib/realtime'
@@ -24,6 +25,7 @@ import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
 import { usePeek } from './Peek'
 import { GlossaryHelp } from './GlossaryHelp'
 import { ReadingPresentation } from './ReadingPresentation'
+import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 
@@ -104,6 +106,8 @@ export function FormView({
   // top of it instead of racing it. Route-level keying on the prefill
   // string remounts this component when the prefill changes.
   const [values, setValues] = useState<Row>(() => (isNew && prefill ? { ...prefill } : {}))
+  const editingOverride = table === 'Metadata Override'
+  const overrideTarget = useMeta(editingOverride ? String(values.table_name ?? '') : '')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [banner, setBanner] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -218,7 +222,9 @@ export function FormView({
   function setField(fieldname: string, value: unknown) {
     // A value set here (by a client script, say) is a value, not typed text.
     typedJson.current.delete(fieldname)
-    const next = { ...valuesRef.current, [fieldname]: value }
+    const next = editingOverride
+      ? changeOverride(valuesRef.current, fieldname, value)
+      : { ...valuesRef.current, [fieldname]: value }
     valuesRef.current = next
     setValues(next)
     // A grid's cell errors (`lines.0.customer`) are keyed by row position,
@@ -320,6 +326,8 @@ export function FormView({
     const json = parseTypedJson(m.columns, valuesRef.current, typedJson.current)
     const result = schema.safeParse(json.values)
     const fieldErrors = { ...(result.success ? {} : zodFieldErrors(result.error)), ...json.errors }
+    if (editingOverride && valuesRef.current.column_name === undefined)
+      fieldErrors.column_name = 'Choose a column or Whole Table'
     if (asksRowId && !String(valuesRef.current[ROW_ID_FIELD.column_name] ?? '').trim())
       fieldErrors[ROW_ID_FIELD.column_name] = 'Row ID is required'
     if (Object.keys(fieldErrors).length) {
@@ -349,6 +357,11 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
+      if (editingOverride) {
+        await queryClient.invalidateQueries({ queryKey: ['meta', String(saved.table_name)] })
+        if (typeof baseline.table_name === 'string' && baseline.table_name !== saved.table_name)
+          await queryClient.invalidateQueries({ queryKey: ['meta', baseline.table_name] })
+      }
       await refreshWaitingAfterSave(queryClient, table)
       // #414: a person's name is cached per id for the heading, breadcrumb
       // and Recent; a save may have changed it.
@@ -382,7 +395,9 @@ export function FormView({
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 
   const reading = !isNew && rowsReadOnly ? m.reading_presentation : null
-  const RawDetails = reading ? 'details' : 'div'
+  // #825: a Version row reads as the change it records; its fields fold away.
+  const changeRecord = !isNew && table === 'Version'
+  const RawDetails = reading || changeRecord ? 'details' : 'div'
 
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
@@ -523,7 +538,7 @@ export function FormView({
           {!rowsReadOnly && (
             <button
               onClick={save}
-              disabled={saving || !dirty || (submittable && status !== 'draft')}
+              disabled={saving || !dirty || (submittable && status !== 'draft') || (editingOverride && !overrideTarget.data)}
               data-testid="form-save"
               className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
             >
@@ -690,9 +705,25 @@ export function FormView({
           </button>
         </div>
       )}
+      {editingOverride && Boolean(values.table_name) && !overrideTarget.data && (
+        <p role="status" className="mb-4 text-sm text-ink-muted">
+          {overrideTarget.isError ? 'Cannot load the selected Table. Choose another Table or try again.' : 'Loading the selected Table…'}
+        </p>
+      )}
+      {editingOverride && !isNew && typeof baseline.table_name === 'string' && (
+        <RouterLink
+          to="/featherbase/admin/table/$table"
+          params={{ table: baseline.table_name }}
+          search={{ filters: undefined }}
+          className={touchLinkClasses('mb-4 inline-flex text-sm text-accent hover:underline')}
+        >
+          Open Table: {baseline.table_name}
+        </RouterLink>
+      )}
       {reading && <ReadingPresentation presentation={reading} meta={m} values={values} />}
-      <RawDetails data-testid={reading ? 'raw-details' : undefined}>
-      {reading && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t('Raw details')}</summary>}
+      {changeRecord && <ChangeRecord values={values} />}
+      <RawDetails data-testid={reading || changeRecord ? 'raw-details' : undefined}>
+      {(reading || changeRecord) && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t(changeRecord ? 'Raw JSON' : 'Raw details')}</summary>}
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="min-w-0 max-w-3xl flex-1">
           {sections.map((fields, si) => (
@@ -701,8 +732,11 @@ export function FormView({
               data-testid={`form-section-${si}`}
               className={cardClasses('mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2')}
             >
-              {fields.map((f) =>
-                f.column_type === 'Column Break' ? (
+              {fields.map((stored) => {
+                const { field: f, value } = editingOverride
+                  ? overrideControl(stored, values, overrideTarget.data)
+                  : { field: stored, value: values[stored.column_name] }
+                return f.column_type === 'Column Break' ? (
                   <div key={f.column_name} className="hidden md:block" />
                 ) : (
                   <FieldControl
@@ -713,7 +747,7 @@ export function FormView({
                         : f
                     }
                     managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
-                    value={values[f.column_name]}
+                    value={value}
                     error={errors[f.column_name]}
                     errors={errors}
                     onChange={(v) => {
@@ -724,8 +758,8 @@ export function FormView({
                     values={values}
                     setField={setField}
                   />
-                ),
-              )}
+                )
+              })}
             </div>
           ))}
         </div>

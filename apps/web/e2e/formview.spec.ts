@@ -1,4 +1,4 @@
-import { tableSlug } from 'shared'
+import { rowHref, tableSlug } from 'shared'
 import { test, expect, adminAuth } from './fixtures'
 import { createFormRow, ensureFormFixtures, FORM_DT as DT } from './fixtures-ui'
 
@@ -138,6 +138,30 @@ test('offline_save_recovery: an existing row keeps its draft until a connected r
       await page.context().setOffline(false)
     })
   }
+})
+
+test('a readable Version links back to the unchanged row identity', async ({ session, request }) => {
+  const headers = await adminAuth(request)
+  const rowId = await createFormRow(request, headers, { title: 'before Version navigation', qty: 7 })
+  const original = await (await request.get(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(rowId)}`, { headers })).json()
+  const saved = await request.post('/api/save_row', {
+    headers, data: { table: DT, row: { ...original, title: 'after Version navigation' } },
+  })
+  expect(saved.status()).toBe(201)
+  const filters = encodeURIComponent(JSON.stringify([['ref_table', '=', DT], ['ref_name', '=', rowId]]))
+  const versions = await request.get(`/api/table/Version?filters=${filters}`, { headers })
+  expect(versions.status()).toBe(200)
+  const { data } = await versions.json()
+  expect(data).toHaveLength(1)
+  await session.visit(rowHref('Version', data[0].row_id))
+  await session.step('follow the readable change header to its original row', async ({ page }) => {
+    const record = page.getByTestId('change-record')
+    await expect(record).toContainText('before Version navigation')
+    await expect(record).toContainText('after Version navigation')
+    await record.getByRole('link', { name: rowId, exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${tableSlug(DT)}/row/${encodeURIComponent(rowId)}$`))
+    await expect(page.locator('[data-field=title]')).toHaveValue('after Version navigation')
+  })
 })
 
 test('offline_row_recovery: rename and delete retain their target and succeed only after reconnecting', async ({ session, request }) => {

@@ -15,7 +15,7 @@ class TableStoragePage {
   async authorTitle() {
     await this.api.call('PUT', `/api/table_def/${encodeURIComponent(this.table)}`,
       { name: this.table, module: 'Custom', description: 'Plant catalogue', columns: [{ column_name: 'plant_name', column_type: 'Data' }] }, [200]);
-    await this.api.saveRow('Metadata Override', { row_id: 'storage-860-title', table_name: 'Table', property: 'title_column', value: 'description' });
+    await this.api.call('POST', '/api/table/Metadata%20Override', { row_id: 'storage-860-title', table_name: 'Table', property: 'title_column', value: 'description' }, [201]);
     this.authored = true;
   }
 
