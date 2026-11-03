@@ -141,7 +141,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   tag_link: { ref_table: code, ref_name: on('ref_table'), tag: code },
   todo: { allocated_to: id, ref_table: code, reference_name: on('ref_table'), description: text, todo_status: code, priority: code },
   translation: { language: code, source_text: text, translated_text: text },
-  user_event: { kind: code, ref_key: text, label: text, sub_label: text, path: text },
+  user_event: { kind: code, ref_key: text, label: text, sub_label: text, path: text, destination: text },
   user_settings: { user: id, table_name: code, settings: text },
   version: { ref_table: code, ref_name: on('ref_table'), data: text },
   web_form: { '*': code, title: text, success_message: text },

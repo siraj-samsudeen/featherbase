@@ -28,6 +28,22 @@ const ledger = async (s: Scratch) => (await s.db`select name from featherbase.mi
 // First: a .ts migration's module, once loaded against a scratch database
 // below, keeps that database's (closed) connection.
 describe('migrate: one file', () => {
+  test('#873 additive navigation migration leaves every legacy event field unchanged and unbound', async ({ admin }) => {
+    await admin.post('/api/events', { events: [
+      { kind: 'row', key: 'row:Former Plant/north', label: 'Original label', sub: 'Former Plant', path: '/featherbase/admin/Former%20Plant/north', at: Date.now() - 60000 },
+      { kind: 'search', key: 'search:depot', label: 'depot' },
+    ] })
+    await sql`alter table user_event drop column destination`
+    await sql`alter table table_def drop column navigation_identity`
+    await sql`drop table navigation_row_target`
+    await sql`delete from migration where name = '0016_navigation_destinations.sql'`
+    const original = await sql`select to_jsonb(e) as event from user_event e order by row_id`
+    await withTransaction(() => applyMigrationFile('0016_navigation_destinations.sql'))
+    expect(await sql`select to_jsonb(e) - 'destination' as event from user_event e order by row_id`).toEqual(original)
+    expect(await sql`select destination from user_event`).toEqual([{ destination: null }, { destination: null }])
+    expect(await sql`select count(*)::int as count from navigation_row_target`).toEqual([{ count: 0 }])
+  })
+
   test('a pending file reported, applied and recorded', async () => {
     await sql`delete from migration where name = '0003_mock_google_sign_in.ts'`
     await sql`update sign_in_method set enabled = false where row_id = 'google'`

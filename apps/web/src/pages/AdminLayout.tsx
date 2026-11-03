@@ -154,10 +154,17 @@ function AdminShell() {
       return
     }
     const owner = user.row_id
-    queryClient.fetchQuery(metaQuery(table)).then(
-      (meta) => recordAction(owner, actionForLocation(location.pathname, location.search as Record<string, unknown>, meta.columns, t) ?? action),
+    const rowId = action.kind === 'row' ? action.label : undefined
+    // A fresh authorized read captures lifetime identity before the event is
+    // queued. Cached metadata cannot attest a visit to a recreated Table.
+    api.getNavigation(`/api/table/${encodeURIComponent(table)}${rowId ? `/${encodeURIComponent(rowId)}` : ':meta'}`).then(
+      async ({ claim }) => {
+        const meta = await queryClient.fetchQuery(metaQuery(table))
+        if (getSessionUser()?.row_id !== owner) return
+        recordAction(owner, { ...(actionForLocation(location.pathname, location.search as Record<string, unknown>, meta.columns, t) ?? action), claim })
+      },
       () => {},
-    )
+    ).catch(() => {})
   }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const [barFocused, setBarFocused] = useState(false)
   const [selection, setSelection] = useState<{ query: string; id: string } | null>(null)

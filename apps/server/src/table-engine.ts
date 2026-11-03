@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { prettifyLabel } from 'shared'
-import { inAppTransaction, sql, type TxSql } from './db'
+import { inAppTransaction, sql, whenTransactionEnds, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
@@ -10,6 +10,7 @@ import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation, resolvedRelation, tableName } from './platform-schema'
 import { readingPresentationSchema } from 'shared'
+import { publishNavigationChange } from './realtime'
 
 export { tableName }
 
@@ -785,6 +786,8 @@ export async function createTable(
     }
   })
   invalidateMeta(def.name)
+  if (inAppTransaction()) whenTransactionEnds(publishNavigationChange)
+  else publishNavigationChange()
   return getMeta(def.name)
 }
 
@@ -844,6 +847,7 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
 
   const physical = quoteRelation(await tableRelation(meta.name))
   const files = await sql.begin(async (tx) => {
+    await tx`select name from table_def where name = ${meta.name} for update`
     const removedFiles: { file_url: string | null }[] = []
     // This Table's own child rows; the child Table definition is not
     // cascaded — it may serve other parents (DEL-R2). Collect actual deleted
@@ -873,6 +877,8 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
     return removedFiles
   })
   invalidateMeta(meta.name)
+  if (inAppTransaction()) whenTransactionEnds(publishNavigationChange)
+  else publishNavigationChange()
   // DEL-R7: bytes are removed best-effort after commit — a survivor is disk
   // garbage, not a leak. Only managed URLs qualify; another File row may
   // still own these bytes. Failure here cannot undo the committed deletion.
@@ -1071,6 +1077,8 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
   const schema = quoteIdent(meta.physical_schema)
   const relation = `${schema}.${quoteIdent(relationName)}`
   await sql.begin(async (tx) => {
+    await tx`select name from table_def where name = ${from} for update`
+    await tx`set constraints featherbase.table_navigation_identity_unique deferred`
     await tx.unsafe(`alter table ${quoteRelation(`${meta.physical_schema}.${meta.physical_relation}`)} rename to ${quoteIdent(relationName)}`)
     // Names Postgres built from the relation (its primary key, and on 18 its
     // NOT NULL constraints): a fresh Table under the new name has them so.
@@ -1096,6 +1104,7 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
     await tx`insert into table_def ${tx({ ...row, name: to, physical_relation: relationName, updated_at: new Date() } as unknown as Record<string, never>)}`
     await tx`update column_def set parent = ${to} where parent = ${from}`
     await tx`delete from table_def where name = ${from}`
+    await tx`set constraints featherbase.table_navigation_identity_unique immediate`
     await tx`update column_def set reference_table = ${to} where reference_table = ${from}`
     await tx`update column_def set row_table = ${to} where row_table = ${from}`
     for (const child of children)
@@ -1112,6 +1121,8 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
       where name = ${ownerApp} and jsonb_typeof(tables) = 'array' and tables ? ${from}`
   })
   invalidateMeta()
+  if (inAppTransaction()) whenTransactionEnds(publishNavigationChange)
+  else publishNavigationChange()
   await logAccess(user, `rename_table ${from} -> ${to}`, { table: 'Table', row_id: to }).catch(() => {})
   return getMeta(to)
 }

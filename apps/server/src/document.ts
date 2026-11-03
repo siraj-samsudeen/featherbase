@@ -1426,6 +1426,7 @@ async function deleteDocImpl(
   await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     await holdBeforeRowLock(stx, meta, user, { [meta.row_key]: name })
+    const [definition] = await tx`select navigation_identity from table_def where name = ${table} for share`
     const [existing] = await tx`
       select * from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
@@ -1496,6 +1497,8 @@ async function deleteDocImpl(
         delete from ${tx(await tableRelation(f.row_table!))}
         where parent = ${name} and parenttype = ${table}`
     }
+    await tx`update navigation_row_target set retired = true
+      where table_identity = ${definition.navigation_identity} and row_id = ${name} and not retired`
     await tx`delete from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name}`
   }))
   // Post-commit: caches keyed on this row (e.g. a Data Source's pool and
@@ -1614,6 +1617,7 @@ async function renameDocImpl(
     const tbl = await tableRelation(table)
     await holdManagedSet(tx as unknown as typeof sql, null)
     await runHooks('before_lock', { row: { [meta.row_key]: oldName }, meta, user, isNew: false, tx: tx as unknown as typeof sql })
+    const [definition] = await tx`select navigation_identity from table_def where name = ${table} for share`
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${oldName} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${oldName} not found`)
@@ -1632,6 +1636,8 @@ async function renameDocImpl(
     await assertChildRowsWritable(stx, meta, oldName, user)
     // Rename the row itself.
     await tx`update ${tx(tbl)} set ${tx(meta.row_key)} = ${target}, updated_at = now() where ${tx(meta.row_key)} = ${oldName}`
+    await tx`update navigation_row_target set row_id = ${target}
+      where table_identity = ${definition.navigation_identity} and row_id = ${oldName} and not retired`
 
     // Re-point this row's own child rows to the new parent name.
     for (const f of meta.columns) {
@@ -1695,6 +1701,7 @@ async function getDocImpl(
   const [row] = await sql`
     select * from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${name}`
   if (!row) throw new AppError('NotFoundError', `${table} ${name} not found`)
+  if (table === 'Table') delete row.navigation_identity
   // PERM-008: a direct share grants read even without role permission.
   const shared = await isSharedWith(user, table, name, 'read')
   if (!shared) {

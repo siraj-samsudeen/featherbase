@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { parseFilters } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
+import { bindNavigation } from './navigation-targets'
 
 // #101 Phase 3: the server half of recent actions. The client batches
 // read-side intent (rows visited, lists filtered, searches run) into
@@ -23,6 +24,7 @@ const eventSchema = z.object({
   label: z.string().max(400).optional(),
   sub: z.string().max(400).optional(),
   path: z.string().max(1000).optional(),
+  claim: z.string().max(3000).nullable().optional(),
   at: z.number().int().optional(),
 })
 const batchSchema = z.object({ events: z.array(eventSchema).min(1).max(50) })
@@ -42,7 +44,7 @@ function id(): string {
 
 export async function recordEvents(user: string, events: IncomingEvent[]): Promise<number[]> {
   const now = Date.now()
-  const rows = events.map((e) => {
+  const rows = await Promise.all(events.map(async (e) => {
     const at = typeof e.at === 'number' ? Math.min(Math.max(e.at, now - MAX_EVENT_AGE_MS), now) : now
     return {
       row_id: id(),
@@ -57,8 +59,9 @@ export async function recordEvents(user: string, events: IncomingEvent[]): Promi
       sub_label: e.sub ?? null,
       path: e.path ?? null,
       occurred_at: new Date(at),
+      destination: sql.json((await bindNavigation(user, { ...e, at })) ?? { unavailable: true }),
     }
-  })
+  }))
   await sql`insert into user_event ${sql(rows)}`
   // Retention rides the write path: one indexed delete per batch keeps the
   // table bounded without a scheduler. Global on purpose — a dormant user's

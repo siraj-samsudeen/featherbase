@@ -101,6 +101,7 @@ const clients = new Set<Client>()
 // permission eavesdropping over the socket.
 export async function canSubscribe(user: SessionUser, channel: string): Promise<boolean> {
   if (channel.startsWith('user:')) return channel === `user:${user.row_id}`
+  if (channel === 'navigation') return true
   // #101 Phase 4 (PR #104 review): the team-feed invalidation ping. Gated
   // like the feed endpoint itself (System Manager), and published with NO
   // payload — the data always flows through /api/activity_feed.
@@ -151,6 +152,13 @@ export function publishDocEvent(
   // permission on this particular Table, and the feed data itself always
   // flows through the role-gated /api/activity_feed.
   publish('feed', 'changed')
+  publishNavigationChange()
+}
+
+// Payload-free invalidation: no Table/row existence or title is disclosed.
+// Home must obtain a fresh, caller-authorized projection after any mutation.
+export function publishNavigationChange(): void {
+  publish('navigation', 'changed')
 }
 
 export function publishUserEvent(user: string, event: string, payload?: unknown): void {

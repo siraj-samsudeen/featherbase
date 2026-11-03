@@ -30,11 +30,13 @@ test('My activity: honest verbs, page titles, a List icon, "You" as the subject'
   createUser,
 }) => {
   const me = await createUser({ roles: ['System Manager'], fullName: 'Sample Person' })
+  await me.post('/api/table_def', { name: 'Task', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  const claim = (await me.fetch('/api/table/Task:meta')).headers.get('X-Navigation-Claim')
   const filters = JSON.stringify([['status', '=', 'Overdue']])
   await me.post('/api/events', {
     events: [
-      { kind: 'list', key: 'list:Task?', label: 'Task', path: '/featherbase/admin/Task' },
-      { kind: 'list', key: `list:Task?${filters}`, label: 'Task', sub: 'status = Overdue' },
+      { kind: 'list', key: 'list:Task?', label: 'Task', path: '/featherbase/admin/Task', claim },
+      { kind: 'list', key: `list:Task?${filters}`, label: 'Task', sub: 'status = Overdue', path: `/featherbase/admin/Task?filters=${encodeURIComponent(filters)}`, claim },
       { kind: 'list', key: 'list:access-tokens?', label: 'access-tokens', path: '/featherbase/admin/access-tokens' },
     ],
   })
@@ -53,6 +55,32 @@ test('My activity: honest verbs, page titles, a List icon, "You" as the subject'
     expect(within(r).getByTestId('feed-who')).toHaveTextContent(/^You$/)
   }
   expect(within(feed).getAllByRole('img', { name: 'List' }).length).toBeGreaterThan(0)
+})
+
+test('#873 deleted Table history is struck through and noninteractive, while unproven history is unavailable', async ({ createUser }) => {
+  const me = await createUser({ roles: ['System Manager'] })
+  await me.post('/api/table_def', { name: 'Former Plant', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  const read = await me.fetch('/api/table/Former%20Plant:meta')
+  await me.post('/api/events', { events: [
+    { kind: 'list', key: 'list:Former Plant?', label: 'Former Plant', path: '/featherbase/admin/Former%20Plant', claim: read.headers.get('X-Navigation-Claim') },
+    { kind: 'row', key: 'row:Unknown/north', label: 'Hidden title', path: '/featherbase/admin/Unknown/north' },
+  ] })
+  await me.delete('/api/table_def/Former%20Plant')
+  await renderApp('/featherbase/admin', me)
+  const feed = await screen.findByTestId('activity-feed')
+  await waitFor(() => expect(within(feed).getAllByTestId('feed-item')).toHaveLength(2))
+  const rows = within(feed).getAllByTestId('feed-item')
+  const deleted = rows.find(r => r.textContent?.includes('Former Plant'))!
+  const unknown = rows.find(r => r.textContent?.includes('Unavailable destination'))!
+  expect(within(deleted).getByTestId('feed-object')).toHaveClass('line-through')
+  expect(deleted).toHaveTextContent('Table deleted')
+  expect(unknown).not.toHaveTextContent('Table deleted')
+  expect(unknown).not.toHaveTextContent('Hidden title')
+  for (const row of rows) {
+    expect(within(row).queryByRole('button')).toBeNull()
+    expect(within(row).queryByRole('link')).toBeNull()
+    expect(row.querySelector('time')).not.toBeNull()
+  }
 })
 
 test('Team tab: name, then main role; nameless person falls back to the email local part', async ({

@@ -7,6 +7,8 @@ export type RecentKind = 'row' | 'list' | 'page' | 'search'
 
 export interface RecentAction {
   kind: RecentKind
+  /** Server-attested authorized visit; never a grant to open the target. */
+  claim?: string
   /** Dedup identity — revisiting bumps the entry, never duplicates it. */
   key: string
   label: string
@@ -77,6 +79,7 @@ export function recordAction(user: string, action: RecentAction, now = Date.now(
   remember(journal.entries, action, now)
   unconfirmed.set(user, journal)
   enqueueServerEvent(user, action, now)
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('navigation-history-updated'))
 }
 
 // ---- #101 Phase 3: server mirror -------------------------------------------
@@ -168,6 +171,7 @@ function enqueueServerEvent(owner: string, action: RecentAction, at: number): vo
       label: action.label,
       sub: action.sub,
       path: action.path,
+      claim: action.claim,
       at,
     },
   })

@@ -9,7 +9,7 @@ import { readVariable } from './env'
 // API-004: email/password login issuing a JWT; every API call (except
 // /api/ping and /api/login) must carry it. Passwords are scrypt-hashed.
 
-const jwtSecret = () => readVariable('JWT_SECRET') ?? 'dev-secret-change-me'
+export const jwtSecret = () => readVariable('JWT_SECRET') ?? 'dev-secret-change-me'
 
 // 32-byte key + 16-byte salt fits the varchar(140) Data column (97 chars).
 export function hashPassword(password: string): string {

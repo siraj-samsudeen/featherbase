@@ -55,8 +55,10 @@ async function openHome(as: Client) {
 
 test('signing out hides the previous person’s recalled destinations and routine', async ({ admin }) => {
   await admin.post('/api/events', { events: habit(5) })
+  await admin.post('/api/table_def', { name: 'Private Work', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  const read = await admin.fetch('/api/table/Private%20Work:meta')
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
-  recordAction(admin.user!, { kind: 'list', key: 'list:Private Work', label: 'Private Work', path: '/featherbase/admin/Private%20Work' })
+  recordAction(admin.user!, { kind: 'list', key: 'list:Private Work?', label: 'Private Work', path: '/featherbase/admin/Private%20Work', claim: read.headers.get('X-Navigation-Claim')! })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createRouter({ routeTree: createRootRoute() })
   const content = () => <QueryClientProvider client={client}><RouterContextProvider router={router}>
@@ -155,7 +157,8 @@ test('"Not now" puts the routine away, and it stays away on the next visit', asy
 test('the Last view tile opens the list it names', async ({ createUser }) => {
   const user = await createUser({ roles: ['System Manager'] })
   const { recordAction } = await import('../src/lib/recents')
-  recordAction(user.user!, { kind: 'list', key: 'list:Person?', label: 'Person', path: '/featherbase/admin/Person' })
+  const read = await user.fetch('/api/table/Person:meta')
+  recordAction(user.user!, { kind: 'list', key: 'list:Person?', label: 'Person', path: '/featherbase/admin/Person', claim: read.headers.get('X-Navigation-Claim')! })
   const { router } = await openHome(user)
   ;(await screen.findByTestId('resume-tile-view')).click()
   await waitFor(() =>
@@ -198,7 +201,8 @@ test('after opening a row, then a list, then running a search, the home page has
   await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Hr Shelf/shelf-quokka'))
 
   await app.router.navigate({ to: '/featherbase/admin' })
-  const strip = await screen.findByTestId('resume-strip', {}, { timeout: 8000 })
+  await screen.findByTestId('resume-tile-row', {}, { timeout: 8000 })
+  const strip = screen.getByTestId('resume-strip')
   expect(within(strip).getByTestId('resume-tile-row')).toHaveTextContent('Quokka shelf')
   expect(within(strip).getByTestId('resume-tile-view')).toHaveTextContent('Hr Aisle')
   expect(within(strip).getByTestId('resume-tile-search')).toHaveTextContent('Quokka')

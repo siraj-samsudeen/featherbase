@@ -3,16 +3,20 @@ import { test } from './pg-test'
 import { issueSession } from '../src/auth'
 import { logActivity } from '../src/audit'
 import { sql } from '../src/db'
+import { makeTable } from './fixtures'
 
 // #101 Phase 4: /api/activity_feed — 'mine' is the caller's raw trail;
 // 'team' shows changes + logins only and requires System Manager.
 
 describe('#101: GET /api/activity_feed', () => {
   test("'mine' returns the caller's trail newest-first", async ({ admin }) => {
+    const table = await makeTable(admin, { name: 'X', columns: ['title'] })
+    await admin.post(table.url, { row_id: 'A' })
+    const read = await admin.fetch(table.rowUrl('A'))
     const now = Date.now()
     await admin.post('/api/events', {
       events: [
-        { kind: 'row', key: 'row:X/A', label: 'A', path: '/admin/X/A', at: now - 60_000 },
+        { kind: 'row', key: 'row:X/A', label: 'A', path: '/featherbase/admin/X/A', at: now - 60_000, claim: read.headers.get('X-Navigation-Claim') },
         { kind: 'search', key: 'search:acme', label: 'acme', at: now },
       ],
     })
@@ -25,9 +29,12 @@ describe('#101: GET /api/activity_feed', () => {
   })
 
   test("another user's 'mine' feed never includes the caller's trail", async ({ admin, createUser }) => {
+    const table = await makeTable(admin, { name: 'X', columns: ['title'] })
+    await admin.post(table.url, { row_id: 'feed-private-row' })
+    const read = await admin.fetch(table.rowUrl('feed-private-row'))
     await admin.post('/api/events', {
       events: [
-        { kind: 'row', key: 'row:X/feed-private-row', label: 'feed-private-row', path: '/admin/X/feed-private-row', at: Date.now() - 1000 },
+        { kind: 'row', key: 'row:X/feed-private-row', label: 'feed-private-row', path: '/featherbase/admin/X/feed-private-row', at: Date.now() - 1000, claim: read.headers.get('X-Navigation-Claim') },
         { kind: 'search', key: 'search:feed-private-term', label: 'feed-private-term', at: Date.now() },
       ],
     })
@@ -266,6 +273,8 @@ describe('#101: GET /api/activity_feed', () => {
   // Home cleanup: a run of the same action on the same target is ONE row,
   // collapsed before the limit so a page never fills with repeats.
   test("'mine' collapses consecutive repeats into one row with a count and the latest time", async ({ admin }) => {
+    const table = await makeTable(admin, { name: 'Task', columns: ['title'] })
+    const read = await admin.fetch(table.metaUrl)
     const now = Date.now()
     const explore = { kind: 'page', key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore' }
     await admin.post('/api/events', {
@@ -274,7 +283,7 @@ describe('#101: GET /api/activity_feed', () => {
         { kind: 'search', key: 'search:acme', label: 'acme', at: now - 4000 },
         { ...explore, at: now - 3000 },
         { ...explore, at: now - 2000 },
-        { kind: 'list', key: 'list:Task?', label: 'Task', path: '/featherbase/admin/Task', at: now - 1000 },
+        { kind: 'list', key: 'list:Task?', label: 'Task', path: '/featherbase/admin/Task', at: now - 1000, claim: read.headers.get('X-Navigation-Claim') },
       ],
     })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine&limit=3')
@@ -296,8 +305,9 @@ describe('#101: GET /api/activity_feed', () => {
       table: 'Feed Merch Map',
       row: { row_id: '1517|040802006', store_code: '1517', material_group: '040802006', mch_subcategory: 'Kurti Z' },
     })
+    const read = await admin.fetch('/api/table/Feed%20Merch%20Map/1517%7C040802006')
     await admin.post('/api/events', {
-      events: [{ kind: 'row', key: 'row:Feed Merch Map/1517|040802006', label: '1517|040802006', sub: 'Feed Merch Map', path: '/featherbase/admin/Feed%20Merch%20Map/1517%7C040802006' }],
+      events: [{ kind: 'row', key: 'row:Feed Merch Map/1517|040802006', label: '1517|040802006', sub: 'Feed Merch Map', path: '/featherbase/admin/Feed%20Merch%20Map/1517%7C040802006', claim: read.headers.get('X-Navigation-Claim') }],
     })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine')
     expect(feed.items[0]).toMatchObject({ kind: 'row', title: '1517 · Kurti Z', sub: 'Feed Merch Map' })

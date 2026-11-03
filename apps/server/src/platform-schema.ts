@@ -10,7 +10,7 @@ const PLATFORM_RELATIONS = new Set([
   'dataset_miss', 'dataset_place_drop', 'dataset_snapshot', 'email_account', 'email_queue', 'email_rule',
   'email_sink', 'file', 'glossary_avoid_word', 'glossary_link', 'glossary_term', 'has_role', 'health_check_event', 'home_page', 'home_page_link', 'home_page_role',
   'import_log', 'installed_app', 'instance_settings_apply', 'internal_metadata', 'job_execution', 'letter_head',
-  'metadata_override', 'migration', 'notification_log', 'password_reset',
+  'metadata_override', 'migration', 'navigation_row_target', 'notification_log', 'password_reset',
   'permission', 'pre_auth_bucket', 'print_format', 'report', 'revoked_session', 'role',
   'runtime_action_result',
   'sales_target_snapshot_name', 'sales_target_snapshot_row', 'saved_view', 'scheduled_job', 'series', 'server_script',

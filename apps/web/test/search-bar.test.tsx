@@ -185,8 +185,11 @@ test('A past search comes back in the empty bar: arrow keys choose it and Enter 
   bar.blur()
   bar.focus()
   const recents = await screen.findByTestId('awesomebar-recents')
+  // The authorized row visit arrives after its read; wait for it before
+  // counting keyboard steps, and distinguish Search from the row's title.
+  await within(recents).findByText('Zebrafinch widget')
   const items = within(recents).getAllByRole('option')
-  const at = items.findIndex((b) => b.textContent?.includes('Zebrafinch') && !b.textContent?.includes('-widget'))
+  const at = items.findIndex((b) => within(b).queryByRole('img', { name: 'Search' }) && b.textContent?.includes('Zebrafinch'))
   expect(at).toBeGreaterThanOrEqual(0)
   // ArrowUp from the top wraps to the bottom; ArrowDown walks forward again.
   fireEvent.keyDown(bar, { key: 'ArrowUp' })
