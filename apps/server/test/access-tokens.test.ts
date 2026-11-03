@@ -557,6 +557,25 @@ describe('#853: rename service accounts', () => {
     expect((await api.fetch('/api/whoami', { headers: auth })).status).toBe(401)
   })
 
+  test('token names accept 140 characters but refuse longer suggestions and edits without changing state', async ({ admin }) => {
+    const boundary = `${'a'.repeat(138)}-1`
+    const issued = await admin.post<{ id: string; label: string }>('/api/access_tokens', { label: boundary })
+    expect(issued.label).toBe(boundary)
+    const before = await sql`select * from access_token where id = ${issued.id}`
+    for (const label of [`${'a'.repeat(139)}-1`, 'manual '.repeat(21), '😀'.repeat(141)]) {
+      for (const [method, path] of [['POST', '/api/access_tokens'], ['PATCH', `/api/access_tokens/${issued.id}`]]) {
+        const response = await admin.fetch(path, { method, body: JSON.stringify({ label }) })
+        expect(response.status).toBe(417)
+        expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message: 'A token label must be at most 140 characters' } })
+      }
+    }
+    expect(await sql`select * from access_token where id = ${issued.id}`).toEqual(before)
+    const unicode = '😀'.repeat(140)
+    const renamed = await admin.fetch(`/api/access_tokens/${issued.id}`, { method: 'PATCH', body: JSON.stringify({ label: unicode }) })
+    expect(renamed.status).toBe(200)
+    expect(await renamed.json()).toMatchObject({ label: unicode })
+  })
+
   test('a nonexistent service account cannot be renamed', async ({ admin }) => {
     const response = await admin.fetch('/api/service_accounts/svc_aaaaaaaaaaaaaaaaaaaa', { method: 'PATCH', body: JSON.stringify({ label: 'svc-missing' }) })
     expect(response.status).toBe(404)

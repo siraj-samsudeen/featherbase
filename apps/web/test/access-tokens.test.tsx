@@ -1,8 +1,10 @@
 // Access Tokens: the token list says what the server will do with each token.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
+import { PrincipalName } from '../src/lib/people'
 
 test('each token shows whether it still works: active, revoked, expired or owner disabled', async ({ admin }) => {
   const live = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-states-live' })
@@ -129,7 +131,9 @@ test('renaming uses a cancellable dialog with server refusal feedback', async ({
   const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-before-rename' })
   await admin.post('/api/service_accounts', { label: 'svc-name-taken' })
   const token = await admin.post<{ id: string }>('/api/access_tokens', { label: 'before rename', owner: account.row_id })
-  await renderApp('/featherbase/admin/access-tokens', admin)
+  const { queryClient } = await renderApp('/featherbase/admin/access-tokens', admin)
+  render(<QueryClientProvider client={queryClient}><span data-testid="cached-account-name"><PrincipalName id={account.row_id} /></span></QueryClientProvider>)
+  await waitFor(() => expect(screen.getByTestId('cached-account-name')).toHaveTextContent('svc-before-rename'))
   await user.click(await screen.findByTestId(`token-rename-${token.id}`, {}, { timeout: 10_000 }))
   expect(screen.getByTestId('rename-name')).toHaveValue('before rename')
   await user.clear(screen.getByTestId('rename-name'))
@@ -158,6 +162,7 @@ test('renaming uses a cancellable dialog with server refusal feedback', async ({
   await user.click(screen.getByTestId('rename-save'))
   await waitFor(() => expect(screen.queryByTestId('rename-dialog')).not.toBeInTheDocument())
   expect(await screen.findByTestId(`sa-${account.row_id}`)).toHaveTextContent('svc-after-rename')
+  await waitFor(() => expect(screen.getByTestId('cached-account-name')).toHaveTextContent('svc-after-rename'))
   await user.click(screen.getByTestId(`sa-issue-${account.row_id}`))
   expect(screen.getByTestId('token-label')).toHaveValue('svc-after-rename-2')
   const listed = await admin.get<{ tokens: { id: string; label: string; owner_name: string }[] }>('/api/access_tokens')
