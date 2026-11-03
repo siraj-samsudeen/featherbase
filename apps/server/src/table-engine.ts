@@ -966,6 +966,7 @@ export async function renameColumn(
     // column, not to its old name.
     await tx`update metadata_override set column_name = ${target} where table_name = ${meta.name} and column_name = ${from}`
     await renameInGlossary(tx, meta.name, { table: meta.name, column: from }, { table: meta.name, column: target })
+    await renameInImportHistory(tx, meta.name, from, target)
     await tx`update table_def set updated_at = ${new Date()} where name = ${meta.name}`
   })
 
@@ -975,6 +976,23 @@ export async function renameColumn(
     row_id: meta.name,
   }).catch(() => {})
   return getMeta(meta.name)
+}
+
+// #865: an import decides who owns a field from the row's history, the source
+// values it remembers and its open conflicts, all keyed by column name. Left
+// under the old name, a person's correction reads as never made and the next
+// import overwrites it without a conflict.
+async function renameInImportHistory(tx: TxSql, table: string, from: string, to: string) {
+  await tx`update version set data = jsonb_set(data, '{changed}', (
+      select jsonb_agg(case when c->>0 = ${from} then jsonb_set(c, '{0}', to_jsonb(${to}::text)) else c end order by i)
+      from jsonb_array_elements(data->'changed') with ordinality as e(c, i)))
+    where ref_table = ${table} and jsonb_typeof(data->'changed') = 'array'
+      and jsonb_path_exists(data->'changed', '$[*] ? (@[0] == $f)', jsonb_build_object('f', ${from}::text))`
+  await tx`update version set data = jsonb_set(data, '{resolution,field}', to_jsonb(${to}::text))
+    where ref_table = ${table} and data->'resolution'->>'field' = ${from}`
+  await tx`update featherbase.import_source set values = (values - ${from}::text) || jsonb_build_object(${to}::text, values->${from}::text)
+    where ref_table = ${table} and values ? ${from}::text`
+  await tx`update featherbase.import_conflict set field = ${to} where ref_table = ${table} and field = ${from}`
 }
 
 // #629: a glossary term describes Tables and columns by name, in its links
