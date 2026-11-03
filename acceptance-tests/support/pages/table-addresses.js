@@ -207,24 +207,31 @@ class TableAddresses {
   }
   static async ambiguousDefinitions(api) {
     await TableAddresses.arrange(api, 'Legacy Route Probe');
-    // The public creator correctly refuses new collisions. Reproduce two
+    // Hyphenated plain names are not legal for new Tables. Reproduce two
     // pre-existing legacy definitions, then clear the API's metadata cache.
     await acceptanceSql("insert into featherbase.table_def (name, module, custom) values ('Legacy-Route-Probe', 'Route acceptance', true)");
     await restartAcceptance();
   }
   async ambiguity(api) {
-    const response = await api.call('GET', '/api/table/legacy-route-probe:meta');
-    assert.equal(response.status(), 409, await response.text());
-    assert.match(await response.text(), /ambiguous/i);
-    for (const name of ['Legacy Route Probe', 'Legacy-Route-Probe']) {
-      const exact = await api.call('GET', `/api/table/${encodeURIComponent(name)}:meta`, undefined, [200], 'exact name wins');
-      assert.equal((await exact.json()).name, name);
+    try {
+      const response = await api.call('GET', '/api/table/legacy-route-probe:meta');
+      assert.equal(response.status(), 409, await response.text());
+      assert.match(await response.text(), /ambiguous/i);
+      for (const name of ['Legacy Route Probe', 'Legacy-Route-Probe']) {
+        const exact = await api.call('GET', `/api/table/${encodeURIComponent(name)}:meta`, undefined, [200], 'exact name wins');
+        assert.equal((await exact.json()).name, name);
+      }
+      await expect(this.page.getByText(/ambiguous/i).first()).toBeVisible();
+      await expect(this.page.getByTestId('list-view')).toHaveCount(0);
+      await expect(this.page.getByTestId('form-view')).toHaveCount(0);
+      await this.visit('/featherbase/admin/table/Legacy%20Route%20Probe');
+      await expect(this.page.getByTestId('list-rows')).toContainText('Stock review');
+    } finally {
+      // This metadata-only legacy fixture has no backing relation. Do not
+      // let it poison later scenarios that search all readable Tables.
+      await acceptanceSql("delete from featherbase.table_def where name = 'Legacy-Route-Probe'");
+      await restartAcceptance();
     }
-    await expect(this.page.getByText(/ambiguous/i).first()).toBeVisible();
-    await expect(this.page.getByTestId('list-view')).toHaveCount(0);
-    await expect(this.page.getByTestId('form-view')).toHaveCount(0);
-    await this.visit('/featherbase/admin/table/Legacy%20Route%20Probe');
-    await expect(this.page.getByTestId('list-rows')).toContainText('Stock review');
   }
 }
 
