@@ -5,6 +5,7 @@ import {
   createRootRoute,
   createRoute,
   redirect,
+  useRouterState,
 } from '@tanstack/react-router'
 import { parseFilters } from 'shared'
 import { LoginPage } from './pages/Login'
@@ -57,6 +58,7 @@ import WarehouseSource from './pages/WarehouseSource'
 import { WarehouseBrowser } from './pages/WarehouseBrowser'
 import { CopySetup } from './pages/CopySetup'
 import { CopyBar } from './components/CopyBar'
+import type { BrowseContext } from './lib/warehouse'
 import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { RelationMap } from './pages/RelationMap'
@@ -186,10 +188,17 @@ const adminRoute = createRoute({
   beforeLoad: ({ location }) => {
     if (!getToken()) throw redirect({ href: loginHref(location.href) })
   },
-  component: AdminLayout,
+  component: AdminRouteLayout,
   // Verifier, round 2 on #495: a path no Admin page matches.
   notFoundComponent: AdminPageNotFound,
 })
+
+function AdminRouteLayout() {
+  const wide = useRouterState({ select: (state) => state.matches.some((match) =>
+    match.routeId === sourceBrowserRoute.id || match.routeId === copySetupRoute.id,
+  ) })
+  return <AdminLayout wide={wide} />
+}
 
 /** An Admin path that is neither a known page nor an existing Table: said
  *  plainly, with the way back. Never the Table loader's own error. */
@@ -636,16 +645,23 @@ const sourceBrowserRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'source/$name',
   // #772: a MotherDuck source's browser keeps its place in the address.
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): BrowseContext => ({
     database: searchString(search.database),
     schema: searchString(search.schema),
+    table: searchString(search.table),
+    tableSchema: searchString(search.tableSchema),
+    tab: searchString(search.tab),
+    query: searchString(search.query),
+    columnQuery: searchString(search.columnQuery),
+    databaseQuery: searchString(search.databaseQuery),
+    schemaQuery: searchString(search.schemaQuery),
   }),
   component: SourceBrowserPage,
 })
 
 function SourceBrowserPage() {
   const { name } = sourceBrowserRoute.useParams()
-  const { database, schema } = sourceBrowserRoute.useSearch()
+  const context = sourceBrowserRoute.useSearch()
   const source = useQuery({
     queryKey: ['data-source', name],
     queryFn: () => api.get<{ engine: string }>(`/api/table/Data%20Source/${encodeURIComponent(name)}`),
@@ -664,9 +680,9 @@ function SourceBrowserPage() {
       </div>
     )
   return (
-    <div data-testid="table-page">
+    <div data-testid="table-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
       {source.data?.engine === 'motherduck'
-        ? <WarehouseBrowser key={name} name={name} database={database} schema={schema} />
+        ? <WarehouseBrowser key={name} name={name} {...context} />
         : <SourceBrowser key={name} name={name} />}
     </div>
   )
@@ -680,16 +696,17 @@ const copySetupRoute = createRoute({
     database: searchString(search.database),
     schema: searchString(search.schema),
     table: searchString(search.table),
+    returnTo: searchString(search.returnTo),
   }),
   component: CopySetupPage,
 })
 
 function CopySetupPage() {
   const { name } = copySetupRoute.useParams()
-  const { database, schema, table } = copySetupRoute.useSearch()
+  const { database, schema, table, returnTo } = copySetupRoute.useSearch()
   return (
-    <div data-testid="table-page">
-      <CopySetup key={`${name}/${database}/${schema}/${table}`} name={name} database={database ?? ''} schema={schema ?? ''} table={table ?? ''} />
+    <div data-testid="table-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <CopySetup key={`${name}/${database}/${schema}/${table}`} name={name} database={database ?? ''} schema={schema ?? ''} table={table ?? ''} returnTo={returnTo} />
     </div>
   )
 }

@@ -1,12 +1,12 @@
 // #772 checklist 1–9: the Data Source table's New page. The kind folds into one
 // line once picked; MotherDuck asks for a token, tests it, then lists the
 // databases to tick. Other kinds keep the native Data Source form.
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../lib/api'
 import { connectWarehouse, testToken, type TokenReport } from '../lib/warehouse'
-import { Button, Field, Notice, SearchInput, StatusPill, TextInput, buttonClasses, cardClasses } from '../components/ui'
+import { Breadcrumbs, Button, DataList, Field, Notice, SearchableList, StatusPill, TextInput, buttonClasses, cardClasses } from '../components/ui'
 import { FormView } from '../components/FormView'
 
 const KINDS = [
@@ -24,13 +24,11 @@ export default function ConnectSource() {
   const picked = KINDS.find((k) => k.engine === kind)
   return (
     <div data-testid="connect-source">
-      <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted">
-        <Link to="/featherbase/admin" className="hover:underline">Admin</Link>
-        <span aria-hidden="true">/</span>
-        <Link to="/featherbase/admin/$table" params={{ table: 'Data Source' }} search={{ filters: undefined }} className="hover:underline">Data Source</Link>
-        <span aria-hidden="true">/</span>
-        <span className="text-ink">New</span>
-      </nav>
+      <div className="mb-4"><Breadcrumbs items={[
+        { label: 'Admin', href: '/featherbase/admin' },
+        { label: 'Data Source', href: '/featherbase/admin/Data%20Source' },
+        { label: 'New' },
+      ]} /></div>
       {kind === 'motherduck' ? (
         <MotherDuckForm onChangeKind={() => setKind(null)} />
       ) : (
@@ -97,10 +95,6 @@ function MotherDuckForm({ onChangeKind }: { onChangeKind: () => void }) {
 
   const nameError = name && !NAME_RULE.test(name) ? 'Use lowercase letters, digits and hyphens, starting with a letter' : undefined
   const ready = !!report && ticked.size > 0 && !!name && !nameError
-  const shown = useMemo(
-    () => (report?.databases ?? []).filter((d) => d.name.toLowerCase().includes(filter.trim().toLowerCase())),
-    [report, filter],
-  )
 
   async function test() {
     setBusy('test')
@@ -231,25 +225,17 @@ function MotherDuckForm({ onChangeKind }: { onChangeKind: () => void }) {
               <h2 className="font-semibold text-ink">
                 3. Choose the databases <span className="text-sm font-normal text-ink-muted">· {ticked.size} of {report.databases.length} ticked</span>
               </h2>
-              <div className="w-64">
-                <SearchInput aria-label="Find a database" placeholder="Find a database" value={filter} onChange={(e) => setFilter(e.target.value)} />
-              </div>
             </div>
             <p className="mt-1 text-xs text-ink-muted">
               Featherbase opens only the databases you tick, and only for its own connection. Your MotherDuck account isn't changed.
             </p>
-            <ul className="mt-2 max-h-72 divide-y divide-border overflow-auto rounded-control border border-border">
-              {shown.map((d) => (
-                <li key={d.name}>
-                  <label className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-subtle">
-                    <input type="checkbox" checked={ticked.has(d.name)} onChange={() => toggle(d.name)} data-testid={`db-${d.name}`} />
-                    <span className="min-w-0 flex-1 font-mono text-sm text-ink">{d.name}</span>
-                    <span className="text-xs text-ink-muted">{d.owner}</span>
-                  </label>
-                </li>
-              ))}
-              {shown.length === 0 && <li className="px-3 py-2 text-sm text-ink-muted">No database matches.</li>}
-            </ul>
+            <div className="mt-3"><SearchableList label="Databases" items={report.databases} query={filter} onQueryChange={setFilter} getSearchText={(d) => `${d.name} ${d.owner}`}>
+              {(matching) => <DataList caption="Available databases" rows={matching} columns={[
+                { key: 'use', header: 'Use', cell: (d) => <input type="checkbox" aria-label={`Use ${d.name}`} checked={ticked.has(d.name)} onChange={() => toggle(d.name)} data-testid={`db-${d.name}`} /> },
+                { key: 'name', header: 'Database', cell: (d) => <span className="font-mono">{d.name}</span> },
+                { key: 'owner', header: 'Owner', cell: (d) => d.owner },
+              ]} rowKey={(d) => d.name} layout="table" empty={{ title: 'No matching databases', body: 'Try a different search.' }} />}
+            </SearchableList></div>
             <p className="mt-3 text-sm text-ink-muted">
               Next, after saving: pick one of these databases, then a table in it, and copy that table into Featherbase.
             </p>

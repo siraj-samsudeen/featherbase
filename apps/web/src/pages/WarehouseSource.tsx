@@ -6,7 +6,7 @@ import { Link } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { replaceToken, type WarehouseSource as Source } from '../lib/warehouse'
-import { Button, Notice, Skeleton, TextInput, StatusPill, buttonClasses, cardClasses } from '../components/ui'
+import { Breadcrumbs, Button, DataList, Notice, SearchableList, Skeleton, TextInput, buttonClasses, cardClasses } from '../components/ui'
 import { FormView } from '../components/FormView'
 
 export default function WarehouseSource({ name }: { name: string }) {
@@ -26,6 +26,7 @@ function TokenSource({ source }: { source: Source }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [writable, setWritable] = useState(false)
+  const [query, setQuery] = useState('')
   const databases = source.databases ?? []
 
   async function replace() {
@@ -45,13 +46,11 @@ function TokenSource({ source }: { source: Source }) {
 
   return (
     <div data-testid="warehouse-source">
-      <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted">
-        <Link to="/featherbase/admin" className="hover:underline">Admin</Link>
-        <span aria-hidden="true">/</span>
-        <Link to="/featherbase/admin/$table" params={{ table: 'Data Source' }} search={{ filters: undefined }} className="hover:underline">Data Source</Link>
-        <span aria-hidden="true">/</span>
-        <span className="text-ink">{source.row_id}</span>
-      </nav>
+      <div className="mb-4"><Breadcrumbs items={[
+        { label: 'Admin', href: '/featherbase/admin' },
+        { label: 'Data Source', href: '/featherbase/admin/Data%20Source' },
+        { label: source.row_id },
+      ]} /></div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-ink">{source.row_id}</h1>
@@ -101,13 +100,13 @@ function TokenSource({ source }: { source: Source }) {
               </>
             )}
           </dd>
-          <dt className="text-ink-muted">Databases</dt>
-          <dd className="flex flex-wrap items-center gap-2" data-testid="warehouse-databases">
-            {databases.map((d) => (
-              <StatusPill key={d.name} tone="neutral"><span className="font-mono">{d.name}</span></StatusPill>
-            ))}
-          </dd>
         </dl>
+        <div className="mt-5" data-testid="warehouse-databases"><SearchableList label="Databases" items={databases} query={query} onQueryChange={setQuery} getSearchText={(d) => `${d.name} ${d.owner}`}>
+          {(matching) => <DataList caption="Connected databases" rows={matching} columns={[
+            { key: 'name', header: 'Database', cell: (d) => <Link to="/featherbase/admin/source/$name" params={{ name: source.row_id }} search={{ database: d.name, schema: undefined }} className="text-action hover:underline">{d.name}</Link> },
+            { key: 'owner', header: 'Owner', cell: (d) => d.owner },
+          ]} rowKey={(d) => d.name} layout="table" empty={{ title: 'No matching databases', body: 'Try a different search.' }} />}
+        </SearchableList></div>
         {error && <Notice tone="negative" className="mt-4">{error}</Notice>}
         {writable && (
           <div className="mt-4" data-testid="replace-token-writable">

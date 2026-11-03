@@ -26,6 +26,50 @@ export const previewTable = (name: string, database: string, schema: string, tab
 export interface BrowsePlace { database?: string; schema?: string }
 const placeKey = (source: string) => `fb-warehouse-place:${getSessionUser()?.row_id ?? ''}:${source}`
 
+export interface BrowseContext extends BrowsePlace {
+  table?: string
+  tableSchema?: string
+  tab?: string
+  query?: string
+  columnQuery?: string
+  databaseQuery?: string
+  schemaQuery?: string
+}
+
+export function browserHref(source: string, context: BrowseContext): string {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(context)) {
+    if (value) search.set(key, value)
+  }
+  return `/featherbase/admin/source/${enc(source)}?${search}`
+}
+
+// Only copy setup drafts, never credentials. Scoped to this tab and signed-in person.
+const draftKey = (identity: string) => `fb-warehouse-copy:${getSessionUser()?.row_id ?? ''}:${identity}`
+export function readCopyDraft<T>(identity: string): T | undefined {
+  try {
+    return JSON.parse(sessionStorage.getItem(draftKey(identity)) ?? 'null') ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function writeCopyDraft(identity: string, draft: unknown): void {
+  try {
+    sessionStorage.setItem(draftKey(identity), JSON.stringify(draft))
+  } catch {
+    // The current form still works when storage is blocked or full.
+  }
+}
+
+export function clearCopyDraft(identity: string): void {
+  try {
+    sessionStorage.removeItem(draftKey(identity))
+  } catch {
+    // Best effort, like saving a draft.
+  }
+}
+
 export function lastPlace(source: string): BrowsePlace {
   try {
     const raw = localStorage.getItem(placeKey(source))
