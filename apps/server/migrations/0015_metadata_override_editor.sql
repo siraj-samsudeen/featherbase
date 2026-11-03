@@ -1,4 +1,4 @@
--- #740: coordinated after the presentation migrations; recheck order before landing.
+-- #740: 0015 reserved after actual main's 0012 and pending 0013/0014.
 -- Settings records are assigned IDs; existing IDs are never rewritten.
 update featherbase.table_def set id_pattern = 'hash'
 where name = 'Metadata Override' and id_pattern = 'prompt';

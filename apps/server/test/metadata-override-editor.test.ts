@@ -11,8 +11,8 @@ test('editor migration preserves authored wording', async ({ admin }) => {
     when 'table_name' then 'doc_type' when 'column_name' then 'Our column'
     when 'property' then 'Property' when 'value' then 'value' end
     where parent = 'Metadata Override'`
-  await sql`delete from migration where name = '0011_metadata_override_editor.sql'`
-  await withTransaction(() => applyMigrationFile('0011_metadata_override_editor.sql'))
+  await sql`delete from migration where name = '0015_metadata_override_editor.sql'`
+  await withTransaction(() => applyMigrationFile('0015_metadata_override_editor.sql'))
   invalidateMeta('Metadata Override')
   const meta = await admin.get<{ id_pattern: string; columns: { column_name: string; label: string }[] }>('/api/table/Metadata%20Override:meta')
   expect(meta.id_pattern).toBe('hash')
