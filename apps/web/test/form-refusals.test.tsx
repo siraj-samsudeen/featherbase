@@ -162,6 +162,31 @@ test('a stored JSON value saves unchanged when the person edits another field', 
   expect(await admin.get(`/api/table/${enc('Frf Note')}/note-2`)).toMatchObject({ title: 'kept again', extra: 'plain words' })
 })
 
+test('primary lifecycle actions reach the amended draft from a cancelled row', async ({ admin }) => {
+  const user = userEvent.setup()
+  await admin.post('/api/table_def', {
+    name: 'Frf Lifecycle', is_submittable: true,
+    columns: [{ column_name: 'item', column_type: 'Data', label: 'Item' }],
+  })
+  const saved = await admin.post<{ row_id: string }>('/api/save_row', {
+    table: 'Frf Lifecycle', row: { item: 'tea for north depot' },
+  })
+  const path = `/api/table/${enc('Frf Lifecycle')}/${enc(saved.row_id)}`
+  await renderApp(`/featherbase/admin/${enc('Frf Lifecycle')}/${enc(saved.row_id)}`, admin)
+  await user.click(await screen.findByRole('tab', { name: 'Related' }))
+  await user.click(await screen.findByRole('button', { name: 'Submit' }))
+  await user.click(await screen.findByRole('button', { name: 'Cancel' }))
+  await waitFor(async () => expect(await admin.get(path)).toMatchObject({ status: 'cancelled', item: 'tea for north depot' }))
+  await user.click(await screen.findByRole('button', { name: 'Amend' }))
+  await screen.findByRole('button', { name: 'Submit' })
+  await user.click(screen.getByRole('tab', { name: 'Work' }))
+  await waitFor(() => expect(field('item')).toHaveValue('tea for north depot'))
+  expect(await admin.get(`${path}-1`)).toMatchObject({
+    status: 'draft', amended_from: saved.row_id, item: 'tea for north depot',
+  })
+  expect(screen.getByRole('button', { name: 'Submit' })).toBeVisible()
+})
+
 test('submitting a row someone else already submitted is refused with the reason', async ({ admin }) => {
   const user = userEvent.setup()
   await admin.post('/api/table_def', {
