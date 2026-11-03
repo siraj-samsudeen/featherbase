@@ -145,9 +145,10 @@ Then the user sees the customer "Globex Ltd"
 
 ### Requirement: A row with no name is never a blank
 
-A row whose title is blank SHALL still read as something that tells it apart,
-a few of its own values or else its table and id, wherever a list, the
-relationship map's row lists or a filter shows it by name.
+A row whose title is blank SHALL lead its own list by its id. Where it is
+shown as a link or in a filter, it SHALL read the way other screens show an
+untitled row: a few of its own values, or else its table and id. It is never
+a blank.
 
 #### Scenario: A nameless customer is listed by its id
 

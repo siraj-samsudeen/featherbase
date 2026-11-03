@@ -14,7 +14,7 @@ Skipped: `acceptance-tests/` exists.
 ## 3. Implementation
 
 - [ ] 3.1 List columns: the title column leads, Row ID only without one; every list-shaped screen fetches `row_id`; Explore drops Row ID for hash-named Tables only when Row ID leads
-- [ ] 3.2 List: link cells read as the linked row's title and open it; a blank leading title reads as the row's stand-in title; the columns menu's always-on entry is the leading column
+- [ ] 3.2 List: link cells read as the linked row's title and open it; a blank leading title shows the row's id; the columns menu's always-on entry is the leading column
 - [ ] 3.3 List: filter chips and the Recent strip name the column by its label and a link filter's row by its title
 - [ ] 3.4 Relationship map: link cells in its row tables read as titles and move the map
 - [ ] 3.5 Web tests: new cases for the above; update tests that pinned Row ID first on a titled Table or the raw chip text, each listed in the PR

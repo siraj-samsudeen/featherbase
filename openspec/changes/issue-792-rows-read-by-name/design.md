@@ -23,7 +23,7 @@ Rejected:
 
 ### 2. Link titles render at the cell, through the existing batched title lookup
 
-Each link cell renders `RowTitle`, which queues every title asked for in the same tick into one permission-scoped request and falls back to the id. Filter chips and the Recent strip use the same lookup, at render time, from the stored filter. A leading title cell that is blank uses it too, so a nameless row reads the same stand-in (a few of its values, else its Table and id) everywhere.
+Each link cell renders `RowTitle`, which queues every title asked for in the same tick into one permission-scoped request and falls back to the id. Filter chips and the Recent strip use the same lookup, at render time, from the stored filter. A leading title cell that is blank shows the row's id instead (the issue's point 5); a link to such a row reads the stand-in every other screen uses (a few of its values, else its Table and id), so the fallback for links stays one product-wide rule (`rowDisplayTitle`).
 
 Rejected:
 - **Have the list API return titles beside each link value**: the list read would have to join every linked Table under each one's own permissions (and a connected Table's at its source), a second permission path; the batched lookup already does this once per screen.

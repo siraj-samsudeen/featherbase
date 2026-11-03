@@ -8,7 +8,7 @@ People know a row by its name, but lists and the relationship map still show the
 - A list cell that links to another row shows that row's title and opens it.
 - In the relationship map's row lists, a link cell shows the linked row's title and moves the map to that row.
 - A filter, as shown in use and in the list's Recent strip, names its column as the list's heading does, and a link filter names the picked row ("Customer = Globex Ltd").
-- A row with a blank name still reads as something that tells it apart (a few of its values, or its table and id), never a blank.
+- A row with a blank name leads its list by its id; a link to it reads as the stand-in other screens use (a few of its values, or its table and id). Never a blank.
 
 ## Capabilities
 
