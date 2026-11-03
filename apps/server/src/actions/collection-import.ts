@@ -282,6 +282,10 @@ registerCollectionAction('import', {
       const actions: RowAction[] = []
       let fieldsUpdated = 0
       let fieldsKept = 0
+      let changed = 0
+      let unchanged = 0
+      let rowsKept = 0
+      let conflicts = 0
       const seenNames = new Set<string>()
       for (const [index, row] of rows.entries()) {
         if (typeof row !== 'object' || row === null || Array.isArray(row)) {
@@ -304,7 +308,11 @@ registerCollectionAction('import', {
             const current = await getDoc(table, resolution.row_id!, user.row_id)
             const plan = await planImport(meta, current, updateValues(row as Record<string, unknown>, upsert!, resolution), user.row_id)
             fieldsUpdated += plan.fields_updated
-            fieldsKept += plan.conflicts.length
+            fieldsKept += plan.fields_kept
+            if (plan.fields_updated > 0) changed++
+            else unchanged++
+            if (plan.fields_kept > 0) rowsKept++
+            conflicts += plan.conflicts.length
             actions.push('update')
             continue
           }
@@ -323,7 +331,7 @@ registerCollectionAction('import', {
           actions.push('fail')
         }
       }
-      if (!resolutions) return { dry_run: true, valid: rows.length - failed.length, failed, fields_updated: 0, fields_kept: 0, tracks_changes: meta.track_changes }
+      if (!resolutions) return { dry_run: true, valid: rows.length - failed.length, failed, changed: 0, unchanged: 0, rows_kept: 0, conflicts: 0, fields_updated: 0, fields_kept: 0, tracks_changes: meta.track_changes }
       return {
         dry_run: true,
         valid: rows.length - failed.length,
@@ -331,6 +339,10 @@ registerCollectionAction('import', {
         inserted: actions.filter((a) => a === 'insert').length,
         failed,
         actions,
+        changed,
+        unchanged,
+        rows_kept: rowsKept,
+        conflicts,
         fields_updated: fieldsUpdated,
         fields_kept: fieldsKept,
         tracks_changes: meta.track_changes,

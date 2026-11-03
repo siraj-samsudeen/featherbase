@@ -370,8 +370,8 @@ test('an empty optional Datetime or number is no value, as a save treats it', as
   expect(row).toMatchObject({ at: null, amount: null })
   await patchDoc(admin, `${path}/A`, { at: '2026-10-28T01:02:03.000Z', amount: 0, updated_at: row.updated_at })
   const args = { key_column: 'code', rows: [{ code: 'A', at: '', amount: '' }], columns: ['code', 'at', 'amount'], empty_cells: 'clear' }
-  // The source still supplies the same empty cells it did at insert: no change, no conflict.
-  expect(await admin.post(`${path}:import`, { ...args, dry_run: true })).toMatchObject({ failed: [], fields_kept: 0 })
+  // The previous source raises no new conflict, but both differing corrections survive.
+  expect(await admin.post(`${path}:import`, { ...args, dry_run: true })).toMatchObject({ failed: [], fields_kept: 2, rows_kept: 1, conflicts: 0, changed: 0, unchanged: 1 })
   expect(await admin.post(`${path}:import`, args)).toMatchObject({ updated: 1, failed: [] })
   expect(await admin.get(`${path}/A`)).toMatchObject({ at: '2026-10-28T01:02:03.000Z', amount: 0 })
   expect((await conflicts(admin)).conflicts).toEqual([])
