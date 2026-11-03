@@ -28,7 +28,9 @@ describe('secret store', () => {
   it('refuses a stored value that was tampered with, without naming the token', () => {
     overrideVariable('SECRET_STORE_KEY', 'a-long-random-master-key')
     const stored = encryptSecret(TOKEN)
-    const flipped = stored.slice(0, -2) + (stored.endsWith('A') ? 'B' : 'A') + stored.slice(-1)
+    const bytes = Buffer.from(stored.slice(3), 'base64url')
+    bytes[bytes.length - 1] ^= 1
+    const flipped = `v1:${bytes.toString('base64url')}`
     expect(() => decryptSecret(flipped)).toThrow(AppError)
     expect(() => decryptSecret('not-a-stored-secret')).toThrow(/cannot be read/)
   })
