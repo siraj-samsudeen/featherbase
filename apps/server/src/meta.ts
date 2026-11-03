@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { sql, whenTransactionEnds } from './db'
 import { AppError } from './errors'
 import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
@@ -269,13 +270,6 @@ async function applyMetadataOverrides(name: string, meta: TableMeta): Promise<vo
   }
 }
 
-// The slug normal form: case-insensitive, with runs of spaces, hyphens and
-// underscores collapsed to one space. "Report Feedback", "report-feedback"
-// and "report_feedback" all normalize to "report feedback".
-function slugify(name: string): string {
-  return name.toLowerCase().replace(/[-_\s]+/g, ' ').trim()
-}
-
 // #56: resolve a URL spelling of a Table name. The exact name always wins —
 // the slug is an additional accepted spelling, never a replacement. An
 // unknown input returns unchanged so the caller raises its usual NotFound;
@@ -290,7 +284,7 @@ export async function resolveTableName(input: string): Promise<string> {
     const rows = await sql`select name from table_def`
     const map = new Map<string, string[]>()
     for (const r of rows) {
-      const slug = slugify(r.name as string)
+      const slug = tableSlug(r.name as string)
       const names = map.get(slug)
       if (names) names.push(r.name as string)
       else map.set(slug, [r.name as string])
@@ -298,7 +292,7 @@ export async function resolveTableName(input: string): Promise<string> {
     slugs = map
     if (generation === loadedAt) slugCache = map
   }
-  const matches = slugs.get(slugify(input)) ?? []
+  const matches = slugs.get(tableSlug(input)) ?? []
   if (matches.length > 1)
     throw new AppError(
       'ConflictError',

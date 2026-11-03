@@ -1,5 +1,6 @@
 import { createElement, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { rowHref } from '../../../packages/shared/src/app-routes'
 import { ApiError, api, getSessionUser, listResource } from './api'
 import { listVisiblePeople, PEOPLE_LIMITED_NOTICE, type PersonOption } from './people'
 import { Markdown } from './Markdown'
@@ -1321,7 +1322,7 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
               : <ul className="mt-1 text-xs text-[var(--color-ink-muted)]">{entry.changes.length ? entry.changes.map(([field, from, to], changeIndex) => <li key={changeIndex}><strong>{field.replaceAll('_', ' ')}</strong>: {formatValue(from)} → {formatValue(to)}</li>) : <li>Task updated</li>}</ul>}
           </li>)}
         </ol>
-        <a className="mt-6 block text-xs text-[var(--color-brand)]" href={`/featherbase/admin/tasker.task/${encodeURIComponent(id)}`}>Attachments and advanced fields in Featherbase ↗</a>
+        <a className="mt-6 block text-xs text-[var(--color-brand)]" href={rowHref('tasker.task', id)}>Attachments and advanced fields in Featherbase ↗</a>
       </div>
       </>}
     </>}
