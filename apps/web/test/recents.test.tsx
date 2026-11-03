@@ -233,11 +233,14 @@ describe('actionForLocation', () => {
     })
   })
 
-  it('maps a filtered list URL to a list action that keeps the filters', () => {
+  it.each(['validated string', 'parsed URL array'])('keeps list filters from a %s', (spelling) => {
     const filters = '[["status","=","Open"]]'
-    const action = actionForLocation('/featherbase/admin/table/task', { filters }, 'Task')
+    const action = actionForLocation('/featherbase/admin/table/task', {
+      filters: spelling === 'validated string' ? filters : JSON.parse(filters),
+    }, 'Task')
     expect(action).toMatchObject({ kind: 'list', label: 'Task', sub: 'status = Open' })
     expect(action?.path).toBe(`/featherbase/admin/table/task?filters=${encodeURIComponent(filters)}`)
+    expect(action?.key).toBe('list:Task?[["status","=","Open"]]')
     // A different filter set is a different remembered view.
     expect(action?.key).not.toBe(actionForLocation('/featherbase/admin/table/task', {}, 'Task')?.key)
   })

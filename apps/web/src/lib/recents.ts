@@ -371,7 +371,8 @@ export function actionForLocation(
   // the slug as its label/key, nor interpret a fixed page as a Table.
   if (segs[0] !== 'table' || !segs[1] || !canonicalTable) return null
   const table = canonicalTable
-  const filtersJson = typeof search.filters === 'string' ? search.filters : undefined
+  const filtersJson = typeof search.filters === 'string' ? search.filters
+    : Array.isArray(search.filters) ? JSON.stringify(search.filters) : undefined
   const query = Object.entries(search)
     .filter(([, value]) => value !== undefined && value !== null)
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(typeof value === 'string' ? value : JSON.stringify(value))}`)
