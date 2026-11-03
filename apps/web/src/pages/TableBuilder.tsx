@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { LIST_COLUMNS_ON_CREATE, coerceRows, idPatternFor, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
+import { LIST_COLUMNS_ON_CREATE, coerceRows, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
 import { ApiError, api } from '../lib/api'
-import { NamingControl } from '../components/NamingControl'
+import { DEFAULT_ID_PATTERN, NamingControl } from '../components/NamingControl'
 import { ColumnCards } from '../components/ColumnCards'
 import { PasteColumns, type PastedColumn } from '../components/PasteColumns'
 import { COLUMN_TYPES } from '../lib/meta'
@@ -135,7 +135,7 @@ export function TableBuilder() {
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
-  // null = follow the Table name (ZONE-.###); a string = the user chose.
+  // null = the default, plain numbers 1, 2, 3 (#855); a string = the user chose.
   const [namingOverride, setNamingOverride] = useState<string | null>(null)
   // #74: user tables get a real module (default "Custom"). Omitting it used
   // to let the server default the table into 'Core', mis-filing it among the
@@ -242,7 +242,7 @@ export function TableBuilder() {
 
   // Before a name is typed there is no prefix to derive, but the control should
   // still open on "series" — that is the default we want for imports.
-  const idPattern = namingOverride ?? (name.trim() ? idPatternFor(name) : '.###')
+  const idPattern = namingOverride ?? DEFAULT_ID_PATTERN
 
   async function loadFile(file: File) {
     setError(null)

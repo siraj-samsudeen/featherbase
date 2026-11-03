@@ -87,12 +87,22 @@ describe("A new table's list starts with its first seven columns", () => {
 })
 
 describe('Choose how each new row gets its id', () => {
+  test('#855: a new table is numbered 1, 2, 3 unless the user picks otherwise', async ({ admin }) => {
+    await renderApp('/featherbase/admin/new-table', admin)
+    await screen.findByTestId('table-builder')
+
+    expect(screen.getByTestId('dt-naming')).toHaveValue('integer')
+    expect(screen.getByTestId('dt-naming-preview')).toHaveTextContent('Rows will be numbered 1, 2, 3')
+  })
+
   test('a series prefix shows the first ids before anything is saved', async ({ admin }) => {
     const user = userEvent.setup()
     await renderApp('/featherbase/admin/new-table', admin)
     await screen.findByTestId('table-builder')
 
-    expect(screen.getByTestId('dt-naming')).toHaveValue('series')
+    await user.type(screen.getByTestId('dt-name'), 'Staff')
+    await user.selectOptions(screen.getByTestId('dt-naming'), 'series')
+    expect(screen.getByTestId('dt-naming-prefix')).toHaveValue('STAFF-')
     await user.clear(screen.getByTestId('dt-naming-prefix'))
     await user.type(screen.getByTestId('dt-naming-prefix'), 'EMP-')
     await user.selectOptions(screen.getByTestId('dt-naming-digits'), '3')
