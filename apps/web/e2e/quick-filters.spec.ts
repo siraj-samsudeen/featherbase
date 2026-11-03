@@ -190,6 +190,10 @@ test.describe('on a phone', () => {
       )
       for (const p of parts) expect(Math.abs(p.y - parts[0].y)).toBeLessThan(2)
       expect(parts[3].x + parts[3].width).toBeLessThanOrEqual(375)
+      // The column is the widest part, so its name (here "Row ID") is not cut off.
+      const field = page.getByTestId('filter-field')
+      expect(await field.evaluate((el: HTMLSelectElement) => el.scrollWidth <= el.clientWidth)).toBe(true)
+      expect(parts[0].width).toBeGreaterThan(parts[2].width)
     })
   })
 })
