@@ -283,3 +283,19 @@ test('Searching Section\'s 12 choices for "rack", then ticking every one found, 
   expect(chips()).toEqual(['section in Shoe Rack, Saree Rack, Rack Ends×'])
   expect(ticked(list)).toEqual(RACKS)
 })
+
+test('A list of 8 choices has no search box, and a list of 9 has one', async ({ admin }) => {
+  const names = (n: number) => Array.from({ length: n }, (_, i) => `C${i + 1}`).join('\n')
+  await admin.post('/api/table_def', {
+    name: T,
+    columns: [
+      { column_name: 'code', column_type: 'Data', label: 'Code', in_list_view: true },
+      { column_name: 'eight', column_type: 'Choice', label: 'Eight', choices: names(8), in_list_view: true },
+      { column_name: 'nine', column_type: 'Choice', label: 'Nine', choices: names(9), in_list_view: true },
+    ],
+  })
+  await admin.post('/api/save_row', { table: T, row: { code: 'R1', eight: 'C1', nine: 'C1' } })
+  await openList(admin)
+  expect(within(openBox('eight')).queryByRole('searchbox')).not.toBeInTheDocument()
+  expect(within(openBox('nine')).getByRole('searchbox', { name: 'Search Nine choices' })).toBeInTheDocument()
+})
