@@ -31,9 +31,8 @@ async function setup(admin: TestClient) {
       in_list_view: true,
     },
   })
-  await admin.post('/api/save_row', {
-    table: 'Metadata Override',
-    row: { row_id: `${DT}-title-reqd`, table_name: DT, column_name: 'title', property: 'reqd', value: '1' },
+  await admin.post('/api/table/Metadata%20Override', {
+    row_id: `${DT}-title-reqd`, table_name: DT, column_name: 'title', property: 'reqd', value: '1',
   })
 }
 
@@ -68,7 +67,7 @@ describe('CUST-005: export/import customizations', () => {
       const overrides: string[] = []
       for (const property of flags) {
         const saved = await admin.post<{ row_id: string }>('/api/save_row', {
-          table: 'Metadata Override', row: { row_id: `${DT}-${property}`, table_name: DT, property, value: 'true' },
+          table: 'Metadata Override', row: { table_name: DT, property, value: 'true' },
         })
         overrides.push(saved.row_id)
       }

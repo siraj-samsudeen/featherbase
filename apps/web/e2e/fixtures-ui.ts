@@ -23,11 +23,11 @@ export async function enableTableFeatures(
   properties: string[],
 ): Promise<void> {
   for (const property of properties) {
-    const res = await request.post('/api/save_row', {
+    const res = await request.post('/api/table/Metadata%20Override', {
       headers: auth,
-      data: { table: 'Metadata Override', row: {
+      data: {
         row_id: `e2e-${table}-${property}`, table_name: table, property, value: 'true',
-      } },
+      },
     })
     if (res.status() !== 201) throw new Error(`${table} ${property}: ${res.status()} ${await res.text()}`)
   }

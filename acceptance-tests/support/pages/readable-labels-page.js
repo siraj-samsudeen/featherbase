@@ -103,7 +103,7 @@ class ReadableLabelsPage {
       when 'new_person' then 'new_person' end
       where parent = 'Sign In Method' and column_name in ('client_id', 'service_url', 'new_person')`);
     await this.api.saveRow('Translation', { row_id: 'labels-826-new-person', language: 'fr', source_text: 'new_person', translated_text: 'Politique conservée' });
-    await this.api.saveRow('Metadata Override', { row_id: 'labels-826-override', table_name: 'Sign In Method', column_name: 'client_id', property: 'label', value: 'Customer key override' });
+    await this.api.call('POST', '/api/table/Metadata%20Override', { row_id: 'labels-826-override', table_name: 'Sign In Method', column_name: 'client_id', property: 'label', value: 'Customer key override' }, [201]);
     this.beforeOverrides = await acceptanceSql('select * from featherbase.metadata_override order by row_id');
   }
 
