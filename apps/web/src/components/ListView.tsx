@@ -24,7 +24,7 @@ import { Button, DataCards, NARROW_QUERY, ViewToggle, Notice, Select, buttonClas
 import { ArrowDown, ArrowUp, ChevronDown } from '@featherbase/shop-floor'
 import { GlossaryHelp } from './GlossaryHelp'
 import { ChoiceTicks } from './ChoiceTicks'
-import { inChoiceOrder, tickedChoices, withTicked } from '../lib/choice-filters'
+import { inChoiceOrder, mergeChoiceFilters, tickedChoices, withTicked } from '../lib/choice-filters'
 import { fmtCount } from '../lib/inr'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
@@ -124,7 +124,7 @@ function linkPrefill(meta: import('../lib/meta').TableMeta, filters: Filter[]): 
 // UI-002/UI-003: ONE list component renders every Table from its metadata.
 export function ListView({
   table,
-  filters = [],
+  filters: given = [],
   onFiltersChange,
   breadcrumb,
   newRowPrefill,
@@ -153,6 +153,16 @@ export function ListView({
   subtitle?: ReactNode
 }) {
   const meta = useMeta(table)
+  // #820: one filter per Choice column. Filters arriving with two or more on
+  // one Choice column (a link, a saved view, Recent) are merged into one `in`,
+  // and the merged list is written back to the page address.
+  const choiceColumns = (meta.data?.columns ?? []).filter((c) => c.column_type === 'Choice').map((c) => c.column_name)
+  const filters = mergeChoiceFilters(given, choiceColumns)
+  const merged = filters !== given
+  useEffect(() => {
+    if (merged) onFiltersChange?.(filters)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [merged, JSON.stringify(filters)])
   const settings = useSettings()
   // #910: on a list page, selecting a row shows it in the drill pane.
   const navigation = useNavigation()
@@ -1619,6 +1629,38 @@ function choicesOf(f: { column_type: string; choices?: string | null }): string[
   return null
 }
 
+/** #820: the quick filter for a Choice column: its choices to tick, always the
+ *  same as the column's one filter, and reading All while there is none. */
+function ChoiceBox({
+  column,
+  filters,
+  onChange,
+}: {
+  column: { column_name: string; label?: string | null; column_type: string; choices?: string | null }
+  filters: Filter[]
+  onChange: (filters: Filter[]) => void
+}) {
+  const label = column.label ?? column.column_name
+  const choices = choicesOf(column)!
+  const ticked = tickedChoices(filters, column.column_name)
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">{label}</span>
+      <ChoiceTicks
+        label={label}
+        // A link's value that is no longer a choice still shows, ticked.
+        choices={inChoiceOrder([...choices, ...ticked], choices)}
+        ticked={ticked}
+        onChange={(next) => onChange(withTicked(filters, column.column_name, next, choices))}
+        buttonText={ticked.length ? `${ticked.length} selected` : 'All'}
+        testId={`std-filter-${column.column_name}`}
+        listTestId={`std-choices-${column.column_name}`}
+        className="min-w-[8rem] max-w-[10rem]"
+      />
+    </div>
+  )
+}
+
 function StandardFilters({
   meta,
   view,
@@ -1648,7 +1690,11 @@ function StandardFilters({
   // #742: the first six show; past them, only a box holding a value, until
   // the person asks for the rest.
   const inRow = columns.filter(
-    (f, i) => i < (stacked ? QUICK_FILTER_STACK : QUICK_FILTER_ROW) || current(f.column_name, boxOp(f)) !== '',
+    (f, i) =>
+      i < (stacked ? QUICK_FILTER_STACK : QUICK_FILTER_ROW) ||
+      (f.column_type === 'Choice'
+        ? tickedChoices(filters, f.column_name).length > 0
+        : current(f.column_name, choicesOf(f) ? '=' : 'like') !== ''),
   )
   const shown = showAll ? columns : inRow
   const folded = columns.length - inRow.length
@@ -1698,9 +1744,10 @@ function StandardFilters({
       data-testid="standard-filters"
     >
       {shown.map((f) =>
-        f.column_type === 'Reference' && f.reference_table ? (
-          // #793: a link filters by picking a row by its name, not by typing its id.
-          <label key={f.column_name} className={box}>
+        f.column_type === 'Choice' ? (
+          <ChoiceBox key={f.column_name} column={f} filters={filters} onChange={onChange} />
+        ) : choicesOf(f) ? (
+          <label key={f.column_name} className="flex flex-col gap-0.5">
             <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
