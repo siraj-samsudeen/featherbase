@@ -4,10 +4,10 @@ Skipped: `acceptance-tests/` exists.
 
 ## 2. Step definitions — each: fails for the right reason → implement → passes → commit
 
-- [ ] 2.1 search-and-explore: "a table of people and a table of tasks, each task assigned to a person" and "the task … assigned to …, whose phone is …"
-- [ ] 2.2 search-and-explore: "the user opens that task's relationship map" and "the user sees …, a …, linked by …" (relationship map page object)
-- [ ] 2.3 search-and-explore: "the user opens Asha's relationship map" and "the user sees Asha's tasks related by …"
-- [ ] 2.4 search-and-explore: "the user sees … listed with her phone …", "the user opens Asha's tasks" and "the user sees … listed instead of …"
+- [ ] 2.1 search-and-explore: "a table of volunteers and a table of chores, each chore assigned to a volunteer" and "the chore … assigned to …, whose phone is …"
+- [ ] 2.2 search-and-explore: "the user opens that chore's relationship map" and "the user sees …, a …, linked by …" (relationship map page object)
+- [ ] 2.3 search-and-explore: "the user opens Asha's relationship map" and "the user sees Asha's chores related by …"
+- [ ] 2.4 search-and-explore: "the user sees … listed with her phone …", "the user opens Asha's chores" and "the user sees … listed instead of …"
 
 ## 3. Implementation
 
