@@ -1118,9 +1118,9 @@ export async function renameCustomTable(from: string, input: string, user: strin
   const meta = await getMeta(from)
   const to = input.trim()
   if (to === meta.name) return meta
+  assertNotSystemWritten(meta, 'renamed or changed')
   if (meta.system || meta.owner_app || meta.data_source || meta.kind === 'settings')
     throw new AppError('ValidationError', `${meta.name} is not a custom Table; it cannot be renamed here`)
-  assertNotSystemWritten(meta, 'renamed or changed')
   // An installed app's ledger names its Tables; uninstalling acts on those names.
   const apps = await sql<{ name: string; tables: unknown }[]>`select name, tables from installed_app order by name`
   const owner = apps.find((app) => asNameList(app.tables).includes(meta.name))
