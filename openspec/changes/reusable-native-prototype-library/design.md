@@ -39,6 +39,6 @@ Rejected: promoting #740's disposable interaction sketch or implementing paralle
 
 No database or deployment changes. Existing production defaults and build inputs stay unchanged. Remove the separate dev entry/config to roll back the preview. Persistent library work continues in this thread; finish this increment in one PR without merging or archiving the thread.
 
-## Open Questions
+## Review Status
 
-The manager must review a rendered real-component key layout before consequential layout choices are finalized. Numbered UI checklist lives in #773. The fixture boundary needs ordinary review; no adversarial review is authorized. No in-force ADR is being changed: retain ADR 0006's stack, 0009's row identity, 0014's platform/app separation, 0015's immutable decisions and 0017's current backend coverage policy.
+The real-component key layout and inspected media have been presented through the manager, and independent UI verification passed the numbered checklist in #773. The owner removed routine media/design parking during the unblock audit. The fixture boundary still needs the assigned ordinary hidden-logic review; no adversarial review or review waiver is authorized. Main specs are synced; archive is prepared until the remaining review task is resolved. No in-force ADR is being changed: retain ADR 0006's stack, 0009's row identity, 0014's platform/app separation, 0015's immutable decisions and 0017's current backend coverage policy.
