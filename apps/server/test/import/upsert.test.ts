@@ -822,6 +822,28 @@ describe('Add new rows or update the ones that match: the rehearsal', () => {
 })
 
 describe('#851 permission-safe matching suggestions', () => {
+  for (const [label, options, message] of [
+    ['a non-boolean analysis flag', { analyze_keys: 'true', columns: ['zone'] }, 'analyze_keys must be a boolean'],
+    ['missing columns', {}, 'columns must be an array of column names'],
+    ['null columns', { columns: null }, 'columns must be an array of column names'],
+    ['non-array columns', { columns: 'zone' }, 'columns must be an array of column names'],
+    ['a non-string column', { columns: ['zone', 7] }, 'columns must be an array of column names'],
+    ['an unknown column', { columns: ['zone', 'missing_column'] }, `${DT} has no column missing_column`],
+  ] as const) {
+    test(`analysis rejects ${label} without changing import state`, async ({ admin }) => {
+      await setup(admin)
+      await seed(admin)
+      const before = await importState()
+      const response = await admin.fetch(PATH, {
+        method: 'POST',
+        body: JSON.stringify({ analyze_keys: true, ...options, rows: [{ zone: 'Alpha', pop: 13 }] }),
+      })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toEqual({ error: { type: 'ValidationError', message } })
+      expect(await importState()).toEqual(before)
+    })
+  }
+
   test('analysis reports normalized full and partial coverage without importing', async ({ admin }) => {
     await setup(admin)
     await seed(admin)
