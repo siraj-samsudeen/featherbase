@@ -37,7 +37,7 @@ const columns: DataColumn<WaitingPerson>[] = [
     phone: 'title',
     cell: (p) => (
       <Link
-        to="/featherbase/admin/$table/$name"
+        to="/featherbase/admin/table/$table/row/$name"
         params={{ table: 'Person', name: p.person }}
         search={{ prefill: undefined }}
         className="text-action hover:underline"

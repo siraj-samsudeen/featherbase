@@ -402,7 +402,7 @@ export function ReportView({
     <tr key={String(row.row_id)} className="border-t border-border" data-testid="report-row">
       <td className="px-3 py-1.5">
         <RouterLink
-          to="/featherbase/admin/$table/$name"
+          to="/featherbase/admin/table/$table/row/$name"
           search={{ prefill: undefined }}
           params={{ table, name: String(row.row_id) }}
           className={touchLinkClasses('text-action hover:underline')}
@@ -445,7 +445,7 @@ export function ReportView({
             XLSX
           </button>
           <RouterLink
-            to="/featherbase/admin/$table"
+            to="/featherbase/admin/table/$table"
             params={{ table }}
             search={{ filters: undefined }}
             className={buttonClasses()}

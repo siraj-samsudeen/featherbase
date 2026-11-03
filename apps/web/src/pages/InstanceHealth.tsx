@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { adminPageTitle } from 'shared'
+import { adminPageTitle, tableHref } from 'shared'
 import { api } from '../lib/api'
 import { fmtInstantIST } from '../lib/inr'
 import { Button, Card, Notice, Skeleton, StatusPill, cx, type StatusTone } from '../components/ui'
@@ -113,7 +113,7 @@ function activityAround(at: string): string {
     ['created_at', '>=', new Date(t - 60 * 60_000).toISOString()],
     ['created_at', '<=', new Date(t + 15 * 60_000).toISOString()],
   ]
-  return `/featherbase/admin/Activity%20Log?filters=${encodeURIComponent(JSON.stringify(filters))}`
+  return `${tableHref('Activity Log')}?filters=${encodeURIComponent(JSON.stringify(filters))}`
 }
 
 function historyLine(h: HistoryEntry): string {

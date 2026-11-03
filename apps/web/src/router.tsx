@@ -5,8 +5,9 @@ import {
   createRootRoute,
   createRoute,
   redirect,
+  type ErrorComponentProps,
 } from '@tanstack/react-router'
-import { parseFilters } from 'shared'
+import { parseFilters, tableSlug } from 'shared'
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
 import { WebFormPage } from './pages/WebForm'
@@ -21,7 +22,7 @@ import { crossesFramePolicy } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
-import { useMeta } from './lib/meta'
+import { metaQuery } from './lib/meta'
 import { ReportView } from './components/ReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
@@ -79,6 +80,35 @@ function searchString(value: unknown): string | undefined {
 
 // #87: `filters` is validated, not asserted — see parseFilters in `shared`.
 
+// URL spellings are never Table identities. Resolve once at the route
+// boundary before mounting any consumer (including settings and tools).
+function stringifyTableParams<T extends { table: string }>(params: T): T {
+  return { ...params, table: tableSlug(params.table) }
+}
+
+const tableAddress = {
+  params: {
+    stringify: stringifyTableParams<{ table: string }>,
+  },
+  beforeLoad: async ({ params, location }: { params: { table: string }; location: { href: string } }) => {
+    if (!getToken()) throw redirect({ href: loginHref(location.href) })
+    const tableMeta = await metaQuery(params.table).queryFn()
+    return { table: tableMeta.name, tableMeta }
+  },
+  errorComponent: TableAddressError,
+}
+
+const rowAddress = {
+  ...tableAddress,
+  params: { stringify: stringifyTableParams<{ table: string; name: string }> },
+}
+
+function TableAddressError({ error }: ErrorComponentProps) {
+  if (error instanceof ApiError && error.status === 404 && /^Table .* not found$/.test(error.message))
+    return <AdminPageNotFound />
+  return <p role="alert" className="p-4 text-negative">{error instanceof Error ? error.message : 'Could not open this Table'}</p>
+}
+
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
@@ -129,26 +159,23 @@ function OAuthCallbackRouteComponent() {
 const portalListRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/portal/$table',
-  beforeLoad: ({ location }) => {
-    if (!getToken()) throw redirect({ href: loginHref(location.href) })
-  },
+  ...tableAddress,
   component: PortalListRouteComponent,
 })
 function PortalListRouteComponent() {
-  const { table } = portalListRoute.useParams()
+  const { table } = portalListRoute.useRouteContext()
   return <PortalListPage key={table} table={table} />
 }
 
 const portalDocRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/portal/$table/$name',
-  beforeLoad: ({ location }) => {
-    if (!getToken()) throw redirect({ href: loginHref(location.href) })
-  },
+  ...rowAddress,
   component: PortalDocRouteComponent,
 })
 function PortalDocRouteComponent() {
-  const { table, name } = portalDocRoute.useParams()
+  const { table } = portalDocRoute.useRouteContext()
+  const { name } = portalDocRoute.useParams()
   return <PortalRowPage key={`${table}/${name}`} table={table} name={name} />
 }
 
@@ -199,28 +226,20 @@ function AdminPageNotFound() {
   )
 }
 
-/** The Table a path names never existed: its metadata answered the server's
- *  plain not-found (meta.ts). A deleted Table answers 404 too, with a tombstone
- *  saying who deleted it and when (DEL-R9); that one keeps its own message. */
-function noSuchTable(error: unknown, table: string): boolean {
-  return error instanceof ApiError && error.status === 404 && error.message === `Table ${table} not found`
-}
-
 // PRN-001: print view lives OUTSIDE the Admin layout — no navbar/sidebar.
 const printRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/print/$table/$name',
+  ...rowAddress,
   validateSearch: (search: Record<string, unknown>) => ({
     format: searchString(search.format),
   }),
-  beforeLoad: ({ location }) => {
-    if (!getToken()) throw redirect({ href: loginHref(location.href) })
-  },
   component: PrintPage,
 })
 
 function PrintPage() {
-  const { table, name } = printRoute.useParams()
+  const { table } = printRoute.useRouteContext()
+  const { name } = printRoute.useParams()
   const { format } = printRoute.useSearch()
   const navigate = printRoute.useNavigate()
   return (
@@ -316,10 +335,11 @@ const importBatchesRoute = createRoute({
 // so.
 const columnsRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/columns',
+  path: 'table/$table/columns',
+  ...tableAddress,
   component: () => (
     <div data-testid="table-page">
-      <ManageOnly><ColumnEditor /></ManageOnly>
+      <ManageOnly><ColumnEditor table={columnsRoute.useRouteContext().table} /></ManageOnly>
     </div>
   ),
 })
@@ -327,10 +347,11 @@ const columnsRoute = createRoute({
 // #208: merge this Table's rows into another, column by column.
 const mergeRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/merge',
+  path: 'table/$table/merge',
+  ...tableAddress,
   component: () => (
     <div data-testid="table-page">
-      <ManageOnly><TableMerge /></ManageOnly>
+      <ManageOnly><TableMerge table={mergeRoute.useRouteContext().table} /></ManageOnly>
     </div>
   ),
 })
@@ -339,7 +360,8 @@ const mergeRoute = createRoute({
 // URL state so they survive reloads and are shareable.
 const tableRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table',
+  path: 'table/$table',
+  ...tableAddress,
   validateSearch: (search: Record<string, unknown>) => ({
     filters: searchString(search.filters),
   }),
@@ -347,13 +369,11 @@ const tableRoute = createRoute({
 })
 
 function TableListPage() {
-  const { table } = tableRoute.useParams()
+  const { table, tableMeta } = tableRoute.useRouteContext()
   const { filters } = tableRoute.useSearch()
   const navigate = tableRoute.useNavigate()
-  const meta = useMeta(table)
-  if (noSuchTable(meta.error, table)) return <AdminPageNotFound />
   // SET-001: a Settings Table has no list — open its one row directly.
-  if (meta.data?.kind === 'settings') {
+  if (tableMeta.kind === 'settings') {
     return (
       <div data-testid="table-page">
         <FormView key={table} table={table} name={table} />
@@ -383,7 +403,8 @@ function TableListPage() {
 // $table/$name.
 const reportRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/view/report',
+  path: 'table/$table/view/report',
+  ...tableAddress,
   validateSearch: (search: Record<string, unknown>) => ({
     report: searchString(search.report),
   }),
@@ -391,7 +412,7 @@ const reportRoute = createRoute({
 })
 
 function ReportPage() {
-  const { table } = reportRoute.useParams()
+  const { table } = reportRoute.useRouteContext()
   const { report } = reportRoute.useSearch()
   const navigate = reportRoute.useNavigate()
   return (
@@ -409,7 +430,8 @@ function ReportPage() {
 // UI-020: Kanban board view.
 const kanbanRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/view/kanban',
+  path: 'table/$table/view/kanban',
+  ...tableAddress,
   validateSearch: (search: Record<string, unknown>) => ({
     group_by: searchString(search.group_by),
   }),
@@ -417,7 +439,7 @@ const kanbanRoute = createRoute({
 })
 
 function KanbanPage() {
-  const { table } = kanbanRoute.useParams()
+  const { table } = kanbanRoute.useRouteContext()
   const { group_by } = kanbanRoute.useSearch()
   const navigate = kanbanRoute.useNavigate()
   return (
@@ -435,12 +457,13 @@ function KanbanPage() {
 // UI-021: Calendar view.
 const calendarRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/view/calendar',
+  path: 'table/$table/view/calendar',
+  ...tableAddress,
   component: CalendarPage,
 })
 
 function CalendarPage() {
-  const { table } = calendarRoute.useParams()
+  const { table } = calendarRoute.useRouteContext()
   return (
     <div data-testid="table-page">
       <CalendarView key={table} table={table} />
@@ -451,12 +474,13 @@ function CalendarPage() {
 // UI-022: Gantt view.
 const ganttRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/view/gantt',
+  path: 'table/$table/view/gantt',
+  ...tableAddress,
   component: GanttPage,
 })
 
 function GanttPage() {
-  const { table } = ganttRoute.useParams()
+  const { table } = ganttRoute.useRouteContext()
   return (
     <div data-testid="table-page">
       <GanttView key={table} table={table} />
@@ -468,7 +492,8 @@ function GanttPage() {
 // (a Sub-table column whose row table carries a Check column).
 const checklistRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/view/checklist',
+  path: 'table/$table/view/checklist',
+  ...tableAddress,
   validateSearch: (search: Record<string, unknown>) => ({
     run: searchString(search.run),
   }),
@@ -476,7 +501,7 @@ const checklistRoute = createRoute({
 })
 
 function ChecklistPage() {
-  const { table } = checklistRoute.useParams()
+  const { table } = checklistRoute.useRouteContext()
   const { run } = checklistRoute.useSearch()
   const navigate = checklistRoute.useNavigate()
   return (
@@ -658,12 +683,13 @@ function DashboardPage() {
 // NAM-001: id-pattern editor for an existing Table (static first segment).
 const namingRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: 'naming/$table',
+  path: 'table/$table/naming',
+  ...tableAddress,
   component: NamingPage,
 })
 
 function NamingPage() {
-  const { table } = namingRoute.useParams()
+  const { table } = namingRoute.useRouteContext()
   return (
     <div data-testid="table-page">
       <TableNaming key={table} table={table} />
@@ -674,12 +700,13 @@ function NamingPage() {
 // SET-003: role & permission manager for a Table (static first segment).
 const permissionsRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: 'permissions/$table',
+  path: 'table/$table/permissions',
+  ...tableAddress,
   component: PermissionsPage,
 })
 
 function PermissionsPage() {
-  const { table } = permissionsRoute.useParams()
+  const { table } = permissionsRoute.useRouteContext()
   return (
     <div data-testid="table-page">
       <PermissionManager key={table} table={table} />
@@ -706,7 +733,8 @@ function parsePrefill(raw: string | undefined): Record<string, unknown> | undefi
 // UI-004/UI-005: the generic FormView renders and saves every Table.
 const docRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$table/$name',
+  path: 'table/$table/row/$name',
+  ...rowAddress,
   validateSearch: (search: Record<string, unknown>) => ({
     prefill: searchString(search.prefill),
   }),
@@ -714,15 +742,14 @@ const docRoute = createRoute({
 })
 
 function TableFormPage() {
-  const { table, name } = docRoute.useParams()
+  const { table } = docRoute.useRouteContext()
+  const { name } = docRoute.useParams()
   const { prefill } = docRoute.useSearch()
   // #102 review: the raw prefill string is part of the key — navigating
   // from one ?prefill= URL to another (or clearing it, e.g. Ctrl/Cmd+B)
   // remounts the form instead of retaining the previous form's values.
   // Parsing is memoized so the object isn't rebuilt every render.
   const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
-  const meta = useMeta(table)
-  if (noSuchTable(meta.error, table)) return <AdminPageNotFound />
   return (
     <div data-testid="doc-page">
       <FormView
@@ -733,6 +760,21 @@ function TableFormPage() {
       />
     </div>
   )
+}
+
+const newRowRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'table/$table/new',
+  ...tableAddress,
+  validateSearch: (search: Record<string, unknown>) => ({ prefill: searchString(search.prefill) }),
+  component: NewRowPage,
+})
+
+function NewRowPage() {
+  const { table } = newRowRoute.useRouteContext()
+  const { prefill } = newRowRoute.useSearch()
+  const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
+  return <div data-testid="doc-page"><FormView key={`${table}/new/${prefill ?? ''}`} table={table} name="" isNew prefill={parsedPrefill} /></div>
 }
 
 // #100 pattern 4: cross-filter Explore — pane chains over reference links,
@@ -782,7 +824,8 @@ function ExplorePage() {
 // graph. `trail` carries the hop history (static first segment).
 const mapRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: 'map/$table/$name',
+  path: 'table/$table/row/$name/map',
+  ...rowAddress,
   validateSearch: (search: Record<string, unknown>) => ({
     trail: search.trail,
   }),
@@ -790,7 +833,8 @@ const mapRoute = createRoute({
 })
 
 function MapPage() {
-  const { table, name } = mapRoute.useParams()
+  const { table } = mapRoute.useRouteContext()
+  const { name } = mapRoute.useParams()
   const { trail } = mapRoute.useSearch()
   return (
     <div data-testid="table-page">
@@ -811,5 +855,5 @@ export const routeTree = rootRoute.addChildren([
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

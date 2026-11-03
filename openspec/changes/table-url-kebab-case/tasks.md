@@ -5,8 +5,8 @@
 
 ## 2. Implementation
 
-- [ ] 2.1 Share Table normalization and URL generation; implement explicit Table/row/new/tool routes and metadata-based canonical resolution.
-- [ ] 2.2 Migrate canonical consumers, internal links, notifications, recents and shipped app anchors without changing row IDs, filters, prefill or labels.
+- [x] 2.1 Share Table normalization and URL generation; implement explicit Table/row/new/tool routes and metadata-based canonical resolution.
+- [x] 2.2 Migrate canonical consumers, internal links, notifications, recents and shipped app anchors without changing row IDs, filters, prefill or labels.
 - [ ] 2.3 Migrate existing test navigation and page objects, preserving their behavioral assertions.
 
 ## 3. Verification and handoff

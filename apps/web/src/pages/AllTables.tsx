@@ -61,7 +61,7 @@ export function AllTablesPage() {
             {(byModule.get(mod) ?? []).map((dt) => (
               <Link
                 key={dt.row_id}
-                to="/featherbase/admin/$table"
+                to="/featherbase/admin/table/$table"
                 params={{ table: dt.row_id }}
                 search={{ filters: undefined }}
                 className={linkClass}
@@ -99,7 +99,7 @@ export function AllTablesPage() {
               systemTables.map((dt) => (
                 <Link
                   key={dt.row_id}
-                  to="/featherbase/admin/$table"
+                  to="/featherbase/admin/table/$table"
                   params={{ table: dt.row_id }}
                   search={{ filters: undefined }}
                   className={linkClass}

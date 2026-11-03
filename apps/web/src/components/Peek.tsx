@@ -108,13 +108,13 @@ function PeekPanel({
     onClose()
     if (frame.kind === 'record')
       navigate({
-        to: '/featherbase/admin/$table/$name',
+        to: '/featherbase/admin/table/$table/row/$name',
         params: { table: frame.table, name: frame.name },
         search: { prefill: undefined },
       })
     else
       navigate({
-        to: '/featherbase/admin/$table',
+        to: '/featherbase/admin/table/$table',
         params: { table: frame.table },
         search: { filters: frame.filters.length ? JSON.stringify(frame.filters) : undefined },
       })

@@ -84,7 +84,7 @@ export function WelcomeSetup() {
             <p className="mt-2 text-sm text-ink-muted">Use your own identity and choose who receives system notices. You can do this later while exploring locally.</p>
             <div className="mt-3 flex flex-wrap gap-3">
               {getSessionUser()?.row_id === ADMINISTRATOR && <Link to="/featherbase/admin/setup/people" className={buttonClasses()}>Set up administrators</Link>}
-              <Link to="/featherbase/admin/$table" params={{ table: 'Person' }} search={{ filters: undefined }} className={buttonClasses()}>Manage people</Link>
+              <Link to="/featherbase/admin/table/$table" params={{ table: 'Person' }} search={{ filters: undefined }} className={buttonClasses()}>Manage people</Link>
             </div>
           </section>
           <section className="p-5">

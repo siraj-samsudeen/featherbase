@@ -36,7 +36,7 @@ export function ConnectionsPanel({ table, name }: { table: string; name: string 
           className="flex items-center border-b border-border last:border-0"
         >
           <Link
-            to="/featherbase/admin/$table"
+            to="/featherbase/admin/table/$table"
             params={{ table: c.table }}
             search={{ filters: JSON.stringify(c.filters) }}
             data-testid={`connection-${c.table}`}
@@ -68,8 +68,8 @@ export function ConnectionsPanel({ table, name }: { table: string; name: string 
           )}
           {!c.via && !c.system_written && (
             <Link
-              to="/featherbase/admin/$table/$name"
-              params={{ table: c.table, name: 'new' }}
+              to="/featherbase/admin/table/$table/new"
+              params={{ table: c.table }}
               search={{ prefill: JSON.stringify({ [c.column]: name }) }}
               title={`New ${c.table} with ${c.column} = ${name}`}
               data-testid={`connection-new-${c.table}`}
@@ -174,7 +174,7 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
                 <td key={c.column_name} className="px-3 py-1.5">
                   {i === 0 ? (
                     <Link
-                      to="/featherbase/admin/$table/$name"
+                      to="/featherbase/admin/table/$table/row/$name"
                       search={{ prefill: undefined }}
                       params={{ table: connection.table, name: String(r.row_id) }}
                       className="font-medium text-action hover:underline"
@@ -204,7 +204,7 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
           </span>
         )}
         <Link
-          to="/featherbase/admin/$table"
+          to="/featherbase/admin/table/$table"
           params={{ table: connection.table }}
           search={{ filters: JSON.stringify(connection.filters) }}
           data-testid="embedded-open-list"
@@ -214,8 +214,8 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
         </Link>
         {!connection.via && !connection.system_written && (
           <Link
-            to="/featherbase/admin/$table/$name"
-            params={{ table: connection.table, name: 'new' }}
+            to="/featherbase/admin/table/$table/new"
+            params={{ table: connection.table }}
             search={{ prefill: JSON.stringify({ [connection.column]: owner }) }}
             data-testid="embedded-new"
             className="font-medium text-action hover:underline"

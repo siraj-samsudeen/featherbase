@@ -133,22 +133,25 @@ function AdminShell() {
     const id = `${user.row_id}\u0000${navigationKey}`
     if (recordedNavigation.current === id) return
     recordedNavigation.current = id
-    const action = actionForLocation(location.pathname, location.search as Record<string, unknown>)
-    if (!action) return
+    const search = location.search as Record<string, unknown>
+    const action = actionForLocation(location.pathname, search)
     // A list or row names a Table; it is remembered only once that Table's
     // metadata has loaded. A path that is not a Table (`/admin/people`) 404s
     // and is never offered back.
     // The same rule for a page only a System Manager can open: anyone else is
     // sent home, so the page is never offered back to them (#476).
-    if (action.kind === 'page' && adminPageNeedsManage(action.key.slice('page:'.length)) && !canManage) return
-    const table = action.kind === 'list' ? action.label : action.kind === 'row' ? action.sub : undefined
-    if (!table) {
-      recordAction(user.row_id, action)
+    if (action?.kind === 'page' && adminPageNeedsManage(action.key.slice('page:'.length)) && !canManage) return
+    const tableSegment = /^\/featherbase\/admin\/table\/([^/]+)/.exec(location.pathname)?.[1]
+    if (!tableSegment) {
+      if (action) recordAction(user.row_id, action)
       return
     }
     const owner = user.row_id
-    queryClient.fetchQuery(metaQuery(table)).then(
-      () => recordAction(owner, action),
+    queryClient.fetchQuery(metaQuery(decodeURIComponent(tableSegment))).then(
+      (meta) => {
+        const resolved = actionForLocation(location.pathname, search, meta.name, location.href)
+        if (resolved) recordAction(owner, resolved)
+      },
       () => {},
     )
   }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -212,12 +215,11 @@ function AdminShell() {
   //   g then d    go to the Admin home
   useEffect(() => {
     let leader = 0 // timestamp of a recent 'g' press
-    // The Table the open page belongs to, from the matched route's own
-    // `$table` param: a fixed Admin page (Jobs, All tables, …) has none, so the
-    // new-row shortcut does nothing there (#515).
+    // Only a successfully resolved Table route has a canonical identity in
+    // its context; fixed pages and failed resolutions have none (#515).
     function currentTable(): string | null {
-      const match = router.state.matches.find((m) => 'table' in (m.params as Record<string, unknown>))
-      const table = (match?.params as { table?: string } | undefined)?.table
+      const match = router.state.matches.find((m) => m.context && 'table' in m.context && m.status === 'success')
+      const table = (match?.context as { table?: string } | undefined)?.table
       return table ?? null
     }
     function onKey(e: KeyboardEvent) {
@@ -240,7 +242,7 @@ function AdminShell() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault()
         const dt = currentTable()
-        if (dt) navigate({ to: '/featherbase/admin/$table/$name', params: { table: dt, name: 'new' }, search: { prefill: undefined } })
+        if (dt) navigate({ to: '/featherbase/admin/table/$table/new', params: { table: dt }, search: { prefill: undefined } })
         return
       }
       // Leader-key navigation only when not typing into a field.
@@ -339,7 +341,7 @@ function AdminShell() {
   function openDoc(hit: SearchHit) {
     recordSearch(search.trim())
     dismissSearch()
-    navigate({ to: '/featherbase/admin/$table/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
+    navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
   }
 
   // Enter opens the top match: an exactly-named Table's list first,
@@ -357,7 +359,7 @@ function AdminShell() {
     const dtHit = tables?.find((d) => d.row_id.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       dismissSearch()
-      navigate({ to: '/featherbase/admin/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
       return
     }
     const doc = docHits.data?.results[0]
@@ -366,7 +368,7 @@ function AdminShell() {
       return
     }
     dismissSearch()
-    navigate({ to: '/featherbase/admin/$table', params: { table: q }, search: { filters: undefined } })
+    navigate({ to: '/featherbase/admin/table/$table', params: { table: q }, search: { filters: undefined } })
   }
 
   // User tables surface before system tables in suggestions (stable sort
@@ -509,7 +511,7 @@ function AdminShell() {
               {suggestions.map((d) => (
                 <Link
                   key={d.row_id}
-                  to="/featherbase/admin/$table"
+                  to="/featherbase/admin/table/$table"
                   params={{ table: d.row_id }}
                   search={{ filters: undefined }}
                   onClick={dismissSearch}
@@ -527,9 +529,9 @@ function AdminShell() {
               {creatableSuggestions.slice(0, 2).map((d) => (
                 <Link
                   key={`new-${d.row_id}`}
-                  to="/featherbase/admin/$table/$name"
+                  to="/featherbase/admin/table/$table/new"
                   search={{ prefill: undefined }}
-                  params={{ table: d.row_id, name: 'new' }}
+                  params={{ table: d.row_id }}
                   onClick={dismissSearch}
                   data-testid="awesomebar-new"
                   className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
