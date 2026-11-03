@@ -22,6 +22,7 @@ beforeAll(async () => {
   await cli.unsafe(`create schema ${SCHEMA};
     create table ${SCHEMA}.app_shelf (id bigint primary key, label text);
     create table ${SCHEMA}.app_shelfbin (code text primary key, shelf_id bigint references ${SCHEMA}.app_shelf(id));
+    create table ${SCHEMA}.app_shelftag (code text primary key, id bigint references ${SCHEMA}.app_shelf(id));
     insert into ${SCHEMA}.app_shelf values (7, 'Top');
     insert into ${SCHEMA}.app_shelfbin values ('b1', 7)`)
 })
@@ -59,5 +60,56 @@ describe('connected tables read as names', () => {
     await reflectBoth(admin)
     expect(await admin.post('/api/row_titles', { rows: [{ table: 'Shelf', row_id: '7' }, { table: 'Shelf', row_id: '404' }] }))
       .toEqual({ titles: [{ table: 'Shelf', row_id: '7', title: 'Top' }] })
+  })
+
+  test('a blank or unusable choice keeps the proposed name, and a schema-qualified choice is honoured', async ({ admin }) => {
+    invalidateSources()
+    await admin.post('/api/table/Data%20Source', {
+      row_id: 'names', engine: 'postgres', url_env: URL_ENV, default_schema: SCHEMA, access: 'read_only',
+    })
+    const reflected = await admin.post<{ created: { name: string; source_table: string }[] }>(
+      '/api/table/Data%20Source/names:reflect',
+      { schema: SCHEMA, tables: ['app_shelf', `${SCHEMA}.app_shelfbin`], names: { app_shelf: '  ', app_shelfbin: 'Bin', other: 3 } },
+    )
+    expect(reflected.created.map((c) => c.name)).toEqual(['Ext App Shelf', 'Bin'])
+    const ignored = await admin.post<{ created: { name: string }[] }>('/api/table/Data%20Source/names:reflect', {
+      schema: SCHEMA, tables: ['app_shelftag'], names: ['Tag'],
+    })
+    expect(ignored.created.map((c) => c.name)).toEqual(['Ext App Shelftag'])
+  })
+
+  test('a foreign key that is the row\'s own id keeps its label', async ({ admin }) => {
+    invalidateSources()
+    await admin.post('/api/table/Data%20Source', {
+      row_id: 'names', engine: 'postgres', url_env: URL_ENV, default_schema: SCHEMA, access: 'read_only',
+    })
+    await admin.post('/api/table/Data%20Source/names:reflect', {
+      schema: SCHEMA, tables: ['app_shelf', 'app_shelftag'], names: { app_shelf: 'Shelf', app_shelftag: 'Tag' },
+    })
+    const meta = await admin.get<{ columns: { column_name: string; label: string }[] }>('/api/table/Tag:meta')
+    expect(meta.columns.find((c) => c.column_name === 'id')?.label).toBe('ID')
+  })
+
+  test('a row whose Table has no title column reads as its first value', async ({ admin }) => {
+    await reflectBoth(admin)
+    expect(await admin.post('/api/row_titles', { rows: [{ table: 'Bin', row_id: 'b1' }] }))
+      .toEqual({ titles: [{ table: 'Bin', row_id: 'b1', title: '7' }] })
+  })
+
+  test('a missing connected row has no title', async ({ admin }) => {
+    await reflectBoth(admin)
+    expect(await admin.post('/api/row_titles', { rows: [{ table: 'Shelf', row_id: '404' }] })).toEqual({ titles: [] })
+  })
+
+  test('the titles of a source that cannot be reached are left out', async ({ admin }) => {
+    await reflectBoth(admin)
+    process.env[URL_ENV] = 'postgres://nobody:nothing@127.0.0.1:1/none'
+    invalidateSources()
+    try {
+      expect(await admin.post('/api/row_titles', { rows: [{ table: 'Shelf', row_id: '7' }] })).toEqual({ titles: [] })
+    } finally {
+      process.env[URL_ENV] = EXTERNAL_DATABASE_URL
+      invalidateSources()
+    }
   })
 })
