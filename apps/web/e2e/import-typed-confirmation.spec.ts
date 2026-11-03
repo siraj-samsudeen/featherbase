@@ -58,7 +58,7 @@ test(`UPS-H1: updating ${N} rows demands the number typed back`, async ({ sessio
     // Import → the guard appears instead of the run; nothing was written.
     await page.getByTestId('iw-import').click()
     const guard = page.getByTestId('iw-confirm-updates')
-    await expect(guard).toContainText(`update ${N} existing rows`)
+    await expect(guard).toContainText(`change ${N} existing rows`)
   })
 
   const anyRow = (await (
