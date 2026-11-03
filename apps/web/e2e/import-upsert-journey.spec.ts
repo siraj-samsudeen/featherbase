@@ -157,8 +157,8 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   expect(Number(entry?.failed)).toBe(0)
   expect(entry?.key_column).toBe('zone_name')
 
-  // UPS-R5 — a fresh visit: the remembered key is PRE-FILLED as a visible
-  // suggestion ("Match on Zone Name, as last time"), never silently active.
+  // UPS-R5 — a fresh visit: the remembered key is offered as a visible
+  // suggestion ("Match on Zone Name, as last time"), active only on acceptance.
   await session
     .visit(`/admin/import?table=${encodeURIComponent(DT)}`)
     .dropFile('[data-testid="iw-dropzone"]', 'e2e/fixtures/zones-v2.csv')
@@ -166,6 +166,9 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
     await expect(page.getByTestId('iw-key-suggested-0')).toContainText(
       'Match on Zone Name, as last time',
     )
+    await expect(page.getByTestId('iw-key-0')).toHaveValue('')
+    await expect(page.getByTestId('iw-empty-cells-0')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Match on Zone Name', exact: true }).click()
     await expect(page.getByTestId('iw-key-0')).toHaveValue('zone_name')
     await expect(page.getByTestId('iw-empty-keep-0')).toBeChecked()
   })

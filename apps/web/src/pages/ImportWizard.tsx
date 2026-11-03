@@ -16,7 +16,7 @@ import {
   parseWorkbook,
   type ParsedSheet,
 } from '../lib/parse-file'
-import { sendImportRun, type ImportUpsertArgs } from '../lib/import-run'
+import { analyzeImportKeys, sendImportRun, type ImportUpsertArgs } from '../lib/import-run'
 import {
   clearSession,
   loadDecisions,
@@ -99,9 +99,7 @@ interface SheetPlan {
   // UPS-R3: what an empty mapped cell does to a matched row. Per run,
   // meaningful only when a key is set; keep is the default.
   empty_cells: 'keep' | 'clear'
-  // UPS-R5: the remembered choice pre-filled from this Table's last keyed
-  // import — kept around so the "as last time" notice can say so while the
-  // user is free to change or clear it.
+  // UPS-R5: a remembered choice, never an active key until accepted.
   suggested: { key: string; empty_cells: 'keep' | 'clear' } | null
   // Failures carry sourceIndex — the row's 0-based position in the sheet's
   // data rows, blanks included (#115). The server's per-chunk `index` is
@@ -346,6 +344,43 @@ function ImportPreviewFacts({ report }: {
         <Notice tone="caution" className="mt-2">This Table does not keep change history. Imports overwrite existing values, including hand edits.</Notice>
       )}
     </>
+  )
+}
+
+function KeySuggestions({ i, table, rows, columns, suggested, label, onAccept }: {
+  i: number
+  table: string
+  rows: CoercedRow[]
+  columns: string[]
+  suggested: SheetPlan['suggested']
+  label: (column: string) => string
+  onAccept: (key: string, emptyCells: 'keep' | 'clear') => void
+}) {
+  const analysis = useQuery({
+    queryKey: ['iw-key-analysis', table, columns, rows],
+    queryFn: () => analyzeImportKeys({ table, columns, rows }),
+  })
+  if (analysis.isError) return (
+    <Notice tone="caution" className="mt-2">
+      Could not check matching columns. This does not mean that no rows overlap.{' '}
+      <button type="button" onClick={() => void analysis.refetch()} className="underline">Try again</button>
+    </Notice>
+  )
+  if (!analysis.data) return <p className="mt-1 text-xs text-ink-muted">Checking matching columns…</p>
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2">
+      {analysis.data.filter((c) => c.complete || c.column === suggested?.key).map((candidate) => {
+        const remembered = candidate.column === suggested?.key
+        return (
+          <span key={candidate.column} data-testid={remembered ? `iw-key-suggested-${i}` : undefined} className="text-xs text-action">
+            <button type="button" className="underline" onClick={() => onAccept(candidate.column, remembered ? suggested!.empty_cells : 'keep')}>
+              Match on {label(candidate.column)}
+            </button>
+            {remembered ? ', as last time' : ` — all ${fmtCount(candidate.matched)} rows match one-to-one`}
+          </span>
+        )
+      })}
+    </div>
   )
 }
 
@@ -1210,10 +1245,9 @@ export function ImportWizard() {
     void applySuggestion(i, value, mapping)
   }
 
-  // UPS-R5: the match key (and empty-cells choice) used on this Table's last
-  // keyed import, read back from the Import Log and PRE-FILLED as a visible
-  // suggestion — the user confirms or changes it; it is never silently
-  // active. A reader without an Import Log grant simply gets no suggestion.
+  // UPS-R5: read the remembered choice, without activating it. KeySuggestions
+  // validates it against the current mapped rows and server permissions.
+  // A reader without an Import Log grant simply gets no remembered suggestion.
   async function applySuggestion(i: number, forTable: string, map: (string | null)[]) {
     try {
       const logs = await api.get<{ data: { key_column: string | null; empty_cells: string | null }[] }>(
@@ -1231,13 +1265,14 @@ export function ImportWizard() {
       const empty_cells = last.empty_cells === 'clear' ? 'clear' : 'keep'
       setPlans((ps) =>
         ps.map((p, j) =>
-          j === i && p.mode === 'existing' && p.table === forTable && p.key === null
-            ? { ...p, key, empty_cells, suggested: { key, empty_cells } }
+          j === i && p.mode === 'existing' && p.table === forTable && p.mapping.length === map.length && p.mapping.every((m, idx) => m === map[idx])
+            ? { ...p, suggested: { key, empty_cells } }
             : p,
         ),
       )
     } catch {
-      // No read on Import Log (or a mid-upgrade database) — no suggestion.
+      // No read on Import Log — no remembered suggestion. Value-derived
+      // analysis is separate and its errors are shown, never treated as no overlap.
     }
   }
 
@@ -2554,14 +2589,6 @@ export function ImportWizard() {
                             </option>
                           ))}
                         </select>
-                        {plan.suggested && plan.key === plan.suggested.key && (
-                          <span
-                            className="text-xs text-action"
-                            data-testid={`iw-key-suggested-${i}`}
-                          >
-                            Match on {friendly(plan.suggested.key)}, as last time
-                          </span>
-                        )}
                         {plan.key && (
                           <span
                             className="flex items-center gap-2 text-sm"
@@ -2591,6 +2618,15 @@ export function ImportWizard() {
                           </span>
                         )}
                       </div>
+                      <KeySuggestions
+                        i={i}
+                        table={plan.table}
+                        rows={mappedRows(sheet, plan)}
+                        columns={keyOptions}
+                        suggested={plan.suggested}
+                        label={friendly}
+                        onAccept={(key, empty_cells) => setPlan(i, { key, empty_cells })}
+                      />
                       {plan.key && (
                         <p className="mt-1 text-xs text-ink-muted">
                           Matching on {friendly(plan.key)}, rather than appending every row.

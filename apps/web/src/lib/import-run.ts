@@ -36,6 +36,43 @@ export interface ImportUpsertArgs {
   columns: string[]
 }
 
+export interface ImportKeyCandidate {
+  column: string
+  matched: number
+  complete: boolean
+}
+
+export async function analyzeImportKeys(opts: {
+  table: string
+  rows: CoercedRow[]
+  columns: string[]
+}): Promise<ImportKeyCandidate[]> {
+  if (!opts.rows.length) return []
+  // Check the whole target (including grouped sheets) before chunking:
+  // otherwise the same key in different parts looks one-to-one to the server.
+  const eligible = [...new Set(opts.columns)].filter((column) => {
+    const seen = new Set<string>()
+    for (const row of opts.rows) {
+      const key = row.values[column] == null ? '' : String(row.values[column]).trim()
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+    }
+    return true
+  })
+  let candidates = eligible.map((column) => ({ column, matched: 0, complete: true }))
+  for (let at = 0; at < opts.rows.length && candidates.length; at += IMPORT_CHUNK) {
+    const res = await api.post<{ key_candidates: ImportKeyCandidate[] }>(
+      `/api/table/${encodeURIComponent(opts.table)}:import`,
+      { analyze_keys: true, columns: eligible, rows: opts.rows.slice(at, at + IMPORT_CHUNK).map((r) => r.values) },
+    )
+    candidates = candidates.flatMap((candidate) => {
+      const part = res.key_candidates.find((c) => c.column === candidate.column)
+      return part ? [{ column: candidate.column, matched: candidate.matched + part.matched, complete: candidate.complete && part.complete }] : []
+    })
+  }
+  return candidates
+}
+
 interface ImportRunReport {
   // Dry runs: rows that passed validation. Real runs: inserted + updated.
   valid: number
