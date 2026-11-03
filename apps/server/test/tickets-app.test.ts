@@ -204,6 +204,9 @@ describe('Tickets independently installed product contract (#810)', () => {
     await refused(verify(roleOnly, ticket))
     await refused(act(roleOnly, 'edit', { ...revision(ticket), assigned_to: roleOnly.user }))
     const request = await admin.get<any>(`/api/table/tickets.request/${ticket.row_id}`)
+    for (const client of [w.other, w.owner, admin])
+      await refused(client.post(`/api/table/tickets.ticket/${ticket.row_id}:rename`, { new_name: 'hijacked-reference' }))
+    expect(serialized((await detail(w.owner, ticket)).details)).toContain('Original private request 37')
     for (const client of [w.owner, w.support, admin]) {
       await refused(client.post('/api/save_row', { table: 'tickets.ticket', row: { ...ticket, ticket_state: 'Resolved' } }))
       await refused(client.post('/api/save_row', { table: 'tickets.request', row: { ...request,
@@ -274,9 +277,9 @@ describe('Tickets independently installed product contract (#810)', () => {
     expect(saved).not.toMatch(/"root_cause":"(?!unknown)[^"]+"/)
     const events = await admin.get<any>('/api/table/tickets.event?limit_page_length=500')
     expect(events.data.length).toBeGreaterThan(0)
-    const event = events.data[0]
+    const event = await admin.get<any>(`/api/table/tickets.event/${events.data[0].row_id}`)
     await refused(admin.post('/api/save_row', { table: 'tickets.event', row: { ...event, text: 'Rewrite history' } }))
-    await refused(admin.fetch(`/api/table/tickets.event/${event.row_id}`, { method: 'DELETE' }).then(async response => {
+    await refused(admin.fetch(`/api/table/tickets.event/${event.row_id}?updated_at=${encodeURIComponent(event.updated_at)}`, { method: 'DELETE' }).then(async response => {
       if (!response.ok) throw { status: response.status }
       return response.json()
     }))

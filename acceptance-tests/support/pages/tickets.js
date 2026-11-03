@@ -164,6 +164,28 @@ class Tickets {
     assert.ok(!JSON.stringify(activity.body).includes('PRIVATE support note 431'));
   }
   async search(query) { this.queue = (await this.read('queue', { search: query })).tickets; }
+  async renameTicket() {
+    this.last = await this.call(this.actor, `/api/table/tickets.ticket/${this.ticket.row_id}:rename`, { new_name: 'changed-by-another-requester' });
+  }
+  async retainedReference() {
+    await this.denied();
+    const saved = await this.open('Anjali');
+    assert.equal(saved.ticket.row_id, this.ticket.row_id);
+    assert.equal(saved.details.original, this.original);
+  }
+  async deleteEvidence() {
+    const api = await Api.asSystemManager();
+    const event = (await this.open('Support')).privateEvents.find(event => event.operation === 'evidence');
+    this.evidenceBeforeDelete = await api.row('tickets.event', event.row_id);
+    const response = await api.call('DELETE', `/api/table/tickets.event/${event.row_id}?updated_at=${encodeURIComponent(this.evidenceBeforeDelete.updated_at)}`);
+    this.last = { status: response.status(), body: await response.json() };
+  }
+  async retainedEvidence() {
+    await this.denied();
+    const api = await Api.asSystemManager();
+    assert.deepEqual(await api.row('tickets.event', this.evidenceBeforeDelete.row_id), this.evidenceBeforeDelete);
+    await this.includes('source-check-1', 'report-check-1', this.ids.Support);
+  }
   async referenceFixture(reference) {
     await this.setup();
     const api = await Api.asSystemManager();
