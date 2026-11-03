@@ -4,7 +4,7 @@ import { ApiError, api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
 import { fmtInstantIST } from '../lib/inr'
 import { Button, Card, Select, TextInput } from './ui'
-import { principalLabel, usePrincipalNameState } from '../lib/people'
+import { ShownName, principalLabel, usePrincipalNameState } from '../lib/people'
 
 // person-identities (#275, review B-M4): on a Person's form, a System Manager
 // sees how that person signs in — password, linked outside accounts, pending
@@ -18,6 +18,9 @@ interface AdminIdentity {
   sign_in_name: string | null
   email: string | null
   pending_email: string | null
+  /** #837: when and by whom (or by which sign-in path) the link was made. */
+  linked_at?: string | null
+  linked_by?: string | null
   last_used_at: string | null
   /** person-resolution D5: an ended link stays as history. */
   ended_at?: string | null
@@ -31,6 +34,19 @@ type InvitationEmail =
   | { status: 'sent' }
   | { status: 'not_sent'; reason: string }
   | { status: 'failed'; error: string }
+
+/** #837: how a link was made, as an administrator reads it. The sign-in
+ *  paths name themselves; anything else is the person who linked it. */
+function LinkedHow({ by, who }: { by: string; who: string }) {
+  if (by === 'first-sign-in' || by === 'expected-sign-in') return <>at first sign-in</>
+  if (by === 'new-person') return <>at first sign-in, which made this person</>
+  if (by === 'self') return <>by {who}</>
+  return (
+    <>
+      by <ShownName id={by} />
+    </>
+  )
+}
 
 interface MethodInfo {
   key: string
@@ -114,6 +130,11 @@ export function PersonSignInMethods({ user }: { user: string }) {
     const row = data?.methods.find((m) => m.key === k)
     return row ? `${row.label}${row.enabled ? '' : ' (turned off)'}` : k
   }
+  // #837: a Google account reads as its address; its account number means
+  // nothing to an administrator and waits under Details.
+  const isGoogle = (i: AdminIdentity) => data?.methods.find((m) => m.key === i.method)?.kind === 'google'
+  const shownAs = (i: AdminIdentity) =>
+    isGoogle(i) && i.email ? i.email : [i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')
 
   function onLink(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -140,10 +161,23 @@ export function PersonSignInMethods({ user }: { user: string }) {
         {data?.identities.filter((i) => !i.ended_at).map((i) => (
           <li key={i.id} className="flex items-start justify-between gap-2" data-testid={`user-method-${i.id}`}>
             <span className="min-w-0">
-              <span className="font-medium">{labelOf(i.method)}</span>{' '}
-              <span className="text-sm text-ink-muted">
-                {i.subject == null ? `invited: ${i.pending_email}` : [i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')}
+              <span data-testid="identity-head">
+                <span className="font-medium">{labelOf(i.method)}</span>{' '}
+                <span className="text-sm text-ink-muted">{i.subject == null ? `invited: ${i.pending_email}` : shownAs(i)}</span>
               </span>
+              {i.subject != null && i.linked_at && (
+                <span className="block text-sm text-ink-muted" data-testid="identity-linked">
+                  linked {fmtInstantIST(i.linked_at)} {i.linked_by && <LinkedHow by={i.linked_by} who={who} />}
+                  {' · '}
+                  {i.last_used_at ? `last signed in ${fmtInstantIST(i.last_used_at)}` : 'not signed in with it yet'}
+                </span>
+              )}
+              {i.subject != null && isGoogle(i) && i.email && (
+                <details className="text-sm text-ink-muted" data-testid="identity-details">
+                  <summary className="cursor-pointer">Details</summary>
+                  <span className="block">Google account number: {i.subject}</span>
+                </details>
+              )}
               {i.subject == null && i.invitation_sent_at && (
                 <span className="block text-sm text-ink-muted" data-testid={`invitation-sent-${i.id}`}>
                   invitation emailed {fmtInstantIST(i.invitation_sent_at)}
@@ -159,7 +193,11 @@ export function PersonSignInMethods({ user }: { user: string }) {
               <Button
                 variant="danger"
                 onClick={() => {
-                  if (window.confirm(`Remove this ${labelOf(i.method)} sign-in from ${who}?`)) unlink.mutate(i.id)
+                  const ask =
+                    isGoogle(i) && i.subject != null
+                      ? `Unlink ${shownAs(i)}? This ${labelOf(i.method)} account will no longer sign in as ${who}.`
+                      : `Remove this ${labelOf(i.method)} sign-in from ${who}?`
+                  if (window.confirm(ask)) unlink.mutate(i.id)
                 }}
               >
                 Unlink
@@ -169,7 +207,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
         ))}
         {data?.identities.filter((i) => i.ended_at).map((i) => (
           <li key={i.id} className="text-sm text-ink-muted" data-testid={`user-method-ended-${i.id}`}>
-            {labelOf(i.method)} {[i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')} — ended{' '}
+            {labelOf(i.method)} {shownAs(i)} — ended{' '}
             {fmtInstantIST(i.ended_at!)} ({i.ended_reason})
           </li>
         ))}
