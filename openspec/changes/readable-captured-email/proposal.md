@@ -14,7 +14,7 @@ Email Sink messages currently look like database records rather than emails. Peo
 - `captured-email-reading`: Read locally captured messages as emails, safely.
 
 ### Modified Capabilities
-None.
+- `core-forms`: Configured read-only rows can be presented for reading; ordinary editable forms are unchanged.
 
 ## Impact
 
