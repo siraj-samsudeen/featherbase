@@ -11,7 +11,7 @@ const DT = 'Naming Demo'
 // The Table Builder and Table Naming dialogs are testid-addressed, so the
 // mechanics stay in named steps; assertHas covers the plain presence checks.
 
-test('NAM-001: the builder derives the series prefix and preview from the Table name', async ({
+test('NAM-001: the builder numbers rows 1, 2, 3 by default and derives a series prefix from the Table name', async ({
   session,
   request,
 }) => {
@@ -21,9 +21,11 @@ test('NAM-001: the builder derives the series prefix and preview from the Table 
 
   await session.visit('/admin/new-table').assertHas('[data-testid="table-builder"]')
 
-  await session.step('series is the default, and its prefix follows the Table name', async ({ page }) => {
-    await expect(page.getByTestId('dt-naming')).toHaveValue('series')
+  await session.step('numbers 1, 2, 3 are the default (#855); a series takes its prefix from the Table name', async ({ page }) => {
+    await expect(page.getByTestId('dt-naming')).toHaveValue('integer')
+    await expect(page.getByTestId('dt-naming-preview')).toContainText('Rows will be numbered 1, 2, 3')
     await page.getByTestId('dt-name').fill(DT)
+    await page.getByTestId('dt-naming').selectOption('series')
     await expect(page.getByTestId('dt-naming-prefix')).toHaveValue('NAMING-DEMO-')
     await expect(page.getByTestId('dt-naming-preview')).toContainText('NAMING-DEMO-001')
   })

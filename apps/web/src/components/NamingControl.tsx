@@ -1,14 +1,17 @@
+import { DEFAULT_ID_PATTERN } from 'shared'
 import { inputClasses } from '@featherbase/shop-floor'
-// NAM-001: edit a Table's id_pattern — the rule that names new rows. The four
-// kinds mirror resolveName() in apps/server/src/document.ts; a series is split
+// NAM-001: edit a Table's id_pattern — the rule that names new rows. The
+// kinds mirror resolveRowId() in apps/server/src/document.ts; a series is split
 // here into a prefix and a digit count so nobody has to type ".###".
 
-type NamingKind = 'series' | 'hash' | 'prompt' | 'field'
+
+type NamingKind = 'integer' | 'series' | 'hash' | 'prompt' | 'field'
 
 // The generated kinds. 'field' is deliberately absent: naming a row after a
 // column IS picking that column, so the columns appear as options in this same
 // select rather than behind a second one. One dropdown, one decision.
 const KINDS: { value: NamingKind; label: string }[] = [
+  { value: 'integer', label: 'Numbers 1, 2, 3' },
   { value: 'series', label: 'Series with prefix' },
   { value: 'hash', label: 'Random id' },
   { value: 'prompt', label: 'Set by user' },
@@ -23,12 +26,13 @@ interface Parsed {
 
 function parseIdPattern(pattern: string): Parsed {
   const base: Parsed = { kind: 'hash', prefix: '', digits: 3, column: '' }
+  if (pattern === 'integer') return { ...base, kind: 'integer' }
   if (pattern === 'prompt') return { ...base, kind: 'prompt' }
   if (pattern.startsWith('field:'))
     return { ...base, kind: 'field', column: pattern.slice('field:'.length) }
-  // dot at 0 is a series whose prefix isn't filled in yet (the builder's
-  // opening state) — composeIdPattern turns that back into 'hash', so an
-  // empty prefix can never reach the server.
+  // dot at 0 is a series whose prefix isn't filled in yet (the user cleared it
+  // to type another). It stays a series here; the server refuses it on save
+  // and says the prefix is missing.
   const dot = pattern.indexOf('.')
   if (dot >= 0 && /^#+$/.test(pattern.slice(dot + 1)))
     return {
@@ -42,18 +46,21 @@ function parseIdPattern(pattern: string): Parsed {
 
 function composeIdPattern(p: Parsed): string {
   if (p.kind === 'prompt') return 'prompt'
-  if (p.kind === 'field') return p.column ? `field:${p.column}` : 'hash'
-  if (p.kind === 'series') return p.prefix ? `${p.prefix}.${'#'.repeat(p.digits)}` : 'hash'
-  return 'hash'
+  if (p.kind === 'hash') return 'hash'
+  if (p.kind === 'field' && p.column) return `field:${p.column}`
+  if (p.kind === 'series') return `${p.prefix}.${'#'.repeat(p.digits)}`
+  return DEFAULT_ID_PATTERN
 }
 
 function namingPreview(pattern: string): string {
   const p = parseIdPattern(pattern)
+  if (p.kind === 'integer') return 'Rows will be numbered 1, 2, 3 …'
   if (p.kind === 'prompt') return 'You type each row’s id yourself'
   if (p.kind === 'field')
     return p.column
       ? `Each row takes its id from ${p.column}`
       : 'Pick the column to take ids from'
+  if (p.kind === 'series' && !p.prefix) return 'Type the prefix every id starts with'
   if (p.kind === 'series')
     return `First rows: ${[1, 2, 3].map((n) => p.prefix + String(n).padStart(p.digits, '0')).join(', ')}…`
   return 'Rows get a random id, e.g. a0373bac75'
