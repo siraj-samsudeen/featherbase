@@ -5,8 +5,8 @@ Skipped: `acceptance-tests/` exists. Uses #782's outside-database harness, #783'
 ## 2. Step definitions — each: fails for the right reason → implement → passes → commit
 
 - [ ] 2.1 external-data-sources: "a Postgres database of crates on pallets that declares no keys or links", "a crate numbered … holding … on the pallet …"
-- [ ] 2.2 external-data-sources: the four "an app that connects its … identified by …" givens (crate alone; crate and pallet with a link; shelf by its label; crate linking to a missing table; shelf and bin with an agreeing link)
-- [ ] 2.3 external-data-sources: "the user opens crate …", "the user opens that bin", "the user sees the crate holds …", "the user sees the crate's pallet as …", "the user sees the bin's shelf as …", "the user is told the shelf table is already identified by its …", "the user is told the source has no table …"
+- [ ] 2.2 external-data-sources: the four "an app that connects its … identified by …" givens (crate alone; crate and pallet with a link; shelf by its label; crate linking to a missing table; shelf by its id and bin with an agreeing link)
+- [ ] 2.3 external-data-sources: "the user opens crate …", "the user sees the crate holds …", "the user sees the crate's pallet as …", "the user sees the bin's shelf as …", "the user is told the shelf table is already identified by its …", "the user is told the source has no table …"
 
 ## 3. Implementation
 

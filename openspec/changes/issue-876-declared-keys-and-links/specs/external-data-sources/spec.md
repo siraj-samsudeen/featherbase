@@ -75,8 +75,8 @@ And no table called "Crate" is in Featherbase
 Given the user is a System Manager
 And a Postgres database of shelves and the bins on each shelf
 And a bin on the shelf titled "Top"
-And an app that connects its shelf and bin tables, identified by their ids, with each bin's shelf linking to the shelves
+And an app that connects its shelf table identified by its id and its bin table, with each bin's shelf linking to the shelves
 And the app is installed
-When the user opens that bin
+When the user opens a bin
 Then the user sees the bin's shelf as "Top"
 ```

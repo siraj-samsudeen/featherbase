@@ -88,7 +88,7 @@ Given('an app that connects its shelf table as {string}, titled by its {word}, l
 
 async function installShelfApp(world) {
   return world.withApi(async (api) => {
-    await api.call('DELETE', `/api/table/Data%20Source/${SHELF_SOURCE}`);
+    await api.call('DELETE', `/api/table/Data%20Source/${world.app.sources[0].name}`);
     const res = await api.call('POST', '/api/install_app', { manifest: world.app });
     return { status: res.status(), body: await res.text() };
   });
@@ -135,6 +135,73 @@ Given('the user may read bins but not shelves', async function () {
   const role = await this.withApi((api) => api.readerRoleFor('Bin'));
   await this.person('the user', [role]);
 });
+
+// ---- Crates on pallets: tables that declare no keys or links (#876) ----
+
+// Shaped like a warehouse copy: the same columns a database would key and
+// link, with neither declared.
+const CRATES = 'crate_fixture';
+const CRATE_SOURCE = 'crates';
+
+Given('a Postgres database of crates on pallets that declares no keys or links', async function () {
+  await externalSql(`drop schema if exists ${CRATES} cascade`);
+  await externalSql(`create schema ${CRATES}`);
+  await externalSql(`create table ${CRATES}.pallet (number bigint, title text)`);
+  await externalSql(`create table ${CRATES}.crate (contents text, number bigint, pallet_number bigint)`);
+  await grantReader(CRATES, ['pallet', 'crate']);
+  await this.withApi(async (api) => {
+    await api.call('POST', '/api/uninstall_app', { name: SHELF_APP });
+    for (const name of ['Crate', 'Pallet']) await api.removeTableIfPresent(name);
+  });
+});
+
+Given('a crate numbered {int} holding {string} on the pallet {string}', async function (number, contents, pallet) {
+  await externalSql(`insert into ${CRATES}.pallet values (1, $1)`, [pallet]);
+  await externalSql(`insert into ${CRATES}.crate values ($1, $2, 1)`, [contents, number]);
+});
+
+function crateApp(tables) {
+  return {
+    name: SHELF_APP,
+    sources: [{
+      name: CRATE_SOURCE, engine: 'postgres', url_env: EXTERNAL_URL_ENV, default_schema: CRATES,
+      access: 'read_only', table_allowlist: `${CRATES}.crate,${CRATES}.pallet`,
+      reflect: { schema: CRATES, module: 'Crates', tables },
+    }],
+  };
+}
+
+Given('an app that connects its crate table as {string}, identified by its {word}', async function (name, key) {
+  this.app = crateApp([{ table: 'crate', name, key }]);
+});
+
+// The crate comes first, so its link is made before the pallets are connected.
+Given('an app that connects its crate and pallet tables, identified by their numbers, with each crate\'s pallet linking to the pallets',
+  async function () {
+    this.app = crateApp([
+      { table: 'crate', name: 'Crate', key: 'number', links: { pallet_number: 'pallet' } },
+      { table: 'pallet', name: 'Pallet', key: 'number', title_column: 'title' },
+    ]);
+  });
+
+Given('an app that connects its crate table as {string}, identified by its {word}, with each crate\'s pallet linking to a table called {string}',
+  async function (name, key, target) {
+    this.app = crateApp([{ table: 'crate', name, key, links: { pallet_number: target } }]);
+  });
+
+Given('an app that connects its shelf table as {string}, identified by its {word}', async function (name, key) {
+  await grantReader(SHELVES, ['shelf', 'bin']);
+  this.app = shelfApp(name, { key });
+});
+
+Given('an app that connects its shelf table identified by its id and its bin table, with each bin\'s shelf linking to the shelves',
+  async function () {
+    await grantReader(SHELVES, ['shelf', 'bin']);
+    this.app = shelfApp('Shelf', { key: 'id' });
+    const source = this.app.sources[0];
+    source.table_allowlist = `${SHELVES}.shelf,${SHELVES}.bin`;
+    source.reflect.tables.push({ table: 'bin', name: 'Bin', links: { shelf_id: 'shelf' } });
+  });
 
 // ---- When ----
 
@@ -187,6 +254,13 @@ When("the user opens that bin's relationship map", async function () {
   const page = await this.actor();
   await page.goto(`/featherbase/admin/map/Bin/${this.bin}`);
   await page.getByTestId('map-forward-Shelf').waitFor();
+});
+
+When('the user opens crate {int}', async function (number) {
+  const page = await this.actor();
+  await page.goto(`/featherbase/admin/Crate/${number}`);
+  await page.getByTestId('form-view').waitFor();
+  this.form = new FormPage(page);
 });
 
 // ---- Then ----
@@ -290,4 +364,33 @@ Then('the user does not see {string}', async function (text) {
   const page = await this.actor();
   await page.waitForLoadState('networkidle');
   assert.ok(!(await page.locator('main').innerText()).includes(text), `"${text}" is shown`);
+});
+
+Then('the user sees the crate holds {string}', async function (contents) {
+  await this.form.field('Contents').getByText(contents, { exact: true }).waitFor({ timeout: 10_000 });
+});
+
+async function seesLinkAs(form, label, title) {
+  const value = form.field(label).locator('[data-value]');
+  await value.getByText(title, { exact: true }).waitFor({ timeout: 10_000 }).catch(async () => {
+    assert.fail(`the ${label} reads "${(await value.textContent())?.trim()}", not "${title}"`);
+  });
+  assert.ok((await form.valueOf(label)).link, `the ${label} is not a link`);
+}
+
+Then("the user sees the crate's pallet as {string}", async function (title) {
+  await seesLinkAs(this.form, 'Pallet', title);
+});
+
+Then("the user sees the bin's shelf as {string}", async function (title) {
+  await seesLinkAs(new FormPage(await this.actor()), 'Shelf', title);
+});
+
+Then('the user is told the shelf table is already identified by its {word}', async function (key) {
+  assert.match(this.installed.body, new RegExp(`shelf[^"]*identified by[^"]*\\b${key}\\b`, 'i'),
+    `the refusal says: ${this.installed.body}`);
+});
+
+Then('the user is told the source has no table {string}', async function (table) {
+  assert.match(this.installed.body, new RegExp(`no table[^"]*${table}`, 'i'), `the refusal says: ${this.installed.body}`);
 });
