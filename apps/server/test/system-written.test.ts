@@ -422,7 +422,7 @@ describe('#432: configurable automation never reaches a system-written table', (
 
   test('Server Scripts, Metadata Overrides, Workflows and Custom Fields cannot target an audit table', async ({ admin }) => {
     await expectApiError(admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'forge', script_type: 'Document Event', ref_table: AL, event: 'validate', script: 'doc.x = 1', enabled: true } }), REFUSED)
-    await expectApiError(admin.post('/api/save_row', { table: 'Metadata Override', row: { row_id: 'mo-forge', table_name: AL, column_name: 'operation', property: 'hidden', value: '1' } }), REFUSED)
+    await expectApiError(admin.post('/api/table/Metadata%20Override', { row_id: 'mo-forge', table_name: AL, column_name: 'operation', property: 'hidden', value: '1' }), REFUSED)
     await expectApiError(admin.post('/api/save_row', { table: 'Workflow', row: { row_id: 'forge-wf', ref_table: AL, is_active: true, states: [{ state: 'Open', target_status: 'draft' }] } }), REFUSED)
     expect((await admin.get<{ columns: { column_name: string }[] }>(`/api/table/${ENC}:meta`)).columns.map((c) => c.column_name)).not.toContain('workflow_state')
   })
