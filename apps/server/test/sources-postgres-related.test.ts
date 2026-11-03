@@ -71,6 +71,19 @@ const query = (filters: Filters) => new URLSearchParams({ filters: JSON.stringif
 const path = `/api/table/${encodeURIComponent(FLOOR)}`
 
 describe('same-source PostgreSQL relationship membership', () => {
+  test('refuses a non-array filter payload without returning source rows', async ({ admin }) => {
+    await connect(admin)
+    const malformed = new URLSearchParams({ filters: JSON.stringify({ store: '11' }) })
+    for (const endpoint of [path, `${path}:count`]) {
+      const response = await admin.fetch(`${endpoint}?${malformed}`)
+      expect(response.status).toBe(417)
+      expect(await response.json()).toEqual({
+        error: { type: 'ValidationError', message: 'filters must be an array of [field, operator, value]' },
+      })
+    }
+    expect(await admin.get(`${path}:count?${query(related())}`)).toEqual({ count: 4 })
+  })
+
   test('matches the full upstream set rather than a displayed page', async ({ admin }) => {
     await connect(admin)
     const filters = related()
