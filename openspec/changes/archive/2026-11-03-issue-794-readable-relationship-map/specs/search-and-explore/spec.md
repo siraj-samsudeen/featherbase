@@ -14,7 +14,7 @@ name.
 ```gherkin
 Given the user is a System Manager
 And a table of volunteers and a table of chores, each chore assigned to a volunteer
-And the chore "Paint the fence" assigned to "Asha", whose phone is "98400 12345"
+And the chore "Paint the fence" assigned to "Asha", whose phone is "555-0142"
 When the user opens that chore's relationship map
 Then the user sees "Asha", a Volunteer, linked by "Assigned To"
 ```
@@ -24,7 +24,7 @@ Then the user sees "Asha", a Volunteer, linked by "Assigned To"
 ```gherkin
 Given the user is a System Manager
 And a table of volunteers and a table of chores, each chore assigned to a volunteer
-And the chore "Paint the fence" assigned to "Asha", whose phone is "98400 12345"
+And the chore "Paint the fence" assigned to "Asha", whose phone is "555-0142"
 When the user opens Asha's relationship map
 Then the user sees Asha's chores related by "Assigned To"
 ```
@@ -40,9 +40,9 @@ row's own values are in view too.
 ```gherkin
 Given the user is a System Manager
 And a table of volunteers and a table of chores, each chore assigned to a volunteer
-And the chore "Paint the fence" assigned to "Asha", whose phone is "98400 12345"
+And the chore "Paint the fence" assigned to "Asha", whose phone is "555-0142"
 When the user opens Asha's relationship map
-Then the user sees "Asha" listed with her phone "98400 12345"
+Then the user sees "Asha" listed with her phone "555-0142"
 When the user opens Asha's chores
 Then the user sees "Paint the fence" listed instead of "Asha"
 ```
