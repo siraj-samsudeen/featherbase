@@ -331,9 +331,16 @@ pnpm --filter web coverage:merged  # → apps/web/coverage-merged/index.html
   command first runs a regression test using genuine instrumented executions.
   It requires both suites and refuses missing executable source files,
   including the SPA and gallery entries.
-- The jsdom run's own thresholds gate CI's `unit-web` job; CI's
-  `coverage-merged` job combines it with the browser run, when both ran. To run E2E beside
-  `./init.sh`, move the ports and give it a private `DATABASE_URL`.
+- CI partitions component and browser files across isolated runners, each
+  with one worker and its own PostgreSQL. `tools/ci-shards.mjs` records actual
+  successful file execution and artifact hashes. The collecting jobs reject
+  missing, duplicate, stale or altered producers and require the configured
+  file inventory exactly once. `unit-web` replays all component blobs under
+  the unchanged jsdom thresholds; `coverage-merged` combines that report with
+  every browser map under the existing source-level gates. Acceptance and
+  served journeys run independently; the required `e2e` check requires them
+  and all browser producers. To run E2E beside `./init.sh`, move the ports and
+  give it a private `DATABASE_URL`.
 - Both web suites strip comments before instrumenting, so a coverage hint
   before a statement must be a legal comment —
   `/* istanbul ignore next -- <reason> @preserve */`; one inside an expression
@@ -367,9 +374,12 @@ Use a disposable `DATABASE_URL` for HTTP tests. Packaged acceptance uses its
 own guarded `*_e2e` database as described above. Reports live at the repository
 root under `coverage/tasker/`, never inside the fingerprinted runtime app.
 Do not rebuild or edit an app while a server using its artifact is running:
-installed versions require their exact fingerprint. CI collects the HTTP and
-packaged layers after E2E, then publishes the merged runtime report alongside
-the web report. The runtime merger requires every line, statement and function
+installed versions require their exact fingerprint. CI collects the HTTP layer
+on the acceptance runner before rebuilding packages. Packaged coverage comes
+from the proof that the effective-spec acceptance suite already executes,
+without a second proof run.
+It publishes the merged runtime report alongside the web report. The runtime
+merger requires every line, statement and function
 to be covered, comparing exact counts rather than rounded percentages. It also
 requires every branch arm in Tasker's owned esbuild server-entry import closure
 to be covered; missing source coverage fails rather than shrinking that scope.
