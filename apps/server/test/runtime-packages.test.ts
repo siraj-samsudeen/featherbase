@@ -896,6 +896,9 @@ describe('An app declares its phone tabs', () => {
     expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
     expect(await admin.get('/api/app_catalog')).toEqual([{ name: 'other', title: 'Other tasks', href: '/other/' }])
+    const inventory = await admin.get<{ pages: { href: string; label: string; kind: string }[] }>('/api/command_destinations')
+    expect(inventory.pages.filter((page) => page.href.startsWith('/other/')))
+      .toEqual([{ label: 'Other tasks', href: '/other/', kind: 'App' }])
   })
 
   test('a tab list the bar cannot draw safely is refused when the app is found', async () => {

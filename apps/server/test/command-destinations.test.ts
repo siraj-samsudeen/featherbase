@@ -1,7 +1,10 @@
-import { describe, expect } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
+import * as metadata from '../src/meta'
+import * as query from '../src/query'
+import { AppError } from '../src/errors'
 
 // Public inventory contract: Table names stay canonical; pages carry their
 // existing href. The browser never derives resource identities from slugs.
@@ -39,16 +42,50 @@ describe('#737 command destinations', () => {
       expect(pages.map((p) => p.href)).toContain(`/featherbase/admin/${slug}`)
     expect(pages.filter((p) => p.label.startsWith('Inventory board '))).toHaveLength(501)
     expect(pages.map((p) => p.href)).toContain('/featherbase/account/sign-in-methods')
+    expect(pages.map((p) => p.href)).not.toContain('/featherbase/sales-target')
     expect(pages.every((p) => !p.href.includes('$'))).toBe(true)
     expect(new Set(pages.map((p) => p.href)).size).toBe(pages.length)
   })
 
+  test('named destinations include only openable reports and published forms', async ({ admin }) => {
+    for (const [name, type, script] of [
+      ['Inventory / people', 'Script Report', 'Person Report'],
+      ['Inventory missing script', 'Script Report', 'No inventory script'],
+      ['Inventory builder', 'Report Builder', ''],
+    ]) {
+      await admin.post('/api/save_row', { table: 'Report', row: {
+        row_id: name, ref_table: 'Person', report_type: type, report_script: script,
+      } })
+    }
+    for (const [name, title, route, published] of [
+      ['Inventory public', 'Inventory intake', 'inventory/intake', true],
+      ['Inventory draft', 'Inventory draft', 'inventory-draft', false],
+      ['Inventory untitled', 'Temporary title', 'inventory-untitled', true],
+    ] as const) {
+      await admin.post('/api/save_row', { table: 'Web Form', row: {
+        row_id: name, title, route, published, ref_table: 'Person', web_fields: ['full_name'],
+      } })
+    }
+    // Existing metadata may lack display labels; canonical identities remain
+    // discoverable rather than producing an empty result label.
+    await sql`update web_form set title = '' where row_id = 'Inventory untitled'`
+    await sql`insert into home_page (row_id, label) values ('inventory-unlabelled', '')`
+    const { pages } = await admin.get<Inventory>(PATH)
+    expect(pages).toContainEqual({ label: 'Inventory / people', href: '/featherbase/admin/script-report/Inventory%20%2F%20people', kind: 'Report' })
+    expect(pages).toContainEqual({ label: 'Inventory intake', href: '/featherbase/form/inventory%2Fintake', kind: 'Web Form' })
+    expect(pages).toContainEqual({ label: 'Inventory untitled', href: '/featherbase/form/inventory-untitled', kind: 'Web Form' })
+    expect(pages).toContainEqual({ label: 'inventory-unlabelled', href: '/featherbase/admin/home/inventory-unlabelled', kind: 'Home Page' })
+    for (const label of ['Inventory missing script', 'Inventory builder', 'Inventory draft'])
+      expect(pages.map((page) => page.label)).not.toContain(label)
+  })
+
   test('a reader receives only permitted destinations', async ({ admin, createUser }) => {
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Inventory Reader' } })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Sales Target Viewer' } })
     await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Inventory Reader', can_read: true } })
     await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'System Settings', role: 'Inventory Reader', can_read: true } })
     await admin.post('/api/save_row', { table: 'Home Page', row: { row_id: 'inventory-hidden', label: 'Secret inventory page', roles: [{ role: 'System Manager' }] } })
-    const reader = await createUser({ roles: ['Inventory Reader'] })
+    const reader = await createUser({ roles: ['Inventory Reader', 'Sales Target Viewer'] })
     const inventory = await reader.get<Inventory>(PATH)
     expect(inventory.tables.map((t) => t.row_id)).toEqual(['Glossary Term', 'Person', 'System Settings'])
     expect(inventory.tables.every((t) => !t.can_create)).toBe(true)
@@ -57,6 +94,7 @@ describe('#737 command destinations', () => {
     expect(inventory.pages.map((p) => p.label)).not.toContain('Secret inventory page')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/admin/glossary')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/account/sign-in-methods')
+    expect(inventory.pages).toContainEqual({ label: 'Feather Dash', href: '/featherbase/sales-target', kind: 'Report' })
   })
 
   test('people without Admin access cannot obtain the Admin inventory', async ({ createUser }) => {
@@ -95,6 +133,26 @@ describe('#737 command destinations', () => {
       values ('missing.Inventory', 'table', 'missing', 'missing', 'inventory')`
     const inventory = await admin.get<Inventory>(PATH)
     expect(inventory.tables.map((t) => t.row_id)).not.toContain('missing.Inventory')
+  })
+
+  test('unrelated metadata and named-read failures are not a successful partial inventory', async ({ admin }) => {
+    const original = metadata.getMeta
+    const metaFailure = vi.spyOn(metadata, 'getMeta').mockImplementation(async (name) => {
+      if (name === 'Person') throw new AppError('ValidationError', 'Unrelated inventory validation')
+      return original(name)
+    })
+    try {
+      const response = await admin.fetch(PATH)
+      expect(response.status).toBe(417)
+      expect((await response.json()).error).toMatchObject({ type: 'ValidationError', message: 'Unrelated inventory validation' })
+    } finally { metaFailure.mockRestore() }
+
+    const readFailure = vi.spyOn(query, 'getList').mockRejectedValue(new AppError('ValidationError', 'Unrelated named-read validation'))
+    try {
+      const response = await admin.fetch(PATH)
+      expect(response.status).toBe(417)
+      expect((await response.json()).error).toMatchObject({ type: 'ValidationError', message: 'Unrelated named-read validation' })
+    } finally { readFailure.mockRestore() }
   })
 
   test('a named page is narrowed by the same row scope as its underlying read', async ({ admin, createUser }) => {
