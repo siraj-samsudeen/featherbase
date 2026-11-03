@@ -43,7 +43,9 @@ not see.
 ### 2. The list page reads a Choice `=` filter as `in` with that one choice; nothing stored is rewritten
 
 A link or saved view holding `["floor","=","Ground"]` on a Choice column shows Ground ticked and can take more choices;
-the first change to it saves `in`. `=` stays a valid filter on the server, so nothing else needs to change.
+the first change to it saves `in`. `=` stays a valid filter on the server, so nothing else needs to change. An older
+`!=` on a Choice column counts as `in` with every other choice, so the quick filter ticks what shows, and the first
+change saves that `in`; the column never keeps a second filter.
 
 *Rejected: a migration that rewrites saved views to `in`.* Links in bookmarks and chats can't be rewritten, so the list
 page must read `=` anyway; a migration would add a data change for no gain.
