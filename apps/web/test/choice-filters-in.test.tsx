@@ -152,3 +152,21 @@ test('An older link or saved view with floor = Ground takes First Floor into one
   await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
   expect(chips()).toEqual(['floor in Ground, First Floor×'])
 })
+
+/** The filters the page address holds; the router keeps them as a JSON string. */
+function addressFilters(): unknown[] {
+  const raw = new URLSearchParams(window.location.search).get('filters')
+  if (!raw) return []
+  const once = JSON.parse(raw) as unknown
+  return (typeof once === 'string' ? JSON.parse(once) : once) as unknown[]
+}
+
+test('A link with two Floor filters opens as one chip, the address holds one filter, and the quick filter shows both ticked', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin, [['floor', '=', 'Ground'], ['floor', 'in', ['First Floor']]])
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
+  expect(chips()).toEqual(['floor in Ground, First Floor×'])
+  await waitFor(() => expect(addressFilters()).toEqual([['floor', 'in', ['Ground', 'First Floor']]]))
+  fireEvent.click(screen.getByTestId('std-filter-floor'))
+  expect(ticked(screen.getByTestId('std-choices-floor'))).toEqual(['Ground', 'First Floor'])
+})
