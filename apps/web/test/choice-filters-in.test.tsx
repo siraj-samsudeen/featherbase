@@ -230,3 +230,12 @@ test('Unticking First Floor in the box leaves only Ground rows, and the chip nam
   await waitFor(() => expect(codes()).toEqual(['R1', 'R2']))
   expect(chips()).toEqual(['floor in Ground×'])
 })
+
+test('Ticking every floor in the box removes the Floor filter, and every row shows', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin, [['floor', 'in', ['Ground', 'First Floor']]])
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
+  tick(openBox('floor'), 'Second Floor', 'Third Floor')
+  await waitFor(() => expect(codes()).toHaveLength(6))
+  expect(chips()).toEqual([])
+})
