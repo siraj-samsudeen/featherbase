@@ -77,6 +77,48 @@ describe('#56: Table slugs in resource URLs', () => {
     expect(body.error.message).toContain('TWIN CASE')
   })
 
+  test('Table address resolution prefers live metadata before ambiguous deletion history', async ({ admin }) => {
+    await admin.post('/api/table_def', {
+      name: 'Grave Probe',
+      id_pattern: 'prompt',
+      columns: [{ column_name: 'title', column_type: 'Data' }],
+    })
+    await admin.delete('/api/table_def/Grave%20Probe')
+    await admin.post('/api/table_def', {
+      name: 'grave probe',
+      id_pattern: 'prompt',
+      columns: [{ column_name: 'title', column_type: 'Data' }],
+    })
+
+    // One live Table wins over the older Table's normalized deletion name.
+    const live = await admin.fetch('/api/table/grave-probe:meta')
+    expect(live.status).toBe(200)
+    expect(await live.json()).toMatchObject({ name: 'grave probe' })
+
+    await admin.delete('/api/table_def/grave%20probe')
+    const ambiguous = await admin.fetch('/api/table/grave-probe:meta')
+    expect(ambiguous.status).toBe(409)
+    const body = (await ambiguous.json()) as { error: { type: string; message: string } }
+    expect(body.error.type).toBe('ConflictError')
+    expect(body.error.message).toContain('Ambiguous Table slug grave-probe')
+    expect(body.error.message).toContain('Grave Probe')
+    expect(body.error.message).toContain('grave probe')
+
+    // Exact historical names still identify their own tombstone, not the
+    // ambiguous normalized spelling shared by the two deleted Tables.
+    for (const [path, name] of [
+      ['/api/table/Grave%20Probe:meta', 'Grave Probe'],
+      ['/api/table/grave%20probe:meta', 'grave probe'],
+    ]) {
+      const exact = await admin.fetch(path)
+      expect(exact.status).toBe(404)
+      const tombstone = (await exact.json()) as { error: { message: string } }
+      expect(tombstone.error.message).toMatch(
+        new RegExp(`^Table ${name} was deleted by Administrator on \\d{4}-\\d{2}-\\d{2}$`),
+      )
+    }
+  })
+
   test('an unknown slug falls through to the usual NotFound', async ({ admin }) => {
     expect((await admin.fetch('/api/table/no-such-table')).status).toBe(404)
   })
