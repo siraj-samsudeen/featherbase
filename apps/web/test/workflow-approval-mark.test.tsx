@@ -10,7 +10,7 @@ test('a workflow state approval checkbox saves its boolean choice', async ({ adm
       states: [{ state: 'Draft', target_status: 'draft' }], transitions: [] },
   })
   await renderApp('/featherbase/admin/Workflow/Approval%20Mark%20Flow', admin)
-  const mark = await screen.findByRole('checkbox', { name: 'states, Waits for approval, row 1' })
+  const mark = await screen.findByRole('checkbox', { name: 'States, Waits for approval, row 1' })
   expect(mark).not.toBeChecked()
   const user = userEvent.setup()
   await user.click(mark)
@@ -18,7 +18,7 @@ test('a workflow state approval checkbox saves its boolean choice', async ({ adm
   const saved = () => admin.get<{ states: { waits_for_approval: boolean }[] }>('/api/table/Workflow/Approval%20Mark%20Flow')
   await waitFor(async () => expect((await saved()).states[0].waits_for_approval).toBe(true))
   await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
-  await user.click(screen.getByRole('checkbox', { name: 'states, Waits for approval, row 1' }))
+  await user.click(screen.getByRole('checkbox', { name: 'States, Waits for approval, row 1' }))
   await user.click(screen.getByTestId('form-save'))
   await waitFor(async () => expect((await saved()).states[0].waits_for_approval).toBe(false))
 })
