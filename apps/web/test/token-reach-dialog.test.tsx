@@ -28,6 +28,14 @@ test('#852 a new service account: the dialog lists what its token reaches and wa
   expect(screen.getByTestId('token-reach')).not.toHaveTextContent('Reach Dock')
   expect(screen.getByTestId('token-reach-warning')).toHaveTextContent('dock-importer has no role of its own')
 
+  // A role that grants nothing still leaves it at what every account can.
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Dock Nothing' } })
+  await admin.post(`/api/service_accounts/${svc.row_id}/roles`, { roles: ['Dock Nothing'] })
+  await user.click(within(screen.getByTestId('issue-dialog')).getByRole('button', { name: 'Cancel' }))
+  await user.click(screen.getByTestId('issue-token'))
+  await user.selectOptions(screen.getByTestId('token-owner'), svc.row_id)
+  await waitFor(() => expect(screen.getByTestId('token-reach-warning')).toHaveTextContent("dock-importer's roles grant nothing beyond what every account can"))
+
   // Given a role, the account reaches its Table and the warning goes.
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Dock Writer' } })
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Reach Dock', role: 'Dock Writer', can_read: true, can_write: true } })
