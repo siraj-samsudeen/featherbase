@@ -15,6 +15,7 @@ export interface ReportFilterDef {
   label: string
   column_type: string // Data | Choice | Check | Date | Int
   choices?: string // newline-separated for Choice
+  choice_labels?: Record<string, string> | null
   default?: unknown
 }
 
