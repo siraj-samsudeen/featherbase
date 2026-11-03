@@ -8,7 +8,7 @@ import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
-import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
+import { STANDARD_COLUMNS, seriesKey, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
 import { holdBeforeRowLock } from './row-lock-order'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
@@ -101,12 +101,14 @@ function hashRowId(): string {
 // Series counters use INSERT ... ON CONFLICT DO UPDATE inside the save
 // transaction: concurrent savers serialize on the counter row, so ids are
 // unique and sequential; a rolled-back save also rolls back the increment.
+// #855: one counter per Table and prefix (seriesKey), never per prefix text
+// alone, so two Tables numbered alike never draw from each other's count.
 async function resolveRowId(
   tx: typeof sql,
   meta: TableMeta,
   values: RowValues,
 ): Promise<string> {
-  const rule = meta.id_pattern || 'hash'
+  const rule = meta.id_pattern || 'integer'
   // person-rename R1: an opaque id is assigned, never chosen — a caller (a
   // form, an API client, an import) may not supply one. Checked before the
   // amendment path, so `amended_from` cannot smuggle one in: an amendment of
@@ -148,17 +150,35 @@ async function resolveRowId(
       })
     return value
   }
+  if (rule === 'integer') return nextInSeries(tx, meta, '', (n) => String(n))
   if (rule.includes('.#')) {
     const dot = rule.indexOf('.')
     const prefix = rule.slice(0, dot)
     const digits = (rule.slice(dot + 1).match(/#/g) ?? []).length || 4
-    const [row] = await tx`
-      insert into series (name, current) values (${prefix}, 1)
-      on conflict (name) do update set current = series.current + 1
-      returning current`
-    return prefix + String(row.current).padStart(digits, '0')
+    return nextInSeries(tx, meta, prefix, (n) => prefix + String(n).padStart(digits, '0'))
   }
   throw new AppError('ValidationError', `Unsupported id_pattern rule ${rule}`)
+}
+
+// #855: the Table's next number. A number already used by one of its rows
+// (an id an import supplied, UPS-R4) is skipped rather than refused, so the
+// next generated id never collides with a row already in the Table.
+async function nextInSeries(
+  tx: typeof sql,
+  meta: TableMeta,
+  prefix: string,
+  format: (n: number) => string,
+): Promise<string> {
+  const relation = await tableRelation(meta.name)
+  for (;;) {
+    const [row] = await tx`
+      insert into series (name, current) values (${seriesKey(meta.name, prefix)}, 1)
+      on conflict (name) do update set current = series.current + 1
+      returning current`
+    const id = format(Number(row.current))
+    const [taken] = await tx`select 1 from ${tx(relation)} where ${tx(meta.row_key)} = ${id}`
+    if (!taken) return id
+  }
 }
 
 // Filter incoming values to real data columns; reject unknown keys so typos
