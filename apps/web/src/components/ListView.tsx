@@ -1664,6 +1664,23 @@ function StandardFilters({
     return (f.column_type === 'Reference' && f.reference_table) || choicesOf(f) ? '=' : 'like'
   }
 
+  // #742: a box picked from shows a link's value as one of its choices — a Yes/No
+  // box reads true/yes and false/no as the server does — and any other value as
+  // itself, so a filtered list never shows "All".
+  function picked(f: { column_name: string; column_type: string }): string {
+    const raw = current(f.column_name, '=')
+    if (f.column_type !== 'Check') return raw
+    const word = raw.toLowerCase()
+    if (word === 'true' || word === 'yes') return 'Yes'
+    if (word === 'false' || word === 'no') return 'No'
+    return raw
+  }
+
+  function unreadable(f: { column_name: string; column_type: string; choices?: string | null }): boolean {
+    const value = picked(f)
+    return value !== '' && !choicesOf(f)!.includes(value)
+  }
+
   function apply(columnName: string, op: string, value: string) {
     const rest = filters.filter((f) => f[0] !== columnName)
     onChange(value ? [...rest, [columnName, op, op === 'like' ? `%${value}%` : value]] : rest)
@@ -1709,13 +1726,13 @@ function StandardFilters({
               {f.label ?? f.column_name}
             </span>
             <select
-              value={current(f.column_name, '=')}
+              value={picked(f)}
               onChange={(e) => apply(f.column_name, '=', e.target.value)}
               data-testid={`std-filter-${f.column_name}`}
               className={inputClasses('max-w-[20rem]')}
             >
               <option value="">All</option>
-              {choicesOf(f)!.map((o) => (
+              {[...choicesOf(f)!, ...(unreadable(f) ? [picked(f)] : [])].map((o) => (
                   <option key={o} value={o}>
                     {choiceLabel(o, f.choice_labels, t)}
                   </option>
@@ -1792,12 +1809,14 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
   )
 }
 
-// A column or value control in Add filter: shares a phone's one line, and is
-// at most 10rem from sm up, as before.
-const FILTER_PART = 'min-w-0 flex-1 sm:flex-none sm:max-w-[10rem]'
+// Add filter's column and value controls: on a phone they share one line, the
+// column taking the larger part so its name isn't cut off; from sm up each is at
+// most 10rem, as before.
+const FILTER_COLUMN = 'min-w-0 flex-[3] sm:flex-none sm:max-w-[10rem]'
+const FILTER_PART = 'min-w-0 flex-[2] sm:flex-none sm:max-w-[10rem]'
 // The value dropdown: as FILTER_PART on a phone; from sm up as wide as a readable
 // choice label needs (#826).
-const FILTER_CHOICE = 'min-w-0 flex-1 sm:flex-none sm:max-w-[20rem]'
+const FILTER_CHOICE = 'min-w-0 flex-[2] sm:flex-none sm:max-w-[20rem]'
 
 export function FilterBar({
   meta,
@@ -1850,7 +1869,7 @@ export function FilterBar({
           onChange={(e) => pickField(e.target.value)}
           aria-label="Filter by field"
           data-testid="filter-field"
-          className={inputClasses(FILTER_PART)}
+          className={inputClasses(FILTER_COLUMN)}
         >
           {fields.map((f) => (
             <option key={f.fieldname} value={f.fieldname}>
@@ -1863,7 +1882,7 @@ export function FilterBar({
           onChange={(e) => setOp(e.target.value)}
           aria-label="Filter condition"
           data-testid="filter-op"
-          className={inputClasses('w-16 shrink-0 sm:w-auto sm:max-w-[10rem]')}
+          className={inputClasses('w-14 shrink-0 sm:w-auto sm:max-w-[10rem]')}
         >
           {ops.map((o) => (
             <option key={o} value={o}>
