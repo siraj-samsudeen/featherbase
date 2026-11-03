@@ -45,17 +45,16 @@ test.afterAll(async ({ request }) => {
 
 // Navigation/presence checks are plain assertText/assertHas; clicking the
 // row by its plain text (no accessible name distinct from a label) stays a
-// named step.
+// named step. A row reads as its subject, not its HDT- id.
 test('helpdesk: a ticket renders in the Admin and opens with workflow actions', async ({
   session,
 }) => {
   await session
     .visit('/admin/HD%20Ticket')
-    .assertText(name)
     .assertText(SUBJECT)
 
   await session.step('click the ticket row to open its form', async ({ page }) => {
-    await page.getByText(name).click()
+    await page.getByText(SUBJECT).first().click()
   })
   await session
     .assertHas('[data-testid="form-view"]')
