@@ -1,0 +1,22 @@
+## 1. First-time setup
+
+Skipped: `acceptance-tests/` exists.
+
+## 2. Step definitions — each: fails for the right reason → implement → passes → commit
+
+- [x] 2.1 search-and-explore: "a table of suppliers and a table of purchases, each purchase from a supplier" and "the purchases are from the supplier …"
+- [x] 2.2 search-and-explore: "the user types … in Explore's table search and presses Enter" (an Explore page object)
+- [x] 2.3 search-and-explore: "Explore starts from the purchases"
+- [x] 2.4 search-and-explore: "each purchase shows …"
+
+## 3. Implementation
+
+- [x] 3.1 Explore: the table search box (written while prototyping; proved by 2.2–2.3)
+- [x] 3.2 Explore cards render links through the row-title lookup, headline included (prototype; proved by 2.4)
+- [x] 3.3 The title loader sends batches of 100
+- [x] 3.4 Web test: `apps/web/test/explore-chains.test.tsx`
+
+## 4. Completion
+
+- [x] 4.1 Acceptance suite: every scenario passes, zero pending or undefined steps — 63 scenarios: 61 passed; the two "running an instance" scenarios failed because another local agent holds port 5204 (environment, not this change)
+- [x] 4.2 Explore, map, Home and Recent web tests pass; `pnpm check:specs` passes

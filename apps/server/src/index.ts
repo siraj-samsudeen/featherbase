@@ -921,11 +921,11 @@ app.post('/api/open_admin', async (c) => {
 // scoped to the caller for the same reason.
 app.post('/api/events', async (c) => {
   const events = validateEventBatch(await c.req.json().catch(() => null))
-  const inserted = await recordEvents(who(c), events)
+  const timestamps = await recordEvents(who(c), events)
   // Nudge the poster's own "Mine" feed on their personal channel (PR #104
   // review — the 'feed' channel is System Manager-only).
   publishUserEvent(who(c), 'feed_mine')
-  return c.json({ inserted })
+  return c.json({ inserted: timestamps.length, timestamps })
 })
 
 app.get('/api/events/summary', async (c) => {
