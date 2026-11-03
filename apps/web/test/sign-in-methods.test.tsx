@@ -54,6 +54,7 @@ test('on a Person form a System Manager links a service, invites Google and unli
   await waitFor(() => expect(panel).toHaveTextContent('RR-4242'))
 
   const invite = within(panel).getByTestId('invite-google-form')
+  await userEvent.clear(within(invite).getByLabelText('Google address to invite'))
   await userEvent.type(within(invite).getByLabelText('Google address to invite'), 'tl.panel@gmail.com')
   await userEvent.click(within(invite).getByRole('button'))
   await waitFor(() => expect(panel).toHaveTextContent('invited: tl.panel@gmail.com'))
@@ -123,9 +124,11 @@ test('inviting emails the address unless the box is cleared', async ({ admin, cr
   await screen.findByTestId('invite-google-form')
   let invite = form()
   expect(within(invite).getByLabelText('Email an invitation to this address')).toBeChecked()
+  // #833: the field starts with the Person's own address; this invite is another.
+  await userEvent.clear(within(invite).getByLabelText('Google address to invite'))
   await userEvent.type(within(invite).getByLabelText('Google address to invite'), 'tl.mail@gmail.com')
   await userEvent.click(within(invite).getByRole('button'))
-  expect(await within(panel()).findByTestId('user-method-notice')).toHaveTextContent('Invitation emailed to tl.mail@gmail.com')
+  expect(await within(panel()).findByTestId('user-method-notice')).toHaveTextContent('Invitation saved to the Email Sink for tl.mail@gmail.com')
   expect(await sql`select 1 from email_sink where mail_to = 'tl.mail@gmail.com'`).toHaveLength(1)
 
   await waitFor(() => expect(panel()).toHaveTextContent('invited: tl.mail@gmail.com'))
@@ -151,6 +154,7 @@ test('a failed invitation email is shown, and the invite is still made', async (
     await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
     const panel = await screen.findByTestId('user-sign-in-methods')
     const invite = await within(panel).findByTestId('invite-google-form')
+    await userEvent.clear(within(invite).getByLabelText('Google address to invite'))
     await userEvent.type(within(invite).getByLabelText('Google address to invite'), 'tl.fail@gmail.com')
     await userEvent.click(within(invite).getByRole('button'))
     expect(await within(panel).findByTestId('user-method-error')).toHaveTextContent(
@@ -173,8 +177,8 @@ test('a pending invite can be resent, but not again within ten minutes', async (
   const panel = await screen.findByTestId('user-sign-in-methods')
   const row = (await within(panel).findByText(/invited: tl.resend@gmail.com/)).closest('li') as HTMLElement
   await userEvent.click(within(row).getByRole('button', { name: 'Resend invitation' }))
-  expect(await within(panel).findByTestId('user-method-notice')).toHaveTextContent('Invitation emailed to tl.resend@gmail.com')
-  await waitFor(() => expect(row).toHaveTextContent('invitation emailed'))
+  expect(await within(panel).findByTestId('user-method-notice')).toHaveTextContent('Invitation saved to the Email Sink for tl.resend@gmail.com')
+  await waitFor(() => expect(row).toHaveTextContent('invitation saved to the Email Sink'))
   await userEvent.click(within(row).getByRole('button', { name: 'Resend invitation' }))
   expect(await within(panel).findByTestId('user-method-error')).toHaveTextContent('10 minutes')
   expect(await sql`select 1 from email_sink where mail_to = 'tl.resend@gmail.com'`).toHaveLength(1)
