@@ -12,4 +12,4 @@
 
 - [x] 3.1 Run acceptance scenarios and relevant server/web/shared regression checks and typechecks; inspect exact catalogue proof.
 - [x] 3.2 Run independent headless 1280px UI verification against the issue checklist, inspect screenshots and real-pointer/keyboard recording, fix differences.
-- [ ] 3.3 Open the implementation PR with evidence and exact-head CI/comment subscriptions; report source pin and remaining owner gates to manager. Do not merge, deploy or archive before owner video review.
+- [x] 3.3 Open the implementation PR with evidence and exact-head CI/comment subscriptions; report source pin and remaining owner gates to manager. Do not merge, deploy or archive before owner video review.
