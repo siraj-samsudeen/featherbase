@@ -41,12 +41,12 @@ test('a titled list leads with the title as the link, with no Row ID', async ({ 
   expect(headers().find((h) => h && h !== '')).toBe('Customer Name')
 })
 
-test('a blank title leads with a stand-in that carries the id, never a blank', async ({ admin }) => {
+test('a blank title leads with the row id, never a blank', async ({ admin }) => {
   await seed(admin)
   await renderApp(`/featherbase/admin/${enc(CUSTOMER)}`, admin)
   await waitFor(() => {
     const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href')?.endsWith('/cust-3'))
-    expect(links.some((a) => a.textContent?.includes('cust-3'))).toBe(true)
+    expect(links.some((a) => a.textContent?.trim() === 'cust-3')).toBe(true)
   })
 })
 

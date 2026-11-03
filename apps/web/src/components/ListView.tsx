@@ -1165,8 +1165,8 @@ function ListCell({
           // A title that links to another row reads as that row's title.
           <RowTitle table={col.reference_table} rowId={String(row[col.column_name])} />
         ) : col.column_name !== 'row_id' && isBlank(row[col.column_name]) ? (
-          // #792: a blank title still reads as something that tells the row apart.
-          <RowTitle table={table} rowId={String(row.row_id)} />
+          // #792: a row with a blank title is led by its id, never a blank.
+          String(row.row_id)
         ) : (
           cell(row[col.column_name], col.column_type, settings)
         )}

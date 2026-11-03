@@ -383,7 +383,6 @@ export function RelationMap({
           </div>
           <SimpleRowsTable
             cols={listColumns(m)}
-            table={table}
             rows={[{ ...d, row_id: d.row_id ?? name }]}
             settings={settings}
             onHop={hop}
@@ -500,7 +499,6 @@ function ChildRows({
   return (
     <SimpleRowsTable
       cols={cols.map((c) => ({ column_name: c.column_name, label: c.label ?? c.column_name, column_type: c.column_type, reference_table: c.reference_table ?? null }))}
-      table={field.row_table ?? ''}
       rows={rows}
       settings={settings}
       onPick={onPick}
@@ -534,7 +532,7 @@ function GroupRows({
   if (!list.data) return <p className="px-4 py-3 text-sm text-ink-subtle">Loading…</p>
   return (
     <>
-      <SimpleRowsTable cols={columns} table={connection.table} rows={list.data.data} settings={settings} onPick={onPick} onHop={onHop} />
+      <SimpleRowsTable cols={columns} rows={list.data.data} settings={settings} onPick={onPick} onHop={onHop} />
       {list.data.total > list.data.data.length && (
         <p className="px-4 py-2 text-xs text-ink-subtle">
           Showing {fmtCount(list.data.data.length)} of {fmtCount(list.data.total)}
@@ -546,15 +544,12 @@ function GroupRows({
 
 function SimpleRowsTable({
   cols,
-  table,
   rows,
   settings,
   onPick,
   onHop,
 }: {
   cols: { column_name: string; label: string; column_type: string; reference_table?: string | null }[]
-  /** The Table the rows belong to. */
-  table: string
   rows: Row[]
   settings: ReturnType<typeof useSettings>
   onPick: (name: string) => void
@@ -588,7 +583,7 @@ function SimpleRowsTable({
                 key={c.column_name}
                 className={`px-4 py-1.5 ${j === 0 ? 'font-medium text-action' : ''}`}
               >
-                <MapCell col={c} table={table} row={r} first={j === 0} settings={settings} onHop={onHop} />
+                <MapCell col={c} row={r} first={j === 0} settings={settings} onHop={onHop} />
               </td>
             ))}
           </tr>
@@ -610,14 +605,12 @@ function SimpleRowsTable({
  *  itself, reads a linked title without moving the map. */
 function MapCell({
   col,
-  table,
   row,
   first,
   settings,
   onHop,
 }: {
   col: { column_name: string; column_type: string; reference_table?: string | null }
-  table: string
   row: Row
   first: boolean
   settings: ReturnType<typeof useSettings>
@@ -641,7 +634,7 @@ function MapCell({
       </button>
     )
   }
-  // A blank leading title still reads as something that tells the row apart.
-  if (first && blank && col.column_name !== 'row_id' && row.row_id) return <RowTitle table={table} rowId={String(row.row_id)} />
+  // A row with a blank title is led by its id, never a blank (#792).
+  if (first && blank && col.column_name !== 'row_id' && row.row_id) return <>{String(row.row_id)}</>
   return <>{formatValue(col.column_type, value, settings) || '—'}</>
 }
