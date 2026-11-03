@@ -448,7 +448,7 @@ function checkRowForUpdate(
 // UPS-R5: a keyed run also records its key_column and empty_cells choice —
 // that stored pair is what the wizard later offers back as the visible
 // "as last time" suggestion. A run with no key stores nothing (nulls).
-async function writeImportLog(
+export async function writeImportLog(
   table: string,
   user: string,
   counts: { inserted: number; updated: number; upsert: UpsertArgs | null },

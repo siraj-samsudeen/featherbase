@@ -8,7 +8,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AppError } from '../errors'
-import { importRows } from '../actions/collection-import'
+import { importRows, writeImportLog } from '../actions/collection-import'
 import { actionTransaction } from '../action-transaction'
 import { sql } from '../db'
 import { getMeta, type TableMeta } from '../meta'
@@ -139,11 +139,12 @@ async function applyCopy(user: SessionUser, target: string, copy: NonNullable<Aw
   const result: CopyResult = { run_id: runId, inserted: 0, updated: 0, changed: 0, unchanged: 0, failed: 0, conflicts: 0, deleted_at_source: 0, back_at_source: 0, first_errors: [] }
   const relationName = await tableRelation(target)
   const [before] = await sql`select count(*)::int as n from ${sql(relationName)} where ${sql(DELETED_AT_SOURCE)} is true`
+  const context = { run_id: runId, batch_id: runId, file_name: `${copy.data_source} · ${copy.database}.${copy.source_schema}.${copy.source_table}` }
   let partNumber = 0
   const apply = async (rows: Record<string, unknown>[], mapped: string[]) => {
     const part = await importRows({ table: target, user, args: {
       rows, key_column: 'row_id', empty_cells: 'clear', columns: mapped,
-      context: { run_id: runId, batch_id: runId, file_name: `${copy.data_source} · ${copy.database}.${copy.source_schema}.${copy.source_table}`, part: ++partNumber },
+      context: { ...context, part: ++partNumber },
     } }, [DELETED_AT_SOURCE])
     if (part.failed.length)
       throw new AppError('ValidationError', `Copy failed; no rows changed: ${part.failed.slice(0, 5).map(f => `${rows[f.index].row_id}: ${f.message}`).join('; ')}`)
@@ -171,6 +172,11 @@ async function applyCopy(user: SessionUser, target: string, copy: NonNullable<Aw
     result.deleted_at_source += part.updated ?? 0
     afterKey = String(gone[gone.length - 1].row_id)
   }
+  // Even a repeated empty observation is a discoverable copy run; it has no
+  // row versions to undo, but must not disappear from Past imports.
+  if (!partNumber) await writeImportLog(target, user.row_id,
+    { inserted: 0, updated: 0, upsert: { keyColumn: 'row_id', emptyCells: 'clear', columns: columns.map(c => c.column_name) } },
+    [], { ...context, part: 1 }, [])
   const [after] = await sql`select count(*)::int as n from ${sql(relationName)} where ${sql(DELETED_AT_SOURCE)} is true`
   result.back_at_source = Math.max(0, Number(before.n) + result.deleted_at_source - Number(after.n))
   const [conflicts] = await sql`select count(*)::int as n from featherbase.import_conflict where ref_table = ${target} and run_id = ${runId} and closed is not true`

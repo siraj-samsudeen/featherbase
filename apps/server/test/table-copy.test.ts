@@ -156,6 +156,22 @@ describe('Copy a warehouse table into Featherbase', () => {
     expect(await admin.get('/api/table/Atomic%20Copy/S001')).toMatchObject({ display_name: 'Generic success' })
   })
 
+  test('a refused import-history write rolls back the copy', async ({ admin }) => {
+    await changeStandin(dir, 'sales', ['create table history_failure_stores as select * from stores'])
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-history-failure', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-history-failure:copy_create`, { database: 'sales', schema: 'main', table: 'history_failure_stores', name: 'History Failure Copy', key: 'code', columns: STORES })
+    const before = await admin.get('/api/table/History%20Failure%20Copy/S001')
+    const provenance = await admin.get('/api/table/History%20Failure%20Copy:copy_info')
+    await sql.unsafe(`create function refuse_copy_history() returns trigger language plpgsql as $$ begin raise exception 'Copy history refused'; end $$;
+      create trigger refuse_copy_history before insert on featherbase.import_log for each row execute function refuse_copy_history()`)
+    await changeStandin(dir, 'sales', ["update history_failure_stores set name = 'Never committed' where code = 'S001'"])
+    await admin.post(`${SOURCES}/tc-history-failure:refresh_tables`, { database: 'sales' })
+    // The injected database refusal is an internal error, not bad row input.
+    await expect(admin.post('/api/table/History%20Failure%20Copy:copy_again', {})).rejects.toMatchObject({ status: 500 })
+    expect(await admin.get('/api/table/History%20Failure%20Copy/S001')).toEqual(before)
+    expect(await admin.get('/api/table/History%20Failure%20Copy:copy_info')).toEqual(provenance)
+  })
+
   test('failed copy provenance creation leaves no native Table', async ({ admin }) => {
     await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-create-failure', token: STANDIN_TOKENS.reader, databases: ['sales'] })
     await sql.unsafe(`create function refuse_copy_provenance() returns trigger language plpgsql as $$ begin raise exception 'Copy provenance refused'; end $$;
@@ -234,6 +250,10 @@ describe('Copy a warehouse table into Featherbase', () => {
     const copied = await admin.post<{ run_id: string }>('/api/table/Empty%20Copy:copy_again', {})
     expect(copied).toMatchObject({ inserted: 0, updated: 0, deleted_at_source: 3 })
     expect(await admin.get('/api/table/Empty%20Copy/S001')).toMatchObject({ deleted_at_source: true })
+    const repeated = await admin.post<{ run_id: string }>('/api/table/Empty%20Copy:copy_again', {})
+    expect(repeated).toMatchObject({ inserted: 0, updated: 0, deleted_at_source: 0 })
+    const history = await admin.get<{ batches: { batch_id: string }[] }>('/api/import/batches')
+    expect(history.batches.map(b => b.batch_id)).toContain(repeated.run_id)
     expect(await admin.post('/api/table/Empty%20Copy:import-revert', { run_id: copied.run_id })).toMatchObject({ restored: 3, deleted: 0, failed: [] })
     expect(await admin.get('/api/table/Empty%20Copy/S001')).toMatchObject({ deleted_at_source: false })
   })
