@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { choiceLabel, rowDisplayTitle } from 'shared'
+import { choiceLabel, parseFilters, rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
@@ -1750,12 +1750,10 @@ function RecentStrip({
   const views = entries
     .map((e) => {
       if (e.kind !== 'list' || !e.key.startsWith(`list:${table}?`)) return null
-      try {
-        const parsed = JSON.parse(e.key.slice(`list:${table}?`.length)) as Filter[]
-        return Array.isArray(parsed) && parsed.length > 0 ? { entry: e, parsed } : null
-      } catch {
-        return null
-      }
+      // A remembered address is user input: keep only well-formed filters (#87),
+      // so one typed by hand can never blank the list.
+      const parsed = parseFilters(e.key.slice(`list:${table}?`.length)) as Filter[]
+      return parsed.length > 0 ? { entry: e, parsed } : null
     })
     .filter((v): v is { entry: RecentEntry; parsed: Filter[] } => v !== null)
     .slice(0, 3)
