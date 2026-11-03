@@ -51,7 +51,8 @@ test('Reopen a saved view: opening it applies its filters in place of the ones a
 
   await waitFor(() => expect(cellTexts()).toEqual(['Open', 'Open']))
   expect(screen.getAllByTestId('filter-chip')).toHaveLength(1)
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent('stage = Open')
+  // #792: a filter names its column as the list's heading does.
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Stage = Open')
   expect(screen.getByTestId('saved-view-chip')).toHaveAttribute('aria-pressed', 'true')
 })
 

@@ -163,7 +163,7 @@ Then('the user sees {string} listed as assigned to {string}', async function (ch
 Then('the user sees the map centered on {string}', async function (title) {
   const page = this.map.page;
   const center = page.getByTestId('map-center');
-  const reads = await eventually(page, () => center.innerText(), (t) => t.includes(title));
+  const reads = await eventually(page, () => center.textContent(), (t) => Boolean(t?.includes(title)));
   assert.ok(reads?.includes(title), `the map's center reads "${reads}"`);
   assert.ok(page.url().includes('/map/Volunteer/'), `the map is at ${page.url()}`);
 });

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { rowDisplayTitle } from 'shared'
@@ -7,7 +7,7 @@ import { recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
 import { LinkControl } from './FormView'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
-import { dataColumns, defaultColumnNames, isShown, listFlagsFromView, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
+import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, switchColumn, titleListColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
@@ -256,9 +256,11 @@ export function ListView({
     caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source,
   )
   // The menu (#738): the Table's list columns first, then every other column
-  // the person may read; Row ID is always on.
+  // the person may read; the column the list leads with (its title, else
+  // Row ID, #792) is always on.
   const listDefaults = meta.data ? defaultColumnNames(meta.data) : new Set<string>()
-  const readableColumns = meta.data ? dataColumns(meta.data) : []
+  const leadingTitle = meta.data ? titleListColumn(meta.data) : undefined
+  const readableColumns = (meta.data ? dataColumns(meta.data) : []).filter((c) => c !== leadingTitle)
   const inListChoices = readableColumns.filter((c) => listDefaults.has(c.column_name))
   const otherChoices = readableColumns.filter((c) => !listDefaults.has(c.column_name))
   // A bound table only has updated_at when the source table has a modified
@@ -284,7 +286,7 @@ export function ListView({
     queryFn: () =>
       listResource(table, {
         filters,
-        fields: columns.map((c) => c.column_name),
+        fields: listFields(columns),
         order_by: orderBy,
         limit_start: start,
         limit_page_length: PAGE,
@@ -543,10 +545,10 @@ export function ListView({
                 style={colPickerMax ? { maxHeight: colPickerMax } : undefined}
                 data-testid="list-columns-popup"
               >
-                {/* Row ID names each row, so it is always on. */}
+                {/* The leading column names each row, so it is always on. */}
                 <label className={touchRowClasses(`flex items-center gap-2 rounded px-2 py-1 text-sm text-ink-muted ${PHONE_ROW}`)}>
-                  <input type="checkbox" checked disabled data-testid="list-col-toggle-row_id" />
-                  Row ID
+                  <input type="checkbox" checked disabled data-testid={`list-col-toggle-${leadingTitle?.column_name ?? 'row_id'}`} />
+                  {leadingTitle ? (leadingTitle.label ?? leadingTitle.column_name) : 'Row ID'}
                 </label>
                 {inListChoices.map(columnChoice)}
                 {otherChoices.length > 0 && (
@@ -839,7 +841,7 @@ export function ListView({
         </div>
       )}
       {onFiltersChange && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
-      {onFiltersChange && <RecentStrip table={table} onApply={onFiltersChange} />}
+      {onFiltersChange && <RecentStrip table={table} meta={meta.data} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
         <>
           <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
@@ -1159,6 +1161,12 @@ function ListCell({
         ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && row[col.column_name] ? (
           // A title column that names a person reads as their name, never the opaque id.
           <PrincipalName id={String(row[col.column_name])} />
+        ) : col.column_type === 'Reference' && col.reference_table && !isBlank(row[col.column_name]) ? (
+          // A title that links to another row reads as that row's title.
+          <RowTitle table={col.reference_table} rowId={String(row[col.column_name])} />
+        ) : col.column_name !== 'row_id' && isBlank(row[col.column_name]) ? (
+          // #792: a blank title still reads as something that tells the row apart.
+          <RowTitle table={table} rowId={String(row.row_id)} />
         ) : (
           cell(row[col.column_name], col.column_type, settings)
         )}
@@ -1175,12 +1183,25 @@ function ListCell({
         <Indicator value={String(value)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
         <PrincipalName id={String(value)} />
+      ) : col.column_type === 'Reference' && col.reference_table && !isBlank(value) ? (
+        // #792: a link reads as the linked row's title and opens that row.
+        <Link
+          to="/featherbase/admin/$table/$name"
+          search={{ prefill: undefined }}
+          params={{ table: col.reference_table, name: String(value) }}
+          onClick={(e) => e.stopPropagation()}
+          className="text-action hover:underline"
+        >
+          <RowTitle table={col.reference_table} rowId={String(value)} />
+        </Link>
       ) : (
         cell(value, col.column_type, settings)
       )}
     </span>
   )
 }
+
+const isBlank = (v: unknown) => v == null || String(v).trim() === ''
 
 // usable-on-any-device "Lists fit a phone": the same rows as cards. The first
 // column is the card's title and link, the first Choice its status, and the
@@ -1568,6 +1589,23 @@ export function filterValueLabel(op: string, value: unknown): string {
   return String(value)
 }
 
+/** One filter as a person reads it (#792): its column as the list's heading
+ *  names it, and a link compared with one row reads as that row's title. */
+export function FilterWords({ meta, filter }: { meta: import('../lib/meta').TableMeta | undefined; filter: Filter }) {
+  const [column, op, value] = filter
+  const col = meta?.columns.find((c) => c.column_name === column)
+  const label = column === 'row_id' ? 'Row ID' : (col?.label ?? column)
+  const linked =
+    col?.column_type === 'Reference' && col.reference_table && (op === '=' || op === '!=') &&
+    (typeof value === 'string' || typeof value === 'number') && String(value) !== ''
+  return (
+    <>
+      {label} {op}{' '}
+      {linked ? <RowTitle table={col.reference_table!} rowId={String(value)} /> : filterValueLabel(op, value)}
+    </>
+  )
+}
+
 export function FilterBar({
   meta,
   filters,
@@ -1648,7 +1686,7 @@ export function FilterBar({
               className={pillClasses('bg-subtle text-ink gap-1 border border-border')}
               data-testid="filter-chip"
             >
-              {f[0]} {f[1]} {filterValueLabel(f[1], f[2])}
+              <FilterWords meta={meta} filter={f} />
               <button
                 aria-label="Remove filter"
                 onClick={() => onChange(filters.filter((_, j) => j !== i))}
@@ -1671,9 +1709,12 @@ export function FilterBar({
 // live in the URL, so this is just replaying a remembered list state).
 function RecentStrip({
   table,
+  meta,
   onApply,
 }: {
   table: string
+  /** Names each filter's column; until it loads a filter reads as stored. */
+  meta: import('../lib/meta').TableMeta | undefined
   onApply: (filters: Filter[]) => void
 }) {
   const user = getSessionUser()
@@ -1715,10 +1756,14 @@ function RecentStrip({
           type="button"
           onClick={() => onApply(parsed)}
           data-testid="recent-strip-view"
-          title={entry.sub}
           className={touchRowClasses('max-w-72 truncate rounded-full bg-action-tint px-2.5 py-0.5 text-xs font-medium text-action hover:opacity-80')}
         >
-          {entry.sub}
+          {parsed.map((f, i) => (
+            <Fragment key={i}>
+              {i > 0 && ' · '}
+              <FilterWords meta={meta} filter={f} />
+            </Fragment>
+          ))}
         </button>
       ))}
     </div>
