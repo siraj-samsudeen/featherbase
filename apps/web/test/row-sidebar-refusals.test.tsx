@@ -20,7 +20,7 @@ async function seedRow(admin: Admin, property: string): Promise<string> {
   })
   await admin.post('/api/save_row', {
     table: 'Metadata Override',
-    row: { row_id: `rsr-${property}`, table_name: DT, property, value: 'true' },
+    row: { table_name: DT, property, value: 'true' },
   })
   const row = (await admin.post('/api/save_row', { table: DT, row: { title: 'refuse me' } })) as { row_id: string }
   return row.row_id

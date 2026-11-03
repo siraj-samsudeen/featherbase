@@ -23,7 +23,7 @@ async function seedRow(admin: Admin) {
   })
   await admin.post('/api/save_row', {
     table: 'Metadata Override',
-    row: { row_id: 'cmt-discussion', table_name: DT, property: 'enable_discussion', value: 'true' },
+    row: { table_name: DT, property: 'enable_discussion', value: 'true' },
   })
   const doc = (await admin.post('/api/save_row', {
     table: DT,

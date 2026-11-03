@@ -15,7 +15,7 @@ test('typing a colleague\'s email assigns the row to them, and the list shows th
   })
   await admin.post('/api/save_row', {
     table: 'Metadata Override',
-    row: { row_id: 'ab-assignments', table_name: 'Ab Ticket', property: 'enable_assignments', value: 'true' },
+    row: { table_name: 'Ab Ticket', property: 'enable_assignments', value: 'true' },
   })
   const row = (await admin.post('/api/save_row', { table: 'Ab Ticket', row: { title: 'assign me' } })) as { row_id: string }
   await sql`insert into person ${sql({ row_id: 'psn_abmeenaabmeenaabmeen', created_by: 'Administrator', updated_by: 'Administrator', email: 'meena-ab@example.com', full_name: 'Meena Raman', enabled: true })}`
