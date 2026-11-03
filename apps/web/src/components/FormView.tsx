@@ -219,10 +219,11 @@ export function FormView({
     const next = { ...valuesRef.current, [fieldname]: value }
     valuesRef.current = next
     setValues(next)
-    setErrors((e) => {
-      const { [fieldname]: _drop, ...rest } = e
-      return rest
-    })
+    // A grid's cell errors (`lines.0.customer`) are keyed by row position,
+    // so any change to the grid drops them with the grid's own (#832 review).
+    setErrors((e) => Object.fromEntries(
+      Object.entries(e).filter(([key]) => key !== fieldname && !key.startsWith(`${fieldname}.`)),
+    ))
     // CUST-003: fire the field's change handler with the updated doc.
     fireHandler(fieldname, next)
   }
@@ -1187,6 +1188,19 @@ function LinkControl({
   // row in a slide-over, ↗ navigates to its form. Hidden while searching.
   const hasValue = Boolean(value) && query === null
 
+  // The floating list is placed once, under the box; scrolling or resizing
+  // would leave it behind, so either closes it.
+  useEffect(() => {
+    if (!floating || !open) return
+    const close = () => setOpen(false)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [floating, open])
+
   function openList() {
     const rect = floating ? box.current?.getBoundingClientRect() : undefined
     setPlace(rect ? { top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 224) } : null)
@@ -1234,7 +1248,16 @@ function LinkControl({
         placeholder={`Reference: ${target}`}
         value={shown}
         onFocus={() => search(query ?? (picker.labelField ? '' : shown))}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => {
+          // A search still waiting must not reopen the list on a cell left behind.
+          clearTimeout(timer.current)
+          setTimeout(() => {
+            setOpen(false)
+            // In a grid, text typed but never picked goes, so the cell shows
+            // what will be saved.
+            if (floating) setQuery(null)
+          }, 150)
+        }}
         onChange={(e) => {
           setQuery(e.target.value)
           search(e.target.value)

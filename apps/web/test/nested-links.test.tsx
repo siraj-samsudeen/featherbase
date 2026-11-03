@@ -73,3 +73,23 @@ test("a person's role is picked from the roles that exist", async ({ admin }) =>
   await waitFor(() => expect(within(options).getAllByTestId('link-option').map((o) => o.textContent)).toContain('System Manager'))
   for (const option of within(options).getAllByTestId('link-option')) expect(option.textContent).toMatch(/sys/i)
 })
+
+test("a cell's error goes once the grid changes, and unpicked text leaves the cell when it is left", async ({ admin }) => {
+  const order = await seedOrders(admin)
+  await renderApp(`/featherbase/admin/${enc('Nest Order')}/${order.row_id}`, admin)
+  fireEvent.click(await screen.findByTestId('add-row-lines', {}, { timeout: 8000 }))
+  screen.getByTestId('form-save').click()
+  await waitFor(() => expect(screen.getByTestId('error-lines-0-customer')).toBeVisible())
+
+  const cell = screen.getByLabelText('Lines, Customer, row 1')
+  fireEvent.change(cell, { target: { value: 'Acme' } })
+  const options = await screen.findByTestId('link-options-customer')
+  await waitFor(() => expect(within(options).getAllByTestId('link-option')).toHaveLength(1))
+  fireEvent.mouseDown(within(options).getByTestId('link-option'))
+  expect(screen.queryByTestId('error-lines-0-customer')).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Lines, Customer, row 1')).not.toHaveAttribute('aria-invalid')
+
+  fireEvent.change(screen.getByLabelText('Lines, Customer, row 1'), { target: { value: 'Initech' } })
+  fireEvent.focusOut(screen.getByLabelText('Lines, Customer, row 1'))
+  await waitFor(() => expect(screen.getByLabelText('Lines, Customer, row 1')).toHaveValue('Acme Ltd'))
+})
