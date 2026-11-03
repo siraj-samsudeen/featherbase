@@ -6,6 +6,7 @@
 
 const assert = require('node:assert/strict');
 const { Given, When, Then } = require('@cucumber/cucumber');
+const { expect } = require('playwright/test');
 const { externalSql } = require('../support/stack');
 const { givenReaderSource } = require('../support/outside-db');
 const { SourceBrowserPage } = require('../support/pages/source-browser-page');
@@ -149,8 +150,8 @@ Then('the shop table is offered for connecting', async function () {
 Then("the user sees the database's shops listed in Featherbase", async function () {
   const list = new ListPage(await this.actor());
   await list.open(this.table);
-  const shown = await list.page.getByTestId('list-view').innerText();
-  for (const shop of SHOPS) assert.ok(shown.includes(shop), `${shop} is not listed in ${this.table}`);
+  for (const shop of SHOPS)
+    await expect(list.rows().filter({ hasText: shop }), `${shop} is not listed in ${this.table}`).toBeVisible();
 });
 
 Then('the user sees tables called {string} and {string} in Featherbase', async function (first, second) {

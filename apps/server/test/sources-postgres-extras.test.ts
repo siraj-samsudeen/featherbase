@@ -465,6 +465,39 @@ describe('Foreign keys read from information_schema', () => {
 })
 
 describe('Saving a Data Source', () => {
+  test('an incomplete restriction edit preserves the saved source until corrected', async ({ admin }) => {
+    const saved = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'Data Source',
+      row: {
+        row_id: 'allowlist-edit', engine: 'postgres', url_env: URL_ENV,
+        default_schema: 'ext_extra', access: 'read_only', table_allowlist: 'ext_extra.plain',
+      },
+    })
+    const res = await admin.fetch('/api/save_row', {
+      method: 'POST',
+      body: JSON.stringify({
+        table: 'Data Source',
+        row: { ...saved, table_allowlist: 'ext_extra.gadget,plain', access: 'read_write' },
+      }),
+    })
+    expect(res.status).toBe(417)
+    expect(await res.json()).toMatchObject({ error: {
+      type: 'ValidationError',
+      fields: { table_allowlist: expect.stringContaining('schema.table') },
+    } })
+    expect(await admin.get('/api/table/Data%20Source/allowlist-edit')).toMatchObject({
+      table_allowlist: 'ext_extra.plain', access: 'read_only', updated_at: saved.updated_at,
+    })
+
+    await admin.post('/api/save_row', {
+      table: 'Data Source',
+      row: { ...saved, table_allowlist: 'ext_extra.gadget,ext_extra.plain', access: 'read_write' },
+    })
+    expect(await admin.get('/api/table/Data%20Source/allowlist-edit')).toMatchObject({
+      table_allowlist: 'ext_extra.gadget,ext_extra.plain', access: 'read_write',
+    })
+  })
+
   test('invalid binding requests report each missing source column and persist no Table', async ({ admin }) => {
     await makeSource(admin)
     const res = await admin.fetch('/api/table_def', {

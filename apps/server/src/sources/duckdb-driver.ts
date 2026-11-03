@@ -118,6 +118,8 @@ function buildWhere(filters: SourceFilter[]): { text: string; values: unknown[] 
   for (const f of filters) {
     const col = quoteIdent(f.column)
     switch (f.op) {
+      case 'related':
+        throw new AppError('ValidationError', 'Related filters are not supported by this source engine')
       case '=':
         parts.push(`${col} = ?`)
         values.push(f.value)

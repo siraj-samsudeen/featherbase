@@ -1,4 +1,5 @@
 import type { SignInMethodKind } from 'shared'
+import { clearVisitJournal } from './recents'
 import { followDevice } from './theme-paint'
 // Thin authenticated client for the Featherbase server API.
 
@@ -38,6 +39,7 @@ export function getSessionUser(): SessionUser | null {
 
 export function clearSession() {
   runtimeSnapshot = undefined
+  clearVisitJournal()
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
   // #380: whoever uses this browser next sees their device's theme, not the

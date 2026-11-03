@@ -14,7 +14,7 @@ import mysql from 'mysql2/promise'
 import { test, patchDoc } from './pg-test'
 import { invalidateSources } from '../src/sources/registry'
 import { mysqlDriver } from '../src/sources/mysql-driver'
-import type { Binding } from '../src/sources/types'
+import type { Binding, SourceFilter } from '../src/sources/types'
 
 // mysql2's promise wrappers; their typings leave the classes out.
 type QueryProto = { prototype: { query: (...args: unknown[]) => Promise<unknown> } }
@@ -590,6 +590,19 @@ const bindFor = (table: string, pk: string, modified: string | null = null): Bin
   pk,
   modified,
   columns: [],
+})
+
+// This refusal precedes connection setup and must hold without a MySQL server.
+// A missing URL would be a different error, not the required operator refusal.
+test('refuses internal relationship filters without connecting to MySQL', async () => {
+  const bind = bindFor('plain', 'id')
+  bind.source = { ...bind.source, name: 'related-mysql-no-connection', url_env: null }
+  const filters: SourceFilter[] = [{ column: 'qty', op: 'related', value: { binding: bind, filters: [] } }]
+  const refusal = { type: 'ValidationError', message: 'Related filters are not supported by this source engine' }
+  await expect(mysqlDriver.getList(bind, {
+    filters, columns: ['qty'], order: { column: 'id', dir: 'asc' }, limit: 10, offset: 0,
+  })).rejects.toMatchObject(refusal)
+  await expect(mysqlDriver.count(bind, filters)).rejects.toMatchObject(refusal)
 })
 
 const reflectOne = async (
