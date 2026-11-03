@@ -705,8 +705,9 @@ export async function createTable(
       kind: def.kind ?? 'table',
       is_submittable: def.is_submittable ?? false,
       // #855: a new Table numbers its rows 1, 2, 3 unless told otherwise. Child
-      // rows and a Settings Table's single row keep random ids.
-      id_pattern: def.id_pattern ?? ((def.kind ?? 'table') === 'table' ? 'integer' : 'hash'),
+      // rows and a Settings Table's single row keep random ids, and a bound
+      // Table's ids come from its source.
+      id_pattern: def.id_pattern ?? ((def.kind ?? 'table') === 'table' && !def.data_source ? 'integer' : 'hash'),
       title_column: def.title_column ?? null,
       description: def.description ?? null,
       system: def.system ?? false,
@@ -1061,7 +1062,10 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
     await tx`delete from table_def where name = ${from}`
     await tx`update column_def set reference_table = ${to} where reference_table = ${from}`
     await tx`update column_def set row_table = ${to} where row_table = ${from}`
-    // #855: the renamed Table carries on its own counts.
+    // #855: the renamed Table carries on its own counts. Counts left by a
+    // deleted Table of the new name give way first (the primary key would
+    // refuse the move); skipping taken ids keeps them from mattering.
+    await tx`delete from series where starts_with(name, ${seriesKey(to, '')})`
     await tx`update series set name = ${seriesKey(to, '')} || substr(name, ${seriesKey(from, '').length + 1})
              where starts_with(name, ${seriesKey(from, '')})`
     for (const child of children)
