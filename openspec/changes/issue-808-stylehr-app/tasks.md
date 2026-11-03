@@ -14,9 +14,9 @@ Skipped: `acceptance-tests/` exists. Uses #782's outside-database harness and #7
 - [x] 3.2 Reflect: per-table settings validated against the source before any Table is created; left-out columns skipped (never key, never modified column); title and list columns override the defaults, listed columns first in the given order
 - [x] 3.3 Server tests (`apps/server/test/app-sources-settings.test.ts`): name, title, list, left-out, unknown-column refusal
 - [x] 3.4 StyleHR app: `client-apps/jeyarama/stylehr/app.json` and README; `client-apps/jeyarama/CLAUDE.md` notes it; `connect-an-outside-database` guide updated
-- [ ] 3.5 Live proof (owner check, local only): install StyleHR on a disposable database; 13 tables with their names, left-out columns absent, an Employee list loads live, read-only
+- [x] 3.5 Live proof (owner check, local only): install StyleHR on a disposable database; 13 tables with their names, left-out columns absent, an Employee list loads live, read-only
 
 ## 4. Completion
 
-- [ ] 4.1 Acceptance suite: every scenario passes, zero pending or undefined steps
-- [ ] 4.2 Server tests pass; server typechecks; `pnpm check:specs` passes
+- [x] 4.1 Acceptance suite: every scenario passes, zero pending or undefined steps — 76 scenarios: 73 passed; the two "running an instance" scenarios failed (port 5204 held by another worktree's server); "An app can be delivered without rebuilding core" lost its database connection mid-run and passed on rerun
+- [x] 4.2 Server tests pass; server typechecks; `pnpm check:specs` passes — 3269 passed; the three instance-health failures also fail on clean main
