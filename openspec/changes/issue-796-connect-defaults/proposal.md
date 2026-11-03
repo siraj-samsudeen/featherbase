@@ -5,7 +5,7 @@ Connecting an outside database's tables gives defaults a builder then fixes by h
 ## What Changes
 
 - Connecting a table makes its name column (the first it has of name, title, label, full name, display name, first name) the value its rows are read by.
-- Its list shows that column and up to four more, in the source's order, never its key or the columns that only record when a row was created or changed and by whom.
+- Its list shows that column and up to four more beside each row's ID, in the source's order, never the columns that only record when a row was created or changed and by whom.
 - A column that points at a table not connected yet says so beside its value; a System Manager is offered to connect that table, which opens the data source's Browse screen with it already chosen.
 
 ## Capabilities
