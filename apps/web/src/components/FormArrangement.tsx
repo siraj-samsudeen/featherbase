@@ -110,7 +110,7 @@ export function ArrangeBar({ mode, columns, onMode, onColumns }: {
         {([1, 2] as const).map((c) => (
           <button key={c} type="button" onClick={() => onColumns(c)} aria-pressed={columns === c}
             aria-label={c === 1 ? 'One column' : 'Two columns'}
-            className={buttonClasses({ className: `px-2.5 py-1 text-xs ${columns === c ? on : ''}` })}
+            className={buttonClasses({ className: `min-w-11 px-2.5 py-1 text-xs ${columns === c ? on : ''}` })}
             data-testid={`arrange-columns-${c}`}>{c}</button>
         ))}
       </span>
@@ -190,7 +190,7 @@ export function FieldGroupView({ group, columns, children }: { group: FieldGroup
     <section className="mb-3 last:mb-0" data-testid="field-group" data-group={group.key} aria-label={group.heading}>
       {group.heading && (group.foldable ? (
         <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
-          className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-ink-muted hover:text-ink"
+          className="mb-1.5 flex min-h-11 items-center gap-1.5 text-xs font-semibold text-ink-muted hover:text-ink"
           data-testid="empty-fields-toggle">
           {open ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
           {heading}
