@@ -14,7 +14,10 @@ class AppTheme {
 
   static async install(api) {
     // The fixture is a test app, so the acceptance server is told where it is
-    // (as the e2e stack is); the setting stays for the rest of the run.
+    // (as the e2e stack is). The setting, and the installed app, stay for the
+    // rest of the run (until a scenario resets the database): no scenario
+    // today lists every available or installed app. One that does should
+    // reset first, as the base-install scenarios do.
     await restartAcceptance({ FEATHERBASE_APP_PATHS: JSON.stringify([path.join(REPO_ROOT, 'test-apps/fixtures/bar-proof')]) });
     await api.call('POST', '/api/install_app', { name: 'barproof' }, [201, 409], 'install the bar-proof app');
   }

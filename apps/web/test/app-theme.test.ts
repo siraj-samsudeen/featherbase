@@ -120,3 +120,16 @@ test("on Featherbase's own pages there is no app to tell", async () => {
   expect(appTheme()).toBeNull()
   expect(heard).toEqual([])
 })
+
+// Review on #668: on a browser with no saved copy of the choice yet, the bar
+// first paints the device's theme and whoami then corrects it. The app is told
+// both, in order, so it always ends on the person's choice, as the bar does.
+test('a first paint corrected by the stored choice is announced, ending on the choice', async () => {
+  deviceDark = true
+  const paint = await freshPaint()
+  paint.paintOnto(barRoot())
+  paint.paintTheme('device')
+  paint.paintTheme('light')
+  expect(appTheme()).toBe('light')
+  expect(heard).toEqual([{ theme: 'dark' }, { theme: 'light' }])
+})
