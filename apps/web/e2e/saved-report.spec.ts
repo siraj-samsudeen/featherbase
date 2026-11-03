@@ -54,7 +54,9 @@ test('RPT-002: saved report restores columns, filters, and grouping', async ({ s
     await page.getByTestId('report-col-qty').uncheck()
     await page.getByTestId('report-columns').click()
     await page.getByTestId('filter-field').selectOption('stage')
-    await page.getByTestId('filter-value').selectOption({ label: 'Open' })
+    // #820: a Choice column's values are ticked.
+    await page.getByTestId('filter-value').click()
+    await page.getByTestId('filter-choices').getByRole('checkbox', { name: 'Open' }).check()
     await page.getByTestId('filter-add').click()
     await expect(page.getByTestId('report-row')).toHaveCount(2)
     await page.getByTestId('report-groupby').selectOption('stage')
