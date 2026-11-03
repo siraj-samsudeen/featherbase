@@ -431,7 +431,8 @@ describe('#865: a renamed column keeps its corrections', () => {
     await renameCity(admin)
     // Before #865 this preview read fields_updated: 1: the correction would be overwritten.
     const preview = await admin.post(`${path}:import`, { key_column: 'code', rows: [{ code: 'A', town: 'North' }], dry_run: true })
-    expect(preview).toMatchObject({ fields_updated: 0, fields_kept: 0 })
+    // #851 counts the retained South correction separately from changes and new conflicts.
+    expect(preview).toMatchObject({ changed: 0, unchanged: 1, rows_kept: 1, fields_updated: 0, fields_kept: 1, conflicts: 0 })
     await loadTown(admin, 'North', 'after-rename')
     expect((await admin.get<Record<string, unknown>>(`${path}/A`)).town).toBe('South')
     expect((await conflicts(admin)).conflicts).toEqual([])
