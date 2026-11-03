@@ -16,11 +16,15 @@ class ExplorePage {
   async searchAndStart(text) {
     const search = this.page.getByTestId('explore-root-search');
     await search.fill(text);
+    // The tables load after the page: wait until the search has narrowed to a match.
+    await this.page.getByTestId('explore-root').locator('option', { hasText: /^1 matching table|^\d+ matching tables/ }).waitFor({ state: 'attached' });
+    await this.page.getByTestId('explore-root').locator('option:not(:first-child)').first().waitFor({ state: 'attached' });
     await search.press('Enter');
   }
 
   /** The table Explore starts from, as its picker shows it. */
   async startingTable() {
+    await this.page.waitForURL(/[?&]root=/);
     return this.page.getByTestId('explore-root').inputValue();
   }
 
