@@ -383,6 +383,28 @@ Given('the copied key and trading-name columns have been renamed', async functio
   });
 });
 
+Given('the native copy refuses the new store {string}', async function (store) {
+  await this.withApi(api => api.saveRow('Server Script', {
+    row_id: `refuse-${this.nativeTable}`, script_type: 'Document Event',
+    ref_table: this.nativeTable, event: 'before_save', enabled: true,
+    script: `if (doc.store_code === ${JSON.stringify(store)}) throw new Error("Store refused")`,
+  }));
+});
+
+When('the user attempts Copy again on the native copy', async function () {
+  this.page = await this.asSystemManager();
+  this.copied = new CopiedWarehousePage(this.page, this.nativeTable);
+  await this.copied.open();
+  this.copyFailure = await this.copied.attemptCopyAgain();
+  this.form = new FormPage(this.page);
+});
+
+Then('the failed copy explains that no rows changed', async function () {
+  assert.equal(this.copyFailure.status, 417);
+  assert.match(this.copyFailure.message, /no rows changed.*Store refused/);
+  assert.equal(await this.copied.showsAtomicFailure(), true);
+});
+
 Then('the renamed columns contain the updated and added stores', async function () {
   await this.withApi(async api => {
     const changed = await api.row(this.nativeTable, 'S001');
