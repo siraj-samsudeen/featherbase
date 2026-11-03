@@ -128,7 +128,7 @@ describe('Read and write through a connected table: a warehouse', () => {
 // see, on the same file and the same read-only connection the Admin browses with.
 describe('An app dataset query on a warehouse', () => {
   const cfg = { name: 'duck-fixture', engine: 'duckdb' as const, url_env: DUCK_URL_ENV, root_path: null, default_schema: null,
-    access: 'read_only' as const, pool_max: 1, statement_timeout_ms: 10000, allowlist: null }
+    access: 'read_only' as const, pool_max: 1, statement_timeout_ms: 10000, allowlist: null, databases: [] }
   const columns = [{ name: 'store', type: 'text' }, { name: 'business_date', type: 'date' }, { name: 'amount', type: 'money' }]
   const kklOnSecond = () => duckdbDriver.query!(cfg, 'select store, business_date, amount from daily_sales', columns, {
     any: [[{ column: 'store', values: ['KKL'] }], [{ column: 'store', values: ['NOWHERE'] }]],
@@ -258,7 +258,7 @@ describe('Filtering rows read from a warehouse', () => {
     source: {
       name: 'duck-fixture', engine: 'duckdb', url_env: DUCK_URL_ENV, root_path: null,
       default_schema: null, access: 'read_only', pool_max: 1,
-      statement_timeout_ms: 10000, allowlist: null,
+      statement_timeout_ms: 10000, allowlist: null, databases: [],
     },
     schema: 'warehouse.main', table: 'nullable_groups', pk: 'id', modified: null,
     columns: [{ column_name: 'qty', source_column: 'qty', column_type: 'Int' }],
@@ -324,6 +324,7 @@ describe('Filtering rows read from a warehouse', () => {
         pool_max: 5,
         statement_timeout_ms: 10000,
         allowlist: null,
+        databases: [],
       },
       schema: 'warehouse.main',
       table: 'daily_sales',

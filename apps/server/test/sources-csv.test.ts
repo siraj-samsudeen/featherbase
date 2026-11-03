@@ -448,6 +448,7 @@ describe('Filtering and ordering rows read from a CSV file', () => {
       pool_max: 5,
       statement_timeout_ms: 10000,
       allowlist: null,
+      databases: [],
     },
     schema: '',
     table: 'store_master.csv',
