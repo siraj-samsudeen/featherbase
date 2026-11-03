@@ -18,9 +18,9 @@ Scenario "Shops connect through a login that owns nothing" (external-data-source
 ## 3. Implementation
 
 - [x] 3.1 Postgres introspection reads primary keys from `pg_constraint` (design.md). Written before this change existed, while prototyping; kept on the branch and proved here: 2.6 fails without it and passes with it
-- [ ] 3.2 Server integration test: a non-owner login sees the key and connects the table (`apps/server/test/sources-postgres-read-only-login.test.ts`)
+- [x] 3.2 Server integration test: a non-owner login sees the key and connects the table (`apps/server/test/sources-postgres-read-only-login.test.ts`)
 
 ## 4. Completion
 
-- [ ] 4.1 Acceptance suite: every scenario passes, zero pending or undefined steps, HTML report generated
-- [ ] 4.2 Server source tests pass; `pnpm check:specs` passes
+- [x] 4.1 Acceptance suite: every scenario passes, zero pending or undefined steps, HTML report generated — 58 scenarios: 57 passed; "An installed app preserves the platform name" failed once and passed on rerun, alone and after this change's scenario: an unrelated timing race, #806
+- [x] 4.2 Server source tests pass; `pnpm check:specs` passes
