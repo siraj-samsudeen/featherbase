@@ -4,6 +4,7 @@ import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import * as metadata from '../src/meta'
 import * as query from '../src/query'
+import * as reports from '../src/script-report'
 import { AppError } from '../src/errors'
 
 // Public inventory contract: Table names stay canonical; pages carry their
@@ -153,6 +154,31 @@ describe('#737 command destinations', () => {
       expect(response.status).toBe(417)
       expect((await response.json()).error).toMatchObject({ type: 'ValidationError', message: 'Unrelated named-read validation' })
     } finally { readFailure.mockRestore() }
+
+    await admin.post('/api/save_row', { table: 'Report', row: {
+      row_id: 'Inventory failing report', ref_table: 'Person', report_type: 'Script Report', report_script: 'Person Report',
+    } })
+    const reportFailure = vi.spyOn(reports, 'scriptReportMeta').mockRejectedValue(new AppError('InternalError', 'Report metadata failure'))
+    try {
+      const response = await admin.fetch(PATH)
+      expect(response.status).toBe(500)
+      expect((await response.json()).error.type).toBe('InternalError')
+    } finally { reportFailure.mockRestore() }
+  })
+
+  test('a refused named-resource read omits its pages without losing the other destinations', async ({ admin }) => {
+    await admin.post('/api/save_row', { table: 'Dashboard', row: { row_id: 'Inventory denied board', config: '{}' } })
+    const original = query.getList
+    const refusal = vi.spyOn(query, 'getList').mockImplementation(async (table, ...args) => {
+      if (table === 'Dashboard') throw new AppError('PermissionError', 'Dashboard access withdrawn')
+      return original(table, ...args)
+    })
+    try {
+      const inventory = await admin.get<Inventory>(PATH)
+      expect(inventory.pages.some((page) => page.kind === 'Dashboard')).toBe(false)
+      expect(inventory.pages.map((page) => page.href)).toContain('/featherbase/admin/instance-health')
+      expect(inventory.tables.map((table) => table.row_id)).toContain('Person')
+    } finally { refusal.mockRestore() }
   })
 
   test('a named page is narrowed by the same row scope as its underlying read', async ({ admin, createUser }) => {
