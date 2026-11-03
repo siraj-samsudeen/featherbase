@@ -9,6 +9,6 @@ import { Gallery } from './Gallery'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Gallery />
+    <div className="min-h-screen bg-canvas p-4 sm:p-6"><Gallery /></div>
   </StrictMode>,
 )
