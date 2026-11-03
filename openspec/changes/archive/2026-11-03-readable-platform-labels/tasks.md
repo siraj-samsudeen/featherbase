@@ -13,4 +13,11 @@
 - [x] 3.1 Use shared display lookup in generic forms, lists/cards, filters, peek, board/checklist and relevant public/report choices; keep wire values and indicator colors unchanged.
 - [x] 3.2 Run HTTP, migration, component and acceptance checks; run strict OpenSpec validation and boot smoke checks.
 - [x] 3.3 Inspect real desktop UI screenshots and choice interaction recording; independent verifier checks issue checklist at 1280px.
-- [ ] 3.4 Prepare PR with verification and remaining owner gates; subscribe to CI/comments. Do not merge or manually deploy. Archive only after owner review of evidence.
+- [x] 3.4 Prepare PR with verification and remaining manager gates; subscribe to CI/comments. Do not merge or manually deploy. Sync/archive completed implementation without claiming owner evidence review, per manager direction.
+
+PR #842 records commands and results. Final full web run: 146 suites, 1,411
+passed and two expected failures. Independent desktop verifier rechecked the
+two filter-presentation findings after fixes. The six-clip acceptance journey
+was recorded and inspected; nobody is claimed to have watched it.
+Required ordinary code review, exact-head CI and manager readiness remain
+merge gates, independent of implementation archival.
