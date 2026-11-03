@@ -81,7 +81,7 @@ test('RVT-J1: revert the bad run from the history strip — rehearse, skip-the-e
     })
     await expect(page.getByTestId('iw-target-0')).toHaveValue(DT)
     await page.getByTestId('iw-key-0').selectOption('zone')
-    await expect(page.getByTestId('iw-preview-0')).toContainText('will be updated')
+    await expect(page.getByTestId('iw-preview-0')).toContainText('1 row changes · 0 unchanged · 1 added')
     await page.getByRole('button', { name: 'Import 2 rows' }).click()
     // The wizard auto-navigates to the Table's list (the ratified IMP/UPS walk).
     await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}`))
