@@ -1600,8 +1600,8 @@ app.post('/api/table_def/:name/rename_column', async (c) => {
 // #871: rename a custom Table, carrying everything that names it.
 app.post('/api/table_def/:name/rename', async (c) => {
   await assertSystemManager(who(c))
-  const body = (await c.req.json().catch(() => null)) as { to?: unknown } | null
-  if (typeof body?.to !== 'string') throw new AppError('ValidationError', 'Expected { to }')
+  const body = (await c.req.json()) as { to?: unknown }
+  if (typeof body.to !== 'string') throw new AppError('ValidationError', 'Expected { to }')
   return c.json(await renameCustomTable(await resolveTableName(c.req.param('name')), body.to, who(c)))
 })
 
