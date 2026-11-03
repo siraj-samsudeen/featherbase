@@ -1,7 +1,7 @@
 ## 1. Acceptance first
 
 - [x] 1.1 Reproduce missing typed-result selection through public keyboard interaction and pin it with a failing regression.
-- [ ] 1.2 Reproduce or disprove prior-query activation during realistic debounce replacement; execute the fenced scenarios through acceptance steps.
+- [x] 1.2 Reproduce or disprove prior-query activation during realistic debounce replacement; execute the fenced scenarios through acceptance steps.
 
 ## 2. Implementation
 
@@ -10,6 +10,6 @@
 
 ## 3. Completion
 
-- [ ] 3.1 Run focused component/browser checks, typecheck, strict OpenSpec validation and boot smoke.
-- [ ] 3.2 Independently verify the issue checklist headlessly at 1280px and inspect keyboard/pointer recording and screenshots.
+- [x] 3.1 Run focused component/browser checks, typecheck, strict OpenSpec validation and boot smoke.
+- [x] 3.2 Independently verify the issue checklist headlessly at 1280px and inspect keyboard/pointer recording and screenshots.
 - [ ] 3.3 Prepare PR with exact-head CI/comment subscriptions and report remaining manager-owned archive/merge gates. No self-merge or manual deployment.
