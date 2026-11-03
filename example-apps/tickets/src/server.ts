@@ -44,6 +44,8 @@ function validate(table: string, ctx: Validation) {
 }
 export const validators = Object.fromEntries(['ticket', 'request', 'event', 'progress'].map(table =>
   [`tickets.${table}`, (ctx: Validation) => validate(table, ctx)]))
+export const destructiveGuards = Object.fromEntries(Object.keys(validators).map(table =>
+  [table, (ctx: Validation) => ctx.reject('Tickets references and history cannot be renamed or deleted')]))
 const kinds = ['generic', 'access', 'freshness', 'quality', 'report', 'source', 'schema', 'pipeline', 'backfill']
 const ticketFields = ['row_id', 'title', 'kind', 'ticket_state', 'assigned_to', 'public_update', 'updated_at', 'owner']
 const eventFields = ['row_id', 'ticket', 'operation', 'text', 'by', 'at']

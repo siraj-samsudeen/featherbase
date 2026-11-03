@@ -126,6 +126,10 @@ describe('Rejected runtime artifacts never become applications', () => {
       change: serverExports("export const validators = { 'tasker.task'() {} }") },
     { name: 'validator is not callable', error: 'Validators must target owned Tables',
       change: serverExports("export const validators = { 'other.task': 37 }") },
+    { name: 'destructive guard targets a foreign Table', error: 'Destructive guards must target owned Tables',
+      change: serverExports("export const destructiveGuards = { 'tasker.task'() {} }") },
+    { name: 'destructive guard is not callable', error: 'Destructive guards must target owned Tables',
+      change: serverExports("export const destructiveGuards = { 'other.task': 37 }") },
   ]
 
   test.for(rejected)('$name is refused before registration', async ({ change, error }, { admin }) => {

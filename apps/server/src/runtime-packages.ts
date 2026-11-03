@@ -369,6 +369,18 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
         reject(message, fields) { throw new AppError('ValidationError', message, fields) },
       }) }
     }
+    // Destructive operations do not run save validation. Opt in separately
+    // without changing existing validators or pre-row lock acquisition.
+    for (const [table, guard] of Object.entries(module.destructiveGuards ?? {})) {
+      if (!names.has(table) || typeof guard !== 'function')
+        throw new Error('Destructive guards must target owned Tables')
+      for (const event of ['on_trash', 'before_rename'] as const) {
+        (doc_events[table] ??= {})[event] = (ctx) => (guard as Validator)({
+          row: ctx.row, user: ctx.user, isNew: false,
+          reject(message, fields) { throw new AppError('ValidationError', message, fields) },
+        })
+      }
+    }
   }
   const bindOperations = (operations: Record<string, AppOperationDeclaration>) => new Map(Object.entries(operations).map(([name, declaration]): [string, DeclaredAppOperation] =>
     [name, { declaration: freezeJson(declaration), resolver: 'scope' in declaration && declaration.scope.kind === 'resolver' ? resolvers.get(declaration.scope.name) : undefined,

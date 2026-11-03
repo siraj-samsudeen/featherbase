@@ -27,7 +27,6 @@ export async function seedTickets({ baseUrl, password = 'admin', expectedEnviron
   const before = (await read('queue')).tickets
   if (before.length) {
     assert(before.every(ticket => ticket.title.startsWith('[Fictional]')), 'Tickets samples refuse a queue containing real requests')
-    return { existing: true, count: before.length }
   }
   const people = {}
   const demoPassword = ['Tickets', 'Demo', '810!'].join('-')
@@ -47,7 +46,11 @@ export async function seedTickets({ baseUrl, password = 'admin', expectedEnviron
     approval_routes: { Kerala: [people.Bala.row_id], Chennai: [people.Karthik.row_id, people.Shiva.row_id] },
     restricted_resources: ['Bronze'],
   }
-  for (const [name, value] of Object.entries(config)) await api('/api/save_row', { table: 'App Setting', row: { row_id: `tickets.${name}`, value: JSON.stringify(value) } })
+  for (const [name, value] of Object.entries(config)) {
+    const params = new URLSearchParams({ filters: JSON.stringify([['row_id', '=', `tickets.${name}`]]), fields: JSON.stringify(['row_id', 'updated_at']) })
+    const existing = (await api(`/api/table/App%20Setting?${params}`)).data[0]
+    await api('/api/save_row', { table: 'App Setting', row: { row_id: `tickets.${name}`, updated_at: existing?.updated_at, value: JSON.stringify(value) } })
+  }
   const loginAs = async name => { token = name === 'Administrator' ? adminToken : (await api('/api/login', { usr: people[name].email, pwd: demoPassword })).token }
   const rows = []
   async function ticket(title, kind, details, original) {
