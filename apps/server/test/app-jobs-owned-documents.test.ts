@@ -261,3 +261,86 @@ for (const target of [null, { owner_table: 'ownerjobs.note', tables: ['ownerjobs
     } finally { await rm(source.prior, { recursive: true, force: true }); await rm(source.next, { recursive: true, force: true }) }
   })
 }
+
+test('overlapping owner iterators roll back the first scope rather than duplicate its work', async ({ admin, createUser }) => {
+  const dir = await fixture(`const first=ctx.documents.forEachOwner(async ({user,documents})=>{
+    const [row]=await documents.list('ownerjobs.note',{fields:['row_id','updated_at'],filters:[['created_by','=',user]]});
+    await documents.update('ownerjobs.note',{row_id:row.row_id,updated_at:row.updated_at,body:'Must not commit'});
+  });
+  const second=ctx.documents.forEachOwner(async()=>{});
+  await Promise.allSettled([first,second]);`)
+  try {
+    expect(await discoverPackages([dir])).toEqual([])
+    await admin.post('/api/install_app', { name: 'ownerjobs' })
+    const owner = await createUser({ roles: ['Owner jobs member'] })
+    const headers = { 'X-Featherbase-App-Version': 'ownerjobs@1.0.0' }
+    const created = await owner.fetch('/api/save_row', { method: 'POST', headers, body: JSON.stringify({ table: 'ownerjobs.note', row: { body: 'Retain one copy' } }) })
+    const note = await created.json() as { row_id: string }
+    await run()
+    expect(await (await owner.fetch(`/api/table/ownerjobs.note/${note.row_id}`, { headers })).json()).toMatchObject({ body: 'Retain one copy' })
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})
+
+test('an unawaited failing owner callback is recorded as a job error', async ({ admin, createUser }) => {
+  const dir = await fixture(`ctx.documents.forEachOwner(async()=>{throw Error('unawaited callback failed')});`)
+  try {
+    expect(await discoverPackages([dir])).toEqual([])
+    await admin.post('/api/install_app', { name: 'ownerjobs' })
+    const owner = await createUser({ roles: ['Owner jobs member'] })
+    await owner.fetch('/api/save_row', { method: 'POST', headers: { 'X-Featherbase-App-Version': 'ownerjobs@1.0.0' }, body: JSON.stringify({ table: 'ownerjobs.note', row: { body: 'Private work' } }) })
+    const [queued] = await sql`select row_id from background_job where method='ownerjobs.advance' and job_status='queued' order by created_at limit 1`
+    await run()
+    expect(await sql`select outcome,error from job_execution where job=${queued.row_id} and attempt=1`).toEqual([
+      { outcome: 'error', error: expect.stringContaining('unawaited callback failed') },
+    ])
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})
+
+test('a saved job handler refuses execution after its app is disabled', async ({ admin }) => {
+  const dir = await fixture('')
+  try {
+    expect(await discoverPackages([dir])).toEqual([])
+    await admin.post('/api/install_app', { name: 'ownerjobs' })
+    const { bindAppJobs } = await import('../src/app-jobs')
+    const { loadAppSetup } = await import('../src/app-settings')
+    let ran = false
+    const [registered] = bindAppJobs({
+      app: 'ownerjobs',
+      jobs: [{ name: 'advance', cadence: 'hourly', description: 'Advance owned notes' }],
+      handlers: new Map([['advance', async () => { ran = true }]]),
+      setup: () => loadAppSetup('ownerjobs', { title: 'Owned jobs' }), datasets: [],
+    })
+    await admin.post('/api/set_app_enabled', { name: 'ownerjobs', enabled: false })
+    await expect(registered.handler({}, {
+      job: { row_id: 'stale-bound-job', trigger: 'schedule' },
+      setProgress: () => {}, setResult: () => {}, refuse: () => {},
+    })).rejects.toThrow('The app ownerjobs is disabled or unavailable, so its job advance did not run')
+    expect(ran).toBe(false)
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})
+
+test('a document job fails closed if its owner registry loses creator privacy after installation', async ({ admin, createUser }) => {
+  const dir = await fixture(`await ctx.documents.forEachOwner(async ({user,documents})=>{
+    const [row]=await documents.list('ownerjobs.note',{fields:['row_id','updated_at'],filters:[['created_by','=',user]]});
+    await documents.update('ownerjobs.note',{row_id:row.row_id,updated_at:row.updated_at,body:'Must not run'});
+  });`)
+  try {
+    expect(await discoverPackages([dir])).toEqual([])
+    await admin.post('/api/install_app', { name: 'ownerjobs' })
+    const owner = await createUser({ roles: ['Owner jobs member'] })
+    const headers = { 'X-Featherbase-App-Version': 'ownerjobs@1.0.0' }
+    const created = await owner.fetch('/api/save_row', { method: 'POST', headers, body: JSON.stringify({ table: 'ownerjobs.note', row: { body: 'Keep protected work' } }) })
+    const note = await created.json() as { row_id: string }
+    const [queued] = await sql`select row_id from background_job where method='ownerjobs.advance' and job_status='queued' order by created_at limit 1`
+    // Model damaged restored metadata. The ordinary schema-edit route refuses
+    // to weaken an installed policy, so this fault is injected at storage.
+    await sql`update table_def set access_policy='{"version":1,"roles":["Owner jobs member"]}'::jsonb where name='ownerjobs.note'`
+    const { invalidateMeta } = await import('../src/meta')
+    invalidateMeta('ownerjobs.note')
+    await run()
+    expect(await sql`select outcome,error from job_execution where job=${queued.row_id} and attempt=1`).toEqual([
+      { outcome: 'error', error: expect.stringContaining('The document owner Table is unavailable') },
+    ])
+    expect(await (await owner.fetch(`/api/table/ownerjobs.note/${note.row_id}`, { headers })).json()).toMatchObject({ body: 'Keep protected work' })
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})

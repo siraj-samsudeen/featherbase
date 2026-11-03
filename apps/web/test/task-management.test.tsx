@@ -1497,6 +1497,8 @@ test('task_list_surface: every task row exposes the same shared and private cont
     const user = userEvent.setup()
     await user.selectOptions(screen.getByRole('combobox', { name: 'Assign Review blocked transfer' }), 'Administrator')
     await waitFor(async () => expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ assigned_to: 'Administrator', urgent: true }))
+    // A committed write can precede the list refetch. Wait for the visible
+    // result before editing again, so the next action uses the refreshed row.
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Assign Review blocked transfer' })).toHaveValue('Administrator'))
     await user.click(screen.getByRole('button', { name: 'Remove urgent flag from Review blocked transfer' }))
     await waitFor(async () => expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ assigned_to: 'Administrator', urgent: false, task_state: 'Blocked' }))

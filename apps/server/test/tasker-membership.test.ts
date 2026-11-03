@@ -41,3 +41,29 @@ test('a private question cannot request a teammate reply', async ({ createUser }
   const task = await creator.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Private question notes' } })
   await expect(creator.post('/api/save_row', { table: 'tasker.discussion', row: { task: task.row_id, kind: 'Question', body: 'Could you check this?', reply_needed_from: teammate.user } })).rejects.toMatchObject({ status: 417 })
 })
+
+test('audit lists hide protected task references when its app is disabled', async ({ createUser }) => {
+  const { setAppEnabled } = await import('../src/apps')
+  const { logAccess } = await import('../src/audit')
+  expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
+  await installApp('tasker')
+  const owner = taskerClient(await createUser({ roles: ['Tasker Member', 'System Manager'] }))
+  const task = await owner.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Private audit context' } })
+  await logAccess(owner.user!, 'print', { table: 'tasker.task', row_id: task.row_id, method: 'pdf' })
+  const query = new URLSearchParams({ fields: JSON.stringify(['reference_name']), filters: JSON.stringify([['ref_table', '=', 'tasker.task']]) })
+  const path = `/api/table/Access%20Log?${query}`
+  expect(await owner.get(path)).toMatchObject({ total: 1, data: [{ reference_name: task.row_id }] })
+  await setAppEnabled('tasker', false)
+  expect(await owner.get(path)).toMatchObject({ total: 0, data: [] })
+})
+
+test('an app collection without its storage mapping is refused instead of inferred', async () => {
+  const { sql } = await import('../src/db')
+  const { invalidateMeta } = await import('../src/meta')
+  const { tableRelation } = await import('../src/table-engine')
+  expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
+  await installApp('tasker')
+  await sql`update table_def set owner_app = null, physical_schema = null, physical_relation = null where name = 'tasker.task'`
+  invalidateMeta('tasker.task')
+  await expect(tableRelation('tasker.task')).rejects.toMatchObject({ type: 'ValidationError', message: 'Table tasker.task has no app storage mapping' })
+})

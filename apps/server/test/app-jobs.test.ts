@@ -16,6 +16,7 @@ import { deleteDoc } from '../src/document'
 import { applyInstanceSettings } from '../src/instance-settings'
 import { newIdentifierId } from '../src/person-identifiers'
 import { withNamedVariable } from '../src/env'
+import { validateAppJobs } from '../src/app-jobs'
 
 const APP = 'fbjobsa'
 const SWEEP = `${APP}.sweep`
@@ -389,6 +390,20 @@ describe('a job name belongs to one owner', () => {
       { path: expect.any(String), error: 'The job sweep would be registered as fbjobsb.sweep, which Featherbase already uses' },
     ])
     expect(packageFailures).toHaveLength(1)
+  })
+
+  test('a handler claimed after discovery cannot be taken during installation', async ({ admin }) => {
+    const name = 'fbjobsclaim'
+    expect(await discoverPackages([await writeApp({ name, jobs: [sweep] })])).toEqual([])
+    registerJob(`${name}.sweep`, async () => {})
+    await expectApiError(admin.post('/api/install_app', { name }), {
+      status: 409, message: expect.stringContaining('already registered by Featherbase'),
+    })
+    expect(await sql`select name from installed_app where name = ${name}`).toHaveLength(0)
+  })
+
+  test('an app with no jobs needs no job server module', () => {
+    expect(() => validateAppJobs('jobfree', { jobs: [] }, new Set())).not.toThrow()
   })
 
   test('the manifest is checked: a made-up cadence or grant, or a handler the server module does not export', async ({ admin: _admin }) => {

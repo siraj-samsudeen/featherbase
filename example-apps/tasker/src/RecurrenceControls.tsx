@@ -36,12 +36,13 @@ export function Recurrence({ task, onSaved }: {
     finally { setBusy(false) }
   }
   if (task.parent_task) return null
+  const unit = series.data?.schedule_mode === 'weekly' ? 'week' : series.data?.schedule_mode === 'monthly' ? 'month' : 'day'
   return <section aria-label="Recurring task" className="mt-5 rounded-card border border-border p-4">
     <h3 className="mb-3 text-sm font-semibold">Repeat</h3>
     {error && <Notice tone="negative">{error}</Notice>}
     {series.error && <Notice tone="negative">Could not load repeats: {series.error.message} <Button onClick={() => void series.refetch()}>Try again</Button></Notice>}
     {series.data ? <>
-      <p className="text-sm">{series.data.paused ? 'Paused' : 'Repeats'} · every {series.data.interval} {series.data.schedule_mode === 'after_completion' ? 'days after completion' : series.data.schedule_mode === 'daily' ? 'days' : series.data.schedule_mode === 'weekly' ? 'weeks' : 'months'}</p>
+      <p className="text-sm">{series.data.paused ? 'Paused' : 'Repeats'} · every {series.data.interval} {unit}{series.data.interval === 1 ? '' : 's'}{series.data.schedule_mode === 'after_completion' ? ' after completion' : ''}</p>
       <p className="mt-2 text-sm text-ink-muted">{series.data.next_at ? `Next occurrence: ${fmtDateTime(new Date(series.data.next_at))}` : 'The next occurrence is scheduled after this task is finished.'}</p>
       <Button className="mt-3" disabled={busy} onClick={() => void run(series.data!.paused ? 'resume_recurrence' : 'pause_recurrence', { row_id: series.data!.row_id })}>{series.data.paused ? 'Resume repeats' : 'Pause repeats'}</Button>
     </> : !task.recurrence ? <details>
