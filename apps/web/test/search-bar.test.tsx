@@ -1,8 +1,7 @@
 // The search bar of the Admin (openspec/specs/admin-ui-feedback, "The search
 // bar opens what it finds"). Real Admin in jsdom against the in-process server.
 
-import { screen, waitFor, within } from '@testing-library/react'
-import { fireEvent } from '@testing-library/dom'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { test, expect, renderApp } from './pg-test'
 
 
@@ -84,9 +83,10 @@ test('Plain arrow keys choose typed results in displayed order', async ({ admin 
   fireEvent.keyDown(bar, { key: 'ArrowUp' })
   expect(choices.at(-1)).toHaveAttribute('aria-selected', 'true')
   const create = within(results).getByTestId('awesomebar-new')
-  while (create.getAttribute('aria-selected') !== 'true') {
+  for (let i = 0; i < choices.length && create.getAttribute('aria-selected') !== 'true'; i++) {
     fireEvent.keyDown(bar, { key: 'ArrowUp' })
   }
+  expect(create).toHaveAttribute('aria-selected', 'true')
   fireEvent.submit(bar.closest('form') as HTMLFormElement)
   await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Sb Gadget/new'))
   expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument()
@@ -183,7 +183,7 @@ test('A past search comes back in the empty bar: arrow keys choose it and Enter 
   bar.blur()
   bar.focus()
   const recents = await screen.findByTestId('awesomebar-recents')
-  const items = within(recents).getAllByRole('button')
+  const items = within(recents).getAllByRole('option')
   const at = items.findIndex((b) => b.textContent?.includes('Zebrafinch') && !b.textContent?.includes('-widget'))
   expect(at).toBeGreaterThanOrEqual(0)
   // ArrowUp from the top wraps to the bottom; ArrowDown walks forward again.
