@@ -163,7 +163,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
             <span className="min-w-0">
               <span data-testid="identity-head">
                 <span className="font-medium">{labelOf(i.method)}</span>{' '}
-                <span className="text-sm text-ink-muted">{i.subject == null ? `invited: ${i.pending_email}` : shownAs(i)}</span>
+                <span className="text-sm text-ink-muted">{i.subject == null ? `invited: ${i.pending_email}` : isGoogle(i) && i.email ? `· ${i.email}` : shownAs(i)}</span>
               </span>
               {i.subject != null && i.linked_at && (
                 <span className="block text-sm text-ink-muted" data-testid="identity-linked">

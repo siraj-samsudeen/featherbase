@@ -45,7 +45,7 @@ class LinkedGoogle {
 
   async leadsWith(address) {
     const head = (await this.row.getByTestId('identity-head').textContent()).trim();
-    assert.equal(head, `Google ${address}`);
+    assert.equal(head, `Google · ${address}`);
   }
 
   async linkedAtFirstSignIn() {

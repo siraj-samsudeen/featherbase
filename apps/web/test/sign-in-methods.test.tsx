@@ -190,7 +190,7 @@ test('a linked Google account reads as its address, when and how it was linked, 
     linked_by = 'first-sign-in', linked_at = '2026-11-03T06:41:00Z', last_used_at = '2026-11-03T07:05:00Z' where id = ${claimed}`
   await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
   const row = await screen.findByTestId(`user-method-${claimed}`)
-  await waitFor(() => expect(within(row).getByTestId('identity-head')).toHaveTextContent(/^Google tl\.google@gmail\.com$/))
+  await waitFor(() => expect(within(row).getByTestId('identity-head')).toHaveTextContent(/^Google · tl\.google@gmail\.com$/))
   expect(within(row).getByTestId('identity-linked')).toHaveTextContent(
     'linked 03-Nov-2026 12:11 IST at first sign-in · last signed in 03-Nov-2026 12:35 IST',
   )
