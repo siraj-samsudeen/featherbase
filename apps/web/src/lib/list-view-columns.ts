@@ -15,6 +15,7 @@ export interface ListColumn {
   label: string
   column_type: string
   reference_table?: string | null
+  choice_labels?: Record<string, string> | null
 }
 
 export const ROW_ID_COLUMN: ListColumn = { column_name: 'row_id', label: 'Row ID', column_type: 'Data' }
@@ -25,6 +26,7 @@ function toListColumn(c: ColumnDef): ListColumn {
     label: c.label ?? c.column_name,
     column_type: c.column_type,
     reference_table: c.reference_table ?? null,
+    choice_labels: c.choice_labels,
   }
 }
 

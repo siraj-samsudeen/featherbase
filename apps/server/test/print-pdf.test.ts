@@ -171,7 +171,7 @@ describe('a Sub-table prints as a table under its heading', () => {
     expect(html).toContain('<th>item</th><th>qty</th></tr></thead><tbody><tr><td>Bolt</td><td>4</td></tr><tr><td>Nut</td><td>9</td></tr>')
     expect(html).not.toContain('<th>parent</th>')
     // A Sub-table with no rows still prints its heading, with an empty table.
-    expect(html).toContain('<h2>empty_lines</h2><table><thead><tr></tr></thead><tbody></tbody></table>')
+    expect(html).toContain('<h2>Empty Lines</h2><table><thead><tr></tr></thead><tbody></tbody></table>')
   }, 30_000)
 })
 
