@@ -3,7 +3,8 @@
 // feeding the awesomebar's recents groups. Client-side only by design; the
 // server-side `user_event` log is a later phase of the same issue.
 
-import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle } from 'shared'
+import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle, choiceLabel } from 'shared'
+import type { ColumnDef } from './meta'
 
 export type RecentKind = 'row' | 'list' | 'page' | 'search'
 
@@ -222,14 +223,24 @@ export function recentSearches(user: string, query: string, limit: number): Rece
 }
 
 /** "status = Overdue · region = South" from the list route's JSON filters. */
-export function describeFilters(filtersJson: string | undefined): string | undefined {
+export function describeFilters(
+  filtersJson: string | undefined,
+  columns: Pick<ColumnDef, 'column_name' | 'label' | 'column_type' | 'choice_labels'>[] = [],
+  t: (text: string) => string = text => text,
+): string | undefined {
   if (!filtersJson) return undefined
   try {
     const filters: unknown = JSON.parse(filtersJson)
     if (!Array.isArray(filters) || filters.length === 0) return undefined
     const parts = filters
       .filter((f): f is [string, string, unknown] => Array.isArray(f) && f.length >= 3)
-      .map((f) => `${f[0]} ${f[1]} ${String(f[2])}`)
+      .map((f) => {
+        const column = columns.find(c => c.column_name === f[0])
+        const value = column?.column_type === 'Choice' && ['=', '!='].includes(f[1])
+          ? choiceLabel(String(f[2]), column.choice_labels, t)
+          : String(f[2])
+        return `${t(column?.label ?? f[0])} ${f[1]} ${value}`
+      })
     return parts.length ? parts.join(' · ') : undefined
   } catch {
     return undefined
@@ -248,6 +259,8 @@ const UNRECORDED = new Set<string>(ADMIN_UNRECORDED_ROOTS)
 export function actionForLocation(
   pathname: string,
   search: Record<string, unknown>,
+  columns?: Pick<ColumnDef, 'column_name' | 'label' | 'column_type' | 'choice_labels'>[],
+  t?: (text: string) => string,
 ): RecentAction | null {
   const m = /^\/featherbase\/admin(?:\/(.*))?$/.exec(pathname)
   if (!m || !m[1]) return null
@@ -275,7 +288,7 @@ export function actionForLocation(
   const filtersJson = typeof search.filters === 'string' ? search.filters : undefined
   if (segs.length === 1 || segs[1] === 'view') {
     const mode = segs[1] === 'view' ? segs[2] : undefined
-    const sub = [mode, describeFilters(filtersJson)].filter(Boolean).join(' · ') || undefined
+    const sub = [mode, describeFilters(filtersJson, columns, t)].filter(Boolean).join(' · ') || undefined
     const href = filtersJson ? `${pathname}?filters=${encodeURIComponent(filtersJson)}` : pathname
     return {
       kind: 'list',
