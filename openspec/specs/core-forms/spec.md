@@ -219,12 +219,12 @@ Then the user sees the parcel's fields in the order Label, Rack, Sender, Weight,
 A row of a Table its builder laid out in sections (named groups of fields)
 SHALL open in the Table's own order until the person picks another arrangement.
 
-#### Scenario: The parcel desk keeps its two sections
+#### Scenario: The parcel counter keeps its two sections
 
 ```gherkin
-Given a parcel desk table its builder laid out in two sections
-And a parcel "Blue box" at the parcel desk
-When the user opens that parcel at the parcel desk
+Given a parcel counter table its builder laid out in two sections
+And a parcel "Blue box" at the parcel counter
+When the user opens that parcel at the parcel counter
 Then the user sees its fields in the builder's two sections
 ```
 
