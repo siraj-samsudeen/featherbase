@@ -85,7 +85,6 @@ export async function importCustomizations(
     await saveDoc(
       'Metadata Override',
       {
-        row_id: `${p.table_name}-${p.column_name ?? ''}-${p.property}`,
         table_name: p.table_name,
         column_name: p.column_name ?? null,
         property: p.property,

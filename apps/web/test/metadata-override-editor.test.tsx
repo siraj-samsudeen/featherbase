@@ -28,11 +28,12 @@ test('a column adjustment receives its ID from the generic form', async ({ admin
 for (const value of ['false', '0', 'true', '1']) {
   test(`editing stored boolean text ${value} uses a checkbox`, async ({ admin }) => {
     await admin.post('/api/table_def', { name: table, columns: [{ column_name: 'floor', column_type: 'Data' }] })
-    await admin.post('/api/save_row', { table: 'Metadata Override', row: {
+    await admin.post('/api/table/Metadata%20Override', {
       row_id: 'editor-existing', table_name: table, column_name: 'floor', property: 'hidden', value,
-    } })
+    })
     await renderApp(`${path}/editor-existing`, admin)
     const control = await screen.findByRole('checkbox', { name: 'Value' })
+    await waitFor(() => expect(control).toBeEnabled())
     expect(control).toHaveProperty('checked', value === 'true' || value === '1')
     fireEvent.click(control)
     fireEvent.click(screen.getByTestId('form-save'))

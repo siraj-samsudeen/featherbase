@@ -287,12 +287,12 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await admin.post('/api/install_app', { name: 'other' })
     for (const property of ['name', 'owner_app', 'physical_schema', 'physical_relation', 'data_source', 'row_key', 'columns']) {
       const row = { row_id: `override-${property}`, table_name: 'other.task', column_name: null, property, value: 'tasker' }
-      await expect(admin.post('/api/save_row', { table: 'Metadata Override', row })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('cannot be overridden') })
+      await expect(admin.post('/api/table/Metadata%20Override', row)).rejects.toMatchObject({ status: 417, message: expect.stringContaining('cannot be overridden') })
       await expect(importCustomizations({ property_setters: [row] })).rejects.toMatchObject({ type: 'ValidationError' })
     }
-    await admin.post('/api/save_row', { table: 'Metadata Override', row: {
+    await admin.post('/api/table/Metadata%20Override', {
       row_id: 'override-label', table_name: 'other.task', property: 'label', value: 'Counting task',
-    } })
+    })
     expect(await getMeta('other.task')).toMatchObject({ name: 'other.task', label: 'Counting task', physical_schema: 'other' })
     // A pre-existing unsafe override must not get applied on the next boot.
     await sql`insert into metadata_override (row_id, table_name, property, value) values ('legacy-unsafe', 'other.task', 'name', 'Task')`

@@ -34,11 +34,10 @@ test('CUST-002: a label override shows in the form and reverts when removed', as
   })
 
   // Add a Property Setter via the API (Customize-Form mechanism).
-  const ps = await request.post('/api/save_row', {
+  const ps = await request.post('/api/table/Metadata%20Override', {
     headers,
     data: {
-      table: 'Metadata Override',
-      row: { row_id: `${DT}-title-label`, table_name: DT, column_name: 'title', property: 'label', value: 'Headline' },
+      row_id: `${DT}-title-label`, table_name: DT, column_name: 'title', property: 'label', value: 'Headline',
     },
   })
   expect([200, 201]).toContain(ps.status())
