@@ -300,7 +300,7 @@ export async function resolveTableName(input: string): Promise<string> {
     // metadata invalidation, and a database mid-upgrade may lack access_log.
     const graves = await sql<{ name: string }[]>`
       select distinct ref_table as name from access_log
-      where operation = 'delete_table' and ref_table is not null`.catch(() => [])
+      where operation in ('delete_table', 'rename_table') and ref_table is not null`.catch(() => [])
     if (graves.some((grave) => grave.name === input)) return input
     matches = graves.map((grave) => grave.name).filter((name) => tableSlug(name) === tableSlug(input))
   }
@@ -336,6 +336,18 @@ export async function getMeta(name: string): Promise<TableMeta> {
         'NotFoundError',
         `Table ${name} was deleted by ${grave.user as string} on ${new Date(
           grave.created_at as string,
+        ).toISOString().slice(0, 10)}`,
+      )
+    // #871: a renamed Table's old name says where it went.
+    const [moved] = await sql`
+      select "user", created_at, reference_name from access_log
+      where operation = 'rename_table' and ref_table = ${name}
+      order by created_at desc limit 1`.catch(() => [])
+    if (moved)
+      throw new AppError(
+        'NotFoundError',
+        `Table ${name} was renamed to ${moved.reference_name as string} by ${moved.user as string} on ${new Date(
+          moved.created_at as string,
         ).toISOString().slice(0, 10)}`,
       )
     throw new AppError('NotFoundError', `Table ${name} not found`)

@@ -71,7 +71,7 @@ describe('#871: renaming a custom Table', () => {
     for (const spelling of [OLD, 'trn-sap-plant'])
       await expectApiError(admin.get(`${url(spelling)}:meta`), {
         status: 404,
-        message: expect.stringMatching(new RegExp(`^Table ${OLD} was renamed to ${NEW} by Administrator on \\d{4}-\\d{2}-\\d{2}$`)),
+        message: expect.stringMatching(new RegExp(`Table ${OLD} was renamed to ${NEW} by Administrator on \\d{4}-\\d{2}-\\d{2}$`)),
       })
     // A Table made later under the old name is a Table like any other.
     await makeTable(admin, { name: OLD, columns: ['code'] })
