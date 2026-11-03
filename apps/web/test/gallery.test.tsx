@@ -1,16 +1,56 @@
-// The component gallery (#380, /gallery.html on the dev server): the page
-// renders every shared primitive, flips the theme, and raises both toasts.
-// No e2e spec opens it — gallery.html is outside the app's routes — so this is
-// its only test (ADR 0012 merged web coverage). Pure UI: no server, no data.
+// The gallery renders shared primitives; the prototype starter retains drafts
+// while switching to an actual metadata-driven list.
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, test } from 'vitest'
+import { createRootRoute } from '@tanstack/react-router'
+import { renderApp } from 'feather-testing-postgres/react'
+import { test as databaseTest } from './pg-test'
 import { Gallery } from '../src/gallery/Gallery'
+import { PrototypeLibrary } from '../src/gallery/PrototypeLibrary'
 import { useState } from 'react'
 import { Breadcrumbs, ContentTabs, SearchableList, TextInput } from '../src/components/ui'
 
 afterEach(() => {
   delete document.documentElement.dataset.theme
+})
+
+databaseTest('screen starter retains its search and draft while the native list remembers its filter', async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: 'Lab Project',
+    columns: [{ column_name: 'region', column_type: 'Data', label: 'Region', in_list_view: true }],
+  })
+  const user = userEvent.setup()
+  const originalLocation = window.location.href
+  window.history.replaceState(null, '', '/prototype.html')
+  try {
+    await renderApp('/prototype.html', {
+      routeTree: createRootRoute({ component: PrototypeLibrary }),
+      token: admin.token,
+      user: { row_id: admin.user! },
+    })
+    await user.type(await screen.findByRole('textbox', { name: 'Note for Project records' }), 'Retain this plan')
+    await user.type(screen.getByRole('searchbox', { name: 'Search screen starters' }), 'Project')
+    expect(screen.queryByRole('link', { name: 'Related tasks' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Project records' })).toHaveAttribute('href', '/featherbase/admin/Lab%20Project')
+
+    await user.click(screen.getByRole('tab', { name: 'Native Table list' }))
+    await screen.findByTestId('list-view')
+    await user.type(screen.getByRole('searchbox', { name: 'Search Lab Project names' }), 'South')
+    const location = new URL(window.location.href)
+    expect(location.searchParams.get('labTab')).toBe('records')
+    expect(JSON.parse(location.searchParams.get('labFilters')!)).toEqual([['name', 'like', '%South%']])
+
+    await user.click(screen.getByRole('tab', { name: 'Component gallery' }))
+    expect(screen.getByRole('heading', { name: 'Components' })).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Screen starter' }))
+    expect(screen.getByRole('searchbox', { name: 'Search screen starters' })).toHaveValue('Project')
+    expect(screen.getByRole('textbox', { name: 'Note for Project records' })).toHaveValue('Retain this plan')
+    await user.click(screen.getByRole('tab', { name: 'Native Table list' }))
+    expect(screen.getByRole('searchbox', { name: 'Search Lab Project names' })).toHaveValue('South')
+  } finally {
+    window.history.replaceState(null, '', originalLocation)
+  }
 })
 
 test('content tabs retain drafts and expose keyboard navigation and the current breadcrumb', async () => {
