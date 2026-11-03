@@ -50,6 +50,7 @@ export function RelationMap({
   const meta = useMeta(table)
   const cnx = useConnections(table, name)
   const navigate = useNavigate()
+  const settings = useSettings()
   const [openGroup, setOpenGroup] = useState<number | null>(null)
   // Option C of the Explore entry-point exploration: hand this row's
   // neighborhood to the cross-filter Explore. The chain is the first step of
@@ -84,7 +85,7 @@ export function RelationMap({
   for (const f of m.columns)
     if (f.column_type === 'Reference' && f.reference_table && d[f.column_name])
       forward.push({
-        label: f.label ?? f.column_name,
+        label: linkWords(f),
         table: f.reference_table,
         row_id: String(d[f.column_name]),
       })
@@ -202,8 +203,8 @@ export function RelationMap({
                   className={buttonClasses({ className: 'w-full whitespace-normal break-words py-2 text-left' })}
                 >
                   <span className="min-w-0">
-                    <span className="block text-xs text-ink-muted">{f.label} → {f.table}</span>
                     <RowTitle table={f.table} rowId={f.row_id} />
+                    <span className="block text-xs text-ink-muted">{linkAndTable(f)}</span>
                   </span>
                 </button>
               ))}
@@ -223,7 +224,7 @@ export function RelationMap({
                 >
                   <span className="min-w-0">
                     <span className="block">{g.label}</span>
-                    <span className="block text-xs text-ink-muted">{g.kind === 'child' ? 'child rows' : 'backlink'}</span>
+                    <span className="block text-xs text-ink-muted"><GroupVia group={g} /></span>
                   </span>
                   <span className="shrink-0 text-action">{fmtCount(g.count)}</span>
                 </button>
@@ -243,22 +244,13 @@ export function RelationMap({
           {forward.map((f, i) => (
             <g key={`fe-${i}`}>
               <line
-                x1={215}
+                x1={260}
                 y1={nodeY(i) + NODE_H / 2}
                 x2={340}
                 y2={cy + NODE_H / 2}
                 stroke="var(--color-border-control)"
                 strokeWidth={1.2}
               />
-              <text
-                x={277}
-                y={(nodeY(i) + NODE_H / 2 + cy + NODE_H / 2) / 2 - 6}
-                textAnchor="middle"
-                fontSize={12}
-                fill="var(--color-ink-subtle)"
-              >
-                {truncate(f.label, 15)} →
-              </text>
             </g>
           ))}
           {groups.map((g, i) => (
@@ -266,20 +258,11 @@ export function RelationMap({
               <line
                 x1={560}
                 y1={cy + NODE_H / 2}
-                x2={660}
+                x2={620}
                 y2={nodeY(i) + NODE_H / 2}
                 stroke="var(--color-border-control)"
                 strokeWidth={1.2}
               />
-              <text
-                x={608}
-                y={(nodeY(i) + NODE_H / 2 + cy + NODE_H / 2) / 2 - 6}
-                textAnchor="middle"
-                fontSize={12}
-                fill="var(--color-ink-subtle)"
-              >
-                {g.kind === 'child' ? 'contains →' : `← ${truncate(g.cnx?.column ?? '', 12)}`}
-              </text>
             </g>
           ))}
           {/* center */}
@@ -312,7 +295,7 @@ export function RelationMap({
               <rect
                 x={40}
                 y={nodeY(i)}
-                width={175}
+                width={220}
                 height={NODE_H}
                 rx={8}
                 fill="var(--color-surface)"
@@ -320,10 +303,11 @@ export function RelationMap({
                 className="hover:stroke-action"
               />
               <text x={52} y={nodeY(i) + 20} fontSize={12.5} fontWeight={600} fill="var(--color-ink)">
-                <SvgRowTitle table={f.table} rowId={f.row_id} max={22} />
+                <SvgRowTitle table={f.table} rowId={f.row_id} max={30} />
               </text>
+              {/* the relationship is named in the box, not on the line, so the line never crosses it */}
               <text x={52} y={nodeY(i) + 35} fontSize={12} fill="var(--color-ink-muted)">
-                {truncate(f.table, 24)}
+                {truncate(linkAndTable(f), 32)}
               </text>
             </g>
           ))}
@@ -336,9 +320,9 @@ export function RelationMap({
               data-testid={`map-group-${g.table}`}
             >
               <rect
-                x={660}
+                x={620}
                 y={nodeY(i)}
-                width={200}
+                width={240}
                 height={NODE_H}
                 rx={8}
                 fill="var(--color-surface)"
@@ -347,16 +331,16 @@ export function RelationMap({
                 strokeDasharray="3 3"
               />
               <text
-                x={672}
+                x={632}
                 y={nodeY(i) + 20}
                 fontSize={12.5}
                 fontWeight={600}
                 fill={g.count ? 'var(--color-ink)' : 'var(--color-ink-subtle)'}
               >
-                {truncate(g.label, 20)}
+                {truncate(g.label, 26)}
               </text>
-              <text x={672} y={nodeY(i) + 35} fontSize={12} fill="var(--color-ink-muted)">
-                {g.kind === 'child' ? 'child rows' : 'backlink'}
+              <text x={632} y={nodeY(i) + 35} fontSize={12} fill="var(--color-ink-muted)">
+                <GroupVia group={g} max={34} />
               </text>
               <text
                 x={848}
@@ -372,6 +356,21 @@ export function RelationMap({
           ))}
         </svg>
       </div>
+      {/* Nothing opened: the slot below lists the center row itself, the way
+          an opened collection lists its rows. */}
+      {!active && (
+        <div className={cardClasses('mt-3 overflow-x-auto')} data-testid="map-self-row">
+          <div className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            {table} — this row; open a collection to list its rows here
+          </div>
+          <SimpleRowsTable
+            cols={listColumns(m)}
+            rows={[{ ...d, row_id: d.row_id ?? name }]}
+            settings={settings}
+            onPick={(n) => void navigate({ to: '/featherbase/admin/$table/$name', params: { table, name: n }, search: { prefill: undefined } })}
+          />
+        </div>
+      )}
       {active && (
         <div className={cardClasses('mt-3 overflow-x-auto')} data-testid="map-group-rows">
           <div className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
@@ -411,6 +410,36 @@ function parseTrail(raw: unknown): [string, string][] {
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n - 1)}…` : s
+}
+
+/** A link column as words, for a column with no label: `assigned_to_id` → "Assigned To". */
+function columnWords(column: string): string {
+  return column.replace(/_?id$/i, '').split('_').filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1)).join(' ') || column
+}
+
+/** A link column's name in words: its label, unless that is only the column name again. */
+function linkWords(c: { column_name: string; label?: string | null }): string {
+  return c.label && c.label !== c.column_name ? c.label : columnWords(c.column_name)
+}
+
+/** What a linked row's box says beneath its title: "<link> · <Table>", or the Table alone when they match. */
+function linkAndTable(f: ForwardNode): string {
+  return f.label === f.table ? f.table : `${f.label} · ${f.table}`
+}
+
+/**
+ * What a related collection's box says beneath its Table: "via <link>", the
+ * link named as the Table holding it labels the column (#794).
+ */
+function GroupVia({ group, max }: { group: GroupNode; max?: number }) {
+  const holder = group.cnx ? (group.cnx.via ?? group.cnx.table) : ''
+  const meta = useMeta(holder, Boolean(holder))
+  if (group.kind === 'child') return <>child rows</>
+  const column = group.cnx!.column
+  const label = linkWords(meta.data?.columns.find((c) => c.column_name === column) ?? { column_name: column })
+  const text = `via ${label}`
+  return <>{max ? truncate(text, max) : text}</>
 }
 
 /** A linked row's title inside SVG text, its id until the title arrives. */

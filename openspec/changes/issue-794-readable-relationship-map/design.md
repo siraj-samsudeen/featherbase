@@ -6,7 +6,7 @@ The relationship map draws what a row links to on the left and what links back o
 
 ### A link is named by its column's label, read from the Table that holds it
 
-A related collection's "via <link>" uses the label the linking column has in the Table that holds it (as its form shows it); a column with no label reads as its name in words ("assigned_to" reads "Assigned To").
+A related collection's "via <link>" uses the label the linking column has in the Table that holds it (as its form shows it); a column with no label, or a label that only repeats its name, reads as its name in words ("assigned_to" reads "Assigned To").
 
 Rejected:
 - **Always turn the column name into words** — ignores a label a builder chose, so the map and the form would name the same link differently.
