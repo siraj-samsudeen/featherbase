@@ -154,6 +154,17 @@ test('An older link or saved view with floor = Ground takes First Floor into one
   expect(chips()).toEqual(['floor in Ground, First Floor×'])
 })
 
+test('An older link with floor != Ground ticks the other floors, and unticking Third Floor leaves one in filter', async ({ admin }) => {
+  await seed(admin)
+  const router = await openList(admin, [['floor', '!=', 'Ground']])
+  await waitFor(() => expect(codes()).toEqual(['R3', 'R4', 'R5', 'R6']))
+  expect(ticked(openBox('floor'))).toEqual(['First Floor', 'Second Floor', 'Third Floor'])
+  tick(openBox('floor'), 'Third Floor')
+  await waitFor(() => expect(codes()).toEqual(['R3', 'R4', 'R5']))
+  expect(chips()).toEqual(['floor in First Floor, Second Floor×'])
+  expect(addressFilters(router)).toEqual([['floor', 'in', ['First Floor', 'Second Floor']]])
+})
+
 type Router = Awaited<ReturnType<typeof openList>>
 
 /** The filters the page address holds; the router keeps them as a JSON string. */
