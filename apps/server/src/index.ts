@@ -36,6 +36,7 @@ import { landingAfterSignIn, openAdminFor } from './landing'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
+import { commandDestinations } from './command-destinations'
 import {
   getCollectionAction,
   getRowAction,
@@ -2126,6 +2127,10 @@ function listArgsFromQuery(q: Record<string, string>) {
 app.get('/api/search', async (c) => {
   const q = c.req.query('q') ?? ''
   return c.json({ results: await globalSearch(q, who(c)) })
+})
+
+app.get('/api/command_destinations', async (c) => {
+  return c.json(await commandDestinations(who(c)))
 })
 
 // #80: the caller's visible Home Pages with their permission-filtered card

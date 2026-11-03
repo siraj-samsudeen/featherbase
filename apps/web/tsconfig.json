@@ -23,6 +23,7 @@
     "e2e",
     "e2e-served",
     "vite.config.ts",
+    "vite.prototype.config.ts",
     "playwright.config.ts",
     "playwright.served.config.ts"
   ]

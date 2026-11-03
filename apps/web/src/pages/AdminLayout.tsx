@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage } from 'shared'
+import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, type CommandDestinations, type CommandPageDestination } from 'shared'
 import { api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
@@ -18,7 +18,7 @@ import {
   type ServerRecentEntry,
 } from '../lib/recents'
 import { useHomePages } from '../lib/home-pages'
-import { useCapabilities, useShellKind, useShellTables } from '../lib/session'
+import { useCapabilities, useShellKind } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
@@ -80,16 +80,16 @@ connectEventSink({
 // home page sidebar. All Tables render inside <Outlet/>.
 // #410: pick the layout from the server-computed capabilities BEFORE mounting
 // the Admin shell, so a person who cannot use it never fires its API calls.
-export function AdminLayout() {
+export function AdminLayout({ wide = false }: { wide?: boolean } = {}) {
   // #489: the signed-in person's theme choice outlives every toggle on the page.
   return (
     <ThemeChoiceProvider>
-      <AdminLayoutForKind />
+      <AdminLayoutForKind wide={wide} />
     </ThemeChoiceProvider>
   )
 }
 
-function AdminLayoutForKind() {
+function AdminLayoutForKind({ wide }: { wide: boolean }) {
   const kind = useShellKind()
   // #489 item 10: while whoami loads, the bar's frame and name are drawn and
   // its right side stays empty — no flash of the wrong items.
@@ -110,10 +110,10 @@ function AdminLayoutForKind() {
   // A report reader has no Admin page left: their sign-in methods are an
   // account page now (#489), so every Admin address sends them to the report.
   if (kind === 'report-only') return <Navigate to={REPORT_PATH} replace />
-  return <AdminShell />
+  return <AdminShell wide={wide} />
 }
 
-function AdminShell() {
+function AdminShell({ wide }: { wide: boolean }) {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -206,7 +206,13 @@ function AdminShell() {
       void queryClient.invalidateQueries({ queryKey: ['unread-count'] })
   })
 
-  const tables = useShellTables()
+  const destinations = useQuery({
+    queryKey: ['command-destinations', user?.row_id],
+    queryFn: () => api.get<CommandDestinations>('/api/command_destinations'),
+    enabled: barFocused,
+  })
+  const inventory = destinations.isError ? undefined : destinations.data
+  const tables = inventory?.tables
   const caps = useCapabilities()
   const canManage = caps?.manage === true
   // #429: the count beside "Waiting for access"; asked only by a System Manager.
@@ -222,6 +228,18 @@ function AdminShell() {
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
+  const commandFormRef = useRef<HTMLFormElement>(null)
+
+  useEffect(() => {
+    function onPointerDown(event: PointerEvent) {
+      if (!commandFormRef.current?.contains(event.target as Node)) {
+        setBarFocused(false)
+        setSelection(null)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [])
 
   // UI-015: global keyboard shortcuts.
   //   Ctrl/Cmd+K  focus the command bar (command palette)
@@ -246,6 +264,8 @@ function AdminShell() {
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
+        setBarFocused(true)
+        setSelection(null)
         searchRef.current?.focus()
         searchRef.current?.select()
         return
@@ -283,6 +303,8 @@ function AdminShell() {
     function onPrefill(e: Event) {
       const q = (e as CustomEvent<string>).detail
       if (typeof q === 'string') setSearch(q)
+      setBarFocused(true)
+      setSelection(null)
       searchRef.current?.focus()
     }
     window.addEventListener('fc:prefill-search', onPrefill)
@@ -356,6 +378,7 @@ function AdminShell() {
     // Clear row matches immediately, not after the typing debounce.
     setDebounced('')
     setBarFocused(false)
+    setSelection(null)
     searchRef.current?.blur()
   }
 
@@ -376,6 +399,14 @@ function AdminShell() {
     navigate({ to: '/featherbase/admin/$table/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
   }
 
+  function openPage(page: CommandPageDestination) {
+    recordSearch(search.trim())
+    dismissSearch()
+    // Runtime apps and pages with their own frame policy need a full load.
+    if (page.kind === 'App' || page.kind === 'App tab' || ownFramePolicyPage(page.href)) window.location.assign(page.href)
+    else router.history.push(page.href)
+  }
+
   // Explicit selection uses the same activation as a pointer or Tab/Enter.
   // Without it, preserve the exact-Table/first-record Enter defaults.
   function runSearch(e: React.FormEvent) {
@@ -389,6 +420,7 @@ function AdminShell() {
     if (!q) return
     recordSearch(q)
     const dtHit = tables?.find((d) => d.row_id.toLowerCase() === q.toLowerCase())
+      ?? tables?.find((d) => d.label.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       dismissSearch()
       navigate({ to: '/featherbase/admin/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
@@ -399,8 +431,15 @@ function AdminShell() {
       openDoc(doc)
       return
     }
-    dismissSearch()
-    navigate({ to: '/featherbase/admin/$table', params: { table: q }, search: { filters: undefined } })
+    const page = pageHits.find((page) => [page.label, ...(page.aliases ?? [])].some((label) => label.toLowerCase() === q.toLowerCase())) ?? pageHits[0]
+    if (page) openPage(page)
+    else if (suggestions[0]) {
+      dismissSearch()
+      navigate({ to: '/featherbase/admin/$table', params: { table: suggestions[0].row_id }, search: { filters: undefined } })
+    } else {
+      dismissSearch()
+      navigate({ to: '/featherbase/admin/$table', params: { table: q }, search: { filters: undefined } })
+    }
   }
 
   // User tables surface before system tables in suggestions (stable sort
@@ -408,12 +447,14 @@ function AdminShell() {
   const suggestions =
     search.trim().length > 0
       ? (tables ?? [])
-          .filter((d) => d.row_id.toLowerCase().includes(search.trim().toLowerCase()))
+          .filter((d) => [d.row_id, d.label].some((label) => label.toLowerCase().includes(trimmed.toLowerCase())))
           .sort((a, b) => Number(a.system) - Number(b.system))
-          .slice(0, 7)
       : []
   // #432: a Table whose rows only the platform writes is never offered as "New".
-  const creatableSuggestions = suggestions.filter((d) => !d.system_written)
+  const creatableSuggestions = suggestions.filter((d) => d.can_create)
+  const pageHits = trimmed
+    ? (inventory?.pages ?? []).filter((page) => [page.label, ...(page.aliases ?? [])].some((label) => label.toLowerCase().includes(trimmed.toLowerCase())))
+    : []
 
   // Command actions surfaced through the command bar (the ⌘K palette).
   const commands = [
@@ -431,11 +472,23 @@ function AdminShell() {
   // The command bar: inline in the top bar from sm up, its own row on a phone.
   const commandBar = (
         <form
+          ref={commandFormRef}
           onSubmit={runSearch}
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape') return
+            e.preventDefault()
+            e.stopPropagation()
+            if (e.target instanceof HTMLElement) e.target.blur()
+            setBarFocused(false)
+            setSelection(null)
+          }}
           // #489 item 11: the recents close only when focus leaves the whole
           // command bar, so Tab from the input reaches them (visual order).
           onBlur={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setBarFocused(false)
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+              setBarFocused(false)
+              setSelection(null)
+            }
           }}
           className="relative w-full sm:min-w-0 sm:flex-1 sm:mx-auto sm:max-w-4xl"
           data-testid="awesomebar"
@@ -451,11 +504,8 @@ function AdminShell() {
               setBarFocused(true)
               setSelection(null)
             }}
+            onClick={() => setBarFocused(true)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.currentTarget.blur()
-                return
-              }
               // Modified arrows belong to the input's native text editing.
               if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.nativeEvent.isComposing) return
               if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
@@ -483,6 +533,7 @@ function AdminShell() {
             ⌘K
           </kbd>
           {barFocused && (suggestions.length > 0 ||
+            pageHits.length > 0 ||
             commandHits.length > 0 ||
             recordHits.length > 0 ||
             (showRecents && pick.length > 0) ||
@@ -491,7 +542,7 @@ function AdminShell() {
               id="command-results"
               role="listbox"
               aria-label="Search results"
-              className={cardClasses('absolute z-20 mt-1 w-full overflow-hidden py-1 [&_[aria-selected=true]]:bg-action-tint')}
+              className={cardClasses('absolute z-20 mt-1 max-h-[min(70vh,32rem)] w-full overflow-y-auto py-1 [&_[aria-selected=true]]:bg-action-tint')}
               data-testid="awesomebar-results"
               onMouseDown={(e) => e.preventDefault()}
             >
@@ -553,6 +604,26 @@ function AdminShell() {
                   <span className="text-action">›</span> {cmd.label}
                 </button>
               ))}
+              {pageHits.length > 0 && (
+                <h2 data-testid="awesomebar-pages-heading" className="px-3 pt-2 text-xs font-semibold text-ink-muted">Pages</h2>
+              )}
+              {pageHits.map((page) => (
+                <a
+                  key={page.href}
+                  {...resultProps(`page-${page.href}`)}
+                  href={page.href}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+                    e.preventDefault()
+                    openPage(page)
+                  }}
+                  data-testid="awesomebar-page"
+                  className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
+                >
+                  {page.label}
+                  <span className="ml-2 text-xs text-ink-muted">{page.kind}</span>
+                </a>
+              ))}
               {suggestions.length > 0 && (
                 <h2 data-testid="awesomebar-tables-heading" className="px-3 pt-2 text-xs font-semibold text-ink-muted">Tables</h2>
               )}
@@ -567,8 +638,8 @@ function AdminShell() {
                   data-testid="awesomebar-table"
                   className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
                 >
-                  {d.row_id}
-                  <span className="ml-2 text-xs text-ink-muted">{d.module} module · open list</span>
+                  {d.label}
+                  <span className="ml-2 text-xs text-ink-muted">{d.module} module · {d.kind === 'settings' ? 'settings' : 'open list'}</span>
                 </Link>
               ))}
               {/* UI-014: "new X" action for matched Tables */}
@@ -586,7 +657,7 @@ function AdminShell() {
                   data-testid="awesomebar-new"
                   className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
                 >
-                  <span className="text-action">+</span> New {d.row_id} row
+                  <span className="text-action">+</span> New {d.label} row
                 </Link>
               ))}
               {/* UI-014: row hits */}
@@ -806,8 +877,8 @@ function AdminShell() {
         </aside>
 
         {/* Page canvas */}
-        <main className="min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:p-6">
-          <div className="mx-auto max-w-5xl">
+        <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:p-6${wide ? ' flex flex-col' : ''}`}>
+          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : 'mx-auto max-w-5xl'}>
             <Outlet />
           </div>
         </main>

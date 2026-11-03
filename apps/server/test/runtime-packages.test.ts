@@ -831,6 +831,30 @@ describe('An app declares its phone tabs', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
+  test('#737 command destinations follow available app roots and declared tabs', async ({ admin, createUser }) => {
+    const directory = await otherWith({ tabs: TABS })
+    try {
+      expect(await discoverPackages([directory])).toEqual([])
+      await admin.post('/api/install_app', { name: 'other' })
+      type Inventory = { pages: { href: string; label: string }[]; tables: { row_id: string }[] }
+      const inventory = await admin.get<Inventory>('/api/command_destinations')
+      expect(inventory.pages.filter((p) => p.href.startsWith('/other/')).map((p) => p.href).sort())
+        .toEqual(['/other/', '/other/checks/open', '/other/targets'])
+      expect(inventory.tables.map((t) => t.row_id)).toContain('other.task')
+
+      // An app-only reader never acquires Admin simply by asking for its
+      // inventory, even though the app's own catalogue is open to them.
+      const appOnly = await createUser({ roles: [] })
+      expect(await appOnly.get('/api/app_catalog')).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'other' })]))
+      expect((await appOnly.fetch('/api/command_destinations')).status).toBe(403)
+
+      await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
+      const disabled = await admin.get<Inventory>('/api/command_destinations')
+      expect(disabled.pages.some((p) => p.href.startsWith('/other/'))).toBe(false)
+      expect(disabled.tables.map((t) => t.row_id)).not.toContain('other.task')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   test('a member who cannot open the app gets neither its catalog entry, its tabs nor its pages', async ({ admin, createUser }) => {
     const directory = await otherWith({ tabs: TABS })
     try {
@@ -872,6 +896,9 @@ describe('An app declares its phone tabs', () => {
     expect(await discoverPackages([resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
     expect(await admin.get('/api/app_catalog')).toEqual([{ name: 'other', title: 'Other tasks', href: '/other/' }])
+    const inventory = await admin.get<{ pages: { href: string; label: string; kind: string }[] }>('/api/command_destinations')
+    expect(inventory.pages.filter((page) => page.href.startsWith('/other/')))
+      .toEqual([{ label: 'Other tasks', href: '/other/', kind: 'App' }])
   })
 
   test('a tab list the bar cannot draw safely is refused when the app is found', async () => {
