@@ -1,3 +1,4 @@
+export { DEFAULT_ID_PATTERN } from './naming'
 export { tableSchemaToZod, zodFieldErrors, type ColumnDef } from './schema'
 export { choiceLabel } from './choice-label'
 export { DISPLAY_DEFAULTS } from './display-settings'

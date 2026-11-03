@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { opaqueId } from './opaque-id'
-import { tableSchemaToZod, zodFieldErrors } from 'shared'
+import { DEFAULT_ID_PATTERN, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { sessionMayAddWayIn } from './session-context'
@@ -108,7 +108,7 @@ async function resolveRowId(
   meta: TableMeta,
   values: RowValues,
 ): Promise<string> {
-  const rule = meta.id_pattern || 'integer'
+  const rule = meta.id_pattern || DEFAULT_ID_PATTERN
   // person-rename R1: an opaque id is assigned, never chosen — a caller (a
   // form, an API client, an import) may not supply one. Checked before the
   // amendment path, so `amended_from` cannot smuggle one in: an amendment of

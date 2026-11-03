@@ -3,10 +3,10 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
 // imports this file — a strict useSearch would need the route object back)
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { applyColumnCombines, autoMapImportColumns, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
+import { DEFAULT_ID_PATTERN, applyColumnCombines, autoMapImportColumns, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
-import { DEFAULT_ID_PATTERN, NamingControl } from '../components/NamingControl'
+import { NamingControl } from '../components/NamingControl'
 import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import {
   countDataRows,

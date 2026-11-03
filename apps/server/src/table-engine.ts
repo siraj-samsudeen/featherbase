@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { prettifyLabel } from 'shared'
+import { DEFAULT_ID_PATTERN, prettifyLabel } from 'shared'
 import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
@@ -723,7 +723,7 @@ export async function createTable(
       // #855: a new Table numbers its rows 1, 2, 3 unless told otherwise. Child
       // rows and a Settings Table's single row keep random ids, and a bound
       // Table's ids come from its source.
-      id_pattern: def.id_pattern ?? ((def.kind ?? 'table') === 'table' && !def.data_source ? 'integer' : 'hash'),
+      id_pattern: def.id_pattern ?? ((def.kind ?? 'table') === 'table' && !def.data_source ? DEFAULT_ID_PATTERN : 'hash'),
       title_column: def.title_column ?? null,
       description: def.description ?? null,
       system: def.system ?? false,

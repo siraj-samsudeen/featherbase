@@ -1,10 +1,9 @@
+import { DEFAULT_ID_PATTERN } from 'shared'
 import { inputClasses } from './ui'
 // NAM-001: edit a Table's id_pattern — the rule that names new rows. The
 // kinds mirror resolveRowId() in apps/server/src/document.ts; a series is split
 // here into a prefix and a digit count so nobody has to type ".###".
 
-// #855: plain numbers ('integer') are what a new Table starts with.
-export const DEFAULT_ID_PATTERN = 'integer'
 
 type NamingKind = 'integer' | 'series' | 'hash' | 'prompt' | 'field'
 

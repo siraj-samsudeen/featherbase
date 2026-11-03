@@ -191,13 +191,22 @@ describe('#855: the per-Table counter migration', () => {
   test('a Table numbered before the upgrade carries on from its prefix count', async ({ admin }) => {
     await makeDT(admin, 'Nm Legacy', 'NMLEG-.###')
     await makeDT(admin, 'Nm Legacy Copy', 'NMLEG-.###')
-    await makeDT(admin, 'Nm Legacy Plain', 'hash')
+    await makeTable(admin, { name: 'Nm Legacy Child', kind: 'sub_table', columns: ['title'] })
     // The state an instance is in before the upgrade: one count per prefix.
     await sql`insert into series (name, current) values ('NMLEG-', 61)`
     await sql.unsafe(migration)
     await sql.unsafe(migration) // repeatable
     expect((await save(admin, 'Nm Legacy', { title: 'a' })).row_id).toBe('NMLEG-062')
     expect((await save(admin, 'Nm Legacy Copy', { title: 'a' })).row_id).toBe('NMLEG-062')
-    expect(await sql`select name from series where starts_with(name, 'table:Nm Legacy Plain:')`).toEqual([])
+    expect(await sql`select name from series where starts_with(name, 'table:Nm Legacy Child:')`).toEqual([])
+  })
+
+  test('a Table that used another prefix before the upgrade never reissues its numbers', async ({ admin }) => {
+    // Issued NMOLD-001 and NMOLD-002, deleted both, then switched to NMNEW-.
+    await makeDT(admin, 'Nm Switched', 'NMNEW-.###')
+    await sql`insert into series (name, current) values ('NMOLD-', 2)`
+    await sql.unsafe(migration)
+    await admin.fetch('/api/table_def/Nm%20Switched/id_pattern', { method: 'PUT', body: JSON.stringify({ id_pattern: 'NMOLD-.###' }) })
+    expect((await save(admin, 'Nm Switched', { title: 'a' })).row_id).toBe('NMOLD-003')
   })
 })
