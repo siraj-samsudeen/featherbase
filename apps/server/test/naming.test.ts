@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { makeTable } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
+import { readFileSync } from 'node:fs'
 import { sql } from '../src/db'
 
 const SERIES_DT = 'Nm Invoice'
@@ -23,6 +24,7 @@ describe('META-006: naming rules', () => {
     const columns = await sql`select * from column_def where parent = ${table} order by position`
     for (const [pattern, input, expected] of [
       ['hash', { title: 'random' }, /^[0-9a-f]{10}$/],
+      ['integer', { title: 'numbered' }, /^1$/],
       ['prompt', { row_id: 'Chosen ID', title: 'chosen' }, /^Chosen ID$/],
       ['ENDPOINT-.###', { title: 'series' }, /^ENDPOINT-001$/],
       ['field:title', { title: 'Field ID' }, /^Field ID$/],
@@ -135,5 +137,76 @@ describe("A name that comes from the row can't be left out", () => {
   test('a typed-in name is required', async ({ admin }) => {
     await makeDT(admin, PROMPT_DT, 'prompt')
     await expect(save(admin, PROMPT_DT, { title: 'no id' })).rejects.toMatchObject({ status: 417, fields: { row_id: expect.any(String) } })
+  })
+})
+
+// #855: new Tables number rows 1, 2, 3, each Table keeps its own count, and a
+// number already in the Table is skipped.
+describe('#855: plain numbers and a count per Table', () => {
+  test('a Table created without a naming rule numbers its rows 1, 2, 3', async ({ admin }) => {
+    await makeTable(admin, { name: 'Nm Plant', columns: ['title'] })
+    expect(await admin.get('/api/table/Nm%20Plant:meta')).toMatchObject({ id_pattern: 'integer' })
+    const ids = []
+    for (const title of ['a', 'b', 'c']) ids.push((await save(admin, 'Nm Plant', { title })).row_id)
+    expect(ids).toEqual(['1', '2', '3'])
+  })
+
+  test('a child Table created without a naming rule keeps random ids', async ({ admin }) => {
+    await makeTable(admin, { name: 'Nm Plant Line', kind: 'sub_table', columns: ['title'] })
+    expect(await admin.get('/api/table/Nm%20Plant%20Line:meta')).toMatchObject({ id_pattern: 'hash' })
+  })
+
+  test('two Tables with the same series prefix each start at 001', async ({ admin }) => {
+    await makeDT(admin, 'Nm Store', 'NMSTORE-.###')
+    await makeDT(admin, 'Nm Store Copy', 'NMSTORE-.###')
+    expect((await save(admin, 'Nm Store', { title: 'a' })).row_id).toBe('NMSTORE-001')
+    expect((await save(admin, 'Nm Store Copy', { title: 'a' })).row_id).toBe('NMSTORE-001')
+    expect((await save(admin, 'Nm Store', { title: 'b' })).row_id).toBe('NMSTORE-002')
+  })
+
+  test('a number already used by a supplied id is skipped, for integers and series', async ({ admin }) => {
+    await makeDT(admin, 'Nm Bin', 'integer')
+    await makeDT(admin, 'Nm Shelf', 'NMSHELF-.##')
+    expect((await save(admin, 'Nm Bin', { title: 'a' })).row_id).toBe('1')
+    await admin.post('/api/table/Nm%20Bin', { row_id: '2', title: 'imported' })
+    await admin.post('/api/table/Nm%20Bin', { row_id: '3', title: 'imported' })
+    expect((await save(admin, 'Nm Bin', { title: 'b' })).row_id).toBe('4')
+    await admin.post('/api/table/Nm%20Shelf', { row_id: 'NMSHELF-01', title: 'imported' })
+    expect((await save(admin, 'Nm Shelf', { title: 'a' })).row_id).toBe('NMSHELF-02')
+  })
+
+  test('a deleted and recreated Table carries on its count', async ({ admin }) => {
+    await makeDT(admin, 'Nm Gone', 'integer')
+    await save(admin, 'Nm Gone', { title: 'a' })
+    await save(admin, 'Nm Gone', { title: 'b' })
+    await admin.delete('/api/table_def/Nm%20Gone')
+    await makeDT(admin, 'Nm Gone', 'integer')
+    expect((await save(admin, 'Nm Gone', { title: 'c' })).row_id).toBe('3')
+  })
+})
+
+describe('#855: the per-Table counter migration', () => {
+  const migration = readFileSync(new URL('../migrations/0014_series_per_table.sql', import.meta.url), 'utf8')
+
+  test('a Table numbered before the upgrade carries on from its prefix count', async ({ admin }) => {
+    await makeDT(admin, 'Nm Legacy', 'NMLEG-.###')
+    await makeDT(admin, 'Nm Legacy Copy', 'NMLEG-.###')
+    await makeTable(admin, { name: 'Nm Legacy Child', kind: 'sub_table', columns: ['title'] })
+    // The state an instance is in before the upgrade: one count per prefix.
+    await sql`insert into series (name, current) values ('NMLEG-', 61)`
+    await sql.unsafe(migration)
+    await sql.unsafe(migration) // repeatable
+    expect((await save(admin, 'Nm Legacy', { title: 'a' })).row_id).toBe('NMLEG-062')
+    expect((await save(admin, 'Nm Legacy Copy', { title: 'a' })).row_id).toBe('NMLEG-062')
+    expect(await sql`select name from series where starts_with(name, 'table:Nm Legacy Child:')`).toEqual([])
+  })
+
+  test('a Table that used another prefix before the upgrade never reissues its numbers', async ({ admin }) => {
+    // Issued NMOLD-001 and NMOLD-002, deleted both, then switched to NMNEW-.
+    await makeDT(admin, 'Nm Switched', 'NMNEW-.###')
+    await sql`insert into series (name, current) values ('NMOLD-', 2)`
+    await sql.unsafe(migration)
+    await admin.fetch('/api/table_def/Nm%20Switched/id_pattern', { method: 'PUT', body: JSON.stringify({ id_pattern: 'NMOLD-.###' }) })
+    expect((await save(admin, 'Nm Switched', { title: 'a' })).row_id).toBe('NMOLD-003')
   })
 })

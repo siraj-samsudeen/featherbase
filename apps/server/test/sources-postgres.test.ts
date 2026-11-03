@@ -275,6 +275,8 @@ describe('EDS-2/EDS-3: introspection and reflection', () => {
     expect(meta.data_source).toBe('ext-fixture')
     expect(meta.external_pk).toBe('id')
     expect(meta.external_modified).toBe('updated_at')
+    // #855: ids come from the source, so the bound Table keeps random-id naming.
+    expect(meta.id_pattern).toBe('hash')
     expect(meta.source_access).toBe('read_write')
     // The pk and modified columns surface as name/updated_at, not columns.
     const colNames = (meta.columns as { column_name: string }[]).map((c) => c.column_name)
