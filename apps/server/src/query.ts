@@ -8,8 +8,9 @@ import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 import { mandatoryWhere, needsMandatoryRowRead } from './mandatory-access'
+import { MAX_RELATED_DEPTH, MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
 
-export type Filter = [string, string, unknown]
+export type { Filter } from './related-filter'
 
 interface ListArgs {
   filters?: Filter[]
@@ -45,54 +46,6 @@ const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in'
 // queries BEFORE any SQL executes, so a wide payload of sibling specs is
 // amplification. MAX_RELATED_HOPS caps the TOTAL specs compiled per
 // request, breadth and depth together.
-const MAX_RELATED_DEPTH = 3
-const MAX_RELATED_HOPS = 16
-
-interface RelatedSpec {
-  table: string
-  via?: string
-  column?: string
-  // #106 review: when one row table backs SEVERAL Sub-table columns
-  // (sales_lines and return_lines both → Order Line), an optional
-  // parentfield narrows the via hop to one owning column. Omitted = any
-  // field, which is the right default for "is this row referenced at all"
-  // (Connections counts).
-  parentfield?: string
-  filters?: Filter[]
-}
-
-function parseRelatedSpec(value: unknown): RelatedSpec {
-  const bad = (message: string) => new AppError('ValidationError', message)
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw bad(`'related' filter value must be an object { table, via?, column?, filters? }`)
-  const v = value as Record<string, unknown>
-  if (typeof v.table !== 'string' || !v.table)
-    throw bad(`'related' filter needs a target { table }`)
-  if (v.via !== undefined && (typeof v.via !== 'string' || !v.via))
-    throw bad(`'related' via must be a sub-table name`)
-  if (v.column !== undefined && (typeof v.column !== 'string' || !v.column))
-    throw bad(`'related' column must be a column name`)
-  // via and column travel together — a lone column would be silently
-  // ignored by the Reference shape, and a lone via has no column to hop on.
-  if (v.column !== undefined && v.via === undefined)
-    throw bad(`'related' column only applies together with via`)
-  if (v.via !== undefined && v.column === undefined)
-    throw bad(`'related' via needs the sub-table column that references the target`)
-  if (v.parentfield !== undefined && (typeof v.parentfield !== 'string' || !v.parentfield))
-    throw bad(`'related' parentfield must be a Sub-table column name`)
-  if (v.parentfield !== undefined && v.via === undefined)
-    throw bad(`'related' parentfield only applies together with via`)
-  if (v.filters !== undefined && !Array.isArray(v.filters))
-    throw bad(`'related' filters must be an array of [field, operator, value]`)
-  return {
-    table: v.table,
-    via: v.via as string | undefined,
-    column: v.column as string | undefined,
-    parentfield: v.parentfield as string | undefined,
-    filters: v.filters as Filter[] | undefined,
-  }
-}
-
 const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
 // PERM-006: the columns a caller may name in select/filter/order/group.

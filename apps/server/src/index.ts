@@ -16,10 +16,10 @@ import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
 import { hasMandatoryRowAccess, mandatoryReferencesWhere } from './mandatory-access'
 import { loadControllers } from './controllers'
-import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
+import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, renameAccessToken, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
 import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
-import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
+import { createServiceAccount, listServiceAccounts, renameServiceAccount, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
@@ -1465,6 +1465,15 @@ app.get('/api/access_tokens', async (c) => {
   return c.json({ tokens: await listAccessTokens(all ? undefined : who(c)) })
 })
 
+app.patch('/api/access_tokens/:id', async (c) => {
+  assertCanChangeAccess(c.get('user'))
+  const token = await getAccessToken(c.req.param('id'))
+  if (token.owner !== who(c)) await assertSystemManager(who(c))
+  const body = await c.req.json().catch(() => ({})) as { label?: unknown }
+  if (typeof body?.label !== 'string') throw new AppError('ValidationError', 'Expected { label }')
+  return c.json(await renameAccessToken(token.id, body.label, who(c)))
+})
+
 app.delete('/api/access_tokens/:id', async (c) => {
   const token = await getAccessToken(c.req.param('id'))
   if (token.owner !== who(c)) await assertSystemManager(who(c))
@@ -1487,11 +1496,14 @@ app.get('/api/service_accounts', async (c) => {
   return c.json({ service_accounts: await listServiceAccounts() })
 })
 
-app.patch('/api/service_accounts/:name', async (c) => {
+app.patch('/api/service_accounts/:id', async (c) => {
   await assertSystemManager(who(c))
-  const body = (await c.req.json().catch(() => ({}))) as { enabled?: boolean }
-  if (typeof body.enabled !== 'boolean') throw new AppError('ValidationError', 'Expected { enabled }')
-  return c.json(await setServiceAccountEnabled(c.req.param('name'), body.enabled, who(c)))
+  const body = (await c.req.json().catch(() => ({}))) as { enabled?: unknown; label?: unknown }
+  if (typeof body?.label === 'string' && body.enabled === undefined)
+    return c.json(await renameServiceAccount(c.req.param('id'), body.label, who(c)))
+  if (typeof body?.enabled === 'boolean' && body.label === undefined)
+    return c.json(await setServiceAccountEnabled(c.req.param('id'), body.enabled, who(c)))
+  throw new AppError('ValidationError', 'Expected either { label } or { enabled }')
 })
 
 // person-rename R2: a service account's roles change only here, never

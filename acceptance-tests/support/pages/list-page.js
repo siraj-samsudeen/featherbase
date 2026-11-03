@@ -33,12 +33,6 @@ class ListPage {
     }
   }
 
-  /** Rows arrive after the headers. Observe the promised data, not just the shell. */
-  async expectText(values) {
-    for (const value of values)
-      await this.page.getByTestId('list-view').getByText(value, { exact: true }).waitFor();
-  }
-
   /** Leaves the list for the Admin's home page. */
   async leave() {
     await this.page.goto('/featherbase/admin');
