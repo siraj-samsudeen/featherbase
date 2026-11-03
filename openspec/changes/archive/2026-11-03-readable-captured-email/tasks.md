@@ -11,5 +11,5 @@
 
 - [x] 3.1 Verify migration/effective metadata, unauthorized reads and system-written write refusals through HTTP.
 - [x] 3.2 Run acceptance, component/type checks and independent headless UI verification at 1280, including empty and unsafe/long-content states.
-- [ ] 3.3 Run strict OpenSpec validation, prepare PR and subscribe exact-head CI/comments; report evidence and remaining integration/review gates.
-- [ ] 3.4 Under owner defaults authorization, sync and archive on this branch after inspecting final media; keep ordinary hidden-logic review and owner merge gates explicit.
+- [x] 3.3 Run strict OpenSpec validation, prepare PR and subscribe exact-head CI/comments; report evidence and remaining integration/review gates.
+- [x] 3.4 Under owner defaults authorization, sync and archive on this branch after inspecting final media; keep ordinary hidden-logic review and owner merge gates explicit.
