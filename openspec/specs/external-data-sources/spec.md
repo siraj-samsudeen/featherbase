@@ -430,9 +430,9 @@ Then the user sees the shelf as "Top"
 
 ### Requirement: A connected table's list shows what a row is about
 
-Beside each row's ID, a connected table's list SHALL show its title and up
-to four more of its columns, in the source's order. It leaves out the columns
-that only record when a row was created or changed, and by whom.
+A connected table's list SHALL show its title and up to four more of its
+columns, in the source's order. It leaves out the columns that only record
+when a row was created or changed, and by whom.
 
 #### Scenario: The shelf list leaves out when each shelf was created
 
