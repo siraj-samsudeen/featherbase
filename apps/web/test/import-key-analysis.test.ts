@@ -40,8 +40,10 @@ test('#851 matching permission must hold in every import part', async ({ admin, 
     ref_table: 'Ika Zone', role: 'Ika Own Writer', can_write: true, own_rows_only: true,
   } })
   const user = await createUser({ roles: ['Ika Reader', 'Ika Own Writer'] })
-  await user.post('/api/table/Ika%20Zone:import', { rows: rows.slice(0, 500) })
-  await admin.post('/api/table/Ika%20Zone:import', { rows: rows.slice(500) })
+  // Keep the expensive restricted-user seed small. The last part is writable,
+  // so accepting its permission alone must not erase the first part's refusal.
+  await admin.post('/api/table/Ika%20Zone:import', { rows: rows.slice(0, 500) })
+  await user.post('/api/table/Ika%20Zone:import', { rows: rows.slice(500) })
   setSession(user.token!, { row_id: user.user!, email: null, full_name: null })
   expect(await analyzeImportKeys({ table: 'Ika Zone', columns: ['code'], rows: rows.map((values, sourceIndex) => ({ values, sourceIndex })) }))
     .toEqual([{ column: 'code', matched: 520, complete: true, can_match: false }])
