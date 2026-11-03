@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import type { CommandDestinations } from 'shared'
 import { initialLabRows, labTables, labScenarios, type LabScenario } from './src/gallery/fixtures'
 
 /** Deliberately independent of the normal config: it must contain NO live API proxy. */
@@ -60,6 +61,11 @@ function syntheticApi(): Plugin {
           const reads: Record<string, unknown> = {
             '/api/brand': { app_name: 'Featherbase UI Lab', opens: 'admin' }, '/api/whoami': who,
             '/api/runtime_app_versions': [], '/api/app_catalog': [], '/api/home_pages': { pages: [] },
+            '/api/command_destinations': {
+              tables: labTables.map((table) => ({ row_id: table.name, label: table.name, module: table.module,
+                system: false, system_written: false, kind: 'table' as const, can_create: true })),
+              pages: [],
+            } satisfies CommandDestinations,
             '/api/events/summary': { entries: [] }, '/api/unread_count': { count: 0 }, '/api/people/waiting_for_access/count': { count: 0 },
             '/api/instance-health': { checks: [], failing: 0, setup_needed: 0, worst: null, setup: { administrator_ready: true, installed_apps: 0, environment: 'prototype', configuration: 'ui' } },
             '/api/settings': { app_name: 'UI Lab', currency: 'INR', currency_precision: 2, float_precision: 2, date_format: 'dd-mon-yyyy' },
