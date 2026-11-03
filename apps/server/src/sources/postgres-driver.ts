@@ -84,6 +84,14 @@ function buildWhere(filters: SourceFilter[], startAt = 1): { text: string; value
   for (const f of filters) {
     const col = quoteIdent(f.column)
     switch (f.op) {
+      case 'related': {
+        const { binding, filters: targetFilters } = f.value
+        const target = buildWhere(targetFilters, n)
+        parts.push(`${col} in (select ${quoteIdent(binding.pk)} from ${relation(binding)} where ${target.text})`)
+        values.push(...target.values)
+        n += target.values.length
+        break
+      }
       case '=':
         parts.push(`${col} = $${n++}`)
         values.push(f.value)
@@ -421,7 +429,9 @@ function mapPgType(dataType: string, maxLength: number | null): string {
       return 'Data'
     case 'character varying':
     case 'character':
-      return maxLength != null && maxLength <= 140 ? 'Data' : 'Text'
+      // A declared length is one-line text however long the limit (#795): a
+      // varchar(255) name is still a name. Only unbounded text is long text.
+      return maxLength != null ? 'Data' : 'Text'
     default:
       return 'Text'
   }

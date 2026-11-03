@@ -11,8 +11,10 @@ import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type Column
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
-import { useIsSystemManager } from '../lib/session'
 import { Attachments } from './Attachments'
+import {
+  ArrangeBar, BookkeepingLine, FieldGroupView, UnlinkedNote, ValueField, arrangeFields, unlinkedSourceTable, useFormArrangement,
+} from './FormArrangement'
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
 import { Comments } from './Comments'
@@ -24,6 +26,7 @@ import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
 import { usePeek } from './Peek'
 import { GlossaryHelp } from './GlossaryHelp'
+import { ReadingPresentation } from './ReadingPresentation'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from './ui'
 
@@ -68,9 +71,16 @@ export function FormView({
 }) {
   const isNew = name === 'new'
   const meta = useMeta(table)
+  const describedTable = useMeta(name, table === 'Table' && !isNew)
+  const storage = table === 'Table' && !isNew ? describedTable.data?.storage_identity : null
+  const [storageCopy, setStorageCopy] = useState('')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { t } = useI18n()
+  const formSettings = useSettings()
+  // #795: how this person arranges this Table's rows. A Table its builder
+  // laid out in sections keeps that order until they pick another.
+  const arrangement = useFormArrangement(table, Boolean(meta.data?.columns.some((c) => c.column_type === 'Section Break')))
 
   const doc = useQuery({
     queryKey: ['doc', table, name],
@@ -311,7 +321,7 @@ export function FormView({
     fireHandler('before_save', valuesRef.current)
     // UI-009/META-013: the client validates with the SAME metadata-generated
     // zod schema the server uses — invalid forms never reach the network.
-    const schema = tableSchemaToZod(m.columns)
+    const schema = tableSchemaToZod(m.columns, { sourceLimitsLength: Boolean(m.data_source) })
     const json = parseTypedJson(m.columns, valuesRef.current, typedJson.current)
     const result = schema.safeParse(json.values)
     const fieldErrors = { ...(result.success ? {} : zodFieldErrors(result.error)), ...json.errors }
@@ -375,6 +385,35 @@ export function FormView({
     else if (!f.hidden) sections[sections.length - 1].push(f)
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
+
+  // One field: on a row the user can only read, its value shown by type
+  // (#795); otherwise the control that edits it.
+  const control = (f: ColumnDef) =>
+    rowsReadOnly && !isNew ? (
+      <ValueField key={f.column_name} field={f} value={values[f.column_name]} meta={m} settings={formSettings} columns={arrangement.columns} />
+    ) : (
+      <FieldControl
+        key={f.column_name}
+        field={
+          rowsReadOnly || (submittable && status !== 'draft') || managedFields.has(f.column_name)
+            ? { ...f, read_only: true }
+            : f
+        }
+        managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
+        value={values[f.column_name]}
+        error={errors[f.column_name]}
+        onChange={(v) => {
+          setField(f.column_name, v)
+          if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
+        }}
+        meta={m}
+        values={values}
+        setField={setField}
+      />
+    )
+
+  const reading = !isNew && rowsReadOnly ? m.reading_presentation : null
+  const RawDetails = reading ? 'details' : 'div'
 
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
@@ -552,6 +591,34 @@ export function FormView({
           )}
         </div>
       </div>
+      {storage && (
+        <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>
+          <span className="font-medium">Storage</span>
+          <dl className="flex flex-wrap gap-x-6 gap-y-2">
+            {Object.entries({
+              ...(storage.data_source ? { 'Data Source': storage.data_source } : {}),
+              Schema: storage.schema || '(none)', Relation: storage.relation, 'Row key': storage.row_key.join(', '),
+              ...(storage.discriminator ? { 'Table discriminator': storage.discriminator.table_name } : {}),
+            }).map(([label, value]) => (
+              <div key={label} className="flex flex-wrap items-baseline gap-2">
+                <dt className="text-ink-muted">{label}</dt>
+                <dd><code className="select-text break-all text-ink">{value}</code></dd>
+              </div>
+            ))}
+          </dl>
+          <button className={buttonClasses({ className: 'ml-auto' })} onClick={async () => {
+            try {
+              await navigator.clipboard.writeText([
+                ...(storage.data_source ? [`Data Source: ${storage.data_source}`] : []),
+                `Schema: ${storage.schema}`, `Relation: ${storage.relation}`, `Row key: ${storage.row_key.join(', ')}`,
+                ...(storage.discriminator ? [`table_name: ${storage.discriminator.table_name}`] : []),
+              ].join('\n'))
+              setStorageCopy('Copied')
+            } catch { setStorageCopy('Copy unavailable. Select the storage text to copy it.') }
+          }}>Copy storage</button>
+          <span role="status" className="text-xs text-ink-muted">{storageCopy}</span>
+        </section>
+      )}
       {/* TLC-J2.2 / TLC-R4: a real dialog that NAMES the row. Deliberately
           the same shape as the table-level confirmation in ListView (DEL-J1.2)
           — labelled, aria-modal, Escape-dismissable, destructive action on the
@@ -655,40 +722,51 @@ export function FormView({
           </button>
         </div>
       )}
+      {reading && <ReadingPresentation presentation={reading} meta={m} values={values} />}
+      <RawDetails data-testid={reading ? 'raw-details' : undefined}>
+      {reading && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t('Raw details')}</summary>}
       <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="min-w-0 max-w-3xl flex-1">
-          {sections.map((fields, si) => (
-            <div
-              key={si}
-              data-testid={`form-section-${si}`}
-              className={cardClasses('mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2')}
-            >
-              {fields.map((f) =>
-                f.column_type === 'Column Break' ? (
-                  <div key={f.column_name} className="hidden md:block" />
+        <div className={`min-w-0 flex-1 ${arrangement.columns === 1 && !isNew ? 'max-w-2xl' : 'max-w-3xl'}`}>
+          {!isNew && (
+            <ArrangeBar mode={arrangement.mode} columns={arrangement.columns}
+              onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
+          )}
+          {!isNew && !arrangement.ready ? (
+            <p className="text-sm text-ink-subtle">Loading…</p>
+          ) : !isNew && arrangement.mode !== 'source' ? (() => {
+            const { groups, bookkeeping } = arrangeFields(
+              sections.flat(), baseline as Row, m, arrangement.mode, rowsReadOnly)
+            return (
+              <div className={cardClasses('mb-4 p-5')} data-testid="form-arranged" data-arrangement={arrangement.mode}>
+                {groups.map((g) => (
+                  <FieldGroupView key={`${arrangement.mode}-${g.key}`} group={g} columns={arrangement.columns}>{control}</FieldGroupView>
+                ))}
+                {rowsReadOnly ? (
+                  <BookkeepingLine fields={bookkeeping} values={values} settings={formSettings} />
                 ) : (
-                  <FieldControl
-                    key={f.column_name}
-                    field={
-                      rowsReadOnly || (submittable && status !== 'draft') || managedFields.has(f.column_name)
-                        ? { ...f, read_only: true }
-                        : f
-                    }
-                    managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
-                    value={values[f.column_name]}
-                    error={errors[f.column_name]}
-                    onChange={(v) => {
-                      setField(f.column_name, v)
-                      if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
-                    }}
-                    meta={m}
-                    values={values}
-                    setField={setField}
-                  />
-                ),
-              )}
+                  <FieldGroupView group={{ key: 'bookkeeping', fields: bookkeeping }} columns={arrangement.columns}>{control}</FieldGroupView>
+                )}
+              </div>
+            )
+          })() : (
+            <div data-arrangement={isNew ? undefined : 'source'}>
+              {sections.map((fields, si) => (
+                <div
+                  key={si}
+                  data-testid={`form-section-${si}`}
+                  className={cardClasses(`mb-4 grid grid-cols-1 gap-4 p-5 ${arrangement.columns === 2 || isNew ? 'md:grid-cols-2' : ''}`)}
+                >
+                  {fields.map((f) =>
+                    f.column_type === 'Column Break' ? (
+                      arrangement.columns === 2 || isNew ? <div key={f.column_name} className="hidden md:block" /> : null
+                    ) : (
+                      control(f)
+                    ),
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
         {!isNew && (
           <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
@@ -706,6 +784,7 @@ export function FormView({
         )}
       </div>
       {!isNew && m.kind === 'table' && <RelatedTabs table={table} name={name} />}
+      </RawDetails>
     </div>
   )
 }
@@ -721,14 +800,7 @@ const ROW_ID_FIELD = {
   description: 'Rows in this table take the ID you type here. It must not already be in use.',
 } as ColumnDef
 
-// The source table a column points at when no connected table binds it yet:
-// the foreign key was recorded when the table was connected, and the column
-// becomes a link as soon as its target is connected (#796).
-export function unlinkedSourceTable(field: ColumnDef, meta: TableMeta): { table: string; key: string } | null {
-  if (!meta.data_source || !field.source_fk_table || field.column_type === 'Reference') return null
-  const schema = field.source_fk_schema ?? ''
-  return { table: field.source_fk_table, key: schema ? `${schema}.${field.source_fk_table}` : field.source_fk_table }
-}
+export { unlinkedSourceTable }
 
 function FieldControl({
   field,
@@ -793,27 +865,9 @@ function FieldControl({
   ) : null
   // #796: a column whose source foreign key has no connected table to link
   // to says so, and offers a System Manager the table to connect.
-  const canConnect = useIsSystemManager()
   const unlinkedTarget = unlinkedSourceTable(field, meta)
   const unlinkedId = `${controlId}-unlinked`
-  const unlinkedNote = unlinkedTarget ? (
-    <p id={unlinkedId} className="mt-1 text-xs text-ink-subtle" data-testid={`unlinked-${field.column_name}`}>
-      The {unlinkedTarget.table} table is not connected yet, so this isn’t a link.
-      {canConnect && (
-        <>
-          {' '}
-          <RouterLink
-            to="/featherbase/admin/source/$name"
-            params={{ name: meta.data_source! }}
-            search={{ connect: unlinkedTarget.key }}
-            className="text-action hover:underline"
-          >
-            Connect the {unlinkedTarget.table} table
-          </RouterLink>
-        </>
-      )}
-    </p>
-  ) : null
+  const unlinkedNote = <UnlinkedNote id={unlinkedId} field={field} meta={meta} />
   const describedBy = [hintText ? hintId : null, managedHint ? managedId : null, unlinkedTarget ? unlinkedId : null]
     .filter(Boolean)
     .join(' ')
@@ -829,7 +883,7 @@ function FieldControl({
 
   const wide = ['Text', 'Long Text', 'JSON', 'Sub-table'].includes(field.column_type)
   const wrap = (control: React.ReactNode) => (
-    <div className={`min-w-0 ${wide ? 'md:col-span-2' : ''}`}>
+    <div className={`min-w-0 ${wide ? 'md:col-span-2' : ''}`} data-form-field={field.column_name} data-label={field.label ?? field.column_name}>
       {label}
       {control}
       {hint}
@@ -1116,21 +1170,31 @@ function ChildGrid({
 
 
 // UI-006: debounced autocomplete over the permission-filtered list API.
-function LinkControl({
+export function LinkControl({
   field,
   value,
   onChange,
   className,
   common,
+  forFilter = false,
 }: {
   field: ColumnDef
   value: unknown
   onChange: (value: unknown) => void
   className: string
   common: Record<string, unknown>
+  /** A list filter: it only picks existing rows, never creates one. */
+  forFilter?: boolean
 }) {
   const target = field.reference_table ?? ''
-  const picker = pickerFor(target)
+  // #793: a Table with no picker of its own is searched and shown by its
+  // title column, never by its row id.
+  const targetMeta = useMeta(target)
+  const own = pickerFor(target)
+  const title = targetMeta.data?.title_column
+  const picker = own.labelField === null && own.searchField === 'row_id' && !own.peopleSearch && title
+    ? { ...own, searchField: title, labelField: title }
+    : own
   const [query, setQuery] = useState<string | null>(null) // null = not searching
   const [open, setOpen] = useState(false)
   const [options, setOptions] = useState<{ value: string; label: string }[]>([])
@@ -1145,7 +1209,8 @@ function LinkControl({
   const navigate = useNavigate()
   // #100 pattern 1: a set reference is a place you can GO — ◎ peeks at the
   // row in a slide-over, ↗ navigates to its form. Hidden while searching.
-  const hasValue = Boolean(value) && query === null
+  // A filter has its own clear control and stays a filter: no peek or open.
+  const hasValue = Boolean(value) && query === null && !forFilter
 
   function search(q: string) {
     clearTimeout(timer.current)
@@ -1184,10 +1249,14 @@ function LinkControl({
         type="text"
         role="combobox"
         aria-expanded={open}
-        placeholder={`Reference: ${target}`}
+        placeholder={forFilter ? `Filter ${field.label ?? field.column_name}…` : `Reference: ${target}`}
         value={shown}
         onFocus={() => search(query ?? (picker.labelField ? '' : shown))}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => setTimeout(() => {
+          setOpen(false)
+          // A filter shows only what it filters by: unpicked typing is dropped.
+          if (forFilter) setQuery(null)
+        }, 150)}
         onChange={(e) => {
           setQuery(e.target.value)
           search(e.target.value)
@@ -1254,15 +1323,17 @@ function LinkControl({
           {!options.length && (
             <p className="px-3 py-1.5 text-sm text-ink-subtle">No matches</p>
           )}
-          <RouterLink
-            to="/featherbase/admin/$table/$name"
-            params={{ table: target, name: 'new' }}
-            search={{ prefill: undefined }}
-            className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
-            data-testid="link-create-new"
-          >
-            + Create new {target}
-          </RouterLink>
+          {!forFilter && (
+            <RouterLink
+              to="/featherbase/admin/$table/$name"
+              params={{ table: target, name: 'new' }}
+              search={{ prefill: undefined }}
+              className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
+              data-testid="link-create-new"
+            >
+              + Create new {target}
+            </RouterLink>
+          )}
         </div>
       )}
     </div>

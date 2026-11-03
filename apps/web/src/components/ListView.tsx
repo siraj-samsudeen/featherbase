@@ -1,12 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { choiceLabel, rowDisplayTitle } from 'shared'
+import { choiceLabel, parseFilters, rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
+import { LinkControl } from './FormView'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
-import { dataColumns, defaultColumnNames, isShown, listFlagsFromView, switchColumn, viewColumns, type ColumnArrangement, type ListColumn } from '../lib/list-view-columns'
+import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, switchColumn, titleListColumn, viewColumns, type ColumnArrangement, type ListColumn } from '../lib/list-view-columns'
 import { useI18n } from '../lib/i18n'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
@@ -256,9 +257,11 @@ export function ListView({
     caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source,
   )
   // The menu (#738): the Table's list columns first, then every other column
-  // the person may read; Row ID is always on.
+  // the person may read; the column the list leads with (its title, else
+  // Row ID, #792) is always on.
   const listDefaults = meta.data ? defaultColumnNames(meta.data) : new Set<string>()
-  const readableColumns = meta.data ? dataColumns(meta.data) : []
+  const leadingTitle = meta.data ? titleListColumn(meta.data) : undefined
+  const readableColumns = (meta.data ? dataColumns(meta.data) : []).filter((c) => c !== leadingTitle)
   const inListChoices = readableColumns.filter((c) => listDefaults.has(c.column_name))
   const otherChoices = readableColumns.filter((c) => !listDefaults.has(c.column_name))
   // A bound table only has updated_at when the source table has a modified
@@ -284,7 +287,7 @@ export function ListView({
     queryFn: () =>
       listResource(table, {
         filters,
-        fields: columns.map((c) => c.column_name),
+        fields: listFields(columns),
         order_by: orderBy,
         limit_start: start,
         limit_page_length: PAGE,
@@ -543,10 +546,10 @@ export function ListView({
                 style={colPickerMax ? { maxHeight: colPickerMax } : undefined}
                 data-testid="list-columns-popup"
               >
-                {/* Row ID names each row, so it is always on. */}
+                {/* The leading column names each row, so it is always on. */}
                 <label className={touchRowClasses(`flex items-center gap-2 rounded px-2 py-1 text-sm text-ink-muted ${PHONE_ROW}`)}>
-                  <input type="checkbox" checked disabled data-testid="list-col-toggle-row_id" />
-                  Row ID
+                  <input type="checkbox" checked disabled data-testid={`list-col-toggle-${leadingTitle?.column_name ?? 'row_id'}`} />
+                  {leadingTitle ? (leadingTitle.label ?? leadingTitle.column_name) : 'Row ID'}
                 </label>
                 {inListChoices.map(columnChoice)}
                 {otherChoices.length > 0 && (
@@ -839,7 +842,7 @@ export function ListView({
         </div>
       )}
       {onFiltersChange && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
-      {onFiltersChange && <RecentStrip table={table} onApply={onFiltersChange} />}
+      {onFiltersChange && <RecentStrip table={table} meta={meta.data} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
         <>
           <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
@@ -1158,6 +1161,12 @@ function ListCell({
         ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && row[col.column_name] ? (
           // A title column that names a person reads as their name, never the opaque id.
           <PrincipalName id={String(row[col.column_name])} />
+        ) : col.column_type === 'Reference' && col.reference_table && !isBlank(row[col.column_name]) ? (
+          // A title that links to another row reads as that row's title.
+          <RowTitle table={col.reference_table} rowId={String(row[col.column_name])} />
+        ) : col.column_name !== 'row_id' && isBlank(row[col.column_name]) ? (
+          // #792: a row with a blank title is led by its id, never a blank.
+          String(row.row_id)
         ) : (
           col.column_type === 'Choice' && row[col.column_name] != null
             ? choiceLabel(String(row[col.column_name]), col.choice_labels, t)
@@ -1176,12 +1185,25 @@ function ListCell({
         <Indicator value={String(value)} label={choiceLabel(String(value), col.choice_labels, t)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
         <PrincipalName id={String(value)} />
+      ) : col.column_type === 'Reference' && col.reference_table && !isBlank(value) ? (
+        // #792: a link reads as the linked row's title and opens that row.
+        <Link
+          to="/featherbase/admin/$table/$name"
+          search={{ prefill: undefined }}
+          params={{ table: col.reference_table, name: String(value) }}
+          onClick={(e) => e.stopPropagation()}
+          className="text-action hover:underline"
+        >
+          <RowTitle table={col.reference_table} rowId={String(value)} />
+        </Link>
       ) : (
         cell(value, col.column_type, settings)
       )}
     </span>
   )
 }
+
+const isBlank = (v: unknown) => v == null || String(v).trim() === ''
 
 // usable-on-any-device "Lists fit a phone": the same rows as cards. The first
 // column is the card's title and link, the first Choice its status, and the
@@ -1483,7 +1505,35 @@ function StandardFilters({
   return (
     <div className="mb-3 flex flex-wrap items-end gap-2" data-testid="standard-filters">
       {columns.map((f) =>
-        f.column_type === 'Choice' ? (
+        f.column_type === 'Reference' && f.reference_table ? (
+          // #793: a link filters by picking a row by its name, not by typing its id.
+          <label key={f.column_name} className="flex flex-col gap-0.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+              {f.label ?? f.column_name}
+            </span>
+            <span className="flex items-center gap-1">
+              <LinkControl
+                field={f}
+                value={current(f.column_name, '=')}
+                onChange={(v) => apply(f.column_name, '=', String(v ?? ''))}
+                className={inputClasses('max-w-[10rem]')}
+                common={{ 'data-testid': `std-filter-${f.column_name}` }}
+                forFilter
+              />
+              {current(f.column_name, '=') && (
+                <button
+                  type="button"
+                  onClick={() => apply(f.column_name, '=', '')}
+                  aria-label={`Clear the ${f.label ?? f.column_name} filter`}
+                  data-testid={`std-filter-clear-${f.column_name}`}
+                  className="px-1 text-ink-subtle hover:text-action"
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          </label>
+        ) : f.column_type === 'Choice' ? (
           <label key={f.column_name} className="flex flex-col gap-0.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
               {f.label ?? f.column_name}
@@ -1543,6 +1593,26 @@ export function filterValueLabel(op: string, value: unknown): string {
       ? `${value.slice(0, 3).map(String).join(', ')} +${value.length - 3}`
       : value.map(String).join(', ')
   return String(value)
+}
+
+/** One filter as a person reads it (#792): its column as the list's heading
+ *  names it, and a link compared with one row reads as that row's title. */
+export function FilterWords({ meta, filter }: { meta: import('../lib/meta').TableMeta | undefined; filter: Filter }) {
+  const { t } = useI18n()
+  const [column, op, value] = filter
+  const col = meta?.columns.find((c) => c.column_name === column)
+  const label = column === 'row_id' ? 'Row ID' : t(col?.label ?? column)
+  const linked =
+    col?.column_type === 'Reference' && col.reference_table && (op === '=' || op === '!=') &&
+    (typeof value === 'string' || typeof value === 'number') && String(value) !== ''
+  return (
+    <>
+      {label} {op}{' '}
+      {linked ? <RowTitle table={col.reference_table!} rowId={String(value)} />
+        : (op === '=' || op === '!=') && col?.column_type === 'Choice' ? choiceLabel(String(value), col.choice_labels, t)
+        : filterValueLabel(op, value)}
+    </>
+  )
 }
 
 export function FilterBar({
@@ -1636,28 +1706,22 @@ export function FilterBar({
       </div>
       {filters.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2" data-testid="filter-chips">
-          {filters.map((f, i) => {
-            const column = meta.columns.find((c) => c.column_name === f[0])
-            return (
-              <span
-                key={i}
-                className={pillClasses('bg-subtle text-ink gap-1 border border-border')}
-                data-testid="filter-chip"
+          {filters.map((f, i) => (
+            <span
+              key={i}
+              className={pillClasses('bg-subtle text-ink gap-1 border border-border')}
+              data-testid="filter-chip"
+            >
+              <FilterWords meta={meta} filter={f} />
+              <button
+                aria-label="Remove filter"
+                onClick={() => onChange(filters.filter((_, j) => j !== i))}
+                className="text-ink-subtle hover:text-ink"
               >
-                {t(column?.label ?? f[0])} {f[1]}{' '}
-                {['=', '!='].includes(f[1]) && column?.column_type === 'Choice'
-                  ? choiceLabel(String(f[2]), column.choice_labels, t)
-                  : filterValueLabel(f[1], f[2])}
-                <button
-                  aria-label="Remove filter"
-                  onClick={() => onChange(filters.filter((_, j) => j !== i))}
-                  className="text-ink-subtle hover:text-ink"
-                >
-                  ×
-                </button>
-              </span>
-            )
-          })}
+                ×
+              </button>
+            </span>
+          ))}
         </div>
       )}
     </div>
@@ -1671,25 +1735,25 @@ export function FilterBar({
 // live in the URL, so this is just replaying a remembered list state).
 function RecentStrip({
   table,
+  meta,
   onApply,
 }: {
   table: string
+  /** Names each filter's column; until it loads a filter reads as stored. */
+  meta: import('../lib/meta').TableMeta | undefined
   onApply: (filters: Filter[]) => void
 }) {
   const { t } = useI18n()
-  const meta = useMeta(table)
   const user = getSessionUser()
   const entries = user ? recentActions(user.row_id, 60) : []
   const rows = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${table}/`)).slice(0, 4)
   const views = entries
     .map((e) => {
       if (e.kind !== 'list' || !e.key.startsWith(`list:${table}?`)) return null
-      try {
-        const parsed = JSON.parse(e.key.slice(`list:${table}?`.length)) as Filter[]
-        return Array.isArray(parsed) && parsed.length > 0 ? { entry: e, parsed } : null
-      } catch {
-        return null
-      }
+      // A remembered address is user input: keep only well-formed filters (#87),
+      // so one typed by hand can never blank the list.
+      const parsed = parseFilters(e.key.slice(`list:${table}?`.length)) as Filter[]
+      return parsed.length > 0 ? { entry: e, parsed } : null
     })
     .filter((v): v is { entry: RecentEntry; parsed: Filter[] } => v !== null)
     .slice(0, 3)
@@ -1717,10 +1781,15 @@ function RecentStrip({
           type="button"
           onClick={() => onApply(parsed)}
           data-testid="recent-strip-view"
-          title={describeFilters(JSON.stringify(parsed), meta.data?.columns, t)}
+          title={describeFilters(JSON.stringify(parsed), meta?.columns, t)}
           className={touchRowClasses('max-w-72 truncate rounded-full bg-action-tint px-2.5 py-0.5 text-xs font-medium text-action hover:opacity-80')}
         >
-          {describeFilters(JSON.stringify(parsed), meta.data?.columns, t)}
+          {parsed.map((f, i) => (
+            <Fragment key={i}>
+              {i > 0 && ' · '}
+              <FilterWords meta={meta} filter={f} />
+            </Fragment>
+          ))}
         </button>
       ))}
     </div>
