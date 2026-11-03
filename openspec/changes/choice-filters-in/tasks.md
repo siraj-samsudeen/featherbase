@@ -34,11 +34,11 @@ Same test file.
 
 Same test file.
 
-- [ ] 4.1 S14: `Ticking every floor at once, then unticking Ground, shows every row not on Ground`
-- [ ] 4.2 Test: `Clear unticks every choice and removes the filter`
-- [ ] 4.3 S15: `Searching Section's 12 choices for "rack", then ticking every one found, ticks only the rack sections`
-- [ ] 4.4 Test: `A list of 8 choices has no search box, and a list of 9 has one`
-- [ ] 4.5 Test: `Ticks hidden by a search stay on`
+- [x] 4.1 S14: `Ticking every floor at once, then unticking Ground, shows every row not on Ground`
+- [x] 4.2 Test: `Clear unticks every choice and removes the filter`
+- [x] 4.3 S15: `Searching Section's 12 choices for "rack", then ticking every one found, ticks only the rack sections`
+- [x] 4.4 Test: `A list of 8 choices has no search box, and a list of 9 has one`
+- [x] 4.5 Test: `Ticks hidden by a search stay on`
 
 ## 5. Tests from #742 that change
 

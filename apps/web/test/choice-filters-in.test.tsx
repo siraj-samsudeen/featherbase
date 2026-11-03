@@ -299,3 +299,18 @@ test('A list of 8 choices has no search box, and a list of 9 has one', async ({ 
   expect(within(openBox('eight')).queryByRole('searchbox')).not.toBeInTheDocument()
   expect(within(openBox('nine')).getByRole('searchbox', { name: 'Search Nine choices' })).toBeInTheDocument()
 })
+
+test('Ticks hidden by a search stay on', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  const list = openBox('section')
+  tick(list, 'Sarees')
+  await waitFor(() => expect(codes()).toEqual(['R1']))
+  const search = within(list).getByRole('searchbox', { name: 'Search Section choices' })
+  fireEvent.change(search, { target: { value: 'rack' } })
+  expect(within(list).queryByRole('checkbox', { name: 'Sarees' })).not.toBeInTheDocument()
+  tick(list, 'Shoe Rack')
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R2']))
+  fireEvent.change(search, { target: { value: '' } })
+  expect(ticked(list)).toEqual(['Sarees', 'Shoe Rack'])
+})
