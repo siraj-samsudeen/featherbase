@@ -23,3 +23,10 @@
 - [ ] 4.3 Run the required ordinary server/permission review, triage findings, and verify fixes, with at most three rounds. No adversarial review without consent.
 - [x] 4.4 Run `pnpm exec openspec validate honest-file-reimport --type change --strict`, publish the issue branch/PR and subscribe to exact-head CI plus PR comments. Report evidence and any failed gates to manager770; do not merge/deploy.
 - [ ] 4.5 After required approval to finalize, sync/archive on this branch, rerun relevant acceptance/spec checks and exact-head CI, and hand off the final PR state. Do not claim the owner watched media without evidence.
+
+## 5. Ordinary-review round 1 repair
+
+- [x] 5.1 Pin independent readable-overlap and usable-key permission facts through public HTTP, including read/create-no-write, read-all/write-own and write-all/read-own controls; record expected red failures.
+- [ ] 5.2 Add the executable read-only overlap acceptance example and actual plan-choice consent invalidation regressions; exercise the restricted HTTP boundary without broadening the System Manager-only wizard route.
+- [ ] 5.3 Separate readable coverage from `can_match` eligibility on the server and through chunk aggregation; hide unusable matching-key actions while preserving full-overlap append warnings and analysis no-side-effects.
+- [ ] 5.4 Rerun acceptance, relevant server/web tests and guards, publish the corrected pin and exact-head CI subscription, and send the bounded runtime delta for ordinary review round 2. Keep L3 trade-offs in the PR body only.

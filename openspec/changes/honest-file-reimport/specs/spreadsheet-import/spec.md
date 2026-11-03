@@ -55,6 +55,14 @@ When the user explicitly acknowledges the append
 Then the zones contain 122 rows
 ```
 
+#### Scenario: Readable overlap does not require permission to change rows
+
+```gherkin
+Given the user can read and append the zones but cannot change existing zones
+When the user checks overlap before appending the identical zones file
+Then all 61 rows are reported as overlapping without an available matching key
+```
+
 ## MODIFIED Requirements
 
 ### Requirement: The matching column is remembered
