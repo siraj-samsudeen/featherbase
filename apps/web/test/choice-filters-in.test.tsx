@@ -107,3 +107,16 @@ test('Add stays off until at least one choice is ticked', async ({ admin }) => {
   tick(list, 'Ground')
   expect(screen.getByTestId('filter-add')).toBeEnabled()
 })
+
+test('Yes/No columns keep = and !=, and text columns keep every operator', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'active' } })
+  expect(options('filter-op')).toEqual(['=', '!='])
+  expect(screen.getByTestId('filter-value').tagName).toBe('SELECT')
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'floor' } })
+  fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'owner_name' } })
+  expect(options('filter-op')).toEqual(['=', '!=', 'like', '>', '<', '>=', '<='])
+  expect(screen.getByTestId('filter-op')).toHaveValue('=')
+  expect(screen.getByTestId('filter-value').tagName).toBe('INPUT')
+})

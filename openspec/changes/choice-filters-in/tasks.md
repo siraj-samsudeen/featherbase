@@ -5,11 +5,11 @@ Each test below is hand-written and built one at a time: red, green and refactor
 
 Test file: `apps/web/test/choice-filters-in.test.tsx`, against the real in-process server.
 
-- [ ] 1.1 S2: `Adding a filter on Status offers its choices to tick, and only in`
-- [ ] 1.2 S7: `Ticking Ground and First Floor shows both floors' rows, with one chip naming both`
-- [ ] 1.3 S3: `Floor in Ground and First Floor plus Status Open shows only Open rows on those floors`
-- [ ] 1.4 Test: `Add stays off until at least one choice is ticked`
-- [ ] 1.5 Test: `Yes/No columns keep = and !=, and text columns keep every operator`
+- [x] 1.1 S2: `Adding a filter on Status offers its choices to tick, and only in`
+- [x] 1.2 S7: `Ticking Ground and First Floor shows both floors' rows, with one chip naming both`
+- [x] 1.3 S3: `Floor in Ground and First Floor plus Status Open shows only Open rows on those floors`
+- [x] 1.4 Test: `Add stays off until at least one choice is ticked`
+- [x] 1.5 Test: `Yes/No columns keep = and !=, and text columns keep every operator`
 
 ## 2. One filter per Choice column
 
