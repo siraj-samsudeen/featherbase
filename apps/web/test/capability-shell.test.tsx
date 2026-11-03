@@ -187,6 +187,14 @@ test('a Table list offers Columns, Merge and Import only to a System Manager, an
   expect(screen.getByTestId('open-merge')).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'List actions' }))
   expect(screen.getByTestId('open-import')).toBeInTheDocument()
+  // Escape from a menu item dismisses the disclosure and returns focus to
+  // its trigger, so keyboard users can continue along the toolbar.
+  screen.getByTestId('open-import').focus()
+  await userEvent.keyboard('{Escape}')
+  const actions = screen.getByRole('button', { name: 'List actions' })
+  expect(actions).toHaveAttribute('aria-expanded', 'false')
+  expect(actions).toHaveFocus()
+  expect(screen.queryByTestId('open-import')).not.toBeInTheDocument()
 })
 
 // (6) Manage-only routes bounce everyone else to the admin home.
