@@ -157,6 +157,8 @@ function likeToRegExp(pattern: string): RegExp {
 function matches(row: SourceRow, f: SourceFilter): boolean {
   const v = row[f.column]
   switch (f.op) {
+    case 'related':
+      throw new AppError('ValidationError', 'Related filters are not supported by this source engine')
     case '=':
       return cmp(v, f.value) === 0
     case '!=':

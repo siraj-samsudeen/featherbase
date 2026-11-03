@@ -1,4 +1,108 @@
-import { anonymousTest as test, adminAuth, loginAs, type APIRequestContext } from './fixtures'
+import { writeFile } from 'node:fs/promises'
+import { anonymousTest, expect, adminAuth, loginAs, type APIRequestContext } from './fixtures'
+import { ensureTable } from './fixtures-ui'
+
+// Bounded, test-only evidence for #774's unreproduced initial-Welcome failure.
+// Never record URLs with queries, arbitrary storage, auth data or response bodies.
+type SetupDiagnostic = {
+  event: string
+  pathname: string
+  homeEligible: boolean
+  offer?: '1' | 'absent' | 'other'
+  destination?: string
+  administratorReady?: boolean
+}
+
+const test = anonymousTest.extend<{ setupDiagnostics: void }>({
+  setupDiagnostics: [async ({ page }, use, testInfo) => {
+    const events: SetupDiagnostic[] = []
+    await page.exposeFunction('__captureSetupDiagnostic', (event: SetupDiagnostic) => {
+      if (events.length < 200) events.push(event)
+    })
+    await page.addInitScript(() => {
+      const w = window as unknown as {
+        __captureSetupDiagnostic: (event: SetupDiagnostic) => Promise<void>
+        __TSR_ROUTER__?: { navigate: (options: { to?: string }) => unknown }
+        __setupDiagnosticSnapshot?: () => Promise<void>
+      }
+      const safePath = (path: string) => [
+        '/featherbase/login', '/featherbase/admin', '/featherbase/admin/home/home',
+        '/featherbase/admin/home/system', '/featherbase/admin/home/$name',
+        '/featherbase/admin/setup', '/featherbase/admin/setup/people',
+      ].includes(path) ? path : '<other>'
+      const record = (event: string, extra: Partial<SetupDiagnostic> = {}) => w.__captureSetupDiagnostic({
+        event,
+        pathname: safePath(location.pathname),
+        // Home eligibility, NOT the hook's private initial-path/ref decision.
+        homeEligible: location.pathname === '/featherbase/admin' || location.pathname.startsWith('/featherbase/admin/home/'),
+        ...extra,
+      })
+      const offer = (value: string | null): SetupDiagnostic['offer'] => value === null ? 'absent' : value === '1' ? '1' : 'other'
+      const key = 'featherbase.offer-setup'
+      const get = Storage.prototype.getItem
+      const set = Storage.prototype.setItem
+      const remove = Storage.prototype.removeItem
+      Storage.prototype.getItem = function (name) {
+        const value = get.call(this, name)
+        if (this === sessionStorage && name === key) void record('offer-read', { offer: offer(value) })
+        return value
+      }
+      Storage.prototype.setItem = function (name, value) {
+        set.call(this, name, value)
+        if (this === sessionStorage && name === key) void record('offer-set', { offer: offer(value) })
+      }
+      Storage.prototype.removeItem = function (name) {
+        const previous = this === sessionStorage && name === key ? get.call(this, name) : null
+        remove.call(this, name)
+        if (this === sessionStorage && name === key) void record('offer-remove', { offer: offer(previous) })
+      }
+      // TanStack exposes this browser global itself. Observe its public navigate
+      // entry point without changing arguments, return values or navigation order.
+      let router: typeof w.__TSR_ROUTER__
+      Object.defineProperty(window, '__TSR_ROUTER__', {
+        configurable: true,
+        get: () => router,
+        set: (next: typeof router) => {
+          if (next && next !== router) {
+            const navigate = next.navigate
+            next.navigate = function (options) {
+              void record('navigation-intent', { destination: safePath(options.to ?? '') })
+              return navigate.call(this, options)
+            }
+          }
+          router = next
+        },
+      })
+      w.__setupDiagnosticSnapshot = () => record('failure-snapshot', { offer: offer(get.call(sessionStorage, key)) })
+      void record('document-start', { offer: offer(get.call(sessionStorage, key)) })
+    })
+    page.on('response', async (response) => {
+      if (new URL(response.url()).pathname !== '/api/instance-health' || response.status() !== 200) return
+      const data = await response.json().catch(() => null) as { setup?: { administrator_ready?: unknown } } | null
+      if (typeof data?.setup?.administrator_ready !== 'boolean') return
+      // Evaluate only whitelisted scalars; do not attach the response or URL.
+      await page.evaluate((administratorReady) => {
+        const w = window as unknown as { __captureSetupDiagnostic: (event: SetupDiagnostic) => Promise<void> }
+        return w.__captureSetupDiagnostic({
+          event: 'health-response',
+          pathname: ['/featherbase/admin', '/featherbase/admin/home/home', '/featherbase/admin/setup'].includes(location.pathname) ? location.pathname : '<other>',
+          homeEligible: location.pathname === '/featherbase/admin' || location.pathname.startsWith('/featherbase/admin/home/'),
+          administratorReady,
+        })
+      }, data.setup.administrator_ready).catch(() => { /* document closed/navigating */ })
+    })
+    await use()
+    if (testInfo.status !== testInfo.expectedStatus) {
+      await page.evaluate(() => (window as unknown as { __setupDiagnosticSnapshot?: () => Promise<void> }).__setupDiagnosticSnapshot?.()).catch(() => {})
+      // A standalone sanitized file can be read without opening an auth-bearing trace.
+      const path = testInfo.outputPath('setup-offer-diagnostic.json')
+      await writeFile(path, JSON.stringify(events, null, 2))
+      await testInfo.attach('setup-offer-diagnostic', {
+        path, contentType: 'application/json',
+      })
+    }
+  }, { auto: true }],
+})
 
 // First-run setup (#465, task 6.1; checklist items 18–25 on #465). On an
 // instance where no System Manager has an email address, the built-in
@@ -58,6 +162,66 @@ test.afterAll(async ({ request }) => {
   for (const id of await managersWithEmail(request)) if (!switchedOff.includes(id)) await patch(request, 'Person', id, { enabled: false })
   for (const id of pausedJobs) await patch(request, 'Scheduled Job', id, { enabled: true })
 })
+
+for (const width of [375, 1280]) {
+  test(`a pending offer preserves a full-document new-row deep link at ${width}px`, async ({ session, request }) => {
+    const table = 'Setup deep link'
+    const path = `/featherbase/admin/${encodeURIComponent(table)}/new`
+    await ensureTable(request, headers, {
+      name: table, id_pattern: 'hash',
+      columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
+    })
+    // A real operational fault gives us a visible barrier proving the delayed
+    // health result has rendered, rather than a timer or a negative assertion.
+    const method = `e2e_setup_missing_handler_${width}`
+    const made = await request.post('/api/save_row', {
+      headers, data: { table: 'Scheduled Job', row: { method, cadence: 'daily', enabled: true } },
+    })
+    expect(made.status()).toBe(201)
+    const job = (await made.json()).row_id as string
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    try {
+      // As in instance-health.spec.ts, wait for the worker's actual failure,
+      // including its attempts, before the optimistic-lock cleanup can run.
+      const filters = encodeURIComponent(JSON.stringify([['method', '=', method], ['job_status', '=', 'failed']]))
+      await expect.poll(async () => {
+        const response = await request.get(`/api/table/Background%20Job?filters=${filters}`, { headers })
+        expect(response.status()).toBe(200)
+        return (await response.json()).data.length
+      }, { timeout: 15_000 }).toBe(1)
+      await session.step('hold real readiness across sign-in and the new document', async ({ page }) => {
+        await page.setViewportSize({ width, height: 1000 })
+        await page.route('**/api/instance-health', async (route) => {
+          const response = await route.fetch()
+          await held
+          await route.fulfill({ response })
+        })
+        await loginAs(page)
+        await expect(page.getByTestId('session-user')).toBeVisible()
+        expect(await page.evaluate(() => sessionStorage.getItem('featherbase.offer-setup'))).toBe('1')
+        // Deliberate full-document deep link: this is the reload boundary that
+        // the original 375px form journey crossed, not SPA navigation.
+        await page.goto(path)
+        await expect(page.getByTestId('form-view')).toBeVisible()
+        release()
+      })
+      await session
+        .assertHas('[data-testid="health-banner"]')
+        .assertPath(path)
+        .assertHas('[data-testid="form-view"]')
+        .refuteHas('[data-testid="welcome-setup"]')
+      await session.step('the spent offer stays spent when returning home', async ({ page }) => {
+        expect(await page.evaluate(() => sessionStorage.getItem('featherbase.offer-setup'))).toBeNull()
+      })
+      await session.visit('/featherbase/admin/home/system').assertHas('[data-testid="health-banner"]')
+        .assertPath('/featherbase/admin/home/system').refuteHas('[data-testid="welcome-setup"]')
+    } finally {
+      release()
+      await patch(request, 'Scheduled Job', job, { enabled: false })
+    }
+  })
+}
 
 test('the welcome guide can be deferred and resumed without treating optional setup as a fault', async ({ session }) => {
   await session.step('sign in as Administrator', async ({ page }) => {
