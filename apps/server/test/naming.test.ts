@@ -264,14 +264,14 @@ describe('#858: a fixed prefix plus a column', () => {
     expect(await admin.get(at('PLANT-8159'))).toMatchObject({ plant_code: '8159', title: 'Chennai' })
   })
 
-  test('an import check flags a code already naming a plant, or repeated in the file', async ({ admin }) => {
+  test('an import check flags a code already naming a plant, repeated in the file, or missing', async ({ admin }) => {
     await plant(admin)
     await save(admin, PLANT, { plant_code: '8151', title: 'Chennai' })
     const report = await admin.post<{ failed: { index: number; message: string }[] }>(
       `/api/table/${encodeURIComponent(PLANT)}:import`,
-      { dry_run: true, rows: [{ plant_code: '8151' }, { plant_code: '8152' }, { plant_code: '8152' }] },
+      { dry_run: true, rows: [{ plant_code: '8151' }, { plant_code: '8152' }, { plant_code: '8152' }, { title: 'no code' }] },
     )
-    expect(report.failed.map((f) => f.index)).toEqual([0, 2])
+    expect(report.failed.map((f) => f.index)).toEqual([0, 2, 3])
     expect(report.failed[0].message).toContain('PLANT-8151')
   })
 

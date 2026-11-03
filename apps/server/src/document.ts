@@ -757,13 +757,21 @@ const ENGINE_MANAGED = new Set(['Table', 'Column'])
 // tier stripping do not run here, so a trigger can still reject at real
 // import time; the dry run catches everything schema-level.
 // The import action refuses source-bound Tables before it gets here.
-export async function checkRowForInsert(meta: TableMeta, values: RowValues): Promise<void> {
+// Returns the id the row will take, when known now, so the import check can
+// spot one repeated within the file.
+export async function checkRowForInsert(meta: TableMeta, values: RowValues): Promise<string> {
   validateValues(meta, applyDefaults(meta, pickFieldValues(meta, values)), 'insert')
   // #231: the real import inserts through saveDoc, so the dry run has to
   // apply the same required-children rule or it would pass rows the import
   // then refuses.
   assertRequiredChildren(meta, values, 'insert')
-  const rowId = String(values[ROW_KEY] ?? '').trim()
+  // #858: a column rule's id is known before the save; check it like a supplied one.
+  const naming = namingColumn(meta.id_pattern)
+  const rowId = naming ? (idFromColumn(naming.prefix, own(values, naming.column)) ?? '') : String(values[ROW_KEY] ?? '').trim()
+  if (naming && !rowId)
+    throw new AppError('ValidationError', `Naming field ${naming.column} is required`, {
+      [naming.column]: `${naming.column} is required for naming`,
+    })
   if (meta.id_pattern === 'prompt' && !rowId)
     throw new AppError('ValidationError', `${meta.name} requires a Row ID`, {
       [ROW_KEY]: 'Row ID is required',
@@ -774,6 +782,7 @@ export async function checkRowForInsert(meta: TableMeta, values: RowValues): Pro
       where ${sql(meta.row_key)} = ${rowId}`
     if (exists) throw new AppError('ConflictError', `${meta.name} ${rowId} already exists`)
   }
+  return rowId
 }
 
 // UPS-R1: the dry-run counterpart for rows an upsert will UPDATE — the same

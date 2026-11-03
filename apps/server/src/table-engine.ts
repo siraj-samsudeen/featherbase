@@ -169,6 +169,7 @@ function validateIdPattern(pattern: string, columnNames: string[]): void {
   if (naming) {
     if (!columnNames.includes(naming.column))
       throw bad(`Naming column ${naming.column} is not a column of this Table`)
+    if (/^\s|\s$/.test(naming.prefix)) throw bad('An id prefix cannot start or end with a space')
     return
   }
   if (pattern.includes('{') || pattern.includes('}'))
