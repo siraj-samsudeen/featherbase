@@ -78,6 +78,25 @@ describe('#871: renaming a custom Table', () => {
     expect(await admin.get(`${url(OLD)}:meta`)).toMatchObject({ name: OLD })
   })
 
+  test('recently opened entries follow the Table to its new name and address', async ({ admin }) => {
+    await plants(admin)
+    await admin.post('/api/events', { events: [
+      { kind: 'list', key: `list:${OLD}?`, label: OLD, path: '/featherbase/admin/table/trn-sap-plant' },
+      { kind: 'row', key: `row:${OLD}/PLANT-8151`, label: 'Chennai', sub: OLD, path: '/featherbase/admin/table/trn-sap-plant/row/PLANT-8151' },
+      { kind: 'list', key: 'list:Trn SAP Plants?', label: 'Trn SAP Plants', path: '/featherbase/admin/table/trn-sap-plants' },
+    ] })
+    await rename(admin, OLD, NEW)
+    const { entries } = await admin.get<{ entries: { key: string; label: string; sub?: string; path: string }[] }>('/api/events/summary')
+    const pick = (e: { key: string; label: string; sub?: string | null; path: string }) => ({ key: e.key, label: e.label, sub: e.sub ?? null, path: e.path })
+    expect(entries.map(pick)).toEqual(expect.arrayContaining([
+      { key: `list:${NEW}?`, label: NEW, sub: null, path: '/featherbase/admin/table/trn-plant' },
+      { key: `row:${NEW}/PLANT-8151`, label: 'Chennai', sub: NEW, path: '/featherbase/admin/table/trn-plant/row/PLANT-8151' },
+      // Another Table whose name merely starts the same way is left alone.
+      { key: 'list:Trn SAP Plants?', label: 'Trn SAP Plants', sub: null, path: '/featherbase/admin/table/trn-sap-plants' },
+    ]))
+    expect(entries.map((e) => e.key)).not.toContain(`list:${OLD}?`)
+  })
+
   test('only a System Manager renames, and only to a free, valid name', async ({ admin, createUser }) => {
     await plants(admin)
     await makeTable(admin, { name: 'Trn Taken', columns: ['code'] })
@@ -93,6 +112,16 @@ describe('#871: renaming a custom Table', () => {
   test('platform Tables are not renamed here', async ({ admin }) => {
     await expectApiError(rename(admin, 'Comment', 'Remark'), { status: 417 })
     expect(await admin.get(`${url('Comment')}:meta`)).toMatchObject({ name: 'Comment' })
+  })
+
+  test('a Table with a unique column renames, and the column stays unique', async ({ admin }) => {
+    await makeTable(admin, { name: OLD, columns: [{ column_name: 'plant_code', column_type: 'Data', unique: true }] })
+    await admin.post('/api/save_row', { table: OLD, row: { plant_code: '8151' } })
+    await rename(admin, OLD, NEW)
+    await expectApiError(admin.post('/api/save_row', { table: NEW, row: { plant_code: '8151' } }), { status: 417 })
+    // The next change to the column finds its constraint under the new name.
+    await admin.post(`/api/table_def/${encodeURIComponent(NEW)}/rename_column`, { from: 'plant_code', to: 'sap_code' })
+    expect((await admin.post<{ row_id: string }>('/api/save_row', { table: NEW, row: { sap_code: '8152' } })).row_id).toBeTruthy()
   })
 
   test('renaming to the same name changes nothing', async ({ admin }) => {
