@@ -60,7 +60,8 @@ const tickNames = (list: HTMLElement) =>
 /** Picks a column in Add filter and opens its list of choices. */
 function addFilterOn(column: string) {
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: column } })
-  fireEvent.click(screen.getByTestId('filter-value'))
+  const button = screen.getByTestId('filter-value')
+  if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button)
   return screen.getByTestId('filter-choices')
 }
 
@@ -119,4 +120,23 @@ test('Yes/No columns keep = and !=, and text columns keep every operator', async
   expect(options('filter-op')).toEqual(['=', '!=', 'like', '>', '<', '>=', '<='])
   expect(screen.getByTestId('filter-op')).toHaveValue('=')
   expect(screen.getByTestId('filter-value').tagName).toBe('INPUT')
+})
+
+const ticked = (list: HTMLElement) =>
+  within(list).getAllByRole('checkbox').filter((c) => (c as HTMLInputElement).checked).map((c) => c.closest('label')?.textContent ?? '')
+const chips = () => screen.queryAllByTestId('filter-chip').map((c) => c.textContent)
+
+test('Adding Floor again opens with Ground ticked, and First Floor joins the same chip', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  tick(addFilterOn('floor'), 'Ground')
+  fireEvent.click(screen.getByTestId('filter-add'))
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R2']))
+
+  const list = addFilterOn('floor')
+  expect(ticked(list)).toEqual(['Ground'])
+  tick(list, 'First Floor')
+  fireEvent.click(screen.getByTestId('filter-add'))
+  await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
+  expect(chips()).toEqual(['floor in Ground, First Floor×'])
 })
