@@ -5,6 +5,7 @@ import { rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
+import { LinkControl } from './FormView'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
 import { dataColumns, defaultColumnNames, isShown, listFlagsFromView, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
 import { useRealtime } from '../lib/realtime'
@@ -1477,7 +1478,35 @@ function StandardFilters({
   return (
     <div className="mb-3 flex flex-wrap items-end gap-2" data-testid="standard-filters">
       {columns.map((f) =>
-        f.column_type === 'Choice' ? (
+        f.column_type === 'Reference' && f.reference_table ? (
+          // #793: a link filters by picking a row by its name, not by typing its id.
+          <label key={f.column_name} className="flex flex-col gap-0.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+              {f.label ?? f.column_name}
+            </span>
+            <span className="flex items-center gap-1">
+              <LinkControl
+                field={f}
+                value={current(f.column_name, '=')}
+                onChange={(v) => apply(f.column_name, '=', String(v ?? ''))}
+                className={inputClasses('max-w-[12rem]')}
+                common={{ 'data-testid': `std-filter-${f.column_name}` }}
+                forFilter
+              />
+              {current(f.column_name, '=') && (
+                <button
+                  type="button"
+                  onClick={() => apply(f.column_name, '=', '')}
+                  aria-label={`Clear the ${f.label ?? f.column_name} filter`}
+                  data-testid={`std-filter-clear-${f.column_name}`}
+                  className="px-1 text-ink-subtle hover:text-action"
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          </label>
+        ) : f.column_type === 'Choice' ? (
           <label key={f.column_name} className="flex flex-col gap-0.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
               {f.label ?? f.column_name}
