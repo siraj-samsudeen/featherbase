@@ -1866,7 +1866,6 @@ export function FilterBar({
 
   function add() {
     if (ticks) {
-      if (!picks.length) return
       onChange([...filters, [field, 'in', picks]])
       setPicks([])
       return
@@ -1946,6 +1945,7 @@ export function FilterBar({
         )}
         <button
           onClick={add}
+          disabled={ticks && !picks.length}
           data-testid="filter-add"
           className={buttonClasses({ className: 'shrink-0' })}
         >
