@@ -309,8 +309,8 @@ async function waitForAnswer(url, what, seconds = 90) {
   throw new DevError(`${what} did not answer at ${url} within ${seconds}s; see its output above`)
 }
 
-/** --check: the server answers, every app is installed and its page serves. */
-async function verify(instance, env) {
+/** --check: apps are active; pages obey the signed-in user's catalog access. */
+export async function verify(instance, env) {
   const api = `http://127.0.0.1:${env.API_PORT}`
   const web = `http://localhost:${env.WEB_PORT}`
   const login = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ usr: 'Administrator', pwd: 'admin' }) })
@@ -319,12 +319,21 @@ async function verify(instance, env) {
   const listing = await fetch(`${api}/api/apps`, { headers: { authorization: `Bearer ${token}` } })
   if (!listing.ok) throw new DevError(`Listing apps failed (HTTP ${listing.status})`)
   const { installed } = await listing.json()
+  const catalogResponse = await fetch(`${api}/api/app_catalog`, { headers: { authorization: `Bearer ${token}` } })
+  if (!catalogResponse.ok) throw new DevError(`Reading app access failed (HTTP ${catalogResponse.status})`)
+  const catalog = await catalogResponse.json()
   for (const app of instance.apps) {
-    if (!installed.some((row) => row.name === app.name)) throw new DevError(`${app.name} is not installed`)
-    // Signed in: signed out, every address redirects to the login page.
+    const installation = installed.find((row) => row.name === app.name)
+    if (!installation) throw new DevError(`${app.name} is not installed`)
+    if (!installation.active) throw new DevError(`${app.name} is installed but not active`)
+    // Installation does not admit Administrator to an app's member-only pages.
+    const admitted = catalog.some((entry) => entry.name === app.name)
     const page = await fetch(`${web}/${app.name}/`, { headers: { authorization: `Bearer ${token}` } })
-    if (!page.ok) throw new DevError(`${web}/${app.name}/ answered HTTP ${page.status}`)
-    console.log(`check: ${app.name} is installed and its page serves`)
+    if (admitted ? !page.ok : page.status !== 404)
+      throw new DevError(`${web}/${app.name}/ answered HTTP ${page.status}; expected ${admitted ? 'a serving page' : '404 for a user without app access'}`)
+    console.log(admitted
+      ? `check: ${app.name} is installed and its page serves`
+      : `check: ${app.name} is installed and active; Administrator needs app access to open its page`)
   }
 }
 

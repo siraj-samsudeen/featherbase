@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
-import { fmtInstantIST } from '../lib/inr'
-import { Button, Card, Select, TextInput } from './ui'
+import { fmtInstantIST } from '@featherbase/shop-floor'
+import { Button, Card, Select, TextInput } from '@featherbase/shop-floor'
 import { principalLabel, usePrincipalNameState } from '../lib/people'
 
 // person-identities (#275, review B-M4): on a Person's form, a System Manager

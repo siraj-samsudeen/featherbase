@@ -235,6 +235,20 @@ describe('history', () => {
   })
 })
 
+describe('addAccessPolicy', () => {
+  const policy = { version: 1 as const, roles: ['Team member'] }
+  test('replays creator privacy from an unprotected predecessor', () => {
+    const migration = step([{ kind: 'addAccessPolicy', table: 'shop.item', policy }])
+    expect(replayForward('shop', [item()], migration.operations)[0].access_policy).toEqual(policy)
+    expect(() => validateMigrations('shop', '0.2.0', [{ ...item(), access_policy: policy }], [migration])).not.toThrow()
+  })
+  test('cannot replace existing privacy or change another app', () => {
+    const migration = step([{ kind: 'addAccessPolicy', table: 'shop.item', policy }])
+    expect(() => replayForward('shop', [{ ...item(), access_policy: policy }], migration.operations)).toThrow(/already/)
+    expect(() => replayForward('other', [item()], migration.operations)).toThrow(/own/)
+  })
+})
+
 describe('replay refuses inconsistent operation starting points', () => {
   const notes = { column_name: 'notes', label: 'Notes', column_type: 'Text' as const }
   const line: TableDef = { name: 'shop.line', label: 'Line', kind: 'sub_table', columns: [notes] }

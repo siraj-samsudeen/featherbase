@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { choiceLabel } from 'shared'
 import { api, ApiError } from '../lib/api'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
 import { useI18n } from '../lib/i18n'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from './ui'
 
 // RPT-005: renders a server-side Code Report — its declared filter controls
 // and the columns+rows its execute() returns.

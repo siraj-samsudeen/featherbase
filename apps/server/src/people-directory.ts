@@ -6,6 +6,8 @@
 import { sql } from './db'
 import { AppError } from './errors'
 import { scopedWhere } from './query'
+import { getMeta } from './meta'
+import { assertPermission, getRoles } from './permissions'
 
 const MAX_NAMES = 500
 const UNNAMED = 'Unnamed person'
@@ -13,7 +15,7 @@ const UNNAMED = 'Unnamed person'
 /** A person's display name: full name, else @username — never an address
  *  (an address is personal data the name surfaces travel to), else
  *  "Unnamed person". */
-function displayName(r: Record<string, unknown>): string {
+export function displayName(r: Record<string, unknown>): string {
   return String(r.full_name ?? '').trim() || (r.username ? `@${String(r.username)}` : UNNAMED)
 }
 
@@ -103,4 +105,20 @@ export async function pickPeople(q: string, viewer: string, limit = 10): Promise
     const detail = r.username ? `@${String(r.username)}` : (r.email as string | null) || (r.code as string | null) || ''
     return { row_id: String(r.row_id), label: [name, detail].filter(Boolean).join(' · ') || '(no name)' }
   })
+}
+
+/** A protected workspace exposes only its admitted people's display names.
+ * This never grants access to Person records or their contact information. */
+export async function tableMembers(table: string, viewer: string) {
+  const meta = await getMeta(table)
+  if (!meta.access_policy) throw new AppError('PermissionError', 'This Table has no member directory')
+  await assertPermission(viewer, table, 'read')
+  const people = await sql`select row_id, full_name, username from person where enabled and replaced_by is null`
+  const members: { row_id: string; full_name: string }[] = []
+  for (const person of people) {
+    const roles = await getRoles(String(person.row_id))
+    if (meta.access_policy.roles.some(role => roles.includes(role)))
+      members.push({ row_id: String(person.row_id), full_name: displayName(person) })
+  }
+  return members.sort((a, b) => a.full_name.localeCompare(b.full_name) || a.row_id.localeCompare(b.row_id))
 }

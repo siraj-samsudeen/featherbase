@@ -4,6 +4,7 @@ import { ensureTable } from './fixtures-ui'
 const table = 'Responsive row editor'
 const name = 'Stock-review-with-a-long-unbroken-identifier-3783'
 const url = `/api/table/${encodeURIComponent(table)}/${name}`
+const newFormPath = `/featherbase/admin/${encodeURIComponent(table)}/new`
 const fileName = `stock-review-${'x'.repeat(70)}.txt`
 
 test.beforeAll(async ({ request }) => {
@@ -56,13 +57,15 @@ for (const width of [375, 1440]) {
       await page.setViewportSize({ width, height: 1000 })
     })
     await session
-      .visit('/featherbase/login')
+      .visit(`/featherbase/login?next=${encodeURIComponent(newFormPath)}`)
       .fillIn('Email or username', 'Administrator')
       .fillIn('Password', ADMIN_PWD)
       .clickButton('Sign in')
       .assertHas('[data-testid="session-user"]')
-
-    await session.visit(`/featherbase/admin/${encodeURIComponent(table)}/new`).assertHas('[data-testid="form-view"]')
+      .step('sign-in finishes at the requested blank form', async ({ page }) => {
+        await expect(page).toHaveURL(newFormPath)
+      })
+      .assertHas('[data-testid="form-view"]')
     await session.step('the blank form stays fully contained', async ({ page }) => {
       await contained(page, controls)
       await page.screenshot({ path: `../../dist/core-responsive-${width}-blank.png` })

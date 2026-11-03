@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { adminPageTitle } from 'shared'
 import { useShellTables, type TableSummary } from '../lib/session'
-import { cardClasses, touchRowClasses } from '../components/ui'
+import { cardClasses, touchRowClasses } from '@featherbase/shop-floor'
 
 // #80: with the sidebar flipped to Home Pages, this page keeps EVERY table
 // reachable — it is the sidebar's "All tables" entry. Same curation as the

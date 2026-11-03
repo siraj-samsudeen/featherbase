@@ -6,8 +6,8 @@ import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
 import { FilterBar, type Filter } from './ListView'
-import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from './ui'
-import { fmtCount, fmtNumber } from '../lib/inr'
+import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { fmtCount, fmtNumber } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 

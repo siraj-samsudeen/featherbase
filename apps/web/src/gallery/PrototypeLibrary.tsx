@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { parseFilters } from 'shared'
-import { Breadcrumbs, ContentTabs, DataList, SearchableList, TextInput, buttonClasses } from '../components/ui'
+import { Breadcrumbs, ContentTabs, DataList, SearchableList, TextInput, buttonClasses } from '@featherbase/shop-floor'
 import { Gallery } from './Gallery'
 import { SearchableTableExample } from './PrototypeApp'
 

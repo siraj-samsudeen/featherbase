@@ -1,8 +1,7 @@
 import { Link as RouterLink } from '@tanstack/react-router'
 import { PrincipalName } from '../lib/people'
-import { fmtInstant } from '../lib/inr'
+import { cardClasses, fmtInstant } from '@featherbase/shop-floor'
 import { useChangeFormat, type ChangeData } from '../lib/change-format'
-import { cardClasses } from './ui'
 
 // #825: a Version row is one change to one row of another Table. It reads as
 // that change: who changed which row and when, then one line per field with

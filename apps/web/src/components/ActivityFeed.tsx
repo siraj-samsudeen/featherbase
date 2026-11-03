@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { api, getSessionUser } from '../lib/api'
-import { fmtClockTime, fmtTimelineDay, timelineDayKey } from '../lib/inr'
+import { fmtClockTime, fmtTimelineDay, timelineDayKey } from '@featherbase/shop-floor'
 import { KindIcon } from '../lib/kind-icons'
 import { useRealtime } from '../lib/realtime'
 import { useIsSystemManager } from '../lib/session'
-import { cardClasses, touchRowClasses } from './ui'
+import { cardClasses, touchRowClasses } from '@featherbase/shop-floor'
 
 interface FeedItem {
   /** Display name (#440). The feed carries no person id, by design. */

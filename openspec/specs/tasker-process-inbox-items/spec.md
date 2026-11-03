@@ -2,43 +2,46 @@
 
 ## Purpose
 
-The Inbox holds tasks nobody has placed yet. The user moves each one to where it
-belongs: a project (a named group of shared work) or one person's personal list
-(the team-visible list of tasks that belong to that person).
+The Inbox holds the user's private captures awaiting organisation. The user
+keeps them in a private personal list or deliberately moves them into a shared
+project.
 
 ## Requirements
 
 ### Requirement: What the Inbox holds
 
-The Inbox SHALL show every task that is not in a project or on anyone's personal
-list, and only those.
+The Inbox SHALL hold the user's own privately captured tasks awaiting organisation, never another person's tasks.
 
 #### Scenario: A new task waits in the Inbox
 
-- **WHEN** the user captures "Order packing tape" and opens the Inbox
-- **THEN** "Order packing tape" is listed there
+- **WHEN** the user and a teammate each capture a task privately
+- **THEN** the user's Inbox shows only the user's task
 
 ### Requirement: A task lives in one place
 
-A task SHALL be in exactly one place: the Inbox, one project, or one person's
-personal list.
+A task SHALL live in its creator's private Inbox or personal list, or in a shared project. Moving private work into a project SHALL remove it from its private list and permanently share it.
 
 #### Scenario: Move a task to a project
 
-- **WHEN** the user moves an Inbox task into the project "Warehouse review"
-- **THEN** it appears in "Warehouse review" and is no longer in the Inbox
+- **WHEN** the user moves an Inbox task into "Warehouse review"
+- **THEN** it appears in that shared project and leaves the private Inbox
 
 ### Requirement: A personal list decides who is responsible
 
-Putting a task on someone's personal list SHALL make them responsible for it,
-and taking it off their list also takes it off them.
+A personal list SHALL belong only to its creator, who is responsible for its tasks. A private task SHALL NOT be assigned to another person before it is shared.
 
 #### Scenario: Put a task on someone's list
 
-- **WHEN** the user moves a task from the Inbox to Shahul's personal list
-- **THEN** Shahul is responsible for it
+- **WHEN** the user places their captured task on their personal list
+- **THEN** the task remains creator-only and the user is responsible for it
+
+#### Scenario: Assign private work to someone else
+
+- **WHEN** the user attempts to assign their private task to a teammate
+- **THEN** the assignment is refused and they are told to share the task first
 
 #### Scenario: Take a task off someone's list
 
-- **WHEN** the user moves a task from Shahul's personal list to "Warehouse review"
-- **THEN** it appears in "Warehouse review" and Shahul is no longer responsible for it
+- **WHEN** the user moves a task from their personal list into a shared project
+- **THEN** it leaves the personal list and becomes shared project work
+- **AND** the former personal-list assignment is cleared, ready for team assignment

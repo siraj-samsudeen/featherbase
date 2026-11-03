@@ -1,3 +1,4 @@
+import { admitTasker } from './tasker-client'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -190,6 +191,7 @@ export const authorizers = {
     await admin.post('/api/upgrade_app', { name: 'tasker', version: currentTaskerVersion, planId: plan.planId })
     expect((await invoke(currentTaskerVersion)).status).toBe(403)
     await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: currentTaskerVersion })
+    await admitTasker(admin)
     expect((await invoke('2.0.0')).status).toBe(403)
     const replay = await invoke(currentTaskerVersion)
     expect(replay.status).toBe(200)

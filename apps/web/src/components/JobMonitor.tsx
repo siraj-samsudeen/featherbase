@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, getSessionUser, listResource } from '../lib/api'
 import { useRealtime } from '../lib/realtime'
-import { buttonClasses, cardClasses } from './ui'
+import { buttonClasses, cardClasses } from '@featherbase/shop-floor'
 
 // JOB-004: monitor background jobs and retry failed ones from the Admin UI.
 // The Queue section of the Jobs page (#464).

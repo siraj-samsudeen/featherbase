@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Button } from './Button'
 import { SearchInput } from './Field'
-import { fmtCount } from '../../lib/inr'
+import { fmtCount } from './format'
 
 /** Searches the entire supplied collection. Paginated remote data must instead search its server. */
 export function SearchableList<Row>({ label, placeholder = label, items, query, onQueryChange, getSearchText, children }: {
