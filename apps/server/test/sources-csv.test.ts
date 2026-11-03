@@ -11,7 +11,7 @@ import { invalidateMeta } from '../src/meta'
 import { parseCsv, serializeCsv } from '../src/sources/csv'
 import { csvFolderDriver } from '../src/sources/csv-driver'
 import { invalidateSources } from '../src/sources/registry'
-import type { Binding } from '../src/sources/types'
+import type { Binding, SourceFilter } from '../src/sources/types'
 
 let dir: string
 
@@ -468,6 +468,20 @@ describe('Filtering and ordering rows read from a CSV file', () => {
     })
     return rows.map((r) => r.store_code)
   }
+
+  // HTTP dispatch refuses this internal shape before a non-Postgres driver;
+  // the exported driver contract must also fail closed if passed it directly.
+  test('refuses internal relationship filters without returning CSV rows', async () => {
+    const bind = bindStores()
+    const filters: SourceFilter[] = [{ column: 'store_code', op: 'related', value: { binding: bind, filters: [] } }]
+    const refusal = { type: 'ValidationError', message: 'Related filters are not supported by this source engine' }
+    await expect(csvFolderDriver.getList(bind, {
+      filters, columns: ['store_code'], order: { column: 'store_code', dir: 'asc' }, limit: 10, offset: 0,
+    })).rejects.toMatchObject(refusal)
+    await expect(csvFolderDriver.count(bind, filters)).rejects.toMatchObject(refusal)
+    expect(await codes([])).toEqual(['CHN', 'KKL', 'TVM'])
+    expect(readFileSync(path.join(dir, 'store_master.csv'), 'utf8')).toBe(STORES)
+  })
 
   test('comparison operators compare cell text', async () => {
     expect(await codes([{ column: 'store_code', op: '=', value: 'TVM' }])).toEqual(['TVM'])
