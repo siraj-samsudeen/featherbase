@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { api, listResource } from '../lib/api'
-import { NO_COLUMN_TYPES, listColumns, useMeta, type ColumnDef } from '../lib/meta'
+import { NO_COLUMN_TYPES, listColumns, metaQuery, useMeta, type ColumnDef } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Connection } from '../lib/connections'
 import { useStepOptions } from '../lib/explore-steps'
@@ -30,11 +30,17 @@ interface GroupNode {
   label: string
   table: string
   count: number
+  via: string // how it links back, in words: "via Assigned To"
   field?: ColumnDef // child: the Sub-table column on the center's meta
   cnx?: Connection
 }
 
 const NODE_H = 46
+// A box whose relationship needs a second line grows every box to this height.
+const NODE_H_TWO_LINES = 60
+// Characters of 12px text that fit one line of a link box and a collection box.
+const FORWARD_CHARS = 29
+const GROUP_CHARS = 33
 const GAP = 16
 const W = 900
 
@@ -49,6 +55,9 @@ export function RelationMap({
 }) {
   const meta = useMeta(table)
   const cnx = useConnections(table, name)
+  // A collection names its link as the Table holding the link labels it.
+  const holders = [...new Set((cnx.data?.connections ?? []).map((c) => c.via ?? c.table))]
+  const holderMetas = useQueries({ queries: holders.map((t) => metaQuery(t)) })
   const navigate = useNavigate()
   const settings = useSettings()
   const [openGroup, setOpenGroup] = useState<number | null>(null)
@@ -98,15 +107,25 @@ export function RelationMap({
         label: f.label ?? f.column_name,
         table: f.row_table,
         count: ((d[f.column_name] as Row[]) ?? []).length,
+        via: 'child rows',
         field: f,
       })
   for (const c of cnx.data?.connections ?? [])
-    groups.push({ kind: 'cnx', label: connectionLabel(c), table: c.table, count: c.count, cnx: c })
+    groups.push({
+      kind: 'cnx', label: connectionLabel(c), table: c.table, count: c.count, cnx: c,
+      via: `via ${linkWords(
+        holderMetas[holders.indexOf(c.via ?? c.table)]?.data?.columns.find((col) => col.column_name === c.column)
+          ?? { column_name: c.column },
+      )}`,
+    })
 
   const rows = Math.max(forward.length, groups.length, 1)
-  const H = rows * (NODE_H + GAP) + 40
-  const cy = H / 2 - NODE_H / 2
-  const nodeY = (i: number) => 20 + i * (NODE_H + GAP)
+  const forwardLines = forward.map((f) => wrapText(linkAndTable(f), FORWARD_CHARS))
+  const groupLines = groups.map((g) => wrapText(g.via, GROUP_CHARS))
+  const nodeH = [...forwardLines, ...groupLines].some((l) => l.length > 1) ? NODE_H_TWO_LINES : NODE_H
+  const H = rows * (nodeH + GAP) + 40
+  const cy = H / 2 - nodeH / 2
+  const nodeY = (i: number) => 20 + i * (nodeH + GAP)
 
   // The trail records where the user is now (this map's own table and row),
   // then the map moves to the picked row.
@@ -200,7 +219,7 @@ export function RelationMap({
                   type="button"
                   onClick={() => hop(f.table, f.row_id)}
                   data-testid={`map-narrow-forward-${f.table}`}
-                  className={buttonClasses({ className: 'w-full whitespace-normal break-words py-2 text-left' })}
+                  className={buttonClasses({ className: 'w-full justify-start whitespace-normal break-words py-2 text-left' })}
                 >
                   <span className="min-w-0">
                     <RowTitle table={f.table} rowId={f.row_id} />
@@ -224,7 +243,7 @@ export function RelationMap({
                 >
                   <span className="min-w-0">
                     <span className="block">{g.label}</span>
-                    <span className="block text-xs text-ink-muted"><GroupVia group={g} /></span>
+                    <span className="block text-xs text-ink-muted">{g.via}</span>
                   </span>
                   <span className="shrink-0 text-action">{fmtCount(g.count)}</span>
                 </button>
@@ -245,9 +264,9 @@ export function RelationMap({
             <g key={`fe-${i}`}>
               <line
                 x1={260}
-                y1={nodeY(i) + NODE_H / 2}
+                y1={nodeY(i) + nodeH / 2}
                 x2={340}
-                y2={cy + NODE_H / 2}
+                y2={cy + nodeH / 2}
                 stroke="var(--color-border-control)"
                 strokeWidth={1.2}
               />
@@ -257,9 +276,9 @@ export function RelationMap({
             <g key={`ge-${i}`}>
               <line
                 x1={560}
-                y1={cy + NODE_H / 2}
+                y1={cy + nodeH / 2}
                 x2={620}
-                y2={nodeY(i) + NODE_H / 2}
+                y2={nodeY(i) + nodeH / 2}
                 stroke="var(--color-border-control)"
                 strokeWidth={1.2}
               />
@@ -271,7 +290,7 @@ export function RelationMap({
               x={340}
               y={cy}
               width={220}
-              height={NODE_H}
+              height={nodeH}
               rx={8}
               fill="var(--color-action-tint)"
               stroke="var(--color-action)"
@@ -292,11 +311,12 @@ export function RelationMap({
               className="cursor-pointer"
               data-testid={`map-forward-${f.table}`}
             >
+              <title>{linkAndTable(f)}</title>
               <rect
                 x={40}
                 y={nodeY(i)}
                 width={220}
-                height={NODE_H}
+                height={nodeH}
                 rx={8}
                 fill="var(--color-surface)"
                 stroke="var(--color-border-control)"
@@ -306,9 +326,7 @@ export function RelationMap({
                 <SvgRowTitle table={f.table} rowId={f.row_id} max={30} />
               </text>
               {/* the relationship is named in the box, not on the line, so the line never crosses it */}
-              <text x={52} y={nodeY(i) + 35} fontSize={12} fill="var(--color-ink-muted)">
-                {truncate(linkAndTable(f), 32)}
-              </text>
+              <BoxLines x={52} y={nodeY(i) + 35} lines={forwardLines[i]} />
             </g>
           ))}
           {/* backlink / child collection nodes */}
@@ -319,11 +337,12 @@ export function RelationMap({
               className="cursor-pointer"
               data-testid={`map-group-${g.table}`}
             >
+              <title>{`${g.label}, ${g.via}`}</title>
               <rect
                 x={620}
                 y={nodeY(i)}
                 width={240}
-                height={NODE_H}
+                height={nodeH}
                 rx={8}
                 fill="var(--color-surface)"
                 stroke={openGroup === i ? 'var(--color-action)' : 'var(--color-border-control)'}
@@ -339,9 +358,7 @@ export function RelationMap({
               >
                 {truncate(g.label, 26)}
               </text>
-              <text x={632} y={nodeY(i) + 35} fontSize={12} fill="var(--color-ink-muted)">
-                <GroupVia group={g} max={34} />
-              </text>
+              <BoxLines x={632} y={nodeY(i) + 35} lines={groupLines[i]} />
               <text
                 x={848}
                 y={nodeY(i) + 21}
@@ -374,7 +391,7 @@ export function RelationMap({
       {active && (
         <div className={cardClasses('mt-3 overflow-x-auto')} data-testid="map-group-rows">
           <div className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-            {active.label} — click a row to re-center the map
+            {active.label}{active.kind === 'cnx' ? ` ${active.via}` : ''} — click a row to re-center the map
           </div>
           {active.kind === 'child' ? (
             <ChildRows
@@ -428,18 +445,30 @@ function linkAndTable(f: ForwardNode): string {
   return f.label === f.table ? f.table : `${f.label} · ${f.table}`
 }
 
-/**
- * What a related collection's box says beneath its Table: "via <link>", the
- * link named as the Table holding it labels the column (#794).
- */
-function GroupVia({ group, max }: { group: GroupNode; max?: number }) {
-  const holder = group.cnx ? (group.cnx.via ?? group.cnx.table) : ''
-  const meta = useMeta(holder, Boolean(holder))
-  if (group.kind === 'child') return <>child rows</>
-  const column = group.cnx!.column
-  const label = linkWords(meta.data?.columns.find((c) => c.column_name === column) ?? { column_name: column })
-  const text = `via ${label}`
-  return <>{max ? truncate(text, max) : text}</>
+/** Words split into at most `max` lines of about `n` characters; the last line ends in … if more is left. */
+function wrapText(text: string, n: number, max = 2): string[] {
+  const lines: string[] = []
+  let line = ''
+  for (const word of text.split(' ')) {
+    if (line && (line + ' ' + word).length > n) {
+      lines.push(line)
+      line = word
+    } else line = line ? `${line} ${word}` : word
+  }
+  if (line) lines.push(line)
+  if (lines.length <= max) return lines.map((l) => truncate(l, n))
+  return [...lines.slice(0, max - 1), truncate(lines.slice(max - 1).join(' '), n)]
+}
+
+/** A box's relationship lines inside SVG, one under the other. */
+function BoxLines({ x, y, lines }: { x: number; y: number; lines: string[] }) {
+  return (
+    <text x={x} y={y} fontSize={12} fill="var(--color-ink-muted)">
+      {lines.map((l, i) => (
+        <tspan key={i} x={x} dy={i ? 14 : 0}>{l}</tspan>
+      ))}
+    </text>
+  )
 }
 
 /** A linked row's title inside SVG text, its id until the title arrives. */
