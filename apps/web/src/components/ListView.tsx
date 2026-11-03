@@ -337,6 +337,10 @@ export function ListView({
     ) : (
       `Cannot load rows for ${table}`
     )
+  ) : list.isPending ? (
+    // Not yet loaded is not empty: "No rows" would alarm someone whose
+    // Table holds data (#871, a list reopened after its rename).
+    'Loading…'
   ) : (
     <>
       No rows

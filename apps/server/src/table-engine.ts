@@ -1121,6 +1121,10 @@ export async function renameCustomTable(from: string, input: string, user: strin
   if (meta.system || meta.owner_app || meta.data_source || meta.kind === 'settings')
     throw new AppError('ValidationError', `${meta.name} is not a custom Table; it cannot be renamed here`)
   assertNotSystemWritten(meta, 'renamed or changed')
+  // An installed app's ledger names its Tables; uninstalling acts on those names.
+  const apps = await sql<{ name: string; tables: unknown }[]>`select name, tables from installed_app order by name`
+  const owner = apps.find((app) => asNameList(app.tables).includes(meta.name))
+  if (owner) throw new AppError('ValidationError', `${meta.name} belongs to the installed app ${owner.name}; it cannot be renamed here`)
   if (to.includes('.') || !tableDefSchema.shape.name.safeParse(to).success)
     throw new AppError('ValidationError', 'A Table name starts with a letter and has only letters, digits and spaces, up to 61 characters', {
       name: 'letters, digits and spaces',
@@ -1167,8 +1171,9 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
         and starts_with(conname, ${`${fromRelation}_`})`
       for (const { conname } of built)
         await tx.unsafe(`alter table ${relation} rename constraint ${quoteIdent(conname)} to ${quoteIdent(`${relationName}_${conname.slice(fromRelation.length + 1)}`)}`)
-      // Names built from the Table's own name, so the next schema change finds them.
-      for (const c of meta.columns)
+      // Names built from the Table's own name, so the next schema change finds
+      // them. A custom Table's relation IS its name: the loop above did these.
+      if (tableName(from) !== fromRelation) for (const c of meta.columns)
         if (c.unique && pgType(c.column_type))
           await tx.unsafe(`alter table ${relation} rename constraint ${quoteIdent(`${tableName(from)}_${c.column_name}_uq`)} to ${quoteIdent(`${tableName(to)}_${c.column_name}_uq`)}`)
       if (meta.kind === 'sub_table')
@@ -1202,7 +1207,9 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
     await tx`update home_page_link set label = ${to} where link_to = ${to} and label = ${from}`
     // Recently opened: the entries keep pointing at the Table under its new name.
     for (const kind of ['row:', 'list:'])
-      await tx`update user_event set ref_key = ${kind + to} || substr(ref_key, ${kind.length + from.length + 1})
+      await tx`update user_event set ref_key = ${kind + to} || substr(ref_key, ${kind.length + from.length + 1}),
+                 label = case when label = ${from} then ${to} else label end,
+                 sub_label = case when sub_label = ${from} then ${to} else sub_label end
                where starts_with(ref_key, ${kind + from}) and substr(ref_key, ${kind.length + from.length + 1}, 1) in ('/', '?')`
     const [oldPath, newPath] = [`/featherbase/admin/table/${tableSlug(from)}`, `/featherbase/admin/table/${tableSlug(to)}`]
     await tx`update user_event set path = ${newPath} || substr(path, ${oldPath.length + 1})

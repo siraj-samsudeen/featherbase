@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
-import { ApiError, api } from '../lib/api'
+import { tableSlug } from 'shared'
+import { ApiError, api, getSessionUser } from '../lib/api'
+import { renameTableInRecents } from '../lib/recents'
 
 // #871: rename a custom Table. The server carries its rows, history, links,
 // permissions and saved views; the list reopens under the new name.
@@ -25,6 +27,9 @@ export function RenameTable({ table }: { table: string }) {
     setError(null)
     try {
       const meta = await api.post<{ name: string }>(`/api/table_def/${encodeURIComponent(table)}/rename`, { to: name })
+      const user = getSessionUser()?.row_id
+      if (user)
+        renameTableInRecents(user, table, meta.name, `/featherbase/admin/table/${tableSlug(table)}`, `/featherbase/admin/table/${tableSlug(meta.name)}`)
       for (const key of ['meta', 'list', 'doc'])
         queryClient.removeQueries({ queryKey: [key, table] })
       await navigate({ to: '/featherbase/admin/table/$table', params: { table: meta.name }, search: { filters: undefined } })
