@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { join, resolve } from 'node:path'
-import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { test as base } from './pg-test'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
@@ -849,6 +849,7 @@ describe('An app declares its phone tabs', () => {
   test("a tab's deep address serves the app's page with the bar, at the device's width", async ({ admin }) => {
     const directory = await otherWith({ tabs: TABS })
     try {
+      await mkdir(resolve(directory, 'client/targets'))
       expect(await discoverPackages([directory])).toEqual([])
       await admin.post('/api/install_app', { name: 'other' })
       const res = await admin.fetch('/other/targets', { headers: { accept: 'text/html' } })
@@ -856,6 +857,14 @@ describe('An app declares its phone tabs', () => {
       const html = await res.text()
       expect(html).toContain('<featherbase-bar data-app="other" data-title="Other tasks"></featherbase-bar>')
       expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1">')
+      for (const asset of ['targets', 'missing.js']) {
+        expect((await admin.fetch(`/other/${asset}`)).status).toBe(404)
+      }
+      expect((await admin.fetch('/other/%E0%A4%A', { headers: { accept: 'text/html' } })).status).toBe(404)
+      // A broken deployed entry must not expose a directory or answer as a working page.
+      await rm(resolve(directory, 'client/index.html'))
+      await mkdir(resolve(directory, 'client/index.html'))
+      expect((await admin.fetch('/other/', { headers: { accept: 'text/html' } })).status).toBe(404)
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 

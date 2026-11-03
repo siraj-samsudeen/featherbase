@@ -8,7 +8,7 @@ import {
   ago,
   connectEventSink,
   frequentActions,
-  mergeServerEntries,
+  replaceServerEntries,
   displayEntry,
   recentActions,
   recentSearches,
@@ -28,6 +28,7 @@ import { PeekProvider } from '../components/Peek'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel } from '../lib/row-titles'
 import { metaQuery } from '../lib/meta'
+import { useI18n } from '../lib/i18n'
 import { KindIcon } from '../lib/kind-icons'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
@@ -56,8 +57,13 @@ connectEventSink({
   // The queue fail-closes on this identity: only events recorded FOR this
   // user are ever posted with this user's credentials.
   currentUser: () => getSessionUser()?.row_id ?? null,
-  post: (events) => {
-    void api.post('/api/events', { events }).catch(
+  post: (events, recorded) => {
+    void api.post<{ timestamps: number[] }>('/api/events', { events }).then(
+      ({ timestamps }) => {
+        recorded(timestamps)
+        window.dispatchEvent(new Event('navigation-history-updated'))
+      },
+    ).catch(
       () => {},
     )
   },
@@ -111,6 +117,7 @@ function AdminShell() {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
+  const { t } = useI18n()
   const user = getSessionUser()
   // The command bar's theme commands; the bar's own toggle is in TopBar.
   const { set: setTheme } = useThemeChoice()
@@ -148,27 +155,38 @@ function AdminShell() {
     }
     const owner = user.row_id
     queryClient.fetchQuery(metaQuery(table)).then(
-      () => recordAction(owner, action),
+      (meta) => recordAction(owner, actionForLocation(location.pathname, location.search as Record<string, unknown>, meta.columns, t) ?? action),
       () => {},
     )
   }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const [barFocused, setBarFocused] = useState(false)
-  const [recentSel, setRecentSel] = useState(0)
-
-  // #101 Phase 3: once per signed-in user, pull the server's per-key
-  // aggregates and union them into the local buffer — recents follow the
-  // user across devices; the merge is idempotent.
-  const syncedFor = useRef<string | null>(null)
+  const [selection, setSelection] = useState<{ query: string; id: string } | null>(null)
+  const [, refreshHistory] = useState(0)
   useEffect(() => {
-    if (!user || syncedFor.current === user.row_id) return
-    syncedFor.current = user.row_id
+    const refresh = () => refreshHistory((version) => version + 1)
+    window.addEventListener('navigation-history-updated', refresh)
+    return () => window.removeEventListener('navigation-history-updated', refresh)
+  }, [])
+
+  // Cached destinations are not offered until the initial summary settles.
+  // A failed request unlocks the untouched cache as a best-effort fallback.
+  const [historyReadyFor, setHistoryReadyFor] = useState<string | null>(null)
+  useEffect(() => {
+    if (!user) return
+    let active = true
+    setHistoryReadyFor(null)
     api
       .get<{ entries: ServerRecentEntry[] }>('/api/events/summary')
-      .then((res) => mergeServerEntries(user.row_id, res.entries))
-      .catch(
-        () => {},
-      )
+      .then((res) => {
+        if (active) replaceServerEntries(user.row_id, res.entries)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setHistoryReadyFor(user.row_id)
+      })
+    return () => { active = false }
   }, [user?.row_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const historyReady = Boolean(user && historyReadyFor === user.row_id)
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -294,22 +312,37 @@ function AdminShell() {
   // recency) and Frequent (frecency) groups; while typing it offers matching
   // past searches. All three read the per-user localStorage buffer.
   const trimmed = search.trim()
-  const showRecents = Boolean(barFocused && trimmed === '' && user)
+  // A resolved previous query remains cached during the typing debounce;
+  // it is not a result of the text currently in the input.
+  const recordHits = trimmed === debounced ? docHits.data?.results ?? [] : []
+  const showRecents = Boolean(barFocused && trimmed === '' && historyReady)
   const recentItems = showRecents && user ? uniqueByDisplay(recentActions(user.row_id, 12)).slice(0, 6) : []
   const frequentItems =
     showRecents && user
       ? uniqueByDisplay([...recentItems, ...frequentActions(user.row_id, 8)]).slice(recentItems.length, recentItems.length + 4)
       : []
   const pick = [...recentItems, ...frequentItems]
-  const searchChips = user && trimmed ? recentSearches(user.row_id, trimmed, 3) : []
+  const searchChips = historyReady && user && trimmed ? recentSearches(user.row_id, trimmed, 3) : []
+  const selectedId = barFocused
+    ? selection?.query === search ? selection.id : showRecents && pick[0] ? `command-recent-${encodeURIComponent(pick[0].key)}` : undefined
+    : undefined
+
+  function resultProps(key: string) {
+    const id = `command-${encodeURIComponent(key)}`
+    return { id, role: 'option' as const, 'aria-selected': id === selectedId }
+  }
+
+  function resultElements() {
+    return Array.from(searchRef.current?.form?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])
+  }
 
   // #101 Phase 2: the sidebar's zero-keystroke recall — destinations only
   // (searches stay in the command bar, where they can be re-run).
-  const sidebarCandidates = user
+  const sidebarCandidates = historyReady && user
     ? uniqueByDisplay(recentActions(user.row_id, 20).filter((e) => e.kind !== 'search')).slice(0, SIDEBAR_RECENT_CAP)
     : []
   const recentSlots = sidebarCandidates.slice(0, 3)
-  const sidebarFrequent = user
+  const sidebarFrequent = historyReady && user
     ? uniqueByDisplay([...recentSlots, ...frequentActions(user.row_id, 12)]).slice(recentSlots.length, recentSlots.length + 2)
     : []
   const sidebarRecent = sidebarFrequent.length ? recentSlots : sidebarCandidates
@@ -318,46 +351,55 @@ function AdminShell() {
     if (user && q) recordAction(user.row_id, { kind: 'search', key: `search:${q.toLowerCase()}`, label: q, path: '' })
   }
 
-  function openRecent(entry: RecentEntry) {
-    if (entry.kind === 'search') {
-      setSearch(entry.label)
-      return
-    }
+  function dismissSearch() {
     setSearch('')
+    // Clear row matches immediately, not after the typing debounce.
+    setDebounced('')
     setBarFocused(false)
     searchRef.current?.blur()
+  }
+
+  function openRecent(entry: RecentEntry) {
+    if (entry.kind === 'search') {
+      setSelection(null)
+      setSearch(entry.label)
+      searchRef.current?.focus()
+      return
+    }
+    dismissSearch()
     router.history.push(entry.path)
   }
 
   function openDoc(hit: SearchHit) {
     recordSearch(search.trim())
-    setSearch('')
+    dismissSearch()
     navigate({ to: '/featherbase/admin/$table/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
   }
 
-  // Enter opens the top match: an exactly-named Table's list first,
-  // otherwise the first row hit. With an empty bar, Enter replays the
-  // selected recent instead (#101).
+  // Explicit selection uses the same activation as a pointer or Tab/Enter.
+  // Without it, preserve the exact-Table/first-record Enter defaults.
   function runSearch(e: React.FormEvent) {
     e.preventDefault()
-    const q = search.trim()
-    if (!q) {
-      const entry = pick[Math.min(recentSel, pick.length - 1)]
-      if (entry) openRecent(entry)
+    const selected = resultElements().find((el) => el.id === selectedId)
+    if (selected) {
+      selected.click()
       return
     }
+    const q = search.trim()
+    if (!q) return
     recordSearch(q)
     const dtHit = tables?.find((d) => d.row_id.toLowerCase() === q.toLowerCase())
     if (dtHit) {
-      setSearch('')
+      dismissSearch()
       navigate({ to: '/featherbase/admin/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
       return
     }
-    const doc = docHits.data?.results[0]
+    const doc = recordHits[0]
     if (doc) {
       openDoc(doc)
       return
     }
+    dismissSearch()
     navigate({ to: '/featherbase/admin/$table', params: { table: q }, search: { filters: undefined } })
   }
 
@@ -401,27 +443,37 @@ function AdminShell() {
           <input
             ref={searchRef}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSelection(null)
+              setSearch(e.target.value)
+            }}
             onFocus={() => {
               setBarFocused(true)
-              setRecentSel(0)
+              setSelection(null)
             }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 e.currentTarget.blur()
                 return
               }
-              if (!showRecents || pick.length === 0) return
-              if (e.key === 'ArrowDown') {
-                e.preventDefault()
-                setRecentSel((s) => (s + 1) % pick.length)
-              } else if (e.key === 'ArrowUp') {
-                e.preventDefault()
-                setRecentSel((s) => (s - 1 + pick.length) % pick.length)
-              }
+              // Modified arrows belong to the input's native text editing.
+              if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.nativeEvent.isComposing) return
+              if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+              const results = resultElements()
+              if (!results.length) return
+              e.preventDefault()
+              const at = results.findIndex((el) => el.id === selectedId)
+              const next = e.key === 'ArrowDown'
+                ? (at + 1) % results.length
+                : (at < 0 ? results.length - 1 : (at - 1 + results.length) % results.length)
+              setSelection({ query: search, id: results[next].id })
+              results[next].scrollIntoView?.({ block: 'nearest' })
             }}
             placeholder="Search or type a command…"
             aria-label="Search or type a command"
+            aria-controls={barFocused ? 'command-results' : undefined}
+            aria-activedescendant={selectedId}
+            aria-autocomplete="list"
             className={inputClasses('bg-canvas pr-12 focus:bg-surface')}
           />
           <kbd
@@ -430,12 +482,19 @@ function AdminShell() {
           >
             ⌘K
           </kbd>
-          {(suggestions.length > 0 ||
+          {barFocused && (suggestions.length > 0 ||
             commandHits.length > 0 ||
-            (docHits.data?.results.length ?? 0) > 0 ||
+            recordHits.length > 0 ||
             (showRecents && pick.length > 0) ||
             searchChips.length > 0) && (
-            <div className={cardClasses('absolute z-20 mt-1 w-full overflow-hidden py-1')} data-testid="awesomebar-results">
+            <div
+              id="command-results"
+              role="listbox"
+              aria-label="Search results"
+              className={cardClasses('absolute z-20 mt-1 w-full overflow-hidden py-1 [&_[aria-selected=true]]:bg-action-tint')}
+              data-testid="awesomebar-results"
+              onMouseDown={(e) => e.preventDefault()}
+            >
               {/* #101: empty-bar recents — mousedown is swallowed so the
                   input keeps focus until the click lands. */}
               {showRecents && pick.length > 0 && (
@@ -443,19 +502,19 @@ function AdminShell() {
                   <div className="px-3 pb-0.5 pt-1 text-xs font-semibold text-ink-subtle">
                     Recently opened
                   </div>
-                  {recentItems.map((r, i) => (
-                    <RecentRow key={r.key} entry={r} selected={i === Math.min(recentSel, pick.length - 1)} onOpen={openRecent} />
+                  {recentItems.map((r) => (
+                    <RecentRow key={r.key} entry={r} optionProps={resultProps(`recent-${r.key}`)} onOpen={openRecent} />
                   ))}
                   {frequentItems.length > 0 && (
                     <div className="px-3 pb-0.5 pt-1.5 text-xs font-semibold text-ink-subtle">
                       Frequent
                     </div>
                   )}
-                  {frequentItems.map((r, i) => (
+                  {frequentItems.map((r) => (
                     <RecentRow
                       key={r.key}
                       entry={r}
-                      selected={recentItems.length + i === Math.min(recentSel, pick.length - 1)}
+                      optionProps={resultProps(`recent-${r.key}`)}
                       onOpen={openRecent}
                     />
                   ))}
@@ -465,9 +524,10 @@ function AdminShell() {
               {searchChips.map((s) => (
                 <button
                   key={s.key}
+                  {...resultProps(`search-${s.key}`)}
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setSearch(s.label)}
+                  onClick={() => openRecent(s)}
                   data-testid="awesomebar-recent-search"
                   className="flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint"
                 >
@@ -481,9 +541,10 @@ function AdminShell() {
               {commandHits.map((cmd) => (
                 <button
                   key={cmd.id}
+                  {...resultProps(`action-${cmd.id}`)}
                   type="button"
                   onClick={() => {
-                    setSearch('')
+                    dismissSearch()
                     cmd.run()
                   }}
                   data-testid={`awesomebar-cmd-${cmd.id}`}
@@ -498,10 +559,11 @@ function AdminShell() {
               {suggestions.map((d) => (
                 <Link
                   key={d.row_id}
+                  {...resultProps(`table-${d.row_id}`)}
                   to="/featherbase/admin/$table"
                   params={{ table: d.row_id }}
                   search={{ filters: undefined }}
-                  onClick={() => setSearch('')}
+                  onClick={dismissSearch}
                   data-testid="awesomebar-table"
                   className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
                 >
@@ -516,10 +578,11 @@ function AdminShell() {
               {creatableSuggestions.slice(0, 2).map((d) => (
                 <Link
                   key={`new-${d.row_id}`}
+                  {...resultProps(`new-${d.row_id}`)}
                   to="/featherbase/admin/$table/$name"
                   search={{ prefill: undefined }}
                   params={{ table: d.row_id, name: 'new' }}
-                  onClick={() => setSearch('')}
+                  onClick={dismissSearch}
                   data-testid="awesomebar-new"
                   className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
                 >
@@ -527,12 +590,13 @@ function AdminShell() {
                 </Link>
               ))}
               {/* UI-014: row hits */}
-              {(docHits.data?.results.length ?? 0) > 0 && (
+              {recordHits.length > 0 && (
                 <h2 data-testid="awesomebar-records-heading" className="px-3 pt-2 text-xs font-semibold text-ink-muted">Records</h2>
               )}
-              {docHits.data?.results.map((h) => (
+              {recordHits.map((h) => (
                 <button
                   key={`${h.table}/${h.row_id}`}
+                  {...resultProps(`record-${h.table}/${h.row_id}`)}
                   type="button"
                   onClick={() => openDoc(h)}
                   data-testid="awesomebar-doc"
@@ -854,24 +918,23 @@ function SidebarRecentRow({
 
 function RecentRow({
   entry,
-  selected,
+  optionProps,
   onOpen,
 }: {
   entry: RecentEntry
-  selected: boolean
+  optionProps: React.HTMLAttributes<HTMLElement>
   onOpen: (entry: RecentEntry) => void
 }) {
   const last = entry.visits[entry.visits.length - 1] ?? 0
   const shown = displayEntry(entry)
   return (
     <button
+      {...optionProps}
       type="button"
       onClick={() => onOpen(entry)}
       data-testid="awesomebar-recent"
-      aria-current={selected || undefined}
-      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink hover:bg-action-tint ${
-        selected ? 'bg-action-tint' : ''
-      }`}
+      aria-current={optionProps['aria-selected'] || undefined}
+      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink hover:bg-action-tint"
     >
       <KindIcon kind={shown.kind} tone="grey" />
       <span className="min-w-0 flex-1 truncate">
