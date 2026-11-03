@@ -1,8 +1,7 @@
 // The search bar of the Admin (openspec/specs/admin-ui-feedback, "The search
 // bar opens what it finds"). Real Admin in jsdom against the in-process server.
 
-import { screen, waitFor, within } from '@testing-library/react'
-import { fireEvent } from '@testing-library/dom'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { test, expect, renderApp } from './pg-test'
 
 
@@ -46,6 +45,7 @@ test('The search bar opens what it finds: picking a matching record opens its fo
 
   await waitFor(() => expect(field('title')).toHaveValue('Zebrafinch widget'))
   expect(here(app)).toContain('Sb Gadget')
+  await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 
 test('The search bar opens what it finds: a matching Table offers its list and a way to start a new row', async ({ admin }) => {
@@ -61,6 +61,49 @@ test('The search bar opens what it finds: a matching Table offers its list and a
 
   await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Sb Gadget/new'))
   await waitFor(() => expect(field('title')).toHaveValue(''))
+  await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
+})
+
+test('Plain arrow keys choose typed results in displayed order', async ({ admin }) => {
+  await seed(admin)
+  const { app, bar } = await openBar(admin)
+  fireEvent.focus(bar)
+  fireEvent.change(bar, { target: { value: 'Sb Gadget' } })
+  await screen.findByTestId('awesomebar-doc')
+  const results = screen.getByTestId('awesomebar-results')
+  const choices = Array.from(results.querySelectorAll('a, button'))
+  expect(choices.length).toBeGreaterThanOrEqual(3)
+  for (const choice of choices) {
+    fireEvent.keyDown(bar, { key: 'ArrowDown' })
+    expect(choice).toHaveAttribute('aria-selected', 'true')
+    expect(bar).toHaveAttribute('aria-activedescendant', choice.id)
+  }
+  fireEvent.keyDown(bar, { key: 'ArrowDown' })
+  expect(choices[0]).toHaveAttribute('aria-selected', 'true')
+  fireEvent.keyDown(bar, { key: 'ArrowUp' })
+  expect(choices.at(-1)).toHaveAttribute('aria-selected', 'true')
+  const create = within(results).getByTestId('awesomebar-new')
+  for (let i = 0; i < choices.length && create.getAttribute('aria-selected') !== 'true'; i++) {
+    fireEvent.keyDown(bar, { key: 'ArrowUp' })
+  }
+  expect(create).toHaveAttribute('aria-selected', 'true')
+  fireEvent.submit(bar.closest('form') as HTMLFormElement)
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Sb Gadget/new'))
+  expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument()
+})
+
+test('Replacing a query cannot activate its previous record during debounce', async ({ admin }) => {
+  await seed(admin)
+  const { app, bar } = await openBar(admin)
+  fireEvent.focus(bar)
+  fireEvent.change(bar, { target: { value: 'Zebrafinch' } })
+  await screen.findByTestId('awesomebar-doc')
+  // The replacement is not an exact Table name: the old first record would
+  // otherwise win before the ordinary 150ms typing debounce has elapsed.
+  fireEvent.change(bar, { target: { value: 'Sb Hom' } })
+  fireEvent.submit(bar.closest('form') as HTMLFormElement)
+  await waitFor(() => expect(here(app)).not.toBe('/featherbase/admin/all-tables'))
+  expect(here(app)).not.toContain('Zebrafinch-widget')
 })
 
 test('The search bar opens what it finds: Enter on an exact Table name opens that Table\'s list', async ({ admin }) => {
@@ -74,6 +117,7 @@ test('The search bar opens what it finds: Enter on an exact Table name opens tha
 
   await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Sb Home'))
   expect(await screen.findByTestId('list-view')).toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 
 test('The search bar opens what it finds: results are grouped under headings, and a command can be run from it', async ({ admin }) => {
@@ -88,6 +132,7 @@ test('The search bar opens what it finds: results are grouped under headings, an
   fireEvent.click(within(results).getByTestId('awesomebar-cmd-home'))
   await waitFor(() => expect(here(app).startsWith('/featherbase/admin')).toBe(true))
   await waitFor(() => expect(here(app)).not.toContain('all-tables'))
+  await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 
 // Paths the merged web coverage report (ADR 0012) showed untaken.
@@ -100,6 +145,7 @@ test('The search bar opens what it finds: Enter on a word that names a record, n
   fireEvent.submit(bar.closest('form') as HTMLFormElement)
   await waitFor(() => expect(field('title')).toHaveValue('Zebrafinch widget'))
   expect(here(app)).toContain('Sb Gadget')
+  await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 
 test('The search bar runs the theme commands', async ({ admin }) => {
@@ -137,7 +183,7 @@ test('A past search comes back in the empty bar: arrow keys choose it and Enter 
   bar.blur()
   bar.focus()
   const recents = await screen.findByTestId('awesomebar-recents')
-  const items = within(recents).getAllByRole('button')
+  const items = within(recents).getAllByRole('option')
   const at = items.findIndex((b) => b.textContent?.includes('Zebrafinch') && !b.textContent?.includes('-widget'))
   expect(at).toBeGreaterThanOrEqual(0)
   // ArrowUp from the top wraps to the bottom; ArrowDown walks forward again.
