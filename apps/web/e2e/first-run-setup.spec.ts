@@ -1,5 +1,108 @@
-import { anonymousTest as test, expect, adminAuth, loginAs, type APIRequestContext } from './fixtures'
+import { writeFile } from 'node:fs/promises'
+import { anonymousTest, expect, adminAuth, loginAs, type APIRequestContext } from './fixtures'
 import { ensureTable } from './fixtures-ui'
+
+// Bounded, test-only evidence for #774's unreproduced initial-Welcome failure.
+// Never record URLs with queries, arbitrary storage, auth data or response bodies.
+type SetupDiagnostic = {
+  event: string
+  pathname: string
+  homeEligible: boolean
+  offer?: '1' | 'absent' | 'other'
+  destination?: string
+  administratorReady?: boolean
+}
+
+const test = anonymousTest.extend<{ setupDiagnostics: void }>({
+  setupDiagnostics: [async ({ page }, use, testInfo) => {
+    const events: SetupDiagnostic[] = []
+    await page.exposeFunction('__captureSetupDiagnostic', (event: SetupDiagnostic) => {
+      if (events.length < 200) events.push(event)
+    })
+    await page.addInitScript(() => {
+      const w = window as unknown as {
+        __captureSetupDiagnostic: (event: SetupDiagnostic) => Promise<void>
+        __TSR_ROUTER__?: { navigate: (options: { to?: string }) => unknown }
+        __setupDiagnosticSnapshot?: () => Promise<void>
+      }
+      const safePath = (path: string) => [
+        '/featherbase/login', '/featherbase/admin', '/featherbase/admin/home/home',
+        '/featherbase/admin/home/system', '/featherbase/admin/home/$name',
+        '/featherbase/admin/setup', '/featherbase/admin/setup/people',
+      ].includes(path) ? path : '<other>'
+      const record = (event: string, extra: Partial<SetupDiagnostic> = {}) => w.__captureSetupDiagnostic({
+        event,
+        pathname: safePath(location.pathname),
+        // Home eligibility, NOT the hook's private initial-path/ref decision.
+        homeEligible: location.pathname === '/featherbase/admin' || location.pathname.startsWith('/featherbase/admin/home/'),
+        ...extra,
+      })
+      const offer = (value: string | null): SetupDiagnostic['offer'] => value === null ? 'absent' : value === '1' ? '1' : 'other'
+      const key = 'featherbase.offer-setup'
+      const get = Storage.prototype.getItem
+      const set = Storage.prototype.setItem
+      const remove = Storage.prototype.removeItem
+      Storage.prototype.getItem = function (name) {
+        const value = get.call(this, name)
+        if (this === sessionStorage && name === key) void record('offer-read', { offer: offer(value) })
+        return value
+      }
+      Storage.prototype.setItem = function (name, value) {
+        set.call(this, name, value)
+        if (this === sessionStorage && name === key) void record('offer-set', { offer: offer(value) })
+      }
+      Storage.prototype.removeItem = function (name) {
+        const previous = this === sessionStorage && name === key ? get.call(this, name) : null
+        remove.call(this, name)
+        if (this === sessionStorage && name === key) void record('offer-remove', { offer: offer(previous) })
+      }
+      // TanStack exposes this browser global itself. Observe its public navigate
+      // entry point without changing arguments, return values or navigation order.
+      let router: typeof w.__TSR_ROUTER__
+      Object.defineProperty(window, '__TSR_ROUTER__', {
+        configurable: true,
+        get: () => router,
+        set: (next: typeof router) => {
+          if (next && next !== router) {
+            const navigate = next.navigate
+            next.navigate = function (options) {
+              void record('navigation-intent', { destination: safePath(options.to ?? '') })
+              return navigate.call(this, options)
+            }
+          }
+          router = next
+        },
+      })
+      w.__setupDiagnosticSnapshot = () => record('failure-snapshot', { offer: offer(get.call(sessionStorage, key)) })
+      void record('document-start', { offer: offer(get.call(sessionStorage, key)) })
+    })
+    page.on('response', async (response) => {
+      if (new URL(response.url()).pathname !== '/api/instance-health' || response.status() !== 200) return
+      const data = await response.json().catch(() => null) as { setup?: { administrator_ready?: unknown } } | null
+      if (typeof data?.setup?.administrator_ready !== 'boolean') return
+      // Evaluate only whitelisted scalars; do not attach the response or URL.
+      await page.evaluate((administratorReady) => {
+        const w = window as unknown as { __captureSetupDiagnostic: (event: SetupDiagnostic) => Promise<void> }
+        return w.__captureSetupDiagnostic({
+          event: 'health-response',
+          pathname: ['/featherbase/admin', '/featherbase/admin/home/home', '/featherbase/admin/setup'].includes(location.pathname) ? location.pathname : '<other>',
+          homeEligible: location.pathname === '/featherbase/admin' || location.pathname.startsWith('/featherbase/admin/home/'),
+          administratorReady,
+        })
+      }, data.setup.administrator_ready).catch(() => { /* document closed/navigating */ })
+    })
+    await use()
+    if (testInfo.status !== testInfo.expectedStatus) {
+      await page.evaluate(() => (window as unknown as { __setupDiagnosticSnapshot?: () => Promise<void> }).__setupDiagnosticSnapshot?.()).catch(() => {})
+      // A standalone sanitized file can be read without opening an auth-bearing trace.
+      const path = testInfo.outputPath('setup-offer-diagnostic.json')
+      await writeFile(path, JSON.stringify(events, null, 2))
+      await testInfo.attach('setup-offer-diagnostic', {
+        path, contentType: 'application/json',
+      })
+    }
+  }, { auto: true }],
+})
 
 // First-run setup (#465, task 6.1; checklist items 18–25 on #465). On an
 // instance where no System Manager has an email address, the built-in
