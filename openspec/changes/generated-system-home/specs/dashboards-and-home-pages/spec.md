@@ -8,8 +8,9 @@ A home page SHALL show its links grouped into headed cards in the order
 they were curated, and hide any link to a Table the viewer can't read rather
 than showing it disabled. Links curated before the first named card still
 sit under a heading. On System, curated groups are optional placement hints:
-unplaced system Tables appear under Platform in stable name order, and each
-Table appears once using its effective label, or its name when no label exists.
+unplaced system Tables appear under Platform in stable name order. A System
+link uses its Table's effective label, or its name when no label exists;
+changing the displayed label SHALL NOT change which Table it opens.
 
 #### Scenario: A hidden link
 
@@ -34,9 +35,11 @@ And unplaced system Tables appear under Platform in name order
 
 ### Requirement: System grows with the platform
 
-System SHALL include every readable system Table that can be opened independently,
-including Settings Tables but not sub-tables, whenever the page is fetched.
-Adding a system Table SHALL require no navigation setup.
+Whenever fetched, the reserved System Home Page SHALL link to exactly the
+readable system Tables that can be opened independently, including Settings
+Tables but not sub-tables, once each. Missing, duplicate or stale placement
+hints SHALL NOT change this membership; adding a system Table requires no
+navigation setup.
 
 #### Scenario: System includes all standalone system Tables
 

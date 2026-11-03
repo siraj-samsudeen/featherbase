@@ -1,8 +1,8 @@
 ## 1. Acceptance first
 
 - [x] 1.1 Inspect a real-component visual reference for the existing groups plus newly discovered Platform links, following the issue checklist.
-- [ ] 1.2 Bind System discovery scenarios to the existing real acceptance stack and demonstrate missing-membership failure before implementation.
-- [ ] 1.3 Add public HTTP regressions for catalogue equality, unlinked additions, grouping controls, visibility and effective labels; demonstrate the missing behavior.
+- [x] 1.2 Bind System discovery scenarios to the existing real acceptance stack and demonstrate missing-membership failure before implementation.
+- [x] 1.3 Add public HTTP regressions for catalogue equality, unlinked additions, grouping controls, visibility and effective labels; demonstrate the missing behavior.
 
 ## 2. Implementation
 
