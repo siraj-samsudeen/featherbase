@@ -732,7 +732,18 @@
         "id": "DB1",
         "authority": "AU1",
         "required_access_role": "R3",
-        "grantable_role": "R1",
+        "action": "grant",
+        "target_role": "R1",
+        "max_scope": "SC1",
+        "recipient_rule": "currently_assigned_to_Store_A",
+        "allow_further_delegation": false
+      },
+      {
+        "id": "DB2",
+        "authority": "AU1",
+        "required_access_role": "R3",
+        "action": "revoke",
+        "target_role": "R1",
         "max_scope": "SC1",
         "recipient_rule": "currently_assigned_to_Store_A",
         "allow_further_delegation": false
@@ -1160,6 +1171,22 @@
       "action": "Meera corrects E3.phone through her authorised employee contact operation.",
       "expected": "Only the operational Employee phone changes under applicable approval rules. Sign-in/recovery identifiers and verification state remain unchanged; Meera gains no account-management permission. Account changes require their separate verified flow.",
       "policy": "agreed"
+    },
+    {
+      "id": "V29",
+      "name": "Removing job-derived powers requires separate revoke authority",
+      "setup": "Base plus a trusted acting Store Manager appointment for Ravi in Store A. Meera can maintain staffing but DB2 permits revoking only contact maintenance, not all manager capabilities.",
+      "action": "Meera attempts to end or delete Ravi's acting assignment. Repeat with explicitly configured revoke boundaries covering all removed capabilities, recipient and scope, but without grant authority for those capabilities.",
+      "expected": "The first attempt is refused atomically and Ravi's assignment and powers remain unchanged. The revoke-authorised attempt may proceed under staffing permission and approval rules. Revoke authority alone still cannot create or extend the appointment. A replacement that removes and adds powers requires both boundaries.",
+      "policy": "agreed"
+    },
+    {
+      "id": "V30",
+      "name": "Grant and revoke boundaries are independent",
+      "setup": "Base + RA6. In the first variant remove DB2; in the second restore DB2 and remove DB1.",
+      "action": "Meera attempts to revoke RA6 with grant-only authority, and to grant a new R1 assignment with revoke-only authority.",
+      "expected": "Both attempts are refused. With DB2 present, Meera may revoke RA6 within DB2's scope; DB1's absence also prevents a new delegated grant. Natural expiry at an already-authorised end date needs no new revoke action.",
+      "policy": "agreed"
     }
   ],
   "reference_checks": {
@@ -1222,7 +1249,7 @@
     "delegation_boundary": {
       "authority": "authority",
       "required_access_role": "role",
-      "grantable_role": "role",
+      "target_role": "role",
       "max_scope": "scope"
     },
     "role_assignment": {

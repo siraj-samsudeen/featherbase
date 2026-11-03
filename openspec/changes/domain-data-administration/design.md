@@ -53,6 +53,68 @@ grants and edits must pass the normal checked operations. Document the eventual
 commands here or in the implementation PR once they exist—there is no working
 backend verification command for this proposal today.
 
+### Current-main reconciliation — 3 November 2026 (task 1.4)
+
+Rechecked against fetched `origin/main` at `47541845`, not a manager's local
+branch. The existing PR branch is being merged with that revision without
+rewriting its published history. The only merge conflict is OpenSpec context:
+retain the capability-folder convention and current main's change-mode guidance.
+The change itself retains its existing `spec-driven` schema and 19-task list.
+
+| Dependency | Current evidence and implementation consequence |
+|---|---|
+| #246 (open) | `document.ts:assertUserPermissions` still returns when Data Scope is empty; `permissions.ts:checkUserPermissions` skips absent dimensions. Neither implements a complete administrative grant. New scoped assignments must fail closed without changing the meaning of an unrelated legacy unrestricted grant. |
+| #392 (closed into #449), #449 (open) | Dash already owns `store`, `department`, `section` and dated `job_assignment` in `client-apps/jeyarama/dash/featherbase.json`, with relationship validators and `coverage.ts`/`provider.ts`. Reuse these records. Its report provider returns store/subcategory coverage; it does not return administrative membership tuples or job-derived grants. Do not equate report coverage with edit authority. |
+| #617 (open) | `runtime-packages.ts` validates versioned reads/actions and wires restricted fact readers from `app-access.ts`. `getRoles` resolves current App Role Binding rows, but only as unscoped role names. Neither is the proposed per-assignment grant model. Extend platform-owned contracts; do not put permission decisions in Dash callbacks. The separate Apps UI stays outside this task. |
+| #617 upgrade comments | Current upgrade planning supports adding Tables and schema migrations (#651), superseding the old no-new-Table assumption. It still refuses added/widened grants on existing Tables. Do not silently relax that restriction while adding domain administration. |
+| #627 (open) | `workflow.ts` has state transitions and `waits_for_approval` notifications, not held corrections. Its transition writes the state directly, and notification recipients currently come from unscoped Has Role rows. Reuse the notification path but add scoped eligibility; a workflow transition alone cannot apply a domain proposal. |
+
+Reusable implementation and boundaries:
+
+- `saveDoc` already validates links, runs save hooks, checks managed settings and
+  records Version history. Authorise the final row after hooks, not just the
+  submitted payload. Cover trusted saves and direct workflow/assignment writes
+  before removing any app `decides_scope` guard.
+- `actionTransaction` and `afterCommitOf` already support nested savepoints and
+  discard effects belonging to failed rows. Reuse this for V23's independent
+  per-row outcomes; pending proposals must not emit a live-row update.
+- `app-access.ts` supplies declared, read-only fact access with transaction-held
+  locks and final revalidation. Membership needs sets of related rows, including
+  protection against concurrent insertion, not only its current single-row
+  `facts.get`. Follow the shared pre-row lock ordering in `row-lock-order.ts`.
+- Person IDs are opaque `psn_…` references. Current account state lives in
+  `person`, `sign_in_identity` and password/reset records; external employee
+  identifiers live in `person_identifier`. Dash has no Employee contact Table.
+  Add an app-owned metadata Table linked to Person for operational contacts;
+  never copy a contact correction into account or identifier storage. The
+  sample's JOB/C/PM IDs remain illustrative, not physical database keys.
+- Permission flags/tiers, Has Role, row shares and Data Scope remain active
+  contracts. Migration must preserve each original grant's creator restriction
+  and column reach, as well as submit/cancel/amend and app availability. Do not
+  merge differently scoped legacy grants into a broader permission. The main
+  spec still gives System Manager broad data access; renaming that role alone
+  must not silently decide a different business-data policy.
+- Main now starts at `0001_baseline.sql` and has migrations through `0005`.
+  Old references to migrations 0134/0135 are historical. Claim a new number
+  under #566 before adding one; do not edit the generated baseline. Rehearsal
+  targets are disposable local databases only, not live installations.
+
+Owner decision (3 November 2026): removing administrative powers requires scoped
+revoke authority, configured separately from grant authority. A Staffing Admin
+cannot end or narrow a capability-bearing assignment solely through staffing
+permission. Check the removed capabilities, recipient and affected scope against
+the actor's revoke boundary. A replacement that both removes and adds powers
+needs both checks. Expiry of an already-authorised period is not a new mutation;
+changing that period is. Tasks 2.2–2.5 remain design gates, not completed implementation.
+
+Owner decision (3 November 2026): use the recommended remaining choices and
+complete the implementation before the walkthrough. Platform Admin requires
+explicit domain grants for app-owned business data; platform configuration and
+instance-table administration remain separate. A normal HTTP request, including
+one by Administrator, is not trusted bootstrap. Only the server's explicit
+provisioning/system-actor context may initialise app data without a domain grant.
+Business approvals still apply to a platform administrator's domain operations.
+
 ## Context
 
 See [proposal.md](proposal.md) for why this change is needed and the delta specs
@@ -117,7 +179,7 @@ not the behaviour in this change's delta specs or its implementation sequence.
 
 | Term | Meaning | Concrete names |
 |---|---|---|
-| Platform Admin | Proposed replacement name for System Manager; exact business-data powers are not inferred from the name | Platform Admin |
+| Platform Admin | Replacement name for System Manager; manages platform configuration, but needs explicit domain grants for app-owned business data | Platform Admin |
 | App Admin | Administration of an app within declared powers; not an automatic grant of every domain permission | App Admin |
 | Domain Data Admin | Maintain selected data with operation, column and scope restrictions | Store Layout Admin, Item Master Admin, HR Master Admin |
 | Domain Data Approver | Decide proposed changes within authority | Store Layout Approver |
@@ -224,6 +286,13 @@ not only explicit grants. Evaluate after hooks and before commit. A staffing
 permission alone is insufficient to appoint another Access Admin. Central-only
 appointments are an optional business policy, not a replacement for this check.
 
+Ending, deleting or narrowing a capability-bearing job also requires scoped
+revoke authority, independently configured from grant authority (owner decision,
+3 November 2026). Apply the same removal check to explicit grants and to shared
+role or binding changes that remove effective powers. Grant-only authority
+cannot revoke; revoke-only authority cannot grant. An atomic transfer or role
+replacement checks removals and additions separately, before either applies.
+
 ### 4. Agreed delegation and approval semantics
 
 Delegation references a continuing authority (for example Store Manager of
@@ -282,7 +351,7 @@ start with **JA**. PK means primary key; FK means reference.
 | Scope Condition | tuple FK, dimension, referenced value; unique tuple/dimension | Instance configuration |
 | Role Assignment | id PK, person FK, role FK, scope FK, source_job_assignment FK nullable, source_authority FK nullable, grantor FK, status | Bootstrap, checked job binding, delegated grant |
 | Authority | id PK, office_job FK, office_scope FK, status | Trusted instance setup |
-| Delegation Boundary | id PK, authority FK, required_access_role FK, grantable_role FK, max_scope FK, recipient_rule, allow_further_delegation | Trusted configuration |
+| Delegation Boundary | id PK, authority FK, required_access_role FK, action (grant or revoke), target_role FK, max_scope FK, recipient_rule, allow_further_delegation | Trusted configuration; grant and revoke are separate boundary records |
 | Job Capability | id PK, job FK, role FK, scope_projection | App binding configured per instance |
 | Resolver Declaration | id PK, app FK, target_table metadata FK, contract name/version | App declaration |
 | Approval Rule | id PK, target_table FK, operation, maker_condition, outcome, approver_authority FK nullable, combination | App/authorised configuration |
@@ -502,6 +571,7 @@ Meera, making the acting-manager escalation scenario observable.
 |---|---|
 | AU1 — Store A management | JOB1 — Store Manager; SC1 — Store A; active; current holders resolved from dated assignments |
 | DB1 — Contact maintenance delegation | AU1 — Store A management; required R3 — Employee Contact Access Admin; may grant R1 — Employee Contact Admin; maximum SC1 — Store A; recipients currently assigned to Store A; no further delegation |
+| DB2 — Contact maintenance revocation | AU1 — Store A management; required R3 — Employee Contact Access Admin; may revoke R1 — Employee Contact Admin; maximum SC1 — Store A; recipients currently assigned to Store A; configured separately from DB1 |
 
 Trusted instance setup by P0 creates the initial office, binding configuration,
 JA1 and grants. This is the explicit root of trust; Meera cannot bootstrap her

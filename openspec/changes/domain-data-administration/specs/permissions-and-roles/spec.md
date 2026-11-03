@@ -1,3 +1,5 @@
+# Permissions and Roles
+
 ## ADDED Requirements
 
 ### Requirement: Administrative responsibilities have distinct names
@@ -104,6 +106,27 @@ An appointment that gives someone administrative powers SHALL obey the same dele
 - **WHEN** the user may maintain staffing but cannot confer access-administration authority and appoints an acting manager whose job carries that authority
 - **THEN** the appointment is refused without granting any of its powers
 
+### Requirement: Removing authority needs its own scoped permission
+
+Removing or narrowing administrative powers SHALL require explicit authority to revoke those powers for the affected person and organisational area. Grant and revoke authority SHALL be configured independently; staffing permission alone SHALL NOT permit removing job-derived powers.
+
+#### Scenario: Ending an acting appointment would remove protected powers
+
+```gherkin
+Given the user may maintain staffing for Store A but may not revoke access-administration powers
+And Ravi is an acting manager in Store A with those powers
+When the user ends Ravi's acting appointment
+Then the change is refused and Ravi keeps his appointment and powers
+```
+
+#### Scenario: Permission to remove powers does not permit granting them
+
+```gherkin
+Given the user may maintain staffing and revoke Ravi's manager powers in Store A but may not grant them
+When the user extends Ravi's acting appointment
+Then the extension is refused
+```
+
 ### Requirement: Delegation continues under the responsible office
 
 A valid delegated responsibility SHALL continue under a successor when the responsible manager changes, with its original grantor preserved in history. Revocation or narrowing of the underlying authority SHALL constrain dependent access on the next request.
@@ -179,9 +202,44 @@ Maintaining operational employee contact details SHALL NOT change sign-in or acc
 
 ## MODIFIED Requirements
 
+### Requirement: Roles decide what's possible
+
+Every user SHALL hold one or more roles, and what they can do on a table SHALL come from what those roles are granted there. A Platform Admin SHALL manage platform configuration and instance tables, but SHALL require explicit domain grants to read or maintain app-owned business data. Platform administration SHALL NOT bypass business approval rules or system-written protections.
+
+#### Scenario: A fresh table needs no setup
+
+```gherkin
+Given the user is a Platform Admin
+When the user opens a new instance table with no permissions configured
+Then the user can maintain its rows
+```
+
+#### Scenario: Platform administration does not grant employee contact access
+
+```gherkin
+Given the user is a Platform Admin without a domain grant for employee contacts
+When the user reads Priya's employee contact record
+Then access is refused
+```
+
 ### Requirement: Only a System Manager changes who can do what
 
 Platform security configuration and account access SHALL remain protected from ordinary business-data permissions. Bounded domain delegation and job-derived business authority SHALL be available only through their explicit authority checks, not through unrestricted editing of platform access records.
+
+#### Normative details for the whole requirement
+
+Reading platform security configuration SHALL stay governed by ordinary grants.
+A person's platform roles and whether their account is enabled SHALL change only
+for a Platform Admin, through every way a row can be saved; values sent back
+unchanged SHALL NOT block an ordinary edit. Role rows count as unchanged only
+when each stored row comes back once, under its own id, with its own values;
+their order does not matter. A save that names the same child row twice SHALL
+be refused, for anyone. The check SHALL judge the row as it will be written,
+after every save hook and script has run. A workflow or assignment rule SHALL
+NOT target platform access configuration or a person's platform roles or enabled
+flag, neither when it is saved nor when it acts. Deleting a person, which a
+delete grant allows, SHALL drop their roles with them; a person created afresh
+starts enabled with no roles.
 
 #### Scenario: A grant on the permission table does not let a user write it
 
