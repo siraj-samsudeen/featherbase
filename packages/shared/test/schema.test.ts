@@ -19,6 +19,14 @@ describe('tableSchemaToZod: column type mapping', () => {
     expect(over.success).toBe(false)
   })
 
+  it('leaves a connected Table\'s one-line text length to its source (#795)', () => {
+    const s = tableSchemaToZod([col('title', 'Data'), col('dept', 'Reference', { reference_table: 'Department' })], {
+      sourceLimitsLength: true,
+    })
+    expect(s.safeParse({ title: 'x'.repeat(300), dept: 'Engineering' }).success).toBe(true)
+    expect(s.safeParse({ title: 'x', dept: 'x'.repeat(141) }).success).toBe(false)
+  })
+
   it('maps Text, Long Text, Attach, and Attach Image to an unbounded string', () => {
     const s = tableSchemaToZod([
       col('body', 'Text'),

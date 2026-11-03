@@ -94,7 +94,8 @@ for (const width of [375, 1440]) {
     })
 
     await session.step('the attachments sidebar sits beside/below the form section by breakpoint', async ({ page }) => {
-      const sections = page.getByTestId('form-section-0')
+      // #795: an existing row of a Table with no sections opens arranged by importance.
+      const sections = page.getByTestId('form-arranged')
       const sidebar = page.getByTestId('attachments-panel').locator('..')
       const sectionBox = (await sections.boundingBox())!
       const sideBox = (await sidebar.boundingBox())!
