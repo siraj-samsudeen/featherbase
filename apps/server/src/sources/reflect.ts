@@ -212,6 +212,57 @@ export async function assertBindingIsValid(def: {
     throw new AppError('ValidationError', `Invalid binding for ${def.name}`, errors)
 }
 
+// How an app says one connected table reads (#808). Column names are the
+// source's; anything unsaid keeps the connect defaults.
+export interface TableSettings {
+  leave_out_columns?: string[]
+  title_column?: string
+  list_columns?: string[]
+}
+
+// The column that surfaces as updated_at, or null. A left-out column is never it.
+function modifiedColumn(cfg: SourceConfig, t: IntrospectedTable, leaveOut: Set<string>): string | null {
+  if (cfg.engine === 'csv-folder') return '_mtime'
+  return (
+    t.columns.find(
+      (c) =>
+        MODIFIED_CANDIDATES.includes(c.name.toLowerCase()) &&
+        c.column_type === 'Datetime' &&
+        !leaveOut.has(c.name),
+    )?.name ?? null
+  )
+}
+
+// Every column a table's settings name must be one it can offer: a misspelt
+// left-out column would otherwise show what it was meant to hide.
+function settingsErrors(
+  cfg: SourceConfig,
+  tableName: string,
+  t: IntrospectedTable,
+  pk: string | null,
+  s: TableSettings,
+): string[] {
+  const has = new Set(t.columns.map((c) => c.name))
+  const leaveOut = new Set(s.leave_out_columns ?? [])
+  const modified = modifiedColumn(cfg, t, leaveOut)
+  const errors: string[] = []
+  for (const c of leaveOut) {
+    if (!has.has(c)) errors.push(`${tableName} has no column ${c} to leave out`)
+    else if (c === pk) errors.push(`${tableName} cannot leave out its key ${c}`)
+  }
+  const shown = [
+    ...(s.title_column ? [[s.title_column, 'title'] as const] : []),
+    ...(s.list_columns ?? []).map((c) => [c, 'list'] as const),
+  ]
+  for (const [c, use] of shown) {
+    if (!has.has(c)) errors.push(`${tableName} has no column ${c} for its ${use}`)
+    else if (leaveOut.has(c)) errors.push(`${tableName} leaves out ${c}, so it cannot be in its ${use}`)
+    else if (c === pk || c === modified || isSensitiveColumn(c))
+      errors.push(`${tableName}'s ${c} is not a connected column, so it cannot be in its ${use}`)
+  }
+  return errors
+}
+
 interface ReflectResult {
   created: { table: string; name: string }[]
   skipped: { table: string; reason: string }[]
@@ -221,7 +272,15 @@ interface ReflectResult {
 export async function reflectTables(
   sourceName: string,
   // names: the Table name to use per source table, in place of the proposal.
-  opts: { schema?: string; tables: string[]; module?: string; prefix?: string; names?: Record<string, string> },
+  // settings: how each table reads (#808), keyed like names.
+  opts: {
+    schema?: string
+    tables: string[]
+    module?: string
+    prefix?: string
+    names?: Record<string, string>
+    settings?: Record<string, TableSettings>
+  },
 ): Promise<ReflectResult> {
   const cfg = await getSource(sourceName)
   const driver = getDriver(cfg)
@@ -253,7 +312,8 @@ export async function reflectTables(
   // before any is created: one refused table refuses the whole request
   // instead of leaving the earlier ones connected (#518).
   // Entries keep request order, so skipped reasons come back in that order.
-  const resolved: { tableName: string; t?: IntrospectedTable; skip?: string }[] = []
+  const resolved: { tableName: string; t?: IntrospectedTable; skip?: string; settings?: TableSettings }[] = []
+  const settingErrors: Record<string, string> = {}
   for (const tableName of opts.tables) {
     let t = byQualified.get(tableName)
     if (!t) {
@@ -272,9 +332,18 @@ export async function reflectTables(
       continue
     }
     assertAllowed(cfg, t.schema, t.table)
-    resolved.push({ tableName, t })
+    const settings = opts.settings?.[tableName] ?? opts.settings?.[t.table]
+    if (settings) {
+      const pk = t.pk ?? (cfg.engine === 'duckdb' ? (t.columns[0]?.name ?? null) : null)
+      const errors = settingsErrors(cfg, tableName, t, pk, settings)
+      if (errors.length) settingErrors[tableName] = errors.join('; ')
+    }
+    resolved.push({ tableName, t, settings })
   }
-  for (const { tableName, t, skip } of resolved) {
+  const errorList = Object.values(settingErrors)
+  if (errorList.length)
+    throw new AppError('ValidationError', `Cannot connect: ${errorList.join('; ')}`, settingErrors)
+  for (const { tableName, t, skip, settings } of resolved) {
     if (!t) {
       result.skipped.push({ table: tableName, reason: skip! })
       continue
@@ -294,7 +363,7 @@ export async function reflectTables(
       continue
     }
     try {
-      const created = await buildBoundTable(cfg, t, candidate, opts)
+      const created = await buildBoundTable(cfg, t, candidate, opts, settings ?? {})
       result.created.push({ table: tableName, name: created })
       reflected.set(`${t.schema}\u0000${t.table}`, created)
     } catch (err) {
@@ -312,24 +381,25 @@ async function buildBoundTable(
   t: IntrospectedTable,
   candidate: ReflectionCandidate,
   opts: { module?: string; prefix?: string },
+  settings: TableSettings,
 ): Promise<string> {
   const pk = candidate.pk!
+  const leaveOut = new Set(settings.leave_out_columns ?? [])
   // The modified column surfaces as the standard updated_at; the pk surfaces
   // as name. Neither gets a column_def. On csv-folder the synthetic _mtime
   // plays the modified role.
-  const modified =
-    cfg.engine === 'csv-folder'
-      ? '_mtime'
-      : (t.columns.find(
-          (c) =>
-            MODIFIED_CANDIDATES.includes(c.name.toLowerCase()) && c.column_type === 'Datetime',
-        )?.name ?? null)
+  const modified = modifiedColumn(cfg, t, leaveOut)
   // Credential-named source columns are never reflected — the same names
   // the native path refuses to serialize (review finding 2). The runtime
-  // binding filter in dispatch.ts backstops any that slip in later.
-  const dataColumns = t.columns.filter(
-    (c) => c.name !== pk && c.name !== modified && !isSensitiveColumn(c.name),
-  )
+  // binding filter in dispatch.ts backstops any that slip in later. Columns
+  // an app leaves out (#808) are never connected either.
+  const listed = settings.list_columns
+  const dataColumns = t.columns
+    .filter((c) => c.name !== pk && c.name !== modified && !isSensitiveColumn(c.name) && !leaveOut.has(c.name))
+    // An app's list columns come first, in its order; the rest keep the source's.
+    .map((c, i) => ({ c, i, at: listed?.indexOf(c.name) ?? -1 }))
+    .sort((a, b) => (a.at < 0 ? Number.MAX_SAFE_INTEGER : a.at) - (b.at < 0 ? Number.MAX_SAFE_INTEGER : b.at) || a.i - b.i)
+    .map(({ c }) => c)
   const legalNames = sanitizeHeaders(dataColumns.map((c) => c.name))
   // FK-aware types (EDS-2): a column whose source FK lands on the bound pk
   // of a table ALREADY reflected from this source becomes a Reference to it.
@@ -351,7 +421,12 @@ async function buildBoundTable(
     const key = `${b.external_schema ?? ''}\u0000${b.external_table ?? ''}`
     if (!boundByRelation.has(key)) boundByRelation.set(key, b)
   }
-  const defaults = connectDefaults(dataColumns.map((c) => c.name))
+  const names = dataColumns.map((c) => c.name)
+  const picked = connectDefaults(names)
+  const defaults = {
+    title: settings.title_column ? names.indexOf(settings.title_column) : picked.title,
+    listed: listed ? new Set(listed.map((c) => names.indexOf(c))) : picked.listed,
+  }
   const columns = dataColumns.map((c, i) => {
     const target = c.references
       ? boundByRelation.get(`${c.references.schema}\u0000${c.references.table}`)

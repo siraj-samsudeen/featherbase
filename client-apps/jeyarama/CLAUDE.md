@@ -1,6 +1,8 @@
 # JeyaRama client apps
 
-Conventions shared by every JeyaRama app in this folder (`dash/` today). Each
+Conventions shared by every JeyaRama app in this folder: `dash/` (Feather Dash,
+a runtime package) and `stylehr/` (browsing the HR system live; a manifest with
+no code, installed as its README says, reading `STYLEHR_URL`). Each
 instance's settings and setup are in `instances/<instance>/` (ADR 0014); no
 secret or host detail goes there.
 

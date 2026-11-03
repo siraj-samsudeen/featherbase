@@ -1,0 +1,180 @@
+{
+  "name": "stylehr",
+  "sources": [
+    {
+      "name": "stylehr",
+      "engine": "postgres",
+      "url_env": "STYLEHR_URL",
+      "access": "read_only",
+      "default_schema": "public",
+      "table_allowlist": "public.store_store,public.store_floor,public.store_section,public.store_floorsection,public.employee_employee,public.employee_employeedeploying,public.employee_employeedeploying_sections,public.employee_employeestoresandfirms,public.employee_employeestoresandfirms_employee,public.designation_designation,public.department_department,public.organization_organization,public.firm_firm",
+      "reflect": {
+        "schema": "public",
+        "module": "StyleHR",
+        "tables": [
+          {
+            "table": "store_store",
+            "name": "Store",
+            "title_column": "name",
+            "list_columns": [
+              "name",
+              "store_code",
+              "organization_id",
+              "city",
+              "is_active"
+            ]
+          },
+          {
+            "table": "store_floor",
+            "name": "Floor",
+            "title_column": "label",
+            "list_columns": [
+              "label",
+              "floor_number",
+              "store_id"
+            ]
+          },
+          {
+            "table": "store_section",
+            "name": "Section",
+            "title_column": "name",
+            "list_columns": [
+              "name",
+              "store_id",
+              "is_active"
+            ]
+          },
+          {
+            "table": "store_floorsection",
+            "name": "Floor Section",
+            "list_columns": [
+              "floor_id",
+              "section_id",
+              "min_employee",
+              "max_employee"
+            ]
+          },
+          {
+            "table": "employee_employee",
+            "name": "Employee",
+            "leave_out_columns": [
+              "date_of_birth",
+              "gender",
+              "marital_status",
+              "nationality",
+              "religion",
+              "profile_pic_large",
+              "profile_pic_medium",
+              "profile_pic_small",
+              "blood_group",
+              "languages_known",
+              "native_place",
+              "accommodation",
+              "food",
+              "transportation",
+              "nearest_police_station",
+              "mother_tongue",
+              "facebook_url",
+              "instagram_url",
+              "linkedin_url",
+              "twitter_url",
+              "youtube_url",
+              "abha_health_insurance_no",
+              "wedding_anniversary",
+              "native_state",
+              "listing_personal_phone",
+              "esi_epf_remarks",
+              "notes",
+              "termination_reason",
+              "favourited_by_id",
+              "is_favourite"
+            ],
+            "title_column": "first_name",
+            "list_columns": [
+              "employee_id",
+              "first_name",
+              "last_name",
+              "designation_id",
+              "reported_to_id",
+              "area_manager_id",
+              "date_of_joining"
+            ]
+          },
+          {
+            "table": "employee_employeedeploying",
+            "name": "Deployment",
+            "list_columns": [
+              "employee_id",
+              "floor_id",
+              "from_date",
+              "to_date",
+              "is_active"
+            ]
+          },
+          {
+            "table": "employee_employeedeploying_sections",
+            "name": "Deployment Section",
+            "list_columns": [
+              "employeedeploying_id",
+              "floorsection_id"
+            ]
+          },
+          {
+            "table": "employee_employeestoresandfirms",
+            "name": "Store Assignment",
+            "list_columns": [
+              "store_id",
+              "firm_id",
+              "work_location"
+            ]
+          },
+          {
+            "table": "employee_employeestoresandfirms_employee",
+            "name": "Store Assignment Member",
+            "list_columns": [
+              "employee_id",
+              "employeestoresandfirms_id"
+            ]
+          },
+          {
+            "table": "designation_designation",
+            "name": "Designation",
+            "title_column": "name",
+            "list_columns": [
+              "name",
+              "organization_id"
+            ]
+          },
+          {
+            "table": "department_department",
+            "name": "Department",
+            "title_column": "name",
+            "list_columns": [
+              "name",
+              "parent_department_id"
+            ]
+          },
+          {
+            "table": "organization_organization",
+            "name": "Organisation",
+            "title_column": "name",
+            "list_columns": [
+              "name",
+              "abbreviation"
+            ]
+          },
+          {
+            "table": "firm_firm",
+            "name": "Firm",
+            "leave_out_columns": [
+              "pan",
+              "tan",
+              "tds_circle_ao_code"
+            ],
+            "title_column": "name"
+          }
+        ]
+      }
+    }
+  ]
+}

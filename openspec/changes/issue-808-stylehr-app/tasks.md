@@ -10,10 +10,10 @@ Skipped: `acceptance-tests/` exists. Uses #782's outside-database harness and #7
 
 ## 3. Implementation
 
-- [ ] 3.1 Manifest: `reflect.tables` entries accept `{ table, name, leave_out_columns, title_column, list_columns }` beside plain names (`apps.ts` type and zod schema); install passes names and settings to reflect
-- [ ] 3.2 Reflect: per-table settings validated against the source before any Table is created; left-out columns skipped (never key, never modified column); title and list columns override the defaults, listed columns first in the given order
-- [ ] 3.3 Server tests (`apps/server/test/app-sources-settings.test.ts`): name, title, list, left-out, unknown-column refusal
-- [ ] 3.4 StyleHR app: `client-apps/jeyarama/stylehr/app.json` and README; `client-apps/jeyarama/CLAUDE.md` notes it; `connect-an-outside-database` guide updated
+- [x] 3.1 Manifest: `reflect.tables` entries accept `{ table, name, leave_out_columns, title_column, list_columns }` beside plain names (`apps.ts` type and zod schema); install passes names and settings to reflect
+- [x] 3.2 Reflect: per-table settings validated against the source before any Table is created; left-out columns skipped (never key, never modified column); title and list columns override the defaults, listed columns first in the given order
+- [x] 3.3 Server tests (`apps/server/test/app-sources-settings.test.ts`): name, title, list, left-out, unknown-column refusal
+- [x] 3.4 StyleHR app: `client-apps/jeyarama/stylehr/app.json` and README; `client-apps/jeyarama/CLAUDE.md` notes it; `connect-an-outside-database` guide updated
 - [ ] 3.5 Live proof (owner check, local only): install StyleHR on a disposable database; 13 tables with their names, left-out columns absent, an Employee list loads live, read-only
 
 ## 4. Completion
