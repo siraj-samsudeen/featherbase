@@ -14,7 +14,7 @@
 - [x] 3.1 Run targeted component/server/shared checks, effective acceptance and boot smoke.
 - [x] 3.2 Independently verify actual UI at 1280 and 375; inspect screenshots and pointer/keyboard recording.
 - [x] 3.3 Push stacked issue branch, open one dependency-marked PR and subscribe exact head CI/comments. No merge/deploy.
-- [ ] 3.4 Sync/archive after review evidence is accepted and report remaining delivery gates.
+- [ ] 3.4 Archive after the owner-video gate is resolved by the manager; specs are synced, but owner viewing is not claimed.
 
 ## 4. Ordinary review round-one corrections
 
@@ -35,8 +35,14 @@ Pre-correction head 06e285eb passed all reported CI checks. Corrective-head CI i
 - [x] 5.3 Preserve canonical registry, strict text booleans, unknown-ID 404 and refusal regressions. Integrated server checks: 159 passed; focused forms: 33 passed. Final filename checks: 30 passed. Both typechecks and init smoke passed.
 - [x] 5.4 Replay creation and retarget through running UI at desktop 1280 and touch-enabled Chromium 375; inspect saved/moved screenshots including scrolled phone Value. Public API confirms old/new effective metadata after move.
 - [x] 5.5 Finish integrated effective acceptance: 154 scenarios/1954 steps pass; the subsequent published-main theme addition separately passes 2 scenarios/24 steps.
-- [ ] 5.6 Publish coherent issue branch and follow exact-head CI. Reconcile migration inventory again before landing; archive remains separate.
+- [x] 5.6 Publish coherent issue branch and follow exact-head CI. Landing-time migration reconciliation and archive remain separate gates.
 
 Round 2 at 8fb1e542 found no L1/L2 and all reported CI passed. Manager subsequently cleared the owner-model hold. Its proposed orphan-fixture finding was withdrawn: the generic Reference-to-Table deletion sweep removes the adjustment. Inserts, updates and deletes all take the advisory lock before row locks. Remaining L3 limitations stay documented rather than expanded into this change.
 
 The first integrated acceptance run expanded to 154 scenarios: 152 passed, two genuine creation fixtures inherited from main failed with the preserved unknown-ID 404. Only those calls in readable-labels-page.js and table-storage-page.js were changed to explicit POST; no update/rollback semantics or production validation were relaxed.
+
+Finalization: integrated-head CI identified two more genuine creation fixtures in home-pages.test.ts and readable-labels.test.ts. Both were reproduced locally (2 failed/36 passed), corrected only to use explicit POST, and rechecked with the editor regression (44 passed). Both failed shard logs confirm these exact fixtures. No production source or expected result changed.
+
+The three approved requirements and six scenarios are synced verbatim into core-forms. While archive is pending, their delta header is MODIFIED so the effective runner executes each scenario once, not once from each copy. Strict specs and composition parity are checked; no unrelated source/full-suite rerun is needed for this docs-only sync. Read-only merge-tree compatibility with published main 597fd2ff is conflict-free; its command inventory additions do not change migration files or the editor contracts. No unmerged #800/#773 imported.
+
+Archive remains pending the manager-owned clarification: openspec/config.yaml:86 gives owner-video guidance and change-modes/SKILL.md:62–65 also requires it. No specific #740 owner hold was found, but no owner-viewing receipt is claimed and no waiver is inferred. This is not a current-CI gate. The manager has queued clarification behind #821; no second owner question was sent. Keep migration 0015 and all earlier review/media evidence intact.
