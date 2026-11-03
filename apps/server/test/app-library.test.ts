@@ -31,58 +31,25 @@ test('the manager catalog offers repository apps without registering their code'
   expect(result.available).not.toContain('tasker')
 })
 
-test('a packaged server installs an explicitly supplied artifact without a checkout', async ({ admin }) => {
-  const root = await sourceRepository('node -e "process.exit(1)"')
-  const source = resolve(root, 'example-apps/other')
-  await cp(resolve(source, 'server.mjs'), resolve(source, 'built.mjs'))
-  await rm(resolve(root, '.git'), { recursive: true })
-  try {
-    await discoverAppLibrary([source], root)
-    expect(await admin.get('/api/apps')).toMatchObject({ catalog: [expect.objectContaining({ name: 'other', installed: false, preparation: { state: 'ready' } })] })
-    expect(await admin.post('/api/apps/prepare-install', { name: 'other' })).toEqual({ name: 'other', installed: true })
-    expect(await admin.get('/api/apps')).toMatchObject({ catalog: [expect.objectContaining({ name: 'other', installed: true, active: true })] })
-    expect(await sql`select name, package_version from installed_app where name = 'other'`).toEqual([{ name: 'other', package_version: '0.0.1' }])
-  } finally {
-    await discoverAppLibrary([], null)
-    await loadInstalledApps()
-    await rm(root, { recursive: true, force: true })
-  }
-})
-
-test('ambiguous source names cannot be chosen from the catalog', async ({ admin }) => {
-  const root = await sourceRepository()
-  const source = resolve(root, 'example-apps/other')
-  const second = resolve(root, 'client-apps/customer/second')
-  await cp(source, resolve(root, 'example-apps/duplicate'), { recursive: true })
-  await cp(source, resolve(root, 'client-apps/customer/third'), { recursive: true })
-  await cp(source, second, { recursive: true })
-  for (const file of ['featherbase.json', 'server.mjs']) {
-    const path = resolve(second, file)
-    await writeFile(path, (await readFile(path, 'utf8')).replaceAll('other', 'second'))
-  }
-  try {
-    await discoverAppLibrary([], root)
-    const result = await admin.get<{ catalog: { name: string }[] }>('/api/apps')
-    expect(result.catalog.map(app => app.name)).toEqual(['second'])
-    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Unknown trusted app name') })
-    expect(await sql`select name from installed_app where name in ('other', 'second')`).toEqual([])
-    await expect(readFile(resolve(source, 'built.mjs'))).rejects.toMatchObject({ code: 'ENOENT' })
-  } finally {
-    await discoverAppLibrary([], null)
-    await loadInstalledApps()
-    await rm(root, { recursive: true, force: true })
-  }
-})
-
 test('ambiguous source packages and folders without repository metadata are not offered', async ({ admin }) => {
   const root = await sourceRepository()
   try {
     const source = resolve(root, 'example-apps/other')
     for (const copy of ['duplicate', 'third'])
       await cp(source, resolve(root, `example-apps/${copy}`), { recursive: true })
+    const second = resolve(root, 'client-apps/customer/second')
+    await cp(source, second, { recursive: true })
+    for (const file of ['featherbase.json', 'server.mjs']) {
+      const path = resolve(second, file)
+      await writeFile(path, (await readFile(path, 'utf8')).replaceAll('other', 'second'))
+    }
     await discoverAppLibrary([], root)
-    expect(await admin.get('/api/apps')).toMatchObject({ catalog: [] })
-    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 417 })
+    const catalog = await admin.get<{ catalog: { name: string }[] }>('/api/apps')
+    expect(catalog.catalog.map(app => app.name)).toEqual(['second'])
+    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({
+      status: 417, message: expect.stringContaining('Unknown trusted app name'),
+    })
+    expect(await sql`select name from installed_app where name in ('other', 'second')`).toEqual([])
     for (const copy of ['duplicate', 'third']) await rm(resolve(root, `example-apps/${copy}`), { recursive: true })
     await rm(resolve(root, '.git'), { recursive: true })
     await discoverAppLibrary([], root)
@@ -103,6 +70,7 @@ test('an already-built trusted package installs without executing its source bui
     expect(await admin.get('/api/apps')).toMatchObject({ catalog: [expect.objectContaining({ name: 'other', installed: false, preparation: { state: 'ready' } })] })
     expect(await admin.post('/api/apps/prepare-install', { name: 'other' })).toEqual({ name: 'other', installed: true })
     expect(await admin.get('/api/apps')).toMatchObject({ catalog: [expect.objectContaining({ name: 'other', installed: true, active: true })] })
+    expect(await sql`select name, package_version from installed_app where name = 'other'`).toEqual([{ name: 'other', package_version: '0.0.1' }])
   } finally {
     await discoverAppLibrary([], null)
     await loadInstalledApps()
