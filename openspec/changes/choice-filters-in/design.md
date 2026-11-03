@@ -24,8 +24,7 @@ flowchart LR
 
 **Goals:** the promises in this change's specs, with no server change.
 
-**Non-Goals:** `not in` for Choice; months for date columns; OR between different columns; fixing up two filters on
-the same column that arrive in a hand-made address.
+**Non-Goals:** `not in` for Choice; months for date columns; OR between different columns.
 
 ## Decisions
 
@@ -33,8 +32,9 @@ the same column that arrive in a hand-made address.
 
 The quick filter and "Add filter" both edit the one `in` filter a Choice column may have: adding the same column again
 adds its ticked choices to that filter, and unticking or ticking every choice removes it. The server still joins every
-filter with AND, so a filter can only narrow the rows a person may already see. A hand-made address holding two filters
-on the same column still finds the rows matching both, as today.
+filter with AND, so a filter can only narrow the rows a person may already see. When the page opens an address with
+several filters on one Choice column, it merges them into one `in` filter before asking for rows; an older `=` counts as
+`in` with one choice.
 
 *Rejected: merging filters on the same column in the server.* It would change what every caller's filters mean,
 reports and saved reports included, and a merge that ever reached the permission filters would show rows a person may
@@ -50,7 +50,7 @@ page must read `=` anyway; a migration would add a data change for no gain.
 
 ## Risks / Trade-offs
 
-- The one-filter rule holds only in the list page. A hand-made address with two filters on the same Choice column gives
-  no rows, as it does today.
+- The server still joins a hand-made address's filters with AND for any other caller, such as a report; only the list
+  page merges them.
 - A long `in` list makes a long page address. Choice lists in the apps here have at most 6 choices, so this is not
   expected to matter.
