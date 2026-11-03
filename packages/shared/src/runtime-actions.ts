@@ -81,6 +81,13 @@ export interface AppJobPerson {
  *  system actor, which holds no role: each capability below works only when
  *  the job declares the grant it needs, and is refused otherwise. */
 export interface RuntimeJobContext {
+  /** Stable run clock and the instance's configured timezone. */
+  readonly now: string
+  readonly timeZone: string
+  readonly documents: {
+    /** Server-selected enabled creators of the declared owner Table only. */
+    forEachOwner(callback: (scope: { readonly user: string; readonly documents: RuntimeActionContext['documents'] }) => Promise<void>): Promise<void>
+  }
   /** The job's registered name (`<app>.<job>`), which is also its actor. */
   readonly job: { readonly name: string; readonly run: string; readonly trigger: string }
   readonly settings: Readonly<Record<string, string>>
