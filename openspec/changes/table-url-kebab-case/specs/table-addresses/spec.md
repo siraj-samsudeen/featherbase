@@ -50,7 +50,7 @@ And the settings destination still opens System Settings by its real name
 
 ### Requirement: Ambiguous Table spellings are refused
 
-An address whose Table spelling matches multiple names SHALL be refused rather than opening an arbitrary Table. An exact canonical Table name SHALL retain the existing resolution precedence.
+An address whose Table spelling matches multiple names SHALL be refused rather than opening an arbitrary Table. An exact canonical Table name SHALL retain the existing resolution precedence. Existing colliding identities SHALL remain untouched, without trimming, renaming, merging or URL exceptions.
 
 #### Scenario: An ambiguous spelling selects no Table
 
@@ -58,4 +58,26 @@ An address whose Table spelling matches multiple names SHALL be refused rather t
 Given two existing Table definitions have the same normalized spelling
 When the user opens that spelling as a Table address
 Then the ambiguity is reported without opening either Table
+```
+
+### Requirement: New Table identities cannot take another Table's address
+
+Creating or renaming a Table SHALL refuse a normalized URL spelling owned by another live Table, through direct creation, import, reflection and app installation/upgrades. Existing permission and ownership checks SHALL remain in force. A rename retaining only its own spelling SHALL remain allowed; deleted names SHALL not reserve spellings. Updating an existing Table SHALL preserve its identity.
+
+#### Scenario: A new Table cannot take an existing Table's address
+
+```gherkin
+Given the user manages a Table named Route Probe with a row called Stock review
+When the user attempts to create another Table with Route Probe's address
+Then the new Table is refused without changing Route Probe
+And the original Route Probe remains reachable with its unchanged identity
+```
+
+#### Scenario: Importing a new Table cannot take an existing Table's address
+
+```gherkin
+Given the user manages a Table named Route Probe with a row called Stock review
+When the user imports rows into a new Table with Route Probe's address
+Then the imported Table is refused without changing Route Probe
+And a new Table with a different address can still be imported
 ```

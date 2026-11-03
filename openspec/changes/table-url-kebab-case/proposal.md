@@ -8,6 +8,7 @@ People should be able to read and share Table addresses without encoded spaces, 
 - Resolve Table segments through metadata before reading, checking access, editing or saving; keep names and labels unchanged.
 - Generate the same kebab spelling in portal, print and other Table destinations. Keep row IDs, app IDs and query values intact.
 - Migrate internal links and executable journeys together; add no old-route aliases, redirects or stored slugs.
+- Refuse new cross-Table URL spelling collisions consistently through creation, rename, import, reflection and app installation/upgrades. Leave existing collisions untouched and ambiguous; do not trim, merge or backfill identities.
 
 ## Capabilities
 
