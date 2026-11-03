@@ -1,14 +1,15 @@
 // #741 item 3: the Recent strip above a Table's list offers only rows that
 // still exist. A deleted row's chip led to an error page.
 import { screen, waitFor } from '@testing-library/react'
+import { tableSlug } from 'shared'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
 
 const TABLE = 'Strip Bin'
-const path = `/featherbase/admin/${encodeURIComponent(TABLE)}`
+const path = `/featherbase/admin/table/${encodeURIComponent(tableSlug(TABLE))}`
 
 function remember(rowId: string, at: number) {
-  recordAction('Administrator', { kind: 'row', key: `row:${TABLE}/${rowId}`, label: rowId, sub: TABLE, path: `${path}/${rowId}` }, at)
+  recordAction('Administrator', { kind: 'row', key: `row:${TABLE}/${rowId}`, label: rowId, sub: TABLE, path: `${path}/row/${rowId}` }, at)
 }
 
 test('#741 a deleted row leaves the Recent strip; the rows still there stay', async ({ admin }) => {
