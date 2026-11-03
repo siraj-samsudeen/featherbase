@@ -325,14 +325,23 @@ describe('System membership comes from the current catalogue', () => {
       table: 'Permission', row: { ref_table: 'Sign In Method', role: ROLE, can_read: true, own_rows_only: true },
     })
     await admin.post('/api/save_row', {
+      table: 'Permission', row: { ref_table: 'Person', role: ROLE, can_read: true },
+    })
+    await admin.post('/api/save_row', {
       table: 'Metadata Override', row: { row_id: 'hp-sign-in-label', table_name: 'Sign In Method', property: 'label', value: 'Sign-in providers' },
+    })
+    await admin.post('/api/save_row', {
+      table: 'Metadata Override', row: { row_id: 'hp-person-label', table_name: 'Person', property: 'label', value: 'People' },
     })
     const reader = await createUser({ roles: [ROLE] })
     const system = (await pages(reader)).find((p) => p.row_id === 'system')!
-    expect(system.cards).toEqual([{ label: 'Platform', links: [
-      { label: 'Glossary Term', link_to: 'Glossary Term' },
-      { label: 'Sign-in providers', link_to: 'Sign In Method' },
-    ] }])
+    expect(system.cards).toEqual([
+      { label: 'Users & Access', links: [{ label: 'People', link_to: 'Person' }] },
+      { label: 'Platform', links: [
+        { label: 'Glossary Term', link_to: 'Glossary Term' },
+        { label: 'Sign-in providers', link_to: 'Sign In Method' },
+      ] },
+    ])
     // No read grant on Table or Home Page is required. Page roles still apply.
     await sql`insert into home_page_role ${sql({
       row_id: 'hp-system-role', parent: 'system', parenttype: 'Home Page', parentfield: 'roles', role: 'System Manager',

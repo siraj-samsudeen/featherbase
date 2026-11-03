@@ -6,7 +6,7 @@
 
 ## 2. Implementation
 
-- [ ] 2.1 Generate eligible System membership at request time with optional ordered placement hints, deduplication, stable Platform fallback and permission-filtered effective labels.
+- [x] 2.1 Generate eligible System membership at request time with optional ordered placement hints, deduplication, stable Platform fallback and permission-filtered effective labels.
 - [ ] 2.2 Run targeted server/component/browser checks and the full effective acceptance suite, with no pending or undefined steps.
 
 ## 3. Verification and handoff
