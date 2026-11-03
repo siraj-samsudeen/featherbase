@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { setUserPassword } from '../src/auth'
+import { issueSession, setUserPassword } from '../src/auth'
 import { sql } from '../src/db'
 import type { TestClient } from 'feather-testing-postgres'
 
@@ -364,5 +364,202 @@ describe('Changes to a service account are recorded', () => {
       `service_account_roles ${account.row_id}: System Manager`,
     ])
     expect(rows.every((r) => r.user === admin.user)).toBe(true)
+  })
+})
+
+describe('#853: rename access tokens', () => {
+  test('an owner renames a token without replacing its credential', async ({ api, createUser }) => {
+    const owner = await createUser({ email: 'rename-owner@x.com' })
+    const issued = await owner.post<{ id: string; token: string }>('/api/access_tokens', {
+      label: 'old name', expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+    })
+    const [before] = await sql`select * from access_token where id = ${issued.id}`
+    const response = await owner.fetch(`/api/access_tokens/${issued.id}`, {
+      method: 'PATCH',
+      // A rename is not a generalized token update: immutable fields are ignored.
+      body: JSON.stringify({ label: 'new name', owner: 'Administrator', person: 'Administrator',
+        service_account: 'svc_fake', token_hash: 'replacement', expires_at: null, revoked_at: new Date().toISOString() }),
+    })
+    expect(response.status).toBe(200)
+    const result = await response.json()
+    expect(result).not.toHaveProperty('token')
+    expect(result).not.toHaveProperty('token_hash')
+    expect(JSON.stringify(result)).not.toContain(issued.token)
+    expect(JSON.stringify(result)).not.toContain(before.token_hash)
+    const [after] = await sql`select * from access_token where id = ${issued.id}`
+    expect(after).toEqual({ ...before, label: 'new name' })
+    const { tokens } = await owner.get<{ tokens: { id: string; label: string }[] }>('/api/access_tokens')
+    expect(tokens.find((t) => t.id === issued.id)).toMatchObject({ label: 'new name' })
+    const who = await api.fetch('/api/whoami', { headers: { authorization: `Bearer ${issued.token}` } })
+    expect(who.status).toBe(200)
+    expect(await who.json()).toMatchObject({ row_id: owner.user })
+    const audit = await sql`select "user", operation from activity_log where operation = ${`access_token_renamed ${issued.id}`}`
+    expect(audit).toEqual([{ user: owner.user, operation: `access_token_renamed ${issued.id}` }])
+  })
+
+  test('a System Manager renames a foreign token while preserving its data access', async ({ admin, api, createUser }) => {
+    const { createUserWithRole, makeTable } = await import('./fixtures')
+    const table = await makeTable(admin, { name: 'Rename Crate', columns: ['title'] })
+    const owner = await createUserWithRole(admin, createUser, {
+      role: 'Rename Crate Reader', table: 'Rename Crate', can_read: true, can_delete: false,
+    })
+    const row = await admin.post<{ row_id: string }>(table.url, { title: 'still readable' })
+    const issued = await admin.post<{ id: string; token: string }>('/api/access_tokens', { label: 'before', owner: owner.user })
+    const bearer = { authorization: `Bearer ${issued.token}` }
+    expect((await api.fetch(table.rowUrl(row.row_id), { headers: bearer })).status).toBe(200)
+    expect((await api.fetch(table.rowUrl(row.row_id), { method: 'DELETE', headers: bearer })).status).toBe(403)
+    const [before] = await sql`select * from access_token where id = ${issued.id}`
+    const response = await admin.fetch(`/api/access_tokens/${issued.id}`, { method: 'PATCH', body: JSON.stringify({ label: 'after' }) })
+    expect(response.status).toBe(200)
+    const [after] = await sql`select * from access_token where id = ${issued.id}`
+    expect(after).toEqual({ ...before, label: 'after' })
+    expect((await api.fetch(table.rowUrl(row.row_id), { headers: bearer })).status).toBe(200)
+    expect((await api.fetch(table.rowUrl(row.row_id), { method: 'DELETE', headers: bearer })).status).toBe(403)
+    expect(await sql`select "user" from activity_log where operation = ${`access_token_renamed ${issued.id}`}`)
+      .toEqual([{ user: admin.user }])
+  })
+
+  test.for([
+    ['blank', { label: '' }], ['whitespace', { label: '   ' }], ['missing', {}],
+    ['null', { label: null }], ['number', { label: 42 }], ['object', { label: {} }], ['array', { label: ['name'] }],
+  ] as const)('refuses a %s token label without changing the token', async ([, body], { admin }) => {
+    const issued = await admin.post<{ id: string }>('/api/access_tokens', { label: 'keep me' })
+    const before = await sql`select * from access_token where id = ${issued.id}`
+    const response = await admin.fetch(`/api/access_tokens/${issued.id}`, { method: 'PATCH', body: JSON.stringify(body) })
+    expect(response.status).toBe(417)
+    expect(await sql`select * from access_token where id = ${issued.id}`).toEqual(before)
+    expect(await sql`select 1 from activity_log where operation = ${`access_token_renamed ${issued.id}`}`).toHaveLength(0)
+  })
+
+  test.for(['foreign user', 'preview session'] as const)('refuses token rename by a %s', async (actor, { admin, api, createUser }) => {
+    const owner = await createUser({ email: 'rename-guard@x.com' })
+    const issued = await admin.post<{ id: string }>('/api/access_tokens', { label: 'protected', owner: owner.user })
+    const before = await sql`select * from access_token where id = ${issued.id}`
+    const response = actor === 'foreign user'
+      ? await (await createUser({ email: 'foreign-renamer@x.com' })).fetch(`/api/access_tokens/${issued.id}`, {
+        method: 'PATCH', body: JSON.stringify({ label: 'stolen' }),
+      })
+      : await api.fetch(`/api/access_tokens/${issued.id}`, {
+        method: 'PATCH', headers: { authorization: `Bearer ${(await issueSession(owner.user!, { preview: true })).token}` },
+        body: JSON.stringify({ label: 'preview edit' }),
+      })
+    expect(response.status).toBe(403)
+    expect(await sql`select * from access_token where id = ${issued.id}`).toEqual(before)
+  })
+
+  test.for(['revoked', 'expired', 'disabled person', 'disabled service account'] as const)(
+    'renaming a %s token cannot revive it', async (state, { admin, api, createUser }) => {
+      const owner = state === 'disabled service account'
+        ? (await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-disabled-token' })).row_id
+        : (await createUser({ email: 'inactive-token-owner@x.com' })).user
+      const issued = await admin.post<{ id: string; token: string }>('/api/access_tokens', { label: 'inactive', owner })
+      if (state === 'revoked') await admin.delete(`/api/access_tokens/${issued.id}`)
+      if (state === 'expired') await sql`update access_token set expires_at = now() - interval '1 minute' where id = ${issued.id}`
+      if (state === 'disabled person') await sql`update person set enabled = false where row_id = ${owner}`
+      if (state === 'disabled service account') {
+        expect((await admin.fetch(`/api/service_accounts/${owner}`, { method: 'PATCH', body: JSON.stringify({ enabled: false }) })).status).toBe(200)
+      }
+      const auth = { authorization: `Bearer ${issued.token}` }
+      expect((await api.fetch('/api/whoami', { headers: auth })).status).toBe(401)
+      const [before] = await sql`select * from access_token where id = ${issued.id}`
+      expect((await admin.fetch(`/api/access_tokens/${issued.id}`, { method: 'PATCH', body: JSON.stringify({ label: 'still inactive' }) })).status).toBe(200)
+      const [after] = await sql`select * from access_token where id = ${issued.id}`
+      expect(after).toEqual({ ...before, label: 'still inactive' })
+      expect((await api.fetch('/api/whoami', { headers: auth })).status).toBe(401)
+    },
+  )
+
+  test('a nonexistent token cannot be renamed', async ({ admin }) => {
+    const response = await admin.fetch('/api/access_tokens/tok_000000000000', { method: 'PATCH', body: JSON.stringify({ label: 'missing' }) })
+    expect(response.status).toBe(404)
+    expect(await sql`select 1 from access_token where id = 'tok_000000000000'`).toHaveLength(0)
+  })
+})
+
+describe('#853: rename service accounts', () => {
+  test('a System Manager renames a service account without replacing its principal', async ({ admin, api }) => {
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-before', roles: ['System Manager'] })
+    const issued = await admin.post<{ id: string; token: string }>('/api/access_tokens', { label: 'automation', owner: account.row_id })
+    const auth = { authorization: `Bearer ${issued.token}` }
+    expect((await api.fetch('/api/service_accounts', { headers: auth })).status).toBe(200)
+    const [before] = await sql`select row_id, label, enabled, created_at, created_by from service_account where row_id = ${account.row_id}`
+    const roles = await sql`select * from has_role where parent = ${account.row_id} order by row_id`
+    const tokens = await sql`select * from access_token where service_account = ${account.row_id}`
+    const response = await admin.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ label: 'svc-after' }) })
+    expect(response.status).toBe(200)
+    const result = await response.json()
+    expect(result).not.toHaveProperty('token')
+    expect(result).not.toHaveProperty('token_hash')
+    expect(JSON.stringify(result)).not.toContain(issued.token)
+    expect(JSON.stringify(result)).not.toContain(tokens[0].token_hash)
+    const [after] = await sql`select row_id, label, enabled, created_at, created_by from service_account where row_id = ${account.row_id}`
+    expect(after).toEqual({ ...before, label: 'svc-after' })
+    expect(await sql`select * from has_role where parent = ${account.row_id} order by row_id`).toEqual(roles)
+    expect(await sql`select * from access_token where service_account = ${account.row_id}`).toEqual(tokens)
+    const list = await admin.get<{ service_accounts: { row_id: string; label: string }[] }>('/api/service_accounts')
+    expect(list.service_accounts.find((a) => a.row_id === account.row_id)).toMatchObject({ label: 'svc-after' })
+    const who = await api.fetch('/api/whoami', { headers: auth })
+    expect(who.status).toBe(200)
+    expect(await who.json()).toMatchObject({ row_id: account.row_id, kind: 'service_account' })
+    expect((await api.fetch('/api/service_accounts', { headers: auth })).status).toBe(200)
+    expect(await sql`select "user" from activity_log where operation = ${`service_account_renamed ${account.row_id}`}`)
+      .toEqual([{ user: admin.user }])
+  })
+
+  test.for([
+    ['blank', { label: '' }, 417], ['whitespace', { label: '  ' }, 417], ['missing', {}, 417],
+    ['null', { label: null }, 417], ['number', { label: 42 }, 417], ['object', { label: {} }, 417],
+    ['array', { label: ['svc-name'] }, 417], ['invalid slug', { label: 'Not A Slug!' }, 417],
+    ['too short', { label: 'a' }, 417], ['too long', { label: 'a'.repeat(65) }, 417],
+    ['duplicate', { label: 'svc-taken-rename' }, 409],
+    ['uppercase duplicate', { label: 'SVC-TAKEN-RENAME' }, 417],
+    ['mixed disable', { label: 'svc-new', enabled: false }, 417],
+    ['mixed enable', { label: 'svc-new', enabled: true }, 417],
+  ] as const)('refuses a %s service-account edit without changing state', async ([, body, status], { admin }) => {
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-keep', roles: ['All'] })
+    await admin.post('/api/service_accounts', { label: 'svc-taken-rename' })
+    await admin.post('/api/access_tokens', { label: 'keep credential', owner: account.row_id })
+    const before = await sql`select * from service_account order by row_id`
+    const roles = await sql`select * from has_role where parent = ${account.row_id} order by row_id`
+    const tokens = await sql`select * from access_token where service_account = ${account.row_id}`
+    const response = await admin.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify(body) })
+    expect(response.status).toBe(status)
+    expect(await sql`select * from service_account order by row_id`).toEqual(before)
+    expect(await sql`select * from has_role where parent = ${account.row_id} order by row_id`).toEqual(roles)
+    expect(await sql`select * from access_token where service_account = ${account.row_id}`).toEqual(tokens)
+    expect(await sql`select 1 from activity_log where operation = ${`service_account_renamed ${account.row_id}`}`).toHaveLength(0)
+  })
+
+  test('an ordinary user cannot rename a service account', async ({ admin, createUser }) => {
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-protected' })
+    const plain = await createUser({ email: 'service-renamer@x.com' })
+    const before = await sql`select * from service_account where row_id = ${account.row_id}`
+    expect((await plain.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ label: 'svc-stolen' }) })).status).toBe(403)
+    expect(await sql`select * from service_account where row_id = ${account.row_id}`).toEqual(before)
+  })
+
+  test.for(['disabled', 'revoked', 'expired'] as const)('renaming a service account cannot revive a %s credential', async (state, { admin, api }) => {
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-off', roles: ['System Manager'] })
+    const issued = await admin.post<{ id: string; token: string }>('/api/access_tokens', { label: 'off token', owner: account.row_id })
+    if (state === 'disabled') {
+      expect((await admin.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ enabled: false }) })).status).toBe(200)
+    }
+    if (state === 'revoked') await admin.delete(`/api/access_tokens/${issued.id}`)
+    if (state === 'expired') await sql`update access_token set expires_at = now() - interval '1 minute' where id = ${issued.id}`
+    const auth = { authorization: `Bearer ${issued.token}` }
+    expect((await api.fetch('/api/whoami', { headers: auth })).status).toBe(401)
+    const tokens = await sql`select * from access_token where service_account = ${account.row_id}`
+    const roles = await sql`select * from has_role where parent = ${account.row_id} order by row_id`
+    expect((await admin.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ label: 'svc-still-off' }) })).status).toBe(200)
+    expect(await sql`select label, enabled from service_account where row_id = ${account.row_id}`).toEqual([{ label: 'svc-still-off', enabled: state !== 'disabled' }])
+    expect(await sql`select * from access_token where service_account = ${account.row_id}`).toEqual(tokens)
+    expect(await sql`select * from has_role where parent = ${account.row_id} order by row_id`).toEqual(roles)
+    expect((await api.fetch('/api/whoami', { headers: auth })).status).toBe(401)
+  })
+
+  test('a nonexistent service account cannot be renamed', async ({ admin }) => {
+    const response = await admin.fetch('/api/service_accounts/svc_aaaaaaaaaaaaaaaaaaaa', { method: 'PATCH', body: JSON.stringify({ label: 'svc-missing' }) })
+    expect(response.status).toBe(404)
+    expect(await sql`select 1 from service_account where row_id = 'svc_aaaaaaaaaaaaaaaaaaaa'`).toHaveLength(0)
   })
 })
