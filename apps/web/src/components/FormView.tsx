@@ -350,7 +350,11 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
-      if (editingOverride) await queryClient.invalidateQueries({ queryKey: ['meta', String(saved.table_name)] })
+      if (editingOverride) {
+        await queryClient.invalidateQueries({ queryKey: ['meta', String(saved.table_name)] })
+        if (typeof baseline.table_name === 'string' && baseline.table_name !== saved.table_name)
+          await queryClient.invalidateQueries({ queryKey: ['meta', baseline.table_name] })
+      }
       await refreshWaitingAfterSave(queryClient, table)
       // #414: a person's name is cached per id for the heading, breadcrumb
       // and Recent; a save may have changed it.
