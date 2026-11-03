@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { prettifyLabel } from 'shared'
 import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
@@ -96,6 +97,7 @@ export const columnSchema = z.object({
   // Sub-table -> the sub-table's Table name.
   reference_table: optionalString,
   choices: optionalString,
+  choice_labels: z.record(z.string(), z.string()).nullish(),
   row_table: optionalString,
   reqd: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   unique: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
@@ -251,6 +253,22 @@ export async function tableRelation(name: string): Promise<string> {
   if (!meta.owner_app || !meta.physical_schema || !meta.physical_relation)
     throw new AppError('ValidationError', `Table ${name} has no app storage mapping`)
   return `${meta.physical_schema}.${meta.physical_relation}`
+}
+
+// Describe the same storage the row readers use, never a label-derived name.
+// Source bindings are not local relations; Settings share a composite-key store.
+export async function tableStorageIdentity(meta: TableMeta) {
+  if (meta.data_source) {
+    if (!meta.external_table) return null
+    return { schema: meta.external_schema ?? '', relation: meta.external_table,
+      row_key: [meta.external_pk || ROW_KEY], data_source: meta.data_source, discriminator: null }
+  }
+  if (meta.kind === 'settings') {
+    return { schema: PLATFORM_SCHEMA, relation: 'single_value', row_key: ['table_name', 'field'],
+      data_source: null, discriminator: { table_name: meta.name } }
+  }
+  const [schema, relation] = (await tableRelation(meta.name)).split('.')
+  return { schema, relation, row_key: [meta.row_key], data_source: null, discriminator: null }
 }
 
 // #651: where a Table's rows are stored, read straight from its definition.
@@ -470,9 +488,10 @@ export async function updateTable(
       const old = before.get(f.column_name)
       const row: Record<string, unknown> = {
         position: i + 1,
-        label: f.label ?? f.column_name,
+        label: f.label ?? prettifyLabel(f.column_name),
         reference_table: f.reference_table ?? null,
         choices: f.choices ?? null,
+        choice_labels: f.choice_labels == null ? null : tx.json(f.choice_labels),
         row_table: f.row_table ?? null,
         reqd: f.reqd ?? false,
         unique: f.unique ?? false,
@@ -719,10 +738,11 @@ export async function createTable(
         parent: def.name,
         position: i + 1,
         column_name: f.column_name,
-        label: f.label ?? f.column_name,
+        label: f.label ?? prettifyLabel(f.column_name),
         column_type: f.column_type,
         reference_table: f.reference_table ?? null,
         choices: f.choices ?? null,
+        choice_labels: f.choice_labels == null ? null : tx.json(f.choice_labels),
         row_table: f.row_table ?? null,
         reqd: f.reqd ?? false,
         unique: f.unique ?? false,

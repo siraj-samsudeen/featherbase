@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
-import { INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, rowDisplayTitle, tableSchemaToZod, zodFieldErrors } from 'shared'
+import { choiceLabel, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, rowDisplayTitle, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
@@ -70,6 +70,9 @@ export function FormView({
 }) {
   const isNew = name === 'new'
   const meta = useMeta(table)
+  const describedTable = useMeta(name, table === 'Table' && !isNew)
+  const storage = table === 'Table' && !isNew ? describedTable.data?.storage_identity : null
+  const [storageCopy, setStorageCopy] = useState('')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { t } = useI18n()
@@ -590,6 +593,34 @@ export function FormView({
           )}
         </div>
       </div>
+      {storage && (
+        <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>
+          <span className="font-medium">Storage</span>
+          <dl className="flex flex-wrap gap-x-6 gap-y-2">
+            {Object.entries({
+              ...(storage.data_source ? { 'Data Source': storage.data_source } : {}),
+              Schema: storage.schema || '(none)', Relation: storage.relation, 'Row key': storage.row_key.join(', '),
+              ...(storage.discriminator ? { 'Table discriminator': storage.discriminator.table_name } : {}),
+            }).map(([label, value]) => (
+              <div key={label} className="flex flex-wrap items-baseline gap-2">
+                <dt className="text-ink-muted">{label}</dt>
+                <dd><code className="select-text break-all text-ink">{value}</code></dd>
+              </div>
+            ))}
+          </dl>
+          <button className={buttonClasses({ className: 'ml-auto' })} onClick={async () => {
+            try {
+              await navigator.clipboard.writeText([
+                ...(storage.data_source ? [`Data Source: ${storage.data_source}`] : []),
+                `Schema: ${storage.schema}`, `Relation: ${storage.relation}`, `Row key: ${storage.row_key.join(', ')}`,
+                ...(storage.discriminator ? [`table_name: ${storage.discriminator.table_name}`] : []),
+              ].join('\n'))
+              setStorageCopy('Copied')
+            } catch { setStorageCopy('Copy unavailable. Select the storage text to copy it.') }
+          }}>Copy storage</button>
+          <span role="status" className="text-xs text-ink-muted">{storageCopy}</span>
+        </section>
+      )}
       {/* TLC-J2.2 / TLC-R4: a real dialog that NAMES the row. Deliberately
           the same shape as the table-level confirmation in ListView (DEL-J1.2)
           — labelled, aria-modal, Escape-dismissable, destructive action on the
@@ -839,7 +870,7 @@ function FieldControl({
             .filter(Boolean)
             .map((o) => (
               <option key={o} value={o}>
-                {o}
+                {choiceLabel(o, field.choice_labels, t)}
               </option>
             ))}
         </select>,

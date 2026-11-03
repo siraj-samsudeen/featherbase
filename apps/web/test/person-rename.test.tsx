@@ -86,6 +86,7 @@ test('the Share form offers the same two pickers', async ({ admin }) => {
 test('service accounts are listed by name, never by their svc_ id', async ({ admin }) => {
   const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-web-list' })
   await renderApp('/featherbase/admin/access-tokens', admin)
+  await userEvent.click(await screen.findByRole('tab', { name: 'Service accounts' }))
   const row = await screen.findByTestId(`sa-${account.row_id}`)
   expect(row).toHaveTextContent('svc-web-list')
   expect(row.textContent).not.toContain(account.row_id)

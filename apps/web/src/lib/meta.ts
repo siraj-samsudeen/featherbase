@@ -11,6 +11,7 @@ export interface ColumnDef {
   column_type: string
   reference_table: string | null
   choices: string | null
+  choice_labels?: Record<string, string> | null
   row_table: string | null
   reqd: boolean
   unique: boolean
@@ -71,6 +72,14 @@ export interface TableMeta {
   /** #738: the levels of column the caller may read; served per request
    *  beside the cached meta. */
   readable_tiers?: ('basic' | 'restricted')[]
+  /** Server-resolved storage, never inferred from a display label. */
+  storage_identity?: {
+    schema: string
+    relation: string
+    row_key: string[]
+    data_source: string | null
+    discriminator: { table_name: string } | null
+  } | null
 }
 
 export const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])

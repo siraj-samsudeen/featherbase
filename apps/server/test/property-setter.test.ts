@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { getMeta } from '../src/meta'
 import type { TestClient } from 'feather-testing-postgres'
-import { patchDoc, tableRef } from './fixtures'
+import { expectApiError, patchDoc, tableRef } from './fixtures'
 
 // CUST-002: Metadata Overrides override column/Table properties without
 // touching the base definition.
@@ -85,6 +85,15 @@ describe('CUST-002: metadata overrides', () => {
     })
   }
 
+  test('refuses a column label used as its name', async ({ admin }) => {
+    await makeDT(admin)
+    await expectApiError(admin.post('/api/save_row', {
+      table: 'Metadata Override',
+      row: { row_id: 'ps-invalid-column', table_name: DT, column_name: 'Title', property: 'label', value: 'Headline' },
+    }), { status: 417, type: 'ValidationError', message: expect.stringContaining(`Column Title not found on Table ${DT}`) })
+    await expectApiError(admin.get('/api/table/Metadata%20Override/ps-invalid-column'), { status: 404 })
+  })
+
   test('overrides a column label in effective meta but leaves the base row unchanged', async ({
     admin,
   }) => {
@@ -100,25 +109,47 @@ describe('CUST-002: metadata overrides', () => {
     expect(row.label).toBe('Title')
   })
 
-  test('coerces boolean properties (hidden/reqd)', async ({ admin }) => {
-    await makeDT(admin)
-    await admin.post('/api/save_row', {
-      table: 'Metadata Override',
-      row: {
-        row_id: `${DT}-title-reqd`,
-        table_name: DT,
-        column_name: 'title',
-        property: 'reqd',
-        value: '1',
-      },
+  for (const [value, expected] of [['true', true], ['false', false], ['1', true], ['0', false]] as const) {
+    test(`applies boolean text ${value}`, async ({ admin }) => {
+      await makeDT(admin)
+      await admin.post('/api/save_row', {
+        table: 'Metadata Override',
+        row: { row_id: `${DT}-title-reqd`, table_name: DT, column_name: 'title', property: 'reqd', value },
+      })
+      const meta = await getMeta(DT)
+      expect(meta.columns.find((column) => column.column_name === 'title')?.reqd).toBe(expected)
+      const [row] = await sql`select reqd from column_def where parent = ${DT} and column_name = 'title'`
+      expect(row.reqd).toBe(false)
     })
-    const meta = await getMeta(DT)
-    const f = meta.columns.find((x) => x.column_name === 'title')!
-    expect(f.reqd).toBe(true)
-    // Base row still false.
-    const [row] = await sql`select reqd from column_def where parent = ${DT} and column_name = 'title'`
-    expect(row.reqd).toBe(false)
-  })
+  }
+
+  for (const [property, value] of [
+    ['hidden', 'truetrue'], ['reqd', 'yes'], ['read_only', '2'], ['in_list_view', ''],
+    ['hidden', undefined], ['hidden', null], ['hidden', 'constructor'],
+  ]) {
+    test(`refuses invalid ${property} value ${String(value)}`, async ({ admin }) => {
+      await makeDT(admin)
+      const error = await expectApiError(admin.post('/api/save_row', {
+        table: 'Metadata Override',
+        row: { row_id: 'ps-invalid-boolean', table_name: DT, column_name: 'title', property, value },
+      }), { status: 417, type: 'ValidationError' })
+      for (const allowed of ['true', 'false', '1', '0']) expect(error.message).toContain(allowed)
+      await expectApiError(admin.get('/api/table/Metadata%20Override/ps-invalid-boolean'), { status: 404 })
+    })
+  }
+
+  for (const column of [null, 'title']) {
+    test(`lists permitted properties for ${column ? 'column' : 'Table'} overrides`, async ({ admin }) => {
+      await makeDT(admin)
+      const error = await expectApiError(admin.post('/api/save_row', {
+        table: 'Metadata Override',
+        row: { row_id: 'ps-invalid-property', table_name: DT, column_name: column, property: 'unique', value: 'true' },
+      }), { status: 417, type: 'ValidationError' })
+      expect(error.message.split('Permitted properties: ')[1]).toBe(column
+        ? 'label, hidden, reqd, read_only, in_list_view, default_value, choices'
+        : 'label, title_column, search_columns, sort_column, sort_direction, enable_assignments, enable_tags, enable_files, enable_discussion')
+    })
+  }
 
   test('removing the setter restores the original property', async ({ admin }) => {
     await makeDT(admin)

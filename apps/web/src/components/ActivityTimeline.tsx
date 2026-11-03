@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { PrincipalName } from '../lib/people'
 import { cardClasses } from './ui'
 import { activityQuery, AuthorInitials, type VersionRow } from './Comments'
-import { fmtInstantIST } from '../lib/inr'
+import { fmtInstant } from '../lib/inr'
 import { useMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 
@@ -67,7 +67,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
               <div className="text-xs text-ink-muted">
                 <span className="font-medium text-ink" data-testid={e.kind === 'comment' ? 'comment-author' : undefined}><PrincipalName id={e.who} /></span>{' '}
                 {e.kind === 'comment' ? 'commented' : e.resolution ? (e.resolution.decision === 'keep' ? 'kept their correction' : 'adopted the import value') : e.importRun ? 'imported' : 'edited'} ·{' '}
-                <span className="whitespace-nowrap" data-testid="activity-time">{fmtInstantIST(e.at)}</span>
+                <span className="whitespace-nowrap" data-testid="activity-time">{fmtInstant(e.at)}</span>
               </div>
               {e.kind === 'comment' ? (
                 <div className="whitespace-pre-wrap break-words text-ink" data-testid="comment-content">

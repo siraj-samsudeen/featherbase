@@ -210,7 +210,7 @@ describe('CUST-005: export/import customizations', () => {
     })).toEqual({ custom_fields: 1, property_setters: 0 })
     const meta = await admin.get<{ columns: Record<string, unknown>[] }>(`/api/table/${encodeURIComponent(DT)}:meta`)
     expect(meta.columns.find((f) => f.column_name === 'customer_note')).toMatchObject({
-      label: 'customer_note', column_type: 'Data', reqd: false, in_list_view: false, custom: true,
+      label: 'Customer Note', column_type: 'Data', reqd: false, in_list_view: false, custom: true,
     })
     const created = await admin.post<{ row_id: string }>('/api/save_row', {
       table: DT, row: { title: 'With note', customer_note: 'Call after 4pm' },
@@ -224,7 +224,7 @@ describe('CUST-005: export/import customizations', () => {
       table: DT,
       custom_fields: [{
         dt: DT, column_name: 'customer_note', label: null, column_type: 'Data',
-        reference_table: null, choices: null, row_table: null, reqd: false, in_list_view: false,
+        reference_table: null, choices: null, choice_labels: null, row_table: null, reqd: false, in_list_view: false,
       }],
       property_setters: [],
     })

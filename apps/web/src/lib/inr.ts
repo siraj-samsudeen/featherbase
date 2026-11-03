@@ -180,3 +180,18 @@ export function fmtClockTime(d: Date): string {
 export function fmtDateTime(d: Date): string {
   return `${fmtDate(localIsoDay(d))} ${fmtClockTime(d)}`
 }
+
+/**
+ * When something happened, as "03-Nov-2026 12:55 IST": fmtDateTime on the
+ * reader's clock, naming that clock's zone (UTC, GMT-5) so a time beside a row
+ * agrees with the same event in the Admin home feed (#637).
+ */
+export function fmtInstant(value: string | Date | null | undefined): string {
+  if (!value) return '—'
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  const zone = new Intl.DateTimeFormat('en-IN', { timeZoneName: 'short' })
+    .formatToParts(d)
+    .find((p) => p.type === 'timeZoneName')?.value
+  return zone ? `${fmtDateTime(d)} ${zone}` : fmtDateTime(d)
+}

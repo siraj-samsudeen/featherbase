@@ -1,13 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { rowDisplayTitle } from 'shared'
+import { choiceLabel, rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
-import { recentActions, type RecentEntry } from '../lib/recents'
+import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
-import { dataColumns, defaultColumnNames, isShown, listFlagsFromView, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
+import { dataColumns, defaultColumnNames, isShown, listFlagsFromView, switchColumn, viewColumns, type ColumnArrangement, type ListColumn } from '../lib/list-view-columns'
+import { useI18n } from '../lib/i18n'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
@@ -83,7 +84,7 @@ export function indicatorColor(value: string): string {
   return INDICATOR_PALETTE[h % INDICATOR_PALETTE.length]
 }
 
-export function Indicator({ value }: { value: string }) {
+export function Indicator({ value, label = value }: { value: string; label?: string }) {
   return (
     <span className="inline-flex items-center gap-1.5">
       <span
@@ -91,7 +92,7 @@ export function Indicator({ value }: { value: string }) {
         className="h-2 w-2 shrink-0 rounded-full"
         style={{ backgroundColor: indicatorColor(value) }}
       />
-      {value}
+      {label}
     </span>
   )
 }
@@ -1099,8 +1100,6 @@ function ListRow({
   )
 }
 
-type ListColumn = { column_name: string; label: string; column_type: string; reference_table?: string | null }
-
 // One value of a row, the same in both shapes: the first column links to the
 // row's form, a Choice reads as its status dot and words, a person shows
 // their name, and everything else goes through the display settings.
@@ -1123,6 +1122,7 @@ function ListCell({
   /** A card's meta line (the row id under the title): grey, not body ink. */
   quiet?: boolean
 }) {
+  const { t } = useI18n()
   if (first)
     return (
       <Link
@@ -1139,7 +1139,9 @@ function ListCell({
           // A title column that names a person reads as their name, never the opaque id.
           <PrincipalName id={String(row[col.column_name])} />
         ) : (
-          cell(row[col.column_name], col.column_type, settings)
+          col.column_type === 'Choice' && row[col.column_name] != null
+            ? choiceLabel(String(row[col.column_name]), col.choice_labels, t)
+            : cell(row[col.column_name], col.column_type, settings)
         )}
       </Link>
     )
@@ -1151,7 +1153,7 @@ function ListCell({
       data-testid={`cell-${col.column_name}`}
     >
       {col.column_type === 'Choice' && value != null && value !== '' ? (
-        <Indicator value={String(value)} />
+        <Indicator value={String(value)} label={choiceLabel(String(value), col.choice_labels, t)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
         <PrincipalName id={String(value)} />
       ) : (
@@ -1343,6 +1345,7 @@ function InlineChildGrid({
   rows: Record<string, unknown>[]
   settings: Settings
 }) {
+  const { t } = useI18n()
   const childMeta = useMeta(field.row_table ?? '')
   if (!childMeta.data) return null
   const cols = childMeta.data.columns.filter(
@@ -1379,7 +1382,9 @@ function InlineChildGrid({
                       {isPrincipalTable(c.reference_table) ? <PrincipalName id={String(r[c.column_name])} /> : String(r[c.column_name])}
                     </Link>
                   ) : (
-                    cell(r[c.column_name], c.column_type, settings)
+                    c.column_type === 'Choice' && r[c.column_name] != null
+                      ? choiceLabel(String(r[c.column_name]), c.choice_labels, t)
+                      : cell(r[c.column_name], c.column_type, settings)
                   )}
                 </td>
               ))}
@@ -1430,6 +1435,7 @@ function StandardFilters({
   filters: Filter[]
   onChange: (filters: Filter[]) => void
 }) {
+  const { t } = useI18n()
   const columns = meta.columns
     .filter(
       (f) =>
@@ -1466,7 +1472,7 @@ function StandardFilters({
               value={current(f.column_name, '=')}
               onChange={(e) => apply(f.column_name, '=', e.target.value)}
               data-testid={`std-filter-${f.column_name}`}
-              className={inputClasses('max-w-[10rem]')}
+              className={inputClasses('max-w-[20rem]')}
             >
               <option value="">All</option>
               {(f.choices ?? '')
@@ -1474,7 +1480,7 @@ function StandardFilters({
                 .filter(Boolean)
                 .map((o) => (
                   <option key={o} value={o}>
-                    {o}
+                    {choiceLabel(o, f.choice_labels, t)}
                   </option>
                 ))}
             </select>
@@ -1528,6 +1534,7 @@ export function FilterBar({
   filters: Filter[]
   onChange: (filters: Filter[]) => void
 }) {
+  const { t } = useI18n()
   const fields = [
     { fieldname: 'row_id', label: 'Row ID' },
     ...meta.columns
@@ -1537,6 +1544,9 @@ export function FilterBar({
   const [field, setField] = useState('row_id')
   const [op, setOp] = useState<string>('=')
   const [value, setValue] = useState('')
+  const choice = ['=', '!='].includes(op)
+    ? meta.columns.find((c) => c.column_name === field && c.column_type === 'Choice')
+    : undefined
 
   function add() {
     if (!value.trim()) return
@@ -1550,7 +1560,7 @@ export function FilterBar({
       <div className="flex flex-wrap items-center gap-2">
         <select
           value={field}
-          onChange={(e) => setField(e.target.value)}
+          onChange={(e) => { setField(e.target.value); setValue('') }}
           aria-label="Filter by field"
           data-testid="filter-field"
           className={inputClasses('max-w-[10rem]')}
@@ -1574,7 +1584,20 @@ export function FilterBar({
             </option>
           ))}
         </select>
-        <input
+        {choice ? (
+          <select
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            aria-label="Filter value"
+            data-testid="filter-value"
+            className={inputClasses('max-w-[20rem]')}
+          >
+            <option value="">Choose a value</option>
+            {(choice.choices ?? '').split('\n').filter(Boolean).map((raw) => (
+              <option key={raw} value={raw}>{choiceLabel(raw, choice.choice_labels, t)}</option>
+            ))}
+          </select>
+        ) : <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
@@ -1582,7 +1605,7 @@ export function FilterBar({
           aria-label="Filter value"
           data-testid="filter-value"
           className={inputClasses('max-w-[10rem]')}
-        />
+        />}
         <button
           onClick={add}
           data-testid="filter-add"
@@ -1593,22 +1616,28 @@ export function FilterBar({
       </div>
       {filters.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2" data-testid="filter-chips">
-          {filters.map((f, i) => (
-            <span
-              key={i}
-              className={pillClasses('bg-subtle text-ink gap-1 border border-border')}
-              data-testid="filter-chip"
-            >
-              {f[0]} {f[1]} {filterValueLabel(f[1], f[2])}
-              <button
-                aria-label="Remove filter"
-                onClick={() => onChange(filters.filter((_, j) => j !== i))}
-                className="text-ink-subtle hover:text-ink"
+          {filters.map((f, i) => {
+            const column = meta.columns.find((c) => c.column_name === f[0])
+            return (
+              <span
+                key={i}
+                className={pillClasses('bg-subtle text-ink gap-1 border border-border')}
+                data-testid="filter-chip"
               >
-                ×
-              </button>
-            </span>
-          ))}
+                {t(column?.label ?? f[0])} {f[1]}{' '}
+                {['=', '!='].includes(f[1]) && column?.column_type === 'Choice'
+                  ? choiceLabel(String(f[2]), column.choice_labels, t)
+                  : filterValueLabel(f[1], f[2])}
+                <button
+                  aria-label="Remove filter"
+                  onClick={() => onChange(filters.filter((_, j) => j !== i))}
+                  className="text-ink-subtle hover:text-ink"
+                >
+                  ×
+                </button>
+              </span>
+            )
+          })}
         </div>
       )}
     </div>
@@ -1627,6 +1656,8 @@ function RecentStrip({
   table: string
   onApply: (filters: Filter[]) => void
 }) {
+  const { t } = useI18n()
+  const meta = useMeta(table)
   const user = getSessionUser()
   const entries = user ? recentActions(user.row_id, 60) : []
   const rows = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${table}/`)).slice(0, 4)
@@ -1666,10 +1697,10 @@ function RecentStrip({
           type="button"
           onClick={() => onApply(parsed)}
           data-testid="recent-strip-view"
-          title={entry.sub}
+          title={describeFilters(JSON.stringify(parsed), meta.data?.columns, t)}
           className={touchRowClasses('max-w-72 truncate rounded-full bg-action-tint px-2.5 py-0.5 text-xs font-medium text-action hover:opacity-80')}
         >
-          {entry.sub}
+          {describeFilters(JSON.stringify(parsed), meta.data?.columns, t)}
         </button>
       ))}
     </div>

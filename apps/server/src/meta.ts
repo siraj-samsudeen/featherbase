@@ -36,6 +36,7 @@ export interface ColumnDef {
   column_type: ColumnType
   reference_table: string | null
   choices: string | null
+  choice_labels?: Record<string, string> | null
   row_table: string | null
   reqd: boolean
   unique: boolean

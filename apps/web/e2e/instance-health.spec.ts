@@ -105,8 +105,15 @@ test('the banner leads to the page, and disappears once every check passes (5.4)
   const method = 'e2e_health_missing_handler'
   const job = await save(request, 'Scheduled Job', { method, cadence: 'daily', enabled: true })
   try {
-    const queued = await request.post('/api/enqueue_job', { headers, data: { method, max_attempts: 1 } })
-    expect(queued.status()).toBe(201)
+    // Enabling the schedule already queues its first execution. Wait for all
+    // its attempts, not just the first error: the worker updates this same row
+    // on each attempt, which would race the optimistic-lock cleanup below.
+    const filters = encodeURIComponent(JSON.stringify([['method', '=', method], ['job_status', '=', 'failed']]))
+    await expect.poll(async () => {
+      const response = await request.get(`/api/table/Background%20Job?filters=${filters}`, { headers })
+      expect(response.status()).toBe(200)
+      return (await response.json()).data.length
+    }, { timeout: 15_000 }).toBe(1)
     await expect.poll(async () => {
       const response = await request.get(`/api/table/Scheduled%20Job/${encodeURIComponent(job.row_id)}`, { headers })
       return (await response.json()).last_outcome
