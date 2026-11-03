@@ -6,6 +6,38 @@ const DOC = 'quokka-recent-doc'
 // title is its first readable value — never the id above.
 const DOC_TITLE = 'searchable'
 
+for (const activation of ['pointer', 'Enter', 'focused link'] as const) {
+  for (const alreadyOpen of [false, true]) {
+    test(`#822: ${activation} dismisses a Table destination${alreadyOpen ? ' already open' : ''}`, async ({ session }) => {
+      await session.visit(alreadyOpen ? '/featherbase/admin/Sign%20In%20Method' : '/featherbase/admin/all-tables')
+      await session.step('activate the destination, then reopen the command bar', async ({ page }) => {
+        await expect(page.getByTestId('all-tables-link')).toBeVisible()
+        const bar = page.getByRole('textbox', { name: 'Search or type a command' })
+        await page.keyboard.press('Meta+k')
+        await expect(bar).toBeFocused()
+        await bar.fill('Sign In Method')
+        const destination = page.getByTestId('awesomebar-table').filter({ hasText: 'Sign In Method' })
+        await expect(destination).toBeVisible()
+        if (activation === 'pointer') await destination.click()
+        else if (activation === 'Enter') await bar.press('Enter')
+        else {
+          await bar.press('Tab')
+          await expect(destination).toBeFocused()
+          await page.keyboard.press('Enter')
+        }
+        await expect(page).toHaveURL(/\/featherbase\/admin\/Sign%20In%20Method$/)
+        await expect(page.getByTestId('table-page')).toBeVisible()
+        await expect(page.getByTestId('awesomebar-results')).toBeHidden()
+        await expect(bar).not.toBeFocused()
+        await page.keyboard.press('Meta+k')
+        await expect(bar).toBeFocused()
+        await expect(page.getByTestId('awesomebar-recents')).toBeVisible()
+        await expect(page.getByTestId('awesomebar-recent').filter({ hasText: 'Sign In Method' }).first()).toBeVisible()
+      })
+    })
+  }
+}
+
 // #101 Phase 1: the command bar remembers what the operator visited — rows,
 // filtered lists, searches — per user, and its empty focused state replays
 // them (newest first, keyboard included).

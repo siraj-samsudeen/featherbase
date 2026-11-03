@@ -46,6 +46,7 @@ test('The search bar opens what it finds: picking a matching record opens its fo
 
   await waitFor(() => expect(field('title')).toHaveValue('Zebrafinch widget'))
   expect(here(app)).toContain('Sb Gadget')
+  await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 
 test('The search bar opens what it finds: a matching Table offers its list and a way to start a new row', async ({ admin }) => {
@@ -61,6 +62,7 @@ test('The search bar opens what it finds: a matching Table offers its list and a
 
   await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Sb Gadget/new'))
   await waitFor(() => expect(field('title')).toHaveValue(''))
+  await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 
 test('The search bar opens what it finds: Enter on an exact Table name opens that Table\'s list', async ({ admin }) => {
@@ -74,6 +76,7 @@ test('The search bar opens what it finds: Enter on an exact Table name opens tha
 
   await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Sb Home'))
   expect(await screen.findByTestId('list-view')).toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 
 test('The search bar opens what it finds: results are grouped under headings, and a command can be run from it', async ({ admin }) => {
@@ -88,6 +91,7 @@ test('The search bar opens what it finds: results are grouped under headings, an
   fireEvent.click(within(results).getByTestId('awesomebar-cmd-home'))
   await waitFor(() => expect(here(app).startsWith('/featherbase/admin')).toBe(true))
   await waitFor(() => expect(here(app)).not.toContain('all-tables'))
+  await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 
 // Paths the merged web coverage report (ADR 0012) showed untaken.
@@ -100,6 +104,7 @@ test('The search bar opens what it finds: Enter on a word that names a record, n
   fireEvent.submit(bar.closest('form') as HTMLFormElement)
   await waitFor(() => expect(field('title')).toHaveValue('Zebrafinch widget'))
   expect(here(app)).toContain('Sb Gadget')
+  await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 
 test('The search bar runs the theme commands', async ({ admin }) => {
