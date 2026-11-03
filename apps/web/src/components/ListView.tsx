@@ -156,7 +156,9 @@ export function ListView({
   // #820: one filter per Choice column. Filters arriving with two or more on
   // one Choice column (a link, a saved view, Recent) are merged into one `in`,
   // and the merged list is written back to the page address.
-  const choiceColumns = (meta.data?.columns ?? []).filter((c) => c.column_type === 'Choice').map((c) => c.column_name)
+  const choiceColumns = (meta.data?.columns ?? [])
+    .filter((c) => c.column_type === 'Choice')
+    .map((c) => ({ column: c.column_name, choices: choicesOf(c)! }))
   const filters = mergeChoiceFilters(given, choiceColumns)
   const merged = filters !== given
   useEffect(() => {
@@ -1642,7 +1644,7 @@ function ChoiceBox({
 }) {
   const label = column.label ?? column.column_name
   const choices = choicesOf(column)!
-  const ticked = tickedChoices(filters, column.column_name)
+  const ticked = tickedChoices(filters, column.column_name, choices)
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">{label}</span>
@@ -1652,7 +1654,7 @@ function ChoiceBox({
         choices={inChoiceOrder([...choices, ...ticked], choices)}
         ticked={ticked}
         onChange={(next) => onChange(withTicked(filters, column.column_name, next, choices))}
-        settle={(next) => tickedChoices(withTicked([], column.column_name, next, choices), column.column_name)}
+        settle={(next) => tickedChoices(withTicked([], column.column_name, next, choices), column.column_name, choices)}
         buttonText={ticked.length ? `${ticked.length} selected` : 'All'}
         testId={`std-filter-${column.column_name}`}
         listTestId={`std-choices-${column.column_name}`}
@@ -1694,7 +1696,7 @@ function StandardFilters({
     (f, i) =>
       i < (stacked ? QUICK_FILTER_STACK : QUICK_FILTER_ROW) ||
       (f.column_type === 'Choice'
-        ? tickedChoices(filters, f.column_name).length > 0
+        ? tickedChoices(filters, f.column_name, choicesOf(f)!).length > 0
         : current(f.column_name, choicesOf(f) ? '=' : 'like') !== ''),
   )
   const shown = showAll ? columns : inRow
@@ -1905,7 +1907,7 @@ export function FilterBar({
   const choices = column?.choices ?? null
   const ticks = Boolean(column?.ticks)
   const ops: readonly string[] = ticks ? ['in'] : choices ? ['=', '!='] : OPS
-  const ticked = picks ?? (ticks ? tickedChoices(filters, field) : [])
+  const ticked = picks ?? (ticks ? tickedChoices(filters, field, choices!) : [])
 
   function pickField(next: string) {
     setField(next)
@@ -1919,7 +1921,7 @@ export function FilterBar({
   function add() {
     if (ticks) {
       // #820: one filter per Choice column, so adding it again adds to it.
-      const union = inChoiceOrder([...tickedChoices(filters, field), ...ticked], choices!)
+      const union = inChoiceOrder([...tickedChoices(filters, field, choices!), ...ticked], choices!)
       onChange(withTicked(filters, field, [...new Set(union)], choices!))
       setPicks(null)
       return

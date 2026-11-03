@@ -1,16 +1,23 @@
 // #820: a Choice column has at most one filter on the list page, `in` with the
 // choices ticked. An older `=` on a Choice column counts as `in` with its one
-// value; the first change to it saves `in`.
+// value, and an older `!=` as `in` with every other choice; the first change
+// to it saves `in`.
 type Filter = [string, string, unknown]
 
-const isChoiceFilter = (f: Filter, column: string) => f[0] === column && (f[1] === 'in' || f[1] === '=')
+const isChoiceFilter = (f: Filter, column: string) =>
+  f[0] === column && (f[1] === 'in' || f[1] === '=' || f[1] === '!=')
+
+/** The values one filter on a Choice column lets through. */
+function valuesOf(f: Filter, choices: string[]): string[] {
+  const named = (Array.isArray(f[2]) ? f[2] : [f[2]]).map(String)
+  return f[1] === '!=' ? choices.filter((c) => !named.includes(c)) : named
+}
 
 /** The choices a column's filters tick, in the order they first appear. */
-export function tickedChoices(filters: Filter[], column: string): string[] {
+export function tickedChoices(filters: Filter[], column: string, choices: string[]): string[] {
   const out: string[] = []
   for (const f of filters)
-    if (isChoiceFilter(f, column))
-      for (const v of Array.isArray(f[2]) ? f[2] : [f[2]]) if (!out.includes(String(v))) out.push(String(v))
+    if (isChoiceFilter(f, column)) for (const v of valuesOf(f, choices)) if (!out.includes(v)) out.push(v)
   return out
 }
 
@@ -38,10 +45,13 @@ export function inChoiceOrder(values: string[], choices: string[]): string[] {
 
 /** Two or more filters on one Choice column become one `in` filter holding
  *  every value they name. Other columns' filters are left as they are. */
-export function mergeChoiceFilters(filters: Filter[], choiceColumns: string[]): Filter[] {
+export function mergeChoiceFilters(
+  filters: Filter[],
+  choiceColumns: { column: string; choices: string[] }[],
+): Filter[] {
   let out = filters
-  for (const column of choiceColumns)
+  for (const { column, choices } of choiceColumns)
     if (out.filter((f) => isChoiceFilter(f, column)).length > 1)
-      out = replaceChoiceFilters(out, column, [[column, 'in', tickedChoices(out, column)]])
+      out = replaceChoiceFilters(out, column, [[column, 'in', tickedChoices(out, column, choices)]])
   return out
 }
