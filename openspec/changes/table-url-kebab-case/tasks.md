@@ -14,5 +14,5 @@
 ## 3. Verification and handoff
 
 - [x] 3.1 Run the effective acceptance suite with zero pending/undefined steps and its HTML report; verify real HTTP and browser routes, including ambiguity and settings.
-- [ ] 3.2 Run targeted regression suites, typechecks/build, strict OpenSpec validation and ordinary code review; fix relevant findings.
-- [ ] 3.3 Record review evidence and prepare the tested PR with exact-head CI/comment subscriptions. Do not merge, deploy or archive before the owner's remaining gates.
+- [x] 3.2 Run targeted regression suites, typechecks/build, strict OpenSpec validation and ordinary code review; fix relevant findings.
+- [x] 3.3 Record review evidence and prepare the tested PR with exact-head CI/comment subscriptions. Do not merge, deploy or archive before the owner's remaining gates.
