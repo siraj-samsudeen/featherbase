@@ -18,7 +18,7 @@ function zonesCsv(rows) {
   return ['Zone Code,Region,Population', ...rows.map(r => `${r.zone_code},${r.region},${r.population}`)].join('\n');
 }
 
-async function importedZones(world, { corrected = false, history = true, count = 61, keyed = false, repeated = false, restricted = false } = {}) {
+async function importedZones(world, { corrected = false, history = true, count = 61, keyed = false, repeated = false, restricted = false, appendOnly = false } = {}) {
   const table = `Reimport Zones ${randomUUID().slice(0, 8)}`;
   const rows = zones(count);
   if (repeated) rows[1].zone_code = rows[0].zone_code;
@@ -57,15 +57,15 @@ async function importedZones(world, { corrected = false, history = true, count =
     const meta = await api.call('GET', `/api/table/${encodeURIComponent(table)}:meta`, undefined, [200], 'read zone metadata');
     assert.equal((await meta.json()).track_changes, history);
   });
-  if (restricted) {
+  if (restricted || appendOnly) {
     const role = `${table} Importer`;
     await world.withApi(async api => {
       await api.saveRow('Role', { row_id: role });
-      await api.saveRow('Permission', { ref_table: table, role, can_read: true, can_write: true, can_create: true });
+      await api.saveRow('Permission', { ref_table: table, role, can_read: true, can_write: !appendOnly, can_create: true });
     });
     await world.person('the user', [role]);
   }
-  world.reimport = { table, rows, checked: false, restricted };
+  world.reimport = { table, rows, checked: false, restricted, appendOnly };
 }
 
 // The Import Wizard deliberately requires System Manager, which bypasses
