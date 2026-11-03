@@ -37,6 +37,16 @@ This applies existing architectural decisions rather than introducing one.
 No new service is deployed. The client runs in the existing app host; data
 remains in the instance's control database.
 
+Review exposed one missing runtime seam: save validators do not run for
+generic rename or deletion. Add an optional server export `destructiveGuards`,
+keyed only by owned **Tables**, with the existing structural row/user/reject
+context. Bind it to the host's existing `before_lock` hook for rename/delete;
+it cannot grant authority or bypass permissions. Existing packages without
+the export stay unchanged. Tickets refuses both operations on all its records,
+preserving stable references and append-only events even for Administrator.
+Reusing save validators on partial rename/delete rows was rejected because
+existing validators expect complete save data and must not change behavior.
+
 ### Share the public queue without sharing private records
 
 Owner chose a shared queue. Signed-in requesters can read ticket summaries and

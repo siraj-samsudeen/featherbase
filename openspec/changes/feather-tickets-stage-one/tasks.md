@@ -10,10 +10,11 @@ never conceal pending steps or batch failing scenarios into a claimed pass.
 
 ## 1. Acceptance setup
 
-- [ ] 1.1 Preserve the specifications in their own commit or stash before crossing into the code zone; retain this change's own worktree and branch.
-- [ ] 1.2 Configure an isolated instance/database and distinct API/web ports from `.env.example`; keep secrets untracked. Boot it with `./init.sh` and the existing supervised-service workflow.
-- [ ] 1.3 Extract the effective acceptance scenarios, confirm parsing and report generation, and inventory reusable versus pending steps. Establish that new scenarios fail or are pending before writing Tickets source.
-- [ ] 1.4 Extend existing app-installation acceptance fixtures for a separately chosen Tickets package, an app-free baseline and a second configuration. Drive the missing-package failure before adding the minimal manifest, package build and host entries.
+- [x] 1.1 Preserve the specifications in their own commit or stash before crossing into the code zone; retain this change's own worktree and branch.
+- [x] 1.2 Configure an isolated instance/database and distinct API/web ports from `.env.example`; keep secrets untracked. Boot it with `./init.sh` and the existing supervised-service workflow.
+- [x] 1.3 Extract the effective acceptance scenarios, confirm parsing and report generation, and inventory reusable versus pending steps. Establish that new scenarios fail or are pending before writing Tickets source.
+- [x] 1.4 Extend existing app-installation acceptance fixtures for a separately chosen Tickets package, an app-free baseline and a second configuration. Drive the missing-package failure before adding the minimal manifest, package build and host entries.
+- [ ] 1.5 Reproduce generic rename and current-revision history deletion bypasses through real HTTP; add owned-table destructive guards and prove stable references and retained evidence, including Administrator attempts.
 
 ## 2. Intake and triage — pending business steps
 

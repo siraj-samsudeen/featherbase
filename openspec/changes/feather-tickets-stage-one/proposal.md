@@ -56,10 +56,12 @@ stage one.
 
 ### Modified Capabilities
 
-None intended. Installation, shared app navigation, generic permissions and
-workflow promises already belong to existing platform specifications and will
-be exercised rather than restated. Any required extension-point change must
-be justified by the design before adding a platform capability delta.
+- `trusted-runtime-packages`: allow an **App** to refuse deletion or renaming
+  of its owned records through a caller-scoped destructive-operation guard.
+  Existing save validators do not run on these paths. Tickets uses this seam
+  to keep references stable and history append-only, including for an admin.
+  Installation, navigation, permissions and concurrency remain existing
+  platform promises, exercised rather than restated.
 
 ## Impact
 
