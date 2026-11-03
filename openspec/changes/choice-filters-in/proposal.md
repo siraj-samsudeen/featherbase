@@ -23,7 +23,8 @@ user wants both the Ground and the First Floor rows.
 - **Filters on different columns still narrow each other**, and permissions still apply on top,
   so a filter never shows a row the user can't already see.
 - Yes/No columns keep `=` and `!=`. Links and saved views that hold a Choice `=` filter keep
-  working and count as `in` with that one choice, so more choices can be added to them.
+  working and count as `in` with that one choice, so more choices can be added to them. A Choice
+  `!=` filter counts as `in` with every other choice.
 
 Not in this change: `not in` for Choice (Select all, then untick, covers leaving choices out),
 picking months for date columns, and OR between different columns.
