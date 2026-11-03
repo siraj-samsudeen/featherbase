@@ -103,6 +103,22 @@ describe('an app declares a table\'s key and its links', () => {
     await admin.post('/api/uninstall_app', { name: 'keylink-a' })
   })
 
+  test('a link may name its target with its schema', async ({ admin }) => {
+    await admin.post('/api/install_app', {
+      manifest: pgApp('keylink-q', [
+        { table: 'pallet', name: 'Keylink Pallet', key: 'number' },
+        { table: 'crate', name: 'Keylink Crate', key: 'number', links: { pallet_id: 'keylink.pallet' } },
+      ]),
+    })
+    const crate = (await admin.get('/api/table/Keylink%20Crate:meta')) as Meta
+    expect(column(crate, 'pallet_id')).toMatchObject({ column_type: 'Reference', reference_table: 'Keylink Pallet' })
+    await admin.post('/api/uninstall_app', { name: 'keylink-q' })
+  })
+
+  test('a table with no key of its own and none declared is not connected', async ({ admin }) => {
+    expect(await refusal(admin, pgApp('keylink-bad', [{ table: 'crate' }]))).toContain('crate (Needs a single-column primary key)')
+  })
+
   test('a key and a link that agree with the source are accepted', async ({ admin }) => {
     await admin.post('/api/install_app', {
       manifest: pgApp('keylink-b', [
@@ -123,6 +139,7 @@ describe('an app declares a table\'s key and its links', () => {
     [[{ table: 'crate', key: 'number', links: { number: 'pallet' } }], "crate's number is its key, so it cannot link"],
     [[{ table: 'crate', key: 'number', links: { password: 'pallet' } }], "crate's password is not a connected column, so it cannot link"],
     [[{ table: 'crate', key: 'number', links: { pallet_ref: 'pallet' } }], 'crate has no column pallet_ref to link'],
+    [[{ table: 'crate', key: 'number', leave_out_columns: ['pallet_id'], links: { pallet_id: 'pallet' } }], 'crate leaves out pallet_id, so it cannot link'],
     [[{ table: 'crate', key: 'number', links: { pallet_id: 'trolley' } }], 'the source has no table trolley it may read'],
     // The pallet is not connected by this install, so it has no key to link to.
     [[{ table: 'crate', key: 'number', links: { pallet_id: 'pallet' } }], 'which has no key to link to'],

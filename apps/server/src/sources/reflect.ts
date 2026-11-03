@@ -230,7 +230,7 @@ export interface TableSettings {
 // The column a table's rows are addressed by: the source's primary key, else
 // the app's declared key, else on duckdb the first column.
 function keyOf(cfg: SourceConfig, t: IntrospectedTable, s: TableSettings | undefined): string | null {
-  return t.pk ?? s?.key ?? (cfg.engine === 'duckdb' ? (t.columns[0]?.name ?? null) : null)
+  return t.pk ?? s?.key ?? (cfg.engine === 'duckdb' ? t.columns[0].name : null)
 }
 
 // What an app declares about a table's key and links, checked against the
@@ -387,11 +387,11 @@ export async function reflectTables(
 
   // A table's settings, by the name the request gave it or its bare name.
   const settingsFor = (t: IntrospectedTable) =>
-    opts.settings?.[t.schema ? `${t.schema}.${t.table}` : t.table] ?? opts.settings?.[t.table]
+    opts.settings?.[`${t.schema}.${t.table}`] ?? opts.settings?.[t.table]
   // A link's target: schema-qualified, or a bare name in the linking table's
   // schema, or a bare name found once anywhere on the source.
   const lookup = (name: string, from: IntrospectedTable) => {
-    const t = byQualified.get(name) ?? byQualified.get(from.schema ? `${from.schema}.${name}` : name)
+    const t = byQualified.get(name) ?? byQualified.get(`${from.schema}.${name}`)
       ?? (byBareName.get(name)?.length === 1 ? byBareName.get(name)![0] : undefined)
     return t ? { t, settings: settingsFor(t) } : null
   }
