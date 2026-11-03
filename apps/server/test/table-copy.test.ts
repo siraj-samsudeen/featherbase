@@ -156,6 +156,34 @@ describe('Copy a warehouse table into Featherbase', () => {
     expect(await admin.get('/api/table/Atomic%20Copy/S001')).toMatchObject({ display_name: 'Generic success' })
   })
 
+  test('a deleted native copy can be copied again under the same Table name', async ({ admin }) => {
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-recreate', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    const choices = { database: 'sales', schema: 'main', table: 'stores', name: 'Recreated Copy', key: 'code', columns: STORES }
+    const first = await admin.post<{ result: { run_id: string } }>(`${SOURCES}/tc-recreate:copy_create`, choices)
+    await admin.delete('/api/table_def/Recreated%20Copy')
+    await expect(admin.get('/api/table/Recreated%20Copy:copy_info')).rejects.toMatchObject({ status: 404 })
+    const second = await admin.post<{ result: { run_id: string; inserted: number } }>(`${SOURCES}/tc-recreate:copy_create`, choices)
+    expect(second.result.inserted).toBe(3)
+    expect(second.result.run_id).not.toBe(first.result.run_id)
+    expect(await admin.get('/api/table/Recreated%20Copy/S001')).toMatchObject({ store_code: 'S001', display_name: 'Harbour Road' })
+    const history = await admin.get<{ batches: { batch_id: string }[] }>('/api/import/batches')
+    expect(history.batches.map(b => b.batch_id)).toEqual(expect.arrayContaining([first.result.run_id, second.result.run_id]))
+  })
+
+  test('source removal keeps native rows and copy history but withdraws provenance', async ({ admin }) => {
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-remove-source', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    const copied = await admin.post<{ result: { run_id: string } }>(`${SOURCES}/tc-remove-source:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Source Removed Copy', key: 'code', columns: STORES })
+    await admin.delete(`${SOURCES}/tc-remove-source`)
+    expect(await admin.get('/api/table/Source%20Removed%20Copy/S001')).toMatchObject({ store_code: 'S001', display_name: 'Harbour Road' })
+    const row = await admin.get<{ updated_at: string }>('/api/table/Source%20Removed%20Copy/S001')
+    await admin.post('/api/save_row', { table: 'Source Removed Copy', row: { row_id: 'S001', display_name: 'Still editable', updated_at: row.updated_at } })
+    expect(await admin.get('/api/table/Source%20Removed%20Copy/S001')).toMatchObject({ display_name: 'Still editable' })
+    await expect(admin.get('/api/table/Source%20Removed%20Copy:copy_info')).rejects.toMatchObject({ status: 404 })
+    await expect(admin.post('/api/table/Source%20Removed%20Copy:copy_again', {})).rejects.toMatchObject({ status: 404 })
+    const history = await admin.get<{ batches: { batch_id: string }[] }>('/api/import/batches')
+    expect(history.batches.map(b => b.batch_id)).toContain(copied.result.run_id)
+  })
+
   test('a refused import-history write rolls back the copy', async ({ admin }) => {
     await changeStandin(dir, 'sales', ['create table history_failure_stores as select * from stores'])
     await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-history-failure', token: STANDIN_TOKENS.reader, databases: ['sales'] })
@@ -229,7 +257,6 @@ describe('Copy a warehouse table into Featherbase', () => {
     const history = await admin.get<{ batches: { batch_id: string }[] }>('/api/import/batches')
     expect(history.batches.map(b => b.batch_id)).toEqual(expect.arrayContaining(results.map(r => r.run_id)))
     } finally {
-      await sql`delete from featherbase.table_copy where target_table = 'Concurrent Copy'`
       await deleteTable('Concurrent Copy')
       await admin.delete(`${SOURCES}/tc-concurrent`)
       await admin.post('/api/logout', {})
