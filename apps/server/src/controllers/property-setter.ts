@@ -27,7 +27,7 @@ const controller: TableController = {
       }
       const [duplicate] = await tx`select row_id from metadata_override
         where table_name = ${String(row.table_name)} and coalesce(column_name, '') = ${String(row.column_name ?? '')}
-          and property = ${String(row.property)} and row_id <> ${String(row.row_id ?? '')} limit 1`
+          and property = ${String(row.property)} and row_id <> ${String(row.row_id)} limit 1`
       if (duplicate)
         throw new AppError('ValidationError', 'An adjustment already exists for this Table, column and setting. Edit the existing adjustment instead.')
     },
