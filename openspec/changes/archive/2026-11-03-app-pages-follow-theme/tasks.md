@@ -10,5 +10,11 @@
 
 ## 3. Completion
 
-- [ ] 3.1 Focused web and browser tests, typecheck, `openspec validate app-pages-follow-theme --type change --strict`, full effective acceptance with no pending steps, boot smoke
-- [ ] 3.2 Sync the delta into the main spec and archive the change
+- [x] 3.1 Focused web and browser tests, typecheck, `openspec validate app-pages-follow-theme --type change --strict`, full effective acceptance with no pending steps, boot smoke
+- [x] 3.2 Sync the delta into the main spec and archive the change
+
+Full effective acceptance passed 72 scenarios and 573 steps, none pending or skipped. Focused component checks
+(app-theme, app-page-bar, theme-no-import-paint) and the browser app-page-bar suite (14 tests) passed; web
+typecheck, strict OpenSpec validation and the fast guards passed; `./init.sh` boot smoke passed. One ordinary
+review round by a different Claude model: no level 1 findings; two level 2 findings answered (a corrected
+first theme is now pinned and documented; the fixture's run-wide app path is documented).
