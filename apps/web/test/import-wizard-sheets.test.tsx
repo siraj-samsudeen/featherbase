@@ -54,6 +54,36 @@ test('#851 a grouped target confirms changed rows across all its sheets', async 
   clearSession()
 })
 
+test('#851 a repeated key across grouped sheets stays refused through import', async ({ admin }) => {
+  clearSession()
+  await admin.post('/api/table_def', { name: 'Iws Groups', columns: [
+    { column_name: 'zone', column_type: 'Data' },
+    { column_name: 'population', column_type: 'Int' },
+  ] })
+  await admin.post('/api/table/Iws%20Groups:import', { rows: [{ zone: 'A', population: 1 }] })
+  const user = userEvent.setup()
+  await renderApp('/featherbase/admin/import', admin)
+  fireEvent.change(await screen.findByTestId('iw-file-input'), { target: { files: [uploadWorkbook({
+    First: [['zone', 'population'], ['A', 2]],
+    Second: [['zone', 'population'], [' A ', 3]],
+  })] } })
+  await user.click(await screen.findByTestId('iw-ov-master'))
+  await user.click(screen.getByTestId('iw-ov-mode-merge'))
+  await user.click(screen.getByTestId('iw-ov-continue'))
+  await user.click(await screen.findByTestId('iw-target-0'))
+  await user.click(await screen.findByTestId('iw-target-opt-0-Iws Groups'))
+  await user.selectOptions(screen.getByTestId('iw-key-0'), 'zone')
+  await waitFor(() => expect(screen.getByTestId('iw-preview-0')).toHaveTextContent('2 refused'))
+  await user.click(screen.getByTestId('iw-check'))
+  expect(await screen.findByTestId('iw-check-0')).toHaveTextContent('0 rows change · 0 unchanged · 0 added · 0 skipped · 2 refused')
+  await user.click(screen.getByTestId('iw-import'))
+  expect(await screen.findByTestId('iw-result-0')).toHaveTextContent('2 failed')
+  expect(await admin.get('/api/table/Iws%20Groups?fields=["zone","population"]')).toMatchObject({
+    total: 1, data: [{ zone: 'A', population: 1 }],
+  })
+  clearSession()
+})
+
 test('a failed row remains explained when saved decisions survive without the workbook rows', async ({ admin }) => {
   clearSession()
   await admin.post('/api/table_def', { name: 'Iws Counts', columns: [{ column_name: 'count', column_type: 'Int' }] })
