@@ -216,3 +216,64 @@ Then('the browser opens on the schema {string} of {string}', async function (sch
 Then('{string} is listed', async function (table) {
   assert.ok((await this.browser.tables()).includes(table), `${table} is not listed`);
 });
+
+Given('the user is previewing {string} in {string} of {string} after searching for {string}', async function (table, schema, database, query) {
+  await givenSource(this, ['sales', 'stock']);
+  this.browser = new WarehouseBrowserPage(await this.asSystemManager());
+  await this.browser.open(this.source);
+  await this.browser.pickDatabase(database);
+  await this.browser.pickSchema(schema);
+  await this.browser.searchTables(query);
+  await this.browser.pickTable(table);
+});
+
+When('the user returns to the warehouse catalog', async function () {
+  await this.browser.showCatalog();
+});
+
+Then('the catalog still shows only {string} in {string} of {string} for the search {string}', async function (table, schema, database, query) {
+  assert.deepEqual(await this.browser.catalogContext(), { database, schema, query, tables: [table] });
+});
+
+Then('the user can reopen the preview of {string} without choosing it again', async function (table) {
+  await this.browser.showPreview(table);
+  assert.equal(await this.browser.previewSelected(table), 'true');
+  assert.equal(await this.browser.previewTitle(), table);
+});
+
+When('the user opens copy setup and follows the breadcrumb back to {string}', async function (table) {
+  this.copy = await this.browser.openCopy();
+  this.browser = await this.copy.returnToPreview(table);
+});
+
+Then('the same preview of {string} is selected', async function (table) {
+  assert.equal(await this.browser.previewSelected(table), 'true');
+  assert.equal(await this.browser.previewTitle(), table);
+  assert.match((await this.browser.preview()).rows, /Harbour Road/);
+});
+
+Given('the user has edited the copy mapping for {string} in {string} of {string}', async function (table, schema, database) {
+  await givenSource(this, ['sales', 'stock']);
+  this.browser = new WarehouseBrowserPage(await this.asSystemManager());
+  await this.browser.open(this.source);
+  await this.browser.pickDatabase(database);
+  await this.browser.pickSchema(schema);
+  await this.browser.pickTable(table);
+  this.copy = await this.browser.openCopy();
+  await this.copy.editColumn('name', { name: 'store_name', label: 'Store title', description: 'Trading name' });
+  await this.copy.omit('city');
+});
+
+When('the user searches the mapping for {string}', async function (query) {
+  await this.copy.search(query);
+});
+
+Then('only the mapping for {string} is offered', async function (source) {
+  assert.deepEqual(await this.copy.visibleColumns(), [source]);
+});
+
+Then('clearing the mapping search restores the edited name and omitted city', async function () {
+  await this.copy.search('');
+  assert.deepEqual(await this.copy.column('name'), { name: 'store_name', label: 'Store title', description: 'Trading name', keep: true });
+  assert.equal((await this.copy.column('city')).keep, false);
+});

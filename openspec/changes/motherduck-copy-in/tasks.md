@@ -16,6 +16,10 @@ Skipped: `acceptance-tests/` already exists.
 - [x] 3.5 external-data-sources: browse — a warehouse table's size, first rows and column names show
 - [x] 3.6 external-data-sources: remembered place — the browser opens on the last schema
 - [x] 3.7 external-data-sources: table list cache — a table added since shows after a refresh
+- [x] 3.8 Approved design A: replace chip-specific component assertions with catalog/preview tab and copy-breadcrumb return coverage; establish a focused red against the synthetic MotherDuck stand-in
+- [x] 3.9 Add complete-collection regression cases: a catalog beyond 64 tables and an 80-column mapping; editing a filtered mapping row must update its source identity, not its visible index
+- [ ] 3.10 Apply the approved-design-A spec amendment in a specs-only unit after the shared code-zone work is committed; do not stash another worker's changes
+- [ ] 3.11 Run the amended effective acceptance scenarios and component regressions to green, including retained filters/selection, editable mapping, empty search and source identity
 
 ## 4. Server (unit-tested against real Postgres and the stand-in)
 
@@ -32,7 +36,9 @@ Skipped: `acceptance-tests/` already exists.
 - [x] 5.1 "Connect a data source" page on the Data Source table's New action: kind tiles that fold, token with Test, result under it, database ticks with search, Save and browse tables (issue checklist 1–9)
 - [x] 5.2 The data source page shows "token saved, ending …" with Replace token, and the chosen databases (checklist 9)
 - [x] 5.3 Sidebar Data sources group, System Managers only (checklist 10–11)
-- [x] 5.4 Pane browser: schema, table, preview; listed-when with Refresh; reopens where the person left off (checklist 12–15)
+- [ ] 5.4 Approved design A replaces pane/chip navigation: searchable DataList catalog and full-content catalog/preview tabs; preserve database, schema, catalog search and selected table across tab switches and copy-breadcrumb return; retain listed-when, Refresh and remembered place (checklist 12–15, 21–26)
+- [ ] 5.5 Editable mapping uses DataList with real inputs and complete-collection search over source names and edited names, labels and descriptions; edits and keep choices survive filtering and remain attached to their original source column
+- [ ] 5.6 Keep native ListView/FormView and all backend operations unchanged; independently verify full-content layout, breadcrumbs and the approved checklist in a headless desktop browser
 
 ## 6. Completion
 

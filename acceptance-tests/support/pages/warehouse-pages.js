@@ -1,7 +1,7 @@
 'use strict';
 
 // #772: connecting a MotherDuck warehouse by its token, its source page, the
-// sidebar's Data sources group, and the schema → table → preview browser.
+// sidebar's Data sources group, searchable catalog, preview and copy setup.
 
 const SOURCE_TABLE = 'Data%20Source';
 
@@ -136,28 +136,53 @@ class WarehouseBrowserPage {
   }
 
   async pickSchema(schema) {
-    // A chosen schema is folded into a chip; the chip reopens the list.
-    const chip = this.page.getByTestId('chip-schema');
-    if (await chip.isVisible()) await chip.click();
-    await this.page.getByTestId('schema-row').filter({ hasText: new RegExp(`^${schema}\\d`) }).click();
+    await this.showCatalog();
+    await this.page.getByRole('combobox', { name: 'Schema', exact: true }).selectOption(schema);
   }
 
   async pickTable(table) {
-    const chip = this.page.getByTestId('chip-table');
-    if (await chip.isVisible()) await chip.click();
-    await this.page.getByTestId('table-row').filter({ hasText: new RegExp(`^${table}\\d`) }).click();
+    await this.showCatalog();
+    await this.page.getByRole('table', { name: 'Warehouse tables', exact: true }).getByRole('button', { name: table, exact: true }).click();
     await this.page.getByTestId('preview-size').filter({ hasText: 'rows' }).waitFor();
   }
 
   /** The open database and the selected schema. */
   async place() {
-    await this.page.getByTestId('chip-schema').or(this.page.getByTestId('schema-row').first()).first().waitFor();
+    await this.showCatalog();
     const database = await this.page.getByTestId('browser-database').inputValue();
-    const chip = this.page.getByTestId('chip-schema');
-    const schema = (await chip.isVisible())
-      ? (await chip.innerText()).replace(/^Schema\s*/, '').trim()
-      : (await this.page.locator('[data-testid=schema-row][data-selected]').innerText()).split('\n')[0];
+    const schema = await this.page.getByRole('combobox', { name: 'Schema', exact: true }).inputValue();
     return { database, schema };
+  }
+
+  async showCatalog() {
+    await this.page.getByRole('tab', { name: /tables|catalog/i }).click();
+  }
+
+  async showPreview(table) {
+    await this.page.getByRole('tab', { name: `Preview · ${table}`, exact: true }).click();
+    await this.page.getByTestId('preview-size').filter({ hasText: 'rows' }).waitFor();
+  }
+
+  async previewSelected(table) {
+    return this.page.getByRole('tab', { name: `Preview · ${table}`, exact: true }).getAttribute('aria-selected');
+  }
+
+  async searchTables(query) {
+    await this.page.getByRole('searchbox', { name: 'Tables', exact: true }).fill(query);
+  }
+
+  async catalogContext() {
+    return {
+      ...await this.place(),
+      query: await this.page.getByRole('searchbox', { name: 'Tables', exact: true }).inputValue(),
+      tables: await this.tables(),
+    };
+  }
+
+  async openCopy() {
+    await this.page.getByTestId('preview-copy').click();
+    await this.page.getByTestId('copy-setup').waitFor();
+    return new WarehouseCopyPage(this.page);
   }
 
   async previewTitle() {
@@ -173,8 +198,9 @@ class WarehouseBrowserPage {
   }
 
   async tables() {
-    await this.page.getByTestId('table-row').first().waitFor();
-    return (await this.page.getByTestId('table-row').allInnerTexts()).map((t) => t.split('\n')[0]);
+    const catalog = this.page.getByRole('table', { name: 'Warehouse tables', exact: true });
+    await catalog.waitFor();
+    return catalog.locator('tbody tr th').allInnerTexts();
   }
 
   /** Refreshes the table list and waits for the fresh list to come back. */
@@ -186,4 +212,44 @@ class WarehouseBrowserPage {
   }
 }
 
-module.exports = { ConnectWarehousePage, WarehouseSourcePage, DataSourcesSidebar, WarehouseBrowserPage };
+class WarehouseCopyPage {
+  constructor(page) {
+    this.page = page;
+  }
+
+  async editColumn(source, { name, label, description }) {
+    await this.page.getByRole('textbox', { name: `Name for ${source}`, exact: true }).fill(name);
+    await this.page.getByRole('textbox', { name: `Label for ${source}`, exact: true }).fill(label);
+    await this.page.getByRole('textbox', { name: `Description for ${source}`, exact: true }).fill(description);
+  }
+
+  async omit(source) {
+    await this.page.getByRole('checkbox', { name: `Keep ${source}`, exact: true }).uncheck();
+  }
+
+  async search(query) {
+    await this.page.getByRole('searchbox', { name: 'Column mapping', exact: true }).fill(query);
+  }
+
+  async visibleColumns() {
+    return this.page.getByRole('textbox', { name: /^Name for / }).evaluateAll((inputs) => inputs.map((input) => input.getAttribute('aria-label').slice('Name for '.length)));
+  }
+
+  async column(source) {
+    return {
+      name: await this.page.getByRole('textbox', { name: `Name for ${source}`, exact: true }).inputValue(),
+      label: await this.page.getByRole('textbox', { name: `Label for ${source}`, exact: true }).inputValue(),
+      description: await this.page.getByRole('textbox', { name: `Description for ${source}`, exact: true }).inputValue(),
+      keep: await this.page.getByRole('checkbox', { name: `Keep ${source}`, exact: true }).isChecked(),
+    };
+  }
+
+  async returnToPreview(table) {
+    await this.page.getByTestId('copy-setup').getByRole('link', { name: table, exact: true }).click();
+    await this.page.getByTestId('warehouse-browser').waitFor();
+    await this.page.getByRole('tab', { name: `Preview · ${table}`, exact: true }).waitFor();
+    return new WarehouseBrowserPage(this.page);
+  }
+}
+
+module.exports = { ConnectWarehousePage, WarehouseSourcePage, DataSourcesSidebar, WarehouseBrowserPage, WarehouseCopyPage };

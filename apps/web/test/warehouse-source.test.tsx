@@ -6,7 +6,7 @@ import { afterAll, beforeAll } from 'vitest'
 import { rmSync } from 'node:fs'
 import { overrideVariable } from 'server/src/env'
 import { invalidateSources } from 'server/src/sources/registry'
-import { buildStandin, STANDIN_TOKENS } from 'server/test/motherduck-standin'
+import { buildStandin, changeStandin, STANDIN_TOKENS } from 'server/test/motherduck-standin'
 import { test, expect, renderApp } from './pg-test'
 
 type Client = Parameters<typeof renderApp>[1]
@@ -15,6 +15,11 @@ let dir: string
 
 beforeAll(async () => {
   dir = await buildStandin()
+  // More than a normal first page: searches must not inspect only rendered rows.
+  await changeStandin(dir, 'sales', [
+    ...Array.from({ length: 64 }, (_, i) => `create table catalog_${String(i).padStart(3, '0')} (id integer)`),
+    `create table zz_catalog_tail (${Array.from({ length: 80 }, (_, i) => `field_${String(i).padStart(3, '0')} varchar`).join(', ')})`,
+  ])
   overrideVariable('MOTHERDUCK_STANDIN', dir)
 })
 afterAll(() => {
@@ -92,7 +97,7 @@ test('the source page shows only the token\'s last four, and replacing it shows 
   await waitFor(() => expect(screen.getByTestId('warehouse-token')).toHaveTextContent('Saved, ending …77b1'), WAIT)
 })
 
-test('the sidebar lists the source with its databases, and browsing goes schema, table, preview', async ({ admin }) => {
+test('the searchable catalog opens a preview and keeps its filters and selection across tabs and copy-return', async ({ admin }) => {
   await connect(admin, 'web-wh-browse')
   const user = userEvent.setup()
   await renderApp('/featherbase/admin', admin)
@@ -101,28 +106,114 @@ test('the sidebar lists the source with its databases, and browsing goes schema,
   const sales = within(group).getAllByTestId('sidebar-source-database').find((a) => a.textContent === 'sales' && a.getAttribute('href')?.includes('web-wh-browse'))!
   await user.click(sales)
   await screen.findByTestId('warehouse-browser', {}, WAIT)
-  await waitFor(() => expect(screen.getAllByTestId('schema-row').map((r) => r.textContent)).toEqual(['history1', 'main1']), WAIT)
-  await user.click(screen.getAllByTestId('table-row').find((r) => r.textContent?.startsWith('stores'))!)
-  // Both picks fold into chips, and the preview takes the full width.
-  expect(screen.getByTestId('chip-schema')).toHaveTextContent('main')
-  expect(screen.getByTestId('chip-table')).toHaveTextContent('stores')
-  expect(screen.queryByTestId('pane-table')).not.toBeInTheDocument()
+  const catalogTab = await screen.findByRole('tab', { name: /tables|catalog/i })
+  expect(catalogTab).toHaveAttribute('aria-selected', 'true')
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Schema' }), 'main')
+  const search = screen.getByRole('searchbox', { name: 'Tables' })
+  await user.type(search, 'zz_catalog_tail')
+  expect(screen.getByRole('table', { name: 'Warehouse tables' })).toHaveTextContent('zz_catalog_tail')
+  await user.clear(search)
+  await user.type(search, 'STORES')
+  const catalog = screen.getByRole('table', { name: 'Warehouse tables' })
+  expect(within(catalog).getAllByRole('row')).toHaveLength(2)
+  expect(catalog).not.toHaveTextContent('closed_stores')
+  await user.click(within(catalog).getByRole('button', { name: 'stores' }))
+  expect(screen.getByRole('tab', { name: /preview/i })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.queryByRole('table', { name: 'Warehouse tables' })).not.toBeInTheDocument()
   await waitFor(() => expect(screen.getByTestId('preview-size')).toHaveTextContent('3 rows · 4 columns'), WAIT)
   expect(screen.getByTestId('preview-rows')).toHaveTextContent('Harbour Road')
   expect(screen.getByTestId('preview-columns')).toHaveTextContent('state_code')
+
+  await user.click(screen.getByRole('tab', { name: /tables|catalog/i }))
+  expect(screen.getByRole('searchbox', { name: 'Tables' })).toHaveValue('STORES')
+  expect(screen.getByRole('combobox', { name: 'Schema' })).toHaveValue('main')
+  expect(screen.getByTestId('browser-database')).toHaveValue('sales')
+  expect(screen.getByTestId('preview-rows')).not.toBeVisible()
+  await user.click(screen.getByRole('tab', { name: /preview.*stores/i }))
+  expect(await screen.findByTestId('preview-size', {}, WAIT)).toHaveTextContent('3 rows · 4 columns')
+
+  await user.click(screen.getByTestId('preview-copy'))
+  const copy = await screen.findByTestId('copy-setup', {}, WAIT)
+  // Breadcrumbs use document navigation, which jsdom cannot execute. The
+  // acceptance scenario follows the real link; here exercise its reload URL.
+  const back = within(copy).getByRole('link', { name: 'stores' }).getAttribute('href')!
+  expect(new URL(back, 'http://localhost').searchParams.get('query')).toBe('STORES')
+  await renderApp(back, admin)
+  await screen.findByTestId('warehouse-browser', {}, WAIT)
+  expect(screen.getByRole('tab', { name: /preview.*stores/i })).toHaveAttribute('aria-selected', 'true')
+  expect(await screen.findByTestId('preview-rows', {}, WAIT)).toHaveTextContent('Harbour Road')
+  await user.click(screen.getByRole('tab', { name: /tables|catalog/i }))
+  expect(screen.getByRole('searchbox', { name: 'Tables' })).toHaveValue('STORES')
+  expect(screen.getByRole('combobox', { name: 'Schema' })).toHaveValue('main')
+  expect(screen.getByTestId('browser-database')).toHaveValue('sales')
 })
 
 test('the browser reopens on the schema this person last had open', async ({ admin }) => {
   await connect(admin, 'web-wh-place')
-  const user = userEvent.setup()
   await renderApp('/featherbase/admin/source/web-wh-place?database=sales&schema=history', admin)
   await screen.findByTestId('warehouse-browser', {}, WAIT)
-  // A chosen schema is folded into a chip; the chip reopens the schema list.
-  await waitFor(() => expect(screen.getByTestId('chip-schema')).toHaveTextContent('history'), WAIT)
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Schema' })).toHaveValue('history'), WAIT)
   await renderApp('/featherbase/admin/source/web-wh-place', admin)
-  await waitFor(() => expect(screen.getByTestId('chip-schema')).toHaveTextContent('history'), WAIT)
-  await user.click(screen.getByTestId('chip-schema'))
-  expect(screen.getAllByTestId('schema-row').find((r) => r.dataset.selected)?.textContent).toBe('history1')
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Schema' })).toHaveValue('history'), WAIT)
+  expect(screen.getByTestId('browser-database')).toHaveValue('sales')
+  expect(screen.getByRole('table', { name: 'Warehouse tables' })).toHaveTextContent('closed_stores')
+})
+
+test('mapping search finds every source column and preserves real input edits and keep choices', async ({ admin }) => {
+  await connect(admin, 'web-wh-mapping')
+  const user = userEvent.setup()
+  await renderApp('/featherbase/admin/source/web-wh-mapping/copy?database=sales&schema=main&table=stores', admin)
+  await screen.findByTestId('copy-setup', {}, WAIT)
+  await user.clear(screen.getByRole('textbox', { name: 'Name for name' }))
+  await user.type(screen.getByRole('textbox', { name: 'Name for name' }), 'store_name')
+  await user.type(screen.getByRole('textbox', { name: 'Label for name' }), 'Store title')
+  await user.type(screen.getByRole('textbox', { name: 'Description for name' }), 'Trading name')
+  await user.click(screen.getByRole('checkbox', { name: 'Keep city' }))
+
+  const search = screen.getByRole('searchbox', { name: 'Column mapping' })
+  await user.type(search, 'STATE_CODE')
+  const mapping = screen.getByRole('table', { name: 'Columns to copy' })
+  expect(within(mapping).getAllByRole('row')).toHaveLength(2)
+  expect(screen.getByRole('textbox', { name: 'Name for state_code' })).toHaveValue('state_code')
+  expect(screen.queryByRole('textbox', { name: 'Name for name' })).not.toBeInTheDocument()
+  await user.type(screen.getByRole('textbox', { name: 'Label for state_code' }), 'Region code')
+  await user.clear(search)
+  await user.type(search, 'Trading name')
+  expect(screen.getByRole('textbox', { name: 'Name for name' })).toHaveValue('store_name')
+  expect(screen.getByRole('textbox', { name: 'Label for name' })).toHaveValue('Store title')
+  expect(screen.getByRole('textbox', { name: 'Description for name' })).toHaveValue('Trading name')
+  await user.clear(search)
+  await user.type(search, 'no matching column')
+  expect(screen.queryByRole('textbox', { name: 'Name for name' })).not.toBeInTheDocument()
+  await user.clear(search)
+  expect(screen.getByRole('checkbox', { name: 'Keep city' })).not.toBeChecked()
+  expect(screen.getByRole('textbox', { name: 'Label for state_code' })).toHaveValue('Region code')
+  expect(screen.getByTestId('copy-key')).toHaveValue('code')
+  expect(screen.getByRole('checkbox', { name: 'Keep code' })).toBeDisabled()
+  await waitFor(() => expect(screen.getByTestId('copy-create')).toBeEnabled(), WAIT)
+})
+
+test('mapping search reaches the last of 80 columns and updates its source identity, not its filtered index', async ({ admin }) => {
+  await connect(admin, 'web-wh-wide')
+  const user = userEvent.setup()
+  await renderApp('/featherbase/admin/source/web-wh-wide/copy?database=sales&schema=main&table=zz_catalog_tail', admin)
+  await screen.findByTestId('copy-setup', {}, WAIT)
+  const search = screen.getByRole('searchbox', { name: 'Column mapping' })
+  await user.type(search, 'field_079')
+  expect(screen.getByRole('textbox', { name: 'Name for field_079' })).toHaveValue('field_079')
+  await user.clear(screen.getByRole('textbox', { name: 'Name for field_079' }))
+  await user.type(screen.getByRole('textbox', { name: 'Name for field_079' }), 'last_field')
+  await user.type(screen.getByRole('textbox', { name: 'Label for field_079' }), 'Last field')
+  await user.click(screen.getByRole('checkbox', { name: 'Keep field_079' }))
+  await user.clear(search)
+  await user.type(search, 'field_000')
+  expect(screen.getByRole('textbox', { name: 'Name for field_000' })).toHaveValue('field_000')
+  expect(screen.getByRole('textbox', { name: 'Label for field_000' })).toHaveValue('')
+  expect(screen.getByRole('checkbox', { name: 'Keep field_000' })).toBeChecked()
+  await user.clear(search)
+  await user.type(search, 'last_field')
+  expect(screen.getByRole('textbox', { name: 'Label for field_079' })).toHaveValue('Last field')
+  expect(screen.getByRole('checkbox', { name: 'Keep field_079' })).not.toBeChecked()
 })
 
 test('someone who is not a System Manager sees no Data sources group', async ({ admin, createUser }) => {
