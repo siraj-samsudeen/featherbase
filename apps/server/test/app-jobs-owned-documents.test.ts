@@ -344,3 +344,28 @@ test('a document job fails closed if its owner registry loses creator privacy af
     expect(await (await owner.fetch(`/api/table/ownerjobs.note/${note.row_id}`, { headers })).json()).toMatchObject({ body: 'Keep protected work' })
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
+
+test('a document job skips a disabled creator who retains app membership', async ({ admin, createUser }) => {
+  const dir = await fixture(`await ctx.documents.forEachOwner(async ({user,documents})=>{
+    const [row]=await documents.list('ownerjobs.note',{fields:['row_id','updated_at'],filters:[['created_by','=',user]]});
+    await documents.update('ownerjobs.note',{row_id:row.row_id,updated_at:row.updated_at,body:'Must not mutate disabled work'});
+    await documents.create('ownerjobs.note',{body:'Must not impersonate disabled creator'});
+  });`)
+  try {
+    expect(await discoverPackages([dir])).toEqual([])
+    await admin.post('/api/install_app', { name: 'ownerjobs' })
+    const owner = await createUser({ roles: ['Owner jobs member'] })
+    const headers = { 'X-Featherbase-App-Version': 'ownerjobs@1.0.0' }
+    const created = await owner.fetch('/api/save_row', { method: 'POST', headers, body: JSON.stringify({ table: 'ownerjobs.note', row: { body: 'Retain disabled work' } }) })
+    const note = await created.json() as { row_id: string }
+    expect(created.status).toBe(201)
+    const before = await admin.get<Record<string, unknown>>(`/api/table/Person/${owner.user}`)
+    const disabled = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'Person', row: { row_id: owner.user, updated_at: before.updated_at, enabled: false } })
+    expect(disabled).toMatchObject({ enabled: false, roles: expect.arrayContaining([expect.objectContaining({ role: 'Owner jobs member' })]) })
+    await run()
+    await admin.post('/api/save_row', { table: 'Person', row: { row_id: owner.user, updated_at: disabled.updated_at, enabled: true } })
+    const res = await owner.fetch('/api/table/ownerjobs.note?fields=%5B%22row_id%22%2C%22body%22%2C%22created_by%22%5D', { headers })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ total: 1, data: [{ row_id: note.row_id, body: 'Retain disabled work', created_by: owner.user }] })
+  } finally { await rm(dir, { recursive: true, force: true }) }
+})
