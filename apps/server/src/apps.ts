@@ -681,6 +681,8 @@ const appSourceSchema = z
                   leave_out_columns: z.array(z.string().min(1)).optional(),
                   title_column: z.string().min(1).optional(),
                   list_columns: z.array(z.string().min(1)).min(1).optional(),
+                  key: z.string().min(1).optional(),
+                  links: z.record(z.string().min(1), z.string().min(1)).optional(),
                 })
                 .strict(),
             ]),

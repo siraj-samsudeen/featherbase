@@ -147,7 +147,7 @@ Given('a Postgres database of crates on pallets that declares no keys or links',
   await externalSql(`drop schema if exists ${CRATES} cascade`);
   await externalSql(`create schema ${CRATES}`);
   await externalSql(`create table ${CRATES}.pallet (number bigint, title text)`);
-  await externalSql(`create table ${CRATES}.crate (contents text, number bigint, pallet_number bigint)`);
+  await externalSql(`create table ${CRATES}.crate (contents text, number bigint, pallet_id bigint)`);
   await grantReader(CRATES, ['pallet', 'crate']);
   await this.withApi(async (api) => {
     await api.call('POST', '/api/uninstall_app', { name: SHELF_APP });
@@ -179,14 +179,14 @@ Given('an app that connects its crate table as {string}, identified by its {word
 Given('an app that connects its crate and pallet tables, identified by their numbers, with each crate\'s pallet linking to the pallets',
   async function () {
     this.app = crateApp([
-      { table: 'crate', name: 'Crate', key: 'number', links: { pallet_number: 'pallet' } },
-      { table: 'pallet', name: 'Pallet', key: 'number', title_column: 'title' },
+      { table: 'crate', name: 'Crate', key: 'number', links: { pallet_id: 'pallet' } },
+      { table: 'pallet', name: 'Pallet', key: 'number' },
     ]);
   });
 
 Given('an app that connects its crate table as {string}, identified by its {word}, with each crate\'s pallet linking to a table called {string}',
   async function (name, key, target) {
-    this.app = crateApp([{ table: 'crate', name, key, links: { pallet_number: target } }]);
+    this.app = crateApp([{ table: 'crate', name, key, links: { pallet_id: target } }]);
   });
 
 Given('an app that connects its shelf table as {string}, identified by its {word}', async function (name, key) {
@@ -389,6 +389,18 @@ Then("the user sees the bin's shelf as {string}", async function (title) {
 Then('the user is told the shelf table is already identified by its {word}', async function (key) {
   assert.match(this.installed.body, new RegExp(`shelf[^"]*identified by[^"]*\\b${key}\\b`, 'i'),
     `the refusal says: ${this.installed.body}`);
+});
+
+Given('an app that connects its shelf and bin tables, with each bin\'s shelf linking to the bins', async function () {
+  await grantReader(SHELVES, ['shelf', 'bin']);
+  this.app = shelfApp('Shelf', {});
+  const source = this.app.sources[0];
+  source.table_allowlist = `${SHELVES}.shelf,${SHELVES}.bin`;
+  source.reflect.tables.push({ table: 'bin', name: 'Bin', links: { shelf_id: 'bin' } });
+});
+
+Then("the user is told the bin's shelf already links to the shelves", async function () {
+  assert.match(this.installed.body, /bin[^"]*shelf_id[^"]*already links to shelf\b/i, `the refusal says: ${this.installed.body}`);
 });
 
 Then('the user is told the source has no table {string}', async function (table) {
