@@ -1,9 +1,11 @@
-## Agent handoff — 2 November 2026
+## Agent handoff — updated 3 November 2026
 
-The owner has not completed the simulation review and now requests a data-led
-handoff with **no new UI work**. Do not treat that as approval of the unresolved
-production choices below. Continue with server/API verification and synthetic
-records; the UI is not a prerequisite.
+The owner requests a data-led handoff with **no new UI work**. The four follow-up
+policies and initial sample field set are now agreed: shared contacts through one
+authorised membership, per-row bulk outcomes, approval independent of editing,
+and operational contacts separate from account access. Continue with server/API
+verification. Remaining gates concern physical mapping, contracts and migrations;
+do not reopen these agreed choices merely because the simulation was discarded.
 
 **Done:** proposed permission/approval behaviour in the delta specs, the logical
 model and bootstrap-to-approval examples below, and the structured examples in
@@ -179,6 +181,19 @@ account identifier. It neither updates sign-in/recovery identifiers nor grants
 account-management rights. Account changes use their separate verified flow.
 Employee-to-Person physical mapping remains implementation design; do not infer
 that authentication secrets must live directly on the Person row.
+
+Owner-approved initial sample field set (3 November 2026):
+
+| Employee detail | R1 read | R1 update, subject to approval |
+|---|---|---|
+| C2 — Name | Yes | No |
+| C3 — Employee number | Yes | No |
+| C4 — Operational phone | Yes | Yes |
+| C5 — Emergency contact | Yes | Yes |
+
+This is the baseline example for Arun's RA6 grant, not a universal app restriction.
+Other roles can select different columns. PM1/PM2 and their column associations
+already express this set; the R7 phone-only variant remains a narrower example.
 
 Scope modes: self (linked identity, not creator), direct reports, reporting
 subtree (excluding self), named stores, named departments, and explicit all.
@@ -598,7 +613,7 @@ for a smoke check; they are not the primary proof of permission enforcement.
 This is a staged design, with explicit gates before implementation tasks below:
 
 1. Validate the sample-data cases against the business example and revise these artifacts.
-   Confirm the HR field set. Apply the agreed per-row bulk outcomes and shared
+   Use the approved sample field set. Apply the agreed per-row bulk outcomes and shared
    contact policy (one authorised membership is sufficient). Implement independent approval authority; resolve role-definition changes,
    binding changes and multi-level delegation termination under #617/#627.
 2. Finish the app contracts and a concrete schema migration plan. Job binding
@@ -645,6 +660,6 @@ retaining protections against ordinary account/role edits and automation bypass.
 
 ## Open Questions
 
-Resolve the production gates above: physical Employee/Person mapping and the initial HR field set, resolver
+Resolve the production gates above: physical Employee/Person mapping, resolver
 and capability contracts, approval-authority representation and migration mapping. UI presentation questions are no longer part of
 this handoff. Owner review of the simulation was not completed.

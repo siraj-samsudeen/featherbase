@@ -9,7 +9,7 @@
     "Each verification case starts fresh unless it explicitly references a prior case.",
     "Map logical records to approved Table metadata; create test data inline in existing Postgres rollback sandbox tests, not by loading this file as a test fixture.",
     "Trusted bootstrap is separate from ordinary authorised grant/save operations.",
-    "Expected outcomes labelled unresolved_default are decision examples, not approved production assertions."
+    "V22\u2013V24, V28 and the initial R1 field set are owner-approved. Remaining physical schema and resolver/date contract choices are documented in design.md."
   ],
   "rows": {
     "installed_app": [
@@ -1242,5 +1242,19 @@
       "rule": "approval_rule",
       "column": "column_metadata"
     }
+  },
+  "agreed_sample_field_set": {
+    "role": "R1",
+    "read": [
+      "C2",
+      "C3",
+      "C4",
+      "C5"
+    ],
+    "update": [
+      "C4",
+      "C5"
+    ],
+    "note": "Baseline example for RA6, not a universal restriction. Changes follow approval rules; other roles may select different columns."
   }
 }

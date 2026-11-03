@@ -6,16 +6,16 @@ historical only. It does not count as production permission coverage.
 
 - [x] 1.1 Record the agreed rules, logical data model and synthetic bootstrap-to-approval examples in the OpenSpec artifacts. Preserve prototype defaults separately from agreed requirements.
 - [x] 1.2 Discard the disposable prototype and capture the current done/pending state in design.md. Do not include the HTML in this PR or require owner UI review to proceed with the handoff.
-- [x] 1.3 Supply sample-data.json with initial records, scenario-specific rows and expected outcomes. Mark unresolved defaults; check IDs, foreign keys, permission-column ownership and case references. This is design data, not a runtime fixture or import contract.
+- [x] 1.3 Supply sample-data.json with initial records, scenario-specific rows and expected outcomes. Record the owner-approved policies and sample field set separately from remaining implementation defaults; check IDs, foreign keys, permission-column ownership and case references. This is design data, not a runtime fixture or import contract.
 - [ ] 1.4 Reconcile this proposal against current main and #246, #392, #449, #617 and #627. The source audit was at 40151182. Record overlaps, superseded assumptions and existing reusable implementation before writing code.
 
 ## 2. Production design gate
 
-The owner did not finish the simulation review. Dropping UI review does not
-approve unresolved policy. Use concrete records and expected outcomes to settle
-these questions, not another UI prototype.
+The four follow-up policies and initial sample field set are agreed. Resolve the
+remaining physical mapping, contract and migration questions with concrete records
+and expected outcomes, not another UI prototype.
 
-- [ ] 2.1 Map the agreed separation of operational contacts from sign-in/recovery data to the current Employee/Person/account schema, and confirm the initial field set (V28 verifies separation). Shared contact maintenance uses any matching authorised membership (V22, agreed); bulk submissions process permitted rows with explicit per-row applied/pending/rejected results (V23, agreed). Approval authority is independent of direct-edit rights (V24, agreed); define its scoped column representation in the implementation contract.
+- [ ] 2.1 Map the agreed separation of operational contacts from sign-in/recovery data to the current Employee/Person/account schema, using the agreed sample: read Name, Employee number, Operational phone and Emergency contact; update only the latter two (V28 verifies account separation). Shared contact maintenance uses any matching authorised membership (V22, agreed); bulk submissions process permitted rows with explicit per-row applied/pending/rejected results (V23, agreed). Approval authority is independent of direct-edit rights (V24, agreed); define its scoped column representation in the implementation contract.
 - [ ] 2.2 Define the membership and job-capability contracts with #617: correlated scope tuples, missing/ambiguous results, temporal activation, cycles and locking. Cover JA3/JA6, acting JA8 and multi-membership without a cross-product.
 - [ ] 2.3 Specify protected grant operations, shared-role/binding-change checks, successor-office resolution and delegation descendant limits. No direct grant, role edit or appointment may exceed the same delegation boundary.
 - [ ] 2.4 Reconcile approval application, proposal versioning and rule combination with #627. Specify fresh review and maker/approver/scope revalidation through the normal save path.
