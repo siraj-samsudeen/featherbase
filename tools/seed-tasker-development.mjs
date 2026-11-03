@@ -39,6 +39,18 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
   }
   if (identity.database_server_local !== true) throw new Error('Tasker seed refuses a remote PostgreSQL server')
   token = (await request('/api/login', { method: 'POST', body: { usr: 'Administrator', pwd: password } })).token
+  // This development fixture explicitly admits its known example accounts.
+  // Installing Tasker never admits administrators or other people implicitly.
+  const installed = await request('/api/apps')
+  if (!installed.installed.some(app => app.name === 'tasker' && app.enabled))
+    throw new Error('Tasker must be installed and enabled before seeding')
+  async function admit(personId) {
+    const person = await request(`/api/table/Person/${encodeURIComponent(personId)}`)
+    if (!person.roles.some(row => row.role === 'Tasker Member')) await request('/api/save_row', {
+      method: 'POST', body: { table: 'Person', row: { row_id: person.row_id, updated_at: person.updated_at, roles: [...person.roles, { role: 'Tasker Member' }] } },
+    })
+  }
+  await admit('Administrator')
   const catalog = await request('/api/app_catalog')
   if (!catalog.some((app) => app.name === 'tasker')) throw new Error('Tasker must be installed and enabled before seeding')
 
@@ -59,6 +71,7 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
   const people = new Map()
   for (const user of TASKER_SCENARIOS.users) {
     const person = await ensure('Person', 'email', user.email, user, { full_name: user.full_name })
+    await admit(person.row_id)
     people.set(user.email, person.row_id)
   }
   const personId = (value) => (value && people.has(value) ? people.get(value) : value)

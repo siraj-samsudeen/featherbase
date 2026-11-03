@@ -14,6 +14,7 @@ import { createTable, deleteTable, renameColumn, setIdPattern, tableStorageIdent
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
+import { hasMandatoryRowAccess, mandatoryReferencesWhere } from './mandatory-access'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, renameAccessToken, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
 import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
@@ -22,7 +23,7 @@ import { createServiceAccount, listServiceAccounts, renameServiceAccount, setSer
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
-import { personByEmail, pickPeople, principalNames } from './people-directory'
+import { personByEmail, pickPeople, principalNames, tableMembers } from './people-directory'
 import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
@@ -372,8 +373,9 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   // FILE-003: private files require either a valid signed URL (minted after a
   // permission check) or a session that can read the linked row. A user
   // without read on that row gets a 403.
-  if (isPrivate) {
-    const signed = verifyFileSignature(fileUrl, c.req.query('expires'), c.req.query('signature'))
+  const protectedRow = row.ref_table && row.ref_name && await hasMandatoryRowAccess(String(row.ref_table), String(row.ref_name))
+  if (isPrivate || protectedRow) {
+    const signed = !protectedRow && verifyFileSignature(fileUrl, c.req.query('expires'), c.req.query('signature'))
     if (!signed) {
       // #137/#173: the credential is the Authorization header, or the HttpOnly
       // `sid` cookie the browser already sends on a same-origin <img>/<a>
@@ -1050,10 +1052,11 @@ app.get('/api/activity_feed', async (c) => {
     throw new AppError('PermissionError', 'The team feed requires the System Manager role')
   // Changes and sign-ins as one ordered stream; a run is one person doing the
   // same kind of thing to the same target back to back.
+  const privateChanges = await mandatoryReferencesWhere(user, 'ref_table', 'ref_name')
   const rows = await sql`
     with stream as (
       select created_by as who, 'change'::text as kind, ref_table as sub, ref_name as label, created_at as at, row_id::text as id
-      from version
+      from version where ${privateChanges.frag}
       union all
       select "user", 'login', null, null, created_at, row_id::text
       from activity_log where operation = 'login'
@@ -1284,6 +1287,8 @@ app.post('/api/people/names', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown }
   return c.json({ names: await principalNames(body.ids, who(c)) })
 })
+
+app.get('/api/table_members/:table', async (c) => c.json({ data: await tableMembers(c.req.param('table'), who(c)) }))
 
 app.get('/api/people/pick', async (c) => {
   return c.json({ people: await pickPeople(c.req.query('q') ?? '', who(c), Number(c.req.query('limit') ?? 10)) })
@@ -1702,6 +1707,10 @@ app.get('/api/signed_url', async (c) => {
     select row_id, ref_table, ref_name from file where file_url = ${fileUrl}`
   if (!row) throw new AppError('NotFoundError', `File not found: ${fileUrl}`)
   const user = who(c)
+  if (row.ref_table && row.ref_name && await hasMandatoryRowAccess(String(row.ref_table), String(row.ref_name))) {
+    await getDoc(String(row.ref_table), String(row.ref_name), user)
+    return c.json({ signed_url: fileUrl })
+  }
   if (fileUrl.startsWith('/private/files/')) {
     if (row.ref_table && row.ref_name)
       await getDoc(row.ref_table as string, row.ref_name as string, user)

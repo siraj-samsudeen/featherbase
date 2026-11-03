@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from 'react'
-import { fmtPct } from '../../lib/inr'
+import { fmtPct } from './format'
 import { cx } from './cx'
 
 type HeadlineTone = 'negative' | 'caution' | 'positive' | 'missing' | 'neutral'

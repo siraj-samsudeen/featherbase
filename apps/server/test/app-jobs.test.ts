@@ -16,6 +16,7 @@ import { deleteDoc } from '../src/document'
 import { applyInstanceSettings } from '../src/instance-settings'
 import { newIdentifierId } from '../src/person-identifiers'
 import { withNamedVariable } from '../src/env'
+import { validateAppJobs } from '../src/app-jobs'
 
 const APP = 'fbjobsa'
 const SWEEP = `${APP}.sweep`
@@ -41,6 +42,7 @@ const overreach: Job = { name: 'overreach', cadence: 'hourly', description: 'Rea
 // The handlers a version ships: only the jobs its manifest declares, as the
 // platform requires.
 const HANDLERS: Record<string, string> = {
+  read_profile: `async read_profile(ctx) { calls.push({ job: ctx.job.name, people: await ctx.people.list() }) }`,
   sweep: `async sweep(ctx) {
     const people = await ctx.people.list()
     const gone = []
@@ -389,6 +391,20 @@ describe('a job name belongs to one owner', () => {
       { path: expect.any(String), error: 'The job sweep would be registered as fbjobsb.sweep, which Featherbase already uses' },
     ])
     expect(packageFailures).toHaveLength(1)
+  })
+
+  test('a handler claimed after discovery cannot be taken during installation', async ({ admin }) => {
+    const name = 'fbjobsclaim'
+    expect(await discoverPackages([await writeApp({ name, jobs: [sweep] })])).toEqual([])
+    registerJob(`${name}.sweep`, async () => {})
+    await expectApiError(admin.post('/api/install_app', { name }), {
+      status: 409, message: expect.stringContaining('already registered by Featherbase'),
+    })
+    expect(await sql`select name from installed_app where name = ${name}`).toHaveLength(0)
+  })
+
+  test('an app with no jobs needs no job server module', () => {
+    expect(() => validateAppJobs('jobfree', { jobs: [] }, new Set())).not.toThrow()
   })
 
   test('the manifest is checked: a made-up cadence or grant, or a handler the server module does not export', async ({ admin: _admin }) => {
@@ -744,4 +760,75 @@ describe('job upgrade defaults respect the installed choices', () => {
     const pending = await sql`select repeat_every from background_job where method = ${SWEEP} and job_status = 'queued'`
     expect(pending.map((entry) => Number(entry.repeat_every))).toEqual([86400])
   })
+})
+
+test('discovery refuses a job name held by another app handler', async () => {
+  const name = 'fbjobsdiscoveryowner'
+  registerJob(`${name}.tidy`, async () => {}, 'anotherjobowner')
+  expect(await discoverPackages([await writeApp({ name, jobs: [{ name: 'tidy', cadence: 'hourly', description: 'Tidy.' }] })])).toEqual([
+    { path: expect.any(String), error: 'The job tidy would be registered as fbjobsdiscoveryowner.tidy, which the app anotherjobowner already uses' },
+  ])
+  expect(jobRegistrant(`${name}.tidy`)).toBe('anotherjobowner')
+})
+
+test('installation preserves a handler claimed by another app after discovery', async ({ admin }) => {
+  const name = 'fbjobsinstallowner'
+  expect(await discoverPackages([await writeApp({ name, jobs: [{ name: 'tidy', cadence: 'hourly', description: 'Tidy.' }] })])).toEqual([])
+  registerJob(`${name}.tidy`, async () => {}, 'otherinstallowner')
+  await expectApiError(admin.post('/api/install_app', { name }), {
+    status: 409, message: expect.stringContaining('already registered by the app otherinstallowner'),
+  })
+  expect(jobRegistrant(`${name}.tidy`)).toBe('otherinstallowner')
+  expect(await sql`select 1 from installed_app where name=${name}`).toEqual([])
+  expect(await sql`select 1 from scheduled_job where method=${`${name}.tidy`}`).toEqual([])
+})
+
+test('removing an upgraded job preserves a replacement schedule owned elsewhere', async ({ admin }) => {
+  const v1 = await writeApp({ jobs: [sweep] })
+  expect(await discoverPackages([v1])).toEqual([])
+  await admin.post('/api/install_app', { name: APP })
+  const v2 = await writeApp({ version: '2.0.0', jobs: [],
+    migrations: [{ id: 'jobs_v2', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }] })
+  expect(await discoverPackages([v1, v2])).toEqual([])
+  const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: APP, version: '2.0.0' })
+  // Model a restored schedule whose owner changed after preview. Upgrade
+  // removal must not erase another owner's row or its already queued run.
+  await sql`update scheduled_job set owner_app='replacementowner', description='Replacement schedule' where method=${SWEEP}`
+  const before = await sql`select row_id from background_job where method=${SWEEP} and job_status='queued' order by row_id`
+  expect(before).toHaveLength(1)
+  await admin.post('/api/upgrade_app', { name: APP, version: '2.0.0', planId: plan.planId })
+  expect(await row(SWEEP)).toMatchObject({ owner_app: 'replacementowner', description: 'Replacement schedule' })
+  expect(await sql`select row_id from background_job where method=${SWEEP} and job_status='queued' order by row_id`).toEqual(before)
+})
+
+test('an upgrade preserves a replacement schedule held by another owner', async ({ admin }) => {
+  const v1 = await writeApp({ jobs: [sweep] })
+  expect(await discoverPackages([v1])).toEqual([])
+  await admin.post('/api/install_app', { name: APP })
+  const v2 = await writeApp({ version: '2.0.0', jobs: [{ ...sweep, description: 'A revised default.' }],
+    migrations: [{ id: 'jobs_v2', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }] })
+  expect(await discoverPackages([v1, v2])).toEqual([])
+  const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: APP, version: '2.0.0' })
+  // As with removal, a restored row held by another owner must not receive
+  // this app's changed defaults. Ordinary edits cannot reassign app jobs.
+  await sql`update scheduled_job set owner_app='replacementowner', description='Keep their description' where method=${SWEEP}`
+  await admin.post('/api/upgrade_app', { name: APP, version: '2.0.0', planId: plan.planId })
+  expect(await row(SWEEP)).toMatchObject({ owner_app: 'replacementowner', cadence: 'daily', description: 'Keep their description' })
+})
+
+
+test('a people-reading job receives missing optional profile values as null', async ({ admin, createUser }) => {
+  const job: Job = { name: 'read_profile', cadence: 'hourly', description: 'Read optional person profile data.', grants: ['read_people'] }
+  expect(await discoverPackages([await writeApp({ jobs: [job] })])).toEqual([])
+  await admin.post('/api/install_app', { name: APP })
+  const person = await createUser({ roles: [], fullName: 'Optional profile', email: 'optional-job-profile@example.test' })
+  const before = await admin.get<Record<string, unknown>>(`/api/table/Person/${person.user}`)
+  const cleared = await admin.post('/api/save_row', { table: 'Person', row: {
+    row_id: person.user, updated_at: before.updated_at, username: before.username || 'optional_job_profile', full_name: null, email: null,
+  } })
+  expect(cleared).toMatchObject({ enabled: true, full_name: null, email: null })
+  await runDue()
+  expect(calls()).toEqual([{ job: `${APP}.read_profile`, people: [{
+    person: person.user, full_name: null, email: null, privileged: false, identifiers: {},
+  }] }])
 })

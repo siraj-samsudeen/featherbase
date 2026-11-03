@@ -70,6 +70,35 @@ describe('#873: validated Home destinations', () => {
     expect((await user.get<Feed>('/api/activity_feed')).items[0]).toMatchObject({ destination_state: 'unavailable', path: '', label: 'Unavailable destination' })
   })
 
+  test('mandatory row privacy overrides a privileged caller’s earlier authorized visit', async ({ admin, createUser }) => {
+    const table = await makeTable(admin, {
+      name: 'Resume Private Plant', title_column: 'title', columns: ['title', 'shared:Check'],
+      access_policy: { version: 1, roles: ['Resume member'], shared_column: 'shared' },
+    })
+    const owner = await createUserWithRole(admin, createUser, {
+      role: 'Resume member', table: table.name, can_read: true, can_create: true, can_write: true,
+    })
+    const manager = await createUser({ roles: ['System Manager', 'Resume member'] })
+    const row = await owner.post<{ row_id: string; updated_at: string }>(table.url, {
+      row_id: 'north', title: 'Confidential depot', shared: true,
+    })
+    const event = await visit(manager, table.name, row.row_id)
+    await manager.post('/api/events', { events: [event] })
+    expect((await manager.post<Home>('/api/home_resume', {})).entries[0].label).toBe('Confidential depot')
+    const history = await sql`select * from user_event where created_by = ${manager.user!}`
+    await owner.post('/api/save_row', {
+      table: table.name, row: { row_id: row.row_id, updated_at: row.updated_at, shared: false },
+    })
+    const denied = await manager.fetch(table.rowUrl(row.row_id), { headers: { 'X-Navigation-Visit': '1' } })
+    expect(denied.status).toBe(403)
+    expect(denied.headers.get('X-Navigation-Claim')).toBeNull()
+    expect((await manager.post<Home>('/api/home_resume', { hints: [{ ...event, at: event.at + 1 }] })).entries).toEqual([])
+    expect((await manager.get<Feed>('/api/activity_feed')).items[0]).toMatchObject({
+      destination_state: 'unavailable', path: '', label: 'Unavailable destination',
+    })
+    expect(await sql`select * from user_event where created_by = ${manager.user!}`).toEqual(history)
+  })
+
   test('sweep deletion cannot collide with a later rename, and retired targets follow event retention', async ({ admin }) => {
     const victim = await makeTable(admin, { name: 'Resume Deleted', columns: ['title'] })
     const table = await makeTable(admin, { name: 'Resume Plant', columns: [

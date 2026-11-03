@@ -2,6 +2,7 @@
 // no database. They pin behaviour and accessibility, not pixels — the look is
 // the tokens' job and design-guards.test.ts guards those.
 
+import { createRef } from 'react'
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -26,9 +27,16 @@ import {
   TOAST_MS,
   ToastProvider,
   useToast,
-} from '../src/components/ui'
+} from '@featherbase/shop-floor'
 
 describe('Button', () => {
+  test('exposes its native element for focus restoration', () => {
+    const ref = createRef<HTMLButtonElement>()
+    render(<Button ref={ref}>Edit</Button>)
+    ref.current?.focus()
+    expect(screen.getByRole('button', { name: 'Edit' })).toHaveFocus()
+  })
+
   test('is a plain button by default, so it never submits a form by accident', () => {
     render(<Button>Save</Button>)
     expect(screen.getByRole('button', { name: 'Save' })).toHaveAttribute('type', 'button')

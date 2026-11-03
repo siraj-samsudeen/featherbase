@@ -36,9 +36,9 @@ import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
-import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '../components/ui'
-import { Bell, BookOpen, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
-import { fmtCount } from '../lib/inr'
+import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { Bell, BookOpen, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 
 interface SearchHit {
   table: string
@@ -81,16 +81,16 @@ connectEventSink({
 // home page sidebar. All Tables render inside <Outlet/>.
 // #410: pick the layout from the server-computed capabilities BEFORE mounting
 // the Admin shell, so a person who cannot use it never fires its API calls.
-export function AdminLayout() {
+export function AdminLayout({ wide = false }: { wide?: boolean } = {}) {
   // #489: the signed-in person's theme choice outlives every toggle on the page.
   return (
     <ThemeChoiceProvider>
-      <AdminLayoutForKind />
+      <AdminLayoutForKind wide={wide} />
     </ThemeChoiceProvider>
   )
 }
 
-function AdminLayoutForKind() {
+function AdminLayoutForKind({ wide }: { wide: boolean }) {
   const kind = useShellKind()
   // #489 item 10: while whoami loads, the bar's frame and name are drawn and
   // its right side stays empty — no flash of the wrong items.
@@ -111,10 +111,10 @@ function AdminLayoutForKind() {
   // A report reader has no Admin page left: their sign-in methods are an
   // account page now (#489), so every Admin address sends them to the report.
   if (kind === 'report-only') return <Navigate to={REPORT_PATH} replace />
-  return <AdminShell />
+  return <AdminShell wide={wide} />
 }
 
-function AdminShell() {
+function AdminShell({ wide }: { wide: boolean }) {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -889,8 +889,8 @@ function AdminShell() {
         </aside>
 
         {/* Page canvas */}
-        <main className="min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:p-6">
-          <div className="mx-auto max-w-5xl">
+        <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:p-6${wide ? ' flex flex-col' : ''}`}>
+          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : 'mx-auto max-w-5xl'}>
             <NavigationVisitContext.Provider value={visit}>
               <Outlet />
             </NavigationVisitContext.Provider>

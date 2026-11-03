@@ -1,6 +1,6 @@
 import type { SignInMethodKind } from 'shared'
+import { followDevice } from '@featherbase/shop-floor/theme'
 import { clearVisitJournal } from './recents'
-import { followDevice } from './theme-paint'
 // Thin authenticated client for the Featherbase server API.
 
 const TOKEN_KEY = 'fc_token'

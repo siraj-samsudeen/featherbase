@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { choiceLabel, type WebFormColumn, type WebFormConfig } from 'shared'
 import { api, ApiError } from '../lib/api'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
 import { useI18n } from '../lib/i18n'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
 
 // WEB-002: a public, session-less form. Fetches its column config and creates
 // a row on submit; server validation errors surface inline.

@@ -7,6 +7,7 @@ import { getScopeMap, isPrivileged, permissionScope, permittedTiers } from './pe
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
+import { mandatoryWhere, needsMandatoryRowRead } from './mandatory-access'
 import { MAX_RELATED_DEPTH, MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
 
 export type { Filter } from './related-filter'
@@ -116,7 +117,7 @@ export async function scopedWhere(
   const filters = [...callerFilters]
   // Extra WHERE fragments that can't be expressed as plain [field, op, value]
   // filters (they need OR with IS NULL).
-  const extraConds: ReturnType<typeof sql>[] = []
+  const extraConds: ReturnType<typeof sql>[] = [(await mandatoryWhere(meta, user)).frag]
   if (scope === 'own_rows') filters.push(['created_by', '=', user])
   // PERM-005: user permissions narrow by the table itself and by any
   // Reference column pointing at a restricted table. An UNSET reference does
@@ -130,10 +131,10 @@ export async function scopedWhere(
   // ones carrying a Sub-table column pointing here), so each becomes a
   // branch scoped to what the caller may see of it — and a parent Table the
   // caller cannot read at all contributes no branch, hiding its children.
-  if (meta.kind === 'sub_table' && !bypass)
+  if (meta.kind === 'sub_table')
     extraConds.push((await parentScopeCond(meta.name, user)).frag)
   // #342: likewise a comment or an edit is only as visible as its row.
-  if (ROW_ATTACHED_TABLES.has(meta.name) && !bypass)
+  if (ROW_ATTACHED_TABLES.has(meta.name))
     extraConds.push((await attachedRowScopeCond(meta.name, user, callerFilters)).frag)
   if (!bypass) {
     const upMap = await getScopeMap(user)
@@ -331,10 +332,11 @@ async function parentScopeCond(
     const scope = await permissionScope(user, holder, 'read')
     if (scope === 'none') continue
     branches.push(
-      scope === 'all'
+      scope === 'all' && !holderMeta.access_policy
         ? sql`parenttype = ${holder}`
         : sql`(parenttype = ${holder} and parent in (
-             select ${sql(physicalRowKey(holder))} from ${sql(await tableRelation(holder))} where created_by = ${user}))`,
+             select ${sql(physicalRowKey(holder))} from ${sql(await tableRelation(holder))}
+             where ${(await mandatoryWhere(holderMeta, user)).frag} and ${scope === 'own_rows' ? sql`created_by = ${user}` : sql`true`}))`,
     )
   }
   if (!branches.length) return { frag: sql`false` }
@@ -375,10 +377,15 @@ async function attachedRowScopeCond(
     : (await sql`select distinct ref_table from ${rel} where ref_table is not null`).map((r) => String(r.ref_table))
   const branches: ReturnType<typeof sql>[] = table === 'File' ? [sql`coalesce(${rel}.ref_name, '') = ''`] : []
   const scopes = await getScopeMap(user)
+  const privileged = await isPrivileged(user)
   for (const target of targets) {
+    if (privileged && !(await needsMandatoryRowRead(target))) {
+      branches.push(sql`${rel}.ref_table = ${target}`)
+      continue
+    }
     const targetMeta = ROW_ATTACHED_TABLES.has(target) ? null : await getMeta(target).catch(() => null)
     if (!targetMeta) continue
-    branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
+    if (!targetMeta.access_policy) branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
       select share_name from share where share_table = ${target} and read = true
         and (person = ${user} or service_account = ${user})))`)
     const scope = await permissionScope(user, target, 'read')

@@ -4,7 +4,7 @@ import { useRouter } from '@tanstack/react-router'
 import { api, getSessionUser, getToken } from '../lib/api'
 import { ago, displayEntry, recentActions, type RecentEntry } from '../lib/recents'
 import { EntryLabel } from '../lib/row-titles'
-import { buttonClasses, cardClasses } from './ui'
+import { buttonClasses, cardClasses } from '@featherbase/shop-floor'
 import { useRealtime } from '../lib/realtime'
 
 // #101 Phase 5: the Home Page's first job becomes resuming. ResumeStrip

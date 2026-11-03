@@ -4,7 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os'
 import { test as base } from './pg-test'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
-import { taskerClient } from './tasker-client'
+import { admitTasker, taskerClient } from './tasker-client'
 import { discoverPackages, findScopeProvider, shippedUpgrades } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
@@ -287,12 +287,12 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await admin.post('/api/install_app', { name: 'other' })
     for (const property of ['name', 'owner_app', 'physical_schema', 'physical_relation', 'data_source', 'row_key', 'columns']) {
       const row = { row_id: `override-${property}`, table_name: 'other.task', column_name: null, property, value: 'tasker' }
-      await expect(admin.post('/api/save_row', { table: 'Metadata Override', row })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('cannot be overridden') })
+      await expect(admin.post('/api/table/Metadata%20Override', row)).rejects.toMatchObject({ status: 417, message: expect.stringContaining('cannot be overridden') })
       await expect(importCustomizations({ property_setters: [row] })).rejects.toMatchObject({ type: 'ValidationError' })
     }
-    await admin.post('/api/save_row', { table: 'Metadata Override', row: {
+    await admin.post('/api/table/Metadata%20Override', {
       row_id: 'override-label', table_name: 'other.task', property: 'label', value: 'Counting task',
-    } })
+    })
     expect(await getMeta('other.task')).toMatchObject({ name: 'other.task', label: 'Counting task', physical_schema: 'other' })
     // A pre-existing unsafe override must not get applied on the next boot.
     await sql`insert into metadata_override (row_id, table_name, property, value) values ('legacy-unsafe', 'other.task', 'name', 'Task')`
@@ -349,7 +349,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'tasker' })
     await admin.post('/api/install_app', { name: 'other' })
-    const member = await createUser({ email: 'two-packages@example.com', roles: [] })
+    const member = await createUser({ email: 'two-packages@example.com', roles: ['Tasker Member'] })
     const task = await member.post<Record<string, unknown>>('/api/save_row', {
       table: 'tasker.task', row: { task_title: 'Only Tasker owns this title', task_state: 'In progress' },
     })
@@ -388,8 +388,8 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       const manifest = JSON.parse(await readFile(file, 'utf8'))
       manifest.permissions.push(
         // #437: a shared core Table both packages grant on (Tasker's Comment grant).
-        { table: 'Comment', role: 'All', can_read: true },
-        { table: 'Comment', role: 'All', tier: 'restricted', can_read: true },
+        { table: 'Comment', role: 'Tasker Member', can_read: true },
+        { table: 'Comment', role: 'Tasker Member', tier: 'restricted', can_read: true },
       )
       await writeFile(file, JSON.stringify(manifest))
       expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), other])).toEqual([])
@@ -405,7 +405,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
         { owner_app: 'other', tier: 'restricted' },
         { owner_app: 'tasker', tier: 'basic' },
       ])
-      const member = await createUser({ email: 'shared-grants@example.com', roles: [] })
+      const member = await createUser({ email: 'shared-grants@example.com', roles: ['Tasker Member'] })
       expect((await member.get<{ data: unknown[] }>('/api/table/Comment')).data).toBeInstanceOf(Array)
       expect(await permittedTiers(member.user!, 'Comment', 'read')).toEqual(new Set(['basic', 'restricted']))
 
@@ -552,6 +552,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   test("PKG-R4: an app's entry document carries the shared bar's host, named by the app's title", async ({ admin }) => {
     expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), resolve('../..', 'test-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'tasker' })
+    await admitTasker(admin)
     await admin.post('/api/install_app', { name: 'other' })
 
     const page = await admin.fetch('/tasker/review/37?filter=a%26b', { headers: { accept: 'text/html' } })
@@ -585,7 +586,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       await discoverPackages([resolve('../..', 'example-apps/tasker'), restricted])
       await admin.post('/api/install_app', { name: 'tasker' })
       await admin.post('/api/install_app', { name: 'other' })
-      const member = await createUser({ email: 'runtime-shell-no-manager@example.com', roles: [] })
+      const member = await createUser({ email: 'runtime-shell-no-manager@example.com', roles: ['Tasker Member'] })
       expect(await member.get('/api/app_catalog')).toEqual([{ name: 'tasker', title: 'Tasker', href: '/tasker/' }])
       const html = await (await member.fetch('/tasker/')).text()
       expect(html).toContain('<featherbase-bar data-app="tasker" data-title="Tasker"></featherbase-bar>')
@@ -599,7 +600,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   // #437: a new version may withdraw a grant its installed version declared.
   // Two synthetic copies of Tasker: the installed one also lets everyone read
   // Person; the next version, one migration on, does not.
-  const currentTasker = resolve('../..', 'example-apps/tasker')
+  const currentTasker = resolve('../..', 'test-apps/fixtures/tasker-v2.3')
   const everyoneReadsPerson = () => sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`
   async function taskerGrants() {
     const [app] = await sql`select perms from installed_app where name = 'tasker'`
@@ -778,7 +779,7 @@ describe('An app owns its own screen', () => {
       for (const entry of ['package.json', ...shipped.files]) await cp(resolve(source, entry), resolve(staged, entry), { recursive: true })
       expect(await discoverPackages([staged])).toEqual([])
       await admin.post('/api/install_app', { name: 'tasker' })
-      const member = await createUser({ email: 'delivered-member@example.com', roles: [] })
+      const member = await createUser({ email: 'delivered-member@example.com', roles: ['Tasker Member'] })
       expect(await member.get('/api/app_catalog')).toContainEqual({ name: 'tasker', title: 'Tasker', href: '/tasker/' })
 
       const page = await member.fetch('/tasker/', { headers: { accept: 'text/html' } })
