@@ -21,7 +21,7 @@ test('#830: a Person\'s Activity shows a role granted and a role removed, by who
     table: 'Person',
     row: { row_id: p.row_id, updated_at: granted.updated_at, roles: granted.roles.filter((r) => r.role === 'Rh Clerk') },
   })
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(p.row_id)}`, admin)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(p.row_id)}`, admin)
   const timeline = await screen.findByTestId('activity-timeline', {}, { timeout: 10_000 })
   // Activity names a field by its column, as for every other change (#421).
   await waitFor(() => {

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { opaqueId } from './opaque-id'
-import { DEFAULT_ID_PATTERN, tableSchemaToZod, zodFieldErrors } from 'shared'
+import { DEFAULT_ID_PATTERN, idFromColumn, namingColumn, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { assertMandatoryAccess, hasMandatoryRowAccess } from './mandatory-access'
 import { sql } from './db'
 import { AppError } from './errors'
@@ -128,8 +128,9 @@ async function resolveRowId(
   // file's own reference codes become row ids, verbatim, and the series is
   // NOT consumed for them (IMP-R6: the pattern is the promise, so unsupplied
   // rows simply continue the series). 'prompt' keeps its required-id error
-  // and 'field:' keeps naming from its declared column.
-  if (rule !== 'prompt' && !rule.startsWith('field:')) {
+  // and a column rule (#858) keeps naming from its declared column.
+  const naming = namingColumn(rule)
+  if (rule !== 'prompt' && !naming) {
     const supplied = String(values[ROW_KEY] ?? '').trim()
     if (supplied) return supplied
   }
@@ -142,14 +143,22 @@ async function resolveRowId(
       })
     return rowId
   }
-  if (rule.startsWith('field:')) {
-    const columnName = rule.slice('field:'.length)
-    const value = String(own(values, columnName) ?? '').trim()
-    if (!value)
-      throw new AppError('ValidationError', `Naming field ${columnName} is required`, {
-        [columnName]: `${columnName} is required for naming`,
+  if (naming) {
+    const { prefix, column } = naming
+    const value = String(own(values, column) ?? '').trim()
+    const rowId = idFromColumn(prefix, value)
+    if (!rowId)
+      throw new AppError('ValidationError', `Naming field ${column} is required`, {
+        [column]: `${column} is required for naming`,
       })
-    return value
+    // #858: a second row with the same value would take an id already in use;
+    // say which column clashes rather than "Duplicate value for row_id".
+    const [taken] = await tx`select 1 from ${tx(await tableRelation(meta.name))} where ${tx(meta.row_key)} = ${rowId}`
+    if (taken)
+      throw new AppError('ValidationError', `${meta.name} with ${column} ${value} already exists`, {
+        [column]: `${rowId} is already taken`,
+      })
+    return rowId
   }
   if (rule === 'integer') return nextInSeries(tx, meta, '', (n) => String(n))
   if (rule.includes('.#')) {
@@ -748,13 +757,21 @@ const ENGINE_MANAGED = new Set(['Table', 'Column'])
 // tier stripping do not run here, so a trigger can still reject at real
 // import time; the dry run catches everything schema-level.
 // The import action refuses source-bound Tables before it gets here.
-export async function checkRowForInsert(meta: TableMeta, values: RowValues): Promise<void> {
+// Returns the id the row will take, when known now, so the import check can
+// spot one repeated within the file.
+export async function checkRowForInsert(meta: TableMeta, values: RowValues): Promise<string> {
   validateValues(meta, applyDefaults(meta, pickFieldValues(meta, values)), 'insert')
   // #231: the real import inserts through saveDoc, so the dry run has to
   // apply the same required-children rule or it would pass rows the import
   // then refuses.
   assertRequiredChildren(meta, values, 'insert')
-  const rowId = String(values[ROW_KEY] ?? '').trim()
+  // #858: a column rule's id is known before the save; check it like a supplied one.
+  const naming = namingColumn(meta.id_pattern)
+  const rowId = naming ? (idFromColumn(naming.prefix, own(values, naming.column)) ?? '') : String(values[ROW_KEY] ?? '').trim()
+  if (naming && !rowId)
+    throw new AppError('ValidationError', `Naming field ${naming.column} is required`, {
+      [naming.column]: `${naming.column} is required for naming`,
+    })
   if (meta.id_pattern === 'prompt' && !rowId)
     throw new AppError('ValidationError', `${meta.name} requires a Row ID`, {
       [ROW_KEY]: 'Row ID is required',
@@ -765,6 +782,7 @@ export async function checkRowForInsert(meta: TableMeta, values: RowValues): Pro
       where ${sql(meta.row_key)} = ${rowId}`
     if (exists) throw new AppError('ConflictError', `${meta.name} ${rowId} already exists`)
   }
+  return rowId
 }
 
 // UPS-R1: the dry-run counterpart for rows an upsert will UPDATE — the same
