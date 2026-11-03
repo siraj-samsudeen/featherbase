@@ -197,6 +197,44 @@ Then only the mapping for "state_code" is offered
 And clearing the mapping search restores the edited name and omitted city
 ```
 
+### Requirement: Create a native copy with the chosen columns
+
+Copying a warehouse table SHALL create an ordinary editable Table using the
+chosen key and kept columns. The approved names, labels, descriptions and
+source-column identities SHALL be saved; omitted source columns SHALL not
+be added to the copy. The source key's value becomes the native Row ID.
+
+#### Scenario: Submitting copy setup creates editable native rows
+
+```gherkin
+Given a warehouse table containing three stores
+When the user creates a native copy keeping these columns
+  | Source     | Name       | Label        | Description            |
+  | code       | store_code | Store code   | Warehouse identifier   |
+  | name       | store_name | Trading name | Warehouse trading name |
+  | state_code | state_code | State code   | Warehouse state        |
+Then the native copy lists stores "S001", "S002" and "S003"
+And its ordinary row form uses the approved labels without the omitted city
+And a correction made in that form is saved
+```
+
+### Requirement: Copy again follows the source without losing corrections
+
+Copy again SHALL update an unedited value from the warehouse, add new source
+rows and keep a person's correction, using the saved source-column mappings.
+These examples do not define changed-row counts, failure atomicity or undo.
+
+#### Scenario: Copy again updates an unedited store and adds a new store
+
+```gherkin
+Given a native store copy with a person's correction to store "S002"
+And the warehouse changes the unedited store "S001" and adds store "S004"
+When the user chooses Copy again on the native copy
+Then store "S001" has the changed warehouse name
+And store "S004" is available as an ordinary native row
+And store "S002" still has the person's correction
+```
+
 ### Requirement: Browsing reopens where each person left off
 
 Opening a source's browser SHALL return each person to the database and
