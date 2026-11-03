@@ -431,6 +431,16 @@ describe('#853: rename access tokens', () => {
     expect(await sql`select 1 from activity_log where operation = ${`access_token_renamed ${issued.id}`}`).toHaveLength(0)
   })
 
+  test('refuses malformed rename JSON without changing the token', async ({ admin }) => {
+    const issued = await admin.post<{ id: string }>('/api/access_tokens', { label: 'keep malformed' })
+    const before = await sql`select * from access_token where id = ${issued.id}`
+    const response = await admin.fetch(`/api/access_tokens/${issued.id}`, { method: 'PATCH', body: '{' })
+    expect(response.status).toBe(417)
+    expect(await response.json()).toMatchObject({ error: { type: 'ValidationError' } })
+    expect(await sql`select * from access_token where id = ${issued.id}`).toEqual(before)
+    expect(await sql`select 1 from activity_log where operation = ${`access_token_renamed ${issued.id}`}`).toHaveLength(0)
+  })
+
   test.for(['foreign user', 'preview session'] as const)('refuses token rename by a %s', async (actor, { admin, api, createUser }) => {
     const owner = await createUser({ email: 'rename-guard@x.com' })
     const issued = await admin.post<{ id: string }>('/api/access_tokens', { label: 'protected', owner: owner.user })
