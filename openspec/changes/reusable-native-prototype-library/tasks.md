@@ -20,6 +20,8 @@
 
 ## 4. Verification and delivery
 
-- [ ] 4.1 Run effective acceptance with zero pending/undefined steps, targeted component checks, typecheck/build, strict OpenSpec validation, repository guards and isolated init/smoke. Preserve coverage gates.
+- [x] 4.1 Run effective acceptance with zero pending/undefined steps, targeted component checks, typecheck/build, strict OpenSpec validation, repository guards and isolated init/smoke. Preserve coverage gates.
 - [ ] 4.2 Run independent headless UI verification at 1280 against the numbered issue checklist. Inspect representative screenshots and real pointer/keyboard interaction recording. Obtain ordinary fixture/config review; no adversarial review without consent.
-- [ ] 4.3 Commit/push this increment and prepare PR with reproducible evidence, exact-head CI and PR-comment subscriptions; report manager. No merge or deployment. Keep persistent thread open; archive the OpenSpec increment only after owner video review.
+- [x] 4.3 Commit/push this increment and prepare PR with reproducible evidence, exact-head CI and PR-comment subscriptions; report manager. No merge or deployment. Keep persistent thread open; archive the OpenSpec increment only after owner video review.
+
+Verification: effective acceptance 65 scenarios / 460 steps; full web coverage 146 files, 1,412 passed / 2 expected failures, lines 94.23%, statements 93.79%, functions 92.54%; focused checks 6/6; init smoke 4/4. Typecheck/build, strict change validation and repository guards pass. Independent UI round 2 passed the issue checklist's exercised UI, and final screenshots/interaction clip were inspected. PR #813 is draft. Task 4.2 remains open solely for ordinary hidden-logic review: the local reviewer is unavailable and manager is coordinating an owner-approved alternative, with no waiver inferred. CI and owner video review remain delivery gates; planning is not archived and this persistent thread stays open.
