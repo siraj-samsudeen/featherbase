@@ -5,6 +5,7 @@
 // table and are not System Managers.
 
 const assert = require('node:assert/strict');
+const { expect } = require('playwright/test');
 const { Given, When, Then } = require('@cucumber/cucumber');
 const { sectionMappingTable } = require('../support/fixtures/section-mapping');
 const { shelfCheckTable } = require('../support/fixtures/shelf-check');
@@ -141,8 +142,8 @@ Then("the user's list still shows each row's ID", async function () {
 });
 
 Then('the column is still hidden', async function () {
-  const shown = await (await listOf(this, 'the user')).columnLabels();
-  assert.ok(!shown.includes(this.hiddenColumn), `${this.hiddenColumn} is in the list: ${shown.join(', ')}`);
+  const list = await listOf(this, 'the user');
+  await expect.poll(() => list.columnLabels()).not.toContain(this.hiddenColumn);
 });
 
 Then('the list is still sorted the way they left it', async function () {
@@ -156,8 +157,8 @@ Then('the list is still sorted the way they left it', async function () {
 });
 
 Then('{columns} still shows', async function (columns) {
-  const shown = await (await listOf(this, 'the user')).columnLabels();
-  for (const column of columns) assert.ok(shown.includes(column), `${column} is not in the list: ${shown.join(', ')}`);
+  const list = await listOf(this, 'the user');
+  await expect.poll(() => list.columnLabels()).toEqual(expect.arrayContaining(columns));
 });
 
 Then("the colleague's list (still )shows {columns}", async function (columns) {
