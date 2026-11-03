@@ -175,4 +175,4 @@ AfterAll(async function () {
 
 process.on('exit', stopAll);
 
-module.exports = { BASE_URL, API_URL, resetAcceptance, restartAcceptance, acceptanceSql, isolatedEnvironment, REPO_ROOT };
+module.exports = { BASE_URL, API_URL, resetAcceptance, restartAcceptance, acceptanceSql, acceptanceDatabaseUrl, isolatedEnvironment, REPO_ROOT };
