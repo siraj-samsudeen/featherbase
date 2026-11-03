@@ -264,12 +264,23 @@ describe('#858: a fixed prefix plus a column', () => {
     expect(await admin.get(at('PLANT-8159'))).toMatchObject({ plant_code: '8159', title: 'Chennai' })
   })
 
+  test('an import check flags a code already naming a plant, or repeated in the file', async ({ admin }) => {
+    await plant(admin)
+    await save(admin, PLANT, { plant_code: '8151', title: 'Chennai' })
+    const report = await admin.post<{ failed: { index: number; message: string }[] }>(
+      `/api/table/${encodeURIComponent(PLANT)}:import`,
+      { dry_run: true, rows: [{ plant_code: '8151' }, { plant_code: '8152' }, { plant_code: '8152' }] },
+    )
+    expect(report.failed.map((f) => f.index)).toEqual([0, 2])
+    expect(report.failed[0].message).toContain('PLANT-8151')
+  })
+
   test('the rule is accepted for a real column only', async ({ admin }) => {
     await makeDT(admin, 'Nm Rule Check', 'hash')
     const put = (id_pattern: string) =>
       admin.fetch('/api/table_def/Nm%20Rule%20Check/id_pattern', { method: 'PUT', body: JSON.stringify({ id_pattern }) })
     expect((await put('PLANT-{title}')).status).toBe(200)
-    for (const bad of ['PLANT-{missing}', 'PLANT-{title', '{title}', 'A-{title}-B', 'A-{title}{title}'])
+    for (const bad of ['PLANT-{missing}', 'PLANT-{title', '{title}', 'A-{title}-B', 'A-{title}{title}', 'PLANT {title}', ' P-{title}'])
       expect((await put(bad)).status).toBe(417)
   })
 
