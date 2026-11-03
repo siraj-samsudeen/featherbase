@@ -2742,8 +2742,7 @@ export function ImportWizard() {
                   </span>
                 ) : (
                   <span className="text-negative">
-                    {fmtCount(plan.check.valid)} rows ready
-                    , {fmtCount(plan.check.failed.length)} with problems:{' '}
+                    {fmtCount(plan.check.valid)} rows ready, {fmtCount(plan.check.failed.length)} with problems:{' '}
                     {plan.check.failed
                       .slice(0, ERRORS_ON_SCREEN)
                       .map((f) => failLabel(plan, f))
