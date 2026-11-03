@@ -360,7 +360,9 @@ function TableListPage() {
       </div>
     )
   }
-  const parsed = parseFilters(filters)
+  const parsed = filters === undefined
+    ? meta.data?.browse_presentation?.default_filters ?? []
+    : parseFilters(filters)
   return (
     <div data-testid="table-page">
       <ListView
@@ -369,7 +371,8 @@ function TableListPage() {
         filters={parsed}
         onFiltersChange={(next) =>
           navigate({
-            search: { filters: next.length ? JSON.stringify(next) : undefined },
+            // An explicit empty list means all rows, not the table defaults.
+            search: { filters: JSON.stringify(next) },
             replace: true,
           })
         }

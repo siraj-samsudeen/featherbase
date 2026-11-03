@@ -394,7 +394,7 @@ export function FormView({
           search={{ filters: undefined }}
           className={touchLinkClasses('hover:underline')}
         >
-          {table}
+          {m.label || table}
         </RouterLink>
         <span aria-hidden="true">/</span>
         <span className="min-w-0 text-ink">{isNew ? 'New' : <RowTitle table={table} rowId={name} />}</span>
@@ -404,7 +404,7 @@ export function FormView({
           <h1 className="text-xl font-semibold text-ink">
             {/* The row's title (title column, or a readable stand-in from its
                 values) — the same one Home and the activity feed show. */}
-            {table}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
+            {m.label || table}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
             <GlossaryHelp table={table} className="ml-1" />
           </h1>
           <span className="text-xs text-ink-muted" data-testid="form-status">

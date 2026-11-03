@@ -12,6 +12,22 @@ export const readingPresentationSchema = z.strictObject({
 })
 export type ReadingPresentation = z.infer<typeof readingPresentationSchema>
 
+// Presentation narrows an initial view; it never changes read permissions.
+const filterValueSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null()])
+export const browsePresentationSchema = z.strictObject({
+  default_filters: z.array(z.tuple([
+    z.string().min(1),
+    z.enum(['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in']),
+    z.union([filterValueSchema, z.array(filterValueSchema)]),
+  ])).max(50).optional(),
+  preferred_related: z.strictObject({
+    table: z.string().min(1),
+    column: z.string().min(1),
+  }).optional(),
+})
+export type BrowsePresentation = z.infer<typeof browsePresentationSchema>
+
+
 // META-013: one zod schema generated from Table metadata, used by the
 // server's row engine and the Admin form views.
 

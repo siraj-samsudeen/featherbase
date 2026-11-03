@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { listResource } from '../lib/api'
 import { listColumns, useMeta } from '../lib/meta'
@@ -8,6 +8,7 @@ import { usePeek } from './Peek'
 import { useQuery } from '@tanstack/react-query'
 import { cardClasses, pillClasses } from './ui'
 import { fmtCount } from '../lib/inr'
+import { RowTitle } from '../lib/row-titles'
 
 // Relational navigation (#100, patterns 1 + 2):
 //
@@ -20,6 +21,13 @@ import { fmtCount } from '../lib/inr'
 // connection groups as count tiles above an embedded read-only list, so hub
 // records (Employee, Customer) read as a 360° page. Zero configuration —
 // tabs appear for whatever points at the table.
+
+// A display label never changes a relation's canonical table name or URL.
+function ConnectionTitle({ connection }: { connection: Connection }) {
+  const meta = useMeta(connection.table)
+  const label = meta.data?.label || connection.table
+  return <>{connection.via ? `${label} · via ${connection.via}` : label}</>
+}
 
 export function ConnectionsPanel({ table, name }: { table: string; name: string }) {
   const cnx = useConnections(table, name)
@@ -45,7 +53,7 @@ export function ConnectionsPanel({ table, name }: { table: string; name: string 
             <span
               className={`truncate ${c.count ? 'text-ink' : 'text-ink-subtle'}`}
             >
-              {connectionLabel(c)}
+              <ConnectionTitle connection={c} />
             </span>
             <span
               className={pillClasses(`${c.count ? 'bg-action-tint text-action' : 'bg-subtle text-ink-subtle'}`)}
@@ -86,10 +94,24 @@ export function ConnectionsPanel({ table, name }: { table: string; name: string 
 
 export function RelatedTabs({ table, name }: { table: string; name: string }) {
   const cnx = useConnections(table, name)
-  const [open, setOpen] = useState<string | null>(null)
+  const meta = useMeta(table)
+  const row = JSON.stringify([table, name])
+  // Remember an explicit close as well as a choice. Async metadata or a
+  // refreshed connection count must never undo the person's interaction.
+  const [selection, setSelection] = useState<{ row: string; key: string | null } | null>(null)
   const connections = cnx.data?.connections ?? []
-  if (!connections.length) return null
   const key = (c: Connection) => `${c.table}:${c.column}:${c.via ?? ''}`
+  const preferred = meta.data?.browse_presentation?.preferred_related
+  const preferredConnection = preferred && connections.find(
+    (c) => !c.via && c.table === preferred.table && c.column === preferred.column,
+  )
+  const initial = preferredConnection ? key(preferredConnection) : null
+  useEffect(() => {
+    if (!meta.data || !cnx.data) return
+    setSelection((previous) => previous?.row === row ? previous : { row, key: initial })
+  }, [row, meta.data, cnx.data, initial])
+  const open = selection?.row === row ? selection.key : initial
+  if (!connections.length) return null
   const active = connections.find((c) => key(c) === open)
   return (
     <div className="mt-2 max-w-3xl" data-testid="related-tabs">
@@ -99,7 +121,7 @@ export function RelatedTabs({ table, name }: { table: string; name: string }) {
             key={key(c)}
             type="button"
             aria-expanded={open === key(c)}
-            onClick={() => setOpen(open === key(c) ? null : key(c))}
+            onClick={() => setSelection({ row, key: open === key(c) ? null : key(c) })}
             data-testid={`related-tab-${c.table}`}
             className={`flex flex-col items-start rounded-[var(--radius-control)] border px-3.5 py-1.5 text-left ${
               open === key(c)
@@ -120,7 +142,7 @@ export function RelatedTabs({ table, name }: { table: string; name: string }) {
               {fmtCount(c.count)}
             </span>
             <span className="text-xs font-medium text-ink-muted">
-              {connectionLabel(c)}
+              <ConnectionTitle connection={c} />
             </span>
           </button>
         ))}
@@ -179,7 +201,7 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
                       params={{ table: connection.table, name: String(r.row_id) }}
                       className="font-medium text-action hover:underline"
                     >
-                      {formatValue(c.column_type, r[c.column_name], settings) || String(r.row_id)}
+                      <RowTitle table={connection.table} rowId={String(r.row_id)} />
                     </Link>
                   ) : (
                     formatValue(c.column_type, r[c.column_name], settings) || '—'
@@ -220,7 +242,7 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
             data-testid="embedded-new"
             className="font-medium text-action hover:underline"
           >
-            + New {connection.table}
+            + New {meta.data?.label || connection.table}
           </Link>
         )}
       </div>

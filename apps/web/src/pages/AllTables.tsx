@@ -68,7 +68,7 @@ export function AllTablesPage() {
                 className={linkClass}
                 activeProps={{ className: activeClass }}
               >
-                {dt.row_id}
+                {dt.label || dt.row_id}
               </Link>
             ))}
           </div>
@@ -106,7 +106,7 @@ export function AllTablesPage() {
                   className={linkClass}
                   activeProps={{ className: activeClass }}
                 >
-                  {dt.row_id}
+                  {dt.label || dt.row_id}
                 </Link>
               ))}
           </>
