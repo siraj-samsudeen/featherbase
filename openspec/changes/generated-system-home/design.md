@@ -8,6 +8,8 @@ Use the eligible metadata catalogue for membership and existing System link/card
 
 Keep canonical names in destinations and obtain effective labels only after page/read checks. Reuse existing permissionScope semantics rather than adding metadata-Table access or a manager-only gate. Other pages and legacy shortcuts retain their current behavior.
 
+Round-one review reproduced a persisted disallowed metadata override making the entire Home Pages response fail. Fall back to the canonical name only for the existing metadata-property allowlist ValidationError; rethrow unrelated failures and leave the override policy unchanged.
+
 ## Risks / Trade-offs
 
 - Platform grows as Tables are added; existing group hints remain available for placement without controlling completeness.

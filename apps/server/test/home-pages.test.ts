@@ -8,6 +8,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { createTable } from '../src/table-engine'
+import { invalidateMeta } from '../src/meta'
 
 interface Card {
   label: string | null
@@ -317,6 +318,22 @@ describe('System membership comes from the current catalogue', () => {
     const platform = system.cards.find((c) => c.label === 'Platform')!
     const unplaced = platform.links.filter((l) => ['Data Source', 'Sign In Method', 'App Setting'].includes(l.link_to))
     expect(unplaced.map((l) => l.link_to)).toEqual(['App Setting', 'Data Source', 'Sign In Method'])
+  })
+
+  test('a legacy disallowed override leaves System navigation available', async ({ admin }) => {
+    // Persisted before the override allowlist: cover hinted and discovered links.
+    for (const name of ['Person', 'Sign In Method']) {
+      await sql`insert into metadata_override ${sql({
+        row_id: `hp-legacy-${name}`, table_name: name, property: 'system', value: 'false',
+      })}`
+      invalidateMeta(name)
+    }
+    const system = (await pages(admin)).find((p) => p.row_id === 'system')!
+    const links = system.cards.flatMap((c) => c.links)
+    expect(links).toContainEqual({ label: 'Person', link_to: 'Person' })
+    expect(links).toContainEqual({ label: 'Sign In Method', link_to: 'Sign In Method' })
+    // Navigation resilience does not relax the metadata validation policy.
+    expect((await admin.fetch('/api/table/Person:meta')).status).toBe(417)
   })
 
   test('generated links use effective labels after the viewer passes visibility checks', async ({ admin, createUser }) => {

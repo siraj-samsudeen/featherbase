@@ -11,6 +11,9 @@ sit under a heading. On System, curated groups are optional placement hints:
 unplaced system Tables appear under Platform in stable name order. A System
 link uses its Table's effective label, or its name when no label exists;
 changing the displayed label SHALL NOT change which Table it opens.
+If a persisted legacy override is rejected by the metadata-property allowlist,
+System SHALL retain the canonical name as its label without disabling navigation.
+This fallback SHALL NOT suppress unrelated failures or relax metadata validation.
 
 #### Scenario: A hidden link
 

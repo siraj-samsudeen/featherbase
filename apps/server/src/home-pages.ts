@@ -20,6 +20,7 @@
 // as before — hiding a link never grants or revokes anything.
 import { randomUUID } from 'node:crypto'
 import { sql } from './db'
+import { AppError } from './errors'
 import { getMeta } from './meta'
 import { getRoles, permissionScope } from './permissions'
 
@@ -123,6 +124,20 @@ function parseShortcuts(raw: unknown): HomePageShortcut[] {
   )
 }
 
+async function systemTableLabel(name: string): Promise<string> {
+  try {
+    return (await getMeta(name)).label || name
+  } catch (error) {
+    // A legacy override rejected by today's allowlist must not disable the
+    // entire sidebar. Metadata reads still reject it; other failures propagate.
+    if (
+      error instanceof AppError && error.type === 'ValidationError' &&
+      /^Metadata property .* cannot be overridden$/.test(error.message)
+    ) return name
+    throw error
+  }
+}
+
 // The caller's visible Home Pages with their permission-filtered card links —
 // the one endpoint the sidebar (and the page view) consume.
 export async function getVisibleHomePages(user: string): Promise<VisibleHomePage[]> {
@@ -221,7 +236,7 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
         cards.push(current)
       }
       current.links.push({
-        label: isSystem ? (await getMeta(l.link_to)).label || l.link_to : l.label || l.link_to,
+        label: isSystem ? await systemTableLabel(l.link_to) : l.label || l.link_to,
         link_to: l.link_to,
       })
     }
@@ -236,7 +251,7 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
           platform = { label: 'Platform', links: [] }
           cards.push(platform)
         }
-        platform.links.push({ label: (await getMeta(name)).label || name, link_to: name })
+        platform.links.push({ label: await systemTableLabel(name), link_to: name })
       }
     }
 
