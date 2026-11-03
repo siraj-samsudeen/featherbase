@@ -84,33 +84,33 @@ the deliberate link tests in 7.5 and 7.6.
 
 Issue #742's points:
 
-- [ ] 8.1 Every column in the person's own view gets a box, if its type can take one; no separate setting
-- [ ] 8.2 Switching a column off in Show columns removes its box; switching one on adds it
-- [ ] 8.3 The boxes are in the same order as the list's columns
-- [ ] 8.4 Text and link columns get a "contains" text box
-- [ ] 8.5 Choice columns get a dropdown of their choices, with All
-- [ ] 8.6 Yes/No columns get a dropdown of All, Yes and No
-- [ ] 8.7 Dates, numbers, money, long text, files and JSON get no box, and stay reachable through Add filter
-- [ ] 8.8 At 1280: one row of up to 6 boxes, then "+N more", which opens the rest in place
-- [ ] 8.9 At 375: every box sits behind one Filters button showing the number in use; tapping opens them stacked; the rows start right under the toolbar
-- [ ] 8.10 A filter holding a value never folds away: it stays in the row at 1280, and the count includes it at 375
-- [ ] 8.11 Quick filters and Add filter share the filters in the page address, so a quick filter shows as a chip and a shared link keeps it
+- [x] 8.1 Every column in the person's own view gets a box, if its type can take one; no separate setting
+- [x] 8.2 Switching a column off in Show columns removes its box; switching one on adds it
+- [x] 8.3 The boxes are in the same order as the list's columns
+- [x] 8.4 Text and link columns get a "contains" text box
+- [x] 8.5 Choice columns get a dropdown of their choices, with All
+- [x] 8.6 Yes/No columns get a dropdown of All, Yes and No
+- [x] 8.7 Dates, numbers, money, long text, files and JSON get no box, and stay reachable through Add filter
+- [x] 8.8 At 1280: one row of up to 6 boxes, then "+N more", which opens the rest in place
+- [x] 8.9 At 375: every box sits behind one Filters button showing the number in use; tapping opens them stacked; the rows start right under the toolbar
+- [x] 8.10 A filter holding a value never folds away: it stays in the row at 1280, and the count includes it at 375
+- [x] 8.11 Quick filters and Add filter share the filters in the page address, so a quick filter shows as a chip and a shared link keeps it
 
 The owner's additions:
 
-- [ ] 8.12 Add filter offers a dropdown for Choice columns, with only `=` and `!=`
-- [ ] 8.13 Add filter offers a dropdown for Yes/No columns, with only `=` and `!=`
-- [ ] 8.14 Yes/No stores the word "Yes" or "No" in the page address, like Choice
-- [ ] 8.14a After "+N more" opens the rest, a "Show fewer" button folds them away again; a box holding a value stays
-- [ ] 8.14b At 375, opening Filters shows up to 4 boxes stacked, then "+N more" and "Show fewer", as on desktop
-- [ ] 8.14c At 375, Recent folds behind the Filters button; Save view stays showing
-- [ ] 8.14d At 375, Add filter's column, operator, value and button sit on one line
-- [ ] 8.14e The Filters button shows a dropdown arrow that turns over when opened
+- [x] 8.12 Add filter offers a dropdown for Choice columns, with only `=` and `!=`
+- [x] 8.13 Add filter offers a dropdown for Yes/No columns, with only `=` and `!=`
+- [x] 8.14 Yes/No stores the word "Yes" or "No" in the page address, like Choice
+- [x] 8.14a After "+N more" opens the rest, a "Show fewer" button folds them away again; a box holding a value stays
+- [x] 8.14b At 375, opening Filters shows up to 4 boxes stacked, then "+N more" and "Show fewer", as on desktop
+- [x] 8.14c At 375, Recent folds behind the Filters button; Save view stays showing
+- [x] 8.14d At 375, Add filter's column, operator, value and button sit on one line
+- [x] 8.14e The Filters button shows a dropdown arrow that turns over when opened
 
 Verification:
 
-- [ ] 8.15 Run the separate UI verifier against the real app at 1280px and 375px, headless, on the points above; save a "spec vs built" table and screenshots
-- [ ] 8.16 Fix what it finds, and rerun its failed points
+- [x] 8.15 Run the separate UI verifier against the real app at 1280px and 375px, headless, on the points above; save a "spec vs built" table and screenshots
+- [x] 8.16 Fix what it finds, and rerun its failed points
 
 ## 9. Final checks
 
