@@ -124,4 +124,92 @@ class RecordWorkspace {
   }
 }
 
-module.exports = { RecordWorkspace };
+class RelatedWorkspace extends RecordWorkspace {
+  async openRow() {
+    await this.page.goto('/featherbase/admin/Lab%20Project/lab-north');
+    await expect(this.page.getByLabel('Region', { exact: true })).toHaveValue('North');
+  }
+  selector() { return this.page.getByRole('navigation', { name: 'Relationships', exact: true }); }
+  rows() { return this.page.getByRole('region', { name: 'Related rows', exact: true }); }
+  async selectPath(column) {
+    await this.openRow();
+    await this.area('Related');
+    await this.selector().getByRole('button', { name: new RegExp(`Lab Task · ${column} `) }).click();
+  }
+  async emptyPath() {
+    await expect(this.rows().getByTestId('list-total')).toHaveText('0 total');
+    await expect(this.rows()).toContainText('No rows');
+  }
+  async distinctPaths() {
+    await expect(this.selector()).toHaveCount(1);
+    await expect(this.selector().getByRole('button', { name: 'Lab Task · project 2', exact: true })).toBeVisible();
+    await expect(this.selector().getByRole('button', { name: 'Lab Task · review_project 0', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(this.page.getByTestId('connections-panel')).toHaveCount(0);
+    await expect(this.page.getByTestId('related-tabs')).toHaveCount(0);
+  }
+  async searchRelationships(query) { await this.page.getByRole('searchbox', { name: 'Search relationships', exact: true }).fill(query); }
+  async oneRelationship() {
+    await expect(this.selector().getByRole('button')).toHaveCount(1);
+    await expect(this.page.getByRole('region', { name: 'Search relationships', exact: true })).toContainText('1 of 2');
+  }
+  async searchRecords(query) { await this.rows().getByRole('searchbox', { name: 'Search related record names', exact: true }).fill(query); }
+  async matchingRecord() {
+    await expect(this.rows().getByTestId('list-total')).toHaveText('1 total');
+    await expect(this.rows().getByTestId('list-rows')).toContainText('Review materials');
+    await expect(this.rows()).not.toContainText('Review budget');
+  }
+  async clearRecordSearch() {
+    await this.searchRecords('');
+    await expect(this.rows().getByTestId('list-total')).toHaveText('2 total');
+    await expect(this.rows().getByTestId('list-rows')).toContainText('Prepare workshop');
+    await expect(this.rows()).not.toContainText('Review budget');
+  }
+  async consultRelatedWithEdit() {
+    await this.openRow();
+    await this.page.getByLabel('Region', { exact: true }).fill('Unfinished North');
+    await this.area('Related');
+    await this.selector().getByRole('button', { name: 'Lab Task · review_project 0', exact: true }).click();
+    await this.area('Work');
+  }
+  async retainedEdit() {
+    await expect(this.page.getByLabel('Region', { exact: true })).toHaveValue('Unfinished North');
+    await expect(this.page.getByTestId('form-banner')).toHaveText('Not saved');
+  }
+  async context() {
+    const crumbs = this.rows().getByRole('navigation', { name: 'Related breadcrumb', exact: true });
+    await expect(crumbs).toContainText('North workshop');
+    await expect(crumbs).toContainText('Related');
+    await expect(crumbs).toContainText('Lab Task · project');
+    await expect(this.rows().getByRole('link', { name: 'Home', exact: true })).toHaveCount(0);
+  }
+  async scopedNavigation() {
+    const full = this.rows().getByRole('link', { name: 'Open full list', exact: true });
+    const url = new URL(await full.getAttribute('href'), this.page.url());
+    let filters = JSON.parse(url.searchParams.get('filters'));
+    if (typeof filters === 'string') filters = JSON.parse(filters);
+    require('node:assert/strict').deepEqual(filters, [['project', '=', 'lab-north']]);
+    await this.rows().getByRole('button', { name: 'Peek', exact: true }).click();
+    const peek = this.page.getByTestId('peek-panel-0');
+    await expect(peek).toContainText('Prepare workshop');
+    await expect(peek).toContainText('Review materials');
+    await expect(peek).not.toContainText('Review budget');
+    await this.page.keyboard.press('Escape');
+  }
+  async prefilledNew() {
+    await this.rows().getByTestId('list-new').click();
+    await expect(this.page.getByTestId('form-view')).toBeVisible();
+    await expect(this.page.locator('[data-field="project"] input')).toHaveValue('North workshop');
+  }
+  async onlyReadableRow() {
+    await expect(this.rows().getByTestId('list-total')).toHaveText('1 total');
+    await expect(this.rows().getByTestId('list-rows')).toContainText('Prepare workshop');
+    await expect(this.rows()).not.toContainText('Review materials');
+    await expect(this.selector().getByRole('button', { name: 'Lab Task · project 1', exact: true })).toBeVisible();
+  }
+  async noCreation() {
+    await expect(this.rows().getByTestId('list-new')).toHaveCount(0);
+    await expect(this.rows().getByTestId('list-empty-new')).toHaveCount(0);
+  }
+}
+
+module.exports = { RecordWorkspace, RelatedWorkspace };
