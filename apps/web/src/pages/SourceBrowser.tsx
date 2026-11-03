@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ApiError, api } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
 
 // EDS-2: the Data Source browser — introspect a source, pick tables, reflect
 // them into bound Tables. Admin tooling (System Manager only server-side),

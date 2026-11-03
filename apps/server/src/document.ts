@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { opaqueId } from './opaque-id'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
+import { assertMandatoryAccess, hasMandatoryRowAccess } from './mandatory-access'
 import { sql } from './db'
 import { AppError } from './errors'
 import { sessionMayAddWayIn } from './session-context'
@@ -254,6 +255,7 @@ async function validateLinks(
   tx: typeof sql,
   meta: TableMeta,
   fieldValues: RowValues,
+  user: string,
   prefix = '',
 ) {
   const errors: Record<string, string> = {}
@@ -278,10 +280,15 @@ async function validateLinks(
         errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
       continue
     }
+    const mandatory = !!targetMeta.access_policy || targetMeta.kind === 'sub_table'
     const [row] = await tx`
-      select 1 from ${tx(await tableRelation(target))}
+      select ${mandatory ? tx`*` : tx`1`} from ${tx(await tableRelation(target))}
       where ${tx(physicalRowKey(target))} = ${String(value)}
       ${target.includes('.') ? tx`for key share` : tx``}`
+    if (mandatory) {
+      if (!row) throw new AppError('PermissionError', 'This work is not available to you')
+      await assertMandatoryAccess(user, await getMeta(target), row)
+    }
     if (!row)
       errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
   }
@@ -320,6 +327,7 @@ export async function assertUserPermissions(
   meta: TableMeta,
   row: RowValues,
 ) {
+  await assertMandatoryAccess(user, meta, { created_by: user, ...row })
   if (await isPrivileged(user)) return
   const map = await getScopeMap(user)
   if (!map.size) return
@@ -355,9 +363,9 @@ async function assertParentReadable(row: RowValues, user: string) {
 // #342: a comment or an edit opens only for someone who may open its row;
 // an edit also needs every column of that row, unless the row is shared with
 // them (a share shows every column). The row's activity is the way in for
-// everyone else. Privileged callers pass, as everywhere.
+// everyone else. Mandatory privacy also applies to privileged callers.
 async function assertAttachedRowReadable(table: string, row: RowValues, user: string) {
-  if (await isPrivileged(user)) return
+  if (await isPrivileged(user) && !(await hasMandatoryRowAccess(String(row.ref_table ?? ''), String(row.ref_name ?? '')))) return
   const refTable = row.ref_table ? String(row.ref_table) : ''
   const refName = row.ref_name ? String(row.ref_name) : ''
   if (!refTable || !refName) return
@@ -637,7 +645,7 @@ async function saveChildren(
         errors[`${input.columnName}.${i}.${k}`] = v
       continue
     }
-    await validateLinks(tx, childMeta, fieldValues, `${input.columnName}.${i}.`)
+    await validateLinks(tx, childMeta, fieldValues, user, `${input.columnName}.${i}.`)
     const now = new Date()
     if (isExisting) {
       keep.add(String(rowId))
@@ -846,7 +854,7 @@ async function writeDoc(
   }
   if (!opts.skipPermissions) {
     await assertPermission(user, table, 'create')
-    await assertUserPermissions(user, meta, values)
+    await assertUserPermissions(user, meta, { ...values, created_by: user })
   }
   const writeTiers = opts.skipPermissions
     ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
@@ -899,6 +907,7 @@ async function writeDoc(
       await runDocEventScripts('validate', meta.name, ctx.row, ctx.tx)
       await runHooks('before_save', ctx)
       await runDocEventScripts('before_save', meta.name, ctx.row, ctx.tx)
+      await assertMandatoryAccess(user, meta, row)
       await assertAttachedTarget(meta, row, null, user, Boolean(opts.skipPermissions))
       assertStoredFileUrl(meta, row, opts.uploadedFileUrl)
       // Hooks may add or replace Sub-table arrays on ctx.row (an app hook
@@ -919,7 +928,7 @@ async function writeDoc(
         position: row.position,
       }
       await lockCoreDocumentTargets(stx, meta, dbRow, user)
-      await validateLinks(stx, meta, dbRow)
+      await validateLinks(stx, meta, dbRow, user)
       attemptedRow = dbRow
       const inserted = await tx`insert into ${tx(tbl)} ${tx(dbRow as unknown as Record<string, never>)} returning *`
       // #465 D5: a new row under a locked row's id would set its locked fields.
@@ -1146,6 +1155,7 @@ async function updateDoc(
         throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
       previous = { ...(existing as RowValues) }
       // PERM-008: a share with write grants update even without role write.
+      await assertMandatoryAccess(user, meta, existing as RowValues)
       if (!sharedWrite) {
         await assertDocPermission(user, meta.name, 'write', String(existing.created_by))
         await assertUserPermissions(user, meta, existing as RowValues)
@@ -1187,6 +1197,7 @@ async function updateDoc(
       // Judged on the row the hooks and scripts leave behind — the one that
       // is written — against the stored row.
       await assertAccessColumnsUnchanged(stx, meta, row, existing as RowValues, user, trusted, writeTiers)
+      await assertMandatoryAccess(user, meta, row)
       await assertAttachedTarget(meta, row, existing as RowValues, user, trusted)
       assertStoredFileUrl(meta, row, existing.file_url)
       const dbRow = {
@@ -1195,7 +1206,7 @@ async function updateDoc(
         updated_by: user,
       }
       await lockCoreDocumentTargets(stx, meta, { ...existing, ...dbRow }, user, existing as RowValues)
-      await validateLinks(stx, meta, dbRow)
+      await validateLinks(stx, meta, dbRow, user)
       attemptedRow = dbRow
       const [updated] = await tx`
         update ${tx(table)} set ${tx(dbRow)} where ${tx(meta.row_key)} = ${name} returning *`
@@ -1696,13 +1707,14 @@ async function getDocImpl(
     select * from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${name}`
   if (!row) throw new AppError('NotFoundError', `${table} ${name} not found`)
   // PERM-008: a direct share grants read even without role permission.
+  await assertMandatoryAccess(user, meta, row as RowValues)
+  if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, row as RowValues, user)
   const shared = await isSharedWith(user, table, name, 'read')
   if (!shared) {
     await assertPermission(user, table, 'read')
     await assertDocPermission(user, table, 'read', String(row.created_by))
     await assertUserPermissions(user, meta, row as RowValues)
     if (meta.kind === 'sub_table') await assertParentReadable(row as RowValues, user)
-    if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, row as RowValues, user)
   }
   // A share grants full field visibility; otherwise honor tiers, on the row
   // and on its sub-table rows alike (#341).

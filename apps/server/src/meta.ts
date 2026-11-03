@@ -92,6 +92,7 @@ export function physicalRowKey(table: string): string {
 }
 
 export interface TableMeta {
+  access_policy?: import('./access-policy').AccessPolicy | null
   name: string
   label?: string | null
   owner_app?: string | null

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { ApiError, api, listResource } from '../lib/api'
 import { useMeta } from '../lib/meta'
-import { buttonClasses } from './ui'
+import { buttonClasses } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 

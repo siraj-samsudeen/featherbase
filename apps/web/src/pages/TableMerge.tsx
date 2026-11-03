@@ -22,8 +22,8 @@ import { coerceRows, sanitizeColumnName } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { type TableMeta } from '../lib/meta'
 import { sendImportRun, type ImportFailure } from '../lib/import-run'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
-import { fmtCount } from '../lib/inr'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 
 // Columns a merge can carry: real storage, and not the platform's own.
 const SKIP_TYPES = ['Section Break', 'Column Break', 'Sub-table']

@@ -1,7 +1,8 @@
 // #832: a link inside a grid of nested rows (a person's roles, an order's
 // lines) is picked from the linked Table's rows, with the same picker a link
 // field on the form uses. Text typed but never picked is not saved as a link.
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import { fireEvent } from '@testing-library/dom'
 import type { TestClient } from 'feather-testing-postgres'
 import { test, expect, renderApp } from './pg-test'
@@ -112,4 +113,69 @@ test('emptying an optional nested link cell removes the link when saved', async 
   await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
   const stored = await admin.get<{ notes: { about: string | null }[] }>(`/api/table/${enc('Nest Order')}/${order.row_id}`)
   expect(stored.notes.map((n) => n.about ?? null)).toEqual([null])
+})
+
+
+test('leaving a nested reference field then closing its form releases pending callbacks', async ({ admin }) => {
+  const order = await seedOrders(admin)
+  const view = await renderApp(rowHref('Nest Order', order.row_id), admin)
+  fireEvent.click(await screen.findByTestId('add-row-lines', {}, { timeout: 8000 }))
+  const cell = await screen.findByLabelText('Lines, Customer, row 1')
+  const browserWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')!
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    fireEvent.focusIn(cell)
+    fireEvent.focusOut(cell)
+    view.unmount()
+    // Match the host's disposal after a view closes: delayed field work may
+    // not reach React after the browser environment has gone away.
+    Reflect.deleteProperty(globalThis, 'window')
+    expect(() => vi.advanceTimersByTime(151)).not.toThrow()
+  } finally {
+    Object.defineProperty(globalThis, 'window', browserWindow)
+    vi.useRealTimers()
+  }
+})
+
+
+test('a reference search that finishes after leaving the cell cannot reopen its picker', async ({ admin }) => {
+  const order = await seedOrders(admin)
+  await renderApp(rowHref('Nest Order', order.row_id), admin)
+  fireEvent.click(await screen.findByTestId('add-row-lines', {}, { timeout: 8000 }))
+  const cell = await screen.findByLabelText('Lines, Customer, row 1')
+  fireEvent.focusIn(cell)
+  await screen.findByTestId('link-options-customer')
+
+  let release!: () => void
+  const held = new Promise<void>(resolve => { release = resolve })
+  let reached!: () => void
+  const responseReady = new Promise<void>(resolve => { reached = resolve })
+  let delivered!: () => void
+  const responseDelivered = new Promise<void>(resolve => { delivered = resolve })
+  const real = globalThis.fetch
+  const transport = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const response = await real(input, init)
+    const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (path.includes('/api/table/Nest%20Customer?') && path.includes('Acme')) {
+      reached()
+      await held
+      delivered()
+    }
+    return response
+  })
+  try {
+    fireEvent.change(cell, { target: { value: 'Acme' } })
+    await responseReady
+    fireEvent.focusOut(cell)
+    await waitFor(() => expect(screen.queryByTestId('link-options-customer')).not.toBeInTheDocument())
+    await act(async () => {
+      release()
+      await responseDelivered
+    })
+    expect(screen.queryByTestId('link-options-customer')).not.toBeInTheDocument()
+    expect(cell).toHaveValue('')
+  } finally {
+    release()
+    transport.mockRestore()
+  }
 })

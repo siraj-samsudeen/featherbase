@@ -9,7 +9,7 @@ Given('the user can open Featherbase, Tasker and Feather Dash', async function (
 });
 Given('the user can open Tasker and Feather Dash but cannot open Featherbase', async function () {
   await this.withApi(AppNavigation.install);
-  await this.person('the user', ['Feather Dash Reader']);
+  await this.person('the user', ['Feather Dash Reader', 'Tasker Member']);
   this.navigation = new AppNavigation(await this.actor());
 });
 When("the user chooses Featherbase from Tasker's application name", async function () { await this.navigation.chooseBase(); });

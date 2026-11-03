@@ -20,7 +20,7 @@ class PrototypeLibrary {
 
   async expectMatchingExamples() {
     await this.page.getByRole('heading', { name: 'List (a table when wide, cards on a phone)', exact: true }).waitFor();
-    assert.equal(await this.page.getByText('apps/web/src/components/ui/DataList.tsx', { exact: true }).isVisible(), true);
+    assert.equal(await this.page.getByText('packages/shop-floor/src/DataList.tsx', { exact: true }).isVisible(), true);
   }
 
   async expectUnrelatedExcluded() {

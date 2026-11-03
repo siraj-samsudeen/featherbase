@@ -4,8 +4,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminPageTitle } from 'shared'
 import { api } from '../lib/api'
 import { GLOSSARY_QUERY_KEY, GLOSSARY_TABLE, groupTerms, termAnchor, termMatches, useGlossary, type GlossaryTerm } from '../lib/glossary'
-import { Button, Card, EmptyState, Notice, SearchInput, Skeleton, StatusPill, buttonClasses, labelClasses } from '../components/ui'
-import { BookOpen, Pencil, Plus } from '../components/ui/icons'
+import { Button, Card, EmptyState, Notice, SearchInput, Skeleton, StatusPill, buttonClasses, labelClasses } from '@featherbase/shop-floor'
+import { BookOpen, Pencil, Plus } from '@featherbase/shop-floor'
 
 // #629: the glossary. Everyone signed in reads it: the words this instance's
 // apps use, grouped by app, then the instance's own. An editor (a write grant

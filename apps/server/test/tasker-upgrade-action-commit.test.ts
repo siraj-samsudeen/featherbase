@@ -5,14 +5,15 @@ import { sql } from '../src/db'
 import { discoverPackages, runPackageAction, previewAppUpgrade, upgradeApp, activateAppUpgrade } from '../src/runtime-packages'
 import { installApp, uninstallApp, setAppEnabled, loadInstalledApps } from '../src/apps'
 import { withAppClientVersion } from '../src/app-lifecycle'
-import { saveDoc } from '../src/document'
+import { getDoc, saveDoc } from '../src/document'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
 import { app } from '../src/index'
 import { version as oldVersion } from '../../../example-apps/tasker/package.json'
 
 void app
 const prove = process.env.TASKER_UPGRADE_ACTION_PROOF === '1' ? test : test.skip
-const newVersion = '3.0.0'
+// Keep the upgrade target distinct from Tasker's current shipped version.
+const newVersion = '99.0.0'
 
 prove('Tasker upgrade waits through committed action effects, then gates obsolete replay and preserves disable', async () => {
   const [identity] = await sql`select current_database() as name,
@@ -32,6 +33,7 @@ prove('Tasker upgrade waits through committed action effects, then gates obsolet
   let release!: () => void
   const gate = new Promise<void>(resolve => { release = resolve })
   let effects = 0
+  let originalRoles: Record<string, unknown>[] | undefined
   let action: Promise<unknown> | undefined
   let upgrade: Promise<unknown> | undefined
   let queuedReplay: Promise<unknown> | undefined
@@ -44,6 +46,11 @@ prove('Tasker upgrade waits through committed action effects, then gates obsolet
   try {
     expect(await discoverPackages([source])).toEqual([])
     await installApp('tasker')
+    // App membership is explicit even for the administrative fixture.
+    const administrator = await getDoc('Person', 'Administrator', 'Administrator')
+    originalRoles = administrator.roles as Record<string, unknown>[]
+    await saveDoc('Person', { row_id: administrator.row_id, updated_at: administrator.updated_at,
+      roles: [...originalRoles, { role: 'Tasker Member' }] }, 'Administrator')
     expect(await discoverPackages([source, target])).toEqual([])
     await loadInstalledApps()
     const task = await saveDoc('tasker.task', { task_title: 'Preserve 37, not 83' }, 'Administrator', 'insert')
@@ -90,6 +97,10 @@ prove('Tasker upgrade waits through committed action effects, then gates obsolet
     await Promise.allSettled([action, upgrade, queuedReplay, disable])
     unregisterController(controller)
     await sql`delete from runtime_action_result where app = 'tasker'`
+    if (originalRoles) {
+      const administrator = await getDoc('Person', 'Administrator', 'Administrator')
+      await saveDoc('Person', { row_id: administrator.row_id, updated_at: administrator.updated_at, roles: originalRoles }, 'Administrator')
+    }
     await uninstallApp('tasker')
     await rm(target, { recursive: true, force: true })
   }

@@ -7,7 +7,7 @@ import { ApiError } from '../lib/api'
 import { BarAddressContext, useDocumentAddress } from '../lib/bar-address'
 import { paintSavedTheme } from '../lib/theme'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
-import { paintOnto } from '../lib/theme-paint'
+import { paintOnto } from '@featherbase/shop-floor/theme'
 import platformCss from '../index.css?inline'
 import { shadowCss } from './style'
 
@@ -20,7 +20,7 @@ import { shadowCss } from './style'
 // - styles live in the shadow root, and the theme is painted on the bar's own
 //   root, never on the app's <html data-theme>; the app is told the painted
 //   theme as `data-featherbase-theme` on its root and the
-//   `featherbase:theme-change` event (lib/theme-paint.ts, #668);
+//   `featherbase:theme-change` event (@featherbase/shop-floor/theme, #668);
 // - the bar's router is a private one in memory: it never reads or rewrites
 //   the app's address or history state. Its only route is the bar, so every
 //   navigation from the bar (Sign-in methods, Log out, Open Admin) leaves the

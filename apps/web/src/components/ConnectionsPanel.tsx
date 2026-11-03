@@ -6,8 +6,8 @@ import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Connection } from '../lib/connections'
 import { usePeek } from './Peek'
 import { useQuery } from '@tanstack/react-query'
-import { cardClasses, pillClasses } from './ui'
-import { fmtCount } from '../lib/inr'
+import { cardClasses, pillClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 
 // Relational navigation (#100, patterns 1 + 2):
 //

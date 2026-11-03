@@ -1,5 +1,9 @@
 ## 1. One-at-a-time Inbox processing
 
+This remains future work, outside the approved `revive-tasker` scope. Its Inbox
+journey must use the creator-only Inbox introduced by that change. None of
+these unchecked promises is counted as delivered by Tasker 3.0.
+
 - [ ] 1.1 Let the user go through the Inbox one task at a time, showing how many are left.
 - [ ] 1.2 Place the current task and open the next one.
 - [ ] 1.3 Skip the current task, leaving it unchanged, and open the next one.

@@ -1,7 +1,7 @@
 import { Navigate } from '@tanstack/react-router'
 import { getSessionUser } from '../lib/api'
 import { TopBar } from '../components/TopBar'
-import { Card, EmptyState, Skeleton } from '../components/ui'
+import { Card, EmptyState, Skeleton } from '@featherbase/shop-floor'
 import { useCapabilities } from '../lib/session'
 
 // #410: the shell shows only what the person can use. The server already

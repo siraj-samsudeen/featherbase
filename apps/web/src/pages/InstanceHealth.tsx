@@ -3,9 +3,9 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { adminPageTitle, tableHref } from 'shared'
 import { api } from '../lib/api'
-import { fmtInstantIST } from '../lib/inr'
-import { Button, Card, Notice, Skeleton, StatusPill, cx, type StatusTone } from '../components/ui'
-import { ChevronRight } from '../components/ui/icons'
+import { fmtInstantIST } from '@featherbase/shop-floor'
+import { Button, Card, Notice, Skeleton, StatusPill, cx, type StatusTone } from '@featherbase/shop-floor'
+import { ChevronRight } from '@featherbase/shop-floor'
 
 // Instance health (#465, design D8; spec instance-health). One page listing
 // every check with its state, why it matters, how to fix it and its history,

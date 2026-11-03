@@ -3,7 +3,7 @@
 // Float such as 1.2345 to 1.23.
 import { expect, test } from 'vitest'
 import { chartValueText } from '../src/components/DashboardView'
-import { fmtAsStored } from '../src/lib/inr'
+import { fmtAsStored } from '@featherbase/shop-floor'
 
 test('a value as stored keeps every decimal, grouped the Indian way', () => {
   expect(fmtAsStored(1.2345)).toBe('1.2345')

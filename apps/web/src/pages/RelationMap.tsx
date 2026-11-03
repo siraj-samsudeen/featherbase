@@ -6,8 +6,8 @@ import { NO_COLUMN_TYPES, listColumns, useMeta, type ColumnDef } from '../lib/me
 import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Connection } from '../lib/connections'
 import { useStepOptions } from '../lib/explore-steps'
-import { buttonClasses, cardClasses } from '../components/ui'
-import { fmtCount } from '../lib/inr'
+import { buttonClasses, cardClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 import { RowTitle } from '../lib/row-titles'
 
 type Row = Record<string, unknown>

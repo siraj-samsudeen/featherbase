@@ -14,8 +14,8 @@ import { NO_COLUMN_TYPES, listColumns, useMeta, type ColumnDef } from '../lib/me
 import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Filter } from '../lib/connections'
 import { Indicator } from './ListView'
-import { iconButtonClasses, labelClasses, pillClasses } from './ui'
-import { fmtCount } from '../lib/inr'
+import { iconButtonClasses, labelClasses, pillClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 import { useI18n } from '../lib/i18n'
 
 type Row = Record<string, unknown>

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { PrincipalName } from '../lib/people'
 import { adminPageTitle } from 'shared'
-import { Button, Notice, Select, TextInput } from '../components/ui'
+import { Button, Notice, Select, TextInput } from '@featherbase/shop-floor'
 
 // person-resolution D3: find a person by an exact identifier — the employee
 // code HR mails for a joiner, a correction or a leaver (docs/DEPLOY.md). The

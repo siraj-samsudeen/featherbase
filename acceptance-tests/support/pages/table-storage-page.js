@@ -27,8 +27,11 @@ class TableStoragePage {
   }
 
   async install() {
-    const existing = await this.api.call('GET', '/api/table/tasker.task:meta');
-    if (existing.status() !== 200) await this.api.call('POST', '/api/apps/prepare-install', { name: 'tasker' }, [201]);
+    const response = await this.api.call('GET', '/api/apps', undefined, [200], 'installed apps');
+    const { installed } = await response.json();
+    if (!installed.some(app => app.name === 'tasker'))
+      await this.api.call('POST', '/api/apps/prepare-install', { name: 'tasker' }, [201]);
+    await this.api.admitTaskerAdministrator();
     this.table = 'tasker.task';
     await acceptanceSql("update featherbase.table_def set label = 'SAP Plant' where name = 'tasker.task'");
     await restartAcceptance();

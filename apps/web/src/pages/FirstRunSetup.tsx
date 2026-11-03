@@ -3,8 +3,8 @@ import { Link, Navigate, useNavigate, useRouterState } from '@tanstack/react-rou
 import { useQueryClient } from '@tanstack/react-query'
 import { SETUP_MAX_PEOPLE } from 'shared'
 import { ApiError, api, getSessionUser } from '../lib/api'
-import { Button, Card, Field, Notice, Skeleton, StatusPill, TextInput, buttonClasses } from '../components/ui'
-import { Plus } from '../components/ui/icons'
+import { Button, Card, Field, Notice, Skeleton, StatusPill, TextInput, buttonClasses } from '@featherbase/shop-floor'
+import { Plus } from '@featherbase/shop-floor'
 import { INSTANCE_HEALTH_PATH, INSTANCE_HEALTH_QUERY_KEY, useInstanceHealth } from './InstanceHealth'
 
 // First-run setup (#465, design D9; spec "First-run System Manager setup").
