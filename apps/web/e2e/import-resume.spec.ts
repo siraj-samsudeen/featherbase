@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, type Page } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
@@ -74,7 +75,7 @@ test('going to look at the imported rows and coming back resumes everything', as
       // Now do the thing that used to destroy it: follow the result link to see
       // the rows that landed.
       await page.getByTestId('iw-result-0').getByRole('link', { name: ONE }).click()
-      await expect(page).toHaveURL(new RegExp(encodeURIComponent(ONE)))
+      await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(ONE))}`))
 
       // And come back.
       await page.getByTestId('import-data-link').click()

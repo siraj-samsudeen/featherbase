@@ -27,7 +27,7 @@ const row = (name: string) => ({
   key: `row:Customer/${name}`,
   label: name,
   sub: 'Customer',
-  path: `/featherbase/admin/Customer/${name}`,
+  path: `/featherbase/admin/table/customer/row/${name}`,
 })
 
 beforeEach(() => localStorage.clear())
@@ -98,26 +98,26 @@ describe('recentSearches', () => {
 
 describe('actionForLocation', () => {
   it('maps a form URL to a row action', () => {
-    expect(actionForLocation('/featherbase/admin/Customer/CUST-7', {})).toMatchObject({
+    expect(actionForLocation('/featherbase/admin/table/customer/row/CUST-7', {}, 'Customer')).toMatchObject({
       kind: 'row',
       key: 'row:Customer/CUST-7',
       label: 'CUST-7',
       sub: 'Customer',
-      path: '/featherbase/admin/Customer/CUST-7',
+      path: '/featherbase/admin/table/customer/row/CUST-7',
     })
   })
 
   it('maps a filtered list URL to a list action that keeps the filters', () => {
     const filters = '[["status","=","Open"]]'
-    const action = actionForLocation('/featherbase/admin/Task', { filters })
+    const action = actionForLocation('/featherbase/admin/table/task', { filters }, 'Task')
     expect(action).toMatchObject({ kind: 'list', label: 'Task', sub: 'status = Open' })
-    expect(action?.path).toBe(`/featherbase/admin/Task?filters=${encodeURIComponent(filters)}`)
+    expect(action?.path).toBe(`/featherbase/admin/table/task?filters=${encodeURIComponent(filters)}`)
     // A different filter set is a different remembered view.
-    expect(action?.key).not.toBe(actionForLocation('/featherbase/admin/Task', {})?.key)
+    expect(action?.key).not.toBe(actionForLocation('/featherbase/admin/table/task', {}, 'Task')?.key)
   })
 
   it('treats list view modes as lists and reports/dashboards as pages', () => {
-    expect(actionForLocation('/featherbase/admin/Task/view/kanban', {})).toMatchObject({ kind: 'list', sub: 'kanban' })
+    expect(actionForLocation('/featherbase/admin/table/task/view/kanban', {}, 'Task')).toMatchObject({ kind: 'list', sub: 'kanban' })
     expect(actionForLocation('/featherbase/admin/script-report/Sales%20Register', {})).toMatchObject({
       kind: 'page',
       label: 'Sales Register',
@@ -132,7 +132,7 @@ describe('actionForLocation', () => {
     expect(actionForLocation('/featherbase/admin/home/home', {})).toBeNull()
     expect(actionForLocation('/featherbase/admin/new-table', {})).toBeNull()
     expect(actionForLocation('/featherbase/admin/import', {})).toBeNull()
-    expect(actionForLocation('/featherbase/admin/Customer/new', {})).toBeNull()
+    expect(actionForLocation('/featherbase/admin/table/customer/new', {}, 'Customer')).toBeNull()
     // #440: the browser and the jobs monitor are not Tables named "source" / "jobs".
     expect(actionForLocation('/featherbase/admin/source/Warehouse', {})).toBeNull()
     expect(actionForLocation('/featherbase/admin/jobs', {})).toBeNull()
@@ -158,7 +158,8 @@ describe('actionForLocation', () => {
     const roots = new Set(
       kids
         .map((k) => (k.options.path ?? '/').split('/')[0])
-        .filter((seg) => seg && !seg.startsWith('$')),
+        // Table destinations now have their own namespace, not a static page.
+        .filter((seg) => seg && seg !== 'table' && !seg.startsWith('$')),
     )
     expect(roots.size).toBeGreaterThan(10) // positive control: the walk found the routes
     const known = new Set<string>([
@@ -268,7 +269,7 @@ describe('displayEntry', () => {
   })
   it('takes the kind from the key when a pinned target carries none', () => {
     expect(displayEntry({ key: 'page:explore', label: 'explore', path: '/featherbase/admin/explore' }).label).toBe('Explore')
-    expect(displayEntry({ key: 'list:Task?', label: 'Task', sub: 'kanban', path: '/featherbase/admin/Task' }))
+    expect(displayEntry({ key: 'list:Task?', label: 'Task', sub: 'kanban', path: '/featherbase/admin/table/task' }))
       .toEqual({ kind: 'list', label: 'Task', sub: 'kanban' })
   })
 })

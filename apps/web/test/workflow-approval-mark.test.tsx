@@ -9,7 +9,7 @@ test('a workflow state approval checkbox saves its boolean choice', async ({ adm
     row: { row_id: 'Approval Mark Flow', ref_table: 'Approval Mark Task', is_active: false,
       states: [{ state: 'Draft', target_status: 'draft' }], transitions: [] },
   })
-  await renderApp('/featherbase/admin/Workflow/Approval%20Mark%20Flow', admin)
+  await renderApp('/featherbase/admin/table/workflow/row/Approval%20Mark%20Flow', admin)
   const mark = await screen.findByRole('checkbox', { name: 'states, Waits for approval, row 1' })
   expect(mark).not.toBeChecked()
   const user = userEvent.setup()

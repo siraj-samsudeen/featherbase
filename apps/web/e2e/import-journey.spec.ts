@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { anonymousTest as test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
@@ -91,7 +92,7 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
 
   // J1.7 — lands on the new Table's list: all eight zones, ids in the series
   await session
-    .assertPath(`/featherbase/admin/${encodeURIComponent(DT)}`)
+    .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     .assertHas('[data-testid="list-rows"]', { text: 'Alpha' })
     .assertHas('[data-testid="list-rows"]', { text: 'Hotel' })
 

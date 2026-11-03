@@ -20,7 +20,7 @@ test('generated labels resolve real controls, stay stable on edits, and distingu
       { column_name: 'extras', column_type: 'Sub-table', label: 'Extras', row_table: 'Label Line' },
     ],
   })
-  await renderApp('/featherbase/admin/Label%20Form/new', admin)
+  await renderApp('/featherbase/admin/table/label-form/new', admin)
   const plain = await screen.findByLabelText('Description')
   const required = screen.getByLabelText('Title')
   const check = screen.getByLabelText('Active')

@@ -49,7 +49,7 @@ test('terms are grouped by app, A to Z, with the instance\'s own last (items 2, 
   expect(within(coverage).getByRole('heading', { level: 3 })).toHaveTextContent('Coverage')
   expect(coverage).toHaveTextContent('The aisles a person looks after.')
   expect(coverage).toHaveTextContent('Avoidscope: reads as access rights')
-  expect(within(coverage).getByRole('link', { name: 'shelves.aisle' })).toHaveAttribute('href', '/featherbase/admin/shelves.aisle')
+  expect(within(coverage).getByRole('link', { name: 'shelves.aisle' })).toHaveAttribute('href', '/featherbase/admin/table/shelves.aisle')
   expect(coverage).not.toHaveTextContent('Examples')
   expect(lead).toHaveTextContent('ExamplesAsha is Shelf Lead for aisle 4 on the morning shift.')
   expect(within(lead).getByRole('link', { name: 'shelves.assignment, Job' })).toBeInTheDocument()
@@ -98,7 +98,7 @@ test('a failed glossary read can be retried after access is restored without lea
 test('an editor can add and edit terms; a reader cannot (items 1, 8)', async ({ admin, createUser }) => {
   await installShelves(admin)
   const { unmount } = await renderApp('/featherbase/admin/glossary', admin)
-  expect(await screen.findByRole('link', { name: 'Add a term' })).toHaveAttribute('href', '/featherbase/admin/Glossary%20Term/new')
+  expect(await screen.findByRole('link', { name: 'Add a term' })).toHaveAttribute('href', '/featherbase/admin/table/glossary-term/new')
   await waitFor(() => expect(screen.getAllByRole('link', { name: /^Edit / })).toHaveLength(2))
   expect(screen.getByTestId('glossary-link')).toHaveAttribute('href', '/featherbase/admin/glossary')
   unmount()
@@ -129,7 +129,7 @@ test('a reworded term shows Edited here; new app wording can be taken back (item
 
 test('a described Table\'s title offers its term; nothing else does (items 10, 12)', async ({ admin }) => {
   await stockCount(admin)
-  await renderApp('/featherbase/admin/Stock%20Count', admin)
+  await renderApp('/featherbase/admin/table/stock-count', admin)
   const title = await screen.findByRole('heading', { level: 1 })
   expect(await within(title).findByRole('button', { name: 'What is Stock count?' })).toBeInTheDocument()
   expect(screen.getAllByTestId('glossary-help')).toHaveLength(1)
@@ -137,7 +137,7 @@ test('a described Table\'s title offers its term; nothing else does (items 10, 1
 
 test('a described field opens its term in place, and Escape closes it back to the "?" (items 10, 11, 12)', async ({ admin }) => {
   await stockCount(admin)
-  await renderApp('/featherbase/admin/Stock%20Count/new', admin)
+  await renderApp('/featherbase/admin/table/stock-count/new', admin)
   const counted = await screen.findByLabelText('Counted by')
   expect(counted).toHaveAccessibleName('Counted by')
   const help = await screen.findByRole('button', { name: 'What is Counter?' })

@@ -42,7 +42,7 @@ test('Enter on a name that matches nothing opens that address, which says the pa
   const { app, bar } = await openBar(admin)
   fireEvent.change(bar, { target: { value: 'Ase Nothing Here' } })
   fireEvent.submit(screen.getByTestId('awesomebar'))
-  await waitFor(() => expect(pathOf(app)).toBe('/featherbase/admin/Ase Nothing Here'))
+  await waitFor(() => expect(pathOf(app)).toBe('/featherbase/admin/table/ase-nothing-here'))
   expect(await screen.findByTestId('page-not-found')).toBeInTheDocument()
 })
 
@@ -59,7 +59,7 @@ test('picking a suggested Table opens its list and empties the bar', async ({ ad
   fireEvent.change(bar, { target: { value: 'Ase Gad' } })
   const [hit] = await screen.findAllByTestId('awesomebar-table')
   fireEvent.click(hit)
-  await waitFor(() => expect(pathOf(app)).toBe('/featherbase/admin/Ase Gadget'))
+  await waitFor(() => expect(pathOf(app)).toBe('/featherbase/admin/table/ase-gadget'))
   expect(bar).toHaveValue('')
 })
 
@@ -77,14 +77,14 @@ test('someone whose recent actions are all searches finds their frequent list un
   await admin.post('/api/table_def', { name: 'Ase Stock', columns: [{ column_name: 'sku', column_type: 'Data', in_list_view: true }] })
   const now = Date.now()
   for (const back of [90, 80, 70])
-    recordAction('Administrator', { kind: 'list', key: 'list:Ase Stock?', label: 'Ase Stock', path: '/featherbase/admin/Ase Stock' }, now - back * 60_000)
+    recordAction('Administrator', { kind: 'list', key: 'list:Ase Stock?', label: 'Ase Stock', path: '/featherbase/admin/table/ase-stock' }, now - back * 60_000)
   for (let i = 0; i < 20; i++)
     recordAction('Administrator', { kind: 'search', key: `search:ase-${i}`, label: `ase-${i}`, path: '' }, now - i * 1000)
   const app = await renderApp('/featherbase/admin', admin)
   const frequent = await screen.findByTestId('sidebar-frequent', {}, { timeout: 8000 })
   expect(frequent).toHaveTextContent('Ase Stock')
   await userEvent.click(frequent)
-  await waitFor(() => expect(pathOf(app)).toBe('/featherbase/admin/Ase Stock'))
+  await waitFor(() => expect(pathOf(app)).toBe('/featherbase/admin/table/ase-stock'))
 })
 
 test('leaving the page hands the unsent events to a beacon', async ({ admin }) => {
@@ -92,7 +92,7 @@ test('leaving the page hands the unsent events to a beacon', async ({ admin }) =
   Object.defineProperty(navigator, 'sendBeacon', { value: beacon, configurable: true })
   await renderApp('/featherbase/admin', admin)
   await screen.findByTestId('admin-sidebar', {}, { timeout: 8000 })
-  recordAction('Administrator', { kind: 'list', key: 'list:Ase Beacon?', label: 'Ase Beacon', path: '/featherbase/admin/Ase Beacon' })
+  recordAction('Administrator', { kind: 'list', key: 'list:Ase Beacon?', label: 'Ase Beacon', path: '/featherbase/admin/table/ase-beacon' })
   window.dispatchEvent(new Event('pagehide'))
   expect(beacon).toHaveBeenCalledTimes(1)
   const [url, blob] = beacon.mock.calls[0] as unknown as [string, Blob]

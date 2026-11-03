@@ -1,6 +1,7 @@
 // Home cleanup (26-Oct-2026): what Home and the sidebar's Recent show for a
 // remembered page or row, the unlabelled link card, and the activity feed's
 // one-sentence rows. Every claim is read off the rendered page.
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import { grantRole, makePerson } from 'server/test/fixtures'
@@ -28,7 +29,7 @@ async function seedMerch(admin: Client) {
 function rememberRow(user: string, at: number) {
   recordAction(user, {
     kind: 'row', key: `row:${MERCH}/${MERCH_ROW}`, label: MERCH_ROW, sub: MERCH,
-    path: `/featherbase/admin/${encodeURIComponent(MERCH)}/${encodeURIComponent(MERCH_ROW)}`,
+    path: `/featherbase/admin/table/${encodeURIComponent(tableSlug(MERCH))}/row/${encodeURIComponent(MERCH_ROW)}`,
   }, at)
 }
 
@@ -94,7 +95,7 @@ test('My activity: under a day heading, the kind icon, "You opened …", repeats
 test('My activity titles an opened row from its values', async ({ admin }) => {
   await seedMerch(admin)
   await admin.post('/api/events', {
-    events: [{ kind: 'row', key: `row:${MERCH}/${MERCH_ROW}`, label: MERCH_ROW, sub: MERCH, path: `/featherbase/admin/${MERCH}/${MERCH_ROW}` }],
+    events: [{ kind: 'row', key: `row:${MERCH}/${MERCH_ROW}`, label: MERCH_ROW, sub: MERCH, path: `/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(MERCH)))}/row/${MERCH_ROW}` }],
   })
   await renderApp('/featherbase/admin', admin)
   const feed = await screen.findByTestId('activity-feed')
@@ -188,7 +189,7 @@ test('Recently opened holds at most five items, Frequent included', async ({ adm
   const now = Date.now()
   for (let i = 0; i < 8; i++)
     for (const back of [3, 2, 1])
-      recordAction('Administrator', { kind: 'list', key: `list:T${i}?`, label: `T${i}`, path: `/featherbase/admin/T${i}` }, now - i * 10_000 - back * 1000)
+      recordAction('Administrator', { kind: 'list', key: `list:T${i}?`, label: `T${i}`, path: `/featherbase/admin/table/t${i}` }, now - i * 10_000 - back * 1000)
   await renderApp('/featherbase/admin', admin)
   await screen.findAllByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
   const items = [...screen.queryAllByTestId('sidebar-recent'), ...screen.queryAllByTestId('sidebar-frequent')]
@@ -227,7 +228,7 @@ test('the row page heading reads the row title, not its id', async ({ admin }) =
     columns: [{ column_name: 'store_code', column_type: 'Data' }, { column_name: 'section_name', column_type: 'Data' }],
   })
   await admin.post('/api/save_row', { table: 'Store Section', row: { row_id: 'sec-001', store_code: '1517', section_name: 'Kurti' } })
-  await renderApp('/featherbase/admin/Store%20Section/sec-001', admin)
+  await renderApp('/featherbase/admin/table/store-section/row/sec-001', admin)
   const heading = await screen.findByRole('heading', { level: 1 })
   await waitFor(() => expect(heading).toHaveTextContent('Store Section: Kurti'))
   expect(heading).not.toHaveTextContent('sec-001')
@@ -236,7 +237,7 @@ test('the row page heading reads the row title, not its id', async ({ admin }) =
 
 test('a row whose Table has no title column is headed by its readable values', async ({ admin }) => {
   await seedMerch(admin)
-  await renderApp(`/featherbase/admin/${encodeURIComponent(MERCH)}/${encodeURIComponent(MERCH_ROW)}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(MERCH))}/row/${encodeURIComponent(MERCH_ROW)}`, admin)
   const heading = await screen.findByRole('heading', { level: 1 })
   await waitFor(() => expect(heading).toHaveTextContent(`${MERCH}: 1517 · Kurti Z`))
 })
@@ -251,13 +252,13 @@ test.for(['Person', 'Service Account'] as const)('a %s-valued row title names re
     { column_name: 'owner', column_type: 'Reference', reference_table: principalTable },
   ] })
   await admin.post('/api/save_row', { table, row: { row_id: 'owned-1', owner: principal } })
-  const path = `/featherbase/admin/${encodeURIComponent(table)}`
-  recordAction('Administrator', { kind: 'row', key: `row:${table}/owned-1`, label: 'owned-1', sub: table, path: `${path}/owned-1` }, Date.now() - 1000)
+  const path = `/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}`
+  recordAction('Administrator', { kind: 'row', key: `row:${table}/owned-1`, label: 'owned-1', sub: table, path: `${path}/row/owned-1` }, Date.now() - 1000)
   const list = await renderApp(path, admin)
   await waitFor(() => expect(screen.getByTestId('recent-strip-row')).toHaveTextContent(label))
   await waitFor(() => expect(screen.getByTestId('sidebar-recents')).toHaveTextContent(label))
   list.unmount()
-  await renderApp(`${path}/owned-1`, admin)
+  await renderApp(`${path}/row/owned-1`, admin)
   await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(`${table}: ${label}`))
   expect(screen.getByTestId('breadcrumbs')).toHaveTextContent(label)
   expect(screen.getByTestId('breadcrumbs')).not.toHaveTextContent(principal)
@@ -272,7 +273,7 @@ test('a readable row does not name a Person the reader cannot read', async ({ ad
   await admin.post('/api/save_row', { table, row: { row_id: 'owned-1', owner } })
   await grantRole(admin, { role: 'Home Title Reader', table, can_read: true })
   const reader = await createUser({ roles: ['Home Title Reader'] })
-  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/owned-1`, reader)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}/row/owned-1`, reader)
   await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(`${table}: Unnamed person`))
   expect(screen.getByTestId('breadcrumbs')).toHaveTextContent('Unnamed person')
   expect(screen.getByRole('heading', { level: 1 })).not.toHaveTextContent('Undisclosed Title Owner')

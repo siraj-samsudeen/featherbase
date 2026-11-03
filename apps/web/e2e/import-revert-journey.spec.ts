@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, type APIRequestContext } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
@@ -84,7 +85,7 @@ test('RVT-J1: revert the bad run from the history strip — rehearse, skip-the-e
     await expect(page.getByTestId('iw-preview-0')).toContainText('will be updated')
     await page.getByRole('button', { name: 'Import 2 rows' }).click()
     // The wizard auto-navigates to the Table's list (the ratified IMP/UPS walk).
-    await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`))
   })
 
   // Someone edits Alpha AFTER the run — another keyed import, realistically.

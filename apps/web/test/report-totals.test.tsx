@@ -2,6 +2,7 @@
 // and export cover every matching row, and it says when rows are left out.
 // URL.createObjectURL is a browser API jsdom lacks; the spy hands back the
 // exported Blob so the test reads what the person would download.
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
@@ -62,7 +63,7 @@ const groupHeader = (value: string) => {
 }
 
 async function openReport(admin: Admin) {
-  await renderApp(`/featherbase/admin/${ENC}/view/report`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/view/report`, admin)
   await screen.findByTestId('report-view', {}, { timeout: 8000 })
   await waitFor(() => expect(screen.getAllByTestId('report-row')).toHaveLength(500), { timeout: 8000 })
 }
@@ -135,7 +136,7 @@ test('check values and absent text retain their meaning in the report and CSV', 
   await admin.post('/api/save_row', { table: T, row: { row_id: 'ready', ready: true } })
   await admin.post('/api/save_row', { table: T, row: { row_id: 'waiting', ready: false, notes: 'Pending' } })
   const blobs = captureDownloads()
-  await renderApp(`/featherbase/admin/${ENC}/view/report`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/view/report`, admin)
   await screen.findByText('Pending')
   expect(screen.getByText('✓')).toBeInTheDocument()
   expect(screen.getByText('—')).toBeInTheDocument()
@@ -152,7 +153,7 @@ test('a summary that fits on the page says nothing about rows left out', async (
     columns: [{ column_name: 'amount', column_type: 'Int', label: 'Amount', in_list_view: true }],
   })
   await admin.post('/api/save_row', { table: T, row: { amount: 5 } })
-  await renderApp(`/featherbase/admin/${ENC}/view/report`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/view/report`, admin)
   await waitFor(() => expect(screen.getByTestId('grand-sum-amount')).toHaveTextContent('5'))
   expect(screen.queryByTestId('report-shown-note')).not.toBeInTheDocument()
 })
@@ -175,7 +176,7 @@ test('without server totals, the summary says its totals cover only the rows lis
     const reflected = await admin.post<{ created: { name: string }[] }>('/api/table/Data%20Source/report-fallback:reflect', { schema: 'sales.main', tables: ['sales'] })
     expect(reflected.created).toHaveLength(1)
     const blobs = captureDownloads()
-    await renderApp(`/featherbase/admin/${encodeURIComponent(reflected.created[0].name)}/view/report`, admin)
+    await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(reflected.created[0].name))}/view/report`, admin)
     await waitFor(() => expect(screen.getAllByTestId('report-row')).toHaveLength(500))
     await waitFor(() => expect(screen.getByTestId('report-shown-note')).toHaveTextContent(
       'Showing the first 500 of 501 rows. The counts and totals cover only these 500; the export has all 501.',
@@ -229,7 +230,7 @@ test('a blank and a missing value are one empty group, with all its rows listed'
   // use server counts and sums, not coincidentally equal page-local values.
   await sql`insert into featherbase.rpt_totals_sale (row_id, area, amount)
     select 'report-extra-' || n, 'A', 2 from generate_series(1, 498) n`
-  await renderApp(`/featherbase/admin/${ENC}/view/report`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/view/report`, admin)
   await screen.findByTestId('report-view', {}, { timeout: 8000 })
   await userEvent.selectOptions(screen.getByTestId('report-groupby'), 'area')
   await waitFor(() => expect(within(groupHeader('(empty)')).getByTestId('group-count')).toHaveTextContent('(2)'))

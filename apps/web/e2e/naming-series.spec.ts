@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth } from './fixtures'
 
 const DT = 'Naming Demo'
@@ -65,7 +66,7 @@ test('NAM-001: switching an existing Table to a series offers the derived prefix
     data: { id_pattern: 'hash' },
   })
 
-  await session.visit(`/admin/${encodeURIComponent(DT)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
   await session.step('open the naming dialog', async ({ page }) => {
     await page.getByTestId('open-naming').click()
   })

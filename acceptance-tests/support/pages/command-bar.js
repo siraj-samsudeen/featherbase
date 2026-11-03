@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { expect } = require('playwright/test');
 
 const TABLE = 'Sign In Method';
-const LIST_PATH = `/featherbase/admin/${encodeURIComponent(TABLE)}`;
+const LIST_PATH = '/featherbase/admin/table/sign-in-method';
 
 class CommandBar {
   constructor(page) { this.page = page; }

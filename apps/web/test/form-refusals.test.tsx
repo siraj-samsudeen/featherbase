@@ -33,14 +33,14 @@ async function seedNotes(admin: Admin) {
 
 test('a row that is not there says it cannot be loaded', async ({ admin }) => {
   await seedNotes(admin)
-  await renderApp(`/featherbase/admin/${enc('Frf Note')}/no-such-note`, admin)
+  await renderApp(`/featherbase/admin/table/frf-note/row/no-such-note`, admin)
   expect(await screen.findByText('Cannot load Frf Note no-such-note', {}, { timeout: 8000 })).toBeInTheDocument()
   expect(screen.queryByTestId('form-save')).not.toBeInTheDocument()
 })
 
 test('a requirement added after the form opened is reported at the field without losing the draft', async ({ admin }) => {
   await seedNotes(admin)
-  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+  await renderApp(`/featherbase/admin/table/frf-note/row/note-1`, admin)
   await waitFor(() => expect(field('body')).toBeInTheDocument())
   const meta = await admin.get<{ columns: { column_name: string }[] }>(`/api/table/${enc('Frf Note')}:meta`)
   await admin.put(`/api/table_def/${enc('Frf Note')}`, {
@@ -57,7 +57,7 @@ test('a requirement added after the form opened is reported at the field without
 test('long text typed into a Text column is saved', async ({ admin }) => {
   const user = userEvent.setup()
   await seedNotes(admin)
-  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+  await renderApp(`/featherbase/admin/table/frf-note/row/note-1`, admin)
   await waitFor(() => expect(field('body')).toBeInTheDocument(), { timeout: 8000 })
   await user.type(field('body'), 'line one')
   await user.click(screen.getByTestId('form-save'))
@@ -69,7 +69,7 @@ test('long text typed into a Text column is saved', async ({ admin }) => {
 // shows a stored object as JSON text, so typing JSON back is how it is edited).
 test('JSON typed into a JSON column is saved as that JSON', async ({ admin }) => {
   await seedNotes(admin)
-  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+  await renderApp(`/featherbase/admin/table/frf-note/row/note-1`, admin)
   await waitFor(() => expect(field('extra')).toBeInTheDocument(), { timeout: 8000 })
   fireEvent.change(field('extra'), { target: { value: '{"shelf": 3}' } })
   await userEvent.click(screen.getByTestId('form-save'))
@@ -79,7 +79,7 @@ test('JSON typed into a JSON column is saved as that JSON', async ({ admin }) =>
 
 test('an empty JSON string typed into a JSON column stays an empty string after saving', async ({ admin }) => {
   await seedNotes(admin)
-  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+  await renderApp(`/featherbase/admin/table/frf-note/row/note-1`, admin)
   await waitFor(() => expect(field('extra')).toBeInTheDocument(), { timeout: 8000 })
   fireEvent.change(field('extra'), { target: { value: '""' } })
   await userEvent.click(screen.getByTestId('form-save'))
@@ -89,7 +89,7 @@ test('an empty JSON string typed into a JSON column stays an empty string after 
 
 test('text in a JSON column that is not JSON is refused at the field, and nothing is saved', async ({ admin }) => {
   await seedNotes(admin)
-  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+  await renderApp(`/featherbase/admin/table/frf-note/row/note-1`, admin)
   await waitFor(() => expect(field('extra')).toBeInTheDocument(), { timeout: 8000 })
   fireEvent.change(field('title'), { target: { value: 'second' } })
   fireEvent.change(field('extra'), { target: { value: '{shelf: 3' } })
@@ -102,7 +102,7 @@ test('text in a JSON column that is not JSON is refused at the field, and nothin
 test('emptying a JSON column clears it', async ({ admin }) => {
   await seedNotes(admin)
   await admin.post('/api/save_row', { table: 'Frf Note', row: { row_id: 'note-3', title: 'full', extra: { shelf: 3 } } })
-  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-3`, admin)
+  await renderApp(`/featherbase/admin/table/frf-note/row/note-3`, admin)
   await waitFor(() => expect(field('extra')).toBeInTheDocument(), { timeout: 8000 })
   fireEvent.change(field('extra'), { target: { value: '   ' } })
   await userEvent.click(screen.getByTestId('form-save'))
@@ -124,7 +124,7 @@ for (const [assigned, label] of [['plain words', 'text'], ['13', 'digits']] as c
         script: `featherbase.ui.form.on('Frf Note', { before_save: function (frm) { frm.set_value('extra', ${JSON.stringify(assigned)}) } })`,
       },
     })
-    await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+    await renderApp(`/featherbase/admin/table/frf-note/row/note-1`, admin)
     await waitFor(() => expect(field('title')).toBeInTheDocument(), { timeout: 8000 })
     fireEvent.change(field('title'), { target: { value: 'scripted' } })
     await userEvent.click(screen.getByTestId('form-save'))
@@ -143,7 +143,7 @@ test('a JSON change handler can replace typed text with a structured value befor
       } })`,
     },
   })
-  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+  await renderApp(`/featherbase/admin/table/frf-note/row/note-1`, admin)
   await waitFor(() => expect(field('extra')).toBeInTheDocument())
   fireEvent.change(field('extra'), { target: { value: 'replace me' } })
   await userEvent.click(screen.getByTestId('form-save'))
@@ -154,7 +154,7 @@ test('a JSON change handler can replace typed text with a structured value befor
 test('a stored JSON value saves unchanged when the person edits another field', async ({ admin }) => {
   await seedNotes(admin)
   await admin.post('/api/save_row', { table: 'Frf Note', row: { row_id: 'note-2', title: 'kept', extra: 'plain words' } })
-  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-2`, admin)
+  await renderApp(`/featherbase/admin/table/frf-note/row/note-2`, admin)
   await waitFor(() => expect(field('title')).toBeInTheDocument(), { timeout: 8000 })
   fireEvent.change(field('title'), { target: { value: 'kept again' } })
   await userEvent.click(screen.getByTestId('form-save'))
@@ -171,7 +171,7 @@ test('submitting a row someone else already submitted is refused with the reason
     columns: [{ column_name: 'item', column_type: 'Data', label: 'Item' }],
   })
   await admin.post('/api/save_row', { table: 'Frf Order', row: { row_id: 'ord-1', item: 'tea' } })
-  await renderApp(`/featherbase/admin/${enc('Frf Order')}/ord-1`, admin)
+  await renderApp(`/featherbase/admin/table/frf-order/row/ord-1`, admin)
   const submit = await screen.findByTestId('form-submit', {}, { timeout: 8000 })
   await admin.post(`/api/table/${enc('Frf Order')}/ord-1:submit`)
   await user.click(submit)
@@ -188,7 +188,7 @@ test('a Reference to a service account shows the account by its label, not its i
     columns: [{ column_name: 'runner', column_type: 'Reference', label: 'Runner', reference_table: 'Service Account' }],
   })
   await admin.post('/api/save_row', { table: 'Frf Job', row: { row_id: 'job-1', runner: bot.row_id } })
-  await renderApp(`/featherbase/admin/${enc('Frf Job')}/job-1`, admin)
+  await renderApp(`/featherbase/admin/table/frf-job/row/job-1`, admin)
   await waitFor(() => expect(field('runner')).toHaveValue('svc-frf-stock-bot'), { timeout: 8000 })
   expect(field('runner')).not.toHaveValue(bot.row_id)
 })
@@ -211,7 +211,7 @@ test('a Reference search the server refuses offers no matches rather than failin
   const clerk = await createUser({ roles: ['Frf Visitor'] })
   await expect(clerk.get(`/api/table/${enc('Frf Depot')}`)).rejects.toMatchObject({ status: 403 })
 
-  await renderApp(`/featherbase/admin/${enc('Frf Visit')}/visit-1`, clerk)
+  await renderApp(`/featherbase/admin/table/frf-visit/row/visit-1`, clerk)
   await waitFor(() => expect(field('depot')).toBeInTheDocument(), { timeout: 8000 })
   fireEvent.change(field('depot'), { target: { value: 'Ko' } })
   await new Promise((r) => setTimeout(r, 400))
@@ -221,7 +221,7 @@ test('a Reference search the server refuses offers no matches rather than failin
 
 test('a file attached to a row deleted meanwhile is refused and nothing is attached', async ({ admin }) => {
   await seedNotes(admin)
-  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+  await renderApp(`/featherbase/admin/table/frf-note/row/note-1`, admin)
   await waitFor(() => expect(field('scan')).toBeInTheDocument(), { timeout: 8000 })
   await admin.delete(`/api/table/${enc('Frf Note')}/note-1`)
   await useNodeMultipart()
@@ -244,7 +244,7 @@ test("an onload handler's get_value reads the same row frm.doc holds", async ({ 
       } })`,
     },
   })
-  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+  await renderApp(`/featherbase/admin/table/frf-note/row/note-1`, admin)
   expect(await screen.findByTestId('client-script-error', {}, { timeout: 8000 })).toHaveTextContent(
     'Client script error (onload): agrees: true',
   )

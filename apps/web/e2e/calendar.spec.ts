@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, adminToken, type APIRequestContext } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
@@ -36,7 +37,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('UI-021: events appear on their date and dragging updates the date field', async ({
   session,
 }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}`).clickLink('Calendar').assertHas('[data-testid="calendar-view"]')
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`).clickLink('Calendar').assertHas('[data-testid="calendar-view"]')
 
   await session
     .within(`[data-testid="cal-cell-${DAY_FROM}"]`, (cell) =>
@@ -81,7 +82,7 @@ test.describe('Calendar header responsiveness', () => {
 
   test('keeps its long title, month navigation, and List view link reachable on a phone', async ({ session }) => {
     await session
-      .visit(`/admin/${encodeURIComponent(DT)}/view/calendar`)
+      .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/view/calendar`)
       .assertHas('[data-testid="calendar-view"]')
       .assertHas('h1')
       .assertHas('[data-testid="cal-prev"]')
@@ -104,7 +105,7 @@ test.describe('Calendar header desktop layout', () => {
 
   test('keeps its long title, month navigation, and List view link reachable on desktop', async ({ session }) => {
     await session
-      .visit(`/admin/${encodeURIComponent(DT)}/view/calendar`)
+      .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/view/calendar`)
       .assertHas('[data-testid="calendar-view"]')
       .assertHas('h1')
       .assertHas('[data-testid="cal-prev"]')

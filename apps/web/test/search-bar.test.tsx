@@ -45,7 +45,7 @@ test('The search bar opens what it finds: picking a matching record opens its fo
   fireEvent.click(hit)
 
   await waitFor(() => expect(field('title')).toHaveValue('Zebrafinch widget'))
-  expect(here(app)).toContain('Sb Gadget')
+  expect(here(app)).toBe('/featherbase/admin/table/sb-gadget/row/Zebrafinch-widget')
   await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 
@@ -60,7 +60,7 @@ test('The search bar opens what it finds: a matching Table offers its list and a
   expect(await screen.findAllByTestId('awesomebar-table')).not.toHaveLength(0)
   fireEvent.click(create)
 
-  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Sb Gadget/new'))
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/table/sb-gadget/new'))
   await waitFor(() => expect(field('title')).toHaveValue(''))
   await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
@@ -74,7 +74,7 @@ test('The search bar opens what it finds: Enter on an exact Table name opens tha
   await screen.findAllByTestId('awesomebar-table')
   fireEvent.submit(bar.closest('form') as HTMLFormElement)
 
-  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Sb Home'))
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/table/sb-home'))
   expect(await screen.findByTestId('list-view')).toBeInTheDocument()
   await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
@@ -103,7 +103,7 @@ test('The search bar opens what it finds: Enter on a word that names a record, n
   await screen.findByTestId('awesomebar-doc')
   fireEvent.submit(bar.closest('form') as HTMLFormElement)
   await waitFor(() => expect(field('title')).toHaveValue('Zebrafinch widget'))
-  expect(here(app)).toContain('Sb Gadget')
+  expect(here(app)).toBe('/featherbase/admin/table/sb-gadget/row/Zebrafinch-widget')
   await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 

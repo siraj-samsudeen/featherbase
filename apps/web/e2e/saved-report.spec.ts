@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 
 const DT = 'RPT Saved Task'
@@ -46,7 +47,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 // the plain navigations between them.
 test('RPT-002: saved report restores columns, filters, and grouping', async ({ session }) => {
   // Configure: drop qty column, filter status=Open, group by status.
-  await session.visit(`/admin/${encodeURIComponent(DT)}/view/report`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/view/report`)
   await session.step('drop the qty column, filter status=Open, group by status, and save', async ({ page }) => {
     await expect(page.getByTestId('report-row')).toHaveCount(3)
     await page.getByTestId('report-columns').click()
@@ -66,7 +67,7 @@ test('RPT-002: saved report restores columns, filters, and grouping', async ({ s
   })
 
   // Fresh navigation to the saved URL restores everything.
-  await session.visit(`/admin/${encodeURIComponent(DT)}/view/report?report=${encodeURIComponent(REPORT)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/view/report?report=${encodeURIComponent(REPORT)}`)
   await session.step('the saved URL restores columns, filter, and grouping', async ({ page }) => {
     await expect(page.getByTestId('report-head-qty')).toHaveCount(0) // column choice
     await expect(page.getByTestId('report-groupby')).toHaveValue('stage') // grouping
@@ -76,7 +77,7 @@ test('RPT-002: saved report restores columns, filters, and grouping', async ({ s
   })
 
   // The picker also opens it from scratch.
-  await session.visit(`/admin/${encodeURIComponent(DT)}/view/report`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/view/report`)
   await session.step('the saved-report picker also restores it', async ({ page }) => {
     await expect(page.getByTestId('report-row')).toHaveCount(3) // default state first
     await page.getByTestId('saved-report-picker').selectOption(REPORT)

@@ -10,6 +10,7 @@ import { resolve, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import { seedTasker, TASKER_SCENARIOS } from './seed-tasker-development.mjs'
 import { proveTaskerAcceptance } from './prove-tasker-acceptance.mjs'
+import { rowHref } from '../packages/shared/src/app-routes.ts'
 
 const root = resolve(import.meta.dirname, '..')
 const taskerPackage = JSON.parse(await readFile(resolve(root, 'example-apps/tasker/package.json'), 'utf8'))
@@ -426,7 +427,7 @@ try {
   await page.goto(`${origin}/tasker/`)
   await page.evaluate(token => localStorage.setItem('fc_token', token), token)
   const staleCore = await page.context().newPage()
-  await staleCore.goto(`${origin}/featherbase/admin/tasker.task/${preservedTask.row_id}`)
+  await staleCore.goto(`${origin}${rowHref('tasker.task', preservedTask.row_id)}`)
   await expect(staleCore.locator('[data-field="task_title"]')).toHaveValue('Preserved 37 cartons')
   await staleCore.locator('[data-field="description"]').fill('Must not save a pre-upgrade draft')
   async function refuseStaleCore(expectedStatus) {
@@ -498,7 +499,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.getByRole('link', { name: 'Preserved 37 cartons', exact: true }).click()
   await page.getByRole('link', { name: 'Attachments and advanced fields in Featherbase ↗' }).click()
-  await expect(page).toHaveURL(`${origin}/featherbase/admin/tasker.task/${preservedTask.row_id}`)
+  await expect(page).toHaveURL(`${origin}${rowHref('tasker.task', preservedTask.row_id)}`)
   await expect(page.locator('[data-field="task_title"]')).toHaveValue('Preserved 37 cartons')
   await page.locator('[data-field="description"]').fill('Core form confirmed 37 cartons, not 83.')
   await page.getByTestId('form-save').click()

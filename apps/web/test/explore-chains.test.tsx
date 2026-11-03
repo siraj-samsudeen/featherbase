@@ -151,7 +151,7 @@ test('a row in the third pane opens Peek without changing either upstream select
 test("the list's Explore button opens a chain of the dependents ticked under it", async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
-  const { router } = await renderApp(`/featherbase/admin/${encodeURIComponent('Ec Supplier')}`, admin)
+  const { router } = await renderApp(`/featherbase/admin/table/ec-supplier`, admin)
   await user.click(await screen.findByTestId('explore-split-toggle'))
   const [option] = await within(await screen.findByTestId('explore-split-panel')).findAllByTestId('explore-split-option')
   await user.click(option)
