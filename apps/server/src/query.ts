@@ -280,8 +280,11 @@ export async function scopedWhere(
       const grids: string[] = []
       for (const link of meta.columns.filter((f) => f.column_type === 'Sub-table' && f.row_table === spec.via &&
         (spec.parentfield === undefined || f.column_name === spec.parentfield))) {
-        if (!includesColumn(unrestricted, link)) continue
-        if (includesColumn(await childColumns(user, meta.name, spec.via, link.row_id, 'read', ''), viaCol)) grids.push(link.column_name)
+        // Rows limited to the caller's own may use their creator-scoped reach.
+        const ownOnly = scope === 'own_rows'
+        const linkReach = ownOnly ? await permittedColumns(user, table, 'read') : unrestricted
+        if (!includesColumn(linkReach, link)) continue
+        if (includesColumn(await childColumns(user, meta.name, spec.via, link.row_id, 'read', ownOnly ? user : ''), viaCol)) grids.push(link.column_name)
       }
       if (!grids.length)
         throw new AppError('PermissionError', `No read permission on ${spec.via}.${spec.column}`)

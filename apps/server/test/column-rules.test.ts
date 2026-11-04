@@ -117,6 +117,19 @@ describe('line items outside a grant', () => {
     expect(response.status).toBe(403)
   })
 
+  test('a reader of only their own rows filters through their own line items', async ({ admin, createUser }) => {
+    await order(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Cg Own' } })
+    await grantRole(admin, { table: 'Cg Person Ref', role: 'Cg Own', can_read: true })
+    await grantRole(admin, { table: 'Cg Order', role: 'Cg Own', can_read: true, can_create: true, own_rows_only: true })
+    const own = await createUser({ roles: ['Cg Own'] })
+    const [who] = await admin.get<{ data: { row_id: string }[] }>('/api/table/Cg%20Person%20Ref').then((r) => r.data)
+    const mine = await own.post<{ row_id: string }>('/api/save_row', { table: 'Cg Order', row: { label: 'Mine', lines: [{ qty: 2, who: who.row_id }] } })
+    const filters = JSON.stringify([['row_id', 'related', { via: 'Cg Line', column: 'who', table: 'Cg Person Ref', filters: [['row_id', '=', who.row_id]] }]])
+    const { data } = await own.get<{ data: { row_id: string }[] }>(`/api/table/Cg%20Order?filters=${encodeURIComponent(filters)}`)
+    expect(data.map((r) => r.row_id)).toEqual([mine.row_id])
+  })
+
   test('a grid sent back unchanged does not block an edit; a changed one is refused', async ({ admin, createUser }) => {
     const { row } = await order(admin)
     const reader = await createUser({ roles: ['Cg Reader'] })
