@@ -13,19 +13,33 @@ import { rowNameText, useRowNames, type RowName } from './relations'
 type Ref = { table: string; row_id: string }
 const keyOf = (r: Ref) => `${r.table}\u0000${r.row_id}`
 
-function linkedFilter(meta: TableMeta | undefined, [column, op, value]: ListFilter): Ref | null {
+const ONE = ['=', '!=']
+const MANY = ['in', 'not in']
+
+/** The rows a filter names: a link column's (or the row id's) value, or each
+ *  of its values for `in` and `not in`. */
+export function filterRefs(table: string, meta: TableMeta | undefined, [column, op, value]: ListFilter): Ref[] {
   const col = meta?.columns.find((c) => c.column_name === column)
-  if (col?.column_type !== 'Reference' || !col.reference_table || (op !== '=' && op !== '!=')) return null
-  if (typeof value !== 'string' && typeof value !== 'number') return null
-  return String(value) ? { table: col.reference_table, row_id: String(value) } : null
+  const target = column === 'row_id' ? table
+    : col?.column_type === 'Reference' && col.reference_table ? col.reference_table
+    : undefined
+  if (!target) return []
+  const values = ONE.includes(op) ? [value] : MANY.includes(op) && Array.isArray(value) ? value : []
+  return values
+    .filter((v) => (typeof v === 'string' || typeof v === 'number') && String(v) !== '')
+    .map((v) => ({ table: target, row_id: String(v) }))
 }
 
-function filterText(meta: TableMeta | undefined, filter: ListFilter, name: (r: Ref) => string): string {
+/** A filter as its step reads: "Region: Kerala · KL", "Region in Kerala · KL,
+ *  Tamil Nadu · TN". Until the table's columns are known, its value is a
+ *  placeholder, since it may be a row's id. */
+export function filterText(table: string, meta: TableMeta | undefined, filter: ListFilter, name: (r: Ref) => string): string {
   const [column, op, value] = filter
   const col = meta?.columns.find((c) => c.column_name === column)
   const label = column === 'row_id' ? 'Row ID' : col?.label ?? column
-  const ref = linkedFilter(meta, filter)
-  const shown = ref ? name(ref)
+  const refs = filterRefs(table, meta, filter)
+  const shown = !meta ? '…'
+    : refs.length ? refs.map(name).join(', ')
     : col?.column_type === 'Choice' && typeof value === 'string' ? choiceLabel(value, col.choice_labels)
     : op === 'like' && typeof value === 'string' ? value.replace(/^%|%$/g, '')
     : Array.isArray(value) ? value.join(', ')
@@ -43,10 +57,8 @@ export function useStepLabels(steps: NavStep[]): string[] {
   const refs = new Map<string, Ref>()
   for (const step of steps) {
     for (const r of stepRefs(step)) refs.set(keyOf(r), r)
-    for (const f of step.filters ?? []) {
-      const r = linkedFilter(metaOf(step.table), f)
-      if (r) refs.set(keyOf(r), r)
-    }
+    for (const f of step.filters ?? [])
+      for (const r of filterRefs(step.table, metaOf(step.table), f)) refs.set(keyOf(r), r)
   }
   const list = [...refs.values()]
   const names = useRowNames(list)
@@ -56,7 +68,7 @@ export function useStepLabels(steps: NavStep[]): string[] {
     const kind = stepKind(step)
     if (kind === 'pane' || kind === 'group') return name({ table: step.pane!.table, row_id: step.pane!.row })
     if (kind === 'row') return name({ table: step.table, row_id: step.row! })
-    if (kind === 'filter') return step.filters!.map((f) => filterText(metaOf(step.table), f, name)).join(', ')
+    if (kind === 'filter') return step.filters!.map((f) => filterText(step.table, metaOf(step.table), f, name)).join(', ')
     return step.table
   })
 }
