@@ -227,15 +227,15 @@ describe('SplitWithPane', () => {
       if ((this as HTMLElement).dataset?.testid === 'split-with-pane') return { top: 120, bottom: 920, height: 800 } as DOMRect
       return { top: 0, bottom: 0, height: 0 } as DOMRect
     }
-    const client = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')!
-    Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get(this: HTMLElement) { return this.dataset.testid === 'frame' ? 800 : 0 } })
+    const client = Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight')!
+    Object.defineProperty(Element.prototype, 'clientHeight', { configurable: true, get(this: HTMLElement) { return this.dataset.testid === 'frame' ? 800 : 0 } })
     try {
       render(<div data-testid="frame" style={{ overflowY: 'auto' }}><SplitWithPane place="bottom" pane={<p>Pane</p>}><p>List</p></SplitWithPane></div>)
       expect(screen.getByTestId('split-with-pane').style.height).toBe('680px')
       expect(screen.getByText('List').parentElement!.className).toMatch(/\boverflow-auto\b/)
     } finally {
       proto.getBoundingClientRect = rect
-      Object.defineProperty(HTMLElement.prototype, 'clientHeight', client)
+      Object.defineProperty(Element.prototype, 'clientHeight', client)
     }
   })
 
