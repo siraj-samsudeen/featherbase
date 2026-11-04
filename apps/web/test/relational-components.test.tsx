@@ -3,7 +3,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { Gallery } from '../src/gallery/Gallery'
 import { DrillPane, FieldGrid, GroupChip, LinkChip, PanePlace, PaneSection, PathBar, RecentPaths, resolvePanePlace, SplitWithPane, TreeOutline, ViewToggle, type TreeNode } from '@featherbase/shop-floor'
 
@@ -315,6 +315,40 @@ describe('PathBar', () => {
     } finally {
       Object.assign(proto, { scrollTo, getBoundingClientRect: rect })
     }
+  })
+
+  describe('a path longer than its bar', () => {
+    const calls: number[] = []
+    const proto = Element.prototype as unknown as Record<'scrollTo' | 'getBoundingClientRect', (this: Element, ...args: never[]) => unknown>
+    const [scrollTo, rect] = [proto.scrollTo, proto.getBoundingClientRect]
+    // The bar is 300px wide; the steps sit at 0–120, 120–330 and 330–450.
+    const boxes: Record<string, [number, number]> = { 'List Bins': [0, 120], 'Filter Aisle: 4': [120, 330], 'North bay · B-104': [330, 450] }
+    beforeEach(() => {
+      calls.length = 0
+      proto.getBoundingClientRect = function (this: Element) {
+        const box = this.tagName === 'NAV' ? [0, 300]
+          : this.tagName === 'LI' ? boxes[this.querySelector('button')!.textContent!.trim()]
+          : this.getAttribute('aria-current') === 'step' ? boxes[this.textContent!.trim()] : [0, 0]
+        return { left: box[0], right: box[1] } as DOMRect
+      } as never
+      proto.scrollTo = function (this: Element, options: ScrollToOptions) { calls.push(options.left!) } as never
+    })
+    afterEach(() => { Object.assign(proto, { scrollTo, getBoundingClientRect: rect }) })
+
+    test('scrolls whole steps out of sight, never part of one', () => {
+      bar(2)
+      expect(calls.at(-1)).toBe(330)
+    })
+
+    test('says that earlier steps are out of sight', () => {
+      bar(2)
+      expect(screen.getByRole('button', { name: 'Earlier steps' })).toHaveTextContent('…')
+    })
+  })
+
+  test('a path that fits says nothing about earlier steps', () => {
+    bar(0)
+    expect(screen.queryByRole('button', { name: 'Earlier steps' })).not.toBeInTheDocument()
   })
 
   test('holds the recent paths slot', () => {
