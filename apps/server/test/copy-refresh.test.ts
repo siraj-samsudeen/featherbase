@@ -67,6 +67,17 @@ describe('Scheduled copied-table refresh', () => {
     expect(await admin.get('/api/table/Scheduled%20Stores:copy_schedule')).toMatchObject({ enabled: true })
   })
 
+  test('nobody can rename a copied-table refresh, so its handler keeps its linkage', async ({ admin, createUser }) => {
+    await makeCopy(admin)
+    const schedule = await admin.post<{ row_id: string; method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
+    await grantRole(admin, { role: 'Rename Editor', table: ['Scheduled Job'], can_read: true, can_write: true, can_create: true, can_delete: true })
+    const user = await createUser({ roles: ['Rename Editor'] })
+    const url = `/api/table/Scheduled%20Job/${schedule.row_id}:rename`
+    await expect(user.post(url, { new_name: 'renamed_refresh' })).rejects.toMatchObject({ status: 417 })
+    await expect(admin.post(url, { new_name: 'renamed_refresh' })).rejects.toMatchObject({ status: 417 })
+    expect(await admin.get('/api/table/Scheduled%20Stores:copy_schedule')).toMatchObject({ row_id: schedule.row_id, method: schedule.method })
+  })
+
   test('a refresh rejects the every-minute cadence through ordinary job editing', async ({ admin }) => {
     await expect(admin.post('/api/save_row', { table: 'Scheduled Job', row: { method: 'copy_refresh_fake', cadence: 'every minute', enabled: true } })).rejects.toMatchObject({ status: 417, type: 'ValidationError' })
   })

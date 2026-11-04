@@ -40,6 +40,13 @@ const controller: TableController = {
     after_commit: async ({ row }) => {
       await syncScheduledJobs(String(row.method))
     },
+    // A copied-table refresh's row id IS its handler's method and its
+    // linkage key: a rename would cascade the linkage away from the method
+    // and silently stop every refresh. Nobody may rename one (#840 review).
+    before_rename: async ({ row }) => {
+      if (String(row.method).startsWith('copy_refresh_'))
+        throw new AppError('ValidationError', 'A copied-table refresh cannot be renamed. Change its cadence on the copied table instead')
+    },
     on_trash: async ({ row, tx, user }) => {
       if (String(row.method).startsWith('copy_refresh_')) await assertSystemManager(user)
       // #700: an app's job is the app's for as long as it is installed: it

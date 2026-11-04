@@ -4,7 +4,7 @@
 
 ### Requirement: Keep a copied table fresh automatically
 
-A System Manager SHALL schedule a copied table at an existing refresh cadence, change the cadence or pause it. Other people SHALL NOT administer its schedule.
+A System Manager SHALL schedule a copied table at an existing refresh cadence, change the cadence or pause it. Other people SHALL NOT administer its schedule, and nobody SHALL rename its Scheduled Job, whose name ties it to the copied table.
 
 #### Scenario: Plants refresh hourly
 
