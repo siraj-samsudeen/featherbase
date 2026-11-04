@@ -5,6 +5,7 @@
   "title": "Transactional action proof",
   "entryTable": "actionproof.work",
   "server": "server.mjs",
+  "settings": [{"name": "linked_tables", "required": false}],
   "actions": {"version": 2, "operations": {
     "transform": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "discard": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
