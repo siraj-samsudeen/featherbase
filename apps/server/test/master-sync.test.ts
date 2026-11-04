@@ -17,7 +17,7 @@ import { runOneJob } from '../src/jobs'
 
 describe('the three-way rule for one column', () => {
   // snapshot = last source value seen, source = now, featherbase = now.
-  const cases: [string, 'source' | 'featherbase', string | undefined, string | null, string | null, ReturnType<typeof decideColumn>][] = [
+  const cases: [string, 'source' | 'featherbase', string | null | undefined, string | null, string | null, ReturnType<typeof decideColumn>][] = [
     ['nothing changed', 'source', 'A', 'A', 'A', { apply: false }],
     ['nothing changed (ours)', 'featherbase', 'A', 'A', 'A', { apply: false }],
     ['source changed, ours unchanged: source-owned is applied', 'source', 'A', 'B', 'A', { apply: true }],
