@@ -129,6 +129,20 @@ describe('Tickets: instance-configured types (#912)', () => {
     await refused(submit(w.owner, { source_system: w.sap, urgency: 'Now' }))
   })
 
+  test('a person field takes any Person the requester may see, and only those, shown by name', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    // Someone who has never used Tickets.
+    const outsider = await createUser({ email: 'outsider@tickets.example.test', fullName: 'Outside Owner' })
+    await grantRole(admin, { role: 'Person Reader', table: 'Person', can_read: true })
+    const reader = await createUser({ email: 'reader@tickets.example.test', fullName: 'Reader', roles: ['Person Reader'] })
+    const base = { source_system: w.sap, field: 'stras', urgency: 'Now', raised_for: outsider.user }
+    await refused(submit(w.owner, base))
+    const ticket = (await submit(reader, base)).ticket as Ticket
+    const seen = await read(w.support, 'detail', { row_id: ticket.row_id })
+    expect(seen.details.raised_for).toBe(outsider.user)
+    expect((await read(reader, 'detail', { row_id: ticket.row_id })).names[outsider.user!]).toBe('Outside Owner')
+  })
+
   test('configuration cannot shadow the access type or name protected keys, and only a System Manager configures', async ({ admin, createUser }) => {
     const w = await world(admin, createUser)
     await refused(save(admin, 'tickets.ticket_type', { type_key: 'access', label: 'Access', states: 'Open', enabled: true }))
