@@ -43,8 +43,8 @@ Then the ticket is closed and leaves the open queue
 ```
 
 ### Requirement: History says who took which action
-Taking an action SHALL record who took it, from which state to which, and the values they entered. The values
-SHALL stay private to the raiser and support; the shared progress SHALL say only which action was taken.
+Taking an action SHALL record who took it, from which state to which, and the values they entered. The shared
+progress SHALL say which action was taken.
 
 #### Scenario: A question and its answer are kept
 
@@ -52,5 +52,26 @@ SHALL stay private to the raiser and support; the shared progress SHALL say only
 Given Anjali raised a Data Quality Issue for SAP, assigned to Bala
 When Bala asks "Which plant?" and Anjali answers "Plant 1100"
 Then the ticket is back in "Raised" and its history shows Bala asking and Anjali answering, with both texts
-And a colleague sees that a question was asked and answered, but not "Plant 1100"
+```
+
+### Requirement: A ticket type chooses who reads its details
+A ticket's details and history SHALL be readable by everyone who can see the ticket, unless its type is made
+private. A private type's details SHALL be read only by the raiser and support; everyone else sees only which
+actions were taken. Built-in types, such as access requests, are private.
+
+#### Scenario: Data Quality Issue details are open to everyone
+
+```gherkin
+Given Anjali raised a Data Quality Issue for SAP, assigned to Bala
+When Bala asks "Which plant?" and Anjali answers "Plant 1100"
+Then a colleague reads the question and "Plant 1100"
+```
+
+#### Scenario: A private type shows others only the actions
+
+```gherkin
+Given the Data Quality Issue type is private
+And Anjali raised a Data Quality Issue for SAP, assigned to Bala
+When Bala asks "Which plant?" and Anjali answers "Plant 1100"
+Then a colleague sees that a question was asked and answered, but not "Plant 1100"
 ```

@@ -51,7 +51,7 @@ export const dataQualityTransitions = [
 ]
 const states = ['Raised', 'Waiting for raiser', 'Fix planned', 'Fixed: to verify', 'Closed', 'Rejected']
 
-async function world(admin: TestClient, createUser: CreateUserFn) {
+async function world(admin: TestClient, createUser: CreateUserFn, visibility?: 'everyone' | 'private') {
   await discoverPackages([directory])
   await admin.post('/api/install_app', { name: 'tickets' })
   await grantRole(admin, { role: 'Data Quality Verifier', table: 'tickets.ticket', can_read: true })
@@ -71,7 +71,7 @@ async function world(admin: TestClient, createUser: CreateUserFn) {
   const dq = await save(admin, 'tickets.ticket_type', { type_key: 'data_quality_issue', label: 'Data Quality Issue', enabled: true,
     states: states.join('\n'), done_states: 'Closed\nRejected',
     routing: JSON.stringify({ field: 'source_system', table: 'Example Support Contact', match: 'source_system', person: 'person', primary: 'is_primary' }),
-    transitions: JSON.stringify(dataQualityTransitions) })
+    transitions: JSON.stringify(dataQualityTransitions), ...(visibility ? { details_visible_to: visibility } : {}) })
   let order = 0
   const field = (row: object) => save(admin, 'tickets.type_field', { ticket_type: dq.row_id, field_order: ++order, ...row })
   await field({ field_name: 'source_system', label: 'Source system', field_type: 'link', link_table: 'Example System', link_label: 'system_name', required: true })
@@ -96,6 +96,48 @@ const offered = async (client: TestClient, ticket: Ticket) =>
 const plan = { fix_what: 'Door number', fix_where: 'SAP plant master', target_date: '2026-11-10' }
 
 describe('Tickets: transitions per ticket type (#918)', () => {
+  test('details visible to everyone: anyone who sees the ticket reads its details and history; a non-support assignee works it', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    // The routed contact is not a Tickets support user (Vivek on staging, 04-Nov-2026).
+    const vivek = await createUser({ email: 'vivek@tickets.example.test', fullName: 'Vivek' })
+    const contacts = await admin.get<any>(`/api/table/Example%20Support%20Contact?fields=${encodeURIComponent('["row_id","updated_at"]')}`)
+    await save(admin, 'Example Support Contact', { ...contacts.data[0], person: vivek.user })
+    let ticket = await raise(w)
+    expect(ticket.assigned_to).toBe(vivek.user)
+    for (const reader of [vivek, w.colleague]) {
+      const seen = await read(reader, 'detail', { row_id: ticket.row_id })
+      expect(seen.details).toMatchObject({ current_value: '78/499/1', original: 'Two plants carry both door numbers' })
+    }
+    expect(await offered(vivek, ticket)).toEqual(['Confirm', 'Ask a question', 'Reject'])
+    ticket = await take(vivek, ticket, 'Confirm', plan)
+    const seen = await read(w.colleague, 'detail', { row_id: ticket.row_id })
+    expect(seen.details).toMatchObject(plan)
+    expect(seen.privateEvents.map((e: any) => [e.operation, e.by])).toEqual([['transition', vivek.user]])
+    // Reassigning moves the assignee's actions to the new assignee.
+    ticket = (await act(w.support, 'edit', { ...revision(ticket), assigned_to: w.contact.user })).ticket
+    await refused(take(vivek, ticket, 'Mark fixed', { what_changed: 'x' }), /not allowed/i)
+    expect((await take(w.contact, ticket, 'Mark fixed', { what_changed: 'Door number corrected' })).ticket_state).toBe('Fixed: to verify')
+  })
+
+  test('private details: only the requester and support read them, through the app and the generic API', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser, 'private')
+    let ticket = await raise(w)
+    ticket = await take(w.contact, ticket, 'Confirm', plan)
+    const shared = await read(w.colleague, 'detail', { row_id: ticket.row_id })
+    expect(shared.details).toBeUndefined()
+    expect(shared.privateEvents).toBeUndefined()
+    expect(JSON.stringify(shared)).not.toContain('78/499/1')
+    expect((await read(w.raiser, 'detail', { row_id: ticket.row_id })).details).toMatchObject(plan)
+    for (const table of ['tickets.request', 'tickets.event', 'tickets.open_request', 'tickets.open_event']) {
+      const listed = await w.colleague.fetch(`/api/table/${table}?limit_page_length=500`)
+      expect(JSON.stringify(await listed.json())).not.toMatch(/78\/499\/1|SAP plant master/)
+    }
+    // Changing a ticket between an open and a private type is refused: details never move.
+    await save(admin, 'tickets.ticket_type', { type_key: 'open_issue', label: 'Open issue', enabled: true, states: 'Open' })
+    await refused(act(w.support, 'edit', { ...revision(ticket), kind: 'open_issue' }), /private/)
+    await refused(save(admin, 'tickets.ticket_type', { type_key: 'odd_visibility', label: 'Odd', states: 'Open', details_visible_to: 'some' }))
+  })
+
   test('the form leaves action fields to their action; a ticket starts in the first state, routed to the contact', async ({ admin, createUser }) => {
     const w = await world(admin, createUser)
     const type = (await read(w.raiser, 'form')).types.find((t: any) => t.key === 'data_quality_issue')
@@ -145,8 +187,8 @@ describe('Tickets: transitions per ticket type (#918)', () => {
     expect((await read(w.raiser, 'detail', { row_id: ticket.row_id })).details.what_changed).toBe('Plant 1200 corrected too')
   })
 
-  test('history records who took which action with its values; shared progress shows only the action', async ({ admin, createUser }) => {
-    const w = await world(admin, createUser)
+  test('history records who took which action with its values; a private type shows others only the action', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser, 'private')
     let ticket = await raise(w)
     ticket = await take(w.contact, ticket, 'Ask a question', { question: 'Which plant?' })
     expect(ticket.ticket_state).toBe('Waiting for raiser')

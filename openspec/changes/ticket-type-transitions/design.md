@@ -39,10 +39,29 @@ involved: shared visibility never grants a change (stage one's rule).
 
 A transition names type fields. Those fields are asked at that action and left off the new-ticket form; at the
 action they are required whatever their own required flag says. Their values are kept with the request's details
-(the latest value shows on the ticket) and every value is kept in history.
+(the latest value shows on the ticket) and every value is kept in history. They follow the ticket's visibility (decision 6).
 
 Rejected: values only in history. The page would have to replay history to show the current fix plan.
 
 ### 5. Types without transitions are untouched
 
 Only a type with at least one transition changes behaviour, so existing types and their tickets keep working.
+
+### 6. Who reads a ticket's details is a choice per type; open is the default
+
+Tickets began as an access-request app: "Shared progress. Private details." On 04-Nov-2026 Siraj ruled that
+privacy is a choice per ticket type, and open is the default (option A). A type's `details_visible_to` is
+`everyone` (the default, and any type without the setting) or `private`. Built-in types, access requests among
+them, stay private.
+
+An open type's request and history live in their own Tables that everyone may read, so the platform's own
+permissions give exactly the promised audience, through the app and the generic API alike. A private type's
+stay in the private Tables, read by the requester and support only. A ticket's details never move between the
+two: changing a ticket to a type with the other visibility is refused.
+
+Rejected: one set of Tables with the app deciding who reads them. The platform enforces reads on its own Tables,
+so private rows readable by everyone through the generic API would leak.
+
+Not done: letting the assignee and the "raised for" person of a **private** type read its details. The platform
+can only grant a private row to its creator or to a role (or by a share, which lists do not honour). It needs a
+row-readers rule in the access policy, or an upgrade that widens a grant (piece E of #683): #925.

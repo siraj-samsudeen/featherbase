@@ -42,10 +42,10 @@ const writes = new AsyncLocalStorage<{ user: string; operation: string }>()
 function validate(table: string, ctx: Validation) {
   const allowed = writes.getStore()
   if (!allowed || allowed.user !== ctx.user) ctx.reject('Use an authorized Tickets action')
-  if ((table === 'event' || table === 'progress') && !ctx.isNew) ctx.reject('History is append-only')
+  if ((table === 'event' || table === 'open_event' || table === 'progress') && !ctx.isNew) ctx.reject('History is append-only')
   // Each person writes only their own name, which the platform supplies.
   if (table === 'member' && ctx.row.row_id !== ctx.user) ctx.reject('A person may record only their own name')
-  if (table === 'request' && ctx.old && ctx.row.original !== ctx.old.original) ctx.reject('The original request is immutable')
+  if ((table === 'request' || table === 'open_request') && ctx.old && ctx.row.original !== ctx.old.original) ctx.reject('The original request is immutable')
   if (ctx.old && ctx.row.owner !== ctx.old.owner) ctx.reject('The requester is immutable')
 }
 const kinds = ['generic', 'access', 'freshness', 'quality', 'report', 'source', 'schema', 'pipeline', 'backfill']
@@ -68,6 +68,7 @@ function validateType(ctx: Validation) {
     const routing = parse(ctx.row.routing)
     if (['field', 'table', 'match', 'person'].some(k => typeof routing[k] !== 'string' || !routing[k])) ctx.reject('Routing names field, table, match and person (and optionally primary)')
   }
+  if (!['', 'everyone', 'private'].includes(String(ctx.row.details_visible_to ?? ''))) ctx.reject('Details are visible to everyone or private')
   validateTransitions(ctx, states)
 }
 // #918: a type's transitions, in the platform Workflow's shape plus `fields`.
@@ -118,13 +119,13 @@ function validateField(ctx: Validation) {
   if (ctx.row.field_type === 'link' && !String(ctx.row.link_table ?? '').trim()) ctx.reject('A link field names the Table it links to')
 }
 export const validators = {
-  ...Object.fromEntries(['ticket', 'request', 'event', 'progress', 'member'].map(table =>
+  ...Object.fromEntries(['ticket', 'request', 'event', 'progress', 'member', 'open_request', 'open_event'].map(table =>
     [`tickets.${table}`, (ctx: Validation) => validate(table, ctx)])),
   'tickets.ticket_type': validateType,
   'tickets.type_field': validateField,
 }
 export const destructiveGuards = {
-  ...Object.fromEntries(['ticket', 'request', 'event', 'progress', 'member'].map(table =>
+  ...Object.fromEntries(['ticket', 'request', 'event', 'progress', 'member', 'open_request', 'open_event'].map(table =>
     [`tickets.${table}`, (ctx: Validation) => ctx.reject('Tickets references and history cannot be renamed or deleted')])),
   // A field can be removed; a type is switched off, so its tickets keep their meaning.
   'tickets.ticket_type': (ctx: Validation) => ctx.reject('Switch a ticket type off (enabled) instead of renaming or deleting it'),
@@ -179,12 +180,12 @@ async function all(ctx: ReadContext, table: string, fields: string[], filters: L
   }
 }
 interface TypeField { name: string; label: string; type: string; choices: string[]; required: boolean; link_table?: string; link_label?: string }
-interface TicketType { key: string; label: string; states: string[]; done: string[]; reopen: string; routing: Row | null; fields: TypeField[]; transitions: Transition[] }
+interface TicketType { key: string; label: string; states: string[]; done: string[]; reopen: string; routing: Row | null; fields: TypeField[]; transitions: Transition[]; visibility: 'everyone' | 'private' }
 // Fields a transition asks for are recorded by that action, never on intake.
 const actionFieldNames = (type: TicketType) => new Set(type.transitions.flatMap(t => t.fields))
 const intakeFields = (type: TicketType) => { const asked = actionFieldNames(type); return type.fields.filter(f => !asked.has(f.name)) }
 async function configuredTypes(ctx: ReadContext): Promise<Map<string, TicketType>> {
-  const rows = await all(ctx, 'tickets.ticket_type', ['row_id', 'type_key', 'label', 'enabled', 'states', 'done_states', 'reopen_state', 'routing', 'transitions'])
+  const rows = await all(ctx, 'tickets.ticket_type', ['row_id', 'type_key', 'label', 'enabled', 'states', 'done_states', 'reopen_state', 'routing', 'transitions', 'details_visible_to'])
   const fieldRows = await all(ctx, 'tickets.type_field', ['row_id', 'ticket_type', 'field_name', 'label', 'field_type', 'choices', 'link_table', 'link_label', 'required', 'field_order'])
   const types = new Map<string, TicketType>()
   for (const row of rows) {
@@ -192,6 +193,8 @@ async function configuredTypes(ctx: ReadContext): Promise<Map<string, TicketType
     const states = lines(row.states)
     types.set(String(row.type_key), { key: String(row.type_key), label: String(row.label), states, done: lines(row.done_states),
       reopen: String(row.reopen_state || states[0]), routing: row.routing ? parse(row.routing) : null, transitions: transitionsOf(row.transitions),
+      // Siraj, 04-Nov-2026: privacy is a choice per type, and open is the default.
+      visibility: row.details_visible_to === 'private' ? 'private' : 'everyone',
       fields: fieldRows.filter(f => f.ticket_type === row.row_id).sort((a, b) => Number(a.field_order ?? 0) - Number(b.field_order ?? 0)).map(f => ({
         name: String(f.field_name), label: String(f.label), type: String(f.field_type), choices: lines(f.choices), required: !!f.required,
         ...(f.link_table ? { link_table: String(f.link_table), link_label: String(f.link_label || 'row_id') } : {}),
@@ -258,17 +261,29 @@ function details(ctx: ReadContext, value: unknown): Row {
   if (Object.keys(row).some(key => forbidden.includes(key))) ctx.reject('Protected request field')
   return row
 }
+// Where a ticket's request and history live. A ticket of a type whose details
+// are visible to everyone keeps them in Tables everyone may read; every other
+// ticket (built-in types, private types) keeps them private to the requester
+// and support. Decided when the ticket is created.
+interface Place { request: string; event: string; open: boolean }
+const PRIVATE: Place = { request: 'tickets.request', event: 'tickets.event', open: false }
+const OPEN: Place = { request: 'tickets.open_request', event: 'tickets.open_event', open: true }
+async function place(ctx: ReadContext, ticketId: unknown): Promise<Place> {
+  const [row] = await ctx.documents.list(OPEN.request, { fields: ['row_id'], filters: [['row_id', '=', String(ticketId)]], limit_page_length: 1 })
+  return row ? OPEN : PRIVATE
+}
 async function current(ctx: Context, p: Row, supportOnly = true) {
   const ticket = await ctx.documents.get('tickets.ticket', text(ctx, p.row_id, 'Ticket'))
   if (String(ticket.updated_at) !== text(ctx, p.updated_at, 'Revision')) ctx.reject('This ticket changed; reload before trying again')
   const support = capabilities(ctx).support
   if (supportOnly ? !support : !support && ticket.owner !== ctx.user) ctx.reject('Not authorized to change this request')
   // Do not try a denied private read and catch it: host context failures are sticky.
-  const request = await ctx.documents.get('tickets.request', String(ticket.row_id))
-  return { ticket, request, structured: parse(request.details_json), support }
+  const where = await place(ctx, ticket.row_id)
+  const request = await ctx.documents.get(where.request, String(ticket.row_id))
+  return { ticket, request, structured: parse(request.details_json), support, where }
 }
 async function event(ctx: Context, ticket: Row, operation: string, data: Row) {
-  return ctx.documents.create('tickets.event', { ticket: ticket.row_id, operation,
+  return ctx.documents.create((await place(ctx, ticket.row_id)).event, { ticket: ticket.row_id, operation,
     text: JSON.stringify(data), by: ctx.user, at: new Date().toISOString() })
 }
 async function bump(ctx: Context, ticket: Row, values: Row = {}) {
@@ -312,7 +327,7 @@ async function names(ctx: ReadContext, ...values: unknown[]): Promise<Record<str
   return known
 }
 async function history(ctx: ReadContext, ticket: Row) {
-  return all(ctx, 'tickets.event', eventFields, [['ticket', '=', ticket.row_id]])
+  return all(ctx, (await place(ctx, ticket.row_id)).event, eventFields, [['ticket', '=', ticket.row_id]])
 }
 // #918: who a transition lets act. `any` is anyone involved in the ticket:
 // its raiser, its assignee or support; never a colleague who sees the summary.
@@ -340,16 +355,21 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const assignee = type ? await routed(ctx, type, structured) : null
     const ticket = await ctx.documents.create('tickets.ticket', { title, owner: ctx.user, kind: category,
       ticket_state: type ? type.states[0] : category === 'access' ? 'Needs verification' : 'New', ...(assignee ? { assigned_to: assignee } : {}) })
-    await ctx.documents.create('tickets.request', { row_id: ticket.row_id, original, details_json: JSON.stringify(structured), verification_key: randomUUID(), approval_key: randomUUID() })
+    // Access gates' keys belong to private requests only.
+    await ctx.documents.create(type?.visibility === 'everyone' ? OPEN.request : PRIVATE.request, { row_id: ticket.row_id, original, details_json: JSON.stringify(structured),
+      ...(type?.visibility === 'everyone' ? {} : { verification_key: randomUUID(), approval_key: randomUUID() }) })
     return { ticket }
   },
   async edit(ctx) {
     const p = input(ctx, ['row_id', 'updated_at', 'title', 'kind', 'details', 'assigned_to', 'public_update', 'state'])
-    const { ticket, request, structured, support } = await current(ctx, p, false)
+    const { ticket, request, structured, support, where } = await current(ctx, p, false)
     if (!support && ['kind', 'assigned_to', 'public_update', 'state'].some(key => p[key] !== undefined)) ctx.reject('Only support may triage or publish progress')
     const types = await configuredTypes(ctx)
     const category = p.kind === undefined ? String(ticket.kind) : kind(ctx, p.kind, types)
     const type = types.get(category)
+    // Details stay where they were raised: never moved between open and private.
+    if (category !== ticket.kind && (type?.visibility === 'everyone') !== where.open)
+      ctx.reject(where.open ? 'This ticket\'s details are visible to everyone; choose a type whose details are too' : 'This ticket\'s details are private; choose a type whose details are private too')
     const merged = p.details === undefined ? structured : { ...structured, ...object(ctx, p.details) }
     // An action's recorded values are kept as they are; only that action writes them.
     const recorded = type ? Object.fromEntries(Object.entries(merged).filter(([key]) => actionFieldNames(type).has(key))) : {}
@@ -367,10 +387,12 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     if (ticket.kind === 'access' && category !== 'access') ctx.reject('An access request must keep its access gates')
     const recipientChanged = next.email !== structured.email
     const scopeChanged = ['scope', 'resource', 'region'].some(key => next[key] !== structured[key]) || category !== ticket.kind
-    if (p.details !== undefined || category !== ticket.kind) await ctx.documents.update('tickets.request', {
+    if (p.details !== undefined || category !== ticket.kind) await ctx.documents.update(where.request, {
       row_id: request.row_id, updated_at: request.updated_at, details_json: JSON.stringify(next),
-      verification_key: recipientChanged ? randomUUID() : request.verification_key,
-      approval_key: recipientChanged || scopeChanged ? randomUUID() : request.approval_key,
+      ...(where.open ? {} : {
+        verification_key: recipientChanged ? randomUUID() : request.verification_key,
+        approval_key: recipientChanged || scopeChanged ? randomUUID() : request.approval_key,
+      }),
     })
     // Every edit is attributed history, including the requester's own scope or recipient change.
     await event(ctx, ticket, 'edit', { before: structured, details: next, kind: category,
@@ -498,10 +520,11 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     if (asked.some(f => !f)) ctx.reject(`${action} names a field this type does not have; ask a System Manager to fix the type`)
     const recorded = await typedDetails(ctx, type, values, asked as TypeField[], true)
     if (transition.fields.length) {
-      // The values sit with the private request, which only the raiser and support read.
-      if (!support && ticket.owner !== ctx.user) ctx.reject(`Only the raiser or Tickets support can record what ${action} asks for`)
-      const request = await ctx.documents.get('tickets.request', String(ticket.row_id))
-      await ctx.documents.update('tickets.request', { row_id: request.row_id, updated_at: request.updated_at,
+      // The values sit with the request: open, or private to the raiser and support.
+      const where = await place(ctx, ticket.row_id)
+      if (!where.open && !support && ticket.owner !== ctx.user) ctx.reject(`Only the raiser or Tickets support can record what ${action} asks for`)
+      const request = await ctx.documents.get(where.request, String(ticket.row_id))
+      await ctx.documents.update(where.request, { row_id: request.row_id, updated_at: request.updated_at,
         details_json: JSON.stringify({ ...parse(request.details_json), ...recorded }) })
     }
     const from = String(ticket.ticket_state), to = transition.next_state
@@ -557,7 +580,7 @@ export const reads = {
         ...(asked.has(field.name) ? { asked_by_action: true } : {}),
         ...(field.type === 'choice' ? { choices: field.choices } : {}),
         ...(field.type === 'link' ? { options: (await linkRows(ctx, field)).map(r => ({ value: String(r.row_id), label: String(r[field.link_label!] ?? r.row_id) })) } : {}) })
-      configuredList.push({ key: type.key, label: type.label, states: type.states, done: type.done, fields, transitions: type.transitions.length > 0 })
+      configuredList.push({ key: type.key, label: type.label, states: type.states, done: type.done, fields, transitions: type.transitions.length > 0, details_visible_to: type.visibility })
     }
     return { answer: { types: [...kinds.map(key => ({ key, builtin: true })), ...configuredList] } }
   },
@@ -580,10 +603,11 @@ export const reads = {
     const ticket = await ctx.documents.get('tickets.ticket', id)
     const answer: Row = { ticket, events: await all(ctx, 'tickets.progress', progressFields, [['ticket', '=', id]]) }
     const support = capabilities(ctx).support
-    if (ticket.owner === ctx.user || support) {
-      const request = await ctx.documents.get('tickets.request', id)
+    const where = await place(ctx, id)
+    if (where.open || ticket.owner === ctx.user || support) {
+      const request = await ctx.documents.get(where.request, id)
       answer.details = { ...parse(request.details_json), original: request.original }
-      if (support) {
+      if (support || where.open) {
         const events = await history(ctx, ticket)
         answer.privateEvents = events
         const state = workflow(request, events)

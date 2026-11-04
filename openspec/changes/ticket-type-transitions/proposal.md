@@ -19,6 +19,9 @@ verifies the fix. Without that, a ticket can be closed by the wrong person, or w
   action asks for are not asked on the new-ticket form.
 - History records who took which action, from which state to which, and what they wrote. Public progress shows
   the action, not the private values.
+- A ticket type says who reads its details and history: everyone who can see the ticket (the default) or, when it
+  is private, the raiser and support only (Siraj, 04-Nov-2026). Built-in types such as access requests stay
+  private.
 - An app action learns the caller's own roles, so a transition can be allowed to a role.
 
 ## Capabilities

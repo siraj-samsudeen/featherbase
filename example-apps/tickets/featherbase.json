@@ -15,7 +15,7 @@
     {"name": "restricted_resources", "required": false},
     {"name": "linked_tables", "required": false}
   ],
-  "actions": {"version": 2, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.progress", "tickets.member", "tickets.ticket_type", "tickets.type_field"], "operations": {
+  "actions": {"version": 2, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.open_request", "tickets.open_event", "tickets.progress", "tickets.member", "tickets.ticket_type", "tickets.type_field"], "operations": {
     "create": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "edit": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "verify": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
@@ -28,7 +28,7 @@
     "reopen": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "transition": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
   }},
-  "reads": {"version": 1, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.progress", "tickets.member", "tickets.ticket_type", "tickets.type_field"], "operations": {
+  "reads": {"version": 1, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.open_request", "tickets.open_event", "tickets.progress", "tickets.member", "tickets.ticket_type", "tickets.type_field"], "operations": {
     "session": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "form": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "queue": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
@@ -50,6 +50,17 @@
       {"column_name": "approval_key", "label": "Scope revision", "column_type": "Data", "hidden": true},
       {"column_name": "active_verification", "label": "Actively verified recipient revision", "column_type": "Data", "hidden": true}
     ]},
+    {"name": "tickets.open_request", "label": "Open request", "module": "Tickets", "columns": [
+      {"column_name": "original", "label": "Original request", "column_type": "Text", "reqd": true},
+      {"column_name": "details_json", "label": "Structured request", "column_type": "Text"}
+    ]},
+    {"name": "tickets.open_event", "label": "Open history", "module": "Tickets", "id_pattern": "FTO-.########", "columns": [
+      {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket"},
+      {"column_name": "operation", "label": "Operation", "column_type": "Data"},
+      {"column_name": "text", "label": "Event", "column_type": "Text"},
+      {"column_name": "by", "label": "Actor", "column_type": "Data"},
+      {"column_name": "at", "label": "Time", "column_type": "Data"}
+    ]},
     {"name": "tickets.event", "label": "Support event", "module": "Tickets", "id_pattern": "FTE-.########", "columns": [
       {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket"},
       {"column_name": "operation", "label": "Operation", "column_type": "Data"},
@@ -65,7 +76,8 @@
       {"column_name": "done_states", "label": "Done states (one per line)", "column_type": "Text"},
       {"column_name": "reopen_state", "label": "State a reopened ticket returns to", "column_type": "Data"},
       {"column_name": "routing", "label": "Routing (JSON: field, table, match, person, primary)", "column_type": "Text"},
-      {"column_name": "transitions", "label": "Transitions (JSON list: state, action, next_state, allowed, fields)", "column_type": "Text"}
+      {"column_name": "transitions", "label": "Transitions (JSON list: state, action, next_state, allowed, fields)", "column_type": "Text"},
+      {"column_name": "details_visible_to", "label": "Details visible to (everyone or private)", "column_type": "Choice", "choices": "everyone\nprivate", "default_value": "everyone"}
     ]},
     {"name": "tickets.type_field", "label": "Ticket type field", "module": "Tickets", "id_pattern": "FTF-.#####", "title_column": "label", "columns": [
       {"column_name": "ticket_type", "label": "Ticket type", "column_type": "Reference", "reference_table": "tickets.ticket_type", "reqd": true, "in_list_view": true},
@@ -90,7 +102,10 @@
   ],
   "migrations": [
     {"id": "ticket_type_transitions", "fromVersion": "0.1.0", "toVersion": "0.2.0", "operations": [
-      {"kind": "addColumn", "table": "tickets.ticket_type", "column": {"column_name": "transitions", "label": "Transitions (JSON list: state, action, next_state, allowed, fields)", "column_type": "Text"}}
+      {"kind": "addColumn", "table": "tickets.ticket_type", "column": {"column_name": "transitions", "label": "Transitions (JSON list: state, action, next_state, allowed, fields)", "column_type": "Text"}},
+      {"kind": "addColumn", "table": "tickets.ticket_type", "column": {"column_name": "details_visible_to", "label": "Details visible to (everyone or private)", "column_type": "Choice", "choices": "everyone\nprivate", "default_value": "everyone"}},
+      {"kind": "addTable", "table": {"name": "tickets.open_request", "label": "Open request", "module": "Tickets", "columns": [       {"column_name": "original", "label": "Original request", "column_type": "Text", "reqd": true},       {"column_name": "details_json", "label": "Structured request", "column_type": "Text"}     ]}},
+      {"kind": "addTable", "table": {"name": "tickets.open_event", "label": "Open history", "module": "Tickets", "id_pattern": "FTO-.########", "columns": [       {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket"},       {"column_name": "operation", "label": "Operation", "column_type": "Data"},       {"column_name": "text", "label": "Event", "column_type": "Text"},       {"column_name": "by", "label": "Actor", "column_type": "Data"},       {"column_name": "at", "label": "Time", "column_type": "Data"}     ]}}
     ]}
   ],
   "permissions": [
@@ -100,6 +115,8 @@
     {"table": "tickets.event", "role": "All", "own_rows_only": true, "can_read": true, "can_create": true},
     {"table": "tickets.event", "role": "Tickets Support", "can_read": true, "can_create": true},
     {"table": "tickets.progress", "role": "All", "can_read": true, "can_create": true},
+    {"table": "tickets.open_request", "role": "All", "can_read": true, "can_write": true, "can_create": true},
+    {"table": "tickets.open_event", "role": "All", "can_read": true, "can_create": true},
     {"table": "tickets.member", "role": "All", "can_read": true, "can_write": true, "can_create": true},
     {"table": "tickets.ticket_type", "role": "All", "can_read": true},
     {"table": "tickets.ticket_type", "role": "System Manager", "can_read": true, "can_write": true, "can_create": true},

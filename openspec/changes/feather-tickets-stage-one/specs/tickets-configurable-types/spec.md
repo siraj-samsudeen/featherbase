@@ -49,7 +49,7 @@ Then both SAP and StyleHR are shown on the ticket
 ```
 
 ### Requirement: Configured types keep the app's safety guarantees
-A configured type's entered values SHALL stay private to the requester and support, its state changes SHALL be recorded in append-only history, and only support SHALL move it between its configured states. Configuration SHALL never weaken the access type's verification, approval or scope-invalidation gates.
+A configured type made private SHALL keep its entered values private to the requester and support (#918: a type's details are open to everyone unless it is made private), its state changes SHALL be recorded in append-only history, and only support SHALL move it between its configured states. Configuration SHALL never weaken the access type's verification, approval or scope-invalidation gates.
 
 #### Scenario: A colleague sees only the summary of a configured ticket
 
