@@ -43,17 +43,30 @@ test("a read-only form's link to an unreadable row reads neutrally, without its 
   expect(within(field).queryByRole('link')).not.toBeInTheDocument()
 })
 
-test("an editable link field to an unreadable row shows the neutral words, not the id, and no way to the row", async ({ admin, createUser }) => {
+test('an editable form shows a link to an unreadable row as neutral text, with no box to type in and no way to the row', async ({ admin, createUser }) => {
   await seedSites(admin)
   const viewer = await createUserWithRole(admin, createUser, { role: 'Nv Site Writer', table: SITE, can_read: true, can_write: true })
   await renderApp(rowHref(SITE, 'ENK'), viewer)
-  const box = await waitFor(() => {
-    const input = document.querySelector<HTMLInputElement>('[data-form-field="region"] input, input[data-fieldname="region"]')
-      ?? screen.getAllByRole('combobox').find((c) => c.getAttribute('placeholder')?.includes('Nv Region'))
-    if (!input) throw new Error('no region box yet')
-    return input as HTMLInputElement
+  const field = await waitFor(() => {
+    const el = document.querySelector<HTMLElement>('[data-form-field="region"]')
+    if (!el) throw new Error('no region field yet')
+    return el
   })
-  await waitFor(() => expect(box.value).toBe('A row you cannot see'))
+  await waitFor(() => expect(field).toHaveTextContent('A row you cannot see'))
+  expect(field.querySelector('input, textarea, [role="combobox"]')).toBeNull()
+  expect(field).not.toHaveTextContent('KL')
   expect(screen.queryByTestId('link-pane-region')).not.toBeInTheDocument()
   expect(screen.queryByTestId('link-open-region')).not.toBeInTheDocument()
+})
+
+test('saving a form keeps a link to a row the person cannot read', async ({ admin, createUser }) => {
+  await seedSites(admin)
+  const viewer = await createUserWithRole(admin, createUser, { role: 'Nv Site Writer', table: SITE, can_read: true, can_write: true })
+  await renderApp(rowHref(SITE, 'ENK'), viewer)
+  const name = await screen.findByLabelText('Site name', undefined, { timeout: 10_000 })
+  await waitFor(() => expect(document.querySelector('[data-form-field="region"]')).toHaveTextContent('A row you cannot see'))
+  fireEvent.change(name, { target: { value: 'Enchakkal North' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(async () => expect((await admin.get<{ site_name: string }>(`/api/table/${encodeURIComponent(SITE)}/ENK`)).site_name).toBe('Enchakkal North'))
+  expect((await admin.get<{ region: string }>(`/api/table/${encodeURIComponent(SITE)}/ENK`)).region).toBe('KL')
 })
