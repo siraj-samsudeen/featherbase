@@ -16,7 +16,7 @@ async function joinerWithHandCode(admin: Parameters<typeof renderApp>[1], create
   await applySeedPack('jeyarama')
   await sql`delete from person_identifier where source = 'stylehr-roster-sync'`
   const joiner = await createUser({ email: 'joiner.end@example.com', fullName: 'Joiner Jaya' })
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(joiner.user!)}`, admin)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(joiner.user!)}`, admin)
   const panel = await screen.findByTestId('person-identifiers', {}, { timeout: 8000 })
   const form = await within(panel).findByTestId('add-identifier-form')
   await userEvent.selectOptions(within(form).getByLabelText('Identifier'), 'stylehr-employee-code')

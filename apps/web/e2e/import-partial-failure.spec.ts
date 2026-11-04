@@ -177,7 +177,7 @@ test('the Import Log is reachable before a run, and after one fails', async ({ s
       await expect(page.getByTestId('iw-done')).toContainText('failed')
       await expect(page.getByTestId('iw-history-link')).toBeVisible()
       await page.getByTestId('iw-history-link').click()
-      await expect(page).toHaveURL(/Import%20Log/)
+      await expect(page).toHaveURL(/\/featherbase\/admin\/table\/import-log/)
     },
   )
 })

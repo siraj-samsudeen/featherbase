@@ -47,7 +47,7 @@ test('#173: a private attachment links without a token and serves on the cookie'
   const { file_url } = (await uploaded.json()) as { file_url: string }
   expect(file_url).toMatch(/^\/private\/files\//)
 
-  await session.visit('/admin/Person/Guest')
+  await session.visit('/featherbase/admin/table/person/row/Guest')
   await session.step('the attachment link carries no token and still serves on the cookie', async ({ page }) => {
     const row = page.getByTestId('attachment-row').filter({ hasText: 'secret.txt' })
     const href = await row.locator('a').getAttribute('href')

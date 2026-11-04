@@ -160,9 +160,9 @@ test('readable-label migration preserves installed wording', async ({ admin }) =
   await sql`update column_def set label = column_name where parent = 'Sign In Method' and column_name <> 'identifier_system'`
   await sql`update column_def set label = 'Our client key' where parent = 'Sign In Method' and column_name = 'client_id'`
   await sql`update column_def set custom = true where parent = 'Sign In Method' and column_name = 'settings'`
-  await admin.post('/api/save_row', { table: 'Metadata Override', row: {
+  await admin.post('/api/table/Metadata%20Override', {
     row_id: 'readable-override', table_name: 'Sign In Method', column_name: 'kind', property: 'label', value: 'Our kind',
-  } })
+  })
   await admin.post('/api/save_row', { table: 'Translation', row: {
     row_id: 'readable-translation', language: 'fr', source_text: 'service_url', translated_text: 'Service traduit',
   } })

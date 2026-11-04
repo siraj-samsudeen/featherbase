@@ -1,11 +1,14 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
-import { choiceLabel, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
+import { choiceLabel, idFromColumn, namingColumn, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, rowDisplayTitle, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
+import { changeOverride, overrideControl } from '../lib/metadata-override-editor'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
+import { useRowCapabilities } from '../lib/row-capabilities'
+import { useWhoAmI } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
@@ -20,13 +23,15 @@ import { PersonSignInMethods } from './PersonSignInMethods'
 import { PersonIdentifiers } from './PersonIdentifiers'
 import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
+import { ActionDisclosure } from './ActionDisclosure'
 import { WorkflowActions } from './WorkflowActions'
-import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
+import { RelatedWorkspace } from './RelatedWorkspace'
 import { usePeek } from './Peek'
 import { GlossaryHelp } from './GlossaryHelp'
 import { ReadingPresentation } from './ReadingPresentation'
+import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
-import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from './ui'
+import { ContentTabs, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 
@@ -62,12 +67,13 @@ export function FormView({
   table,
   name,
   prefill,
+  isNew = false,
 }: {
   table: string
   name: string
   prefill?: Row
+  isNew?: boolean
 }) {
-  const isNew = name === 'new'
   const meta = useMeta(table)
   const describedTable = useMeta(name, table === 'Table' && !isNew)
   const storage = table === 'Table' && !isNew ? describedTable.data?.storage_identity : null
@@ -82,6 +88,8 @@ export function FormView({
     queryFn: () =>
       api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
+  const access = useRowCapabilities(table, name, !isNew && doc.isSuccess, doc.data?.updated_at)
+  const session = useWhoAmI()
 
   // #465 D5: the fields the instance settings file set are read-only here,
   // each with a sentence saying where it is changed instead.
@@ -104,11 +112,14 @@ export function FormView({
   // top of it instead of racing it. Route-level keying on the prefill
   // string remounts this component when the prefill changes.
   const [values, setValues] = useState<Row>(() => (isNew && prefill ? { ...prefill } : {}))
+  const editingOverride = table === 'Metadata Override'
+  const overrideTarget = useMeta(editingOverride ? String(values.table_name ?? '') : '')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [banner, setBanner] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
+  const [recordActionsOpen, setRecordActionsOpen] = useState(false)
   // TLC-J2 (docs/specs/0007-table-lifecycle.md): removing the row you are
   // looking at. Deletion existed only in the list's bulk bar, so removing one
   // row meant going back, finding it again and ticking a checkbox (#252).
@@ -117,6 +128,7 @@ export function FormView({
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [staleBanner, setStaleBanner] = useState(false)
   const [scriptError, setScriptError] = useState<string | null>(null)
+  const [area, setArea] = useState('Work')
 
   // CUST-003: client scripts registered for this Table. valuesRef mirrors the
   // live values so a script handler always sees current column values.
@@ -186,7 +198,7 @@ export function FormView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientScripts.handlers, values, rowLoaded, rowKey])
 
-  if (meta.isLoading || (!isNew && doc.isLoading))
+  if (meta.isLoading || (!isNew && (doc.isLoading || access.isLoading)))
     return <p className="text-sm text-ink-subtle">Loading…</p>
   if (meta.isError || (!isNew && doc.isError))
     return <p className="text-sm text-negative">Cannot load {table} {name}</p>
@@ -218,7 +230,9 @@ export function FormView({
   function setField(fieldname: string, value: unknown) {
     // A value set here (by a client script, say) is a value, not typed text.
     typedJson.current.delete(fieldname)
-    const next = { ...valuesRef.current, [fieldname]: value }
+    const next = editingOverride
+      ? changeOverride(valuesRef.current, fieldname, value)
+      : { ...valuesRef.current, [fieldname]: value }
     valuesRef.current = next
     setValues(next)
     // A grid's cell errors (`lines.0.customer`) are keyed by row position,
@@ -237,7 +251,9 @@ export function FormView({
   const sourceReadOnly = isSourceReadOnly(m)
   // #432: also read-only when the platform alone writes the rows — the form
   // opens for reading, with no Save, Delete or Rename, for everyone.
-  const rowsReadOnly = isRowsReadOnly(m)
+  const rowsReadOnly = isRowsReadOnly(m) || (isNew
+    ? !(session.data?.capabilities.manage || session.data?.capabilities.creatable.includes(table))
+    : !access.data?.write)
   const boundSource = m.data_source ?? null
   // #324: rows named by whoever creates them ('prompt') need that name typed
   // in on the new-row form; every other naming rule assigns the ID itself.
@@ -246,6 +262,12 @@ export function FormView({
   // it is open. A new row has nothing at the source to overwrite.
   const uncheckedSaves = Boolean(boundSource) && !isNew && !rowsReadOnly && !m.external_modified
   const asksRowId = isNew && m.id_pattern === 'prompt' && !rowsReadOnly
+  const renamable = !isNew && !boundSource && access.data?.rename && !rowManaged && !isOpaqueId(name)
+  // #858: a row named after its own column keeps its id when that column
+  // changes; the form says so and offers Rename to the id the rule gives now.
+  const naming = namingColumn(m.id_pattern)
+  const idNow = naming && rowLoaded ? idFromColumn(naming.prefix, values[naming.column]) : null
+  const idOutOfStep = renamable && idNow !== null && idNow !== name ? idNow : null
 
   async function runAction(action: 'submit' | 'cancel' | 'amend') {
     setBanner(null)
@@ -256,7 +278,7 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       if (action === 'amend') {
-        navigate({ to: '/featherbase/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
+        navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
       } else {
         setBanner('Done')
       }
@@ -276,7 +298,7 @@ export function FormView({
       )
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       setRenaming(false)
-      navigate({ to: '/featherbase/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
     } catch (err) {
       setBanner(err instanceof ApiError ? err.message : 'Rename failed')
     }
@@ -303,7 +325,7 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await refreshWaitingAfterSave(queryClient, table)
-      navigate({ to: '/featherbase/admin/$table', params: { table }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table', params: { table }, search: { filters: undefined } })
     } catch (err) {
       setDeleteError(err instanceof ApiError ? err.message : 'Delete failed')
       setDeleteBusy(false)
@@ -320,6 +342,8 @@ export function FormView({
     const json = parseTypedJson(m.columns, valuesRef.current, typedJson.current)
     const result = schema.safeParse(json.values)
     const fieldErrors = { ...(result.success ? {} : zodFieldErrors(result.error)), ...json.errors }
+    if (editingOverride && valuesRef.current.column_name === undefined)
+      fieldErrors.column_name = 'Choose a column or Whole Table'
     if (asksRowId && !String(valuesRef.current[ROW_ID_FIELD.column_name] ?? '').trim())
       fieldErrors[ROW_ID_FIELD.column_name] = 'Row ID is required'
     if (Object.keys(fieldErrors).length) {
@@ -349,6 +373,11 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
+      if (editingOverride) {
+        await queryClient.invalidateQueries({ queryKey: ['meta', String(saved.table_name)] })
+        if (typeof baseline.table_name === 'string' && baseline.table_name !== saved.table_name)
+          await queryClient.invalidateQueries({ queryKey: ['meta', baseline.table_name] })
+      }
       await refreshWaitingAfterSave(queryClient, table)
       // #414: a person's name is cached per id for the heading, breadcrumb
       // and Recent; a save may have changed it.
@@ -356,7 +385,7 @@ export function FormView({
       if (!isNew) await queryClient.invalidateQueries({ queryKey: ['row-title', table, name] })
       if (isNew) {
         navigate({
-          to: '/featherbase/admin/$table/$name',
+          to: '/featherbase/admin/table/$table/row/$name',
           params: { table, name: String(saved.row_id) },
           search: { prefill: undefined },
         })
@@ -381,8 +410,44 @@ export function FormView({
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 
+  const work = <div className="flex flex-col gap-6 lg:flex-row">
+    <div className="min-w-0 max-w-3xl flex-1">
+      {sections.map((fields, si) => (
+        <div key={si} data-testid={`form-section-${si}`}
+          className={cardClasses('mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2')}>
+          {fields.map((stored) => {
+            const { field: f, value } = editingOverride
+              ? overrideControl(stored, values, overrideTarget.data)
+              : { field: stored, value: values[stored.column_name] }
+            return f.column_type === 'Column Break' ? (
+              <div key={f.column_name} className="hidden md:block" />
+            ) : (
+              <FieldControl key={f.column_name}
+                field={rowsReadOnly || (submittable && status !== 'draft') || managedFields.has(f.column_name) ? { ...f, read_only: true } : f}
+                managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
+                value={value} error={errors[f.column_name]} errors={errors}
+                onChange={(v) => {
+                  setField(f.column_name, v)
+                  if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
+                }}
+                meta={m} values={values} setField={setField}
+              />
+            )
+          })}
+        </div>
+      ))}
+    </div>
+    {!isNew && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
+      {/* person-identities: the one platform Table whose rows sign in. */}
+      {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
+      {table === 'Person' && <PersonSignInMethods user={name} />}
+      {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
+    </aside>}
+  </div>
   const reading = !isNew && rowsReadOnly ? m.reading_presentation : null
-  const RawDetails = reading ? 'details' : 'div'
+  // #825: a Version row reads as the change it records; its fields fold away.
+  const changeRecord = !isNew && table === 'Version'
+  const RawDetails = reading || changeRecord ? 'details' : 'div'
 
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
@@ -390,7 +455,7 @@ export function FormView({
         <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>Admin</RouterLink>
         <span aria-hidden="true">/</span>
         <RouterLink
-          to="/featherbase/admin/$table"
+          to="/featherbase/admin/table/$table"
           params={{ table }}
           search={{ filters: undefined }}
           className={touchLinkClasses('hover:underline')}
@@ -448,6 +513,7 @@ export function FormView({
               {status === 'submitted' ? 'Submitted' : status === 'cancelled' ? 'Cancelled' : 'Draft'}
             </span>
           )}
+          {!isNew && <ActionDisclosure label="Record actions" open={recordActionsOpen} onOpenChange={setRecordActionsOpen}>
           {!isNew && (
             <RouterLink
               to="/featherbase/print/$table/$name"
@@ -462,7 +528,7 @@ export function FormView({
           {/* #100 pattern 6: walk this row's relational neighborhood. */}
           {!isNew && m.kind !== 'settings' && (
             <RouterLink
-              to="/featherbase/admin/map/$table/$name"
+              to="/featherbase/admin/table/$table/row/$name/map"
               params={{ table, name }}
               search={{ trail: undefined }}
               data-testid="form-map"
@@ -472,7 +538,7 @@ export function FormView({
             </RouterLink>
           )}
           {/* A bound row's pk belongs to the source — never renameable here. */}
-          {!isNew && !renaming && !boundSource && !rowsReadOnly && !rowManaged && !isOpaqueId(name) && (
+          {renamable && !renaming && (
             <button
               onClick={() => {
                 setRenameValue(name)
@@ -506,7 +572,7 @@ export function FormView({
               so an affordance here would only ever produce an error), and a
               read-only source, which owns its rows. */}
           {!isNew &&
-            !rowsReadOnly &&
+            access.data?.delete &&
             !rowManaged &&
             m.kind !== 'settings' &&
             m.kind !== 'sub_table' && (
@@ -521,17 +587,18 @@ export function FormView({
                 {t('Delete')}
               </button>
             )}
+          </ActionDisclosure>}
           {!rowsReadOnly && (
             <button
               onClick={save}
-              disabled={saving || !dirty || (submittable && status !== 'draft')}
+              disabled={saving || !dirty || (submittable && status !== 'draft') || (editingOverride && !overrideTarget.data)}
               data-testid="form-save"
               className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
             >
               {saving ? t('Saving…') : t('Save')}
             </button>
           )}
-          {submittable && status === 'draft' && !dirty && (
+          {submittable && access.data?.submit && status === 'draft' && !dirty && (
             <button
               onClick={() => runAction('submit')}
               data-testid="form-submit"
@@ -540,7 +607,7 @@ export function FormView({
               Submit
             </button>
           )}
-          {submittable && status === 'submitted' && (
+          {submittable && access.data?.cancel && status === 'submitted' && (
             <button
               onClick={() => runAction('cancel')}
               data-testid="form-cancel"
@@ -549,7 +616,7 @@ export function FormView({
               Cancel
             </button>
           )}
-          {submittable && status === 'cancelled' && (
+          {submittable && access.data?.amend && status === 'cancelled' && (
             <button
               onClick={() => runAction('amend')}
               data-testid="form-amend"
@@ -650,6 +717,7 @@ export function FormView({
           {banner}
         </p>
       )}
+      {!isNew && access.isError && <p role="alert" className="mb-3 text-sm text-negative">Available operations could not be checked. Reload to retry.</p>}
       {scriptError && (
         <div
           className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm text-caution"
@@ -671,6 +739,29 @@ export function FormView({
           edit are not detected. Saving replaces what is there.
         </p>
       )}
+      {idOutOfStep && naming && (
+        <p
+          role="note"
+          className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm text-ink"
+          data-testid="form-id-out-of-step"
+        >
+          <span>
+            This row keeps the id {name}. Its {m.columns.find((c) => c.column_name === naming.column)?.label || naming.column} now
+            gives {idOutOfStep}.
+          </span>
+          <button
+            onClick={() => {
+              setRenameValue(idOutOfStep)
+              setRenaming(true)
+              setRecordActionsOpen(true)
+            }}
+            data-testid="form-id-rename"
+            className={buttonClasses()}
+          >
+            Rename to {idOutOfStep}
+          </button>
+        </p>
+      )}
       {staleBanner && (
         <div
           className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm"
@@ -682,6 +773,7 @@ export function FormView({
           <button
             onClick={async () => {
               await queryClient.invalidateQueries({ queryKey: ['doc', table, name] })
+              await queryClient.invalidateQueries({ queryKey: ['row-capabilities'] })
               setStaleBanner(false)
             }}
             data-testid="stale-refresh"
@@ -691,61 +783,41 @@ export function FormView({
           </button>
         </div>
       )}
+      {editingOverride && Boolean(values.table_name) && !overrideTarget.data && (
+        <p role="status" className="mb-4 text-sm text-ink-muted">
+          {overrideTarget.isError ? 'Cannot load the selected Table. Choose another Table or try again.' : 'Loading the selected Table…'}
+        </p>
+      )}
+      {editingOverride && !isNew && typeof baseline.table_name === 'string' && (
+        <RouterLink
+          to="/featherbase/admin/table/$table"
+          params={{ table: baseline.table_name }}
+          search={{ filters: undefined }}
+          className={touchLinkClasses('mb-4 inline-flex text-sm text-accent hover:underline')}
+        >
+          Open Table: {baseline.table_name}
+        </RouterLink>
+      )}
       {reading && <ReadingPresentation presentation={reading} meta={m} values={values} />}
-      <RawDetails data-testid={reading ? 'raw-details' : undefined}>
-      {reading && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t('Raw details')}</summary>}
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="min-w-0 max-w-3xl flex-1">
-          {sections.map((fields, si) => (
-            <div
-              key={si}
-              data-testid={`form-section-${si}`}
-              className={cardClasses('mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2')}
-            >
-              {fields.map((f) =>
-                f.column_type === 'Column Break' ? (
-                  <div key={f.column_name} className="hidden md:block" />
-                ) : (
-                  <FieldControl
-                    key={f.column_name}
-                    field={
-                      rowsReadOnly || (submittable && status !== 'draft') || managedFields.has(f.column_name)
-                        ? { ...f, read_only: true }
-                        : f
-                    }
-                    managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
-                    value={values[f.column_name]}
-                    error={errors[f.column_name]}
-                    errors={errors}
-                    onChange={(v) => {
-                      setField(f.column_name, v)
-                      if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
-                    }}
-                    meta={m}
-                    values={values}
-                    setField={setField}
-                  />
-                ),
-              )}
-            </div>
-          ))}
-        </div>
-        {!isNew && (
-          <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
-            {/* person-identities: the one platform Table whose rows sign in. */}
-            {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
-            {table === 'Person' && <PersonSignInMethods user={name} />}
-            {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
-            <ConnectionsPanel table={table} name={name} />
-            <Assignments table={table} name={name} />
-            <Tags table={table} name={name} />
-            <Attachments table={table} name={name} />
-            <Comments table={table} name={name} />
-            <ActivityTimeline table={table} name={name} />
-          </aside>
-        )}
-      </div>
-      {!isNew && m.kind === 'table' && <RelatedTabs table={table} name={name} />}
+      {changeRecord && <ChangeRecord values={values} />}
+      <RawDetails data-testid={reading || changeRecord ? 'raw-details' : undefined}>
+      {(reading || changeRecord) && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t(changeRecord ? 'Raw JSON' : 'Raw details')}</summary>}
+      {isNew ? work : <ContentTabs label="Record workspace" value={area} onChange={setArea} tabs={[
+        { id: 'Work', label: 'Work', content: work },
+        { id: 'Related', label: 'Related', content: <RelatedWorkspace table={table} name={name} title={rowDisplayTitle(m, doc.data ?? {}, name)} active={area === 'Related'} /> },
+        { id: 'Collaboration', label: 'Collaboration', content: <>
+          <p className="mb-4 text-sm text-ink-muted">People, tags and files for this record. Disabled features show existing content read-only.</p>
+          <div className="grid max-w-5xl grid-cols-1 items-start gap-4 lg:grid-cols-3">
+            <Assignments table={table} name={name} readOnly={!m.enable_assignments || !access.data?.assign} />
+            <Tags table={table} name={name} readOnly={!m.enable_tags || !access.data?.tag} />
+            <Attachments table={table} name={name} readOnly={!m.enable_files} canUpload={Boolean(access.data?.upload)} />
+          </div>
+        </> },
+        { id: 'Activity', label: 'Activity', content: <div className="max-w-3xl space-y-4">
+          <ActivityTimeline table={table} name={name} />
+          {m.enable_discussion && access.data?.comment && <Comments table={table} name={name} />}
+        </div> },
+      ]} />}
       </RawDetails>
     </div>
   )
@@ -1237,6 +1309,13 @@ export function LinkControl({
     queryFn: () => api.get<Record<string, unknown>>(`/api/table/${encodeURIComponent(target)}/${encodeURIComponent(String(value))}`),
   })
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const blurTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const searchVersion = useRef(0)
+  useEffect(() => () => {
+    clearTimeout(timer.current)
+    clearTimeout(blurTimer.current)
+    searchVersion.current++
+  }, [])
   const peek = usePeek()
   const navigate = useNavigate()
   // #100 pattern 1: a set reference is a place you can GO — ◎ peeks at the
@@ -1264,12 +1343,14 @@ export function LinkControl({
   }
 
   function search(q: string) {
+    const version = ++searchVersion.current
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
       try {
         if (picker.peopleSearch) {
           // Name, @username, address or employee code — never the id.
           const res = await api.get<{ people: { row_id: string; label: string }[] }>(`/api/people/pick?q=${encodeURIComponent(q)}`)
+          if (version !== searchVersion.current) return
           setOptions(res.people.map((p) => ({ value: p.row_id, label: p.label })))
           openList()
           return
@@ -1280,10 +1361,11 @@ export function LinkControl({
           fields: label ? ['row_id', label] : ['row_id'],
           limit_page_length: 10,
         })
+        if (version !== searchVersion.current) return
         setOptions(res.data.map((r) => ({ value: r.row_id, label: label ? String(r[label] ?? '') || r.row_id : r.row_id })))
         openList()
       } catch {
-        setOptions([])
+        if (version === searchVersion.current) setOptions([])
       }
     }, 150)
   }
@@ -1307,7 +1389,9 @@ export function LinkControl({
         onBlur={() => {
           // A search still waiting must not reopen the list on a cell left behind.
           clearTimeout(timer.current)
-          setTimeout(() => {
+          searchVersion.current++
+          clearTimeout(blurTimer.current)
+          blurTimer.current = setTimeout(() => {
             setOpen(false)
             // A filter shows only what it filters by, and a grid cell what will
             // be saved: text typed but never picked goes.
@@ -1347,7 +1431,7 @@ export function LinkControl({
             onMouseDown={(e) => {
               e.preventDefault()
               navigate({
-                to: '/featherbase/admin/$table/$name',
+                to: '/featherbase/admin/table/$table/row/$name',
                 params: { table: target, name: String(value) },
                 search: { prefill: undefined },
               })
@@ -1386,8 +1470,8 @@ export function LinkControl({
           )}
           {!forFilter && (
             <RouterLink
-              to="/featherbase/admin/$table/$name"
-              params={{ table: target, name: 'new' }}
+              to="/featherbase/admin/table/$table/new"
+              params={{ table: target }}
               search={{ prefill: undefined }}
               className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
               data-testid="link-create-new"

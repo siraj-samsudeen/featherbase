@@ -9,8 +9,8 @@ describe('login return path', () => {
       .toBe('/other/review/item?filter=a%26b&owner=me#selected=42')
     expect(safeLoginNext('/tasker/?view=work#task=EXPLICIT', '#task=INHERITED'))
       .toBe('/tasker/?view=work#task=EXPLICIT')
-    expect(safeLoginNext('/featherbase/admin/User?view=active', '#row=Administrator'))
-      .toBe('/featherbase/admin/User?view=active#row=Administrator')
+    expect(safeLoginNext('/featherbase/admin/table/user?view=active', '#row=Administrator'))
+      .toBe('/featherbase/admin/table/user?view=active#row=Administrator')
   })
 
   test.each([

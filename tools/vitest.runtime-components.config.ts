@@ -5,7 +5,7 @@ export default {
   ...web,
   test: {
     ...web.test,
-    include: ['test/task-management.test.tsx'],
+    include: ['test/task-management.test.tsx', 'test/tasker*.test.tsx'],
     coverage: {
       enabled: true,
       provider: 'istanbul',

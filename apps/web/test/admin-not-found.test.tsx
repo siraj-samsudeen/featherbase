@@ -9,7 +9,7 @@ import { test, expect, renderApp } from './pg-test'
 test.for([
   ['the retired Sign-in methods page', '/featherbase/admin/sign-in-methods'],
   ['a made-up page', '/featherbase/admin/no-such-page-489'],
-  ['a row of a made-up Table', '/featherbase/admin/no-such-page-489/some-row'],
+  ['a row of a made-up Table', '/featherbase/admin/table/no-such-page-489/row/some-row'],
   ['a path deeper than any Admin page', '/featherbase/admin/no/such/page/489'],
 ] as const)('%s says Page not found, with a link to the Admin home', async ([, path], { admin }) => {
   await renderApp(path, admin)
@@ -23,13 +23,13 @@ test.for([
 // who deleted it and when.
 test("a deleted Table's path still says it was deleted", async ({ admin }) => {
   await logAccess('Administrator', 'delete_table', { table: 'Buried Table 489' })
-  await renderApp('/featherbase/admin/Buried%20Table%20489', admin)
+  await renderApp('/featherbase/admin/table/buried-table-489', admin)
   expect(await screen.findByText(/Table Buried Table 489 was deleted by Administrator on/)).toBeInTheDocument()
   expect(screen.queryByTestId('page-not-found')).toBeNull()
 })
 
 test('an existing Table still opens its list', async ({ admin }) => {
-  await renderApp('/featherbase/admin/Person', admin)
+  await renderApp('/featherbase/admin/table/person', admin)
   expect(await screen.findByTestId('list-view')).toBeInTheDocument()
   expect(screen.queryByTestId('page-not-found')).toBeNull()
 })

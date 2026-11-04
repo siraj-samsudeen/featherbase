@@ -8,7 +8,7 @@ import { test, expect, renderApp } from './pg-test'
 import { rememberLoginNext, takeLoginNext } from '../src/pages/Login'
 
 const anonymous = { user: null, token: null } as never
-const DEEP = '/featherbase/admin/Sign%20In%20Method/google'
+const DEEP = '/featherbase/admin/table/sign-in-method/row/google'
 
 type Router = { state: { location: { pathname: string; searchStr: string; href: string } } }
 const where = (r: unknown) => (r as Router).state.location

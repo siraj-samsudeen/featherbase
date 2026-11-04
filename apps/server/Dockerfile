@@ -37,14 +37,16 @@ COPY patches patches
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
+COPY packages/shop-floor/package.json packages/shop-floor/
 RUN pnpm install --frozen-lockfile --filter web...
 
 COPY packages/shared packages/shared
+COPY packages/shop-floor packages/shop-floor
 COPY apps/web apps/web
 RUN pnpm --filter web build
 
 # ---- Stage 2: build independently packaged runtime apps --------------------
-FROM node:26.13.0-slim AS tasker-build
+FROM web-build AS tasker-build
 WORKDIR /app/example-apps/tasker
 COPY example-apps/tasker/package.json example-apps/tasker/package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -90,9 +92,9 @@ CMD ["pnpm", "--filter", "server", "start"]
 
 # ---- Stage 4: a client instance's apps and folder ---------------------------
 # Skipped by every build that doesn't name an instance.
-FROM node:26.13.0-slim AS instance-build
+FROM web-build AS instance-build
 ARG FEATHERBASE_INSTANCE
-WORKDIR /build
+WORKDIR /app
 COPY client-apps client-apps
 COPY example-apps example-apps
 COPY tools/dev.mjs tools/build-instance-apps.mjs tools/
@@ -106,8 +108,8 @@ ENV FEATHERBASE_INSTANCE=$FEATHERBASE_INSTANCE
 ENV FEATHERBASE_APP_PATHS='["/app/instance-apps/*"]'
 
 # ---- Stage 6: this repository's own server image (the default target) ------
-# The platform image plus Tasker, for this repository's Railway services until
-# #563 retires Tasker. NODE_ENV, EXPOSE and CMD come from the platform stage.
+# The platform image plus Tasker. NODE_ENV, EXPOSE and CMD come from the
+# platform stage.
 FROM platform AS tasker-image
 COPY --from=tasker-build /app/example-apps/tasker/package.json example-apps/tasker/package.json
 COPY --from=tasker-build /app/example-apps/tasker/featherbase.json example-apps/tasker/featherbase.json

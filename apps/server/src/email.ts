@@ -94,6 +94,16 @@ function activeSmtpConfig(): SmtpConfig | null {
   return cfg && testOverrides ? { ...cfg, ...testOverrides } : cfg
 }
 
+/** #833: where mail goes right now, so a screen can say "emailed" only when it
+ *  was. A broken SMTP setting still counts as SMTP: the send itself fails. */
+export function mailTransport(): 'smtp' | 'email_sink' {
+  try {
+    return activeSmtpConfig() ? 'smtp' : 'email_sink'
+  } catch {
+    return 'smtp'
+  }
+}
+
 // Read per send, not at import, so a changed environment needs no restart of
 // this module (and the tests can switch transports). Blank means unset.
 export function readSmtpConfig(env: Record<string, string | undefined> = processEnvironment()): SmtpConfig | null {

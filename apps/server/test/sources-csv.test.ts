@@ -98,6 +98,55 @@ async function makeCsvSource(admin: {
 }
 
 describe('M1: csv-folder source', () => {
+  test('#821: reflection refuses another Table slug without stranded metadata', async ({ admin }) => {
+    const original = 'Seed Store Master '
+    await admin.post('/api/table_def', {
+      name: original, id_pattern: 'prompt',
+      columns: [{ column_name: 'title', column_type: 'Data', label: 'Original title' }],
+    })
+    await admin.post('/api/save_row', { table: original, row: { row_id: 'kept', title: 'Original content' } })
+    const before = await admin.get('/api/table/seed-store-master:meta')
+    await admin.post('/api/table/Data%20Source', {
+      row_id: 'seed-fixture', engine: 'csv-folder', root_path: dir, access: 'read_write',
+    })
+    const reflected = await admin.post<{ created: { name: string }[]; skipped: { table: string; reason: string }[] }>(
+      '/api/table/Data%20Source/seed-fixture:reflect', { tables: ['store_master.csv'] },
+    )
+    // Reflection's public contract reports per-target failures as skips, not
+    // a top-level HTTP conflict, and does not silently rename the proposal.
+    expect(reflected.created).toEqual([])
+    expect(reflected.skipped).toEqual([{ table: 'store_master.csv', reason: expect.stringContaining(original) }])
+    expect(await admin.get('/api/table/seed-store-master:meta')).toEqual(before)
+    expect(await admin.get('/api/table/seed-store-master/kept')).toMatchObject({ title: 'Original content' })
+    expect(await sql`select name from table_def where name like 'Seed Store Master%'`).toEqual([{ name: original }])
+    expect(await sql`select parent from column_def where parent = 'Seed Store Master'`).toEqual([])
+    expect(await sql`select name from table_def where data_source = 'seed-fixture'`).toEqual([])
+    expect(await sql`select to_regclass('featherbase.seed_store_master') as stranded`).toEqual([{ stranded: null }])
+  })
+
+  test('#821: distinct reflection and repeat reflection retain their own binding', async ({ admin }) => {
+    await admin.post('/api/table/Data%20Source', {
+      row_id: 'seed-fixture', engine: 'csv-folder', root_path: dir, access: 'read_write',
+    })
+    const allowed = await admin.post<{ created: { name: string }[]; skipped: unknown[] }>(
+      '/api/table/Data%20Source/seed-fixture:reflect', { tables: ['finance/notes.csv'] },
+    )
+    expect(allowed.skipped).toEqual([])
+    expect(allowed.created).toHaveLength(1)
+    const name = allowed.created[0].name
+    const path = `/api/table/${encodeURIComponent(name)}`
+    const rows = await admin.get<{ data: { row_id: string; id: string; note: string }[] }>(`${path}?fields=${encodeURIComponent('["id","note"]')}`)
+    expect(rows.data).toEqual(expect.arrayContaining([
+      { row_id: '1', id: '1', note: 'multi\nline note' },
+      { row_id: '2', id: '2', note: 'plain' },
+    ]))
+    expect(rows.data).toHaveLength(2)
+    const binding = await admin.get(`${path}:meta`)
+    const again = await admin.post('/api/table/Data%20Source/seed-fixture:reflect', { tables: ['finance/notes.csv'] })
+    expect(again).toEqual({ created: [], skipped: [{ table: 'finance/notes.csv', reason: `Already reflected as ${name}` }] })
+    expect(await admin.get(`${path}:meta`)).toEqual(binding)
+  })
+
   test('introspects every csv (recursively), skipping non-csv files', async ({ admin }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {

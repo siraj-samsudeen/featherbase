@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { DevError, assertLocal, assertMadeUpDataAllowed, instanceEnvironment, listInstances, localStatus, madeUpSecrets, parseCommand, postgresHelp, resolveInstance } from './dev.mjs'
+import { createServer } from 'node:http'
+import { DevError, assertLocal, assertMadeUpDataAllowed, instanceEnvironment, listInstances, localStatus, madeUpSecrets, parseCommand, postgresHelp, resolveInstance, verify } from './dev.mjs'
 
 function repoWith(instanceJson) {
   const base = mkdtempSync(join(tmpdir(), 'dev-test-'))
@@ -137,4 +138,55 @@ test('a refused login says how to create it, by platform', () => {
   assert.match(refused('linux'), /ALTER USER postgres/)
   assert.match(refused('win32'), /PostgreSQL installer/)
   assert.doesNotMatch(refused('linux'), /postgres:postgres/)
+})
+
+// Real HTTP boundary: readiness must distinguish installation from user access.
+async function readinessServer(t, { catalog = [], pageStatus = 404, active = true } = {}) {
+  const requests = []
+  const server = createServer((req, res) => {
+    requests.push(`${req.method} ${req.url}`)
+    res.setHeader('content-type', 'application/json')
+    if (req.url === '/api/login') res.end(JSON.stringify({ token: 'readiness-token' }))
+    else if (req.headers.authorization !== 'Bearer readiness-token') {
+      res.writeHead(401).end('{}')
+    } else if (req.url === '/api/apps') res.end(JSON.stringify({ installed: [{ name: 'restricted_app', active }] }))
+    else if (req.url === '/api/app_catalog') res.end(JSON.stringify(catalog))
+    else if (req.url === '/restricted_app/') res.writeHead(pageStatus).end('{}')
+    else res.writeHead(500).end('{}')
+  })
+  await new Promise((done) => server.listen(0, done))
+  t.after(() => new Promise((done) => server.close(done)))
+  const port = String(server.address().port)
+  return { requests, env: { API_PORT: port, WEB_PORT: port }, instance: { apps: [{ name: 'restricted_app' }] } }
+}
+
+test('readiness accepts an active app that requires explicit admission', async (t) => {
+  const { instance, env, requests } = await readinessServer(t)
+  await verify(instance, env)
+  assert.deepEqual(requests, ['POST /api/login', 'GET /api/apps', 'GET /api/app_catalog', 'GET /restricted_app/'])
+})
+
+test('readiness still requires a catalog-admitted page to serve', async (t) => {
+  const { instance, env } = await readinessServer(t, { catalog: [{ name: 'restricted_app' }], pageStatus: 500 })
+  await assert.rejects(verify(instance, env), /HTTP 500; expected a serving page/)
+})
+
+test('readiness accepts a catalog-admitted serving page', async (t) => {
+  const { instance, env } = await readinessServer(t, { catalog: [{ name: 'restricted_app' }], pageStatus: 200 })
+  await verify(instance, env)
+})
+
+test('readiness refuses an inactive installation', async (t) => {
+  const { instance, env } = await readinessServer(t, { active: false })
+  await assert.rejects(verify(instance, env), /installed but not active/)
+})
+
+test('readiness refuses a page exposed outside its access catalog', async (t) => {
+  const { instance, env } = await readinessServer(t, { pageStatus: 200 })
+  await assert.rejects(verify(instance, env), /expected 404 for a user without app access/)
+})
+
+test('readiness refuses a failing page outside its access catalog', async (t) => {
+  const { instance, env } = await readinessServer(t, { pageStatus: 500 })
+  await assert.rejects(verify(instance, env), /HTTP 500; expected 404 for a user without app access/)
 })

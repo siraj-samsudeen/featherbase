@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { anonymousTest as test, expect, ADMIN_PWD, loginAs, tokenFor } from './fixtures'
 
 const DT = 'Portal E2E Ticket'
@@ -62,7 +63,7 @@ test('WEB-003: portal user sees only their own documents', async ({ session }) =
   await session.step('sign in as Alice', async ({ page }) => {
     await loginAs(page, ALICE, PWD, LANDING)
   })
-  await session.visit(`/portal/${encodeURIComponent(DT)}`)
+  await session.visit(`/featherbase/portal/${encodeURIComponent(tableSlug(DT))}`)
   await session.step('sees only her own ticket', async ({ page }) => {
     await expect(page.getByTestId('portal-title')).toContainText(DT)
     // #489: who is signed in is in the top bar's Account menu.
@@ -81,7 +82,7 @@ test("WEB-003: opening another user's document returns 403", async ({ session })
     await loginAs(page, ALICE, PWD, LANDING)
   })
   // Directly navigate to Bob's ticket — the API denies it (if_owner).
-  await session.visit(`/portal/${encodeURIComponent(DT)}/${encodeURIComponent(bobDoc)}`)
+  await session.visit(`/featherbase/portal/${encodeURIComponent(tableSlug(DT))}/${encodeURIComponent(bobDoc)}`)
   await session.step('the API denies it', async ({ page }) => {
     await expect(page.getByTestId('portal-forbidden')).toBeVisible()
     await expect(page.getByTestId('portal-doc')).toHaveCount(0)
@@ -92,7 +93,7 @@ test('WEB-003: the owner CAN open their own document', async ({ session }) => {
   await session.step('sign in as Bob', async ({ page }) => {
     await loginAs(page, BOB, PWD, LANDING)
   })
-  await session.visit(`/portal/${encodeURIComponent(DT)}/${encodeURIComponent(bobDoc)}`)
+  await session.visit(`/featherbase/portal/${encodeURIComponent(tableSlug(DT))}/${encodeURIComponent(bobDoc)}`)
   await session.step('sees his own ticket', async ({ page }) => {
     await expect(page.getByTestId('portal-doc')).toBeVisible()
     await expect(page.getByTestId('portal-field-subject')).toContainText('Bob billing question')

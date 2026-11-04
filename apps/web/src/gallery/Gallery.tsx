@@ -22,9 +22,9 @@ import {
   Breadcrumbs,
   ContentTabs,
   SearchableList,
-} from '../components/ui'
-import { fmtCount, fmtINR, fmtPct } from '../lib/inr'
-import { ChartColumn, ExternalLink, House, ListChecks, Moon, Plus, Sun, UserRound } from '../components/ui/icons'
+} from '@featherbase/shop-floor'
+import { fmtCount, fmtINR, fmtPct } from '@featherbase/shop-floor'
+import { ChartColumn, ExternalLink, House, ListChecks, Moon, Plus, Sun, UserRound } from '@featherbase/shop-floor'
 
 const ExampleSearch = createContext('')
 const EXAMPLES: Record<string, { files: string[]; keywords?: string }> = {
@@ -49,7 +49,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-xs font-bold uppercase tracking-wide text-ink-muted">{title}</h2>
-      {EXAMPLES[title].files.map((file) => <code key={file} className="text-xs text-ink-subtle">apps/web/src/components/ui/{file}.tsx</code>)}
+      {EXAMPLES[title].files.map((file) => <code key={file} className="text-xs text-ink-subtle">packages/shop-floor/src/{file}.tsx</code>)}
       {children}
     </section>
   )

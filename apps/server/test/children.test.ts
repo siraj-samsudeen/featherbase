@@ -295,7 +295,7 @@ describe('#231: a reqd Sub-table column must hold at least one row', () => {
   test('create succeeds with at least one row', async ({ admin }) => {
     await setupRequired(admin)
     const doc = await saveReq(admin, { title: 'ok', items: [{ item: 'apple' }] })
-    expect(doc.row_id).toMatch(/^[0-9a-f]{10}$/)
+    expect(doc.row_id).toMatch(/^[1-9][0-9]*$/) // #855: new Tables number rows 1, 2, 3
     expect(doc.items.map((r: any) => r.item)).toEqual(['apple'])
     const [{ count }] = await sql.unsafe(
       `select count(*)::int as count from featherbase.rq231_item where parent = '${doc.row_id}'`,
