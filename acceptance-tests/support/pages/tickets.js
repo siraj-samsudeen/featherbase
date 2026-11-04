@@ -50,7 +50,7 @@ class Tickets {
     const page = await this.world.signedIn(name);
     const token = await page.evaluate(() => localStorage.getItem('fc_token'));
     const response = await page.request.fetch(path, { method, data, headers: {
-      Authorization: `Bearer ${token}`, 'X-Featherbase-App-Version': 'tickets@0.1.0',
+      Authorization: `Bearer ${token}`, 'X-Featherbase-App-Version': 'tickets@0.2.0',
     } });
     const text = await response.text();
     let body; try { body = JSON.parse(text); } catch { body = text; }

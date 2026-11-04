@@ -25,7 +25,8 @@
     "link": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "note": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "resolve": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
-    "reopen": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
+    "reopen": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "transition": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
   }},
   "reads": {"version": 1, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.progress", "tickets.member", "tickets.ticket_type", "tickets.type_field"], "operations": {
     "session": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
@@ -63,7 +64,8 @@
       {"column_name": "states", "label": "States (one per line; the first is where a ticket starts)", "column_type": "Text", "reqd": true},
       {"column_name": "done_states", "label": "Done states (one per line)", "column_type": "Text"},
       {"column_name": "reopen_state", "label": "State a reopened ticket returns to", "column_type": "Data"},
-      {"column_name": "routing", "label": "Routing (JSON: field, table, match, person, primary)", "column_type": "Text"}
+      {"column_name": "routing", "label": "Routing (JSON: field, table, match, person, primary)", "column_type": "Text"},
+      {"column_name": "transitions", "label": "Transitions (JSON list: state, action, next_state, allowed, fields)", "column_type": "Text"}
     ]},
     {"name": "tickets.type_field", "label": "Ticket type field", "module": "Tickets", "id_pattern": "FTF-.#####", "title_column": "label", "columns": [
       {"column_name": "ticket_type", "label": "Ticket type", "column_type": "Reference", "reference_table": "tickets.ticket_type", "reqd": true, "in_list_view": true},
@@ -84,6 +86,11 @@
       {"column_name": "text", "label": "Update", "column_type": "Text"},
       {"column_name": "by", "label": "Actor", "column_type": "Data"},
       {"column_name": "at", "label": "Time", "column_type": "Data"}
+    ]}
+  ],
+  "migrations": [
+    {"id": "ticket_type_transitions", "fromVersion": "0.1.0", "toVersion": "0.2.0", "operations": [
+      {"kind": "addColumn", "table": "tickets.ticket_type", "column": {"column_name": "transitions", "label": "Transitions (JSON list: state, action, next_state, allowed, fields)", "column_type": "Text"}}
     ]}
   ],
   "permissions": [

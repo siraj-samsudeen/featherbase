@@ -13,6 +13,8 @@ interface ListArgs {
 interface ReadContext {
   user: string
   userName: string
+  /** #918: the caller's own roles. */
+  roles?: readonly string[]
   people: { names(ids: string[]): Promise<Record<string, string | null>> }
   payload: unknown
   settings: Readonly<Record<string, string>>
@@ -66,6 +68,47 @@ function validateType(ctx: Validation) {
     const routing = parse(ctx.row.routing)
     if (['field', 'table', 'match', 'person'].some(k => typeof routing[k] !== 'string' || !routing[k])) ctx.reject('Routing names field, table, match and person (and optionally primary)')
   }
+  validateTransitions(ctx, states)
+}
+// #918: a type's transitions, in the platform Workflow's shape plus `fields`.
+const transitionKeys = ['state', 'action', 'next_state', 'allowed', 'fields']
+function validateTransitions(ctx: Validation, states: string[]) {
+  if (!String(ctx.row.transitions ?? '').trim()) return
+  let list: unknown
+  try { list = JSON.parse(String(ctx.row.transitions)) } catch { list = null }
+  if (!Array.isArray(list)) return ctx.reject('Transitions are a JSON list of {state, action, next_state, allowed, fields}')
+  const seen = new Map<string, Transition>()
+  for (const item of list) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) ctx.reject('Each transition is an object')
+    const t = item as Row
+    if ('condition' in t) ctx.reject('A transition condition is not supported in Tickets yet')
+    const extra = Object.keys(t).find(key => !transitionKeys.includes(key))
+    if (extra) ctx.reject(`A transition has no "${extra}"; use ${transitionKeys.join(', ')}`)
+    for (const key of ['state', 'next_state'] as const)
+      if (typeof t[key] !== 'string' || !states.includes(t[key] as string)) ctx.reject(`Transition ${key} "${String(t[key] ?? '')}" is not one of the states`)
+    if (typeof t.action !== 'string' || !t.action.trim() || t.action.length > 60) ctx.reject('Each transition names its action (up to 60 characters)')
+    if (typeof t.allowed !== 'string' || !t.allowed.trim()) ctx.reject('Each transition says who is allowed: assignee, requester, any, or a role')
+    if (t.fields !== undefined && !(Array.isArray(t.fields) && t.fields.every(f => typeof f === 'string' && /^[a-z][a-z0-9_]{0,40}$/.test(f))))
+      ctx.reject('Transition fields are a list of the type\'s field keys')
+    const transition = toTransition(t)
+    const key = `${transition.state}\u0000${transition.action}`
+    const same = seen.get(key)
+    if (same && same.allowed === transition.allowed) ctx.reject(`${transition.action} from ${transition.state} is listed twice for ${transition.allowed}`)
+    if (same && (same.next_state !== transition.next_state || same.fields.join() !== transition.fields.join()))
+      ctx.reject(`Every ${transition.action} from ${transition.state} must have the same next state and fields`)
+    seen.set(key, transition)
+  }
+}
+interface Transition { state: string; action: string; next_state: string; allowed: string; fields: string[] }
+function toTransition(t: Row): Transition {
+  return { state: String(t.state), action: String(t.action).trim(), next_state: String(t.next_state), allowed: String(t.allowed).trim(),
+    fields: Array.isArray(t.fields) ? t.fields.map(String) : [] }
+}
+function transitionsOf(value: unknown): Transition[] {
+  try {
+    const list = JSON.parse(String(value ?? '').trim() || '[]')
+    return Array.isArray(list) ? list.filter(t => t && typeof t === 'object').map(toTransition) : []
+  } catch { return [] }
 }
 function validateField(ctx: Validation) {
   const name = String(ctx.row.field_name ?? '')
@@ -136,16 +179,19 @@ async function all(ctx: ReadContext, table: string, fields: string[], filters: L
   }
 }
 interface TypeField { name: string; label: string; type: string; choices: string[]; required: boolean; link_table?: string; link_label?: string }
-interface TicketType { key: string; label: string; states: string[]; done: string[]; reopen: string; routing: Row | null; fields: TypeField[] }
+interface TicketType { key: string; label: string; states: string[]; done: string[]; reopen: string; routing: Row | null; fields: TypeField[]; transitions: Transition[] }
+// Fields a transition asks for are recorded by that action, never on intake.
+const actionFieldNames = (type: TicketType) => new Set(type.transitions.flatMap(t => t.fields))
+const intakeFields = (type: TicketType) => { const asked = actionFieldNames(type); return type.fields.filter(f => !asked.has(f.name)) }
 async function configuredTypes(ctx: ReadContext): Promise<Map<string, TicketType>> {
-  const rows = await all(ctx, 'tickets.ticket_type', ['row_id', 'type_key', 'label', 'enabled', 'states', 'done_states', 'reopen_state', 'routing'])
+  const rows = await all(ctx, 'tickets.ticket_type', ['row_id', 'type_key', 'label', 'enabled', 'states', 'done_states', 'reopen_state', 'routing', 'transitions'])
   const fieldRows = await all(ctx, 'tickets.type_field', ['row_id', 'ticket_type', 'field_name', 'label', 'field_type', 'choices', 'link_table', 'link_label', 'required', 'field_order'])
   const types = new Map<string, TicketType>()
   for (const row of rows) {
     if (!row.enabled) continue
     const states = lines(row.states)
     types.set(String(row.type_key), { key: String(row.type_key), label: String(row.label), states, done: lines(row.done_states),
-      reopen: String(row.reopen_state || states[0]), routing: row.routing ? parse(row.routing) : null,
+      reopen: String(row.reopen_state || states[0]), routing: row.routing ? parse(row.routing) : null, transitions: transitionsOf(row.transitions),
       fields: fieldRows.filter(f => f.ticket_type === row.row_id).sort((a, b) => Number(a.field_order ?? 0) - Number(b.field_order ?? 0)).map(f => ({
         name: String(f.field_name), label: String(f.label), type: String(f.field_type), choices: lines(f.choices), required: !!f.required,
         ...(f.link_table ? { link_table: String(f.link_table), link_label: String(f.link_label || 'row_id') } : {}),
@@ -171,19 +217,21 @@ function kind(ctx: ReadContext, value: unknown, types: Map<string, TicketType>) 
   return value
 }
 // A configured type's values are checked against its current fields.
-async function typedDetails(ctx: ReadContext, type: TicketType, values: Row): Promise<Row> {
+async function typedDetails(ctx: ReadContext, type: TicketType, values: Row, asked = intakeFields(type), allRequired = false): Promise<Row> {
   const known = new Map(type.fields.map(field => [field.name, field]))
   const unknown = Object.keys(values).find(key => !known.has(key))
   if (unknown) ctx.reject(`${type.label} has no field ${unknown}`)
+  const notAsked = Object.keys(values).find(key => !asked.some(field => field.name === key))
+  if (notAsked) ctx.reject(`${known.get(notAsked)!.label} is recorded by an action, not here`)
   // A person field takes any Person the caller may see (the Person permission applies).
-  const personIds = type.fields.filter(f => f.type === 'person').map(f => values[f.name]).filter((v): v is string => typeof v === 'string' && !!v.trim()).map(v => v.trim())
+  const personIds = asked.filter(f => f.type === 'person').map(f => values[f.name]).filter((v): v is string => typeof v === 'string' && !!v.trim()).map(v => v.trim())
   const visible = personIds.length ? await ctx.people.names(personIds) : {}
   const out: Row = {}
-  for (const field of type.fields) {
+  for (const field of asked) {
     const raw = values[field.name]
     const value = typeof raw === 'string' ? raw.trim() : raw
     if (value === undefined || value === null || value === '') {
-      if (field.required) ctx.reject(`${field.label} is required`)
+      if (field.required || allRequired) ctx.reject(`${field.label} is required`)
       continue
     }
     if (typeof value !== 'string') return ctx.reject(`${field.label} must be text`)
@@ -266,6 +314,20 @@ async function names(ctx: ReadContext, ...values: unknown[]): Promise<Record<str
 async function history(ctx: ReadContext, ticket: Row) {
   return all(ctx, 'tickets.event', eventFields, [['ticket', '=', ticket.row_id]])
 }
+// #918: who a transition lets act. `any` is anyone involved in the ticket:
+// its raiser, its assignee or support; never a colleague who sees the summary.
+function mayTake(ctx: ReadContext, ticket: Row, t: Transition, support: boolean) {
+  if (t.allowed === 'assignee') return !!ticket.assigned_to && ticket.assigned_to === ctx.user
+  if (t.allowed === 'requester') return ticket.owner === ctx.user
+  if (t.allowed === 'any') return ticket.owner === ctx.user || ticket.assigned_to === ctx.user || support
+  return (ctx.roles ?? []).includes(t.allowed)
+}
+function available(ctx: ReadContext, ticket: Row, type: TicketType | undefined, support: boolean) {
+  const actions = new Map<string, Transition>()
+  for (const t of type?.transitions ?? [])
+    if (t.state === ticket.ticket_state && !actions.has(t.action) && mayTake(ctx, ticket, t, support)) actions.set(t.action, t)
+  return [...actions.values()]
+}
 const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
   async create(ctx) {
     const p = input(ctx, ['title', 'original', 'kind', 'details'])
@@ -289,10 +351,18 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const category = p.kind === undefined ? String(ticket.kind) : kind(ctx, p.kind, types)
     const type = types.get(category)
     const merged = p.details === undefined ? structured : { ...structured, ...object(ctx, p.details) }
-    const next = type ? (p.details === undefined && category === ticket.kind ? structured : await typedDetails(ctx, type, merged))
+    // An action's recorded values are kept as they are; only that action writes them.
+    const recorded = type ? Object.fromEntries(Object.entries(merged).filter(([key]) => actionFieldNames(type).has(key))) : {}
+    if (type && p.details !== undefined) {
+      const changed = Object.keys(object(ctx, p.details)).find(key => actionFieldNames(type).has(key) && p.details && (p.details as Row)[key] !== structured[key])
+      if (changed) ctx.reject(`${type.fields.find(f => f.name === changed)!.label} is recorded by an action, not here`)
+    }
+    const intake = type ? Object.fromEntries(Object.entries(merged).filter(([key]) => !actionFieldNames(type).has(key))) : merged
+    const next = type ? (p.details === undefined && category === ticket.kind ? structured : { ...await typedDetails(ctx, type, intake), ...recorded })
       : p.details === undefined ? structured : { ...structured, ...details(ctx, p.details) }
     // Only a configured type moves between states directly, and only among its own.
     if (p.state !== undefined && (!type || !type.states.includes(String(p.state)))) ctx.reject('Choose one of this type\'s states')
+    if (p.state !== undefined && type?.transitions.length) ctx.reject(`${type.label} moves only through its actions`)
     // Never turn an access decision into an ordinary-resolution bypass.
     if (ticket.kind === 'access' && category !== 'access') ctx.reject('An access request must keep its access gates')
     const recipientChanged = next.email !== structured.email
@@ -403,15 +473,49 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const { ticket } = await current(ctx, p)
     if (ticket.kind === 'access') ctx.reject('Access must be completed through authorized fulfillment')
     const type = (await configuredTypes(ctx)).get(String(ticket.kind))
+    if (type?.transitions.length) ctx.reject(`${type.label} moves only through its actions`)
     const state = type ? String(p.state ?? type.done[0] ?? '') : 'Resolved'
     if (type ? !type.done.includes(state) : p.state !== undefined) ctx.reject(type ? 'Choose one of this type\'s done states' : 'This type resolves as Resolved')
     await event(ctx, ticket, 'resolve', { reason: text(ctx, p.reason, 'Resolution reason'), reference: text(ctx, p.reference, 'Resolution evidence'), ...(type ? { state } : {}) })
     return { ticket: await bump(ctx, ticket, { ticket_state: state }) }
   },
+  async transition(ctx) {
+    const p = input(ctx, ['row_id', 'updated_at', 'action', 'values'])
+    const ticket = await ctx.documents.get('tickets.ticket', text(ctx, p.row_id, 'Ticket'))
+    if (String(ticket.updated_at) !== text(ctx, p.updated_at, 'Revision')) ctx.reject('This ticket changed; reload before trying again')
+    const action = text(ctx, p.action, 'Action')
+    const type = (await configuredTypes(ctx)).get(String(ticket.kind))
+    if (!type?.transitions.length) return ctx.reject('This ticket type has no actions')
+    const listed = type.transitions.filter(t => t.state === ticket.ticket_state && t.action === action)
+    if (!listed.length) ctx.reject(`${action} is not an action from ${String(ticket.ticket_state)}`)
+    const support = capabilities(ctx).support
+    const transition = listed.find(t => mayTake(ctx, ticket, t, support))
+    if (!transition) return ctx.reject(`You are not allowed to ${action} this ticket`)
+    const values = object(ctx, p.values ?? {})
+    const extra = Object.keys(values).find(key => !transition.fields.includes(key))
+    if (extra) ctx.reject(`${action} does not record ${extra}`)
+    const asked = transition.fields.map(name => type.fields.find(f => f.name === name))
+    if (asked.some(f => !f)) ctx.reject(`${action} names a field this type does not have; ask a System Manager to fix the type`)
+    const recorded = await typedDetails(ctx, type, values, asked as TypeField[], true)
+    if (transition.fields.length) {
+      // The values sit with the private request, which only the raiser and support read.
+      if (!support && ticket.owner !== ctx.user) ctx.reject(`Only the raiser or Tickets support can record what ${action} asks for`)
+      const request = await ctx.documents.get('tickets.request', String(ticket.row_id))
+      await ctx.documents.update('tickets.request', { row_id: request.row_id, updated_at: request.updated_at,
+        details_json: JSON.stringify({ ...parse(request.details_json), ...recorded }) })
+    }
+    const from = String(ticket.ticket_state), to = transition.next_state
+    await event(ctx, ticket, 'transition', { action, from, to, values: recorded })
+    // The shared progress names the action, never the private values.
+    await ctx.documents.create('tickets.progress', { ticket: ticket.row_id, text: `${action}: ${from} → ${to}`, by: ctx.user, at: new Date().toISOString() })
+    return { ticket: await bump(ctx, ticket, { ticket_state: to }) }
+  },
   async reopen(ctx) {
     const p = input(ctx, ['row_id', 'updated_at', 'reason'])
     const { ticket, request } = await current(ctx, p)
     const types = await configuredTypes(ctx)
+    const configuredType = types.get(String(ticket.kind))
+    if (configuredType?.transitions.length) ctx.reject(`${configuredType.label} moves only through its actions`)
     if (!isDone(ticket, types)) ctx.reject('Only a resolved ticket can be reopened')
     await event(ctx, ticket, 'reopen', { reason: text(ctx, p.reason, 'Reopening reason') })
     if (ticket.kind === 'access') await ctx.documents.update('tickets.request', {
@@ -448,10 +552,12 @@ export const reads = {
     const configuredList: Row[] = []
     for (const type of types.values()) {
       const fields: Row[] = []
+      const asked = actionFieldNames(type)
       for (const field of type.fields) fields.push({ name: field.name, label: field.label, type: field.type, required: field.required,
+        ...(asked.has(field.name) ? { asked_by_action: true } : {}),
         ...(field.type === 'choice' ? { choices: field.choices } : {}),
         ...(field.type === 'link' ? { options: (await linkRows(ctx, field)).map(r => ({ value: String(r.row_id), label: String(r[field.link_label!] ?? r.row_id) })) } : {}) })
-      configuredList.push({ key: type.key, label: type.label, states: type.states, done: type.done, fields })
+      configuredList.push({ key: type.key, label: type.label, states: type.states, done: type.done, fields, transitions: type.transitions.length > 0 })
     }
     return { answer: { types: [...kinds.map(key => ({ key, builtin: true })), ...configuredList] } }
   },
@@ -500,6 +606,10 @@ export const reads = {
       }
       answer.labels = labels
     }
+    // The actions this viewer may take now, with what each asks for.
+    if (type?.transitions.length) answer.actions = available(ctx, ticket, type, support).map(t => ({ action: t.action, next_state: t.next_state,
+      fields: t.fields.map(name => type.fields.find(f => f.name === name)).filter((f): f is TypeField => !!f)
+        .map(f => ({ name: f.name, label: f.label, type: f.type, ...(f.type === 'choice' ? { choices: f.choices } : {}) })) }))
     answer.names = await names(ctx, { owner: ticket.owner, assigned_to: ticket.assigned_to }, answer.events, answer.privateEvents ?? [],
       answer.verification ?? {}, answer.approval ?? {}, personValues)
     return { answer }
