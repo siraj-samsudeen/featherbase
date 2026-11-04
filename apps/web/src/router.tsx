@@ -57,6 +57,7 @@ import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { RelationMap } from './pages/RelationMap'
 import { NavPathBar } from './components/NavPathBar'
+import { PaneSplit } from './components/RowPane'
 import { NavigationProvider, useAddressNavigation } from './lib/navigation'
 import type { NavStep } from './lib/nav-path'
 
@@ -446,14 +447,16 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
     <div data-testid="table-page">
       <NavigationProvider value={nav}>
         <NavPathBar />
-        <ListView
-          table={table}
-          filters={nav.step.filters ?? []}
-          onFiltersChange={(next) => {
-            const { filters: _, ...step } = nav.step
-            nav.push(next.length ? { ...step, filters: next } : step)
-          }}
-        />
+        <PaneSplit>
+          <ListView
+            table={table}
+            filters={nav.step.filters ?? []}
+            onFiltersChange={(next) => {
+              const { filters: _, ...step } = nav.step
+              nav.push(next.length ? { ...step, filters: next } : step)
+            }}
+          />
+        </PaneSplit>
       </NavigationProvider>
     </div>
   )

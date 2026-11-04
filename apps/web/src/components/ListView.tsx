@@ -6,6 +6,7 @@ import { ApiError, api, getSessionUser, getToken, listResource } from '../lib/ap
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
 import { RowName } from '../lib/row-name'
+import { useNavigation } from '../lib/navigation'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
 import { LinkControl } from './FormView'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
@@ -102,6 +103,18 @@ export function Indicator({ value, label = value }: { value: string; label?: str
 
 const NO_FILTERS: Filter[] = []
 
+/** The link values a filtered list's new rows start with: each "= one row"
+ *  filter on a link column the person may set. */
+function linkPrefill(meta: import('../lib/meta').TableMeta, filters: Filter[]): Record<string, unknown> | undefined {
+  const prefill: Record<string, unknown> = {}
+  for (const [column, op, value] of filters) {
+    const col = meta.columns.find((c) => c.column_name === column)
+    if (op === '=' && col?.column_type === 'Reference' && !col.read_only && !col.hidden && (typeof value === 'string' || typeof value === 'number'))
+      prefill[column] = value
+  }
+  return Object.keys(prefill).length ? prefill : undefined
+}
+
 // UI-002/UI-003: ONE list component renders every Table from its metadata.
 export function ListView({
   table,
@@ -135,10 +148,18 @@ export function ListView({
 }) {
   const meta = useMeta(table)
   const settings = useSettings()
+  // #910: on a list page, selecting a row shows it in the drill pane.
+  const navigation = useNavigation()
+  const nav = navigation?.step.screen === 'list' && navigation.step.table === table ? navigation : null
+  const paneRow = nav?.step.pane?.table === table ? nav.step.pane.row : undefined
+  const openPane = nav ? (pane: { table: string; row: string }) => nav.push({ ...nav.step, pane }) : undefined
   const isSystemManager = useIsSystemManager()
   const caps = useCapabilities()
   // #410: New is offered only to someone the server would let create a row here.
   const canAddRows = newRowPrefill !== null && Boolean(caps?.manage || caps?.creatable.includes(table))
+  // #910: a list narrowed to the rows linking to one row (a drill pane group
+  // opened as a list) starts its new rows linked to that row too.
+  if (newRowPrefill === undefined && meta.data) newRowPrefill = linkPrefill(meta.data, filters)
   const queryClient = useQueryClient()
   // usable-on-any-device "Lists fit a phone": below 40rem the rows are cards.
   const narrow = useMediaQuery(NARROW_QUERY)
@@ -1016,6 +1037,8 @@ export function ListView({
                 childFields={childFields}
                 expanded={expanded.has(String(row.row_id))}
                 onToggleExpand={() => toggleExpand(String(row.row_id))}
+                inPane={paneRow === String(row.row_id)}
+                onOpenPane={openPane}
               />
             ))}
             {!rows.length && (
@@ -1077,6 +1100,8 @@ function ListRow({
   childFields,
   expanded,
   onToggleExpand,
+  inPane = false,
+  onOpenPane,
 }: {
   row: Record<string, unknown>
   table: string
@@ -1092,12 +1117,23 @@ function ListRow({
   childFields: import('../lib/meta').ColumnDef[]
   expanded: boolean
   onToggleExpand: () => void
+  /** #910: this row is the one in the drill pane. */
+  inPane?: boolean
+  /** #910: shows a row in the drill pane; absent where there is no pane. */
+  onOpenPane?: (pane: { table: string; row: string }) => void
 }) {
   // A title that is a person's id reads as their name.
   const shownTitle = usePrincipalLabels([title])
+  const rowId = String(row.row_id)
+  // A click on the line itself, not on a link, button or checkbox in it.
+  const select = onOpenPane && ((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('a,button,input,select,label,textarea')) return
+    onOpenPane({ table, row: rowId })
+  })
   return (
     <>
-      <tr className="border-b border-border last:border-0 hover:bg-subtle">
+      <tr onClick={select || undefined} aria-selected={onOpenPane ? inPane : undefined}
+        className={`border-b border-border last:border-0 hover:bg-subtle ${onOpenPane ? 'cursor-pointer' : ''} ${inPane ? 'bg-action-tint' : ''}`}>
         {expandable && (
           <td className="pl-2">
             <button
