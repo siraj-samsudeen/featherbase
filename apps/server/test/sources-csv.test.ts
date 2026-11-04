@@ -12,6 +12,7 @@ import { parseCsv, serializeCsv } from '../src/sources/csv'
 import { csvFolderDriver } from '../src/sources/csv-driver'
 import { invalidateSources } from '../src/sources/registry'
 import type { Binding, SourceFilter } from '../src/sources/types'
+import { rowHref } from 'shared'
 
 let dir: string
 
@@ -98,6 +99,38 @@ async function makeCsvSource(admin: {
 }
 
 describe('M1: csv-folder source', () => {
+  test('#873: source-row recall uses the currently authorized source record', async ({ admin, createUser }) => {
+    const [stores] = await makeCsvSource(admin)
+    await sql`update table_def set title_column = 'store_name' where name = ${stores}`
+    invalidateMeta()
+    const user = await createUser({ roles: ['System Manager'] })
+    const read = await user.fetch(`/api/table/${encodeURIComponent(stores)}/3`, { headers: { 'X-Navigation-Visit': '1' } })
+    expect(read.status).toBe(200)
+    const event = { kind: 'row', key: `row:${stores}/3`, label: 'Original visit', sub: stores,
+      path: rowHref(stores, '3'), at: Date.now(), claim: read.headers.get('X-Navigation-Claim') }
+    expect(event.claim).toBeTruthy()
+    await user.post('/api/events', { events: [event] })
+    const original = await sql`select * from user_event where created_by = ${user.user!}`
+    type Home = { entries: { label: string; path: string }[] }
+    type Feed = { items: { label: string; path: string; destination_state: string }[] }
+    expect((await user.post<Home>('/api/home_resume', {})).entries).toEqual([
+      expect.objectContaining({ label: 'He said "hi"', path: event.path }),
+    ])
+    // Source IDs address the current record, not a native lifetime. Removing
+    // the last CSV row leaves that ID absent without renumbering other rows.
+    writeFileSync(path.join(dir, 'store_master.csv'), STORES.split('\n').slice(0, 3).join('\n') + '\n')
+    expect((await user.post<Home>('/api/home_resume', { hints: [event] })).entries).toEqual([])
+    expect((await user.get<Feed>('/api/activity_feed')).items[0]).toMatchObject({ path: '', destination_state: 'unavailable' })
+    writeFileSync(path.join(dir, 'store_master.csv'), STORES.replace('CHN,"He said ""hi""",Chennai', 'CHN,Current source record,Chennai'))
+    expect((await user.post<Home>('/api/home_resume', {})).entries[0]).toMatchObject({ label: 'Current source record', path: event.path })
+    await sql`delete from has_role where parent = ${user.user!}`
+    expect((await user.post<Home>('/api/home_resume', { hints: [event] })).entries).toEqual([])
+    const denied = await user.get<Feed>('/api/activity_feed')
+    expect(denied.items[0]).toMatchObject({ label: 'Unavailable destination', path: '', destination_state: 'unavailable' })
+    expect(JSON.stringify(denied)).not.toContain('Current source record')
+    expect(await sql`select * from user_event where created_by = ${user.user!}`).toEqual(original)
+  })
+
   test('#821: reflection refuses another Table slug without stranded metadata', async ({ admin }) => {
     const original = 'Seed Store Master '
     await admin.post('/api/table_def', {

@@ -80,7 +80,7 @@ And the inaccessible visit remains in personal activity as unavailable without c
 
 ### Requirement: Resume the same destination after a rename
 
-A known destination identifies the visited Table's lifetime independently of its name, established when a visit is recorded under the user's current access. Such visits SHALL follow actual Table and row-ID renames and show the current readable title; a different Table or row reusing the former name or ID MUST NOT become the earlier visit's destination.
+A known destination identifies the visited Table's lifetime independently of its name, established when a visit is recorded under the user's current access. Such visits SHALL follow actual Table renames and native row-ID renames and show the current readable title; a different Table or native row reusing the former name or ID MUST NOT become the earlier visit's destination. Source-bound rows SHALL use the existing authorized source read at their recorded current ID: a missing or inaccessible record is unavailable, but replacement under the same external ID cannot be distinguished and source-side key renames are not inferred.
 
 #### Scenario: A renamed Table opens under its current name
 
@@ -178,7 +178,7 @@ And it neither claims Plant was deleted nor reveals its current title or destina
 
 ### Requirement: Older visits never guess a replacement destination
 
-An older visit without a known destination SHALL resolve only at read time against the live Table bearing its recorded name whose known creation time is strictly earlier than the event time, and only when any named row is established as the same earlier row. Equal, later or unknown creation times are insufficient; unresolved visits SHALL remain unavailable and past renames MUST NOT be guessed.
+An older visit without a known destination SHALL resolve only at read time against the live Table bearing its recorded name whose known creation time is strictly earlier than the event time, and only when any named native row is established as the same earlier row. Source-bound rows use the same authorized current-ID lookup as new source visits, without promising replacement detection. Equal, later or unknown required creation times are insufficient; unresolved visits SHALL remain unavailable and past renames MUST NOT be guessed.
 
 #### Scenario: An older visit to a still-existing row remains usable
 

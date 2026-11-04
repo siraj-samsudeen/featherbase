@@ -13,6 +13,7 @@ import { principalNames } from './people-directory'
 interface Binding {
   table: string
   row?: string
+  source?: true
   originalTable: string
   originalRow?: string
 }
@@ -50,7 +51,15 @@ export async function captureNavigation(user: string, table: string, rowId?: str
     const meta = await getMeta(table)
     let row: string | undefined
     if (rowId !== undefined) {
-      if (meta.data_source || meta.kind !== 'table') return null
+      if (meta.kind !== 'table') return null
+      if (meta.data_source) {
+        // A source key addresses its current record, not a native lifetime.
+        // Reuse the authorized adapter read; never write source identity.
+        await getDoc(table, rowId, user)
+        return sign({ purpose: 'navigation', user, binding: {
+          table: definition.navigation_identity, source: true, originalTable: table, originalRow: rowId,
+        } }, jwtSecret(), 'HS256')
+      }
       const [stored] = await sql`select created_at from ${sql(await tableRelation(table))}
         where ${sql(meta.row_key)} = ${rowId} for key share`
       if (!stored?.created_at) return null
@@ -81,11 +90,11 @@ function originalRoute(event: NavigationEvent, binding: Binding): string | null 
   const historicalPrefix = `/featherbase/admin/${encodeURIComponent(binding.originalTable)}`
   const path = canonicalPath(event.path)
   if (event.kind === 'row') {
-    if (!binding.row || event.key !== `row:${binding.originalTable}/${binding.originalRow}`) return null
+    if ((!binding.row && !binding.source) || event.key !== `row:${binding.originalTable}/${binding.originalRow}`) return null
     const canonical = rowHref(binding.originalTable, binding.originalRow!)
     return path === canonical || path === `${historicalPrefix}/${encodeURIComponent(binding.originalRow!)}` ? canonical : null
   }
-  if (event.kind !== 'list' || binding.row || !event.key.startsWith(`list:${binding.originalTable}`)) return null
+  if (event.kind !== 'list' || binding.row || binding.source || !event.key.startsWith(`list:${binding.originalTable}`)) return null
   const tail = event.key.slice(`list:${binding.originalTable}`.length)
   const match = /^(?:\/(\w+))?\?(.*)$/.exec(tail)
   if (!match) return null
@@ -144,7 +153,7 @@ export async function resolveNavigation(user: string, event: NavigationEvent): P
       if (!pointer) return unavailable
       rowId = pointer.row_id as string
       born = pointer.born_at
-    }
+    } else if (binding.source) rowId = binding.originalRow
   } else {
     const parsed = event.kind === 'row' ? /^row:([^/]+)\/(.+)$/.exec(event.key) : /^list:([^/?]+)(?:\/\w+)?\?/.exec(event.key)
     if (!parsed) return unavailable
@@ -157,12 +166,14 @@ export async function resolveNavigation(user: string, event: NavigationEvent): P
     const meta = await getMeta(table)
     let label = table
     if (event.kind === 'row') {
-      if (!rowId || meta.data_source || meta.kind !== 'table') return unavailable
+      if (!rowId || meta.kind !== 'table' || (binding && !!meta.data_source !== !!binding.source)) return unavailable
       const doc = await getDoc(table, rowId, user)
-      const [stored] = await sql`select created_at from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${rowId}`
-      if (!stored?.created_at) return unavailable
-      const birth = new Date(stored.created_at as string).getTime()
-      if (binding ? birth !== new Date(born as string).getTime() : !(birth < event.at)) return unavailable
+      if (!meta.data_source) {
+        const [stored] = await sql`select created_at from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${rowId}`
+        if (!stored?.created_at) return unavailable
+        const birth = new Date(stored.created_at as string).getTime()
+        if (binding ? birth !== new Date(born as string).getTime() : !(birth < event.at)) return unavailable
+      }
       const titleColumn = meta.columns.find(c => c.column_name === meta.title_column
         && c.column_type === 'Reference' && ['Person', 'Service Account'].includes(c.reference_table!))
       if (titleColumn && doc[titleColumn.column_name]) {
