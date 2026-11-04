@@ -122,6 +122,38 @@ prototype's deterministic classifier/fixture diagnosis into the real app as AI.
   attributed writes → stop that slice and identify the smallest generic seam;
   do not bypass caller permissions or silently broaden platform scope.
 
+## Decision: instance-configured ticket types (#912 follow-up, 04-Nov-2026)
+
+The owner ruled that ticket types and their fields must be configurable after
+install, without an app release. An instance adds a type as rows in two
+Tickets-owned configuration Tables, edited in the generic Admin UI by a System
+Manager:
+
+- `tickets.ticket_type`: label, its states (the first is where a ticket
+  starts), which states count as done, the state a reopened ticket returns to,
+  and optional routing (the link field, the instance owners Table and its
+  source, person and primary columns).
+- `tickets.type_field`: per type, the field key, label, field type (text, long
+  text, choice, date, person, link), choices, the linked Table and its label
+  column, required, and order. Removing a field is deleting its row.
+
+Entered values stay in the private `tickets.request` row as before, so private
+details stay private. History stays append-only, and the access type keeps its
+coded verification, approval and scope-invalidation gates; it is not
+configurable. Configured types have no approval gate; support moves them
+between their configured states with a recorded event.
+
+A link field reads an instance Table the app does not own. The one platform
+seam: an administrator may list instance Tables in an app's `linked_tables`
+setting, and that app's actions and reads may then read (never write) those
+Tables **as the caller**, with the caller's own permissions. Nothing is read
+that the caller could not read already.
+
+Rejected: instance-added columns on `tickets.request` through the platform's
+custom fields. Every type's fields would land on one shared row shape, a
+column would be readable wherever the row is, the form could not tell which
+fields belong to which type, and states and routing would still need code.
+
 ## Migration Plan
 
 1. Prepare and install the new package in an isolated development instance.

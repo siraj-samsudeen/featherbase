@@ -62,3 +62,11 @@ never conceal pending steps or batch failing scenarios into a claimed pass.
 - [x] 5.4 Offer an optional adversarial review because access permissions and identity decisions are sensitive; run only with owner consent. Use the repository code-review route for hidden server/data logic, triage findings and rerun affected checks.
 - [x] 5.5 Run `pnpm exec openspec validate feather-tickets-stage-one --strict --no-interactive`, rerun `./init.sh`, and present the runnable installed-app preview and final walkthrough evidence for owner review.
 - [ ] 5.6 After owner review and authorization for delivery, sync specifications and archive on this same change branch; keep code/spec zones separate. Prepare the PR with reproducible checks and usage instructions; do not merge, deploy or write to production without explicit approval.
+
+## 6. Owner feedback from the local trial (#912, 04-Nov-2026)
+
+- [x] 6.1 People are shown by name, never by person id — red → caller's own name in the app context, Tickets name directory → green → commit.
+- [x] 6.2 A requester's scope change after verification awaits approval — red → request row records the actively verified recipient → green → commit.
+- [x] 6.3 An install or enable from another process works with no restart; a refusal says why — red → activate on next request, plain reasons → green → commit.
+- [ ] 6.4 An instance configures ticket types, fields, states and routing without a release — red → configuration Tables, `linked_tables` seam, rendered form → green → commit.
+- [ ] 6.5 Configure "Data Quality Issue" locally and load the 17 data-quality issues into it.
