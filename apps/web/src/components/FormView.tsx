@@ -460,7 +460,7 @@ export function FormView({
   }
 
   const work = <div className="flex flex-col gap-6 lg:flex-row">
-    // Its columns follow its own width (a form beside the pane is narrow).
+    {/* Its columns follow its own width (a form beside the pane is narrow). */}
     <div className={`@container min-w-0 flex-1 ${arrangement.columns === 1 && !isNew ? 'max-w-2xl' : 'max-w-3xl'}`}>
       {!isNew && (
         <ArrangeBar mode={arrangement.mode} columns={arrangement.columns}
