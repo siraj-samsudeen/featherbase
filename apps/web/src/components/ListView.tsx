@@ -98,6 +98,8 @@ export function Indicator({ value, label = value }: { value: string; label?: str
   )
 }
 
+const NO_FILTERS: Filter[] = []
+
 // UI-002/UI-003: ONE list component renders every Table from its metadata.
 export function ListView({
   table,
@@ -105,6 +107,11 @@ export function ListView({
   onFiltersChange,
   breadcrumb,
   newRowPrefill,
+  baseFilters = NO_FILTERS,
+  title,
+  defaultOrderBy,
+  empty,
+  subtitle,
 }: {
   table: string
   filters?: Filter[]
@@ -112,6 +119,17 @@ export function ListView({
   breadcrumb?: ReactNode
   /** null disables direct creation for a via-sub-table relationship. */
   newRowPrefill?: Record<string, unknown> | null
+  /** #835: filters that define the page itself (Waiting for access). Always
+   *  applied, never shown as chips or saved into a view. */
+  baseFilters?: Filter[]
+  /** The page's heading in place of the Table's name. */
+  title?: ReactNode
+  /** The order before the person picks one, in place of the Table's. */
+  defaultOrderBy?: string
+  /** What an empty list says, in place of "No rows". */
+  empty?: ReactNode
+  /** One line under the heading saying what the page lists. */
+  subtitle?: ReactNode
 }) {
   const meta = useMeta(table)
   const settings = useSettings()
@@ -173,7 +191,8 @@ export function ListView({
     const opener = bulkDeleteButton.current
     return () => opener?.focus()
   }, [confirmingBulkDelete])
-  const filterKey = JSON.stringify(filters)
+  const queryFilters = baseFilters.length ? [...baseFilters, ...filters] : filters
+  const filterKey = JSON.stringify(queryFilters)
   useEffect(() => setStart(0), [filterKey])
   useEffect(() => setSelected(new Set()), [filterKey, start, table])
   // DEL-J1 (docs/specs/0003-table-deletion.md): deleting the whole Table.
@@ -296,9 +315,9 @@ export function ListView({
     boundNoRevision && meta.data?.sort_column === 'updated_at' ? '' : (meta.data?.sort_column ?? '')
   const orderBy = sort
     ? `${sort.field} ${sort.dir}`
-    : meta.data
+    : defaultOrderBy ?? (meta.data
       ? `${metaSortColumn || (boundNoRevision ? 'row_id' : 'updated_at')} ${meta.data.sort_order || 'desc'}`
-      : undefined
+      : undefined)
 
   const list = useQuery({
     queryKey: ['list', table, columns.map((c) => c.column_name), orderBy, start, filterKey],
@@ -306,7 +325,7 @@ export function ListView({
     placeholderData: keepPreviousData,
     queryFn: () =>
       listResource(table, {
-        filters,
+        filters: queryFilters,
         fields: columns.map((c) => c.column_name),
         order_by: orderBy,
         limit_start: start,
@@ -355,7 +374,7 @@ export function ListView({
     // Not yet loaded is not empty: "No rows" would alarm someone whose
     // Table holds data (#871, a list reopened after its rename).
     'Loading…'
-  ) : (
+  ) : empty ?? (
     <>
       No rows
       {/* TLC-J1.2: an empty table is the moment the user most
@@ -534,7 +553,8 @@ export function ListView({
             {' / '}
             {table}
           </div>}
-          <h1 className="text-xl font-semibold text-ink">{table}<GlossaryHelp table={table} className="ml-1" /></h1>
+          <h1 className="text-xl font-semibold text-ink">{title ?? <>{table}<GlossaryHelp table={table} className="ml-1" /></>}</h1>
+          {subtitle && <p className="text-sm text-ink-muted">{subtitle}</p>}
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
           </span>
@@ -836,8 +856,8 @@ export function ListView({
           </div>
         </div>
       )}
-      {onFiltersChange && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
-      {onFiltersChange && <RecentStrip table={table} onApply={onFiltersChange} />}
+      {onFiltersChange && !baseFilters.length && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
+      {onFiltersChange && !baseFilters.length && <RecentStrip table={table} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
         <>
           <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
@@ -1533,7 +1553,7 @@ function StandardFilters({
 // Chips must stay readable for non-scalar filter values: a 'related'
 // relationship filter (NAV-002) names its target, long in-lists truncate.
 export function filterValueLabel(op: string, value: unknown): string {
-  if (op === 'related' && value && typeof value === 'object' && !Array.isArray(value)) {
+  if ((op === 'related' || op === 'not related') && value && typeof value === 'object' && !Array.isArray(value)) {
     const spec = value as { table?: string; via?: string }
     return spec.via ? `${spec.table ?? ''} via ${spec.via}` : String(spec.table ?? '')
   }
