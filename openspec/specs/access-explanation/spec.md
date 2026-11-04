@@ -1,7 +1,9 @@
-# access-explanation Specification
+# Access Explanation
 
 ## Purpose
-TBD - created by archiving change access-explanation-page. Update Purpose after archive.
+Anyone asking "why can this person see that?" gets the answer on one page
+per person: what they can see and the reason for each item, without reading
+the database and without the page showing any of the data itself.
 
 ## Requirements
 
