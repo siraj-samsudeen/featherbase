@@ -330,6 +330,36 @@
       "fromVersion": "3.0.0",
       "toVersion": "3.0.1",
       "operations": []
+    },
+    {
+      "id": "release_notes",
+      "fromVersion": "3.0.1",
+      "toVersion": "3.0.2",
+      "operations": []
+    }
+  ],
+  "releaseNotes": [
+    {
+      "version": "3.0.2",
+      "changes": [
+        "Admin → Apps shows what changed in each Tasker version (#938)"
+      ]
+    },
+    {
+      "version": "3.0.1",
+      "changes": [
+        "Activity history names people and projects instead of record ids (#563)",
+        "Your own questions and messages never show as unread to you (#563)"
+      ]
+    },
+    {
+      "version": "3.0.0",
+      "changes": [
+        "Tasker returns as a product app: only members can open it (#563)",
+        "Quick capture goes to a private Inbox; shared projects are for the team (#563)",
+        "My Work puts conversations that need you first, then your Focus (#563)",
+        "Assignable subtasks, questions with replies, and recurring tasks (#563)"
+      ]
     }
   ],
   "tables": [

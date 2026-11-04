@@ -35,6 +35,11 @@ test('a deployed instance shows the commit its host built it from, linked to tha
   expect(Date.parse(build.startedAt)).toBeLessThanOrEqual(Date.now())
 })
 
+test('a host that names only the commit gets no links, rather than wrong ones', () => {
+  overrideVariable('RAILWAY_GIT_COMMIT_SHA', 'f00dbabe')
+  expect(buildInfo()).toMatchObject({ commit: 'f00dbabe', message: null, repositoryUrl: null, commitUrl: null, historyUrl: null })
+})
+
 test('a checkout with no host variables reads its own git commit', async () => {
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
   const subject = execFileSync('git', ['log', '-1', '--format=%B'], { encoding: 'utf8' }).trim()

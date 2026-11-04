@@ -96,6 +96,10 @@ variable.
 | `PREVIEW_USER_NAME` | no | no |  | preview deployments: the full name the pre-deploy step gives the preview person (default `Preview Visitor`) |
 | `DISABLE_DATABASE_ENVIRONMENT_CHECK` | no | no |  | `1` skips the check that the database was stamped by this environment. Break-glass only |
 | `FEATHERBASE_APP_PATHS` | no | no | `[]` | JSON array of extra app package directories to discover at boot; `<folder>/*` means every folder in it |
+| `RAILWAY_GIT_COMMIT_SHA` | no | no |  | set by Railway: the commit this deployment was built from, shown on Admin → Apps (#938). Unset outside Railway, a checkout reads it from git |
+| `RAILWAY_GIT_COMMIT_MESSAGE` | no | no |  | set by Railway: that commit's message, shown with it |
+| `RAILWAY_GIT_REPO_OWNER` | no | no |  | set by Railway: the GitHub owner, for links to the commit and its issues |
+| `RAILWAY_GIT_REPO_NAME` | no | no |  | set by Railway: the GitHub repository, for the same links |
 | `FEATHERBASE_INSTANCE` | no | no |  | the client instance this image was built for (`<client>/<instance>`), as a build argument and a variable. Set, the pre-deploy step installs or upgrades its apps and applies its settings. See [A client instance](#a-client-instance) |
 | `JOB_POLL_MS` | no | no | `500` | background worker poll interval |
 | `SERVER_URL` | no | no | `http://localhost:8000` | the server `pnpm smoke` probes |
