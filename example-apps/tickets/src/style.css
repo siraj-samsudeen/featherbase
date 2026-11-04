@@ -17,6 +17,8 @@ a { color: var(--color-action); text-underline-offset: 3px; }
 h1, h2, h3, h4, p { overflow-wrap: anywhere; }
 h2 { margin: 0; font-size: 20px; line-height: 1.3; font-weight: 700; }
 h3 { margin: 0 0 8px; font-size: 13px; font-weight: 650; color: var(--color-ink); }
+/* A section heading after a control or a block gets room above it. */
+:is(button, details, .request-body, .card) + h3 { margin-top: 18px; }
 h4 { margin: 4px 0; font-size: 13px; font-weight: 650; }
 p { margin: 6px 0; line-height: 1.6; }
 small, .fine { font-size: 12px; color: var(--color-ink-subtle); line-height: 1.6; }
