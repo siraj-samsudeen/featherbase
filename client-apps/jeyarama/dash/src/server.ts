@@ -139,13 +139,13 @@ export function stateFormat(diveId: string | undefined, version: string | undefi
   return Object.hasOwn(known, diveId) && known[diveId].includes(Number(version)) ? 'compact' : 'legacy'
 }
 
-async function cachedRows(ctx: ScopedContext, store?: string, month: MonthChoice = 'this'): Promise<CachedAnswer> {
+async function cachedRows(ctx: ScopedContext, store: string | undefined, month: MonthChoice): Promise<CachedAnswer> {
   const answer = await ctx.datasets.active(DATASETS[month].sales, store ? { store_code: store } : undefined)
   return answer ? { at: answer.at, rows: answer.rows as SalesRow[] } : null
 }
 
 /** The month's metadata as the store's snapshot has it: any of the reader's rows carries the same values. */
-async function monthOf(ctx: ScopedContext, store: string, month: MonthChoice = 'this'): Promise<Month | null> {
+async function monthOf(ctx: ScopedContext, store: string, month: MonthChoice): Promise<Month | null> {
   const answer = await ctx.datasets.active(DATASETS[month].month, { store_code: store })
   const row = (answer?.rows as Month[] | undefined)?.[0]
   return row && answer ? { period_start: row.period_start, data_through: row.data_through, targets_available: row.targets_available, at: answer.at,
