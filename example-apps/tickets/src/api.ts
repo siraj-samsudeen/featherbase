@@ -1,3 +1,4 @@
+import { version } from '../package.json'
 export type Ticket = {
   row_id: string
   title: string
@@ -41,7 +42,7 @@ async function request<T>(path: string, body: unknown): Promise<T> {
     credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
-      'X-Featherbase-App-Version': 'tickets@0.1.0',
+      'X-Featherbase-App-Version': `tickets@${version}`,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),

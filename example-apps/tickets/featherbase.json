@@ -3,6 +3,7 @@
   "platformVersion": "2026-10",
   "name": "tickets",
   "title": "Tickets",
+  "accent": "green",
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "tickets.ticket",
@@ -33,6 +34,9 @@
     "queue": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "detail": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
   }},
+  "migrations": [
+    {"id": "platform_shell", "fromVersion": "0.1.0", "toVersion": "0.1.1", "operations": []}
+  ],
   "tables": [
     {"name": "tickets.ticket", "label": "Ticket", "module": "Tickets", "id_pattern": "FT-.#####", "title_column": "title", "columns": [
       {"column_name": "title", "label": "Public summary", "column_type": "Data", "reqd": true, "in_list_view": true},
