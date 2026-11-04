@@ -4,12 +4,14 @@
 // live. Nothing here feeds coverage.ts.
 import { JOB_LEVEL, type OrgChart, type Row } from './coverage.ts'
 import { checked, day, exact, holdsOn, text } from './values.ts'
+import { timeProblem } from './people.ts'
 
 export type ConflictKind =
   | 'link_to_another_store' | 'too_many_team_leaders' | 'team_leader_on_several_sections' | 'no_reporting_line'
   | 'section_without_team_leader' | 'section_without_department' | 'department_without_manager' | 'department_without_name'
   | 'team_leader_outside_department' | 'department_manager_outside_floors' | 'overlapping_placement'
   | 'several_stores_at_once' | 'several_store_managers' | 'unknown_job' | 'alias_target_invalid' | 'store_code_not_canonical'
+  | 'several_primary_assignments' | 'time_over_100_percent' | 'deployment_over_primary_share'
 
 export interface Conflict {
   kind: ConflictKind
@@ -17,6 +19,9 @@ export interface Conflict {
   /** The rows to fix, by row id. */
   rows: string[]
 }
+
+/** Jobs above the store (#928): known jobs whose reach is the scopes' to decide (#683), so not listed as unknown. */
+const ABOVE_THE_STORE = new Set(['Director', 'Chief Operating Officer'])
 
 const id = (row: Row) => exact(row.row_id)
 const overlap = (a: Row, b: Row) => {
@@ -118,11 +123,14 @@ export function conflictsOf(store: string, chart: OrgChart, on: string, name: (p
       add('overlapping_placement', `Subcategory ${text(a.subcategory)} is placed in ${text(sections.get(text(a.section))?.section_name)} and ${text(sections.get(text(b.section))?.section_name)} on overlapping dates`, [id(a), id(b)])
   }))
 
-  // One store at a time: two overlapping jobs in different stores are allowed only when both are Cluster Manager.
+  // One store at a time, for rows written before assignment types (#928): two overlapping jobs in different
+  // stores are allowed only when both are Cluster Manager. Typed rows may span stores (a Secondary, a
+  // temporary deployment); their time shares are checked below instead.
   const cluster = (r: Row) => text(r.job) === 'Cluster Manager'
+  const typed = (r: Row) => !!text(r.assignment_type)
   for (const person of new Set(storeJobs.map(r => text(r.person)))) {
     const rows = chart.jobs.filter(r => text(r.person) === person)
-    const clash = (a: Row, b: Row) => exact(b.store) !== exact(a.store) && overlap(a, b) && !(cluster(a) && cluster(b))
+    const clash = (a: Row, b: Row) => exact(b.store) !== exact(a.store) && overlap(a, b) && !(cluster(a) && cluster(b)) && !(typed(a) && typed(b))
     const here = rows.filter(r => exact(r.store) === store && rows.some(o => clash(r, o)))
     const elsewhere = rows.filter(r => here.some(h => clash(h, r)))
     for (const other of new Set(elsewhere.map(r => exact(r.store))))
@@ -130,10 +138,16 @@ export function conflictsOf(store: string, chart: OrgChart, on: string, name: (p
         [...here, ...elsewhere.filter(r => exact(r.store) === other)].map(id))
   }
 
+  // A person's time (#928), from their rows in every store: listed in each store they work in on the day.
+  for (const person of new Set(current.map(r => text(r.person)))) {
+    const problem = timeProblem(chart.jobs.filter(r => text(r.person) === person), on)
+    if (problem) add(problem.kind, `${name(person)} ${problem.message}`, problem.rows.map(id))
+  }
+
   const managers = holding('Store Manager', false)
   if (managers.length > 1) add('several_store_managers', `${store} has ${managers.length} Store Managers: ${managers.map(r => name(text(r.person))).sort().join(', ')}`, managers.map(id))
   for (const r of current)
-    if (!JOB_LEVEL[text(r.job)]) add('unknown_job', `${name(text(r.person))} holds ${text(r.job)}, which no coverage rule knows: it covers nothing`, [id(r)])
+    if (!JOB_LEVEL[text(r.job)] && !ABOVE_THE_STORE.has(text(r.job))) add('unknown_job', `${name(text(r.person))} holds ${text(r.job)}, which no coverage rule knows: it covers nothing`, [id(r)])
   return out
 }
 
