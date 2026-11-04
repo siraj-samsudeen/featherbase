@@ -1,4 +1,4 @@
-import { test, expect, ensureRuntimeApp, signIn, type APIRequestContext, type Page } from './fixtures'
+import { test, expect, ensureRuntimeApp, admitTaskerAdmin, signIn, type APIRequestContext, type Page } from './fixtures'
 
 // An app with its own screen (Tasker, and the `other` fixture) owns its deep
 // address under the platform's shared top bar (#650, design D3: the bar
@@ -16,6 +16,7 @@ async function deleteTask(request: APIRequestContext, headers: Record<string, st
 
 test.beforeAll(async ({ request }) => {
   await ensureRuntimeApp(request, 'tasker')
+  await admitTaskerAdmin(request)
   await ensureRuntimeApp(request, 'other')
 })
 
@@ -50,6 +51,7 @@ test("an app keeps its deep address under the shared bar, and the dropdown leave
       .step('closing only clears Tasker hash state', async ({ page }: { page: Page }) => {
         await expect(page).toHaveURL('/tasker/review/37?filter=a%26b&owner=me#')
       })
+      .within('.tasker-nav-inbox', tab => tab.click('Inbox'))
       .clickLink('Host shell deep-link proof')
       .step('opening the task restores the original deep URL', async ({ page }: { page: Page }) => {
         await expect(page).toHaveURL(location)
@@ -90,17 +92,24 @@ test("an app's own hash and query links keep its deep path under the bar", async
     })
 })
 
-test('the app sidebar follows the shared bar theme without repainting app content', async ({ session }) => {
+test('Tasker content and shared navigation follow the selected theme without losing the capture draft', async ({ session }) => {
   await signIn(session)
-  await session.visit('/tasker/').step('both navigation surfaces follow each choice', async ({ page }) => {
-    const contentColor = await page.locator('body').evaluate(element => getComputedStyle(element).backgroundColor)
-    for (const name of ['Dark', 'Light']) {
-      await page.getByRole('radio', { name, exact: true }).click()
-      const color = await page.getByTestId('top-bar').evaluate(element => getComputedStyle(element).backgroundColor)
-      await expect(page.getByRole('navigation', { name: 'Task views' }).locator('.sidebar-frame')).toHaveCSS('background-color', color)
-      await expect(page.locator('body')).toHaveCSS('background-color', contentColor)
-    }
-  })
+  await session
+    .visit('/tasker/')
+    .within('.tasker-nav-inbox', tab => tab.click('Inbox'))
+    .fillIn('Quick capture', 'Draft retained across theme changes')
+    .step('Tasker and both navigation surfaces follow each choice', async ({ page }) => {
+      const colors: string[] = []
+      for (const name of ['Dark', 'Light']) {
+        await page.getByRole('radio', { name, exact: true }).click()
+        const color = await page.getByTestId('top-bar').evaluate(element => getComputedStyle(element).backgroundColor)
+        await expect(page.getByRole('navigation', { name: 'Task views' }).locator('.sidebar-frame')).toHaveCSS('background-color', color)
+        colors.push(await page.locator('body').evaluate(element => getComputedStyle(element).backgroundColor))
+        await expect(page.getByRole('textbox', { name: 'Quick capture', exact: true })).toHaveValue('Draft retained across theme changes')
+      }
+      expect(colors[0]).not.toBe(colors[1])
+      await expect(page.getByRole('radio', { name: 'Light', exact: true })).toBeChecked()
+    })
 })
 
 test.describe('coarse-pointer phone', () => {
@@ -109,8 +118,8 @@ test.describe('coarse-pointer phone', () => {
   test("Tasker's page starts below the shared bar on a phone, and nothing scrolls sideways", async ({ session }) => {
     await signIn(session)
     await session
-      .visit('/tasker/')
-      .assertHas('[placeholder="What do you need to remember?"]')
+      .visit('/tasker/').within('.tasker-nav-inbox', tab => tab.click('Inbox'))
+      .assertHas('[id="quick-capture"]')
       .step('the page starts below the bar', async ({ page }: { page: Page }) => {
         expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true)
         const bar = (await page.getByTestId('top-bar').boundingBox())!
@@ -134,7 +143,7 @@ test.describe('coarse-pointer phone', () => {
     try {
       await signIn(session)
       await session
-        .visit('/tasker/')
+        .visit('/tasker/').within('.tasker-nav-inbox', tab => tab.click('Inbox'))
         .clickLink('Host shell mobile proof')
         .step("the inspector is pinned at the bar's height, not at the window's top", async ({ page }: { page: Page }) => {
           await expect(page.getByTestId('top-bar')).toHaveCount(1)

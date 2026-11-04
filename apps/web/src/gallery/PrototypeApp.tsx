@@ -1,11 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { createRootRoute, createRoute, createRouter, defaultStringifySearch, Outlet } from '@tanstack/react-router'
+import { createRootRoute, createRoute, createRouter, defaultStringifySearch, Outlet, useParams } from '@tanstack/react-router'
 import { useIsFetching, useQueryClient } from '@tanstack/react-query'
-import { parseFilters } from 'shared'
+import { parseFilters, tableHref, rowHref, tableSlug } from 'shared'
+import { useMeta } from '../lib/meta'
 import { AdminLayout } from '../pages/AdminLayout'
 import { ListView, type Filter } from '../components/ListView'
 import { FormView } from '../components/FormView'
-import { Breadcrumbs, Button, Notice, SearchInput, Select, Skeleton } from '../components/ui'
+import { Breadcrumbs, Button, Notice, SearchInput, Select, Skeleton } from '@featherbase/shop-floor'
 import { labScenarios, type LabScenario } from './fixtures'
 
 /** Uses server filters, not a search of the currently loaded page. */
@@ -21,7 +22,7 @@ export function SearchableTableExample({ table, filters: supplied, onFiltersChan
   const query = String(filters.find(([column, operator]) => column === 'name' && operator === 'like')?.[2] ?? '').replaceAll('%', '')
   return <div className="flex min-w-0 flex-col gap-3" onClickCapture={(event) => {
     const anchor = (event.target as Element).closest('a')
-    if (anchor?.pathname.startsWith(`/featherbase/admin/${encodeURIComponent(table)}/`)) {
+    if (anchor?.pathname.startsWith(`${tableHref(table)}/row/`)) {
       sessionStorage.setItem(`lab-return-${table}`, window.location.pathname + window.location.search)
     }
   }}>
@@ -68,30 +69,38 @@ export function createPrototypeRouter(content: ReactNode) {
   const shell = createRoute({ getParentRoute: () => root, id: 'prototype-shell', component: () => <AdminLayout wide /> })
   const start = createRoute({ getParentRoute: () => shell, path: '/prototype.html', component: () => <FixtureFrame>{content}</FixtureFrame> })
   const list = createRoute({
-    getParentRoute: () => shell, path: '/featherbase/admin/$table',
+    getParentRoute: () => shell, path: '/featherbase/admin/table/$table',
+    params: { stringify: ({ table }: { table: string }) => ({ table: tableSlug(table) }) },
     validateSearch: (search: Record<string, unknown>) => ({ filters: typeof search.filters === 'string' ? search.filters : JSON.stringify(search.filters ?? []), returnTo: typeof search.returnTo === 'string' ? search.returnTo : undefined }),
     component: ListPage,
   })
   function ListPage() {
-    const { table } = list.useParams()
+    const { table: segment } = useParams({ strict: false }) as { table: string }
+    const meta = useMeta(segment)
     const { filters, returnTo } = list.useSearch()
     const navigate = list.useNavigate()
+    if (!meta.data) return <Notice>{meta.error?.message ?? 'Loading…'}</Notice>
+    const table = meta.data.name
     return <FixtureFrame>
       <Breadcrumbs items={[{ label: 'UI Lab', href: '/prototype.html' }, ...(returnTo ? [{ label: 'Project', href: returnTo }] : []), { label: table }]} />
       <SearchableTableExample key={table} table={table} filters={parseFilters(filters)} onFiltersChange={(next) => void navigate({ search: (previous) => ({ ...previous, filters: JSON.stringify(next), returnTo }), replace: true })} />
     </FixtureFrame>
   }
-  const form = createRoute({ getParentRoute: () => shell, path: '/featherbase/admin/$table/$name', component: FormPage })
-  function FormPage() {
-    const { table, name } = form.useParams()
-    const collectionHref = sessionStorage.getItem(`lab-return-${table}`) ?? `/featherbase/admin/${encodeURIComponent(table)}`
-    const projectHref = `/featherbase/admin/${encodeURIComponent(table)}/${encodeURIComponent(name)}`
-    const related = `/featherbase/admin/Lab%20Task?filters=${encodeURIComponent(JSON.stringify([['project', '=', name]]))}&returnTo=${encodeURIComponent(projectHref)}`
+  const form = createRoute({ getParentRoute: () => shell, path: '/featherbase/admin/table/$table/row/$name', params: { stringify: ({ table, name }: { table: string; name: string }) => ({ table: tableSlug(table), name }) }, component: FormPage })
+  const newRow = createRoute({ getParentRoute: () => shell, path: '/featherbase/admin/table/$table/new', params: { stringify: ({ table }: { table: string }) => ({ table: tableSlug(table) }) }, component: () => <FormPage isNew /> })
+  function FormPage({ isNew = false }: { isNew?: boolean }) {
+    const { table: segment, name = 'new' } = useParams({ strict: false }) as { table: string; name?: string }
+    const meta = useMeta(segment)
+    if (!meta.data) return <Notice>{meta.error?.message ?? 'Loading…'}</Notice>
+    const table = meta.data.name
+    const collectionHref = sessionStorage.getItem(`lab-return-${table}`) ?? tableHref(table)
+    const projectHref = rowHref(table, name)
+    const related = `${tableHref('Lab Task')}?filters=${encodeURIComponent(JSON.stringify([['project', '=', name]]))}&returnTo=${encodeURIComponent(projectHref)}`
     return <FixtureFrame>
       <Breadcrumbs items={[{ label: 'UI Lab', href: '/prototype.html' }, { label: table, href: collectionHref }, { label: name }]} />
-      {table === 'Lab Project' && <a href={related} className="text-sm font-semibold text-action hover:underline">Related tasks →</a>}
-      <FormView key={`${table}/${name}`} table={table} name={name} />
+      {table === 'Lab Project' && !isNew && <a href={related} className="text-sm font-semibold text-action hover:underline">Related tasks →</a>}
+      <FormView key={`${table}/${name}/${isNew}`} table={table} name={name} isNew={isNew} />
     </FixtureFrame>
   }
-  return createRouter({ routeTree: root.addChildren([shell.addChildren([start, list, form])]), stringifySearch: (search) => defaultStringifySearch(search).replace(/\+/g, '%20') })
+  return createRouter({ routeTree: root.addChildren([shell.addChildren([start, list, form, newRow])]), stringifySearch: (search) => defaultStringifySearch(search).replace(/\+/g, '%20') })
 }

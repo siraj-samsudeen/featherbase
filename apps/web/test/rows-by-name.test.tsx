@@ -4,6 +4,7 @@
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
+import { tableHref } from 'shared'
 
 configure({ asyncUtilTimeout: 10_000 })
 const enc = encodeURIComponent
@@ -34,7 +35,7 @@ const headers = () => screen.getAllByRole('columnheader').map((h) => h.textConte
 
 test('a titled list leads with the title as the link, with no Row ID', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/${enc(CUSTOMER)}`, admin)
+  await renderApp(`${tableHref(CUSTOMER)}`, admin)
   const link = await screen.findByRole('link', { name: 'Globex Ltd' })
   expect(link.getAttribute('href')).toContain('/cust-1')
   expect(headers()).not.toContain('Row ID')
@@ -43,7 +44,7 @@ test('a titled list leads with the title as the link, with no Row ID', async ({ 
 
 test('a blank title leads with the row id, never a blank', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/${enc(CUSTOMER)}`, admin)
+  await renderApp(`${tableHref(CUSTOMER)}`, admin)
   await waitFor(() => {
     const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href')?.endsWith('/cust-3'))
     expect(links.some((a) => a.textContent?.trim() === 'cust-3')).toBe(true)
@@ -52,7 +53,7 @@ test('a blank title leads with the row id, never a blank', async ({ admin }) => 
 
 test('the columns menu keeps the title always on, in place of Row ID', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/${enc(CUSTOMER)}`, admin)
+  await renderApp(`${tableHref(CUSTOMER)}`, admin)
   await screen.findByRole('link', { name: 'Globex Ltd' })
   fireEvent.click(screen.getByTestId('list-columns'))
   const menu = await screen.findByTestId('list-columns-popup')
@@ -63,17 +64,17 @@ test('the columns menu keeps the title always on, in place of Row ID', async ({ 
 
 test('a link cell reads as the linked row\'s title and opens it; an untitled list keeps Row ID', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/${enc(ORDER)}`, admin)
+  await renderApp(`${tableHref(ORDER)}`, admin)
   const cell = (await screen.findAllByTestId('cell-customer'))[0]
   await waitFor(() => expect(cell).toHaveTextContent('Globex Ltd'))
-  expect(within(cell).getByRole('link').getAttribute('href')).toContain(`/${enc(CUSTOMER)}/cust-1`)
+  expect(within(cell).getByRole('link').getAttribute('href')).toBe(`${tableHref(CUSTOMER)}/row/cust-1`)
   expect(headers()).toContain('Row ID')
 })
 
 test('a link filter names its column and the picked row, in use and in Recent', async ({ admin }) => {
   await seed(admin)
   const filters = JSON.stringify([['customer', '=', 'cust-1']])
-  const path = `/featherbase/admin/${enc(ORDER)}`
+  const path = `${tableHref(ORDER)}`
   recordAction('Administrator', {
     kind: 'list', key: `list:${ORDER}?${filters}`, label: ORDER, sub: 'customer = cust-1', path: `${path}?filters=${enc(filters)}`,
   }, Date.now() - 1000)
@@ -86,13 +87,13 @@ test('a link filter names its column and the picked row, in use and in Recent', 
 test('a plain filter names its column by its label', async ({ admin }) => {
   await seed(admin)
   const filters = JSON.stringify([['item', '=', 'Widgets']])
-  await renderApp(`/featherbase/admin/${enc(ORDER)}?filters=${enc(filters)}`, admin)
+  await renderApp(`${tableHref(ORDER)}?filters=${enc(filters)}`, admin)
   await waitFor(() => expect(screen.getByTestId('filter-chip')).toHaveTextContent('Item = Widgets'))
 })
 
 test('a link cell in the map\'s row list reads as a title and moves the map', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/map/${enc(ORDER)}/ord-1`, admin)
+  await renderApp(`${tableHref(ORDER)}/row/ord-1/map`, admin)
   const self = await screen.findByTestId('map-self-row')
   const hop = await within(self).findByRole('button', { name: 'Globex Ltd' })
   expect(within(self).getByTestId('map-row')).not.toHaveTextContent('cust-1')

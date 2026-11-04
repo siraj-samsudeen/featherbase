@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { tableHref } from 'shared'
 import { api } from '../lib/api'
-import { Button, Card, EmptyState, Notice, Skeleton, StatusPill, buttonClasses, cx } from '../components/ui'
+import { Button, Card, EmptyState, Notice, Skeleton, StatusPill, buttonClasses, cx } from '@featherbase/shop-floor'
 
 interface CatalogApp {
   name: string
@@ -32,7 +33,7 @@ const GRANTS = [
 ] as const
 
 function configurationPath(table: string, app: string) {
-  return `/featherbase/admin/${encodeURIComponent(table)}?filters=${encodeURIComponent(JSON.stringify([['app', '=', app]]))}`
+  return `${tableHref(table)}?filters=${encodeURIComponent(JSON.stringify([['app', '=', app]]))}`
 }
 
 function AppDetails({ app }: { app: CatalogApp }) {

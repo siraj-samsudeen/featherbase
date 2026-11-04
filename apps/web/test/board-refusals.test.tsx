@@ -3,6 +3,7 @@
 // coverage report (ADR 0012) showed. The refusal is real: the row was deleted
 // by someone else between the page loading and the drop. Pointer landing
 // places are stubbed as in board-views.test.tsx (jsdom has no layout).
+import { tableSlug } from 'shared'
 import { afterEach } from 'vitest'
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { test, expect, renderApp } from './pg-test'
@@ -60,7 +61,7 @@ const thisMonth = (day: number) => {
 
 test('Board: a card dropped after someone else deleted its row says why it did not move', async ({ admin }) => {
   await seedBoard(admin)
-  await renderApp(`/featherbase/admin/${enc(BOARD)}/view/kanban`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(BOARD)}/view/kanban`, admin)
   await waitFor(() => expect(screen.getAllByTestId('kanban-card')).toHaveLength(1))
   await admin.delete(`/api/table/${enc(BOARD)}/d1`)
   fireEvent.pointerDown(document.querySelector('[data-card="d1"]') as HTMLElement)
@@ -71,7 +72,7 @@ test('Board: a card dropped after someone else deleted its row says why it did n
 
 test('Board: pressing a card\'s title link does not pick the card up', async ({ admin }) => {
   await seedBoard(admin)
-  await renderApp(`/featherbase/admin/${enc(BOARD)}/view/kanban`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(BOARD)}/view/kanban`, admin)
   await waitFor(() => expect(screen.getAllByTestId('kanban-card')).toHaveLength(1))
   const before = ((await admin.get(`/api/table/${enc(BOARD)}/d1`)) as { updated_at: string }).updated_at
   fireEvent.pointerDown(within(screen.getByTestId('kanban-card')).getByRole('link', { name: 'Deal One' }))
@@ -84,7 +85,7 @@ test('Board: pressing a card\'s title link does not pick the card up', async ({ 
 
 test('Calendar: an event dropped after someone else deleted its row says why it did not move', async ({ admin }) => {
   await seedSchedule(admin, { row_id: 's1', title: 'Kickoff', start_date: thisMonth(3) })
-  await renderApp(`/featherbase/admin/${enc(SCHED)}/view/calendar`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}/view/calendar`, admin)
   await waitFor(() => expect(within(screen.getByTestId(`cal-cell-${thisMonth(3)}`)).getByText('Kickoff')).toBeInTheDocument())
   await admin.delete(`/api/table/${enc(SCHED)}/s1`)
   fireEvent.pointerDown(document.querySelector('[data-event="s1"]') as HTMLElement)
@@ -95,7 +96,7 @@ test('Calendar: an event dropped after someone else deleted its row says why it 
 
 test('Calendar: pressing an event\'s title link does not pick the event up', async ({ admin }) => {
   await seedSchedule(admin, { row_id: 's1', title: 'Kickoff', start_date: thisMonth(3) })
-  await renderApp(`/featherbase/admin/${enc(SCHED)}/view/calendar`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}/view/calendar`, admin)
   const from = await screen.findByTestId(`cal-cell-${thisMonth(3)}`)
   fireEvent.pointerDown(await within(from).findByRole('link', { name: 'Kickoff' }))
   landOn(`cal-cell-${thisMonth(5)}`)
@@ -107,7 +108,7 @@ test('Calendar: pressing an event\'s title link does not pick the event up', asy
 
 test('Timeline: a bar resized after someone else deleted its row says why it did not change', async ({ admin }) => {
   await seedSchedule(admin, { row_id: 't1', title: 'Design', start_date: '2026-03-02', end_date: '2026-03-05' })
-  await renderApp(`/featherbase/admin/${enc(SCHED)}/view/gantt`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(SCHED)}/view/gantt`, admin)
   const handle = await screen.findByTestId('gantt-resize-t1')
   await admin.delete(`/api/table/${enc(SCHED)}/t1`)
   pointer(handle, 'pointerdown', 100)

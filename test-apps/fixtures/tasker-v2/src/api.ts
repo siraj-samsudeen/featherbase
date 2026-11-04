@@ -28,10 +28,23 @@ export const api = {
   put: <T>(path: string, body: unknown) => request<T>(path, 'PUT', body),
 }
 export function listResource<T>(table: string, params: {
-  fields?: string[]; filters?: unknown[]; order_by?: string; limit_page_length?: number
+  fields?: string[]; filters?: unknown[]; order_by?: string; limit_page_length?: number; limit_start?: number
 } = {}) {
   const query = new URLSearchParams()
   for (const [key, value] of Object.entries(params))
     query.set(key, Array.isArray(value) ? JSON.stringify(value) : String(value))
-  return api.get<{ data: T[] }>(`/api/table/${encodeURIComponent(table)}?${query}`)
+  return api.get<{ data: T[]; total: number }>(`/api/table/${encodeURIComponent(table)}?${query}`)
+}
+
+/** Load each page through the same permission-filtered list interface. */
+export async function listAllResources<T>(table: string, params: Parameters<typeof listResource>[1] = {}) {
+  const rows: T[] = []
+  let total = 0
+  do {
+    const page = await listResource<T>(table, { ...params, limit_start: rows.length })
+    rows.push(...page.data)
+    total = page.total
+    if (!page.data.length) break
+  } while (rows.length < total)
+  return { data: rows, total }
 }

@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { TestClient } from 'feather-testing-postgres'
@@ -30,7 +31,7 @@ async function setup(admin: TestClient, customer = 'Wayne Enterprises') {
   })
 }
 
-const printUrl = () => `/featherbase/print/${encodeURIComponent(DT)}/pv-1`
+const printUrl = () => `/featherbase/print/${encodeURIComponent(tableSlug(DT))}/pv-1`
 
 test('the default letterhead appears on the print page without choosing one', async ({ admin }) => {
   await setup(admin)

@@ -11,10 +11,10 @@ import { RowTitle } from '../lib/row-titles'
 import { useIsSystemManager } from '../lib/session'
 import { useI18n } from '../lib/i18n'
 import { usePeek } from './Peek'
-import { buttonClasses, pillClasses } from './ui'
 import {
+  buttonClasses, pillClasses,
   Braces, CalendarDays, ChevronDown, ChevronRight, Hash, Image, Link2, ToggleRight, Type, type LucideIcon,
-} from './ui/icons'
+} from '@featherbase/shop-floor'
 
 export type Arrangement = 'importance' | 'type' | 'filled' | 'links' | 'source'
 export const ARRANGEMENTS: [Arrangement, string][] = [
@@ -264,7 +264,7 @@ export function ValueField({ field, value, meta, settings, columns }: {
       peek.push({ kind: 'record', table: target, name: String(value) })
     }
     shown = (
-      <RouterLink to="/featherbase/admin/$table/$name" params={{ table: target, name: String(value) }}
+      <RouterLink to="/featherbase/admin/table/$table/row/$name" params={{ table: target, name: String(value) }}
         search={{ prefill: undefined }} onClick={open} className="text-action hover:underline">
         <RowTitle table={target} rowId={String(value)} />
       </RouterLink>

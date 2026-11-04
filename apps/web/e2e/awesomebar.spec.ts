@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 
 const DT = 'Awesome DT'
@@ -37,7 +38,7 @@ test('UI-014: typing a doc name surfaces it and Enter opens its form', async ({ 
     await expect(hit).toContainText(DOC)
     await expect(hit).toContainText(DT)
     await hit.click()
-    await expect(page).toHaveURL(new RegExp(`${encodeURIComponent(DT)}/${DOC}`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`))
     await expect(page.getByTestId('form-view')).toBeVisible()
   })
 
@@ -48,7 +49,7 @@ test('UI-014: typing a doc name surfaces it and Enter opens its form', async ({ 
     await bar.fill('zephyr-unique-doc')
     await expect(page.getByTestId('awesomebar-doc').first()).toBeVisible()
     await bar.press('Enter')
-    await expect(page).toHaveURL(new RegExp(`${encodeURIComponent(DT)}/${DOC}`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`))
     await expect(page.getByTestId('form-view')).toBeVisible()
   })
 
@@ -60,6 +61,6 @@ test('UI-014: typing a doc name surfaces it and Enter opens its form', async ({ 
     const newAction = page.getByTestId('awesomebar-new').first()
     await expect(newAction).toContainText(`New ${DT}`)
     await newAction.click()
-    await expect(page).toHaveURL(new RegExp(`${encodeURIComponent(DT)}/new`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/new`))
   })
 })

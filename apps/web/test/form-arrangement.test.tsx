@@ -76,7 +76,7 @@ async function parcelDesk(admin: { post: <T>(p: string, b: unknown) => Promise<T
 test('an editable row opens by importance, with its controls, and the choice is remembered for the person', async ({ admin }) => {
   await parcelDesk(admin)
   const user = userEvent.setup()
-  await renderApp('/featherbase/admin/Arrange%20Desk/D-1', admin)
+  await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
   await waitFor(() => expect(labels()).toEqual(['Label', 'Sender', 'Weight', 'Note', 'Created On']), { timeout: 8000 })
   // Editable: the empty note is a control, not folded; bookkeeping stays a control at the foot.
   expect(screen.getByLabelText('Note').tagName).toBe('TEXTAREA')
@@ -97,7 +97,7 @@ test('the remembered arrangement comes back, and does not drop the list’s', as
   await parcelDesk(admin)
   await admin.put('/api/user_settings/Arrange%20Desk', { sort: { field: 'weight', dir: 'desc' }, shownCols: [], hiddenCols: [] })
   await admin.put('/api/user_settings/Arrange%20Desk', { form: { mode: 'filled', columns: 2 } })
-  await renderApp('/featherbase/admin/Arrange%20Desk/D-1', admin)
+  await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
   await waitFor(() => expect(screen.getByTestId('form-arranged')).toHaveAttribute('data-arrangement', 'filled'), { timeout: 8000 })
   expect(labels()).toEqual(['Weight', 'Label', 'Sender', 'Note', 'Created On'])
   const stored = await admin.get<{ settings: Record<string, unknown> }>('/api/user_settings/Arrange%20Desk')
@@ -106,7 +106,7 @@ test('the remembered arrangement comes back, and does not drop the list’s', as
 
 test('a Table laid out in sections opens in its own order until the person picks another', async ({ admin }) => {
   await parcelDesk(admin, true)
-  await renderApp('/featherbase/admin/Arrange%20Desk/D-1', admin)
+  await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
   const second = await screen.findByTestId('form-section-1', undefined, { timeout: 8000 })
   expect(within(second).getByLabelText('Sender')).toBeInTheDocument()
   expect(screen.getByTestId('arrange-source')).toHaveAttribute('aria-pressed', 'true')
@@ -114,7 +114,7 @@ test('a Table laid out in sections opens in its own order until the person picks
 
 test('a new row keeps the sectioned layout and no arrange switch', async ({ admin }) => {
   await parcelDesk(admin)
-  await renderApp('/featherbase/admin/Arrange%20Desk/new', admin)
+  await renderApp('/featherbase/admin/table/arrange-desk/new', admin)
   await screen.findByTestId('form-section-0', undefined, { timeout: 8000 })
   expect(screen.queryByTestId('arrange-bar')).not.toBeInTheDocument()
 })
@@ -156,7 +156,7 @@ test('a read-only row shows each value by its type, folds its empty fields and p
   expect(meta.columns.find((c) => c.column_name === 'instructions')?.column_type).toBe('Text')
 
   const user = userEvent.setup()
-  await renderApp('/featherbase/admin/Arrange%20Parcel/7', admin)
+  await renderApp('/featherbase/admin/table/arrange-parcel/row/7', admin)
   await waitFor(() => expect(labels()).toEqual(['Label', 'Rack', 'Sender', 'Weight', 'Fragile', 'Instructions', 'Photo']), { timeout: 8000 })
   const value = (label: string) => screen.getByLabelText(label)
   expect(value('Weight')).toHaveClass('tabular-nums')

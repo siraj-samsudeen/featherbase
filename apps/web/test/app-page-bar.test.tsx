@@ -16,7 +16,7 @@ import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { setSession } from '../src/lib/api'
 import { BAR_CHANGE_EVENT } from '../src/lib/bar-address'
 import { mountBar } from '../src/bar/mount'
-import { APP_THEME_ATTRIBUTE, THEME_CHANGE_EVENT } from '../src/lib/theme-paint'
+import { APP_THEME_ATTRIBUTE, THEME_CHANGE_EVENT } from '@featherbase/shop-floor/theme'
 import { PHONE_QUERY } from '../src/components/TopBar'
 import { test, expect } from './pg-test'
 

@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
+const { tableHref, rowHref } = require('../../../packages/shared/src/app-routes.ts');
 const { acceptanceSql, REPO_ROOT } = require('../stack');
 const { ListPage } = require('./list-page');
 
@@ -52,7 +53,7 @@ class ReadableLabelsPage {
   async openPolicy() {
     const row = await this.api.saveRow(this.table, { policy: this.raw });
     this.rowId = row.row_id;
-    await this.page.goto(`/featherbase/admin/${encodeURIComponent(this.table)}/${encodeURIComponent(this.rowId)}`);
+    await this.page.goto(rowHref(this.table, this.rowId));
     await this.page.getByTestId('form-view').waitFor();
   }
 
@@ -62,7 +63,7 @@ class ReadableLabelsPage {
   }
 
   async chooseAndSave() {
-    await this.page.goto(`/featherbase/admin/${encodeURIComponent(this.table)}/new`);
+    await this.page.goto(`${tableHref(this.table)}/new`);
     await this.policyControl().waitFor();
     await this.policyControl().selectOption(RAW);
     const saved = this.page.waitForResponse(r => r.url().includes('/api/save_row') && r.request().method() === 'POST');
@@ -103,7 +104,7 @@ class ReadableLabelsPage {
       when 'new_person' then 'new_person' end
       where parent = 'Sign In Method' and column_name in ('client_id', 'service_url', 'new_person')`);
     await this.api.saveRow('Translation', { row_id: 'labels-826-new-person', language: 'fr', source_text: 'new_person', translated_text: 'Politique conservée' });
-    await this.api.saveRow('Metadata Override', { row_id: 'labels-826-override', table_name: 'Sign In Method', column_name: 'client_id', property: 'label', value: 'Customer key override' });
+    await this.api.call('POST', '/api/table/Metadata%20Override', { row_id: 'labels-826-override', table_name: 'Sign In Method', column_name: 'client_id', property: 'label', value: 'Customer key override' }, [201]);
     this.beforeOverrides = await acceptanceSql('select * from featherbase.metadata_override order by row_id');
   }
 

@@ -9,7 +9,7 @@ import { test as databaseTest } from './pg-test'
 import { Gallery } from '../src/gallery/Gallery'
 import { PrototypeLibrary } from '../src/gallery/PrototypeLibrary'
 import { useState } from 'react'
-import { Breadcrumbs, ContentTabs, SearchableList, TextInput } from '../src/components/ui'
+import { Breadcrumbs, ContentTabs, SearchableList, TextInput } from '@featherbase/shop-floor'
 
 afterEach(() => {
   delete document.documentElement.dataset.theme
@@ -32,7 +32,7 @@ databaseTest('screen starter retains its search and draft while the native list 
     await user.type(await screen.findByRole('textbox', { name: 'Note for Project records' }), 'Retain this plan')
     await user.type(screen.getByRole('searchbox', { name: 'Search screen starters' }), 'Project')
     expect(screen.queryByRole('link', { name: 'Related tasks' })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Project records' })).toHaveAttribute('href', '/featherbase/admin/Lab%20Project')
+    expect(screen.getByRole('link', { name: 'Project records' })).toHaveAttribute('href', '/featherbase/admin/table/lab-project')
 
     await user.click(screen.getByRole('tab', { name: 'Native Table list' }))
     await screen.findByTestId('list-view')
@@ -105,7 +105,7 @@ test('filters component examples by purpose', async () => {
   await user.type(screen.getByRole('searchbox', { name: 'Search components' }), 'list')
   expect(screen.getByRole('heading', { name: 'List (a table when wide, cards on a phone)' })).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Buttons' })).not.toBeInTheDocument()
-  expect(screen.getByText('apps/web/src/components/ui/DataList.tsx')).toBeInTheDocument()
+  expect(screen.getByText('packages/shop-floor/src/DataList.tsx')).toBeInTheDocument()
 })
 
 test('shows every section, flips light and dark, and raises both toasts', async () => {

@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { resolve } from 'node:path'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -23,10 +24,11 @@ test('generic form deletes a fresh app-owned row using the revision it loaded', 
   const row = await saveDoc(TABLE, { row_id: 'fresh-delete', title: 'Remove 37 crates' }, 'Administrator', 'insert')
   const rowId = String(row.row_id)
 
-  await renderApp(`/featherbase/admin/${TABLE_PATH}/${rowId}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(TABLE_PATH)))}/row/${rowId}`, admin)
   expect(await screen.findByDisplayValue('Remove 37 crates')).toBeInTheDocument()
 
   const user = userEvent.setup()
+  await user.click(screen.getByRole('button', { name: 'Record actions' }))
   await user.click(screen.getByTestId('form-delete'))
   await user.click(screen.getByTestId('delete-row-confirm'))
 
@@ -41,7 +43,7 @@ test('generic form refuses a stale app-owned delete and preserves the newer row'
   const loadedRevision = new Date('2000-01-01T00:00:00.000Z')
   await sql`update actionproof.work set updated_at = ${loadedRevision} where row_id = ${rowId}`
 
-  await renderApp(`/featherbase/admin/${TABLE_PATH}/${rowId}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(TABLE_PATH)))}/row/${rowId}`, admin)
   expect(await screen.findByDisplayValue('Original 19 crates')).toBeInTheDocument()
 
   const newer = await saveDoc(TABLE, {
@@ -54,6 +56,7 @@ test('generic form refuses a stale app-owned delete and preserves the newer row'
   expect(newerRevision.getTime()).toBeGreaterThan(loadedRevision.getTime())
 
   const user = userEvent.setup()
+  await user.click(screen.getByRole('button', { name: 'Record actions' }))
   await user.click(screen.getByTestId('form-delete'))
   await user.click(screen.getByTestId('delete-row-confirm'))
 

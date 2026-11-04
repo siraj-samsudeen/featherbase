@@ -1,4 +1,5 @@
 import { writeFile } from 'node:fs/promises'
+import { tableHref } from 'shared'
 import { anonymousTest, expect, adminAuth, loginAs, type APIRequestContext } from './fixtures'
 import { ensureTable } from './fixtures-ui'
 
@@ -166,7 +167,7 @@ test.afterAll(async ({ request }) => {
 for (const width of [375, 1280]) {
   test(`a pending offer preserves a full-document new-row deep link at ${width}px`, async ({ session, request }) => {
     const table = 'Setup deep link'
-    const path = `/featherbase/admin/${encodeURIComponent(table)}/new`
+    const path = `${tableHref(table)}/new`
     await ensureTable(request, headers, {
       name: table, id_pattern: 'hash',
       columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],

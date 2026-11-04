@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, type APIRequestContext } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
@@ -135,7 +136,7 @@ test('a malformed or stale chain degrades to the plain root, never a blank page'
 test('ListView split button: pick dependents, Open lands on a chained Explore', async ({
   session,
 }) => {
-  await session.visit(`/admin/${encodeURIComponent(VEHICLE)}`).assertHas('[data-testid="open-explore"]')
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(VEHICLE))}`).assertHas('[data-testid="open-explore"]')
 
   await session.step("chevron panel lists the same chainable dependents Explore's pickers offer", async ({ page }) => {
     await page.getByTestId('explore-split-toggle').click()
@@ -164,7 +165,7 @@ test('ListView split button: pick dependents, Open lands on a chained Explore', 
 test('RelationMap: Open in Explore materializes the neighborhood narrowed to the row', async ({
   session,
 }) => {
-  await session.visit(`/admin/map/${encodeURIComponent(VEHICLE)}/${encodeURIComponent(v1)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(VEHICLE))}/row/${encodeURIComponent(v1)}/map`)
   await session.step('open in Explore', async ({ page }) => {
     await page.getByTestId('map-open-explore').click()
   })

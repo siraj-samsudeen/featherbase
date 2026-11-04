@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, bearer, type APIRequestContext, type Page } from './fixtures'
 
 const DT = 'SavedView DT'
@@ -91,7 +92,7 @@ test('#101 P6: three applications trigger the nudge; the saved view lives as a c
   session,
 }) => {
   await session.step('3 filter applications trigger the nudge; saving makes it a chip', async ({ page }) => {
-    const listUrl = `/featherbase/admin/${encodeURIComponent(DT)}?filters=${FILTERS}`
+    const listUrl = `/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}?filters=${FILTERS}`
 
     // First two arrivals: no nudge yet. Waiting past the dedup window (see
     // waitPastDedupWindow) between them keeps each one a distinct arrival
@@ -120,7 +121,7 @@ test('#101 P6: three applications trigger the nudge; the saved view lives as a c
     await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
 
     // From a clean list, the chip re-applies the whole filter set.
-    await page.goto(`/featherbase/admin/${encodeURIComponent(DT)}`)
+    await page.goto(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     await chip.click()
     await expect(page).toHaveURL(/filters=/)
     await expect(page.getByTestId('table-page')).toContainText(DOC)
@@ -137,7 +138,7 @@ test('#101 P6: "Not now" silences the nudge for that filter set', async ({ sessi
   await session.step('"Not now" silences the nudge, remembered across a later application', async ({ page }) => {
     const coldFilters = [['note', '=', 'cold']]
     const otherFilters = encodeURIComponent(JSON.stringify(coldFilters))
-    const listUrl = `/featherbase/admin/${encodeURIComponent(DT)}?filters=${otherFilters}`
+    const listUrl = `/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}?filters=${otherFilters}`
     for (let i = 0; i < 3; i++) {
       await page.goto(listUrl)
       await expect(page.getByTestId('table-page')).toBeVisible()

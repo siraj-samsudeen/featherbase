@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 const DT = 'Cf Target'
@@ -35,14 +36,14 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 
 test('CUST-001: the custom field renders in the form and the list', async ({ session }) => {
   // Form shows the custom field with its saved value.
-  await session.visit(`/admin/${encodeURIComponent(DT)}/cf-doc`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/cf-doc`)
   await session.step('form shows the custom field with its saved value', async ({ page }) => {
     await expect(page.locator(`[data-field=${FIELD}]`)).toHaveValue('urgent')
   })
 
   // List shows a column for the in_list_view custom field.
   await session
-    .visit(`/admin/${encodeURIComponent(DT)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     .assertHas(`[data-testid="col-${FIELD}"]`)
     .assertHas('[data-testid="list-rows"]', { text: 'urgent' })
 })
