@@ -94,10 +94,19 @@ A scoped PR can break what it did not run; that shows on `main`, which runs it a
 
 ## The sandbox model
 
-Every test body runs inside one Postgres transaction that is **rolled back**
+By default, each test body runs inside one Postgres transaction that is **rolled back**
 when it ends, so whatever it created — Tables, rows, users — vanishes, with no
 teardown and no cross-test pollution. The test drives the real app in-process,
 so the full path (routes → auth → permissions → lifecycle → SQL) runs.
+
+Requests sharing that rollback connection run sequentially. Tests that deliberately
+hold one request while another completes must use `committedTest` from the same
+binding instead: their requests use independent committed transaction roots.
+They must release and drain held requests before teardown. The fixture snapshots
+and restores baseline tables, rows, sequences and added schemas/columns on a
+database stamped `test`; it requires the privileged test role. It does not restore
+arbitrary changes to existing column types or functions. A killed process can
+bypass restoration, so use a fresh disposable database after interrupted runs.
 
 `apps/server/test/pg-test-shared.ts` is the one place that binds the harness
 to this app: it routes the app's queries through the test's transaction

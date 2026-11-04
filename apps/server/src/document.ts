@@ -196,11 +196,11 @@ async function nextInSeries(
 // Filter incoming values to real data columns; reject unknown keys so typos
 // fail loudly instead of silently dropping data. read_only columns are
 // system-managed (META-010): client-sent values for them are ignored.
-function pickFieldValues(meta: TableMeta, values: RowValues): RowValues {
+function pickFieldValues(meta: TableMeta, values: RowValues, managedValues: RowValues = {}): RowValues {
   const known = new Map(meta.columns.map((f) => [f.column_name, f]))
   const out: RowValues = {}
   const errors: Record<string, string> = {}
-  for (const [key, value] of Object.entries(values)) {
+  for (const [key, value] of Object.entries({ ...values, ...managedValues })) {
     if (key === 'table') continue
     // #859: retirement is changed only by :retire and :reactivate.
     if (RESERVED_COLUMNS.includes(key)) continue
@@ -210,7 +210,7 @@ function pickFieldValues(meta: TableMeta, values: RowValues): RowValues {
       continue
     }
     if (NO_COLUMN_TYPES.has(field.column_type)) continue
-    if (field.read_only) continue
+    if (field.read_only && !Object.hasOwn(managedValues, key)) continue
     out[key] = value ?? null
   }
   if (Object.keys(errors).length)
@@ -805,6 +805,9 @@ interface SaveOptions {
   // Only the upload route supplies the exact path returned by storage.
   // Never derive this option from a client row or request body.
   uploadedFileUrl?: string
+  // Trusted import/copy writers and version-backed undo only. This is NOT
+  // read from HTTP args; permissions, tiers, validation and hooks still run.
+  managedValues?: RowValues
 }
 
 function assertStoredFileUrl(meta: TableMeta, row: RowValues, allowed: unknown) {
@@ -884,7 +887,7 @@ async function writeDoc(
     if (exists) {
       if (mode === 'insert')
         throw new AppError('ConflictError', `${table} ${values[ROW_KEY]} already exists`)
-      return updateDoc(meta, String(values[ROW_KEY]), values, user, Boolean(opts.skipPermissions))
+      return updateDoc(meta, String(values[ROW_KEY]), values, user, Boolean(opts.skipPermissions), opts.managedValues)
     }
     // In upsert mode an unknown name on a generated-id Table is almost
     // certainly a mistyped update — refuse it. Insert mode is different:
@@ -902,7 +905,7 @@ async function writeDoc(
     : await insertTiers(user, table)
   const fieldValues = validateValues(
     meta,
-    applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
+    applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values, opts.managedValues))),
     'insert',
   )
   assertRequiredChildren(meta, values, 'insert')
@@ -1150,6 +1153,7 @@ async function updateDoc(
   values: RowValues,
   user: string,
   trusted = false,
+  managedValues: RowValues = {},
 ): Promise<RowValues> {
   const table = await tableRelation(meta.name)
   if (values.updated_at == null)
@@ -1164,7 +1168,7 @@ async function updateDoc(
     : await permittedTiers(user, meta.name, 'write')
   const fieldValues = validateValues(
     meta,
-    stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values)),
+    stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values, managedValues)),
     'update',
   )
   assertRequiredChildren(meta, values, 'update')

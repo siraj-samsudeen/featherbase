@@ -31,6 +31,7 @@ import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirec
 import { sendInvitation } from './invitation-email'
 import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
+import { buildInfo } from './build-info'
 import { assertPermission, assertSystemManager, getRoles, permissionScope, permittedTiers, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
@@ -51,6 +52,8 @@ import './actions/core-row-actions'
 import './actions/collection-import'
 import './actions/collection-import-revert'
 import './actions/source-actions'
+import './actions/motherduck-actions'
+import './actions/copy-refresh-actions'
 import './actions/row-connections'
 import './actions/collection-aggregate'
 import './actions/collection-summary'
@@ -1825,7 +1828,7 @@ app.post('/api/permissions/:table', async (c) => {
 app.get('/api/apps', async (c) => {
   await assertSystemManager(who(c))
   c.header('Cache-Control', 'no-store')
-  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), versions: availableRuntimeVersions(), actions: declaredPackageActions(), catalog: await appLibraryCatalog(),
+  return c.json({ build: buildInfo(), available: getAvailableApps(), installed: await listInstalledApps(), versions: availableRuntimeVersions(), actions: declaredPackageActions(), catalog: await appLibraryCatalog(),
     failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
 })
 app.post('/api/apps/prepare-install', async c => {
