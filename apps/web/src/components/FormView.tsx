@@ -1423,6 +1423,16 @@ export function LinkControl({
   const unseen = !picker.peopleSearch && Boolean(value) && linked.state === 'unreadable'
   const shown = query ?? (unseen ? UNSEEN_ROW : valueLabel ?? String(value ?? ''))
 
+  // A link the person cannot see is not theirs to change: neutral words, no
+  // box and no picker, and the stored link is saved as it was.
+  if (unseen && !forFilter)
+    return (
+      <div id={typeof common.id === 'string' ? common.id : undefined} aria-label={typeof common['aria-label'] === 'string' ? common['aria-label'] : undefined}
+        className={`${className} flex items-center bg-subtle text-ink-muted`} data-testid={`link-unseen-${field.column_name}`}>
+        {UNSEEN_ROW}
+      </div>
+    )
+
   return (
     <div className="relative">
       <input
