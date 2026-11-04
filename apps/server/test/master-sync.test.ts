@@ -14,6 +14,7 @@ import { decideColumn, normalize } from '../src/master-sync'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
 import { makeTable } from './fixtures'
 import { runOneJob } from '../src/jobs'
+import { invalidateMeta } from '../src/meta'
 
 describe('the three-way rule for one column', () => {
   // snapshot = last source value seen, source = now, featherbase = now.
@@ -37,7 +38,10 @@ describe('the three-way rule for one column', () => {
   for (const [title, owner, snapshot, source, featherbase, expected] of cases)
     it(title, () => expect(decideColumn(owner, snapshot, source, featherbase)).toEqual(expected))
 
-  it('compares one spelling per value', () => {
+  it('compares one spelling per value, read as the master column type', () => {
+    expect(normalize('7.000000000', 'Float')).toBe(normalize(7, 'Float'))
+    expect(normalize('1', 'Check')).toBe(normalize(true, 'Check'))
+    expect(normalize('2026-11-04', 'Date')).toBe(normalize(new Date('2026-11-04T00:00:00Z'), 'Date'))
     expect(normalize('')).toBeNull()
     expect(normalize(undefined)).toBeNull()
     expect(normalize(7)).toBe('7')
@@ -92,7 +96,7 @@ const sunk = async () => (await sql`select title, kind, payload from ticketsink.
 async function sourceChanges(admin: TestClient, source: string, statements: string[]) {
   await changeStandin(dir, 'sales', statements.map(s => s.replaceAll('$T', source)))
   await admin.post(`${SOURCES}/ms-${source.replaceAll("_", "-")}:refresh_tables`, { database: 'sales' })
-  await admin.post(`${COPY}:copy_again`, {})
+  return admin.post<Row>(`${COPY}:copy_again`, {})
 }
 
 describe('Master sync (#927)', () => {
@@ -116,12 +120,11 @@ describe('Master sync (#927)', () => {
     await edit(admin, 'P1', { phone: '999' })
     await edit(admin, 'P2', { floor_role: 'Supervisor' })
     await edit(admin, 'P3', { full_name: 'Chitra K' })
-    await sourceChanges(admin, source, [
+    const result = (await sourceChanges(admin, source, [
       `update $T set name = 'Asha R' where emp_id = 'E1'`,     // source-owned, ours unchanged → applied
       `update $T set role = 'Billing' where emp_id = 'E3'`,    // Featherbase-owned, ours unchanged → ticket
       `update $T set name = 'Chitra S' where emp_id = 'E3'`,   // both changed → conflict
-    ])
-    const result = await run(admin)
+    ])).master_sync
     expect(result).toMatchObject({ applied: 1, ticket_errors: [] })
     expect(await person(admin, 'P1')).toMatchObject({ full_name: 'Asha R', phone: '999' })
     expect(await person(admin, 'P2')).toMatchObject({ floor_role: 'Supervisor' })
@@ -148,8 +151,7 @@ describe('Master sync (#927)', () => {
   test('a row gone from the source marks the master row inactive and deletes nothing; without an inactive column it asks', async ({ admin }) => {
     const { source, rule } = await world(admin, 'staff_gone')
     await run(admin)
-    await sourceChanges(admin, source, [`delete from $T where emp_id in ('E2', 'E3')`])
-    expect(await run(admin)).toMatchObject({ applied: 2 })
+    expect((await sourceChanges(admin, source, [`delete from $T where emp_id in ('E2', 'E3')`])).master_sync).toMatchObject({ applied: 2 })
     expect(await person(admin, 'P2')).toMatchObject({ employment_status: 'Inactive', full_name: 'Bala' })
     expect(await run(admin)).toMatchObject({ applied: 0, raised: 0 })
     await admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, inactive: undefined } })
@@ -169,6 +171,25 @@ describe('Master sync (#927)', () => {
     expect(result).toMatchObject({ applied: 1, raised: 1 })
     expect(await person(admin, 'P4')).toMatchObject({ full_name: 'Devan', phone: '444', floor_role: null })
     expect((await sunk()).at(-1)!.payload.details).toMatchObject({ record_key: 'P4', field: 'Full Name', current_value: 'Devan', expected_value: 'Dev' })
+  })
+
+  test('Copy again also brings the master in step; a changed rule starts again from Featherbase; a master without history is refused', async ({ admin }) => {
+    const { source, rule } = await world(admin, 'staff_manual')
+    await run(admin)
+    const copied = await sourceChanges(admin, source, [`update $T set phone = '113' where emp_id = 'E1'`])
+    expect(copied.master_sync).toMatchObject({ applied: 1 })
+    expect(await person(admin, 'P1')).toMatchObject({ phone: '113' })
+    // A second master Table with the same row ids: the old last-seen values must not decide for it.
+    await makeTable(admin, { name: 'Sync Person Two', id_pattern: 'prompt', columns: ['full_name', 'phone', 'floor_role', 'employment_status'] })
+    await admin.post('/api/save_row', { table: 'Sync Person Two', row: { row_id: 'P1', full_name: 'Asha', phone: '113', employment_status: 'Active' } })
+    await admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, master_table: 'Sync Person Two' } })
+    await sourceChanges(admin, source, [`update $T set name = 'Asha Two' where emp_id = 'E1'`])
+    // Without a last-seen value the name is a disagreement to raise, not an overwrite.
+    expect((await admin.get<Row>('/api/table/Sync%20Person%20Two/P1')).full_name).toBe('Asha')
+    await makeTable(admin, { name: 'Sync Untracked', id_pattern: 'prompt', columns: ['full_name', 'phone', 'floor_role', 'employment_status'] })
+    await sql`update table_def set track_changes = false where name = 'Sync Untracked'`
+    invalidateMeta('Sync Untracked')
+    await expect(admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, master_table: 'Sync Untracked' } })).rejects.toMatchObject({ status: 417 })
   })
 
   test('the scheduled refresh of a copy runs its sync rule after the copy', async ({ admin }) => {

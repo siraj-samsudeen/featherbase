@@ -57,8 +57,8 @@ Given("StyleHR's staff are copied in and kept in step with People, Asha linked t
 async function refresh(world) {
   const s = world.sync;
   await call(world, 'POST', `/api/table/Data%20Source/${s.dataSource}:refresh_tables`, { database: 'sales' });
-  await call(world, 'POST', `${path(s.copy)}:copy_again`, {});
-  world.sync.last = await call(world, 'POST', `${path(s.copy)}:master_sync_run`, {});
+  // Copy again alone: it brings the master Table in step too.
+  world.sync.last = await call(world, 'POST', `${path(s.copy)}:copy_again`, {});
 }
 const asha = world => call(world, 'GET', `${path(world.sync.person)}/P1`);
 const tickets = async world => (await acceptanceSql('select payload from ticketsink.ticket'))

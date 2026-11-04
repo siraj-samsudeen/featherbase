@@ -25,6 +25,12 @@ The snapshot is the source values seen on the last run, kept per linked row. It 
 every run, whatever was decided, so a difference that was raised is not re-detected as a new kind of difference
 next time. The rule table is in `decideColumn` and tested case by case.
 
+The snapshot is kept per master column. A rule change that matches values differently (another master Table,
+source, link or column mapping) clears the snapshots, so the next run starts again from Featherbase rather than
+from values seen under the old matching.
+
+Values are compared as the master column's type: 7, "7" and "7.000000000" are one number, and a date is its day.
+
 On a row's first run after it is linked there is no snapshot. Then a value the source owns is filled only where
 Featherbase has none; a disagreement is raised, never overwritten. (Open question for Siraj.)
 
@@ -47,7 +53,7 @@ not depend on the Tickets package.
 
 An applied change is saved through the ordinary save (permissions, triggers, history), by the sync's service
 account, and its history row carries `synced_from`, `sync_copied_table` and `sync_run`, which a later outbound
-feed can skip.
+feed can skip. So a master Table must keep history: a rule naming one that does not is refused, and so is a run.
 
 ### 6. Nothing deleted, nothing linked, nothing held
 

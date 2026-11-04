@@ -56,9 +56,19 @@ export type DifferenceKind = 'source_changed' | 'edited_here' | 'conflict' | 'di
 export type ColumnDecision = { apply: true } | { apply: false; raise?: DifferenceKind }
 
 type Value = string | null
-/** One spelling per value, so a Date, a number and its text compare equal. */
-export function normalize(value: unknown): Value {
+/** One spelling per value, read as the master column's type, so 7, "7" and
+ *  "7.000000000" compare equal for a number, and a date for its day. */
+export function normalize(value: unknown, columnType?: string): Value {
   if (value === null || value === undefined || value === '') return null
+  if (columnType === 'Int' || columnType === 'Float' || columnType === 'Currency') {
+    const n = Number(value)
+    return Number.isFinite(n) ? String(n) : String(value)
+  }
+  if (columnType === 'Check') return ['1', 'true', 't', 'yes'].includes(String(value).toLowerCase()) ? 'true' : 'false'
+  if (columnType === 'Date') {
+    const d = value instanceof Date ? value : new Date(String(value))
+    return Number.isNaN(d.getTime()) ? String(value) : d.toISOString().slice(0, 10)
+  }
   if (value instanceof Date) return value.toISOString()
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
@@ -111,6 +121,8 @@ export async function setMasterSync(user: SessionUser, copied: string, input: un
   const rule = parsed.data
   const [copiedMeta, master, link] = await Promise.all([getMeta(copied), getMeta(rule.master_table), getMeta(rule.link.table)])
   if (master.name === copiedMeta.name) throw new AppError('ValidationError', 'A copied table cannot be its own master')
+  // Provenance lives on the history row: a master without history cannot say where a change came from.
+  if (!master.track_changes) throw new AppError('ValidationError', `${master.name} keeps no history, so a synced change could not say where it came from`)
   for (const [field, spec] of Object.entries(rule.columns)) {
     const target = column(master, field, 'a synced master column')
     if (target?.read_only) throw new AppError('ValidationError', `${master.name}.${field} is read-only`)
@@ -120,10 +132,22 @@ export async function setMasterSync(user: SessionUser, copied: string, input: un
     column(link, field, 'a link column', true)
   if (!!rule.link.kind_column !== (rule.link.kind !== undefined)) throw new AppError('ValidationError', 'A link kind needs both kind_column and kind')
   if (rule.inactive) column(master, rule.inactive.column, 'the inactive column')
-  await sql`insert into featherbase.master_sync (copied_table, rule, updated_by) values (${copied}, ${sql.json(rule)}, ${user.row_id})
-    on conflict (copied_table) do update set rule = excluded.rule, updated_by = excluded.updated_by, updated_at = now()`
+  await actionTransaction(async () => {
+    // Serialized with runs. A rule that matches rows differently starts again
+    // from Featherbase: the last values seen belong to the old matching.
+    await sql`select pg_advisory_xact_lock(hashtext('master-sync:' || ${copied}))`
+    const before = await masterSyncRule(copied)
+    await sql`insert into featherbase.master_sync (copied_table, rule, updated_by) values (${copied}, ${sql.json(rule)}, ${user.row_id})
+      on conflict (copied_table) do update set rule = excluded.rule, updated_by = excluded.updated_by, updated_at = now()`
+    if (before && JSON.stringify(matching(before)) !== JSON.stringify(matching(rule)))
+      await sql`delete from featherbase.master_sync_snapshot where copied_table = ${copied}`
+  })
   return rule
 }
+
+/** What decides which value is compared with which. */
+const matching = (rule: MasterSyncRule) => ({ master: rule.master_table, source: rule.source_system, link: rule.link,
+  columns: Object.entries(rule.columns).map(([field, spec]) => [field, spec.source]).sort() })
 
 export interface MasterSyncResult {
   run_id: string
@@ -164,6 +188,11 @@ async function syncActor(by: string): Promise<string> {
   }
 }
 
+/** Every refresh of a copy, manual or scheduled, brings its master Table in step. */
+export async function syncAfterCopy(user: SessionUser, copied: string): Promise<MasterSyncResult | null> {
+  return (await masterSyncRule(copied)) ? runMasterSync(user, copied) : null
+}
+
 /** Compare and apply in one transaction, then raise the new differences as tickets. */
 export async function runMasterSync(user: SessionUser, copied: string): Promise<MasterSyncResult> {
   await assertSystemManager(user.row_id)
@@ -178,6 +207,7 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
   const rule = await masterSyncRule(copied)
   if (!rule) throw new AppError('NotFoundError', `${copied} has no master sync rule`)
   const [copiedMeta, master, link] = await Promise.all([getMeta(copied), getMeta(rule.master_table), getMeta(rule.link.table)])
+  if (!master.track_changes) throw new AppError('ValidationError', `${master.name} keeps no history, so a synced change could not say where it came from`)
   const runId = `sync-${randomUUID()}`
   const result = { run_id: runId, linked: 0, applied: 0, unchanged: 0, raised: 0, already_raised: 0 }
 
@@ -221,16 +251,20 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
       if (row.gone) {
         // Never delete: mark inactive when the rule says how, else ask.
         if (!rule.inactive) differences.push({ kind: 'gone', source_key: key, master_row: target, column_name: null, source_value: null, featherbase_value: null })
-        else if (normalize(current[rule.inactive.column]) !== normalize(rule.inactive.value)) values[rule.inactive.column] = rule.inactive.value
+        else {
+          const type = master.columns.find(c => c.column_name === rule.inactive!.column)?.column_type
+          if (normalize(current[rule.inactive.column], type) !== normalize(rule.inactive.value, type)) values[rule.inactive.column] = rule.inactive.value
+        }
       } else {
         const snapshot = snapshots.get(key)
         const seenBefore = snapshot && snapshot.master_row === target ? snapshot.source_values : undefined
         const sourceNow: Record<string, Value> = {}
         for (const [field, spec] of Object.entries(rule.columns)) {
-          const source = normalize(row[spec.source])
-          const featherbase = normalize(current[field])
-          sourceNow[spec.source] = source
-          const decision = decideColumn(spec.owner, seenBefore === undefined ? undefined : (seenBefore[spec.source] ?? null), source, featherbase)
+          const type = master.columns.find(c => c.column_name === field)?.column_type
+          const source = normalize(row[spec.source], type)
+          const featherbase = normalize(current[field], type)
+          sourceNow[field] = source
+          const decision = decideColumn(spec.owner, seenBefore === undefined || !Object.hasOwn(seenBefore, field) ? undefined : seenBefore[field], source, featherbase)
           if (decision.apply) values[field] = row[spec.source] ?? null
           else if (decision.raise) differences.push({ kind: decision.raise, source_key: key, master_row: target, column_name: field, source_value: source, featherbase_value: featherbase })
         }
@@ -250,8 +284,8 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
   for (const d of differences) {
     // One ticket per difference: the same values, unresolved, never raise twice.
     const fingerprint = !d.column_name
-      ? fingerprintOf(copied, d.kind, d.source_key, d.master_row)
-      : fingerprintOf(copied, 'value', d.source_key, d.master_row, d.column_name, d.source_value, d.featherbase_value)
+      ? fingerprintOf(copied, rule.master_table, rule.source_system, d.kind, d.source_key, d.master_row)
+      : fingerprintOf(copied, rule.master_table, rule.source_system, 'value', d.source_key, d.master_row, d.column_name, d.source_value, d.featherbase_value)
     const inserted = await sql`insert into featherbase.master_sync_difference
       (copied_table, fingerprint, kind, source_key, master_row, column_name, source_value, featherbase_value, ticket_payload, run_id)
       values (${copied}, ${fingerprint}, ${d.kind}, ${d.source_key}, ${d.master_row}, ${d.column_name}, ${d.source_value}, ${d.featherbase_value},

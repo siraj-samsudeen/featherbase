@@ -19,6 +19,7 @@ import { run, quoteIdentifier } from '../sources/duckdb-driver'
 import { inspectToken, type WarehouseDatabase } from '../sources/motherduck'
 import type { SourceConfig } from '../sources/types'
 import { checkKey, copyAgain, copyInfo, createCopy, type CopyColumn } from '../sources/table-copy'
+import { syncAfterCopy } from '../master-sync'
 
 const DATA_SOURCE = 'Data Source'
 
@@ -237,6 +238,9 @@ registerCollectionAction('copy_again', {
   description: 'Read the source table again and import it as one run.',
   handler: async ({ table, user }) => {
     await assertSystemManager(user.row_id)
-    return copyAgain(user, table)
+    const result = await copyAgain(user, table)
+    // #927: a copy with a master sync rule brings its master Table in step.
+    const masterSync = await syncAfterCopy(user, table)
+    return masterSync ? { ...result, master_sync: masterSync } : result
   },
 })

@@ -18,7 +18,7 @@ source change never reaches the master, and an edit in Featherbase never reaches
   difference raises a ticket in Tickets, routed to the source system's primary contact, once.
 - A new source row is never linked automatically, and a gone one is never deleted: the first raises a ticket,
   the second marks the master row inactive when the rule says how, and raises a ticket otherwise.
-- The scheduled refresh of a copied table runs its sync rule after the copy.
+- Every refresh of a copied table, Copy again or its schedule, runs its sync rule after the copy.
 
 ## Capabilities
 

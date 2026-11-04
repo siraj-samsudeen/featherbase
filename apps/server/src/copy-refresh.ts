@@ -7,7 +7,7 @@ import { saveDoc } from './document'
 import { assertSystemManager } from './permissions'
 import type { SessionUser } from './auth'
 import { copyAgain, copyInfo } from './sources/table-copy'
-import { masterSyncRule, runMasterSync } from './master-sync'
+import { syncAfterCopy } from './master-sync'
 import { FinalJobFailure, registerJob, syncScheduledJobs } from './jobs'
 import { runAsSystemActor } from './system-actor'
 import { queueEmail } from './email'
@@ -54,8 +54,8 @@ function registerCopyRefresh(method: string): void {
     const result = await runAsSystemActor(actor, () => copyAgain(user, String(link.target_table)))
     let summary = `${result.inserted} inserted · ${result.changed} changed · ${result.unchanged} unchanged · ${result.conflicts} conflicts · ${result.deleted_at_source} deleted at source · ${result.back_at_source} back at source · batch ${result.run_id}`
     // #927: a copy with a master sync rule brings its master Table in step.
-    if (await masterSyncRule(String(link.target_table))) {
-      const sync = await runAsSystemActor(actor, () => runMasterSync(user, String(link.target_table)))
+    const sync = await runAsSystemActor(actor, () => syncAfterCopy(user, String(link.target_table)))
+    if (sync) {
       summary += ` · master sync: ${sync.applied} applied · ${sync.raised} new differences · ${sync.tickets.length} tickets raised${sync.ticket_errors.length ? ` · ${sync.ticket_errors.length} tickets not raised` : ''}`
     }
     ctx.setResult(summary)
