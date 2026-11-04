@@ -141,7 +141,7 @@ describe('META-003: Table save generates its physical table', () => {
       method: 'POST',
       body: JSON.stringify({ name: 'Site', columns: [{ column_name: 'site_name', column_type: 'Data' }] }),
     })
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(201)
     await admin.post('/api/save_row', { table: 'Site', row: { site_name: 'Enchakkal' } })
     expect(await sql`select site_name from featherbase.site`).toEqual([{ site_name: 'Enchakkal' }])
     expect(await registry()).toEqual(before)
