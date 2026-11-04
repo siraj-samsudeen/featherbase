@@ -5,6 +5,7 @@ import { choiceLabel, parseFilters, rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, getToken, listResource } from '../lib/api'
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
+import { RowName } from '../lib/row-name'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
 import { LinkControl } from './FormView'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
@@ -1209,7 +1210,8 @@ function ListCell({
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
         <PrincipalName id={String(value)} />
       ) : col.column_type === 'Reference' && col.reference_table && !isBlank(value) ? (
-        // #792: a link reads as the linked row's title and opens that row.
+        // #792: a link reads as the linked row's title and opens that row;
+        // #910 D5: its code follows when people use one.
         <Link
           to="/featherbase/admin/table/$table/row/$name"
           search={{ prefill: undefined }}
@@ -1217,7 +1219,7 @@ function ListCell({
           onClick={(e) => e.stopPropagation()}
           className="text-action hover:underline"
         >
-          <RowTitle table={col.reference_table} rowId={String(value)} />
+          <RowName table={col.reference_table} rowId={String(value)} />
         </Link>
       ) : (
         cell(value, col.column_type, settings)

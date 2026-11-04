@@ -2,7 +2,7 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { listResource } from './api'
 import { useConnections, type Connection } from './connections'
 import { dataColumns } from './list-view-columns'
-import type { TableMeta } from './meta'
+import { metaQuery, type TableMeta } from './meta'
 import { rowTitleQuery } from './row-titles'
 
 // #910 D3: what the drill pane, the map and the tree show about one row,
@@ -104,4 +104,53 @@ export function useGroupRows(connection: Pick<Connection, 'table' | 'filters'> |
       limit_page_length: opts.limit ?? ALL_ROWS,
     }),
   })
+}
+
+// ---------- D5: name first, then the code people use ----------
+
+// Ids the platform makes up: content hashes, plain counters, opaque person
+// ids and numbered series ("PL-.####").
+const OPAQUE_ID = /^(psn|svc)_[a-z2-7]{20}$/
+function generatedIds(pattern: string): boolean {
+  return pattern === 'hash' || pattern === 'integer' || pattern.startsWith('opaque:') || /\.#+$/.test(pattern)
+}
+
+/** The code shown after a linked row's name: its id, when the Table has a
+ *  title column and its ids are codes people use (set by a column, a source's
+ *  key or the person creating the row), and the name does not already say it. */
+export function shownCode(meta: Pick<TableMeta, 'title_column' | 'id_pattern' | 'data_source'>, rowId: string, title: string): string | undefined {
+  if (!meta.title_column || meta.title_column === 'row_id') return undefined
+  if (!meta.data_source && generatedIds(meta.id_pattern)) return undefined
+  if (OPAQUE_ID.test(rowId) || rowId === title) return undefined
+  return rowId
+}
+
+/** A linked row as people read it: its name, and the code that follows it. */
+export type RowName = { state: 'loading' } | { state: 'unreadable' } | { state: 'read'; title: string; code?: string }
+
+/** The names of these rows, for this viewer, in the same order (D5). */
+export function useRowNames(refs: { table: string; row_id: string }[]): RowName[] {
+  const titles = useLinkTitles(refs)
+  const tables = [...new Set(refs.map((r) => r.table))]
+  const metas = useQueries({ queries: tables.map((t) => metaQuery(t)) })
+  return refs.map((ref, i) => {
+    const t = titles[i]
+    if (t.state !== 'read') return t
+    const meta = metas[tables.indexOf(ref.table)]?.data
+    return { state: 'read', title: t.title, code: meta ? shownCode(meta, ref.row_id, t.title) : undefined }
+  })
+}
+
+export function useRowName(table: string | undefined, rowId: string | undefined): RowName {
+  return useRowNames(table && rowId ? [{ table, row_id: rowId }] : [])[0] ?? { state: 'loading' }
+}
+
+/** What a step, a pane or a tree line says for a row the viewer cannot read. */
+export const UNSEEN_ROW = 'A row you cannot see'
+
+/** A row name as one string: "Enchakkal Supermarket · 1503", or the neutral words. */
+export function rowNameText(name: RowName, loading = '…'): string {
+  if (name.state === 'unreadable') return UNSEEN_ROW
+  if (name.state === 'loading') return loading
+  return name.code ? `${name.title} · ${name.code}` : name.title
 }
