@@ -2149,6 +2149,7 @@ function listArgsFromQuery(q: Record<string, string>) {
     order_by: q.order_by,
     limit_start: num('limit_start'),
     limit_page_length: num('limit_page_length'),
+    with_retired: q.with_retired === 'true',
   }
 }
 

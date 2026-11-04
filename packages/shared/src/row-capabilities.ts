@@ -7,6 +7,9 @@ export interface RowCapabilities {
   submit: boolean
   cancel: boolean
   amend: boolean
+  /** #859: retire needs the delete right; reactivate the write right. */
+  retire: boolean
+  reactivate: boolean
   assign: boolean
   tag: boolean
   comment: boolean

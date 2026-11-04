@@ -30,6 +30,19 @@ export const STANDARD_COLUMNS = [
   'parentfield',
 ] as const
 
+// #859: retiring a row (ADR 0019). Every stored Table of kind 'table' carries
+// these beside the standard columns; the names are reserved on every Table.
+export const RETIREMENT_COLUMNS = ['retired_at', 'retired_by', 'retired_reason'] as const
+
+// Names no builder's column may take: the standard columns and the retirement ones.
+export const RESERVED_COLUMNS: readonly string[] = [...STANDARD_COLUMNS, ...RETIREMENT_COLUMNS]
+
+/** Whether a Table's rows can be retired: it stores its own rows, is a plain
+ *  collection, and is not one of the engine's own Tables (ADR 0019). */
+export function canRetire(meta: Pick<TableMeta, 'name' | 'kind' | 'data_source' | 'system_written'>): boolean {
+  return meta.kind === 'table' && !meta.data_source && !meta.system_written && meta.name !== 'Table' && meta.name !== 'Column'
+}
+
 // META-002: how each column type maps to a Postgres column type.
 // Layout columns and Sub-table columns produce no column at all.
 const PG_TYPES: Record<string, string | null> = {
@@ -243,7 +256,7 @@ function validateDef(def: TableDef) {
   }
   const seen = new Set<string>()
   for (const f of def.columns) {
-    if ((STANDARD_COLUMNS as readonly string[]).includes(f.column_name))
+    if (RESERVED_COLUMNS.includes(f.column_name))
       errs[f.column_name] = `'${f.column_name}' is a reserved column name`
     if (seen.has(f.column_name)) errs[f.column_name] = 'duplicate column_name'
     seen.add(f.column_name)
@@ -331,6 +344,8 @@ function createTableDDL(def: TableDef, relation = tableName(def.name)): string |
     `"status" text not null default 'draft'`,
     `"position" integer not null default 0`,
   ]
+  if ((def.kind ?? 'table') === 'table')
+    cols.push(`"retired_at" timestamptz`, `"retired_by" varchar(140)`, `"retired_reason" text`)
   if (def.kind === 'sub_table') {
     cols.push(
       `"parent" varchar(140)`,
@@ -991,7 +1006,7 @@ export async function renameColumn(
   if (target === from) return meta
   if (!COLUMN_NAME_RE.test(target))
     throw new AppError('ValidationError', 'column_name must be snake_case', { to: 'snake_case' })
-  if ((STANDARD_COLUMNS as readonly string[]).includes(target))
+  if (RESERVED_COLUMNS.includes(target))
     throw new AppError('ValidationError', `${target} is a standard column name`)
   if (meta.columns.some((c) => c.column_name === target))
     throw new AppError('ValidationError', `${meta.name} already has a column ${target}`)

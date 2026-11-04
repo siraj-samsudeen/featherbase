@@ -9,7 +9,7 @@ import { ROW_KEY, getMeta, type TableMeta } from '../meta'
 import { assertDocPermission, assertPermission, permissionScope, permittedTiers } from '../permissions'
 import { registerCollectionAction } from '../actions'
 import { sql } from '../db'
-import { tableRelation, quoteRelation } from '../table-engine'
+import { canRetire, tableRelation, quoteRelation } from '../table-engine'
 
 // IMP-005: bulk import — POST /api/table/:table:import { rows: [...] }.
 // The first real collection-action registrant (#61 left the registry empty on
@@ -41,6 +41,8 @@ interface Resolution {
   row_id?: string
   updated_at?: Date
   created_by?: string
+  // #859: the matched row is retired. The update leaves it retired.
+  retired?: boolean
   // fail: why, phrased for the per-row report.
   message?: string
 }
@@ -90,17 +92,18 @@ async function resolveRows(
     if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
   }
   const wanted = [...counts.keys()]
-  const matches = new Map<string, { row_id: string; updated_at: Date; created_by: string }[]>()
+  const matches = new Map<string, { row_id: string; updated_at: Date; created_by: string; retired: boolean }[]>()
   if (wanted.length) {
     const tbl = await tableRelation(meta.name)
     const key = sql(meta.row_key)
+    const retired = canRetire(meta) ? sql`retired_at is not null` : sql`false`
     const found =
       keyColumn === ROW_KEY
         ? await sql`
-            select ${key} as row_id, ${key} as k, updated_at, created_by
+            select ${key} as row_id, ${key} as k, updated_at, created_by, ${retired} as retired
             from ${sql(tbl)} where ${key} = any(${wanted})`
         : await sql`
-            select ${key} as row_id, ${sql.unsafe(storedKey(keyColumn))} as k, updated_at, created_by
+            select ${key} as row_id, ${sql.unsafe(storedKey(keyColumn))} as k, updated_at, created_by, ${retired} as retired
             from ${sql(tbl)} where ${sql.unsafe(storedKey(keyColumn))} = any(${wanted})`
     for (const r of found) {
       const k = String(r.k)
@@ -109,6 +112,7 @@ async function resolveRows(
         row_id: String(r.row_id),
         updated_at: r.updated_at as Date,
         created_by: String(r.created_by),
+        retired: r.retired === true,
       })
     }
   }
@@ -138,6 +142,7 @@ async function resolveRows(
         row_id: hit[0].row_id,
         updated_at: hit[0].updated_at,
         created_by: hit[0].created_by,
+        retired: hit[0].retired,
       } satisfies Resolution
     return { action: 'insert' } satisfies Resolution
   })
@@ -383,6 +388,9 @@ registerCollectionAction('import', {
         dry_run: true,
         valid: rows.length - failed.length,
         updated: actions.filter((a) => a === 'update').length,
+        // #859: matched rows that are retired; the import updates them and
+        // they stay retired.
+        retired: resolutions.filter((r, i) => actions[i] === 'update' && r.retired).length,
         inserted: actions.filter((a) => a === 'insert').length,
         failed,
         actions,

@@ -2,7 +2,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
-import { STANDARD_COLUMNS, tableRelation } from './table-engine'
+import { RETIREMENT_COLUMNS, STANDARD_COLUMNS, canRetire, tableRelation } from './table-engine'
 import { getScopeMap, isPrivileged, permissionScope, permittedTiers } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, seesEveryColumn } from './row-readers'
@@ -18,6 +18,19 @@ interface ListArgs {
   order_by?: string
   limit_start?: number
   limit_page_length?: number
+  /** #859: list retired rows too (they are left out by default). */
+  with_retired?: boolean
+}
+
+// #859 (ADR 0019): the list reads leave retired rows out unless the request
+// asks for them, with `with_retired` or by filtering on retired_at itself.
+// Only the entry points apply it, never scopedWhere: a related filter, the
+// check that a comment's row is readable and scope providers still see
+// retired rows, so retiring a row never changes what anyone may reach.
+export function hideRetired(meta: TableMeta, filters: Filter[], withRetired = false): Filter[] {
+  if (withRetired || !canRetire(meta) || !Array.isArray(filters)) return filters
+  if (filters.some((f) => Array.isArray(f) && f[0] === 'retired_at')) return filters
+  return [...filters, ['retired_at', '=', null]]
 }
 
 const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', 'related', 'not related'] as const
@@ -56,6 +69,7 @@ const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 // that for native and (via dispatch.ts) source-bound Tables alike.
 function columnSet(meta: TableMeta, readTiers?: Set<'basic' | 'restricted'>): Set<string> {
   const cols = new Set<string>(STANDARD_COLUMNS)
+  if (canRetire(meta)) for (const c of RETIREMENT_COLUMNS) cols.add(c)
   for (const f of meta.columns)
     if (
       !NO_COLUMN_TYPES.has(f.column_type) &&
@@ -431,7 +445,7 @@ async function countDocsImpl(
   // M3 seam: source-bound Tables count on the source (spec EDS-5).
   const meta = await getMeta(table)
   if (isBound(meta)) return boundCountDocs(meta, filters, user)
-  const { table: tbl, where } = await scopedWhere(table, user, filters)
+  const { table: tbl, where } = await scopedWhere(table, user, hideRetired(meta, filters))
   const [{ count }] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
   return count as number
 }
@@ -450,7 +464,7 @@ async function groupCountImpl(
 ): Promise<{ label: string; value: number }[]> {
   const boundMeta = await getMeta(table)
   if (isBound(boundMeta)) return boundGroupCount(boundMeta, field, filters, user)
-  const { cols, table: tbl, where, phys } = await scopedWhere(table, user, filters)
+  const { cols, table: tbl, where, phys } = await scopedWhere(table, user, hideRetired(boundMeta, filters))
   assertColumn(cols, field, 'group_by')
   const rows = await sql`
     select ${sql(phys(field))}::text as label, count(*)::int as value
@@ -488,7 +502,7 @@ async function aggregateDocsImpl(
       )
     return { count: await boundCountDocs(boundMeta, filters, user), sum: null }
   }
-  const { meta, cols, table: tbl, where } = await scopedWhere(table, user, filters)
+  const { meta, cols, table: tbl, where } = await scopedWhere(table, user, hideRetired(boundMeta, filters))
   if (!sumField) {
     const [row] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
     return { count: row.count as number, sum: null }
@@ -524,6 +538,7 @@ async function summarizeDocsImpl(
   groupBy: string | undefined,
   sumFields: string[] = [],
   user = 'Administrator',
+  opts: { withRetired?: boolean } = {},
 ): Promise<Summary> {
   // Bound Tables: counts push down to the driver; sums are not implemented
   // on the source path yet, as for :aggregate.
@@ -544,7 +559,7 @@ async function summarizeDocsImpl(
       : []
     return { count, sums: {}, groups }
   }
-  const { meta, cols, table: tbl, where, phys } = await scopedWhere(table, user, filters)
+  const { meta, cols, table: tbl, where, phys } = await scopedWhere(table, user, hideRetired(boundMeta, filters, opts.withRetired))
   for (const f of sumFields) {
     assertColumn(cols, f, 'sum')
     const col = meta.columns.find((c) => c.column_name === f)
@@ -582,7 +597,7 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
   // paging pushed down to the driver (spec EDS-5).
   const boundMeta = await getMeta(table)
   if (isBound(boundMeta)) return boundGetList(boundMeta, args, user)
-  const { meta, table: tbl, cols, where, phys } = await scopedWhere(table, user, args.filters ?? [])
+  const { meta, table: tbl, cols, where, phys } = await scopedWhere(table, user, hideRetired(boundMeta, args.filters ?? [], args.with_retired === true))
 
   const fields = args.fields?.length ? args.fields : [ROW_KEY]
   for (const f of fields) assertColumn(cols, f, 'selected')

@@ -7,9 +7,9 @@ import { AppError } from './errors'
 import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
-import { assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
+import { RETIRE_INSTEAD, assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
-import { STANDARD_COLUMNS, seriesKey, tableName, tableRelation } from './table-engine'
+import { RESERVED_COLUMNS, canRetire, seriesKey, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
 import { holdBeforeRowLock } from './row-lock-order'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
@@ -201,7 +201,8 @@ function pickFieldValues(meta: TableMeta, values: RowValues): RowValues {
   const errors: Record<string, string> = {}
   for (const [key, value] of Object.entries(values)) {
     if (key === 'table') continue
-    if ((STANDARD_COLUMNS as readonly string[]).includes(key)) continue
+    // #859: retirement is changed only by :retire and :reactivate.
+    if (RESERVED_COLUMNS.includes(key)) continue
     const field = known.get(key)
     if (!field) {
       errors[key] = `Unknown field ${key} on ${meta.name}`
@@ -718,7 +719,7 @@ async function saveChildren(
 // declared (non-sensitive) Columns leave through the API, regardless of
 // the caller's tier.
 function stripInternalColumns(meta: TableMeta, row: RowValues): RowValues {
-  const known = new Set<string>(['table', ...STANDARD_COLUMNS, ...meta.columns.map((f) => f.column_name)])
+  const known = new Set<string>(['table', ...RESERVED_COLUMNS, ...meta.columns.map((f) => f.column_name)])
   const out: RowValues = {}
   // #132: the single physical→wire crossing. Storage may key the row under a
   // different column (only `Table` does, see meta.ts); everything above this
@@ -1487,7 +1488,7 @@ async function amendDocImpl(
       values[f.column_name] = rows.map((r) => {
         const copy: RowValues = {}
         for (const [k, v] of Object.entries(r))
-          if (!(STANDARD_COLUMNS as readonly string[]).includes(k)) copy[k] = v
+          if (!RESERVED_COLUMNS.includes(k)) copy[k] = v
         return copy
       })
     } else {
@@ -1544,11 +1545,11 @@ async function deleteDocImpl(
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
         throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
-      assertNothingRetained(table, name, await retainedDocumentCounts(stx, table, name))
+      assertNothingRetained(table, name, await retainedDocumentCounts(stx, table, name), canRetire(meta))
     } else {
       // #321: a plain row keeps its comments, history, attachments and shares
       // by refusing the delete while it has any (links are checked below).
-      assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name))
+      assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name), canRetire(meta))
     }
     await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
     if ((existing.status as string) === 'submitted')
@@ -1579,7 +1580,8 @@ async function deleteDocImpl(
           : `${parentTable} ${ref[parentKey] as string}`
         throw new AppError(
           'ValidationError',
-          `Cannot delete ${table} ${name}: it is linked from ${holder}`,
+          `Cannot delete ${table} ${name}: it is linked from ${holder}${canRetire(meta) ? `. ${RETIRE_INSTEAD}` : ''}`,
+          canRetire(meta) ? { retire: 'available' } : undefined,
         )
       }
     }
@@ -1680,6 +1682,73 @@ async function deleteBoundDoc(
       'ConflictError',
       `${meta.name} ${name} has been modified after you loaded it`,
     )
+}
+
+// #859 (ADR 0019): retire a row, taking it out of use without deleting it,
+// or reactivate it. Retire needs the delete right on the Table, reactivate
+// the write right; a reason is required to retire. Only the three
+// retirement columns (and the update stamp) change, and each step is one
+// history entry, recorded whether or not the Table tracks changes.
+export function retireDoc(table: string, name: string, reason: unknown, user = 'Administrator') {
+  return appOperation(() => setRetirement(table, name, user, { reason }))
+}
+export function reactivateDoc(table: string, name: string, user = 'Administrator') {
+  return appOperation(() => setRetirement(table, name, user, null))
+}
+const MAX_RETIRED_REASON = 1000
+async function setRetirement(
+  table: string,
+  name: string,
+  user: string,
+  retire: { reason: unknown } | null,
+): Promise<RowValues> {
+  const meta = await getMeta(table)
+  assertNotSystemWritten(meta, retire ? 'retired' : 'reactivated')
+  if (!canRetire(meta))
+    throw new AppError('ValidationError', `${table} rows cannot be retired`)
+  await assertSecurityWriter(table, user)
+  let reason: string | null = null
+  if (retire) {
+    reason = typeof retire.reason === 'string' ? retire.reason.trim() : ''
+    if (!reason)
+      throw new AppError('ValidationError', 'A reason is required to retire a row', { retired_reason: 'Required' })
+    if (reason.length > MAX_RETIRED_REASON)
+      throw new AppError('ValidationError', `A reason is at most ${MAX_RETIRED_REASON} characters`, { retired_reason: 'Too long' })
+  }
+  const tbl = await tableRelation(table)
+  await afterCommitOf(() => sql.begin(async (tx) => {
+    const stx = tx as unknown as typeof sql
+    await holdBeforeRowLock(stx, meta, user, { [meta.row_key]: name })
+    const [existing] = await tx`
+      select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
+    if (!existing) throw new AppError('NotFoundError', `${table} ${name} not found`)
+    await assertDocPermission(user, table, retire ? 'delete' : 'write', String(existing.created_by))
+    await assertUserPermissions(user, meta, existing as RowValues)
+    await assertRowNotManaged(stx, meta, name, user)
+    if (retire && existing.retired_at != null)
+      throw new AppError('ValidationError', `${table} ${name} is already retired`)
+    if (!retire && existing.retired_at == null)
+      throw new AppError('ValidationError', `${table} ${name} is not retired`)
+    // The database's clock, as for history (#432).
+    const [{ at }] = await tx<{ at: Date }[]>`select clock_timestamp() as at`
+    await tx`
+      update ${tx(tbl)} set retired_at = ${retire ? at : null}, retired_by = ${retire ? user : null},
+        retired_reason = ${reason}, updated_at = ${at}, updated_by = ${user}
+      where ${tx(meta.row_key)} = ${name}`
+    await tx`insert into version ${tx({
+      [ROW_KEY]: hashRowId(),
+      created_by: user,
+      updated_by: user,
+      created_at: at,
+      updated_at: at,
+      status: 'draft',
+      position: 0,
+      ref_table: meta.name,
+      ref_name: name,
+      data: { changed: [], retirement: retire ? { action: 'retired', reason } : { action: 'reactivated' } } as unknown as string,
+    })}`
+  }))
+  return getDoc(table, name, user)
 }
 
 // DOC-012: rename a row's primary key and update every Reference that
@@ -1821,8 +1890,18 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
       await assertSecurityWriter(target, user)
       await assertPermission(user, target, 'create')
     })
+    // #859: exactly the checks setRetirement runs, so advice never disagrees.
+    const retirement = (action: 'delete' | 'write') => allowed(async () => {
+      assertNotSystemWritten(meta, 'changed')
+      await assertSecurityWriter(table, user)
+      await assertDocPermission(user, table, action, String(row.created_by))
+      await assertUserPermissions(user, meta, row)
+    })
+    const retirable = canRetire(meta)
     return {
       write: !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && row.status !== 'cancelled' && await rowGrant('write'),
+      retire: retirable && row.retired_at == null && await retirement('delete'),
+      reactivate: retirable && row.retired_at != null && await retirement('write'),
       rename,
       delete: meta.kind === 'table' && !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && await rowGrant('delete'),
       submit: Boolean(meta.is_submittable) && row.status === 'draft' && await rowGrant('submit'),
