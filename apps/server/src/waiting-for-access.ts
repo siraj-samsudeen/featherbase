@@ -25,18 +25,6 @@ const waitingWhere = () => sql`
     select 1 from has_role r
     where r.parent = p.row_id and r.parenttype = 'Person' and r.role not in ('All', 'Guest'))`
 
-interface WaitingPerson {
-  person: string
-  full_name: string | null
-  email_domain: string | null
-  method: string | null
-  method_label: string | null
-  arrived_by: string | null
-  created_at: string
-  first_sign_in: string | null
-  last_sign_in: string | null
-}
-
 /** A name that is still an address shows as its domain only (#429). */
 function shownName(name: string | null | undefined): string | null {
   if (!name) return null
@@ -48,41 +36,8 @@ export function isMockProvider(method: SignInMethod): boolean {
   return method.kind === 'google' && !String(method.client_id ?? '').trim()
 }
 
-const iso = (v: unknown) => (v == null ? null : new Date(v as string).toISOString())
-
-/** Newest first. Only the address's domain leaves the server here. */
-export async function listWaitingForAccess(): Promise<WaitingPerson[]> {
-  const rows = await sql`
-    select p.row_id, p.full_name, nullif(split_part(p.email, '@', 2), '') as email_domain, p.created_at,
-      i.method, m.label as method_label, i.linked_by, i.linked_at, i.last_used_at,
-      l.first_login, l.last_login
-    from person p
-    left join lateral (
-      -- How they arrived: the identity a rule created, else their first one.
-      select method, linked_by, linked_at, last_used_at from sign_in_identity s
-      where s.person_id = p.row_id
-      order by (s.linked_by = 'new-person') desc, s.linked_at asc limit 1
-    ) i on true
-    left join sign_in_method m on m.row_id = i.method
-    left join lateral (
-      select min(a.created_at) as first_login, max(a.created_at) as last_login
-      from activity_log a where a."user" = p.row_id and a.operation = 'login'
-    ) l on true
-    where ${waitingWhere()}
-    order by p.created_at desc, p.row_id`
-  return rows.map((r) => ({
-    person: String(r.row_id),
-    full_name: shownName(r.full_name as string | null),
-    email_domain: (r.email_domain as string | null) ?? null,
-    method: (r.method as string | null) ?? null,
-    method_label: (r.method_label as string | null) || (r.method as string | null) || null,
-    arrived_by: (r.linked_by as string | null) ?? null,
-    created_at: iso(r.created_at)!,
-    first_sign_in: iso(r.first_login),
-    last_sign_in: iso(r.last_login ?? r.last_used_at),
-  }))
-}
-
+// #835: the page lists them through the standard Person list, filtered by
+// WAITING_FOR_ACCESS_FILTERS (shared); this count is the same cohort.
 export async function countWaitingForAccess(): Promise<number> {
   const [row] = await sql`select count(*)::int as n from person p where ${waitingWhere()}`
   return Number(row.n)
