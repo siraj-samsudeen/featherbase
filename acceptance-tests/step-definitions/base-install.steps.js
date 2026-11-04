@@ -20,7 +20,7 @@ Given('the user is a System Manager viewing an unbuilt Tasker package', { timeou
 Given('the user is a System Manager viewing a Tasker package that cannot be built', { timeout: 180_000 }, async function () { await fresh(this, { source: 'broken' }); await this.baseInstall.inspect(); });
 Given('the user is a colleague without System Manager access', async function () { await fresh(this); await this.baseInstall.colleague(); });
 Given('the user is a System Manager with Feather Dash installed', { timeout: 180_000 }, async function () { await fresh(this); await this.baseInstall.install('feather_dash'); });
-Given('its report identifier is file-managed while its report version is editable', async function () { await this.baseInstall.manageDashIdentifier(); });
+Given('its report identifier is file-managed while its report account is editable', async function () { await this.baseInstall.manageDashIdentifier(); });
 Given('its required warehouse secret has not been supplied by the operator', function () { assert.equal(this.baseInstall.env.MOTHERDUCK_TOKEN, ''); });
 Given('the user is a System Manager with Tasker installed', { timeout: 180_000 }, async function () { await fresh(this); await this.baseInstall.install(); });
 
@@ -51,7 +51,7 @@ Then('preparation progress is shown and Tasker is installed only after preparati
 Then('Tasker remains uninstalled and the failure explains what to do next', { timeout: 180_000 }, async function () { await this.baseInstall.preparationFailed(); });
 Then('the user is refused', function () { assert.equal(this.baseInstall.deniedStatus, 403); });
 Then('Tasker remains uninstalled', async function () { assert.equal((await this.baseInstall.app()).installed, false); });
-Then('the user can change the report version', async function () { await this.baseInstall.editableVersion(); });
+Then('the user can change the report account', async function () { await this.baseInstall.editableAccount(); });
 Then('the report identifier is locked with an explanation', async function () { await this.baseInstall.lockedIdentifier(); });
 Then("the app's packaged declaration is not editable", async function () { await this.baseInstall.readOnlyDeclaration(); });
 Then("the user sees the secret's name and that it is missing", async function () { await this.baseInstall.missingSecret(); });

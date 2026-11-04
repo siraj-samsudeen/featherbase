@@ -102,9 +102,9 @@ Secret requirements SHALL be shown by name and presence, never by value.
 
 ```gherkin
 Given the user is a System Manager with Feather Dash installed
-And its report identifier is file-managed while its report version is editable
+And its report identifier is file-managed while its report account is editable
 When the user configures Feather Dash
-Then the user can change the report version
+Then the user can change the report account
 And the report identifier is locked with an explanation
 And the app's packaged declaration is not editable
 ```

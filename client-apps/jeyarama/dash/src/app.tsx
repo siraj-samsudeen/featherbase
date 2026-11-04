@@ -238,13 +238,12 @@ function TotalFigures({ t }: { t: Totals }) {
 }
 
 /** Why the quick view stands in for the Dive, said above its table. */
-function quickLabel(why: 'too_large' | 'month_unsupported' | undefined): string {
+function quickLabel(why: 'too_large' | undefined): string {
   if (why === 'too_large') return 'This store is too large for the interactive report yet. Showing the cached table.'
-  if (why === 'month_unsupported') return "The interactive report can't show last month yet. Showing the cached table."
   return "Cached · the full report couldn't open"
 }
 
-function QuickView({ report, why }: { report: Report; why?: 'too_large' | 'month_unsupported' }) {
+function QuickView({ report, why }: { report: Report; why?: 'too_large' }) {
   const [showQuiet, setShowQuiet] = useState(false)
   // Whether the table is wider than its box (the swipe cue), and whether more of it lies to the
   // right of what is in view (the edge fade); both re-checked on scroll and resize.

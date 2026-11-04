@@ -477,7 +477,16 @@ When the maps give a reader a store code that is not exactly four digits, the re
 - **WHEN** a reader's map names a store with a three-digit code
 - **THEN** the reader is told their account maps to a store code that is not four digits and to ask an administrator to correct it
 
-### Requirement: Choose this month or last month
+### Requirement: The interactive report is the latest saved Dive
+
+The page SHALL open the latest saved version of the instance's Dive, without naming a version, so saving a new version of the Dive is what releases it to readers. No instance setting SHALL pin a Dive version.
+
+#### Scenario: A new Dive version is saved
+
+- **WHEN** the Dive's owner saves a new version of the Dive on MotherDuck
+- **THEN** the next reader who opens the report sees that version, with no change to the app or its settings
+
+### Requirement: Choose this month or last month, in the interactive report too
 
 The report SHALL let the reader choose this month, from the first through today in India Standard Time, or last month, from its first day through its last. This month SHALL be the default. The choice SHALL be kept in the page's address, and SHALL keep meaning "this month" or "last month" as the calendar moves on. No earlier month SHALL be offered.
 
@@ -486,10 +495,10 @@ The report SHALL let the reader choose this month, from the first through today 
 - **WHEN** a reader opens the report on 2 November and chooses last month
 - **THEN** they see October's targets and sales for 1 to 31 October, limited to their own subcategories as this month's are
 
-#### Scenario: A Dive that can't show last month
+#### Scenario: Last month in the interactive report
 
-- **WHEN** a reader chooses last month and the interactive report pinned for the instance always shows the latest month
-- **THEN** the page shows last month's cached table and says the interactive report can't show last month yet, never the latest month under last month's dates
+- **WHEN** a reader chooses last month and the interactive report is set up
+- **THEN** the interactive report opens on last month's dates, ending on its last day
 
 #### Scenario: Last month's copy not ready
 

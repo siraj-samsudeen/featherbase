@@ -16,7 +16,6 @@ beforeEach(() => {
   process.env.SALES_TARGET_TODAY = '2026-09-17'
   process.env.MOTHERDUCK_TOKEN = 'page-test-token'
   process.env.DIVE_ID = 'dive-under-test'
-  process.env.DIVE_VERSION = '10'
   process.env.SERVICE_ACCOUNT = 'svc'
   process.env.SALES_TARGET_SHARED_ENV = '/nonexistent/sales-target.env'
   _setSourceReader(async () => [])
@@ -25,7 +24,7 @@ beforeEach(() => {
 afterEach(() => {
   _setEmbedFetch(null)
   _setSourceReader(null)
-  for (const k of ['SALES_TARGET_TODAY', 'MOTHERDUCK_TOKEN', 'DIVE_ID', 'DIVE_VERSION', 'SERVICE_ACCOUNT', 'SALES_TARGET_SHARED_ENV'])
+  for (const k of ['SALES_TARGET_TODAY', 'MOTHERDUCK_TOKEN', 'DIVE_ID', 'SERVICE_ACCOUNT', 'SALES_TARGET_SHARED_ENV'])
     if (saved[k] === undefined) delete process.env[k]
     else process.env[k] = saved[k]
 })

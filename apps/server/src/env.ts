@@ -160,10 +160,9 @@ export const VARIABLES = [
   { name: 'MOTHERDUCK_API_BASE', secret: false, required: 'optional', default: '`https://api.motherduck.com`', purpose: 'MotherDuck API base' },
   { name: 'MOTHERDUCK_EMBED_ORIGIN', secret: false, required: 'optional', default: '`https://embed-motherduck.com`', purpose: 'the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub' },
   { name: 'DIVE_ID', secret: false, required: 'optional', purpose: 'the sales-target Dive' },
-  { name: 'DIVE_VERSION', secret: false, required: 'optional', purpose: 'the sales-target Dive version' },
   { name: 'SERVICE_ACCOUNT', secret: false, required: 'optional', purpose: 'the MotherDuck service account the embed runs as' },
   { name: 'SALES_TARGET_TODAY', secret: false, required: 'optional', purpose: 'pins "today" (YYYY-MM-DD) for the sales target; for tests and rehearsals' },
-  { name: 'SALES_TARGET_SHARED_ENV', secret: false, required: 'optional', purpose: 'path of a local `.env.local` the sales-target experiment reads `DIVE_ID`, `DIVE_VERSION` and `SERVICE_ACCOUNT` from' },
+  { name: 'SALES_TARGET_SHARED_ENV', secret: false, required: 'optional', purpose: 'path of a local `.env.local` the sales-target experiment reads `DIVE_ID` and `SERVICE_ACCOUNT` from' },
 ] as const satisfies readonly Variable[]
 
 export type VariableName = (typeof VARIABLES)[number]['name']
