@@ -10,4 +10,4 @@
 
 - [x] 3.1 Tasker 3.0.1 with an empty 3.0.0 → 3.0.1 migration; the revival upgrade test targets 3.0.1.
 - [x] 3.2 Try both fixes in the browser on a local install.
-- [ ] 3.3 Owner review; archive this change after merge.
+- [x] 3.3 Sync the specs and archive this change as the branch's last commit, before the owner merges.
