@@ -325,7 +325,10 @@ class TicketTypes {
     const page = await this.t.world.signedIn('Outsider');
     await page.goto(`${BASE_URL}/featherbase/`);
     this.outsiderId = await page.evaluate(() => JSON.parse(localStorage.getItem('fc_user')).row_id);
-    this.outsiderName = await page.evaluate(() => JSON.parse(localStorage.getItem('fc_user')).full_name);
+    this.outsiderName = `Outside Owner ${randomUUID().slice(0, 4)}`;
+    const api = await this.api();
+    const current = await api.row('Person', this.outsiderId);
+    await api.call('POST', '/api/save_row', { table: 'Person', row: { row_id: this.outsiderId, updated_at: current.updated_at, full_name: this.outsiderName } }, [200, 201], 'name the outsider');
   }
   async restartedElsewhere() {
     await this.t.setup();
