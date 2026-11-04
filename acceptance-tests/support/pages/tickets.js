@@ -7,7 +7,15 @@ const { resolve } = require('node:path');
 const { Api } = require('../api');
 const { REPO_ROOT, API_URL, BASE_URL, restartAcceptance, resetAcceptance, acceptanceSql } = require('../stack');
 const appEnvironment = { FEATHERBASE_APP_PATHS: JSON.stringify([resolve(REPO_ROOT, 'example-apps/tickets')]) };
+// The version the server ships, so a version bump never strands these calls.
+const APP_VERSION = `tickets@${require(resolve(REPO_ROOT, 'example-apps/tickets/package.json')).version}`;
 let packageDiscovered = false;
+// Tickets has migrations, so the server requires its installed version on
+// every HTTP call that touches its Tables, a System Manager's included.
+async function ticketsApi() {
+  const api = await Api.asSystemManager();
+  return new Api(api.ctx, { ...api.headers, 'X-Featherbase-App-Version': APP_VERSION });
+}
 
 // HTTP flow object: no private database setup or simulated business responses.
 // The World owns every identity/session and disposes them after each scenario.
@@ -17,7 +25,7 @@ class Tickets {
   async setup() {
     if (this.ready) return;
     if (!packageDiscovered) { await restartAcceptance(appEnvironment); packageDiscovered = true; }
-    const api = await Api.asSystemManager();
+    const api = await ticketsApi();
     await api.installSampleApp('tickets', 'tickets.ticket');
     for (const name of ['Anjali', 'Colleague', 'Support', 'Verifier', 'Bala', 'Karthik', 'Shiva', 'Fulfiller']) {
       const staff = !['Anjali', 'Colleague'].includes(name);
@@ -38,7 +46,7 @@ class Tickets {
   }
 
   async configure(values) {
-    const api = await Api.asSystemManager();
+    const api = await ticketsApi();
     for (const [key, value] of Object.entries(values)) {
       const existing = await api.call('GET', `/api/table/App%20Setting/tickets.${key}`, undefined, [200, 404], 'read Tickets setting');
       const current = existing.status() === 200 ? await existing.json() : {};
@@ -50,7 +58,7 @@ class Tickets {
     const page = await this.world.signedIn(name);
     const token = await page.evaluate(() => localStorage.getItem('fc_token'));
     const response = await page.request.fetch(path, { method, data, headers: {
-      Authorization: `Bearer ${token}`, 'X-Featherbase-App-Version': 'tickets@0.1.0',
+      Authorization: `Bearer ${token}`, 'X-Featherbase-App-Version': APP_VERSION,
     } });
     const text = await response.text();
     let body; try { body = JSON.parse(text); } catch { body = text; }
@@ -133,7 +141,7 @@ class Tickets {
   async unfulfilled() { assert.notEqual((await this.open()).ticket.ticket_state, 'Resolved'); }
   async cannotFulfill() { await this.action('fulfill', { reference: 'Stale or unauthorized completion' }, 'Fulfiller', true); await this.denied(); await this.unfulfilled(); }
   async forbiddenOrdinaryEdit() {
-    const api = await Api.asSystemManager();
+    const api = await ticketsApi();
     const request = await api.row('tickets.request', this.ticket.row_id);
     this.last = await this.call(this.actor, '/api/save_row', { table: 'tickets.request', row: { ...request,
       verification_key: 'forged-verification', approval_key: 'forged-approval',
@@ -174,7 +182,7 @@ class Tickets {
     assert.equal(saved.details.original, this.original);
   }
   async deleteEvidence() {
-    const api = await Api.asSystemManager();
+    const api = await ticketsApi();
     const event = (await this.open('Support')).privateEvents.find(event => event.operation === 'evidence');
     this.evidenceBeforeDelete = await api.row('tickets.event', event.row_id);
     const response = await api.call('DELETE', `/api/table/tickets.event/${event.row_id}?updated_at=${encodeURIComponent(this.evidenceBeforeDelete.updated_at)}`);
@@ -182,13 +190,13 @@ class Tickets {
   }
   async retainedEvidence() {
     await this.denied();
-    const api = await Api.asSystemManager();
+    const api = await ticketsApi();
     assert.deepEqual(await api.row('tickets.event', this.evidenceBeforeDelete.row_id), this.evidenceBeforeDelete);
     await this.includes('source-check-1', 'report-check-1', this.ids.Support);
   }
   async referenceFixture(reference) {
     await this.setup();
-    const api = await Api.asSystemManager();
+    const api = await ticketsApi();
     // Allocate the exact example reference through normal naming and creation,
     // rather than bypassing Tickets' generic-write protection for a fixture.
     const metadata = await api.call('GET', '/api/table/tickets.ticket:meta', undefined, [200], 'read naming');
@@ -227,7 +235,7 @@ class Tickets {
     this.queue = (await this.read('queue')).tickets;
   }
   async fictionalEvidence() {
-    const api = await Api.asSystemManager();
+    const api = await ticketsApi();
     for (const table of ['tickets.request', 'tickets.event']) {
       const fields = table === 'tickets.request' ? ['row_id', 'original'] : ['row_id', 'operation', 'text'];
       const params = new URLSearchParams({ limit_page_length: '500', fields: JSON.stringify(fields) });
@@ -245,7 +253,7 @@ class Tickets {
 // shared acceptance database never sees two scenarios' configuration collide.
 class TicketTypes {
   constructor(tickets) { this.t = tickets; }
-  async api() { return Api.asSystemManager(); }
+  async api() { return ticketsApi(); }
   async setting(name, value) {
     const api = await this.api();
     const existing = await api.call('GET', `/api/table/App%20Setting/tickets.${name}`, undefined, [200, 404], 'read Tickets setting');
