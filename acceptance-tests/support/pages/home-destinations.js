@@ -126,7 +126,7 @@ class HomeDestinations {
     // rename cannot attest an old visit that was never available to it.
     const visits = await acceptanceSql('delete from featherbase.user_event where created_by = $1 returning *', [this.user]);
     await this.renameTable();
-    await acceptanceSql('insert into featherbase.user_event select * from jsonb_populate_recordset(null::featherbase.user_event, $1::jsonb)', [JSON.stringify(visits)]);
+    await acceptanceSql('insert into featherbase.user_event select * from jsonb_populate_recordset(null::featherbase.user_event, $1::text::jsonb)', [JSON.stringify(visits)]);
   }
   async evidence(value) {
     const time = value === 'earlier' ? this.legacyAt - 10000 : value === 'equal to the visit time' ? this.legacyAt : value === 'unknown' ? null : this.legacyAt + 10000;
