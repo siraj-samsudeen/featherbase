@@ -25,6 +25,7 @@ import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
 import { ActionDisclosure } from './ActionDisclosure'
 import { RetireDialog, RetiredBadge, RetiredNotice, reactivateRow } from './RowRetirement'
+import { PurgeDialog } from './PurgeDialog'
 import { WorkflowActions } from './WorkflowActions'
 import { RelatedWorkspace } from './RelatedWorkspace'
 import { usePeek } from './Peek'
@@ -130,6 +131,7 @@ export function FormView({
   // #859: the server said Retire is the way out of a refused delete.
   const [deleteOffersRetire, setDeleteOffersRetire] = useState(false)
   const [retiring, setRetiring] = useState(false)
+  const [purging, setPurging] = useState(false)
   const [staleBanner, setStaleBanner] = useState(false)
   const [scriptError, setScriptError] = useState<string | null>(null)
   const [area, setArea] = useState('Work')
@@ -608,6 +610,19 @@ export function FormView({
               {t('Reactivate')}
             </button>
           )}
+          {/* #859: a System Manager's way out of the history rule. */}
+          {!isNew && access.data?.purge && !rowManaged && (
+            <button
+              onClick={() => {
+                setRecordActionsOpen(false)
+                setPurging(true)
+              }}
+              data-testid="form-purge"
+              className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+            >
+              {t('Delete permanently')}
+            </button>
+          )}
           {/* TLC-J2.1: the row I am looking at is the row I can remove.
               Absent where rows are not deletable at all — a settings table's
               single row and a sub-table's rows (both refused by the server,
@@ -731,6 +746,19 @@ export function FormView({
               </p>
             )}
             <div className="flex justify-end gap-2">
+              {deleteError && access.data?.purge && (
+                <button
+                  onClick={() => {
+                    setConfirmingDelete(false)
+                    setPurging(true)
+                  }}
+                  disabled={deleteBusy}
+                  className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+                  data-testid="delete-row-purge-instead"
+                >
+                  Delete permanently
+                </button>
+              )}
               {deleteOffersRetire && access.data?.retire && (
                 <button
                   onClick={() => {
@@ -764,6 +792,18 @@ export function FormView({
             </div>
           </div>
         </div>
+      )}
+      {purging && (
+        <PurgeDialog
+          table={table}
+          ids={[name]}
+          onClose={() => setPurging(false)}
+          onDone={() => {
+            setPurging(false)
+            queryClient.setQueryData(['row-title', table, name], null)
+            navigate({ to: '/featherbase/admin/table/$table', params: { table }, search: { filters: undefined } })
+          }}
+        />
       )}
       {retiring && (
         <RetireDialog

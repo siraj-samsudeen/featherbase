@@ -9,7 +9,9 @@ import { DEFAULT_ID_PATTERN, applyColumnCombines, autoMapImportColumns, listColu
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
-import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
+import { PurgeDialog, tableCanPurge } from '../components/PurgeDialog'
+import { useIsSystemManager } from '../lib/session'
+import { COLUMN_TYPES, NO_COLUMN_TYPES, useMeta, type TableMeta } from '../lib/meta'
 import {
   countDataRows,
   excelRow,
@@ -685,6 +687,11 @@ interface RunEntry {
 }
 
 function RunHistory({ table }: { table: string }) {
+  // #859: a System Manager may delete the rows a run added, permanently.
+  const isSystemManager = useIsSystemManager()
+  const meta = useMeta(table)
+  const canPurge = isSystemManager && tableCanPurge(meta.data)
+  const [purgeRun, setPurgeRun] = useState<string | null>(null)
   const runs = useQuery({
     queryKey: ['iw-run-history', table],
     staleTime: 10_000,
@@ -729,6 +736,17 @@ function RunHistory({ table }: { table: string }) {
   if (!runs.data?.length) return null
   return (
     <div className={cardClasses('mt-4 p-3')} data-testid="iw-run-history">
+      {purgeRun && (
+        <PurgeDialog
+          table={table}
+          runId={purgeRun}
+          onClose={() => setPurgeRun(null)}
+          onDone={() => {
+            setPurgeRun(null)
+            void runs.refetch()
+          }}
+        />
+      )}
       <div className="mb-1 text-xs font-medium text-ink-muted">Recent imports into {table}</div>
       {runs.data.map((r, idx) => (
         <div
@@ -744,6 +762,15 @@ function RunHistory({ table }: { table: string }) {
             <span className="text-xs text-ink-subtle">reverted</span>
           ) : (
             <RevertControl i={`h${idx}`} table={table} runId={r.run_id} />
+          )}
+          {canPurge && r.inserted > 0 && (
+            <button
+              className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+              onClick={() => setPurgeRun(r.run_id)}
+              data-testid={`iw-run-purge-${idx}`}
+            >
+              Delete its rows permanently
+            </button>
           )}
         </div>
       ))}

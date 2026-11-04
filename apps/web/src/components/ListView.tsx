@@ -19,6 +19,7 @@ import { PrincipalName, usePrincipalLabels } from '../lib/people'
 import { Button, DataCards, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp, ChevronDown } from '@featherbase/shop-floor'
 import { RetiredBadge, tableCanRetire } from './RowRetirement'
+import { PurgeDialog, tableCanPurge } from './PurgeDialog'
 import { GlossaryHelp } from './GlossaryHelp'
 import { fmtCount } from '@featherbase/shop-floor'
 import { failureMessage } from '../lib/import-run'
@@ -166,6 +167,9 @@ export function ListView({
   const [showRetired, setShowRetired] = useState(false)
   useEffect(() => setShowRetired(false), [table])
   const retirable = tableCanRetire(meta.data)
+  // #859: a System Manager may delete the selection permanently.
+  const [purging, setPurging] = useState(false)
+  const canPurge = isSystemManager && tableCanPurge(meta.data)
   const withRetired = retirable && showRetired
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsUnsaved, setSettingsUnsaved] = useState(false)
@@ -842,6 +846,17 @@ export function ListView({
       {/* #327: the same confirmation as Delete Table and a form's Delete —
           labelled, Escape-dismissable, Cancel first — naming how many rows
           go. Whatever the server answers shows in the bulk bar afterwards. */}
+      {purging && (
+        <PurgeDialog
+          table={table}
+          ids={[...selected]}
+          onClose={() => setPurging(false)}
+          onDone={() => {
+            setPurging(false)
+            setSelected(new Set())
+          }}
+        />
+      )}
       {confirmingBulkDelete && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
@@ -907,6 +922,14 @@ export function ListView({
             data-testid="bulk-delete"
           >
             Delete rows
+          </button>}
+          {canPurge && <button
+            onClick={() => setPurging(true)}
+            disabled={bulkBusy}
+            className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+            data-testid="bulk-purge"
+          >
+            Delete permanently
           </button>}
           <button onClick={() => setSelected(new Set())} disabled={bulkBusy} className={buttonClasses()}>Clear selection</button>
           {canBulkEdit && <span className="flex flex-wrap items-center gap-2">
