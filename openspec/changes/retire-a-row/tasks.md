@@ -20,9 +20,15 @@
 - [ ] 3.4 The delete dialog offers Retire instead
 - [ ] 3.5 The import preview says how many matched rows are retired
 
-## 4. Verify and close
+## 4. Permanent delete (scope added 04-Nov-2026)
 
-- [ ] 4.1 Server and web suites, typechecks and the acceptance scenarios pass
-- [ ] 4.2 Codex standard and adversarial reviews; blockers fixed, the rest filed
-- [ ] 4.3 Independent verifier against the issue's UI checklist, headless at 1280; every difference fixed
-- [ ] 4.4 `pnpm exec openspec validate retire-a-row --type change --strict`, sync the specs and archive the change
+- [ ] 4.1 Failing server tests: System Manager only, cascade preview, cascade and clear, blocked dependents, deletion records, import-run delete, rollback on a refused dependent, platform tables refused
+- [ ] 4.2 Migration `0019_deletion_record.sql`; `:purge_preview` and `:purge`; capability `purge`
+- [ ] 4.3 Delete-permanently dialog: from the form, the refused-delete dialog, the list's selection and an import run
+
+## 5. Verify and close
+
+- [ ] 5.1 Server and web suites, typechecks and the acceptance scenarios pass
+- [ ] 5.2 Codex standard and adversarial reviews; blockers fixed, the rest filed
+- [ ] 5.3 Independent verifier against the issue's UI checklist, headless at 1280; every difference fixed
+- [ ] 5.4 `pnpm exec openspec validate retire-a-row --type change --strict`, sync the specs and archive the change

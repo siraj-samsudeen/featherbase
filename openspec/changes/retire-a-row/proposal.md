@@ -22,8 +22,12 @@ of their own.
   The server enforces both.
 - Existing Tables keep working unchanged; their own active flags (such as `is_active` on master
   tables loaded by the warehouse) are left alone.
-- Out of scope: purging a row with its history (the owner's comment on #859), and retiring rows of
-  sub-tables, Settings tables and Tables connected to an outside database.
+- A System Manager can **delete a row permanently**, with its history, after a reason and a typed
+  confirmation. Rows that still point at it are shown first, grouped by table, and are deleted too
+  or unlinked; every removed row leaves a deletion record. Selected rows, or one import's rows, can
+  go at once. Everyone else keeps today's rule (added by Siraj, 04-Nov-2026).
+- Out of scope: retiring rows of sub-tables, Settings tables and Tables connected to an outside
+  database.
 
 ## Capabilities
 
@@ -35,7 +39,8 @@ of their own.
 
 ### Modified Capabilities
 
-- `row-deletion`: a delete refused because of history or links offers Retire instead.
+- `row-deletion`: a delete refused because of history or links offers Retire instead; a System
+  Manager can delete permanently, with a preview of dependent rows and a deletion record.
 
 ## Impact
 

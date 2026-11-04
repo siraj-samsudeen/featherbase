@@ -70,6 +70,49 @@ flowchart LR
    independent: a row can be active in SAP and retired here (a sample plant), and pickers hide
    only retired rows. No data is migrated between them.
 
+## Permanent delete (scope added by Siraj, 04-Nov-2026: "option A plus cascade")
+
+Brief: a System Manager-only "Delete permanently" that removes a row with its own history,
+comments, attachments and shares, after a typed reason and a confirmation; dependents shown first
+and either deleted too or unlinked, "not by making life difficult"; a deletion record for every
+row removed; bulk and per-import; non-admins keep the history rule; never on platform tables.
+
+9. **Two collection actions, preview then act.** `:purge_preview` (read) and `:purge` (write)
+   take `{ ids }` or `{ run_id }` (the rows one import added that still exist) and
+   `links: 'cascade' | 'clear'`. The preview is recomputed inside the purge's transaction with
+   the rows locked, so what is deleted is what holds at that moment; a preview is advice.
+   Rejected: one action with a `dry_run` flag (the preview is a read, and the route's write
+   gate would refuse it on read-only callers' screens).
+10. **Dependents are found from metadata, every Reference column pointing at the Table.**
+    `links: 'cascade'` deletes each dependent too, recursively (its own dependents are found the
+    same way), capped at 1,000 rows; `'clear'` empties the link and keeps the dependent. Where the
+    chosen way is impossible for a group, the other is used when it is possible: a required link
+    cannot be cleared, a protected Table's row cannot be deleted. A group that allows neither, or
+    a dependent on a Settings table or a connected source (which cannot be scanned), holds the
+    whole delete, and the preview lists those rows with links. A sub-table line is a dependent of
+    its own: cascading deletes the line, not the document holding it. Rejected: refusing whenever
+    any dependent exists (the brief's "not by making life difficult").
+11. **The deletion record goes in the Access Log.** One entry per removed row, operation
+    `purge`, with two new columns, `reason` and `snapshot` (the row and its sub-table lines as
+    they were, JSON), migration `0019_deletion_record.sql`. The Access Log is system-written and
+    only System Managers read it, so a snapshot of a restricted column is no wider than before.
+    A cleared link is recorded on the dependent as a history entry, like any edit. Rejected: a new
+    "Deletion Record" Table (one more platform Table to permission, for the same four facts).
+12. **What goes with a row.** Its sub-table lines, and every platform record that names it
+    (comments, history, attachments and their stored files, shares, tags, assignments,
+    notifications, queued email, workflow actions, import sources and conflicts, data scopes):
+    the ROW_ID_HOLDERS list, except the Access Log itself. `on_trash` hooks run for each row, so a
+    controller can still refuse; any refusal rolls the whole transaction back.
+13. **Where it is refused.** Not a System Manager; a Table that cannot retire rows (decision 3)
+    or that is one of the platform's own (`system`, which covers Person and sign-in records);
+    a row locked by instance settings; a submitted row is no exception for a System Manager
+    (setup clean-up). Rejected: allowing app-owned Tables only through an app rule (no such rule
+    exists yet; an app's data Tables are deletable like any Table, its Settings tables are not).
+14. **Downstream.** Featherbase's own Postgres is the warehouse's source. A permanent delete is
+    an ordinary `DELETE` there, so the CDC capture sees a delete event and the bronze copy flags
+    the row deleted, as for any delete. A retirement is an update of three columns and reaches
+    the warehouse as one.
+
 ## Risks / Trade-offs
 
 - An internal caller of the list read that needs retired rows has to ask for them. Scope
