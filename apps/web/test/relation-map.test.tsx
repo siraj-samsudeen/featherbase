@@ -202,3 +202,31 @@ test("the map's centre box never shows the row's id while its name is on its way
     held.mockRestore()
   }
 })
+
+// Checklist 21: the map works from the keyboard.
+test('a linked row on the map is reached by Tab and shown in the pane by Enter', async ({ admin }) => {
+  await seed(admin)
+  await openMap(admin, 'Rm Order', 'ord-1')
+  const box = await screen.findByTestId('map-forward-Rm Customer')
+  expect(box).toHaveAttribute('tabindex', '0')
+  fireEvent.keyDown(box, { key: 'Enter' })
+  expect(await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })).toBeInTheDocument()
+})
+
+test('a collection on the map is reached by Tab and shown in the pane by Space', async ({ admin }) => {
+  await seed(admin)
+  await openMap(admin, 'Rm Customer', 'cust-1')
+  const box = await screen.findByTestId('map-group-Rm Order')
+  expect(box).toHaveAttribute('tabindex', '0')
+  fireEvent.keyDown(box, { key: ' ' })
+  const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
+  await waitFor(() => expect(within(within(pane).getByRole('table')).getAllByRole('row')).toHaveLength(3))
+})
+
+test("a link to a row the viewer can't read is not in the tab order", async ({ admin, createUser }) => {
+  const viewer = await orderViewer(admin, createUser)
+  await openMap(viewer, 'Rm Order', 'ord-1')
+  const box = await screen.findByTestId('map-forward-Rm Customer')
+  await waitFor(() => expect(box).toHaveTextContent('Not visible to you'))
+  expect(box).not.toHaveAttribute('tabindex')
+})

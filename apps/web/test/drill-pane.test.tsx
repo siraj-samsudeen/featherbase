@@ -231,3 +231,22 @@ test('Filter from the pane puts the filter on the path before the row it was rea
   fireEvent.click(await within(site).findByRole('button', { name: 'Filter' }))
   await waitFor(() => expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala · KL', 'Enchakkal · ENK']))
 })
+
+// Checklist 21: a list line goes to the pane from the keyboard.
+test('a list line is reached by Tab and shown in the pane by Enter', async ({ admin }) => {
+  await seedSites(admin)
+  await renderApp(tableHref(SITE), admin)
+  const line = (await screen.findByRole('link', { name: 'Enchakkal' })).closest('tr')!
+  expect(line).toHaveAttribute('tabindex', '0')
+  fireEvent.keyDown(line, { key: 'Enter' })
+  expect(await pane('Enchakkal')).toBeInTheDocument()
+})
+
+test('Enter on a link inside a list line still follows the link, not the line', async ({ admin }) => {
+  await seedSites(admin)
+  await renderApp(tableHref(SITE), admin)
+  const line = (await screen.findByRole('link', { name: 'Enchakkal' })).closest('tr')!
+  fireEvent.keyDown(await within(line).findByRole('link', { name: 'Kerala · KL' }), { key: 'Enter' })
+  await new Promise((r) => setTimeout(r, 300))
+  expect(screen.queryByRole('complementary', { name: /^Enchakkal/ })).not.toBeInTheDocument()
+})

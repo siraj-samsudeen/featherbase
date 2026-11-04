@@ -178,6 +178,11 @@ describe('DrillPane', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'North bay · B-104' }).className).not.toMatch(/\b(wrap-anywhere|break-all)\b/)
   })
 
+  test('takes focus when it opens, so Escape closes it at once', () => {
+    pane()
+    expect(screen.getByRole('complementary', { name: 'North bay · B-104' })).toHaveFocus()
+  })
+
   test('Escape inside the pane closes it', async () => {
     const user = userEvent.setup()
     const onClose = pane()
@@ -245,6 +250,17 @@ describe('SplitWithPane', () => {
     } finally {
       Element.prototype.scrollIntoView = original
     }
+  })
+
+  test('closing the pane gives focus back to the control it was opened from', () => {
+    const content = <button type="button">North bay</button>
+    const drill = <DrillPane kind="Bin" title="North bay" place="right" onClose={() => {}}><p>Fields</p></DrillPane>
+    const { rerender } = render(<SplitWithPane place="right" pane={null}>{content}</SplitWithPane>)
+    screen.getByRole('button', { name: 'North bay' }).focus()
+    rerender(<SplitWithPane place="right" pane={drill}>{content}</SplitWithPane>)
+    expect(screen.getByRole('complementary')).toHaveFocus()
+    rerender(<SplitWithPane place="right" pane={null}>{content}</SplitWithPane>)
+    expect(screen.getByRole('button', { name: 'North bay' })).toHaveFocus()
   })
 
   test('says where its pane is, so the page around it can make room', () => {
