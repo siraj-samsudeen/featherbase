@@ -1,11 +1,10 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PrincipalName } from '../lib/people'
-import { cardClasses } from './ui'
+import { cardClasses } from '@featherbase/shop-floor'
 import { activityQuery, type VersionRow } from './Comments'
-import { fmtInstantIST } from '../lib/inr'
-import { useMeta } from '../lib/meta'
-import { formatValue, useSettings } from '../lib/settings'
+import { fmtInstant } from '@featherbase/shop-floor'
+import { useChangeFormat } from '../lib/change-format'
 
 type Entry =
   | { kind: 'comment'; at: string; who: string; content: string }
@@ -33,20 +32,11 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
     return out.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
   }, [activity.data])
 
-  // #421: a changed value reads the way the rest of the Admin shows it (a Date
-  // as DD-Mon-YYYY, money the Indian way), by its column's type.
-  const meta = useMeta(table)
-  const settings = useSettings()
-  const columnLabel = (column: string) => meta.data?.columns.find((c) => c.column_name === column)?.label ?? column
-  const columnType = (column: string) => meta.data?.columns.find((c) => c.column_name === column)?.column_type ?? 'Data'
-  // A Settings Table records its values as stored text, so a checkbox is '1'/'0'.
-  const asStored = (type: string, v: unknown) =>
-    type === 'Check' && typeof v === 'string' ? v === '1' || v === 'true' : v
-  const fmt = (column: string, v: unknown) => {
-    if (v == null || v === '') return '∅'
-    const type = columnType(column)
-    return formatValue(type, asStored(type, v), settings) || String(v)
-  }
+  // #421: a changed value reads the way the rest of the Admin shows it.
+  const format = useChangeFormat(table, '∅')
+  const columnLabel = format.label
+  const columnType = format.type
+  const fmt = format.value
 
   return (
     <div className={cardClasses('p-4')} data-testid="activity-timeline">
@@ -68,7 +58,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
               <div className="text-xs text-ink-muted">
                 <span className="font-medium text-ink"><PrincipalName id={e.who} /></span>{' '}
                 {e.kind === 'comment' ? 'commented' : e.resolution ? (e.resolution.decision === 'keep' ? 'kept their correction' : 'adopted the import value') : e.importRun ? 'imported' : 'edited'} ·{' '}
-                <span className="whitespace-nowrap" data-testid="activity-time">{fmtInstantIST(e.at)}</span>
+                <span className="whitespace-nowrap" data-testid="activity-time">{fmtInstant(e.at)}</span>
               </div>
               {e.kind === 'comment' ? (
                 <div className="whitespace-pre-wrap break-words text-ink">

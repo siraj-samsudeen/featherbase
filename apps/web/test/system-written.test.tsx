@@ -30,7 +30,7 @@ async function seedActivity(): Promise<string> {
 
 test('the Activity Log list offers no way to write, even to the Administrator', async ({ admin }) => {
   await seedActivity()
-  await renderApp('/featherbase/admin/Activity%20Log', admin)
+  await renderApp('/featherbase/admin/table/activity-log', admin)
   await screen.findByTestId('list-view')
   // The list itself still reads: the seeded row and the report view are there.
   expect(await screen.findByText('seeded for the read-only form')).toBeInTheDocument()
@@ -41,14 +41,14 @@ test('the Activity Log list offers no way to write, even to the Administrator', 
 })
 
 test('an ordinary platform list keeps its New', async ({ admin }) => {
-  await renderApp('/featherbase/admin/Comment', admin)
+  await renderApp('/featherbase/admin/table/comment', admin)
   await screen.findByTestId('list-view')
   expect(await screen.findByTestId('list-new')).toBeInTheDocument()
 })
 
 test('an Activity Log row opens read-only, with no Save, Delete or Rename', async ({ admin }) => {
   const id = await seedActivity()
-  await renderApp(`/featherbase/admin/Activity%20Log/${id}`, admin)
+  await renderApp(`/featherbase/admin/table/activity-log/row/${id}`, admin)
   const field = await screen.findByDisplayValue('seeded for the read-only form')
   await waitFor(() => expect(field).toBeDisabled())
   for (const control of ['form-save', 'form-delete', 'form-rename'])
@@ -56,7 +56,7 @@ test('an Activity Log row opens read-only, with no Save, Delete or Rename', asyn
 })
 
 test('a new Activity Log form reached by URL cannot be saved', async ({ admin }) => {
-  await renderApp('/featherbase/admin/Activity%20Log/new', admin)
+  await renderApp('/featherbase/admin/table/activity-log/new', admin)
   await screen.findByTestId('form-view')
   expect(screen.queryByTestId('form-save')).toBeNull()
 })

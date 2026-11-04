@@ -10,6 +10,7 @@
 // Two states, both required to make the claim: invalid → inline error and
 // zero calls; valid → exactly one call and a save.
 
+import { tableSlug } from 'shared'
 import { screen, waitFor } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { vi } from 'vitest'
@@ -50,7 +51,7 @@ test('an emptied required column errors inline and sends no save at all', async 
   const doc = await makeForm(admin)
   const saves = countSaves()
 
-  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/${doc.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(DT)}/row/${doc.row_id}`, admin)
   await screen.findByTestId('form-view')
   await waitFor(() => expect(field('title')).toHaveValue('starts valid'))
 
@@ -65,7 +66,7 @@ test('fixing the column clears the error and sends exactly one save', async ({ a
   const doc = await makeForm(admin)
   const saves = countSaves()
 
-  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/${doc.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(DT)}/row/${doc.row_id}`, admin)
   await screen.findByTestId('form-view')
   await waitFor(() => expect(field('title')).toHaveValue('starts valid'))
 

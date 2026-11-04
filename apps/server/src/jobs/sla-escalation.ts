@@ -1,3 +1,4 @@
+import { rowHref } from 'shared'
 import { sql } from '../db'
 import { registerJob } from '../jobs'
 import { getMeta } from '../meta'
@@ -66,9 +67,7 @@ registerJob('check_sla', async () => {
           subject: `SLA breached: ${table} ${row.row_id as string}`,
           body:
             `${table} ${row.row_id as string} has passed its resolution deadline ` +
-            `and is now Overdue.\n\nOpen the row: /featherbase/admin/${encodeURIComponent(
-              table,
-            )}/${encodeURIComponent(row.row_id as string)}`,
+            `and is now Overdue.\n\nOpen the row: ${rowHref(table, row.row_id as string)}`,
           ref_table: table,
           reference_name: row.row_id as string,
         })

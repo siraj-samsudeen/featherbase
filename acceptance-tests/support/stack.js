@@ -20,15 +20,52 @@ const { BeforeAll, AfterAll } = require('@cucumber/cucumber');
 const REPO_ROOT = path.resolve(__dirname, '../..');
 const API_PORT = Number(process.env.ACCEPTANCE_API_PORT ?? 8030);
 const WEB_PORT = Number(process.env.ACCEPTANCE_WEB_PORT ?? 5203);
+const PROTOTYPE_PORT = Number(process.env.ACCEPTANCE_PROTOTYPE_PORT ?? 5383);
 const BASE_URL = `http://localhost:${WEB_PORT}`;
 const API_URL = `http://localhost:${API_PORT}`;
+const PROTOTYPE_URL = `http://localhost:${PROTOTYPE_PORT}`;
 const BOOT_TIMEOUT_MS = 240_000;
 
 // Same host and credentials as the developer's database, under its own name.
 function acceptanceDatabaseUrl() {
   const url = new URL(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@127.0.0.1:5432/featherbase');
-  url.pathname = '/featherbase_acceptance_e2e';
+  const name = process.env.ACCEPTANCE_DATABASE_NAME ?? 'featherbase_acceptance_e2e';
+  if (!/^featherbase_[a-z0-9_]+_e2e$/.test(name))
+    throw new Error('ACCEPTANCE_DATABASE_NAME must be a disposable featherbase_*_e2e database');
+  url.pathname = `/${name}`;
   return url.toString();
+}
+
+// An outside database for data-source scenarios: a sibling of the acceptance
+// database (a data source may never reach the platform's own), read through a
+// login that owns nothing. Its password is new each run; the API is started
+// knowing the URL, under the variable a scenario's data source names.
+const EXTERNAL_URL_ENV = 'ACCEPTANCE_EXTERNAL_READER_URL';
+const EXTERNAL_READER = 'acceptance_external_reader';
+const EXTERNAL_READER_PASSWORD = require('node:crypto').randomBytes(18).toString('hex');
+
+function externalDatabaseUrl({ asReader = false } = {}) {
+  const url = new URL(acceptanceDatabaseUrl());
+  url.pathname = `${url.pathname}_ext`;
+  if (asReader) {
+    url.username = EXTERNAL_READER;
+    url.password = EXTERNAL_READER_PASSWORD;
+  }
+  return url.toString();
+}
+
+async function ensureExternalDatabase() {
+  const name = new URL(externalDatabaseUrl()).pathname.slice(1);
+  const [exists] = await acceptanceSql('select 1 from pg_database where datname = $1', [name]);
+  if (!exists) await acceptanceSql(`create database "${name}"`);
+}
+
+/** Runs SQL on the outside database as its owner. */
+async function externalSql(statement, parameters = []) {
+  const { default: postgres } = require(require.resolve('postgres', { paths: [path.join(REPO_ROOT, 'apps/server')] }));
+  const db = postgres(externalDatabaseUrl(), { max: 1, prepare: false, onnotice() {} });
+  try { return await db.unsafe(statement, parameters); }
+  finally { await db.end(); }
 }
 
 const children = [];
@@ -44,6 +81,7 @@ function isolatedEnvironment(overrides = {}) {
     SMTP_HOST: '', SMTP_USER: '', SMTP_PASSWORD: '',
     GOOGLE_CLIENT_SECRET: 'acceptance-private-secret',
     ALLOW_MOCK_OAUTH: '1', PREAUTH_LOGIN_MAX: '10000', WEB_ORIGINS: BASE_URL,
+    [EXTERNAL_URL_ENV]: externalDatabaseUrl({ asReader: true }),
     ...overrides,
   };
 }
@@ -144,7 +182,7 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
   // A second run started while one is going would answer its boot checks from
   // the first run's servers, reset the database under them, and then lose
   // them when the first run ends: both fail with lists that never show.
-  for (const [port, name] of [[API_PORT, 'ACCEPTANCE_API_PORT'], [WEB_PORT, 'ACCEPTANCE_WEB_PORT']]) {
+  for (const [port, name] of [[API_PORT, 'ACCEPTANCE_API_PORT'], [WEB_PORT, 'ACCEPTANCE_WEB_PORT'], [PROTOTYPE_PORT, 'ACCEPTANCE_PROTOTYPE_PORT']]) {
     if (await portTaken(port))
       throw new Error(
         `port ${port} is already in use, most likely by another acceptance run. ` +
@@ -154,6 +192,7 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
   const env = isolatedEnvironment();
   for (const command of ['e2e:reset', 'migrate'])
     execFileSync('pnpm', ['--filter', 'server', command], { cwd: REPO_ROOT, env, timeout: 120_000, stdio: 'pipe' });
+  await ensureExternalDatabase();
   // No watcher: tsx watch starts its own process group and can survive the
   // scenario API's shutdown, retaining stale schema and environment state.
   const api = apiChild = start('api', ['--filter', 'server', 'start'], env);
@@ -161,8 +200,12 @@ BeforeAll({ timeout: BOOT_TIMEOUT_MS + 30_000 }, async function () {
     WEB_PORT: String(WEB_PORT),
     API_PORT: String(API_PORT),
   });
+  const prototype = start('prototype', ['--filter', 'web', 'exec', 'vite', '--config', 'vite.prototype.config.ts'], {
+    PROTOTYPE_PORT: String(PROTOTYPE_PORT),
+  });
   await waitFor(`${API_URL}/api/ping`, api, 'The API');
   await waitFor(BASE_URL, web, 'The web app');
+  await waitFor(`${PROTOTYPE_URL}/__lab/scenario`, prototype, 'The synthetic prototype');
 });
 
 AfterAll(async function () {
@@ -172,4 +215,7 @@ AfterAll(async function () {
 
 process.on('exit', stopAll);
 
-module.exports = { BASE_URL, API_URL, resetAcceptance, restartAcceptance, acceptanceSql, isolatedEnvironment, REPO_ROOT };
+module.exports = {
+  BASE_URL, API_URL, PROTOTYPE_URL, resetAcceptance, restartAcceptance, acceptanceSql, acceptanceDatabaseUrl, isolatedEnvironment, REPO_ROOT,
+  externalSql, EXTERNAL_URL_ENV, EXTERNAL_READER, EXTERNAL_READER_PASSWORD,
+};

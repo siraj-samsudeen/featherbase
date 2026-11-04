@@ -43,7 +43,11 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
     const rows = await sql`select * from ${sql(relation)} where ${where}`
     // Only the columns this caller may read take part in the title.
     const readable = { ...meta, columns: meta.columns.filter((c) => cols.has(c.column_name)) }
-    const titleMeta = { ...readable, title_column: meta.title_column && cols.has(meta.title_column) ? meta.title_column : null }
+    // A physical natural key is the same readable identity as public row_id,
+    // even when it is not repeated as a user column in the definition.
+    const titleReadable = meta.title_column && (cols.has(meta.title_column)
+      || (meta.title_column === meta.row_key && cols.has('row_id')))
+    const titleMeta = { ...readable, title_column: titleReadable ? meta.title_column : null }
     const principalTitle = titleMeta.columns.find((c) => c.column_name === titleMeta.title_column
       && c.column_type === 'Reference' && (c.reference_table === 'Person' || c.reference_table === 'Service Account'))
     // Resolve only a readable title column, through the same permission-aware

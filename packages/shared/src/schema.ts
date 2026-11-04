@@ -2,6 +2,16 @@ import { calendarDay, isCalendarDay } from './dates'
 import { z } from 'zod'
 import './zod-messages'
 
+// A fixed reading contract, not a layout language. Values remain plain text.
+export const readingPresentationSchema = z.strictObject({
+  title: z.string().min(1),
+  headers: z.array(z.string().min(1)),
+  body: z.string().min(1),
+  attachment_names: z.string().min(1).optional(),
+  notice: z.string().min(1).optional(),
+})
+export type ReadingPresentation = z.infer<typeof readingPresentationSchema>
+
 // META-013: one zod schema generated from Table metadata, used by the
 // server's row engine and the Admin form views.
 
@@ -10,6 +20,7 @@ export interface ColumnDef {
   column_type: string
   reference_table?: string | null
   choices?: string | null
+  choice_labels?: Record<string, string> | null
   row_table?: string | null
   reqd?: boolean
   label?: string | null

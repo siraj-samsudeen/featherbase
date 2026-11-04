@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 const DT = 'Ps Ui Target'
@@ -28,17 +29,16 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('CUST-002: a label override shows in the form and reverts when removed', async ({ session, request }) => {
   const headers = await adminAuth(request)
 
-  await session.visit(`/admin/${encodeURIComponent(DT)}/ps-doc`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/ps-doc`)
   await session.step('base label reads "Title"', async ({ page }) => {
     await expect(page.locator('label', { hasText: 'Title' }).first()).toBeVisible()
   })
 
   // Add a Property Setter via the API (Customize-Form mechanism).
-  const ps = await request.post('/api/save_row', {
+  const ps = await request.post('/api/table/Metadata%20Override', {
     headers,
     data: {
-      table: 'Metadata Override',
-      row: { row_id: `${DT}-title-label`, table_name: DT, column_name: 'title', property: 'label', value: 'Headline' },
+      row_id: `${DT}-title-label`, table_name: DT, column_name: 'title', property: 'label', value: 'Headline',
     },
   })
   expect([200, 201]).toContain(ps.status())

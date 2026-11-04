@@ -2,6 +2,7 @@
 // confirmation names the cost". The dialog is React-side; the row count it
 // names and the table it leaves alone are checked against the real server.
 
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe } from 'vitest'
@@ -23,7 +24,7 @@ describe('Only the builder authority can delete a table, and confirmation names 
   }) => {
     const user = userEvent.setup()
     await seed(admin)
-    await renderApp(`/featherbase/admin/${ENC}`, admin)
+    await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`, admin)
     await user.click(await screen.findByTestId('delete-table', undefined, { timeout: 10_000 }))
 
     const dialog = await screen.findByTestId('delete-table-dialog')

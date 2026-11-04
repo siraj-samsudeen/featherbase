@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 import { readFileSync } from 'node:fs'
 import * as XLSX from 'xlsx'
@@ -45,7 +46,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('RPT-003: CSV and XLSX downloads match on-screen rows and grouping order', async ({
   session,
 }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/view/report`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/view/report`)
   await session.step('group by stage; downloaded CSV and XLSX match the on-screen rows', async ({ page }) => {
   await expect(page.getByTestId('report-row')).toHaveCount(3)
   await page.getByTestId('report-groupby').selectOption('stage')

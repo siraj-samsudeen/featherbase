@@ -2,7 +2,8 @@
 // columns, a save the server refuses, and a Table that is not there. Gaps the
 // merged web coverage report (ADR 0012) showed: no test picked a column as
 // the naming rule. Assertions read the stored rule back and create a row by it.
-import { screen, waitFor } from '@testing-library/react'
+import { tableSlug } from 'shared'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 
@@ -19,9 +20,9 @@ async function seed(admin: Admin) {
 test('naming rows after a column stores that rule, and a new row takes its id from the column', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
-  await renderApp(`/featherbase/admin/naming/${encodeURIComponent(T)}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/naming`, admin)
   await user.selectOptions(await screen.findByTestId('naming-naming', {}, { timeout: 8000 }), 'field:code')
-  expect(screen.getByTestId('naming-naming-preview')).toHaveTextContent('Each row takes its id from code')
+  expect(screen.getByTestId('naming-naming-preview')).toHaveTextContent('Each row takes its id from Store code')
   await user.click(screen.getByTestId('naming-save'))
   expect(await screen.findByTestId('naming-saved')).toHaveTextContent('Saved')
   // The select still shows the column picked, read back from the stored rule.
@@ -36,7 +37,7 @@ test('naming rows after a column stores that rule, and a new row takes its id fr
 test('a rule saved for a Table deleted meanwhile is refused, with the reason', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
-  await renderApp(`/featherbase/admin/naming/${encodeURIComponent(T)}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/naming`, admin)
   await user.selectOptions(await screen.findByTestId('naming-naming', {}, { timeout: 8000 }), 'prompt')
   await admin.delete(`/api/table_def/${encodeURIComponent(T)}`)
   await user.click(screen.getByTestId('naming-save'))
@@ -44,14 +45,16 @@ test('a rule saved for a Table deleted meanwhile is refused, with the reason', a
 })
 
 test('the Naming page of a Table that is not there says so', async ({ admin }) => {
-  await renderApp('/featherbase/admin/naming/Tnm%20Nowhere', admin)
-  await waitFor(() => expect(screen.getByTestId('naming-error')).toHaveTextContent(/not found/i), { timeout: 8000 })
+  await renderApp('/featherbase/admin/table/tnm-nowhere/naming', admin)
+  expect(await screen.findByText('Page not found', {}, { timeout: 8000 })).toBeInTheDocument()
+  expect(screen.queryByTestId('table-naming')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('naming-save')).not.toBeInTheDocument()
 })
 
 test('choosing a random id stores that rule', async ({ admin }) => {
   const user = userEvent.setup()
   await admin.post('/api/table_def', { name: 'Tnm Bin', id_pattern: 'prompt', columns: [{ column_name: 'code', column_type: 'Data' }] })
-  await renderApp(`/featherbase/admin/naming/${encodeURIComponent('Tnm Bin')}`, admin)
+  await renderApp(`/featherbase/admin/table/tnm-bin/naming`, admin)
   await user.selectOptions(await screen.findByTestId('naming-naming', {}, { timeout: 8000 }), 'hash')
   await user.click(screen.getByTestId('naming-save'))
   expect(await screen.findByTestId('naming-saved')).toHaveTextContent('Saved')

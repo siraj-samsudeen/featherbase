@@ -3,6 +3,7 @@
 // added with Enter; an expanded row's money column totalled; a bulk edit the
 // server refuses; and the Explore button. Each asserts the rows shown or the
 // page reached.
+import { tableSlug } from 'shared'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
@@ -38,7 +39,7 @@ const listedIds = () => within(screen.getByTestId('list-rows')).queryAllByTestId
 test('a text filter applies on Enter and on leaving the box; the filter bar adds on Enter', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
-  await renderApp(`/featherbase/admin/${ENC}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 10_000 })
   await waitFor(() => expect(listedIds()).toBe(3))
 
@@ -69,7 +70,7 @@ test("an expanded row totals its money column", async ({ admin }) => {
     return response
   })
   try {
-    await renderApp(`/featherbase/admin/${ENC}`, admin)
+    await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`, admin)
     await screen.findByTestId('list-view', {}, { timeout: 10_000 })
     await user.click((await screen.findAllByTestId('row-expand'))[0])
     await waitFor(() => expect(screen.getByTestId('expanded-row')).not.toHaveTextContent('Loading…'))
@@ -86,7 +87,7 @@ test("an expanded row totals its money column", async ({ admin }) => {
 
 test('expanding a row deleted after the list loaded reports the missing row', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/${ENC}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`, admin)
   await waitFor(() => expect(listedIds()).toBe(3))
   const row = screen.getByRole('checkbox', { name: 'Select Ashok' }).closest('tr')!
   const name = 'o-3'
@@ -99,7 +100,7 @@ test('expanding a row deleted after the list loaded reports the missing row', as
 test('a bulk edit the server refuses names the field and why, and leaves the rows as they were', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
-  await renderApp(`/featherbase/admin/${ENC}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 10_000 })
   await waitFor(() => expect(listedIds()).toBe(3))
   await user.click(within(screen.getByTestId('list-rows')).getAllByTestId('row-check')[0])
@@ -118,7 +119,7 @@ test('a bulk edit the server refuses names the field and why, and leaves the row
 test('Explore opens the explorer starting from this table', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
-  await renderApp(`/featherbase/admin/${ENC}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`, admin)
   await user.click(await screen.findByTestId('open-explore', {}, { timeout: 10_000 }))
   expect(await screen.findByTestId('explore-view')).toBeInTheDocument()
   await waitFor(() => expect(screen.getByTestId('explore-root')).toHaveValue(T))

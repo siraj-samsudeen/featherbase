@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
+import { choiceLabel } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { useMeta } from '../lib/meta'
-import { buttonClasses, inputClasses, pillClasses } from './ui'
-import { fmtCount } from '../lib/inr'
+import { buttonClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
+import { useI18n } from '../lib/i18n'
 
 type Row = Record<string, unknown>
 
@@ -20,6 +22,7 @@ export function KanbanView({
   groupBy?: string
   onGroupByChange?: (field: string | undefined) => void
 }) {
+  const { t } = useI18n()
   const meta = useMeta(table)
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
@@ -117,7 +120,7 @@ export function KanbanView({
             </select>
           </label>
           <RouterLink
-            to="/featherbase/admin/$table"
+            to="/featherbase/admin/table/$table"
             params={{ table }}
             search={{ filters: undefined }}
             className={buttonClasses()}
@@ -143,7 +146,7 @@ export function KanbanView({
             className="flex w-64 shrink-0 flex-col rounded-lg border border-border bg-subtle p-2"
           >
             <div className="mb-2 flex items-center justify-between px-1 text-sm font-medium text-ink">
-              <span>{col || '(none)'}</span>
+              <span>{col ? choiceLabel(col, choiceColumns.find((f) => f.column_name === field)?.choice_labels, t) : '(none)'}</span>
               <span className={pillClasses('bg-canvas text-ink-muted')} data-testid={`kanban-count-${col || 'empty'}`}>
                 {fmtCount(byColumn.get(col)!.length)}
               </span>
@@ -160,7 +163,7 @@ export function KanbanView({
                   }`}
                 >
                   <RouterLink
-                    to="/featherbase/admin/$table/$name"
+                    to="/featherbase/admin/table/$table/row/$name"
                     search={{ prefill: undefined }}
                     params={{ table, name: String(row.row_id) }}
                     className="font-medium text-action hover:underline"

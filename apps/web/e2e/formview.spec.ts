@@ -1,3 +1,4 @@
+import { rowHref, tableSlug } from 'shared'
 import { test, expect, adminAuth } from './fixtures'
 import { createFormRow, ensureFormFixtures, FORM_DT as DT } from './fixtures-ui'
 
@@ -13,7 +14,7 @@ test.beforeAll(async ({ request }) => {
 // plain-presence checks the DSL can express.
 test('UI-004: FormView renders every field type as the correct control', async ({ session }) => {
   await session
-    .visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`)
     .assertHas('[data-testid="form-view"]')
 
   await session.step('every column type renders the correct control', async ({ page }) => {
@@ -44,7 +45,7 @@ test('UI-004: FormView renders every field type as the correct control', async (
 
 test('UI-005: save persists edits, shows dirty state and field-wise server errors inline', async ({ session }) => {
   await session
-    .visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`)
     .assertHas('[data-testid="form-status"]', { text: 'Saved' })
 
   await session.step('form-save starts disabled on a clean document', async ({ page }) => {
@@ -92,7 +93,7 @@ test('offline_save_recovery: an existing row keeps its draft until a connected r
   expect(before.status()).toBe(200)
   const original = await before.json()
 
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${encodeURIComponent(rowId)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${encodeURIComponent(rowId)}`)
   await session.step('edit the existing row before disconnecting', async ({ page }) => {
     await page.locator('[data-field=title]').fill('offline draft retained')
     await page.locator('[data-field=qty]').fill('19')
@@ -139,6 +140,30 @@ test('offline_save_recovery: an existing row keeps its draft until a connected r
   }
 })
 
+test('a readable Version links back to the unchanged row identity', async ({ session, request }) => {
+  const headers = await adminAuth(request)
+  const rowId = await createFormRow(request, headers, { title: 'before Version navigation', qty: 7 })
+  const original = await (await request.get(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(rowId)}`, { headers })).json()
+  const saved = await request.post('/api/save_row', {
+    headers, data: { table: DT, row: { ...original, title: 'after Version navigation' } },
+  })
+  expect(saved.status()).toBe(201)
+  const filters = encodeURIComponent(JSON.stringify([['ref_table', '=', DT], ['ref_name', '=', rowId]]))
+  const versions = await request.get(`/api/table/Version?filters=${filters}`, { headers })
+  expect(versions.status()).toBe(200)
+  const { data } = await versions.json()
+  expect(data).toHaveLength(1)
+  await session.visit(rowHref('Version', data[0].row_id))
+  await session.step('follow the readable change header to its original row', async ({ page }) => {
+    const record = page.getByTestId('change-record')
+    await expect(record).toContainText('before Version navigation')
+    await expect(record).toContainText('after Version navigation')
+    await record.getByRole('link', { name: rowId, exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${tableSlug(DT)}/row/${encodeURIComponent(rowId)}$`))
+    await expect(page.locator('[data-field=title]')).toHaveValue('after Version navigation')
+  })
+})
+
 test('offline_row_recovery: rename and delete retain their target and succeed only after reconnecting', async ({ session, request }) => {
   const headers = await adminAuth(request)
   const rowId = await createFormRow(request, headers, {
@@ -151,7 +176,7 @@ test('offline_row_recovery: rename and delete retain their target and succeed on
   expect(before.status()).toBe(200)
   const original = await before.json()
 
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${encodeURIComponent(rowId)}`).clickButton('Rename')
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${encodeURIComponent(rowId)}`).clickButton('Rename')
   await session.step('enter a new row ID', async ({ page }) => {
     await page.getByTestId('rename-input').fill(newId)
   })
@@ -166,7 +191,7 @@ test('offline_row_recovery: rename and delete retain their target and succeed on
     })
     await session
       .assertHas('[data-testid="form-banner"]', { text: 'Rename failed' })
-      .assertPath(`/featherbase/admin/${encodeURIComponent(DT)}/${encodeURIComponent(rowId)}`)
+      .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${encodeURIComponent(rowId)}`)
     await session.step('the rename draft remains available to retry', async ({ page }) => {
       await expect(page.getByTestId('rename-input')).toHaveValue(newId)
       await expect(page.getByTestId('rename-confirm')).toBeEnabled()
@@ -178,7 +203,7 @@ test('offline_row_recovery: rename and delete retain their target and succeed on
       await page.context().setOffline(false)
       await page.getByTestId('rename-confirm').click()
     })
-    await session.assertPath(`/featherbase/admin/${encodeURIComponent(DT)}/${encodeURIComponent(newId)}`)
+    await session.assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${encodeURIComponent(newId)}`)
     const renamed = await request.get(renamedEndpoint, { headers })
     expect(renamed.status()).toBe(200)
     const renamedRow = await renamed.json()
@@ -197,7 +222,7 @@ test('offline_row_recovery: rename and delete retain their target and succeed on
     await session
       .assertHas('[data-testid="delete-row-error"]', { text: 'Delete failed' })
       .assertHas('[data-testid="delete-row-dialog"]', { text: `Delete ${DT} ${newId}?` })
-      .assertPath(`/featherbase/admin/${encodeURIComponent(DT)}/${encodeURIComponent(newId)}`)
+      .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${encodeURIComponent(newId)}`)
     await session.step('the failed delete can be retried without losing its target', async ({ page }) => {
       await expect(page.getByTestId('delete-row-confirm')).toBeEnabled()
       await expect(page.locator('[data-field=title]')).toHaveValue(original.title)
@@ -208,7 +233,7 @@ test('offline_row_recovery: rename and delete retain their target and succeed on
       await page.context().setOffline(false)
       await page.getByTestId('delete-row-confirm').click()
     })
-    await session.assertPath(`/featherbase/admin/${encodeURIComponent(DT)}`)
+    await session.assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     expect((await request.get(renamedEndpoint, { headers })).status()).toBe(404)
     expect((await request.get(endpoint, { headers })).status()).toBe(404)
   } finally {

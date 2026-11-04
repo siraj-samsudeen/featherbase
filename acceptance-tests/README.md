@@ -10,7 +10,8 @@ npm --prefix acceptance-tests run test:specs  # main specs only, as they are
 ```
 
 One command does it all. The hooks (`support/stack.js`) start the API and the
-web app on their own database, `featherbase_acceptance_e2e`, dropped and
+web app on their own database, the selected `DATABASE_URL` database name with
+`_acceptance_e2e` appended (`featherbase_acceptance_e2e` by default), dropped and
 migrated fresh on every run through the e2e suite's own reset
 (`pnpm --filter server e2e:serve`), and on their own ports, 8030 and 5203
 (`ACCEPTANCE_API_PORT` / `ACCEPTANCE_WEB_PORT`). The browser is Playwright,

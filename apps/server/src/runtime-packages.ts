@@ -1,3 +1,4 @@
+import { getSystemSettings } from './settings'
 import { readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
@@ -10,24 +11,27 @@ import { hasPermission } from './permissions'
 import { AppError } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
-import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
+import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
 import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
-import { sql, withTransaction } from './db'
+import { sql, withTransaction, usingTransaction } from './db'
 import { logActivity } from './audit'
 import { invalidateMeta } from './meta'
 import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyMigrations, countLosses, describeLoss, refuse, replayForward, sameDeclaration, type Loss, type Operation } from './runtime-migrations'
 
 // Public v1 hook contract is structural: packages never import core classes.
 interface PackageHookContext {
+  readonly now: string
+  readonly timeZone: string
   row: Record<string, unknown>
   old?: Record<string, unknown>
   user: string
   isNew: boolean
+  documents: Pick<import('shared').RuntimeActionContext['documents'], 'get' | 'list' | 'members'>
   reject(message: string, fields?: Record<string, string>): never
 }
 type Validator = (context: PackageHookContext) => void | Promise<void>
@@ -364,9 +368,16 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     for (const [table, validator] of Object.entries(module.validators ?? {})) {
       if (!names.has(table) || typeof validator !== 'function')
         throw new Error('Validators must target owned Tables')
-      doc_events[table] = { before_validate: (ctx) => (validator as Validator)({
-        row: ctx.row, old: ctx.old, user: ctx.user, isNew: ctx.isNew,
-        reject(message, fields) { throw new AppError('ValidationError', message, fields) },
+      doc_events[table] = { before_validate: (ctx) => usingTransaction(ctx.tx, async () => {
+        const access = callerDocuments(manifest.name, [...names], ctx.user)
+        try {
+          await (validator as Validator)({
+            row: ctx.row, old: ctx.old, user: ctx.user, isNew: ctx.isNew,
+            now: new Date().toISOString(), timeZone: (await getSystemSettings()).time_zone,
+            documents: Object.freeze({ get: access.documents.get, list: access.documents.list, members: access.documents.members }),
+            reject(message, fields) { throw new AppError('ValidationError', message, fields) },
+          })
+        } finally { await access.close() }
       }) }
     }
     // Destructive operations do not run save validation. Opt in separately
@@ -540,12 +551,23 @@ async function upgradePlan(name: string, version: string, preview = true) {
   const { added, follow } = tableFates(prior.manifest.tables.map(t => t.name), operations)
   const priorGrants = prior.manifest.permissions.map(p => ({ prior: p, now: follow(p.table) === undefined ? null : { ...p, table: follow(p.table)! } }))
   const held = new Set(priorGrants.flatMap(g => g.now ? [canonical(g.now)] : []))
-  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p))) || prior.app.runtime_manifest == null ||
+  // Replacing an All grant with the identical app-member grant narrows its
+  // audience. No flag, tier, or row-scope expansion is admitted here.
+  const narrowsAudience = (permission: typeof target.manifest.permissions[number]) => {
+    if (!target.manifest.roles?.includes(permission.role) || ['All', 'Guest'].includes(permission.role)) return false
+    const { role: _role, ...scope } = permission
+    return priorGrants.some(({ now }) => {
+      if (!now || now.role !== 'All') return false
+      const { role: _priorRole, ...priorScope } = now
+      return canonical(scope) === canonical(priorScope)
+    })
+  }
+  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p)) || prior.app.runtime_manifest == null ||
       (prior.app.runtime_manifest as { packageName: string }).packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
     refuse('Permission or package identity changes are unsupported')
   const kept = new Set(target.manifest.permissions.map(canonical))
   const withdrawn = priorGrants.filter(g => !g.now || !kept.has(canonical(g.now))).map(g => g.prior)
-  const granted = target.manifest.permissions.filter(p => added.has(p.table))
+  const granted = target.manifest.permissions.filter(p => added.has(p.table) || (!held.has(canonical(p)) && narrowsAudience(p)))
   const destructive = operations.some(op => 'destructive' in op && op.destructive === true)
   // #700: what the upgrade does to the app's scheduled jobs.
   const jobs = planJobChanges(name, prior.manifest.jobs ?? [], target.manifest.jobs ?? [])

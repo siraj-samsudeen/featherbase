@@ -26,6 +26,9 @@ describe('PKG-R2: independent app-owned Task storage', () => {
       await sql`alter table tasker.task rename to work_item`
       await sql`update table_def set physical_relation = 'work_item' where name = 'tasker.task'`
       invalidateMeta('tasker.task')
+      expect(await admin.get('/api/table/tasker.task:meta')).toMatchObject({
+        storage_identity: { schema: 'tasker', relation: 'work_item', row_key: ['row_id'], data_source: null, discriminator: null },
+      })
       const row = await admin.get<Record<string, unknown>>('/api/table/tasker.task/same')
       await admin.post('/api/save_row', { table: 'tasker.task', row: { ...row, title: 'Moved storage' } })
       expect(await admin.get('/api/table/tasker.task/same')).toMatchObject({ title: 'Moved storage' })

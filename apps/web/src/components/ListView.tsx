@@ -1,24 +1,26 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { rowDisplayTitle } from 'shared'
-import { ApiError, api, getSessionUser, listResource } from '../lib/api'
-import { recentActions, type RecentEntry } from '../lib/recents'
+import { choiceLabel, rowDisplayTitle } from 'shared'
+import { ApiError, api, getSessionUser, getToken, listResource } from '../lib/api'
+import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
-import { dataColumns, defaultColumnNames, isShown, listFlagsFromView, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
+import { dataColumns, defaultColumnNames, isShown, listFlagsFromView, switchColumn, viewColumns, type ColumnArrangement, type ListColumn } from '../lib/list-view-columns'
+import { useI18n } from '../lib/i18n'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName, usePrincipalLabels } from '../lib/people'
-import { Button, DataCards, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from './ui'
-import { ArrowDown, ArrowUp, ChevronDown } from './ui/icons'
+import { Button, DataCards, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
+import { ArrowDown, ArrowUp, ChevronDown } from '@featherbase/shop-floor'
 import { GlossaryHelp } from './GlossaryHelp'
-import { fmtCount } from '../lib/inr'
+import { fmtCount } from '@featherbase/shop-floor'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
+import { RenameTable } from './RenameTable'
 
 export type Filter = [string, string, unknown]
 
@@ -81,7 +83,7 @@ export function indicatorColor(value: string): string {
   return INDICATOR_PALETTE[h % INDICATOR_PALETTE.length]
 }
 
-export function Indicator({ value }: { value: string }) {
+export function Indicator({ value, label = value }: { value: string; label?: string }) {
   return (
     <span className="inline-flex items-center gap-1.5">
       <span
@@ -89,7 +91,7 @@ export function Indicator({ value }: { value: string }) {
         className="h-2 w-2 shrink-0 rounded-full"
         style={{ backgroundColor: indicatorColor(value) }}
       />
-      {value}
+      {label}
     </span>
   )
 }
@@ -135,6 +137,7 @@ export function ListView({
   useEffect(() => setConflictsOpen(false), [table])
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsUnsaved, setSettingsUnsaved] = useState(false)
+  const settingsWrite = useRef(Promise.resolve())
   const [makingDefault, setMakingDefault] = useState<'saving' | 'failed' | null>(null)
   // UI-012: bulk selection state.
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -237,13 +240,22 @@ export function ListView({
   // now, but the list would open the old way next time.
   function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement> }) {
     if (!settingsLoaded) return
-    api
-      .put(`/api/user_settings/${encodeURIComponent(table)}`, {
-        sort: next.sort !== undefined ? next.sort : sort,
-        ...(next.arrangement ?? arrangement),
+    const token = getToken()
+    const snapshot = {
+      sort: next.sort !== undefined ? next.sort : sort,
+      ...(next.arrangement ?? arrangement),
+    }
+    // Settings are whole snapshots. Keep writes in interaction order so a
+    // slower earlier request cannot restore an obsolete sort or column set.
+    settingsWrite.current = settingsWrite.current
+      .then(() => {
+        // A queued edit belongs to the sign-in that made it. api.put reads
+        // the current token, so discard it if that sign-in has ended.
+        if (getToken() !== token) return
+        return api.put(`/api/user_settings/${encodeURIComponent(table)}`, snapshot)
       })
-      .then(() => setSettingsUnsaved(false))
-      .catch(() => setSettingsUnsaved(true))
+      .then(() => { if (getToken() === token) setSettingsUnsaved(false) })
+      .catch(() => { if (getToken() === token) setSettingsUnsaved(true) })
   }
 
   const columns = meta.data ? viewColumns(meta.data, arrangement) : []
@@ -325,6 +337,10 @@ export function ListView({
     ) : (
       `Cannot load rows for ${table}`
     )
+  ) : list.isPending ? (
+    // Not yet loaded is not empty: "No rows" would alarm someone whose
+    // Table holds data (#871, a list reopened after its rename).
+    'Loading…'
   ) : (
     <>
       No rows
@@ -338,8 +354,8 @@ export function ListView({
         <>
           {' — '}
           <Link
-            to="/featherbase/admin/$table/$name"
-            params={{ table, name: 'new' }}
+            to="/featherbase/admin/table/$table/new"
+            params={{ table }}
             search={{ prefill: undefined }}
             className="text-action underline"
             data-testid="list-empty-new"
@@ -595,8 +611,8 @@ export function ListView({
             meta.data?.kind !== 'settings' &&
             meta.data?.kind !== 'sub_table' && (
             <Link
-              to="/featherbase/admin/$table/$name"
-              params={{ table, name: 'new' }}
+              to="/featherbase/admin/table/$table/new"
+              params={{ table }}
               search={{ prefill: undefined }}
               className={buttonClasses({ variant: 'primary' })}
               data-testid="list-new"
@@ -605,7 +621,7 @@ export function ListView({
             </Link>
           )}
           <Link
-            to="/featherbase/admin/$table/view/report"
+            to="/featherbase/admin/table/$table/view/report"
             params={{ table }}
             search={{ report: undefined }}
             className={buttonClasses()}
@@ -641,7 +657,7 @@ export function ListView({
               platform's) and on bound ones (their storage is the source's). */}
           {canShapeColumns && (
             <Link
-              to="/featherbase/admin/$table/columns"
+              to="/featherbase/admin/table/$table/columns"
               params={{ table }}
               className={buttonClasses()}
               data-testid="open-columns"
@@ -652,7 +668,7 @@ export function ListView({
           {/* #208: two Tables that turned out to be the same thing. */}
           {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && (
             <Link
-              to="/featherbase/admin/$table/merge"
+              to="/featherbase/admin/table/$table/merge"
               params={{ table }}
               className={buttonClasses()}
               data-testid="open-merge"
@@ -662,7 +678,7 @@ export function ListView({
           )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
-              to="/featherbase/admin/$table/view/kanban"
+              to="/featherbase/admin/table/$table/view/kanban"
               params={{ table }}
               search={{ group_by: undefined }}
               className={buttonClasses()}
@@ -673,7 +689,7 @@ export function ListView({
           )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Date') && (
             <Link
-              to="/featherbase/admin/$table/view/calendar"
+              to="/featherbase/admin/table/$table/view/calendar"
               params={{ table }}
               className={buttonClasses()}
               data-testid="open-calendar"
@@ -684,7 +700,7 @@ export function ListView({
           {/* UI-022: Gantt needs two Date columns (start + end). */}
           {(meta.data?.columns ?? []).filter((f) => f.column_type === 'Date').length >= 2 && (
             <Link
-              to="/featherbase/admin/$table/view/gantt"
+              to="/featherbase/admin/table/$table/view/gantt"
               params={{ table }}
               className={buttonClasses()}
               data-testid="open-gantt"
@@ -701,7 +717,7 @@ export function ListView({
                   never for a Table whose rows the platform writes (#432). */}
               {!isSystemWritten(meta.data) && (
                 <Link
-                  to="/featherbase/admin/naming/$table"
+                  to="/featherbase/admin/table/$table/naming"
                   params={{ table }}
                   className={buttonClasses()}
                   data-testid="open-naming"
@@ -710,7 +726,7 @@ export function ListView({
                 </Link>
               )}
               <Link
-                to="/featherbase/admin/permissions/$table"
+                to="/featherbase/admin/table/$table/permissions"
                 params={{ table }}
                 className={buttonClasses()}
                 data-testid="open-permissions"
@@ -720,6 +736,10 @@ export function ListView({
               {/* DEL-J1/DEL-R1 (docs/specs/0003-table-deletion.md): the
                   affordance is generic and metadata-gated — never rendered
                   for system tables, never per-table code. */}
+              {/* #871: a custom Table only; app and platform Tables are named elsewhere. */}
+              {meta.data && !meta.data.system && !meta.data.owner_app && !meta.data.data_source && meta.data.kind !== 'settings' && !isSystemWritten(meta.data) && (
+                <RenameTable table={table} />
+              )}
               {!meta.data?.system && !isSystemWritten(meta.data) && (
                 <button
                   onClick={() => setConfirmingDelete(true)}
@@ -1119,8 +1139,6 @@ function ListRow({
   )
 }
 
-type ListColumn = { column_name: string; label: string; column_type: string; reference_table?: string | null }
-
 // One value of a row, the same in both shapes: the first column links to the
 // row's form, a Choice reads as its status dot and words, a person shows
 // their name, and everything else goes through the display settings.
@@ -1143,10 +1161,11 @@ function ListCell({
   /** A card's meta line (the row id under the title): grey, not body ink. */
   quiet?: boolean
 }) {
+  const { t } = useI18n()
   if (first)
     return (
       <Link
-        to="/featherbase/admin/$table/$name"
+        to="/featherbase/admin/table/$table/row/$name"
         search={{ prefill: undefined }}
         params={{ table, name: String(row.row_id) }}
         className={touchLinkClasses(`font-medium text-action hover:underline ${
@@ -1159,7 +1178,9 @@ function ListCell({
           // A title column that names a person reads as their name, never the opaque id.
           <PrincipalName id={String(row[col.column_name])} />
         ) : (
-          cell(row[col.column_name], col.column_type, settings)
+          col.column_type === 'Choice' && row[col.column_name] != null
+            ? choiceLabel(String(row[col.column_name]), col.choice_labels, t)
+            : cell(row[col.column_name], col.column_type, settings)
         )}
       </Link>
     )
@@ -1171,7 +1192,7 @@ function ListCell({
       data-testid={`cell-${col.column_name}`}
     >
       {col.column_type === 'Choice' && value != null && value !== '' ? (
-        <Indicator value={String(value)} />
+        <Indicator value={String(value)} label={choiceLabel(String(value), col.choice_labels, t)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
         <PrincipalName id={String(value)} />
       ) : (
@@ -1363,6 +1384,7 @@ function InlineChildGrid({
   rows: Record<string, unknown>[]
   settings: Settings
 }) {
+  const { t } = useI18n()
   const childMeta = useMeta(field.row_table ?? '')
   if (!childMeta.data) return null
   const cols = childMeta.data.columns.filter(
@@ -1391,7 +1413,7 @@ function InlineChildGrid({
                 <td key={c.column_name} className="px-3 py-1 text-ink">
                   {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
                     <Link
-                      to="/featherbase/admin/$table/$name"
+                      to="/featherbase/admin/table/$table/row/$name"
                       search={{ prefill: undefined }}
                         params={{ table: c.reference_table, name: String(r[c.column_name]) }}
                       className="text-action hover:underline"
@@ -1399,7 +1421,9 @@ function InlineChildGrid({
                       {isPrincipalTable(c.reference_table) ? <PrincipalName id={String(r[c.column_name])} /> : String(r[c.column_name])}
                     </Link>
                   ) : (
-                    cell(r[c.column_name], c.column_type, settings)
+                    c.column_type === 'Choice' && r[c.column_name] != null
+                      ? choiceLabel(String(r[c.column_name]), c.choice_labels, t)
+                      : cell(r[c.column_name], c.column_type, settings)
                   )}
                 </td>
               ))}
@@ -1450,6 +1474,7 @@ function StandardFilters({
   filters: Filter[]
   onChange: (filters: Filter[]) => void
 }) {
+  const { t } = useI18n()
   const columns = meta.columns
     .filter(
       (f) =>
@@ -1486,7 +1511,7 @@ function StandardFilters({
               value={current(f.column_name, '=')}
               onChange={(e) => apply(f.column_name, '=', e.target.value)}
               data-testid={`std-filter-${f.column_name}`}
-              className={inputClasses('max-w-[10rem]')}
+              className={inputClasses('max-w-[20rem]')}
             >
               <option value="">All</option>
               {(f.choices ?? '')
@@ -1494,7 +1519,7 @@ function StandardFilters({
                 .filter(Boolean)
                 .map((o) => (
                   <option key={o} value={o}>
-                    {o}
+                    {choiceLabel(o, f.choice_labels, t)}
                   </option>
                 ))}
             </select>
@@ -1548,6 +1573,7 @@ export function FilterBar({
   filters: Filter[]
   onChange: (filters: Filter[]) => void
 }) {
+  const { t } = useI18n()
   const fields = [
     { fieldname: 'row_id', label: 'Row ID' },
     ...meta.columns
@@ -1557,6 +1583,9 @@ export function FilterBar({
   const [field, setField] = useState('row_id')
   const [op, setOp] = useState<string>('=')
   const [value, setValue] = useState('')
+  const choice = ['=', '!='].includes(op)
+    ? meta.columns.find((c) => c.column_name === field && c.column_type === 'Choice')
+    : undefined
 
   function add() {
     if (!value.trim()) return
@@ -1570,7 +1599,7 @@ export function FilterBar({
       <div className="flex flex-wrap items-center gap-2">
         <select
           value={field}
-          onChange={(e) => setField(e.target.value)}
+          onChange={(e) => { setField(e.target.value); setValue('') }}
           aria-label="Filter by field"
           data-testid="filter-field"
           className={inputClasses('max-w-[10rem]')}
@@ -1594,7 +1623,20 @@ export function FilterBar({
             </option>
           ))}
         </select>
-        <input
+        {choice ? (
+          <select
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            aria-label="Filter value"
+            data-testid="filter-value"
+            className={inputClasses('max-w-[20rem]')}
+          >
+            <option value="">Choose a value</option>
+            {(choice.choices ?? '').split('\n').filter(Boolean).map((raw) => (
+              <option key={raw} value={raw}>{choiceLabel(raw, choice.choice_labels, t)}</option>
+            ))}
+          </select>
+        ) : <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
@@ -1602,7 +1644,7 @@ export function FilterBar({
           aria-label="Filter value"
           data-testid="filter-value"
           className={inputClasses('max-w-[10rem]')}
-        />
+        />}
         <button
           onClick={add}
           data-testid="filter-add"
@@ -1613,22 +1655,28 @@ export function FilterBar({
       </div>
       {filters.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2" data-testid="filter-chips">
-          {filters.map((f, i) => (
-            <span
-              key={i}
-              className={pillClasses('bg-subtle text-ink gap-1 border border-border')}
-              data-testid="filter-chip"
-            >
-              {f[0]} {f[1]} {filterValueLabel(f[1], f[2])}
-              <button
-                aria-label="Remove filter"
-                onClick={() => onChange(filters.filter((_, j) => j !== i))}
-                className="text-ink-subtle hover:text-ink"
+          {filters.map((f, i) => {
+            const column = meta.columns.find((c) => c.column_name === f[0])
+            return (
+              <span
+                key={i}
+                className={pillClasses('bg-subtle text-ink gap-1 border border-border')}
+                data-testid="filter-chip"
               >
-                ×
-              </button>
-            </span>
-          ))}
+                {t(column?.label ?? f[0])} {f[1]}{' '}
+                {['=', '!='].includes(f[1]) && column?.column_type === 'Choice'
+                  ? choiceLabel(String(f[2]), column.choice_labels, t)
+                  : filterValueLabel(f[1], f[2])}
+                <button
+                  aria-label="Remove filter"
+                  onClick={() => onChange(filters.filter((_, j) => j !== i))}
+                  className="text-ink-subtle hover:text-ink"
+                >
+                  ×
+                </button>
+              </span>
+            )
+          })}
         </div>
       )}
     </div>
@@ -1647,9 +1695,26 @@ function RecentStrip({
   table: string
   onApply: (filters: Filter[]) => void
 }) {
+  const { t } = useI18n()
+  const meta = useMeta(table)
+  const queryClient = useQueryClient()
   const user = getSessionUser()
   const entries = user ? recentActions(user.row_id, 60) : []
-  const rows = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${table}/`)).slice(0, 4)
+  const remembered = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${table}/`)).slice(0, 8)
+  // #741: history outlives rows. Offer only rows the server still has for this
+  // reader (row_titles answers for those alone), and none until it has said.
+  const ids = remembered.map((e) => e.label)
+  const present = useQuery({
+    queryKey: ['recent-strip-rows', table, ids],
+    enabled: ids.length > 0,
+    queryFn: async () => {
+      const { titles } = await api.post<{ titles: Array<{ table: string; row_id: string; title: string }> }>(
+        '/api/row_titles', { rows: ids.map((row_id) => ({ table, row_id })) })
+      for (const t of titles) queryClient.setQueryData(['row-title', table, t.row_id], t.title)
+      return new Set(titles.map((t) => t.row_id))
+    },
+  })
+  const rows = remembered.filter((e) => present.data?.has(e.label)).slice(0, 4)
   const views = entries
     .map((e) => {
       if (e.kind !== 'list' || !e.key.startsWith(`list:${table}?`)) return null
@@ -1671,7 +1736,7 @@ function RecentStrip({
       {rows.map((r) => (
         <Link
           key={r.key}
-          to="/featherbase/admin/$table/$name"
+          to="/featherbase/admin/table/$table/row/$name"
           params={{ table, name: r.label }}
           search={{ prefill: undefined }}
           data-testid="recent-strip-row"
@@ -1686,10 +1751,10 @@ function RecentStrip({
           type="button"
           onClick={() => onApply(parsed)}
           data-testid="recent-strip-view"
-          title={entry.sub}
+          title={describeFilters(JSON.stringify(parsed), meta.data?.columns, t)}
           className={touchRowClasses('max-w-72 truncate rounded-full bg-action-tint px-2.5 py-0.5 text-xs font-medium text-action hover:opacity-80')}
         >
-          {entry.sub}
+          {describeFilters(JSON.stringify(parsed), meta.data?.columns, t)}
         </button>
       ))}
     </div>

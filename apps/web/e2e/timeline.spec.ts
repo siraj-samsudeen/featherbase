@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 const DT = 'Tl DT'
@@ -35,7 +36,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('UI-019: timeline interleaves an edit (with diff) and a comment in order', async ({
   session,
 }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`)
   await session.step('an edit (with diff) and a comment both land in chronological order', async ({ page }) => {
     await expect(page.getByTestId('activity-timeline')).toBeVisible()
 

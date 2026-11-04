@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
+import { choiceLabel } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
+import { useI18n } from '../lib/i18n'
 import { FilterBar, type Filter } from './ListView'
-import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from './ui'
-import { fmtCount, fmtNumber } from '../lib/inr'
+import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { fmtCount, fmtNumber } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 
@@ -52,6 +54,7 @@ export function ReportView({
   report?: string
   onReportChange?: (name: string | undefined) => void
 }) {
+  const { t } = useI18n()
   const meta = useMeta(table)
   const queryClient = useQueryClient()
 
@@ -279,11 +282,16 @@ export function ReportView({
   const label = (columnName: string) =>
     available.find((f) => f.column_name === columnName)?.label ?? columnName
 
+  const displayChoice = (value: string, column: string) => {
+    const definition = available.find((f) => f.column_name === column)
+    return definition?.column_type === 'Choice' ? choiceLabel(value, definition.choice_labels, t) : value
+  }
+
   const cell = (row: Row, col: string) => {
     const v = row[col]
     if (v == null || v === '') return '—'
     if (typeof v === 'boolean') return v ? '✓' : ''
-    return String(v)
+    return displayChoice(String(v), col)
   }
 
   // RPT-003: export what is on screen, in display order — group header rows
@@ -300,7 +308,7 @@ export function ReportView({
   // is unique, so no row repeats or goes missing at a page boundary when many
   // rows tie on the view's own sort; the view's order is restored afterwards.
   async function allRows(): Promise<Row[]> {
-    if (data.length >= matching) return data
+    if (rows.data && data.length >= matching) return data
     const fields = groupBy ? listArgs.fields : [...new Set([...listArgs.fields, 'updated_at'])]
     const all: Row[] = []
     for (let start = 0; ; start += PAGE) {
@@ -402,7 +410,7 @@ export function ReportView({
     <tr key={String(row.row_id)} className="border-t border-border" data-testid="report-row">
       <td className="px-3 py-1.5">
         <RouterLink
-          to="/featherbase/admin/$table/$name"
+          to="/featherbase/admin/table/$table/row/$name"
           search={{ prefill: undefined }}
           params={{ table, name: String(row.row_id) }}
           className={touchLinkClasses('text-action hover:underline')}
@@ -445,7 +453,7 @@ export function ReportView({
             XLSX
           </button>
           <RouterLink
-            to="/featherbase/admin/$table"
+            to="/featherbase/admin/table/$table"
             params={{ table }}
             search={{ filters: undefined }}
             className={buttonClasses()}
@@ -598,6 +606,7 @@ export function ReportView({
                 <ReportGroup
                   key={g.key}
                   group={g}
+                  label={displayChoice(g.key, groupBy)}
                   columns={columns}
                   numericCols={numericCols}
                   fmt={fmt}
@@ -678,7 +687,7 @@ export function ReportView({
         <div className="space-y-2">
           {chartData.map((r, i) => (
             <div key={`${r.label}-${i}`} className="flex items-center gap-2" data-testid={`chart-bar-${r.label}`}>
-              <div className="w-24 shrink-0 truncate text-xs text-ink-muted">{r.label || '—'}</div>
+              <div className="w-24 shrink-0 truncate text-xs text-ink-muted">{displayChoice(r.label, groupBy || chartLabelField) || '—'}</div>
               <div className="h-5 flex-1 rounded bg-subtle">
                 <div
                   className="h-5 rounded bg-action"
@@ -701,12 +710,14 @@ export function ReportView({
 
 function ReportGroup({
   group,
+  label,
   columns,
   numericCols,
   fmt,
   bodyRow,
 }: {
   group: GroupTotals
+  label: string
   columns: string[]
   numericCols: string[]
   fmt: (v: number) => string
@@ -725,7 +736,7 @@ function ReportGroup({
           <span className="mr-1 inline-block w-3 text-ink-subtle">
             {open ? '▾' : '▸'}
           </span>
-          {group.key} <span data-testid="group-count">({fmt(group.count)})</span>
+          {label} <span data-testid="group-count">({fmt(group.count)})</span>
         </td>
         {columns.map((c) => (
           <td key={c} className="px-3 py-1.5 font-medium" data-testid={`group-sum-${c}`}>

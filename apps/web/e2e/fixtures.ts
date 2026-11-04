@@ -94,6 +94,19 @@ export async function ensureAdminReaderRole(request: APIRequestContext): Promise
   return ADMIN_READER_ROLE
 }
 
+/** Explicit scenario admission: installing Tasker never grants membership. */
+export async function admitTaskerAdmin(request: APIRequestContext): Promise<void> {
+  const headers = await adminAuth(request)
+  const response = await request.get('/api/table/Person/Administrator', { headers })
+  if (!response.ok()) throw new Error(`read Tasker fixture administrator: ${response.status()} ${await response.text()}`)
+  const person = await response.json() as { row_id: string; updated_at: string; roles: { role: string }[] }
+  if (person.roles.some(entry => entry.role === 'Tasker Member')) return
+  const saved = await request.post('/api/save_row', {
+    headers, data: { table: 'Person', row: { row_id: person.row_id, updated_at: person.updated_at, roles: [...person.roles, { role: 'Tasker Member' }] } },
+  })
+  if (saved.status() !== 201) throw new Error(`admit Tasker fixture administrator: ${saved.status()} ${await saved.text()}`)
+}
+
 export async function ensureRuntimeApp(
   request: APIRequestContext,
   name: string,
@@ -394,10 +407,12 @@ export function signIn<
     assertHas(selector: string): S
   },
 >(session: S): S {
-  // The post-login landing path varies with home-recall state
-  // (/admin/home/home, a recent Table, …) — assert the admin shell instead.
+  // This is an authentication precondition, not a first-run setup journey.
+  // An explicit return address prevents a pending setup offer from taking over
+  // the next page on a fresh shard with no other System Manager yet.
+  // The Admin index chooses a Home Page; assert the shell, not a specific page.
   return session
-    .visit('/login')
+    .visit('/featherbase/login?next=/featherbase/admin')
     .fillIn('Email or username', ADMIN_USER)
     .fillIn('Password', ADMIN_PWD)
     .clickButton('Sign in')

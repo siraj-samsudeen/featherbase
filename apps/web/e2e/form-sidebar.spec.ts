@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 const DT = 'Sb DT'
@@ -22,7 +23,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 })
 
 test('UI-017: assignments, tags, and attachments persist across reload', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`)
 
   await session.step('assign a user', async ({ page }) => {
     await page.getByTestId('assign-to').fill('Administrator')

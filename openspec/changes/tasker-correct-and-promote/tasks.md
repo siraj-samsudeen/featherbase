@@ -15,6 +15,11 @@
 - [x] 3.3 Implement promotion UI and exact preservation prompt.
 
 ## 4. Handoff
+
+The `revive-tasker` change integrates this implementation into Tasker 3.0 and
+supersedes its former shared-personal-work assumptions. The owner exploration
+and deployed-commit check below remain unverified; they are not implied by
+the revival's local browser and package proofs.
 - [x] 4.1 Run relevant suites, strict OpenSpec validation and literal package proof.
 - [x] 4.2 Inspect desktop/mobile screenshots and apply code/test review axes.
 - [x] 4.3 Obtain parent-coordinated independent review and browser exploration, including final spec synchronization.
