@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
+
+// The version header the server expects from Tickets' own client.
+const { version } = JSON.parse(readFileSync(new URL('../example-apps/tickets/package.json', import.meta.url), 'utf8'))
 
 // Explicit walkthrough setup, never called by installation or ordinary startup.
 export async function seedTickets({ baseUrl, password = 'admin', expectedEnvironment = 'development' }) {
@@ -10,7 +14,7 @@ export async function seedTickets({ baseUrl, password = 'admin', expectedEnviron
   async function api(path, body) {
     const response = await fetch(new URL(path, origin), {
       method: body === undefined ? 'GET' : 'POST', redirect: 'error',
-      headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'tickets@0.1.0', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `tickets@${version}`, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
     const result = await response.json()
