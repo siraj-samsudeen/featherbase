@@ -290,6 +290,11 @@ maps regions to arrays of alternative approvers; `restricted_resources` is a
 JSON array of restricted resource names. Missing authority or routing blocks
 access decisions. Use the existing App Setting/instance-settings interface.
 
+Tickets uses ordinary platform Table permissions: Administrator and System
+Manager retain privileged read access. The `Tickets Support` role grants private
+reads independently of action membership; removing someone from an action
+setting alone does not revoke that role's read access.
+
 For an explicitly disposable, local development instance only:
 
 ```bash

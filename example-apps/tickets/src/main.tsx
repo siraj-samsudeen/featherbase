@@ -722,9 +722,7 @@ function CaseFile({
                     </ActionForm>
                     <p className="fine">
                       Missing memberships or routes?{' '}
-                      <a
-                        href={`/featherbase/admin/App%20Setting?filters=${encodeURIComponent(JSON.stringify([['app', '=', 'tickets']]))}`}
-                      >
+                      <a href="/featherbase/admin/apps">
                         Configure Tickets settings
                       </a>
                     </p>

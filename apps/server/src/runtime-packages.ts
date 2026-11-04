@@ -35,6 +35,7 @@ interface PackageHookContext {
   reject(message: string, fields?: Record<string, string>): never
 }
 type Validator = (context: PackageHookContext) => void | Promise<void>
+type DestructiveGuard = (context: Pick<PackageHookContext, 'row' | 'user' | 'isNew' | 'reject'>) => void | Promise<void>
 
 // #551 (ADR 0011): an app names the platform version it was built for, dated by
 // month. These are the versions this Featherbase runs apps on.
@@ -386,7 +387,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
       if (!names.has(table) || typeof guard !== 'function')
         throw new Error('Destructive guards must target owned Tables')
       for (const event of ['on_trash', 'before_rename'] as const) {
-        (doc_events[table] ??= {})[event] = (ctx) => (guard as Validator)({
+        (doc_events[table] ??= {})[event] = (ctx) => (guard as DestructiveGuard)({
           row: ctx.row, user: ctx.user, isNew: false,
           reject(message, fields) { throw new AppError('ValidationError', message, fields) },
         })
