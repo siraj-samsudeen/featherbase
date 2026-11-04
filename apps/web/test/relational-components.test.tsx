@@ -4,7 +4,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, test, vi } from 'vitest'
-import { FieldGrid, GroupChip, LinkChip, PanePlace, resolvePanePlace, ViewToggle } from '@featherbase/shop-floor'
+import { DrillPane, FieldGrid, GroupChip, LinkChip, PanePlace, PaneSection, resolvePanePlace, SplitWithPane, ViewToggle } from '@featherbase/shop-floor'
 
 describe('ViewToggle', () => {
   test('marks the chosen view as pressed and reports a change', async () => {
@@ -133,5 +133,59 @@ describe('FieldGrid', () => {
     await user.click(screen.getByRole('button', { name: 'Show more' }))
     expect(value.className).not.toMatch(/line-clamp-3/)
     expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
+  })
+})
+
+describe('DrillPane', () => {
+  function pane(onClose = vi.fn()) {
+    render(<DrillPane kind="Bin" title="North bay · B-104" place="right" onClose={onClose}
+      actions={<button type="button">Open row page</button>}>
+      <PaneSection title="Points at"><p>Aisle 4</p></PaneSection>
+    </DrillPane>)
+    return onClose
+  }
+
+  test('is a complementary region named by its title, its kind above', () => {
+    pane()
+    const region = screen.getByRole('complementary', { name: 'North bay · B-104' })
+    expect(region).toHaveTextContent(/^Bin\s*North bay · B-104/)
+  })
+
+  test('holds its sections under their headings', () => {
+    pane()
+    expect(screen.getByRole('heading', { name: 'Points at' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open row page' })).toBeInTheDocument()
+  })
+
+  test('the close button closes it', async () => {
+    const user = userEvent.setup()
+    const onClose = pane()
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  test('Escape inside the pane closes it', async () => {
+    const user = userEvent.setup()
+    const onClose = pane()
+    await user.click(screen.getByText('Aisle 4'))
+    await user.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+})
+
+describe('SplitWithPane', () => {
+  test.each([
+    ['right', 'flex-row'],
+    ['bottom', 'flex-col'],
+  ] as const)('places the pane %s of the content', (place, direction) => {
+    render(<SplitWithPane place={place} pane={<p>Pane</p>}><p>List</p></SplitWithPane>)
+    const split = screen.getByTestId('split-with-pane')
+    expect(split.className).toMatch(new RegExp(`\\b${direction}\\b`))
+    expect(split).toHaveTextContent(/^List\s*Pane$/)
+  })
+
+  test('without a pane, the content takes the whole width', () => {
+    render(<SplitWithPane place="right" pane={null}><p>List</p></SplitWithPane>)
+    expect(screen.queryByTestId('split-pane')).not.toBeInTheDocument()
   })
 })
