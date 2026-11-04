@@ -242,7 +242,7 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     await event(ctx, ticket, 'evidence', { expected: text(ctx, p.expected, 'Expected outcome'), observed: text(ctx, p.observed, 'Observed outcome'),
       reference: text(ctx, p.reference, 'Evidence reference'), observed_at: observedAt, finding: text(ctx, p.finding, 'Manual finding'),
       ...(p.root_cause === undefined ? {} : { root_cause: text(ctx, p.root_cause, 'Root cause') }) })
-    return { ticket: await bump(ctx, ticket, ticket.kind === 'access' ? {} : { ticket_state: 'In progress' }) }
+    return { ticket: await bump(ctx, ticket, ticket.kind === 'access' || ticket.ticket_state === 'Resolved' ? {} : { ticket_state: 'In progress' }) }
   },
   async link(ctx) {
     const p = input(ctx, ['row_id', 'updated_at', 'url'])
