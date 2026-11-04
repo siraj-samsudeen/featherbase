@@ -15,5 +15,5 @@
 ## 3. Completion
 
 - [x] 3.1 Dash unit, platform and frontend suites; strict OpenSpec validation
-- [ ] 3.2 Codex review, standard and adversarial, until neither raises a blocker
-- [ ] 3.3 Sync the delta into the main spec and archive the change
+- [x] 3.2 Codex review, standard and adversarial, until neither raises a blocker
+- [x] 3.3 Sync the delta into the main spec and archive the change
