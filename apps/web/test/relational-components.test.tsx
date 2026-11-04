@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, test, vi } from 'vitest'
+import { Gallery } from '../src/gallery/Gallery'
 import { DrillPane, FieldGrid, GroupChip, LinkChip, PanePlace, PaneSection, PathBar, RecentPaths, resolvePanePlace, SplitWithPane, TreeOutline, ViewToggle, type TreeNode } from '@featherbase/shop-floor'
 
 describe('ViewToggle', () => {
@@ -387,5 +388,27 @@ describe('TreeOutline', () => {
     render(<Tree />)
     expect(screen.getByRole('button', { name: 'Focus here' })).toBeInTheDocument()
     expect(item('North bay · B-104')).toHaveAttribute('aria-selected', 'true')
+  })
+})
+
+describe('UI Lab', () => {
+  test.each([
+    ['drill pane', 'Drill pane', 'packages/shop-floor/src/DrillPane.tsx'],
+    ['tree', 'Tree outline', 'packages/shop-floor/src/TreeOutline.tsx'],
+    ['path', 'Path bar', 'packages/shop-floor/src/PathBar.tsx'],
+    ['go there', 'Link and group chips', 'packages/shop-floor/src/LinkChip.tsx'],
+    ['empty fields', 'Field grid', 'packages/shop-floor/src/FieldGrid.tsx'],
+    ['compact', 'Table or compact', 'packages/shop-floor/src/ViewToggle.tsx'],
+  ])('searching "%s" finds the %s example', async (query, title, file) => {
+    const user = userEvent.setup()
+    render(<Gallery />)
+    await user.type(screen.getByRole('searchbox', { name: 'Search components' }), query)
+    expect(screen.getByRole('heading', { level: 2, name: title })).toBeInTheDocument()
+    expect(screen.getByText(file)).toBeInTheDocument()
+  })
+
+  test('section headings are sentence case, never all capitals', () => {
+    render(<Gallery />)
+    for (const heading of screen.getAllByRole('heading', { level: 2 })) expect(heading.className).not.toMatch(/\buppercase\b/)
   })
 })
