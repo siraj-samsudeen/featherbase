@@ -342,60 +342,64 @@ describe('PathBar', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Copied')
   })
 
-  test('a long path scrolls the bar, not the page, to its current step', () => {
-    const calls: { el: Element; left: number }[] = []
-    const proto = Element.prototype as unknown as Record<'scrollTo' | 'getBoundingClientRect', (this: Element, ...args: never[]) => unknown>
-    const [scrollTo, rect] = [proto.scrollTo, proto.getBoundingClientRect]
-    // The bar is 300px wide; the current step sits 500px to 620px from its left.
-    proto.getBoundingClientRect = function (this: Element) {
-      const box = this.getAttribute('aria-current') === 'step' ? [500, 620] : this.tagName === 'NAV' ? [0, 300] : [0, 0]
-      return { left: box[0], right: box[1] } as DOMRect
-    } as never
-    proto.scrollTo = function (this: Element, options: ScrollToOptions) { calls.push({ el: this, left: options.left! }) } as never
-    try {
-      bar(1)
-      expect(calls.at(-1)).toEqual({ el: screen.getByRole('navigation', { name: 'Path' }), left: 320 })
-    } finally {
-      Object.assign(proto, { scrollTo, getBoundingClientRect: rect })
-    }
-  })
-
   describe('a path longer than its bar', () => {
-    const calls: number[] = []
-    const proto = Element.prototype as unknown as Record<'scrollTo' | 'getBoundingClientRect', (this: Element, ...args: never[]) => unknown>
-    const [scrollTo, rect] = [proto.scrollTo, proto.getBoundingClientRect]
-    // The bar is 300px wide; the steps sit at 0–120, 120–330 and 330–450.
-    const boxes: Record<string, [number, number]> = { 'List Bins': [0, 120], 'Filter Aisle: 4': [120, 330], 'North bay · B-104': [330, 450] }
+    const proto = Element.prototype as unknown as Record<'getBoundingClientRect', (this: Element) => unknown>
+    const rect = proto.getBoundingClientRect
+    // The bar has 300px for the path; "…" takes 30; each step its own width;
+    // a word of text 10px a character.
+    let widths: number[] = [120, 210, 120]
     beforeEach(() => {
-      calls.length = 0
+      widths = [120, 210, 120]
       proto.getBoundingClientRect = function (this: Element) {
-        const box = this.tagName === 'NAV' ? [0, 300]
-          : this.tagName === 'LI' ? boxes[this.querySelector('button')!.textContent!.trim()]
-          : this.getAttribute('aria-current') === 'step' ? boxes[this.textContent!.trim()] : [0, 0]
-        return { left: box[0], right: box[1] } as DOMRect
-      } as never
-      proto.scrollTo = function (this: Element, options: ScrollToOptions) { calls.push(options.left!) } as never
+        const el = this as HTMLElement
+        const width = el.dataset?.pathRoom !== undefined ? 300
+          : el.dataset?.measureStep !== undefined ? widths[Number(el.dataset.measureStep)]
+          : el.dataset?.measureMore !== undefined ? 30
+          : el.dataset?.measureText !== undefined ? (el.textContent ?? '').length * 10
+          : 0
+        return { left: 0, right: width, width, top: 0, bottom: 0, height: 0 } as DOMRect
+      }
     })
-    afterEach(() => { Object.assign(proto, { scrollTo, getBoundingClientRect: rect }) })
+    afterEach(() => { proto.getBoundingClientRect = rect })
+    const shownSteps = () => within(screen.getByRole('navigation', { name: 'Path' })).queryAllByRole('button')
+      .filter((b) => b.getAttribute('aria-label') !== 'Earlier steps').map((b) => b.getAttribute('aria-label') ?? b.textContent)
 
-    test('scrolls whole steps out of sight, never part of one', () => {
+    test('shows whole steps only, the earlier ones that do not fit hidden behind "…"', () => {
       bar(2)
-      expect(calls.at(-1)).toBe(330)
-    })
-
-    test('says that earlier steps are out of sight', () => {
-      bar(2)
+      expect(shownSteps()).toEqual(['North bay · B-104'])
       expect(screen.getByRole('button', { name: 'Earlier steps' })).toHaveTextContent('…')
     })
+
+    test('"…" lists the hidden steps, and choosing one goes to it', async () => {
+      const onStep = vi.fn()
+      const user = userEvent.setup()
+      bar(2, { onStep })
+      await user.click(screen.getByRole('button', { name: 'Earlier steps' }))
+      const menu = screen.getByRole('menu', { name: 'Earlier steps' })
+      expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['List Bins', 'Filter Aisle: 4'])
+      await user.click(within(menu).getByRole('menuitem', { name: 'List Bins' }))
+      expect(onStep).toHaveBeenCalledWith(0)
+    })
+
+    test('a step longer than the whole bar is shortened at a word, its full name kept', () => {
+      widths = [500]
+      render(<PathBar steps={[{ key: 'a', label: 'Vellayani ground floor storage lease renewal' }]} current={0}
+        onStep={() => {}} onBack={() => {}} onForward={() => {}} onCopyLink={() => {}} />)
+      const step = within(screen.getByRole('navigation', { name: 'Path' })).getByRole('button')
+      expect(step).toHaveAccessibleName('Vellayani ground floor storage lease renewal')
+      expect(step).toHaveAttribute('title', 'Vellayani ground floor storage lease renewal')
+      expect(step.textContent).toMatch(/^(\S+ )*\S+…$/)
+      expect('Vellayani ground floor storage lease renewal'.startsWith(step.textContent!.slice(0, -1))).toBe(true)
+    })
   })
 
-  test('a narrow bar gives the path a line of its own under its buttons', () => {
+  test('a bar narrower than a wide window gives the path a line of its own under its buttons', () => {
     bar(2)
     const line = screen.getByRole('navigation', { name: 'Path' }).parentElement!
     const whole = screen.getByRole('button', { name: 'Back' }).parentElement!
     expect(whole.className).toMatch(/(^|\s)@container(\s|$)/)
     expect(whole.className).toMatch(/\bflex-wrap\b/)
-    expect(line.className).toMatch(/@max-2xl:basis-full/)
+    expect(line.className).toMatch(/@max-5xl:basis-full/)
   })
 
   test('a path that fits says nothing about earlier steps', () => {
