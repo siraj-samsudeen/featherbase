@@ -29,6 +29,8 @@ test('#830: a Person\'s Activity shows a role granted and a role removed, by who
   // Activity uses the metadata label, as for every other change (#421, #825).
   await waitFor(() => {
     const diffs = within(timeline).getAllByTestId('activity-diff').map((d) => d.textContent)
+    // #897: the role given at creation is there too.
+    expect(diffs).toContainEqual(expect.stringContaining('Roles: ∅ → Rh Clerk'))
     expect(diffs).toContainEqual(expect.stringContaining('Roles: Rh Clerk → Rh Clerk, Rh Auditor'))
     expect(diffs).toContainEqual(expect.stringContaining('Roles: Rh Clerk, Rh Auditor → Rh Clerk'))
   })
