@@ -15,6 +15,7 @@ import {
   go,
   push,
   rememberPath,
+  replace,
   rememberWalk,
   stepKind,
   stepRefs,
@@ -49,6 +50,25 @@ describe('push', () => {
   it('ignores a step equal to the current one', () => {
     const path = walk(sites, kerala)
     expect(push(path, { table: 'Site', filters: [['state', '=', 'KL']], screen: 'list' })).toEqual(path)
+  })
+
+  it('a step showing the same row as the current one takes its place, so no name shows twice in a row', () => {
+    const page: NavStep = { screen: 'row', table: 'Site', row: 'site-1' }
+    const withGroup: NavStep = { ...page, pane: { table: 'Site', row: 'site-1', group: { table: 'Plant', column: 'site' } } }
+    expect(push(walk(sites, page), withGroup).steps).toEqual([sites, withGroup])
+  })
+
+  it('centring the page on the row in the pane takes the place of the step that showed it there', () => {
+    const page: NavStep = { screen: 'row', table: 'Site', row: 'site-1' }
+    const inPane: NavStep = { ...page, pane: { table: 'State', row: 'KL' } }
+    const centred: NavStep = { screen: 'row', table: 'State', row: 'KL' }
+    expect(push(walk(page, inPane), centred).steps).toEqual([page, centred])
+  })
+
+  it('a filter after selecting a row is a new step after it', () => {
+    const selected: NavStep = { ...sites, pane: { table: 'Site', row: 'site-1' } }
+    const filtered: NavStep = { ...selected, filters: [['state', '=', 'KL']] }
+    expect(push(walk(sites, selected), filtered).steps).toEqual([sites, selected, filtered])
   })
 
   it(`keeps only the last ${MAX_STEPS} steps`, () => {
@@ -197,6 +217,17 @@ describe('stepRefs', () => {
   })
 })
 
+describe('replace', () => {
+  it('changes the current step in place', () => {
+    expect(replace(walk(sites, enchakkal), supermarket)).toEqual(walk(sites, supermarket))
+  })
+
+  it('a step that comes to show what the step before it shows merges into it', () => {
+    const selected: NavStep = { ...sites, pane: { table: 'Site', row: 'site-1' } }
+    expect(replace(walk(sites, selected), sites)).toEqual(walk(sites))
+  })
+})
+
 describe('recent paths', () => {
   const a = walk(sites)
   const b = walk(sites, kerala)
@@ -224,6 +255,16 @@ describe('recent paths', () => {
   it('a walk that branches off keeps the walk it left', () => {
     const c = walk(sites, { ...sites, filters: [['state', '=', 'TN']] })
     expect(rememberWalk([b], c)).toEqual([c, b])
+  })
+
+  it('going back along a remembered walk remembers nothing new', () => {
+    const c = walk(sites, kerala, enchakkal)
+    expect(rememberWalk([c], back(c))).toEqual([c])
+  })
+
+  it('a walk whose step only opened another group still replaces the walk it extends', () => {
+    const opened = walk(sites, { ...kerala, compact: true }, supermarket)
+    expect(rememberWalk([b], opened)).toEqual([opened])
   })
 
   it('a path of one step is not a walk worth remembering', () => {

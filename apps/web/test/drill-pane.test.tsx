@@ -226,10 +226,12 @@ test('a pane on a row the viewer cannot read offers no way to the row', async ({
   expect(within(gone).queryAllByRole('link').map((l) => l.textContent)).toEqual([])
 })
 
-test('Filter from the pane puts the filter on the path before the row it was read from', async ({ admin }) => {
+// Item 14: a filter after selecting a row is a new step after it, named by
+// the filter; the earlier steps keep their order.
+test('Filter from the pane adds a step after the row it was read from, named by the filter', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
   fireEvent.click(await within(site).findByRole('button', { name: 'Filter' }))
-  await waitFor(() => expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala · KL', 'Enchakkal · ENK']))
+  await waitFor(() => expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Enchakkal · ENK', 'Region: Kerala · KL']))
 })
 
 // Checklist 21: a list line goes to the pane from the keyboard.
