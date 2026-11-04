@@ -5,6 +5,9 @@
 // feed says "filtered" exactly when the list did (#440).
 export type ListFilter = [string, string, unknown]
 
+// Explore paths and relationship predicates share the same edge bound.
+export const MAX_RELATED_DEPTH = 4
+
 export function parseFilters(raw: string | undefined): ListFilter[] {
   if (!raw) return []
   let value: unknown

@@ -235,7 +235,9 @@ async function mapFilters(
       if (bind.source.engine !== 'postgres' || spec.via !== undefined || field === 'parent')
         throw new AppError('ValidationError', 'Source related filters support only direct References within one PostgreSQL Data Source')
       const column = requireSourceColumn(bind, field, 'filter')
-      if (!meta.columns.some((c) => c.column_name === field && c.column_type === 'Reference' && c.reference_table === spec.table))
+      if (spec.reference !== undefined && field !== ROW_KEY)
+        throw new AppError('ValidationError', `A reference-related filter applies to '${ROW_KEY}'`)
+      if (spec.reference === undefined && !meta.columns.some((c) => c.column_name === field && c.column_type === 'Reference' && c.reference_table === spec.table))
         throw new AppError('ValidationError', `${meta.name}.${field} is not a Reference to ${spec.table}`)
       const target = await getMeta(spec.table)
       if (target.data_source !== meta.data_source)
@@ -244,9 +246,16 @@ async function mapFilters(
       const ctx = await boundContext(target)
       const scopeFilters = await boundScopeFilters(target, user, ctx.bind)
       const targetBind = narrowToTiers(ctx.bind, target, await permittedTiers(user, target.name, 'read'))
+      let projection = targetBind.pk
+      if (spec.reference !== undefined) {
+        projection = requireSourceColumn(targetBind, spec.reference, 'filter')
+        if (!target.columns.some((c) => c.column_name === spec.reference && c.column_type === 'Reference' && c.reference_table === meta.name))
+          throw new AppError('ValidationError', `${spec.table}.${spec.reference} is not a Reference to ${meta.name}`)
+      }
       mapped.push({
         column, op: 'related', value: {
           binding: targetBind,
+          projection,
           filters: [...await mapFilters(target, targetBind, spec.filters ?? [], user, depth + 1, budget), ...scopeFilters],
         },
       })

@@ -26,10 +26,12 @@ const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in'
 // list language understands. It constrains rows by a relationship to
 // another table's (recursively filtered, permission-scoped) rows instead of
 // by a literal value list, compiling to IN/EXISTS subqueries entirely
-// server-side. Three shapes, exactly the relationships the metadata models:
+// server-side. Four shapes, exactly the relationships the metadata models:
 //
 //   [refCol, 'related', { table, filters }]
 //     rows whose Reference column points at a matching target row
+//   ['row_id', 'related', { table, reference, filters }]
+//     rows referenced by the matching upstream rows' Reference column
 //   ['parent', 'related', { table, filters }]        (sub-table rows only)
 //     child rows whose owning parent row matches
 //   ['name', 'related', { via, column, table, filters }]
@@ -220,6 +222,19 @@ export async function scopedWhere(
       )
     const spec = parseRelatedSpec(raw)
     const target = await scopedWhere(spec.table, user, spec.filters ?? [], relatedDepth + 1, hopBudget)
+
+    if (spec.reference !== undefined) {
+      if (field !== ROW_KEY)
+        throw new AppError('ValidationError', `A reference-related filter applies to '${ROW_KEY}'`)
+      assertColumn(target.cols, spec.reference, 'filter')
+      if (!target.meta.columns.some(
+        (c) => c.column_name === spec.reference && c.column_type === 'Reference' && c.reference_table === meta.name,
+      ))
+        throw new AppError('ValidationError', `${spec.table}.${spec.reference} is not a Reference to ${meta.name}`)
+      return {
+        frag: sql`${sql(phys(field))} in (select ${sql(target.phys(spec.reference))} from ${sql(target.table)} where ${target.where})`,
+      }
+    }
 
     if (spec.via) {
       if (field !== ROW_KEY)

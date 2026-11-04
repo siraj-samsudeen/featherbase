@@ -77,20 +77,62 @@ class BoundedExplorePage {
       await this.page.getByTestId(`explore-step${i + 2}`).selectOption(keys[i]);
   }
 
-  async expectWorkers(labels = ['Invented Amber', 'Invented Birch', 'Invented Cedar']) {
+  async expectWorkers(ids = ['w-a', 'w-b', 'w-c']) {
     const pane = this.page.getByTestId('explore-pane5');
-    await pane.getByTestId('explore-pane5-count').filter({ hasText: new RegExp(`^${labels.length}$`) }).waitFor();
-    const titles = await Promise.all((await pane.getByTestId('explore-row').all()).map(row => row.locator('span').first().textContent()));
-    assert.deepEqual(titles.sort(), [...labels].sort());
+    // All endpoint rows fit on one page: fmtShowing renders exactly the total.
+    await pane.getByTestId('explore-pane5-count').filter({ hasText: new RegExp(`^${ids.length}$`) }).waitFor();
+    const rows = pane.getByTestId('explore-row');
+    const shownIds = await Promise.all((await rows.all()).map(row => row.locator('span').first().textContent()));
+    assert.deepEqual(shownIds.sort(), [...ids].sort());
+    const labels = { 'w-a': 'Invented Amber', 'w-b': 'Invented Birch', 'w-c': 'Invented Cedar' };
+    for (const id of ids) {
+      const row = rows.filter({ has: this.page.getByText(id, { exact: true }) });
+      await row.getByText(labels[id], { exact: true }).waitFor();
+    }
+    assert.equal(await pane.getByText('w-x', { exact: true }).count(), 0);
     assert.equal(await pane.getByText('Unreachable Control').count(), 0);
   }
 
-  async expectBounded() { assert.equal(await this.page.getByTestId('explore-step6').count(), 0); }
+  async expectBounded() {
+    assert.equal(await this.page.getByTestId('explore-step6').count(), 0);
+    const chain = [
+      { mode: 'backlink', table: this.tables[1], column: 'section' },
+      { mode: 'backlink', table: this.tables[2], column: 'floor_section' },
+      { mode: 'reference', table: this.tables[3], column: 'assignment' },
+      { mode: 'reference', table: this.tables[4], column: 'worker' },
+    ];
+    const journeyUrl = `/featherbase/admin/explore?${new URLSearchParams({ root: this.tables[0], chain: JSON.stringify(chain) })}`;
+    // A fresh document must restore the same four-edge path, not local React state.
+    await this.page.goto(journeyUrl);
+    await this.expectWorkers();
+    await this.page.reload();
+    await this.expectWorkers();
+    for (let i = 0; i < chain.length; i++)
+      assert.equal(await this.page.getByTestId(`explore-step${i + 2}`).inputValue(), `${chain[i].mode}:${chain[i].table}:${chain[i].column}`);
+
+    // Clearing the second edge removes its pane and every later pane/picker.
+    await this.page.getByTestId('explore-step3').selectOption('');
+    await this.page.getByTestId('explore-pane3').waitFor({ state: 'hidden' });
+    for (const stage of [4, 5]) {
+      assert.equal(await this.page.getByTestId(`explore-pane${stage}`).count(), 0);
+      assert.equal(await this.page.getByTestId(`explore-step${stage}`).count(), 0);
+    }
+    await this.page.getByTestId('explore-pane2').waitFor();
+
+    // A shape-valid but retired fourth Reference preserves precisely three edges.
+    const stale = [...chain.slice(0, 3), { ...chain[3], column: 'retired_worker_reference' }];
+    await this.page.goto(`/featherbase/admin/explore?${new URLSearchParams({ root: this.tables[0], chain: JSON.stringify(stale) })}`);
+    await this.page.getByTestId('explore-pane4-count').filter({ hasText: /^3$/ }).waitFor();
+    assert.equal(await this.page.getByTestId('explore-step5').inputValue(), '');
+    assert.equal(await this.page.getByTestId('explore-pane5').count(), 0);
+    await this.page.goto(journeyUrl);
+    await this.expectWorkers();
+  }
 
   async narrowThenRelease() {
     await this.open();
     await this.page.getByTestId('explore-pane1').getByTestId('explore-row').filter({ has: this.page.getByText('North', { exact: true }) }).click();
-    await this.expectWorkers(['Invented Amber', 'Invented Birch']);
+    await this.expectWorkers(['w-a', 'w-b']);
     // Select an intermediate row before releasing North: its chip must clear too.
     const row = this.page.getByTestId('explore-pane4').getByTestId('explore-row').first();
     await row.click();

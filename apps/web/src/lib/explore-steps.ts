@@ -1,18 +1,20 @@
+import { MAX_RELATED_DEPTH } from 'shared'
 import { useMeta } from './meta'
 import { useBacklinks, type Backlink } from './connections'
 
 // The shared chain-step seam for Explore (#100 pattern 4) and its entry
 // points. One pure builder derives every legal chain step for a table —
-// its Sub-table columns (children) plus its Reference backlinks, direct
-// and via-sub-table — and three consumers use it: Explore's StepPicker,
+// its Sub-table columns (children), outgoing References and Reference backlinks,
+// direct and via-sub-table — and three consumers use it: Explore's StepPicker,
 // ListView's Explore split button, and RelationMap's "Open in Explore".
 // `parseChain` / `parseSelect` validate the Explore route's URL params the
 // #87 parseFilters way: a URL is user input, so malformed values are
 // discarded, never thrown.
 
 export interface Step {
-  mode: 'backlink' | 'child' | 'viabacklink'
+  mode: 'backlink' | 'child' | 'viabacklink' | 'reference'
   table: string
+  // reference: the upstream table's Reference column pointing at `table`
   // backlink: the Reference column on `table` pointing at the upstream table
   // viabacklink: the Reference column on `via` pointing at the upstream table
   // child: the upstream table's Sub-table COLUMN — one row table can back
@@ -38,10 +40,11 @@ type MetaColumns = {
     label: string | null
     column_type: string
     row_table: string | null
+    reference_table?: string | null
   }[]
 }
 
-// Every legal chain step out of `table`: children first, then backlinks —
+// Every legal chain step out of `table`: metadata links, then backlinks —
 // keyed and filtered by the Sub-table COLUMN, not just the row table, since
 // two columns backed by the same row table are distinct steps (#106 review).
 export function stepOptions(meta: MetaColumns | undefined, backlinks: Backlink[] | undefined): StepOption[] {
@@ -52,6 +55,12 @@ export function stepOptions(meta: MetaColumns | undefined, backlinks: Backlink[]
         key: `child:${f.row_table}:${f.column_name}`,
         label: `${f.row_table} (${f.label ?? f.column_name})`,
         step: { mode: 'child', table: f.row_table, column: f.column_name },
+      })
+    else if (f.column_type === 'Reference' && f.reference_table)
+      options.push({
+        key: `reference:${f.reference_table}:${f.column_name}`,
+        label: `${f.reference_table} (${f.label ?? f.column_name})`,
+        step: { mode: 'reference', table: f.reference_table, column: f.column_name },
       })
   for (const bl of backlinks ?? [])
     options.push(
@@ -84,13 +93,13 @@ export function useStepOptions(table: string | undefined) {
 function isStep(value: unknown): value is Step {
   if (typeof value !== 'object' || value === null) return false
   const s = value as Record<string, unknown>
-  if (s.mode !== 'backlink' && s.mode !== 'child' && s.mode !== 'viabacklink') return false
+  if (s.mode !== 'backlink' && s.mode !== 'child' && s.mode !== 'viabacklink' && s.mode !== 'reference') return false
   if (typeof s.table !== 'string' || typeof s.column !== 'string') return false
   if (s.mode === 'viabacklink') return typeof s.via === 'string'
   return s.via === undefined
 }
 
-// `?chain=` — up to two steps initializing Explore's step2/step3. Shape-level
+// `?chain=` — up to four edges initializing Explore's step2..step5. Shape-level
 // validation only; resolution against the live meta/backlinks (a stale URL
 // naming a dropped column) happens stage-by-stage in ExploreView. A step that
 // fails drops itself AND everything after it — a chain is only meaningful as
@@ -105,7 +114,7 @@ export function parseChain(raw: string | undefined): Step[] {
   }
   if (!Array.isArray(value)) return []
   const steps: Step[] = []
-  for (const entry of value.slice(0, 2)) {
+  for (const entry of value.slice(0, MAX_RELATED_DEPTH)) {
     if (!isStep(entry)) break
     steps.push(
       entry.via === undefined
