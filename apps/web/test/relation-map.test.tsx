@@ -5,6 +5,7 @@
 // re-centres it. The separate map page is gone.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { tableHref } from 'shared'
+import { createUserWithRole } from 'server/test/fixtures'
 import { test, expect, renderApp } from './pg-test'
 
 configure({ asyncUtilTimeout: 10_000 })
@@ -47,6 +48,31 @@ test('the map shows what a row points to and what points back, with a count', as
   const back = await screen.findByTestId('map-group-Rm Order')
   expect(back).toHaveTextContent('2')
   await waitFor(() => expect(back).toHaveTextContent('via Customer'))
+})
+
+/** Someone who can read orders but not the customers they point at. */
+async function orderViewer(admin: Parameters<typeof renderApp>[1], createUser: Parameters<typeof createUserWithRole>[1]) {
+  await seed(admin)
+  return createUserWithRole(admin, createUser, { role: 'Rm Order Viewer', table: 'Rm Order', can_read: true })
+}
+
+test("a link to a row the viewer can't read is no button in the narrow map", async ({ admin, createUser }) => {
+  const viewer = await orderViewer(admin, createUser)
+  await openMap(viewer, 'Rm Order', 'ord-1')
+  const link = () => screen.getByTestId('map-narrow-forward-Rm Customer')
+  await waitFor(() => expect(link()).toHaveTextContent('A row you cannot see'))
+  expect(link().closest('button')).toBeNull()
+})
+
+test("clicking a link to a row the viewer can't read opens no pane", async ({ admin, createUser }) => {
+  const viewer = await orderViewer(admin, createUser)
+  await openMap(viewer, 'Rm Order', 'ord-1')
+  const box = await screen.findByTestId('map-forward-Rm Customer')
+  await waitFor(() => expect(box).toHaveTextContent('Not visible to you'))
+  fireEvent.click(box)
+  // Let a pane that would open have the time to.
+  await new Promise((r) => setTimeout(r, 500))
+  expect(screen.queryByRole('complementary', { name: 'A row you cannot see' })).not.toBeInTheDocument()
 })
 
 test('clicking a linked row shows it in the drill pane; the map stays centred', async ({ admin }) => {
