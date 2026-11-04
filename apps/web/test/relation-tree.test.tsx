@@ -1,0 +1,123 @@
+// #910 checklist 18–19 and 22: the row page's Tree tab and a list's Tree of
+// all. Lines unfold in place in both directions, several levels deep; a big
+// group shows its first 20; a line opens in the drill pane while the tree
+// stays centred; unreadable rows are never named.
+import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { tableHref } from 'shared'
+import { createUserWithRole, grantRole } from 'server/test/fixtures'
+import { test, expect, renderApp } from './pg-test'
+import { PLANT, PROFIT, REGION, SITE, seedSites, type Admin } from './relational-fixture'
+
+configure({ asyncUtilTimeout: 10_000 })
+
+const tree = () => screen.findByRole('tree')
+const line = async (name: string | RegExp) => {
+  const t = await tree()
+  return (await within(t).findAllByRole('treeitem', { name })).at(-1)!
+}
+const unfold = (item: HTMLElement) => fireEvent.keyDown(item, { key: 'ArrowRight' })
+
+async function openTree(admin: Admin, table: string, row: string) {
+  const view = await renderApp(`${tableHref(table)}/row/${row}`, admin)
+  fireEvent.click(await screen.findByRole('tab', { name: 'Tree' }))
+  await tree()
+  return view
+}
+
+test('the tree shows what the row links to above it and its groups below, unfolded two levels', async ({ admin }) => {
+  await seedSites(admin)
+  await openTree(admin, SITE, 'ENK')
+  const t = await tree()
+  const kerala = await line('Kerala · KL')
+  const plants = await line(`${PLANT} 3`)
+  const centre = await line('Enchakkal · ENK')
+  expect(kerala.compareDocumentPosition(centre) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(centre.compareDocumentPosition(plants) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(plants).toHaveAttribute('aria-expanded', 'true')
+  await waitFor(() => expect(within(plants).getAllByRole('treeitem')).toHaveLength(3))
+  expect(t).toHaveTextContent('Links to')
+  expect(t).toHaveTextContent('Linked from')
+})
+
+test('lines unfold in place several levels deep', async ({ admin }) => {
+  await seedSites(admin)
+  await openTree(admin, SITE, 'ENK')
+  unfold(await line('Enchakkal Supermarket · 1503'))
+  const centres = await line(`${PROFIT} 2`)
+  unfold(centres)
+  await waitFor(() => expect(within(centres).getAllByRole('treeitem')).toHaveLength(2))
+  expect(centres).toHaveTextContent('EKL - Retail 01')
+})
+
+test('a group of 40 shows its first 20, with a way to show all 40', async ({ admin }) => {
+  await seedSites(admin, { profitCentres: 40 })
+  await openTree(admin, PLANT, '1503')
+  const centres = await line(`${PROFIT} 40`)
+  await waitFor(() => expect(within(centres).getAllByRole('treeitem')).toHaveLength(20))
+  fireEvent.click(within(centres).getByRole('button', { name: 'show all 40' }))
+  await waitFor(() => expect(within(centres).getAllByRole('treeitem')).toHaveLength(40))
+})
+
+test('clicking a line shows it in the drill pane; the tree stays centred', async ({ admin }) => {
+  await seedSites(admin)
+  await openTree(admin, SITE, 'ENK')
+  fireEvent.click(within(await line('Enchakkal Supermarket · 1503')).getByText('Enchakkal Supermarket · 1503'))
+  expect(await screen.findByRole('complementary', { name: 'Enchakkal Supermarket · 1503' })).toHaveTextContent(PLANT)
+  expect(await line('Enchakkal · ENK')).toBeInTheDocument()
+})
+
+test('Focus here centres the tree on the chosen line', async ({ admin }) => {
+  await seedSites(admin)
+  await openTree(admin, SITE, 'ENK')
+  const item = await line('Enchakkal Supermarket · 1503')
+  fireEvent.click(within(item).getByText('Enchakkal Supermarket · 1503'))
+  fireEvent.click(await within(await line('Enchakkal Supermarket · 1503')).findByRole('button', { name: 'Focus here' }))
+  expect(await line(`${PROFIT} 2`)).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByRole('tab', { name: 'Tree' })).toHaveAttribute('aria-selected', 'true')
+})
+
+test('what is unfolded survives a look at the form', async ({ admin }) => {
+  await seedSites(admin)
+  await openTree(admin, SITE, 'ENK')
+  unfold(await line('Enchakkal Supermarket · 1503'))
+  await line(`${PROFIT} 2`)
+  fireEvent.click(screen.getByRole('tab', { name: 'Form' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'Tree' }))
+  expect(await line('Enchakkal Supermarket · 1503')).toHaveAttribute('aria-expanded', 'true')
+})
+
+test("a viewer who can't read Enchakkal's other plants sees a count of 2 on the tree and their names nowhere", async ({ admin, createUser }) => {
+  await seedSites(admin)
+  const viewer = await createUserWithRole(admin, createUser, { role: 'Nv Tree Viewer', table: [SITE, REGION], can_read: true })
+  await grantRole(admin, { role: 'Nv Tree Viewer', table: PLANT, can_read: true, can_create: true, own_rows_only: true })
+  for (const [row_id, plant_name] of [['1701', 'Enchakkal Bakery'], ['1702', 'Enchakkal Pharmacy']])
+    await viewer.post('/api/save_row', { table: PLANT, row: { row_id, plant_name, site: 'ENK' } })
+  await openTree(viewer, SITE, 'ENK')
+  const plants = await line(`${PLANT} 2`)
+  await waitFor(() => expect(within(plants).getAllByRole('treeitem')).toHaveLength(2))
+  for (const unseen of ['Enchakkal Supermarket', 'Enchakkal Textiles', 'Enchakkal Jewellery', '1503'])
+    expect(document.body).not.toHaveTextContent(unseen)
+})
+
+test('Tree of all shows every site as a folded line, unfolding into its region and its plants', async ({ admin }) => {
+  await seedSites(admin)
+  await renderApp(tableHref(SITE), admin)
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }))
+  const t = await tree()
+  await waitFor(() => expect(within(t).getAllByRole('treeitem', { level: 1 })).toHaveLength(3))
+  for (const item of within(t).getAllByRole('treeitem', { level: 1 })) expect(item).toHaveAttribute('aria-expanded', 'false')
+  const enchakkal = await line('Enchakkal · ENK')
+  unfold(enchakkal)
+  await waitFor(() => expect(within(enchakkal).getByRole('treeitem', { name: 'Kerala · KL' })).toBeInTheDocument())
+  expect(within(enchakkal).getByRole('treeitem', { name: `${PLANT} 3` })).toBeInTheDocument()
+})
+
+test('Tree of all shows 20 rows at a time, with Show more', async ({ admin }) => {
+  await seedSites(admin, { profitCentres: 25 })
+  await renderApp(tableHref(PROFIT), admin)
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }))
+  const t = await tree()
+  await waitFor(() => expect(within(t).getAllByRole('treeitem', { level: 1 })).toHaveLength(20))
+  fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
+  await waitFor(() => expect(within(t).getAllByRole('treeitem', { level: 1 })).toHaveLength(25))
+})
