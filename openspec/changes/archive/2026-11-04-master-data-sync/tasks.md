@@ -7,5 +7,5 @@
 - [x] 1.5 New rows raise a ticket; gone rows mark inactive or raise a ticket; nothing deleted.
 - [x] 1.6 Copy again and the scheduled refresh run the rule after the copy.
 - [x] 2.1 Acceptance steps for the change's scenarios.
-- [ ] 3.1 Codex standard and adversarial review; fix blockers, file the rest.
-- [ ] 3.2 Sync specs and archive the change as the branch's last commit.
+- [x] 3.1 Codex standard and adversarial review; fix blockers, file the rest.
+- [x] 3.2 Sync specs and archive the change as the branch's last commit.
