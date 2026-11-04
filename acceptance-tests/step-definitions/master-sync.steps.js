@@ -19,7 +19,9 @@ async function call(world, method, url, data, expected = [200, 201]) {
 }
 
 Given("StyleHR's staff are copied in and kept in step with People, Asha linked to her StyleHR row", async function () {
-  if (!sinkDiscovered) {
+  // Discovered again whenever another scenario reset the stack without it.
+  const known = await call(this, 'GET', '/api/apps');
+  if (!sinkDiscovered || ![...(known.available ?? []), ...(known.installed ?? [])].some(app => app.name === 'ticketsink')) {
     await restartAcceptance({ FEATHERBASE_APP_PATHS: JSON.stringify([resolve(REPO_ROOT, 'test-apps/ticket-sink')]) });
     sinkDiscovered = true;
   }
@@ -42,7 +44,7 @@ Given("StyleHR's staff are copied in and kept in step with People, Asha linked t
     await api.saveRow(s.person, { row_id: 'P1', full_name: 'Asha', phone: '111', employment_status: 'Active' });
     await api.saveRow(s.link, { source_system: 'StyleHR', source_key: 'E1', person: 'P1' });
     const apps = await (await api.call('GET', '/api/apps', undefined, [200], 'apps')).json();
-    if (!apps.installed.some(app => app.name === 'ticketsink')) await api.call('POST', '/api/install_app', { name: 'ticketsink' }, [201], 'install ticket sink');
+    if (!apps.installed.some(app => app.name === 'ticketsink')) await api.call('POST', '/api/install_app', { name: 'ticketsink' }, [201, 417], 'install ticket sink');
   });
   await call(this, 'POST', `${path(s.copy)}:set_master_sync`, { rule: {
     master_table: s.person, source_system: 'StyleHR',
