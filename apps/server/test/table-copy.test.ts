@@ -445,6 +445,11 @@ describe('Copy a warehouse table into Featherbase', () => {
     expect(await admin.get('/api/table/Exact%20Numbers/N-1')).toMatchObject({ wide: '9999999999999999.99', narrow: 12.5, huge: '123456789012345678901234567890' })
     await admin.post('/api/table/Exact%20Numbers:copy_again', {})
     expect(await admin.get('/api/table/Exact%20Numbers/N-1')).toMatchObject({ wide: '9999999999999999.99' })
+    // A wide number can be the key: it stays bounded, as every key does.
+    await admin.post(`${SOURCES}/tc-exact:copy_create`, { database: 'sales', schema: 'main', table: 'exact_numbers', name: 'Exact Numbers By Huge', key: 'huge', columns: ['huge', 'code'].map(source => ({ source, column_name: source })) })
+    const byHuge = await admin.get<{ columns: { column_name: string; column_type: string }[] }>('/api/table/Exact%20Numbers%20By%20Huge:meta')
+    expect(byHuge.columns.find(c => c.column_name === 'huge')?.column_type).toBe('Data')
+    expect(await admin.get('/api/table/Exact%20Numbers%20By%20Huge/123456789012345678901234567890')).toMatchObject({ code: 'N-1' })
   })
 
   test('a table restriction on the source refuses preview, key checks, copying and Copy again of any other table', async ({ admin }) => {

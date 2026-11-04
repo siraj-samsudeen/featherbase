@@ -27,13 +27,12 @@ Only a System Manager can register or manage a data source.
 
 ### Requirement: Browse what a data source holds
 
-Opening a data source SHALL let a System Manager see its tables and the
-columns each one has, with a type Featherbase proposes for each column. A
-database table with no single column that uniquely identifies each row SHALL
-be shown as unusable for connecting, saying why. A warehouse declares no such
-column for any table, so a warehouse table SHALL be browsable all the same:
-the user can search all its tables within a database and schema, then preview
-a chosen table's size, columns and first rows.
+Opening a data source SHALL let a System Manager see its tables and their
+columns, each with a proposed type. A database table with no single column
+that identifies each row SHALL be shown as unusable for connecting, saying
+why. A warehouse table declares no such column, so it SHALL be browsable all
+the same: search its tables by database and schema, then preview a chosen
+table's size, columns and first rows.
 
 #### Scenario: A table with no way to address a row
 

@@ -48,11 +48,11 @@ Skipped: `acceptance-tests/` already exists.
 - [x] 5a.2 Public regression and acceptance for one discoverable undoable copy run; use existing import undo rules, including deletion markers and native corrections
 - [x] 5a.3 Verify copied rows begin with a false deletion marker, source return clears it, and users cannot edit the managed marker
 - [x] 5a.4 Bound source reads and prove multipart/empty-source/row-failure behavior without changing existing best-effort import semantics
-- [ ] 5a.5 Measure PR-specific missing backend paths and rerun canonical coverage without changing baselines/exclusions or duplicating #762/#802
+- [x] 5a.5 Measure PR-specific missing backend paths and rerun canonical coverage without changing baselines/exclusions or duplicating #762/#802
 
 ## 6. Completion
 
-- [ ] 6.1 Full acceptance suite and `pnpm --filter server test` pass; coverage baselines hold (ADR 0017)
-- [ ] 6.2 Codex review (server: token storage, connection, actions) — blockers fixed
+- [x] 6.1 Full acceptance suite and `pnpm --filter server test` pass; coverage baselines hold (ADR 0017)
+- [x] 6.2 Codex review (server: token storage, connection, actions) — blockers fixed (three standard + two adversarial rounds, 04-Nov-2026; non-blockers in #932)
 - [x] 6.3 Independent UI verifier against issue #772 checklist 1–15 at 1280 px, with screenshots — differences fixed (done for the approved design A in 5.6)
 - [x] 6.4 Tried against a real MotherDuck account on a local Featherbase

@@ -80,7 +80,7 @@ export async function createCopy(
   // long note never fails the whole copy against Data's 140 characters.
   const nativeType = (source: string) => {
     const mapped = typeOf.get(source) ?? 'Data'
-    const raw = rawTypeOf.get(source) ?? ''
+    const raw = String(rawTypeOf.get(source))
     if (mapped === 'Text') return 'Long Text'
     // Native numbers travel as JavaScript doubles: a DECIMAL wider than 15
     // digits, or an integer type wider than BIGINT, would be silently rounded.
@@ -88,7 +88,7 @@ export async function createCopy(
     const decimal = /^DECIMAL\((\d+),\s*\d+\)$/.exec(raw)
     if ((decimal && Number(decimal[1]) > 15) || raw === 'HUGEINT' || raw === 'UHUGEINT' || raw === 'UBIGINT')
       return source === input.key ? 'Data' : 'Text'
-    if (source !== input.key && rawTypeOf.get(source) === 'VARCHAR') return 'Text'
+    if (source !== input.key && raw === 'VARCHAR') return 'Text'
     return mapped
   }
   const select = input.columns.map(c => `${quoteIdentifier(c.source)} as ${quoteIdentifier(c.column_name)}`).join(', ')
