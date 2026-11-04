@@ -503,7 +503,8 @@ export function FormView({
         </div>
       )}
     </div>
-    {!isNew && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
+    {/* Only the Tables with panels of their own give the form a side column. */}
+    {!isNew && (table === 'Person' || table === 'Identifier System') && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
       {/* person-identities: the one platform Table whose rows sign in. */}
       {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
       {table === 'Person' && <PersonSignInMethods user={name} />}
