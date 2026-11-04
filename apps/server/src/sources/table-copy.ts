@@ -148,7 +148,9 @@ async function applyCopy(user: SessionUser, target: string, copy: NonNullable<Aw
     } }, [DELETED_AT_SOURCE])
     if (part.failed?.length)
       throw new AppError('ValidationError', `Copy failed; no rows changed: ${part.failed.slice(0, 5).map(f => `${rows[f.index].row_id}: ${f.message}`).join('; ')}`)
-    return part
+    // This call always selects the real upsert mode, never analyze/dry-run
+    // or insert-only mode; its successful result has all four numeric counts.
+    return part as Pick<CopyResult, 'inserted' | 'updated' | 'changed' | 'unchanged'>
   }
   for (let i = 1; i <= parts; i++) {
     const rows: Record<string, unknown>[] = JSON.parse(await readFile(join(folder, String(i)), 'utf8'))
@@ -157,10 +159,10 @@ async function applyCopy(user: SessionUser, target: string, copy: NonNullable<Aw
     const accepted = await sql`insert into ${sql(seen)} ${sql(rows.map(r => ({ row_id: String(r.row_id) })))} on conflict do nothing returning row_id`
     if (accepted.length !== rows.length) throw new AppError('ValidationError', 'Copy key values must be unique')
     const part = await apply(rows, [...columns.map(c => c.column_name), DELETED_AT_SOURCE])
-    result.inserted += part.inserted ?? 0
-    result.updated += part.updated ?? 0
-    result.changed += part.changed ?? 0
-    result.unchanged += part.unchanged ?? 0
+    result.inserted += part.inserted
+    result.updated += part.updated
+    result.changed += part.changed
+    result.unchanged += part.unchanged
   }
   // Missing rows use exactly the import save/version/undo chain too.
   let afterKey = ''
@@ -169,7 +171,7 @@ async function applyCopy(user: SessionUser, target: string, copy: NonNullable<Aw
       and not exists (select 1 from ${sql(seen)} s where s.row_id = t.row_id) order by row_id limit ${PART}`
     if (!gone.length) break
     const part = await apply(gone.map(r => ({ row_id: r.row_id, [DELETED_AT_SOURCE]: true })), [DELETED_AT_SOURCE])
-    result.deleted_at_source += part.updated ?? 0
+    result.deleted_at_source += part.updated
     afterKey = String(gone[gone.length - 1].row_id)
   }
   // Even a repeated empty observation is a discoverable copy run; it has no
