@@ -140,6 +140,14 @@ test('a sectioned form in two columns also follows its own width', async ({ admi
   expect(section.className).not.toMatch(/(^|\s)md:grid-cols-2/)
 })
 
+test('a row with no side panels gives its form the whole width, with no empty side column', async ({ admin }) => {
+  await parcelDesk(admin)
+  await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
+  const form = await screen.findByTestId('form-view')
+  await screen.findByTestId('arrange-bar', undefined, { timeout: 8000 })
+  expect(form.querySelectorAll('aside')).toHaveLength(0)
+})
+
 test('Arrange by stays on one line in a narrow form', async ({ admin }) => {
   await parcelDesk(admin)
   await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
