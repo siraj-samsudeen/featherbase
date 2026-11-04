@@ -60,6 +60,8 @@ test('#897: creating a Person with roles records the grant in their history, by 
   await roles(['Rh Clerk', 'Rh Auditor'])
   const granted = await person(admin, { email: 'rh.new@example.com', full_name: 'Rh New', roles: [{ role: 'Rh Clerk' }, { role: 'Rh Auditor' }] })
   expect(await history(granted.row_id)).toEqual([{ by: 'Administrator', changed: [['roles', null, 'Rh Clerk, Rh Auditor']] }])
+  const activity = await admin.get<{ versions: { data: Record<string, unknown> }[] }>(`/api/activity/Person/${encodeURIComponent(granted.row_id)}`)
+  expect(activity.versions.map((v) => v.data)).toEqual([{ created: true, changed: [['roles', null, 'Rh Clerk, Rh Auditor']] }])
 })
 
 test('#830: creating a Person without roles records no history entry', async ({ admin }) => {
@@ -74,4 +76,25 @@ test('#830: re-saving the same roles, or editing only other fields, records no r
   await admin.post('/api/save_row', { table: 'Person', row: { row_id: p.row_id, updated_at: again.updated_at, full_name: 'Rh Same Renamed' } })
   const changes = (await history(p.row_id)).map((h) => h.changed)
   expect(changes).toEqual([[['roles', null, 'Rh Clerk']], [['full_name', 'Rh Same', 'Rh Same Renamed']]])
+})
+
+// #897: the creation entry alone does not keep a Person from being deleted (a
+// delete grant removes a person with their roles); it goes with them. A later
+// change is history like any other and still refuses the delete (#321).
+test('#897: a Person whose only history is their creation roles can still be deleted, and leaves no history behind', async ({ admin }) => {
+  await roles(['Rh Clerk'])
+  const p = await person(admin, { email: 'rh.leaving@example.com', full_name: 'Rh Leaving', roles: [{ role: 'Rh Clerk' }] })
+  await admin.delete(`/api/table/Person/${encodeURIComponent(p.row_id)}`)
+  expect(await sql`select 1 from person where row_id = ${p.row_id}`).toHaveLength(0)
+  expect(await history(p.row_id)).toEqual([])
+})
+
+test('#897: a Person changed after creation keeps their history and is not deleted', async ({ admin }) => {
+  await roles(['Rh Clerk', 'Rh Auditor'])
+  const p = await person(admin, { email: 'rh.staying@example.com', full_name: 'Rh Staying', roles: [{ role: 'Rh Clerk' }] })
+  await admin.post('/api/save_row', { table: 'Person', row: { row_id: p.row_id, updated_at: p.updated_at, roles: [...p.roles, { role: 'Rh Auditor' }] } })
+  const refused = await admin.fetch(`/api/table/Person/${encodeURIComponent(p.row_id)}`, { method: 'DELETE' })
+  expect(refused.status).toBe(417)
+  expect(await refused.text()).toContain('cannot be deleted: it has 1 history entry')
+  expect(await history(p.row_id)).toHaveLength(2)
 })

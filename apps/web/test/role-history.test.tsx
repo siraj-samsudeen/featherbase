@@ -35,4 +35,6 @@ test('#830: a Person\'s Activity shows a role granted and a role removed, by who
     expect(diffs).toContainEqual(expect.stringContaining('Roles: Rh Clerk, Rh Auditor → Rh Clerk'))
   })
   expect(timeline).toHaveTextContent('Administrator')
+  // #897: the first entry says the Person was created with those roles.
+  expect(within(timeline).getAllByTestId('activity-version')[0]).toHaveTextContent(/Administrator created/)
 })
