@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useSearch } from '@tanstack/react-router'
 import { ApiError, api } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
 
 // SET-002: the target of the emailed reset link. Reads ?key= and sets a new
 // password for the associated account.

@@ -3,8 +3,8 @@ import { Link, Navigate, useNavigate, useRouterState } from '@tanstack/react-rou
 import { useQueryClient } from '@tanstack/react-query'
 import { SETUP_MAX_PEOPLE } from 'shared'
 import { ApiError, api, getSessionUser } from '../lib/api'
-import { Button, Card, Field, Notice, Skeleton, StatusPill, TextInput, buttonClasses } from '../components/ui'
-import { Plus } from '../components/ui/icons'
+import { Button, Card, Field, Notice, Skeleton, StatusPill, TextInput, buttonClasses } from '@featherbase/shop-floor'
+import { Plus } from '@featherbase/shop-floor'
 import { INSTANCE_HEALTH_PATH, INSTANCE_HEALTH_QUERY_KEY, useInstanceHealth } from './InstanceHealth'
 
 // First-run setup (#465, design D9; spec "First-run System Manager setup").
@@ -82,7 +82,7 @@ export function WelcomeSetup() {
             <p className="mt-2 text-sm text-ink-muted">Use your own identity and choose who receives system notices. You can do this later while exploring locally.</p>
             <div className="mt-3 flex flex-wrap gap-3">
               {getSessionUser()?.row_id === ADMINISTRATOR && <Link to="/featherbase/admin/setup/people" className={buttonClasses()}>Set up administrators</Link>}
-              <Link to="/featherbase/admin/$table" params={{ table: 'Person' }} search={{ filters: undefined }} className={buttonClasses()}>Manage people</Link>
+              <Link to="/featherbase/admin/table/$table" params={{ table: 'Person' }} search={{ filters: undefined }} className={buttonClasses()}>Manage people</Link>
             </div>
           </section>
           <section className="p-5">

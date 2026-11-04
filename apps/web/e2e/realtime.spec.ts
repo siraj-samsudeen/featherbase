@@ -1,4 +1,6 @@
+import { tableSlug } from 'shared'
 import { createSession } from 'feather-testing-core/playwright'
+import { enableTableFeatures } from './fixtures-ui'
 import {
   anonymousTest as test,
   expect,
@@ -26,6 +28,7 @@ test.beforeAll(async ({ request }, worker) => {
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
+  await enableTableFeatures(request, headers, DT, ['enable_discussion'])
   // A second real user for the mention/notification test.
   const made = await request.post('/api/save_row', {
     headers,
@@ -77,8 +80,8 @@ test('RT-001: a doc created in one session appears in another session list', asy
 
   // Both watch the list; wait for B's list to render and its realtime
   // socket to connect+subscribe before A creates.
-  await sessionA.visit(`/featherbase/admin/${encodeURIComponent(DT)}`)
-  await sessionB.visit(`/featherbase/admin/${encodeURIComponent(DT)}`).assertHas('[data-testid="list-total"]')
+  await sessionA.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
+  await sessionB.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`).assertHas('[data-testid="list-total"]')
   await sessionB.step('wait for the realtime subscription to the list channel', () => waitForRealtime(b, `list:${DT}`))
   await sessionB.step('a connection loss clears subscriptions, and reconnect restores them without reloading', async () => {
     await b.evaluate(() => (window as unknown as { cutRealtimeConnection(): void }).cutRealtimeConnection())
@@ -107,7 +110,7 @@ test('RT-001: a doc created in one session appears in another session list', asy
     await waitForRealtime(page, 'user:Administrator')
     const recorded = await a.request.post('/api/events', {
       headers: { Authorization: `Bearer ${token}` },
-      data: { events: [{ kind: 'row', key: `row:${DT}/${uniq}`, label: uniq, sub: DT, path: `/featherbase/admin/${encodeURIComponent(DT)}/${uniq}` }] },
+      data: { events: [{ kind: 'row', key: `row:${DT}/${uniq}`, label: uniq, sub: DT, path: `/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${uniq}` }] },
     })
     expect(recorded.status()).toBe(200)
     await expect(page.getByTestId('activity-feed')).toContainText(uniq)
@@ -133,8 +136,8 @@ test('RT-002: saving a doc in one session shows a refresh banner in another', as
     headers: { Authorization: `Bearer ${tokenA}` },
     data: { row_id: docName, title: 'before' },
   })
-  await sessionA.visit(`/admin/${encodeURIComponent(DT)}/${docName}`).assertHas('[data-testid="form-view"]')
-  await sessionB.visit(`/admin/${encodeURIComponent(DT)}/${docName}`).assertHas('[data-testid="form-view"]')
+  await sessionA.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`).assertHas('[data-testid="form-view"]')
+  await sessionB.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`).assertHas('[data-testid="form-view"]')
   // No banner initially.
   await sessionB.refuteHas('[data-testid="stale-banner"]')
   // B's subscription to the row channel must be live before A saves,
@@ -185,8 +188,9 @@ test('RT-003: an @mention pops the mentioned user unread count live', async ({ b
     headers: { Authorization: `Bearer ${tokenA}` },
     data: { row_id: docName, title: 'discuss' },
   })
-  await sessionA.visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+  await sessionA.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`)
   await sessionA.step('post a comment mentioning the other user', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Activity', exact: true }).click()
     // Trailing space closes the @mention autocomplete so it doesn't overlay
     // the submit button.
     await page.getByTestId('comment-input').fill(`ping @${OTHER_USERNAME} `)

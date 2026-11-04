@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, type Page } from './fixtures'
 
 // usable-on-any-device, "Use a screen without a mouse": moving through a
@@ -126,7 +127,7 @@ test.describe('usable-on-any-device: Use a screen without a mouse', () => {
   test.use({ viewport: { width: 1280, height: 900 } })
 
   test('a Table list: Tab reaches every control, each shows where focus is, and Enter opens a row', async ({ session }) => {
-    await session.visit(`/admin/${encodeURIComponent(DT)}`).assertHas('[data-testid="list-view"]')
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`).assertHas('[data-testid="list-view"]')
     await session.step('every control in the list is reached by Tab, with visible focus', async ({ page }) => {
       await expect(page.getByText('Kbn shelf label')).toBeVisible()
       const walk = await tabThrough(page, '[data-testid="list-view"]')
@@ -142,7 +143,7 @@ test.describe('usable-on-any-device: Use a screen without a mouse', () => {
   })
 
   test('a row form: Tab reaches every control, each shows where focus is, and the row is edited and saved by keyboard', async ({ session }) => {
-    await session.visit(`/admin/${encodeURIComponent(DT)}/${rowName}`).assertHas('[data-testid="form-view"]')
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${rowName}`).assertHas('[data-testid="form-view"]')
     await session.step('every control in the form is reached by Tab, with visible focus', async ({ page }) => {
       await expect(page.locator('[data-field=title]')).toHaveValue('Kbn shelf label')
       const walk = await tabThrough(page, '[data-testid="form-view"]')

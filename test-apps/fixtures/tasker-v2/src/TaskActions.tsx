@@ -1,3 +1,4 @@
+import { Button } from '@featherbase/shop-floor'
 import { useRef, useState } from 'react'
 import { ApiError, api, getSessionUser } from './api'
 
@@ -46,8 +47,8 @@ export function TaskActions({ task, disabled, onCompleted }: {
     <details ref={menu}>
       <summary aria-label="More task actions">More actions</summary>
       <div className="tasker-action-menu">
-        <button type="button" disabled={disabled || busy || Boolean(pending)} onClick={() => void run('promote', false)}>Promote to project</button>
-        <button type="button" disabled={disabled || busy || Boolean(pending)} onClick={() => { menu.current?.removeAttribute('open'); confirmedRevision.current = task.updated_at; setConfirm('delete_accidental'); setError('') }}>Delete accidental task</button>
+        <Button type="button" disabled={disabled || busy || Boolean(pending)} onClick={() => void run('promote', false)}>Promote to project</Button>
+        <Button type="button" disabled={disabled || busy || Boolean(pending)} onClick={() => { menu.current?.removeAttribute('open'); confirmedRevision.current = task.updated_at; setConfirm('delete_accidental'); setError('') }}>Delete accidental task</Button>
       </div>
     </details>
     {busy && <p role="status">Working…</p>}
@@ -65,12 +66,12 @@ export function TaskActions({ task, disabled, onCompleted }: {
         ? 'This task has work history that a project cannot hold directly. Tasker will create the project and keep this task as its first task so its assignment, urgency, comments, and activity are preserved. Continue?'
         : 'Delete this accidental task permanently? This cannot be undone. Use Cancelled for retained work. Tasks with assignment, urgency, discussion, history, references, attachments or shared access cannot be deleted here.'}</p>
       <div className="tasker-editor-actions">
-        <button autoFocus type="button" className="fc-btn" disabled={busy || Boolean(pending)} onClick={() => { setConfirm(null); menu.current?.querySelector('summary')?.focus() }}>Cancel</button>
-        <button type="button" className="fc-btn-primary" disabled={busy || Boolean(pending)} onClick={() => void run(confirm, true)}>{confirm === 'promote' ? 'Continue' : 'Delete permanently'}</button>
+        <Button autoFocus type="button"  disabled={busy || Boolean(pending)} onClick={() => { setConfirm(null); menu.current?.querySelector('summary')?.focus() }}>Cancel</Button>
+        <Button type="button" variant="primary"  disabled={busy || Boolean(pending)} onClick={() => void run(confirm, true)}>{confirm === 'promote' ? 'Continue' : 'Delete permanently'}</Button>
       </div>
-      {error && pending && <button type="button" className="fc-btn" disabled={busy} onClick={() => void run(pending.action, pending.payload.confirm)}>Retry same request</button>}
+      {error && pending && <Button type="button"  disabled={busy} onClick={() => void run(pending.action, pending.payload.confirm)}>Retry same request</Button>}
     </div></div>}
     {error && <p role="alert">{error}</p>}
-    {!confirm && pending && !busy && <button type="button" className="fc-btn" onClick={() => void run(pending.action, pending.payload.confirm)}>Retry same request</button>}
+    {!confirm && pending && !busy && <Button type="button"  onClick={() => void run(pending.action, pending.payload.confirm)}>Retry same request</Button>}
   </div>
 }

@@ -33,7 +33,7 @@ test('a pending sign-in offer never takes over a new-row deep link after readine
     if (url.includes('/api/instance-health')) await held
     return real(input, init)
   })
-  const path = '/featherbase/admin/Person/new'
+  const path = '/featherbase/admin/table/person/new'
   const { router } = await renderApp(path, admin)
   try {
     expect(await screen.findByTestId('form-view')).toBeInTheDocument()

@@ -10,6 +10,22 @@ export const APP_ROOT_PATTERN = `^/(?!(${RESERVED_APP_ROOTS.join('|')})(/|\\?|$)
 export const LEGACY_HUMAN_ROOT_PATTERN = '^/(admin|login|form|portal|print|oauth-callback|reset-password|sales-target)(/|\\?|$)'
 export function appHref(name: string): string { return `/${name}/` }
 
+/** Table spelling for URLs and resolution: fold case and separator runs,
+ *  preserving punctuation such as the dot in an app-qualified name. */
+export function tableSlug(name: string): string {
+  return name.toLowerCase().replace(/[-_\s]+/g, ' ').trim().replace(/ /g, '-')
+}
+
+/** Canonical Admin list destination; the Table's identity is unchanged. */
+export function tableHref(name: string): string {
+  return `/featherbase/admin/table/${encodeURIComponent(tableSlug(name))}`
+}
+
+/** Existing-row destination; encode the unchanged ID independently. */
+export function rowHref(table: string, rowId: string): string {
+  return `${tableHref(table)}/row/${encodeURIComponent(rowId)}`
+}
+
 export const FEATHERBASE_ADMIN_DESTINATION = {
   label: 'Featherbase',
   href: '/featherbase/admin',

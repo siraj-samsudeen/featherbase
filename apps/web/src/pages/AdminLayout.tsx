@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, type CommandDestinations, type CommandPageDestination } from 'shared'
-import { api, getSessionUser } from '../lib/api'
+import { ApiError, api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
   ago,
@@ -27,7 +27,7 @@ import { PHONE_QUERY, TopBar } from '../components/TopBar'
 import { PeekProvider } from '../components/Peek'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel } from '../lib/row-titles'
-import { metaQuery } from '../lib/meta'
+import { metaQuery, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
 import { KindIcon } from '../lib/kind-icons'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
@@ -35,9 +35,9 @@ import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
-import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '../components/ui'
-import { Bell, BookOpen, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
-import { fmtCount } from '../lib/inr'
+import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { Bell, BookOpen, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 
 interface SearchHit {
   table: string
@@ -80,16 +80,16 @@ connectEventSink({
 // home page sidebar. All Tables render inside <Outlet/>.
 // #410: pick the layout from the server-computed capabilities BEFORE mounting
 // the Admin shell, so a person who cannot use it never fires its API calls.
-export function AdminLayout() {
+export function AdminLayout({ wide = false }: { wide?: boolean } = {}) {
   // #489: the signed-in person's theme choice outlives every toggle on the page.
   return (
     <ThemeChoiceProvider>
-      <AdminLayoutForKind />
+      <AdminLayoutForKind wide={wide} />
     </ThemeChoiceProvider>
   )
 }
 
-function AdminLayoutForKind() {
+function AdminLayoutForKind({ wide }: { wide: boolean }) {
   const kind = useShellKind()
   // #489 item 10: while whoami loads, the bar's frame and name are drawn and
   // its right side stays empty — no flash of the wrong items.
@@ -110,10 +110,10 @@ function AdminLayoutForKind() {
   // A report reader has no Admin page left: their sign-in methods are an
   // account page now (#489), so every Admin address sends them to the report.
   if (kind === 'report-only') return <Navigate to={REPORT_PATH} replace />
-  return <AdminShell />
+  return <AdminShell wide={wide} />
 }
 
-function AdminShell() {
+function AdminShell({ wide }: { wide: boolean }) {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -140,22 +140,25 @@ function AdminShell() {
     const id = `${user.row_id}\u0000${navigationKey}`
     if (recordedNavigation.current === id) return
     recordedNavigation.current = id
-    const action = actionForLocation(location.pathname, location.search as Record<string, unknown>)
-    if (!action) return
+    const search = location.search as Record<string, unknown>
+    const action = actionForLocation(location.pathname, search)
     // A list or row names a Table; it is remembered only once that Table's
     // metadata has loaded. A path that is not a Table (`/admin/people`) 404s
     // and is never offered back.
     // The same rule for a page only a System Manager can open: anyone else is
     // sent home, so the page is never offered back to them (#476).
-    if (action.kind === 'page' && adminPageNeedsManage(action.key.slice('page:'.length)) && !canManage) return
-    const table = action.kind === 'list' ? action.label : action.kind === 'row' ? action.sub : undefined
-    if (!table) {
-      recordAction(user.row_id, action)
+    if (action?.kind === 'page' && adminPageNeedsManage(action.key.slice('page:'.length)) && !canManage) return
+    const tableSegment = /^\/featherbase\/admin\/table\/([^/]+)/.exec(location.pathname)?.[1]
+    if (!tableSegment) {
+      if (action) recordAction(user.row_id, action)
       return
     }
     const owner = user.row_id
-    queryClient.fetchQuery(metaQuery(table)).then(
-      (meta) => recordAction(owner, actionForLocation(location.pathname, location.search as Record<string, unknown>, meta.columns, t) ?? action),
+    queryClient.fetchQuery(metaQuery(decodeURIComponent(tableSegment))).then(
+      (meta) => {
+        const resolved = actionForLocation(location.pathname, search, meta.name, location.href, meta.columns, t)
+        if (resolved) recordAction(owner, resolved)
+      },
       () => {},
     )
   }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -248,13 +251,15 @@ function AdminShell() {
   //   g then d    go to the Admin home
   useEffect(() => {
     let leader = 0 // timestamp of a recent 'g' press
-    // The Table the open page belongs to, from the matched route's own
-    // `$table` param: a fixed Admin page (Jobs, All tables, …) has none, so the
-    // new-row shortcut does nothing there (#515).
+    // The metadata boundary and the shell share this QueryClient. A URL
+    // spelling alone is never a canonical identity; fixed pages have none.
     function currentTable(): string | null {
-      const match = router.state.matches.find((m) => 'table' in (m.params as Record<string, unknown>))
+      const match = router.state.matches.find((m) => 'table' in m.params && m.status === 'success')
       const table = (match?.params as { table?: string } | undefined)?.table
-      return table ?? null
+      if (!table) return null
+      const state = queryClient.getQueryState<TableMeta>(metaQuery(table).queryKey)
+      if (state?.error instanceof ApiError && state.error.status < 500) return null
+      return state?.data?.name ?? null
     }
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null
@@ -278,7 +283,7 @@ function AdminShell() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault()
         const dt = currentTable()
-        if (dt) navigate({ to: '/featherbase/admin/$table/$name', params: { table: dt, name: 'new' }, search: { prefill: undefined } })
+        if (dt) navigate({ to: '/featherbase/admin/table/$table/new', params: { table: dt }, search: { prefill: undefined } })
         return
       }
       // Leader-key navigation only when not typing into a field.
@@ -295,7 +300,7 @@ function AdminShell() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [navigate, router])
+  }, [navigate, router, queryClient])
 
   // #101 Phase 5: the "Last search" resume tile hands its query to the
   // command bar — prefilled and focused, ready to re-run.
@@ -396,7 +401,7 @@ function AdminShell() {
   function openDoc(hit: SearchHit) {
     recordSearch(search.trim())
     dismissSearch()
-    navigate({ to: '/featherbase/admin/$table/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
+    navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
   }
 
   function openPage(page: CommandPageDestination) {
@@ -423,7 +428,7 @@ function AdminShell() {
       ?? tables?.find((d) => d.label.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       dismissSearch()
-      navigate({ to: '/featherbase/admin/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
       return
     }
     const doc = recordHits[0]
@@ -435,10 +440,10 @@ function AdminShell() {
     if (page) openPage(page)
     else if (suggestions[0]) {
       dismissSearch()
-      navigate({ to: '/featherbase/admin/$table', params: { table: suggestions[0].row_id }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table', params: { table: suggestions[0].row_id }, search: { filters: undefined } })
     } else {
       dismissSearch()
-      navigate({ to: '/featherbase/admin/$table', params: { table: q }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table', params: { table: q }, search: { filters: undefined } })
     }
   }
 
@@ -631,7 +636,7 @@ function AdminShell() {
                 <Link
                   key={d.row_id}
                   {...resultProps(`table-${d.row_id}`)}
-                  to="/featherbase/admin/$table"
+                  to="/featherbase/admin/table/$table"
                   params={{ table: d.row_id }}
                   search={{ filters: undefined }}
                   onClick={dismissSearch}
@@ -650,9 +655,9 @@ function AdminShell() {
                 <Link
                   key={`new-${d.row_id}`}
                   {...resultProps(`new-${d.row_id}`)}
-                  to="/featherbase/admin/$table/$name"
+                  to="/featherbase/admin/table/$table/new"
                   search={{ prefill: undefined }}
-                  params={{ table: d.row_id, name: 'new' }}
+                  params={{ table: d.row_id }}
                   onClick={dismissSearch}
                   data-testid="awesomebar-new"
                   className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
@@ -877,8 +882,8 @@ function AdminShell() {
         </aside>
 
         {/* Page canvas */}
-        <main className="min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:p-6">
-          <div className="mx-auto max-w-5xl">
+        <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:p-6${wide ? ' flex flex-col' : ''}`}>
+          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : 'mx-auto max-w-5xl'}>
             <Outlet />
           </div>
         </main>

@@ -47,7 +47,7 @@ test('bulk-deleting rows of a connected Table removes them from the source', asy
     external_modified: 'updated_at',
     columns: [{ column_name: 'label', column_type: 'Data', in_list_view: true }],
   })
-  await renderApp('/featherbase/admin/Srf%20Shelf', admin)
+  await renderApp('/featherbase/admin/table/srf-shelf', admin)
   const rows = await screen.findByTestId('list-rows', {}, { timeout: 8000 })
   await waitFor(() => expect(within(rows).getAllByTestId('row-check')).toHaveLength(3))
   const checks = within(rows).getAllByTestId('row-check')
@@ -72,7 +72,7 @@ test('a bulk delete on a connected Table tries every row and keeps the failed on
     external_modified: 'updated_at',
     columns: [{ column_name: 'label', column_type: 'Data', in_list_view: true }],
   })
-  await renderApp('/featherbase/admin/Srf%20Partial', admin)
+  await renderApp('/featherbase/admin/table/srf-partial', admin)
   const rows = await screen.findByTestId('list-rows', {}, { timeout: 8000 })
   await waitFor(() => expect(within(rows).getAllByTestId('row-check')).toHaveLength(3))
   for (const check of within(rows).getAllByTestId('row-check')) fireEvent.click(check)

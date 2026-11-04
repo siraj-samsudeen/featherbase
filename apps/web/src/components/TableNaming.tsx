@@ -4,7 +4,7 @@ import { seriesPrefix } from 'shared'
 import { ApiError, api } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
 import { NamingControl } from './NamingControl'
-import { buttonClasses, cardClasses, labelClasses } from './ui'
+import { buttonClasses, cardClasses, labelClasses } from '@featherbase/shop-floor'
 
 // NAM-001: change how an existing Table names new rows. Rows already saved keep
 // the names they were given — a series only ever applies from here forward.
