@@ -57,8 +57,8 @@ export function Assignments({ table, name, readOnly = false }: { table: string; 
 
   return (
     <div className={cardClasses('p-4')} data-testid="assignments-panel">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
-        Assigned To
+      <div className="mb-2 text-xs font-semibold text-ink-subtle">
+        Assigned to
       </div>
       {todos.isError && <p role="alert" className="text-sm text-negative">Assignments could not be read.</p>}
       <ul className="mb-2 space-y-1">
