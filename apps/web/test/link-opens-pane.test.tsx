@@ -14,6 +14,6 @@ test("clicking Kerala in Enchakkal's line shows Kerala in the pane, over the sam
   const line = (await screen.findByRole('link', { name: 'Enchakkal' })).closest('tr')!
   fireEvent.click(await within(line).findByRole('link', { name: 'Kerala · KL' }))
   expect(await screen.findByRole('complementary', { name: 'Kerala · KL' })).toHaveTextContent(REGION)
-  expect(router.state.location.pathname).toBe(tableHref(SITE))
+  expect((router.state as { location: { pathname: string } }).location.pathname).toBe(tableHref(SITE))
   expect(within(screen.getByTestId('list-rows')).getAllByTestId('row-check')).toHaveLength(3)
 })

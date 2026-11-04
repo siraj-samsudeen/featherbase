@@ -43,7 +43,7 @@ test("the browser's back button returns to the step before", async ({ admin }) =
   await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(2))
-  router.history.back()
+  ;(router as unknown as { history: { back: () => void } }).history.back()
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(3))
   expect(current()).toHaveTextContent(SITE)
 })

@@ -49,7 +49,7 @@ test('the chosen tab is kept in the path', async ({ admin }) => {
   const { router } = await renderApp(ENK, admin)
   fireEvent.click(await screen.findByRole('tab', { name: 'Map' }))
   await waitFor(() => {
-    const raw = new URLSearchParams(router.state.location.searchStr).get('path')
+    const raw = new URLSearchParams((router.state as { location: { searchStr: string } }).location.searchStr).get('path')
     const path = decodePath(raw)
     expect(path?.steps[path.at].view).toBe('map')
   })

@@ -109,7 +109,7 @@ test("Open as list opens the group's table narrowed to the row", async ({ admin 
   const { pane: site, view } = await openEnchakkal(admin)
   fireEvent.click(await within(site).findByRole('button', { name: `${PLANT} 3` }))
   fireEvent.click(await within(site).findByRole('link', { name: 'Open as list' }))
-  await waitFor(() => expect(view.router.state.location.pathname).toBe(tableHref(PLANT)))
+  await waitFor(() => expect((view.router.state as { location: { pathname: string } }).location.pathname).toBe(tableHref(PLANT)))
   await waitFor(() => expect(listed()).toBe(3))
 })
 
@@ -198,11 +198,20 @@ test('a new row from a group opened as a list starts linked to the row', async (
   const { pane: site, view } = await openEnchakkal(admin)
   fireEvent.click(await within(site).findByRole('button', { name: `${PLANT} 3` }))
   fireEvent.click(await within(site).findByRole('link', { name: 'Open as list' }))
-  await waitFor(() => expect(view.router.state.location.pathname).toBe(tableHref(PLANT)))
+  await waitFor(() => expect((view.router.state as { location: { pathname: string } }).location.pathname).toBe(tableHref(PLANT)))
   // The router writes a JSON string param quoted, once more.
   const prefill = () => {
     const raw: unknown = JSON.parse(new URL(screen.getByTestId('list-new').getAttribute('href')!, 'http://x').searchParams.get('prefill') ?? 'null')
     return typeof raw === 'string' ? JSON.parse(raw) : raw
   }
   await waitFor(() => expect(prefill()).toEqual({ site: 'ENK' }))
+})
+
+test('a pane on a row that is gone says so, without its id', async ({ admin }) => {
+  await seedSites(admin)
+  const path = { steps: [{ screen: 'list', table: SITE, pane: { table: PLANT, row: 'gone-1901' } }], at: 0 }
+  await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(JSON.stringify(path))}`, admin)
+  const gone = await screen.findByRole('complementary', { name: 'A row you cannot see' })
+  expect(await within(gone).findByText("You can't see this row.")).toBeInTheDocument()
+  expect(gone).not.toHaveTextContent('gone-1901')
 })
