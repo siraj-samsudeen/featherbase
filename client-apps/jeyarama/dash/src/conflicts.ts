@@ -4,12 +4,14 @@
 // live. Nothing here feeds coverage.ts.
 import { JOB_LEVEL, type OrgChart, type Row } from './coverage.ts'
 import { checked, day, exact, holdsOn, text } from './values.ts'
+import { timeProblem } from './people.ts'
 
 export type ConflictKind =
   | 'link_to_another_store' | 'too_many_team_leaders' | 'team_leader_on_several_sections' | 'no_reporting_line'
   | 'section_without_team_leader' | 'section_without_department' | 'department_without_manager' | 'department_without_name'
   | 'team_leader_outside_department' | 'department_manager_outside_floors' | 'overlapping_placement'
   | 'several_stores_at_once' | 'several_store_managers' | 'unknown_job' | 'alias_target_invalid' | 'store_code_not_canonical'
+  | 'several_primary_assignments' | 'time_over_100_percent' | 'deployment_over_primary_share'
 
 export interface Conflict {
   kind: ConflictKind
@@ -17,6 +19,9 @@ export interface Conflict {
   /** The rows to fix, by row id. */
   rows: string[]
 }
+
+/** Jobs above the store (#928): known jobs whose reach is the scopes' to decide (#683), so not listed as unknown. */
+const ABOVE_THE_STORE = new Set(['Director', 'Chief Operating Officer'])
 
 const id = (row: Row) => exact(row.row_id)
 const overlap = (a: Row, b: Row) => {
@@ -130,10 +135,16 @@ export function conflictsOf(store: string, chart: OrgChart, on: string, name: (p
         [...here, ...elsewhere.filter(r => exact(r.store) === other)].map(id))
   }
 
+  // A person's time (#928), from their rows in every store: listed in each store they work in on the day.
+  for (const person of new Set(current.map(r => text(r.person)))) {
+    const problem = timeProblem(chart.jobs.filter(r => text(r.person) === person), on)
+    if (problem) add(problem.kind, `${name(person)} ${problem.message}`, problem.rows.map(id))
+  }
+
   const managers = holding('Store Manager', false)
   if (managers.length > 1) add('several_store_managers', `${store} has ${managers.length} Store Managers: ${managers.map(r => name(text(r.person))).sort().join(', ')}`, managers.map(id))
   for (const r of current)
-    if (!JOB_LEVEL[text(r.job)]) add('unknown_job', `${name(text(r.person))} holds ${text(r.job)}, which no coverage rule knows: it covers nothing`, [id(r)])
+    if (!JOB_LEVEL[text(r.job)] && !ABOVE_THE_STORE.has(text(r.job))) add('unknown_job', `${name(text(r.person))} holds ${text(r.job)}, which no coverage rule knows: it covers nothing`, [id(r)])
   return out
 }
 
