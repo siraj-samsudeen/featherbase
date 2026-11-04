@@ -631,9 +631,18 @@ export const reads = {
       answer.labels = labels
     }
     // The actions this viewer may take now, with what each asks for.
-    if (type?.transitions.length) answer.actions = available(ctx, ticket, type, support).map(t => ({ action: t.action, next_state: t.next_state,
-      fields: t.fields.map(name => type.fields.find(f => f.name === name)).filter((f): f is TypeField => !!f)
-        .map(f => ({ name: f.name, label: f.label, type: f.type, ...(f.type === 'choice' ? { choices: f.choices } : {}) })) }))
+    if (type?.transitions.length) {
+      const actions: Row[] = []
+      for (const t of available(ctx, ticket, type, support)) {
+        const fields: Row[] = []
+        for (const f of t.fields.map(name => type.fields.find(field => field.name === name)).filter((f): f is TypeField => !!f))
+          fields.push({ name: f.name, label: f.label, type: f.type, ...(f.type === 'choice' ? { choices: f.choices } : {}),
+            // A link offers the rows the caller may read, as the new-ticket form does.
+            ...(f.type === 'link' ? { options: (await linkRows(ctx, f)).map(r => ({ value: String(r.row_id), label: String(r[f.link_label!] ?? r.row_id) })) } : {}) })
+        actions.push({ action: t.action, next_state: t.next_state, fields })
+      }
+      answer.actions = actions
+    }
     answer.names = await names(ctx, { owner: ticket.owner, assigned_to: ticket.assigned_to }, answer.events, answer.privateEvents ?? [],
       answer.verification ?? {}, answer.approval ?? {}, personValues)
     return { answer }

@@ -246,6 +246,17 @@ describe('Tickets: transitions per ticket type (#918)', () => {
     expect((await take(w.raiser, ticket, 'Withdraw')).ticket_state).toBe('Rejected')
   })
 
+  test('a transition that asks for a link field offers the rows the caller may read', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    const row = (await admin.get<any>(`/api/table/tickets.ticket_type/${w.dq.row_id}`))
+    await save(admin, 'tickets.ticket_type', { ...row, transitions: JSON.stringify([...dataQualityTransitions,
+      { state: 'Raised', action: 'Move to another system', next_state: 'Raised', allowed: 'assignee', fields: ['also_concerns'] }]) })
+    await save(admin, 'tickets.type_field', { ticket_type: w.dq.row_id, field_order: 99, field_name: 'also_concerns', label: 'Also concerns', field_type: 'link', link_table: 'Example System', link_label: 'system_name' })
+    const ticket = await raise(w)
+    const move = (await read(w.contact, 'detail', { row_id: ticket.row_id })).actions.find((a: any) => a.action === 'Move to another system')
+    expect(move.fields[0].options).toEqual([{ value: w.sap, label: 'SAP' }])
+  })
+
   test('the transitions a System Manager writes are checked against the type', async ({ admin, createUser }) => {
     const w = await world(admin, createUser)
     const row = (await admin.get<any>(`/api/table/tickets.ticket_type/${w.dq.row_id}`))
