@@ -346,6 +346,15 @@ describe('PathBar', () => {
     })
   })
 
+  test('a narrow bar gives the path a line of its own under its buttons', () => {
+    bar(2)
+    const line = screen.getByRole('navigation', { name: 'Path' }).parentElement!
+    const whole = screen.getByRole('button', { name: 'Back' }).parentElement!
+    expect(whole.className).toMatch(/(^|\s)@container(\s|$)/)
+    expect(whole.className).toMatch(/\bflex-wrap\b/)
+    expect(line.className).toMatch(/@max-2xl:basis-full/)
+  })
+
   test('a path that fits says nothing about earlier steps', () => {
     bar(0)
     expect(screen.queryByRole('button', { name: 'Earlier steps' })).not.toBeInTheDocument()
