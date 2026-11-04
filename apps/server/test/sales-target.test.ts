@@ -46,7 +46,7 @@ const SENTINEL_TOKEN = 'sandbox-creation-token-never-served'
 interface Recorded {
   url: string
   authorization: string | null
-  body: { username: string; version: number; initial_state: unknown }
+  body: { username: string; version?: number; initial_state: unknown }
 }
 
 // An injected upstream: records each request, answers a canned session (or a
@@ -74,7 +74,6 @@ afterEach(() => {
 async function seed(admin: TestClient) {
   process.env.MOTHERDUCK_TOKEN = SENTINEL_TOKEN
   process.env.DIVE_ID = 'dive-under-test'
-  process.env.DIVE_VERSION = '1'
   process.env.SERVICE_ACCOUNT = 'motherduck_dive_service_account'
   return seedSalesTarget((path, init) => admin.fetch(path, init), PASSWORDS, ASSIGNMENTS)
 }
@@ -179,7 +178,7 @@ describe('#3755 sales-target host: accounts and login', () => {
 })
 
 describe('#3755 sales-target host: embed session from the current assignment', () => {
-  test('Employee 1 and Employee 3: exact initial_state, service account, version, Dive ID, Bearer token; browser gets only {session}', async ({ admin, api }) => {
+  test('Employee 1 and Employee 3: exact initial_state, service account, no version (the latest Dive), Dive ID, Bearer token; browser gets only {session}', async ({ admin, api }) => {
     await seed(admin)
     const calls = stubUpstream()
     const expected: Record<string, unknown> = {
@@ -194,7 +193,7 @@ describe('#3755 sales-target host: embed session from the current assignment', (
       const call = calls.at(-1)!
       expect(call.url).toBe('https://api.motherduck.com/v1/dives/dive-under-test/embed-session')
       expect(call.authorization).toBe(`Bearer ${SENTINEL_TOKEN}`)
-      expect(call.body).toEqual({ username: 'motherduck_dive_service_account', version: 1, initial_state: expected[usr] })
+      expect(call.body).toEqual({ username: 'motherduck_dive_service_account', initial_state: expected[usr] })
     }
     expect(calls).toHaveLength(2)
   })
@@ -266,10 +265,9 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     // page showed a red "Report unavailable" under a perfectly good snapshot table,
     // telling the reader something was broken when nothing was. Missing
     // configuration is not a failure; a live refusal (the test below) still is.
-    const saved = [process.env.DIVE_ID, process.env.DIVE_VERSION, process.env.SERVICE_ACCOUNT]
+    const saved = [process.env.DIVE_ID, process.env.SERVICE_ACCOUNT]
     const savedShared = process.env.SALES_TARGET_SHARED_ENV
     delete process.env.DIVE_ID
-    delete process.env.DIVE_VERSION
     delete process.env.SERVICE_ACCOUNT
     // embedConfig() falls back to the shared .env.local, which a developer
     // checkout has and a deployment does not — so clearing the process env alone
@@ -284,7 +282,7 @@ describe('#3755 sales-target host: embed session from the current assignment', (
       expect(body.session).toBeUndefined()
       expect(body.error).toBeUndefined()
     } finally {
-      ;[process.env.DIVE_ID, process.env.DIVE_VERSION, process.env.SERVICE_ACCOUNT] = saved as string[]
+      ;[process.env.DIVE_ID, process.env.SERVICE_ACCOUNT] = saved as string[]
       if (savedShared === undefined) delete process.env.SALES_TARGET_SHARED_ENV
       else process.env.SALES_TARGET_SHARED_ENV = savedShared
     }
@@ -1253,13 +1251,13 @@ describe('the shared experiment inputs the seed script reads', () => {
     const { tmpdir } = await import('node:os')
     const { join } = await import('node:path')
     const file = join(mkdtempSync(join(tmpdir(), 'st-env-')), '.env.local')
-    writeFileSync(file, 'DIVE_ID=from-file\nDIVE_VERSION=7\nSERVICE_ACCOUNT=svc-file\n')
-    const keys = ['DIVE_ID', 'DIVE_VERSION', 'SERVICE_ACCOUNT', 'SALES_TARGET_SHARED_ENV'] as const
+    writeFileSync(file, 'DIVE_ID=from-file\nSERVICE_ACCOUNT=svc-file\n')
+    const keys = ['DIVE_ID', 'SERVICE_ACCOUNT', 'SALES_TARGET_SHARED_ENV'] as const
     const saved = keys.map((k) => process.env[k])
     for (const k of keys) delete process.env[k]
     process.env.SALES_TARGET_SHARED_ENV = file
     try {
-      expect(embedConfig()).toMatchObject({ diveId: 'from-file', version: 7, serviceAccount: 'svc-file' })
+      expect(embedConfig()).toEqual({ apiBase: expect.any(String), diveId: 'from-file', serviceAccount: 'svc-file' })
     } finally {
       keys.forEach((k, i) => {
         if (saved[i] === undefined) delete process.env[k]
@@ -1291,7 +1289,7 @@ describe('the embed session request over a real connection', () => {
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
     const { port } = server.address() as { port: number }
     process.env.MOTHERDUCK_TOKEN = 'tok'
-    const cfg = { apiBase: `http://127.0.0.1:${port}`, diveId: 'd 1', version: 2, serviceAccount: 'svc' }
+    const cfg = { apiBase: `http://127.0.0.1:${port}`, diveId: 'd 1', serviceAccount: 'svc' }
     try {
       expect(await createEmbedSession({} as never, cfg)).toEqual({ ok: true, session: 'live-session', status: 200 })
       expect(seen[0]).toEqual({ url: '/v1/dives/d%201/embed-session', auth: 'Bearer tok' })

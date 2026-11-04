@@ -26,10 +26,10 @@ read answers a `heading` for it). Readers never see internal codes: the quick
 view names subcategories without their codes, and the store picker names
 stores without plant codes. `sales_to_date` carries the month's target and
 actual quantities for the Dive's cache, and the page tells the Dive its own
-origin for the ready message. The compact whole-store state follows the pinned
-Dive (`COMPACT_DIVES` in `src/server.ts`), which lists the Sales Target Dive at
-v13 only; every other pin gets the plain scope keys (see "Turning on the
-compact state"). The history behind these is in the client's
+origin for the ready message. The page opens the Dive's latest saved version:
+no version is pinned anywhere, so saving a Dive on MotherDuck releases it
+(#937). The app always sends the compact state, which the Sales Target Dive
+reads from v13. The history behind these is in the client's
 repository (data-warehouse #4486, #4531, #4453).
 
 ## Layout
@@ -224,11 +224,8 @@ at the repository root.
   "This month · Nov'26" and "Last month · Oct'26"). The value is the choice,
   not the month, so an address keeps meaning "last month". `report` and
   `embed_session` take `{ month }` (`this` when missing) and read that month's
-  datasets. The Dive shows last month only on a pin listed in `MONTH_DIVES`
-  (`src/server.ts`; the Sales Target Dive at v14, data-warehouse#4630, which
-  caps its anchor day at `period_end`). On any other pin `embed_session`
-  answers `{ month_unsupported: true }` and the page shows last month's cached
-  table, saying the interactive report can't show last month yet.
+  datasets. The Dive caps its anchor day at `period_end` (Sales Target Dive
+  v14, data-warehouse#4630), so it shows last month as it shows this month.
 - **The reads** (`POST /api/app_reads/feather_dash/<read>` with
   `{"payload":{…}}` and the header `X-Featherbase-App-Version:
   feather_dash@<version>`, which the client sends):
@@ -249,8 +246,7 @@ at the repository root.
     (`whyLine` in `src/page.ts`), and leaves it out when none is known;
   - `embed_session` `{ store, app_origin }` (outbound) → `{ frame }` (the Dive's address),
     `{ not_set_up: true }` or `{ unreachable: true }`. It reads only the cached
-    copies, and nothing live except, in the legacy state with nothing
-    cached, a whole-store reader's subcategories. The Dive's
+    copies, never anything live. The Dive's
     `initial_state` carries `plant_code`, `whole_store`, `period_start`,
     `period_end`, `app_origin` (the page's own origin, which the page sends,
     when it is a plain `http(s)` origin: the target of the Dive's ready
@@ -258,21 +254,12 @@ at the repository root.
     - **Scope.** `whole_store` is worked out from the reader's places, never
       from the request. A section reader gets `material_groups` and
       `section_by_material_group`, and the Dive limits every query to them. A
-      whole-store reader's keys follow the pinned Dive (`dive_id` and
-      `dive_version`):
-      - **compact**, only for a Dive and version listed in `COMPACT_DIVES`
-        (`src/server.ts`; the Sales Target Dive at v13 and v14): no
-        `material_groups` or `section_by_material_group`; the Dive filters
-        on the store alone, and the sections come as `sections: { <name>:
-        [codes] }`;
-      - **legacy**, for any other pin (an older version, another Dive, a
-        version that is not plain digits): the plain scope keys, the full
-        `material_groups` (the places', the cache's and, with nothing cached,
-        the warehouse's subcategories) and `section_by_material_group`. A
-        Dive before v13 does not read the compact state (one before v12
-        reads a missing `material_groups` as "every store"), so no setting
-        can give it the compact state. A later version that
-        keeps the format is added to `COMPACT_DIVES` in a new app version.
+      whole-store reader gets no `material_groups` or
+      `section_by_material_group`: the Dive filters on the store alone, and
+      the sections come as `sections: { <name>: [codes] }`. (The older shape,
+      with the full `material_groups`, is kept in `src/report.ts` as
+      `format: 'legacy'` for the Dive's test harness, data-warehouse#4453;
+      this app never sends it.)
     - **`cached`, version 1:** `{ v: 1, refreshed_at, data_through, q, cols }`
       or the same with `z` in place of `cols` (the columns as JSON, gzipped,
       base64). `cols` is `{ c, n, t, a, tq?, aq? }`, one array per field: codes
@@ -286,43 +273,31 @@ at the repository root.
       made-up data (random-letter names, which compress worse than real
       ones), in the compact state a whole-store reader keeps quantities up to
       about 1,600 subcategories and gets a value-only cache up to about
-      2,200; in the legacy state the full list leaves room for a cache only
-      up to about 600 subcategories. A section reader always gets the plain
-      cache.
+      2,200. A section reader always gets the plain cache.
     - **Too large to embed.** MotherDuck refuses an `initial_state` past
       64 KB. A state past `EMBED_STATE_LIMIT_BYTES` (63,000: under 64 KB
       whether a kilobyte is 1,000 or 1,024 bytes) is never sent and never
       trimmed: `embed_session` answers `{ too_large: true }`, the page shows
       the quick view with "This store is too large for the interactive
       report yet. Showing the cached table.", and the server logs
-      `feather_dash_embed_state_too_large` naming the store (no person). In
-      the legacy state that starts at about 1,525 subcategories (made-up
-      data, 40 sections). The platform pinned here has no app-facing
+      `feather_dash_embed_state_too_large` naming the store (no person). The platform pinned here has no app-facing
       Instance health check, so the log line is the operator's signal.
   The last three are `person_scope` reads for the three app roles.
 - **The Dive's settings** (optional: without them the page shows the quick
-  view): `dive_id`, `dive_version`, `embed_service_account`, and
+  view): `dive_id`, `embed_service_account`, and
   `dive_ready_signal` (`on` once the Dive posts `{ type:
   "feather-dash:dive-ready" }` to the page when it has drawn, B7; until then
   the frame's `load` counts as ready); the secret
   `MOTHERDUCK_TOKEN` (every read answers "not set up" while it is missing);
   `frameOrigins: ["https://embed-motherduck.com"]`.
 
-## Turning on the compact state
+## Releasing a Dive
 
-The app lists a Dive version in `COMPACT_DIVES` only once that version is
-published: listing one early could name an older Dive, which reads a missing
-`material_groups` as every store. On any other pin, a whole-store reader of a
-store over about 600 subcategories gets no cache, and one over about 1,525 gets
-the cached table instead of the Dive.
-
-1. Done: the cached-first Sales Target Dive is published as v13 (v12 is an
-   older wording-only version, not compact-aware).
-2. Done: 0.10.1 adds `'9022f10f-be83-4fba-a729-5399c18d150e': [13]` to
-   `COMPACT_DIVES` (featherbase#712).
-3. Pin `dive_version=13` on dev only, with 0.10.1 deployed.
-4. Check the real embed on dev (cached, then live, and whether the ready
-   message arrives); only then set `dive_ready_signal=on`.
+Save the new version on MotherDuck; the next reader sees it. Nothing in this
+app or its settings names a version. Before saving, check the version still
+reads the state this app sends (the harness in data-warehouse#4453), then
+check the real embed on dev (cached, then live, and whether the ready message
+arrives); only then set `dive_ready_signal=on`.
 
 ## The coverage comparison
 
