@@ -362,7 +362,7 @@ describe('PathBar', () => {
     })
     afterEach(() => { proto.getBoundingClientRect = rect })
     const shownSteps = () => within(screen.getByRole('navigation', { name: 'Path' })).queryAllByRole('button')
-      .filter((b) => b.getAttribute('aria-label') !== 'Earlier steps').map((b) => b.getAttribute('aria-label') ?? b.textContent)
+      .filter((b) => !['Earlier steps', 'Later steps'].includes(b.getAttribute('aria-label') ?? '')).map((b) => b.getAttribute('aria-label') ?? b.textContent)
 
     test('shows whole steps only, the earlier ones that do not fit hidden behind "…"', () => {
       bar(2)
@@ -379,6 +379,21 @@ describe('PathBar', () => {
       expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['List Bins', 'Filter Aisle: 4'])
       await user.click(within(menu).getByRole('menuitem', { name: 'List Bins' }))
       expect(onStep).toHaveBeenCalledWith(0)
+    })
+
+    test('at the first step, the steps after it that do not fit sit behind a "…" after it, not before', async () => {
+      const onStep = vi.fn()
+      const user = userEvent.setup()
+      bar(0, { onStep })
+      expect(screen.queryByRole('button', { name: 'Earlier steps' })).not.toBeInTheDocument()
+      const nav = screen.getByRole('navigation', { name: 'Path' })
+      const buttons = within(nav).getAllByRole('button')
+      expect(buttons.map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['List Bins', 'Later steps'])
+      await user.click(screen.getByRole('button', { name: 'Later steps' }))
+      const menu = screen.getByRole('menu', { name: 'Later steps' })
+      expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Filter Aisle: 4', 'North bay · B-104'])
+      await user.click(within(menu).getByRole('menuitem', { name: 'Filter Aisle: 4' }))
+      expect(onStep).toHaveBeenCalledWith(1)
     })
 
     test('a step longer than the whole bar is shortened at a word, its full name kept', () => {
