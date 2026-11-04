@@ -250,3 +250,28 @@ describe('#859 delete permanently, Codex review round 6', () => {
     void bu
   })
 })
+
+describe('#859 delete permanently, Codex review round 7', () => {
+  test('a private row pointing at the target is never named in the preview', async ({ admin, createUser }) => {
+    const { bu } = await setup(admin)
+    const diary = await makeTable(admin, {
+      name: 'Pg Private Diary',
+      access_policy: { version: 1, roles: ['Pg Diary Member'], shared_column: 'shared' },
+      columns: ['title', 'shared:Check', { column_name: 'unit', column_type: 'Reference', reference_table: BU, reqd: true }],
+    })
+    const { grantRole } = await import('./fixtures')
+    await grantRole(admin, { table: diary.name, role: 'Pg Diary Member', can_read: true, can_create: true, can_write: true })
+    const owner = await createUser({ roles: ['Pg Diary Member'] })
+    await owner.post('/api/save_row', { table: diary.name, row: { title: 'Secret visit', unit: 'BU-T' } })
+    const err = await expectApiError(preview(admin, bu, ['BU-T']), { status: 403 })
+    expect(JSON.stringify(err)).not.toContain('Secret visit')
+  })
+
+  test('comments and files on a removed comment go too', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    const c = await admin.post<{ row_id: string }>('/api/table/Comment', { ref_table: BU, ref_name: 'BU-T', content: 'parent comment' })
+    await admin.post('/api/table/Comment', { ref_table: 'Comment', ref_name: c.row_id, content: 'reply on the comment' })
+    await purge(admin, bu, { ids: ['BU-T'] })
+    expect(await sql`select 1 from comment where ref_table = 'Comment' and ref_name = ${c.row_id}`).toHaveLength(0)
+  })
+})

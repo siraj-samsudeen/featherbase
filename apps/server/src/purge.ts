@@ -204,7 +204,8 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
         : (canClear ? 'clear' : canDelete ? 'delete' : 'blocked')
       const named: PurgeGroup['rows'] = []
       for (const h of live) {
-        if (action !== 'blocked') await visible(meta, h)
+        // Every dependent, a blocked one too: a private row is never named.
+        await visible(meta, h)
         if (named.length >= 50) continue
         if (isLines) {
           const pm = await getMeta(String(h.parenttype)).catch(() => null)
@@ -249,7 +250,13 @@ const MAX_REASON = 1000
 
 /** Removes every platform record naming a row: its comments, history, files,
  *  shares, tags and the rest (ROW_ID_HOLDERS), all but the Access Log. */
-async function forgetRow(db: Db, table: string, rowId: string, files: string[]) {
+async function forgetRow(db: Db, table: string, rowId: string, files: string[], depth = 0) {
+  // A comment or a file can itself carry comments and files; they go too.
+  if (depth < 8)
+    for (const [kind, relation] of [['Comment', 'comment'], ['File', 'file']] as const) {
+      const nested = await db`select row_id from ${db(`${PLATFORM_SCHEMA}.${relation}`)} where ref_table = ${table} and ref_name = ${rowId}`
+      for (const n of nested) await forgetRow(db, kind, String(n.row_id), files, depth + 1)
+    }
   const attached = await db`select file_url from ${db(`${PLATFORM_SCHEMA}.file`)} where ref_table = ${table} and ref_name = ${rowId}`
   for (const f of attached) if (typeof f.file_url === 'string' && f.file_url) files.push(f.file_url)
   for (const { relation, tableColumn, nameColumn } of ROW_ID_HOLDERS) {
