@@ -6,6 +6,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { test, expect, renderApp } from './pg-test'
 import { tableHref } from 'shared'
+import { createUserWithRole, grantRole } from 'server/test/fixtures'
 
 type Admin = Parameters<typeof renderApp>[1]
 const enc = encodeURIComponent
@@ -91,3 +92,50 @@ test('a quick link filter drops typing that picked nothing and carries no peek o
   await waitFor(() => expect(screen.getByTestId('std-filter-customer')).toHaveValue('Globex Ltd'))
   expect(listed()).toBe(2)
 })
+
+// A link picker never reveals a title the viewer may not read: a restricted
+// title column, or a target Table the viewer cannot read at all, leaves the
+// link searched and shown by its row id.
+async function seedRestricted(admin: Admin, createUser: Parameters<typeof createUserWithRole>[1], customerRead: boolean) {
+  await admin.post('/api/table_def', {
+    name: CUSTOMER, id_pattern: 'prompt', title_column: 'customer_name',
+    columns: [{ column_name: 'customer_name', column_type: 'Data', label: 'Customer Name', tier: 'restricted' }],
+  })
+  for (const [row_id, customer_name] of [['c-1', 'Globex Ltd'], ['c-2', 'Initech']])
+    await admin.post('/api/save_row', { table: CUSTOMER, row: { row_id, customer_name } })
+  await admin.post('/api/table_def', {
+    name: ORDER, id_pattern: 'prompt',
+    columns: [
+      { column_name: 'item', column_type: 'Data', label: 'Item', in_list_view: true },
+      { column_name: 'customer', column_type: 'Reference', label: 'Customer', reference_table: CUSTOMER, in_list_view: true },
+    ],
+  })
+  await admin.post('/api/save_row', { table: ORDER, row: { row_id: 'o-3', item: 'Gears', customer: 'c-2' } })
+  const user = await createUserWithRole(admin, createUser, {
+    role: 'Lp Clerk', table: ORDER, tier: 'basic', can_read: true, can_write: true, can_create: true,
+  })
+  if (customerRead) await grantRole(admin, { role: 'Lp Clerk', table: CUSTOMER, tier: 'basic', can_read: true })
+  return user
+}
+
+for (const customerRead of [true, false]) {
+  const why = customerRead ? 'a restricted title column' : 'a Table the viewer cannot read'
+  test(`a link to ${why} is searched and shown by its row id, never its title`, async ({ admin, createUser }) => {
+    const user = await seedRestricted(admin, createUser, customerRead)
+    await renderApp(`${tableHref(ORDER)}/row/o-3`, user)
+    await screen.findByTestId('form-view', {}, { timeout: 8000 })
+    const box = () => document.querySelector<HTMLInputElement>('[data-field=customer]') as HTMLInputElement
+    await waitFor(() => expect(box()).toHaveValue('c-2'))
+
+    fireEvent.change(box(), { target: { value: 'c-' } })
+    if (customerRead) {
+      const options = await screen.findByTestId('link-options-customer')
+      await waitFor(() => expect(within(options).getAllByTestId('link-option')).toHaveLength(2))
+      expect(options).toHaveTextContent('c-1')
+    }
+    // Give any title lookup time to land before checking none did.
+    await new Promise((r) => setTimeout(r, 400))
+    expect(document.body).not.toHaveTextContent('Initech')
+    expect(document.body).not.toHaveTextContent('Globex')
+  })
+}

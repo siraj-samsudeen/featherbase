@@ -1269,6 +1269,17 @@ function ChildGrid({
 }
 
 
+/** The target Table's title column, when it is one of its columns the
+ *  caller may read: a column above the caller's readable levels can be
+ *  neither searched nor shown, and a title that is the row key itself (a
+ *  Table named by its id) is already what row_id shows. */
+function readableTitleColumn(meta: TableMeta | undefined): string | undefined {
+  const title = meta?.title_column
+  const column = title ? meta.columns.find((c) => c.column_name === title) : undefined
+  if (!column || (meta?.readable_tiers && !meta.readable_tiers.includes(column.tier))) return undefined
+  return column.column_name
+}
+
 // UI-006: debounced autocomplete over the permission-filtered list API.
 export function LinkControl({
   field,
@@ -1294,10 +1305,11 @@ export function LinkControl({
   const box = useRef<HTMLInputElement>(null)
   const [place, setPlace] = useState<{ top: number; left: number; width: number } | null>(null)
   // #793: a Table with no picker of its own is searched and shown by its
-  // title column, never by its row id.
+  // title column, never by its row id — only when the caller may read that
+  // column; otherwise it stays searched and shown by row id.
   const targetMeta = useMeta(target)
   const own = pickerFor(target)
-  const title = targetMeta.data?.title_column
+  const title = readableTitleColumn(targetMeta.data)
   const picker = own.labelField === null && own.searchField === 'row_id' && !own.peopleSearch && title
     ? { ...own, searchField: title, labelField: title }
     : own
