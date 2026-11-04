@@ -7,7 +7,7 @@ import { test, expect, renderApp } from './pg-test'
 import { sql } from 'server/src/db'
 import { logActivity } from 'server/src/audit'
 import { feedVerb, groupByDay } from '../src/components/ActivityFeed'
-import { fmtTimelineDay } from '../src/lib/inr'
+import { fmtTimelineDay } from '@featherbase/shop-floor'
 
 test('verbs come from whether a filter exists', () => {
   expect(feedVerb({ kind: 'list', filtered: false })).toBe('opened')
@@ -33,7 +33,7 @@ test('My activity: honest verbs, page titles, a List icon, "You" as the subject'
   const filters = JSON.stringify([['status', '=', 'Overdue']])
   await me.post('/api/events', {
     events: [
-      { kind: 'list', key: 'list:Task?', label: 'Task', path: '/featherbase/admin/Task' },
+      { kind: 'list', key: 'list:Task?', label: 'Task', path: '/featherbase/admin/table/task' },
       { kind: 'list', key: `list:Task?${filters}`, label: 'Task', sub: 'status = Overdue' },
       { kind: 'list', key: 'list:access-tokens?', label: 'access-tokens', path: '/featherbase/admin/access-tokens' },
     ],

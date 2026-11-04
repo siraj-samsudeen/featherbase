@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 const DT = 'Prn DT'
@@ -58,10 +59,10 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('PRN-001: print view shows labels, values, and child tables with no chrome', async ({
   session,
 }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`).clickButton('Record actions')
   await session.step('click Print and land on the print view', async ({ page }) => {
     await page.getByTestId('form-print').click()
-    await expect(page).toHaveURL(new RegExp(`/print/${encodeURIComponent(DT)}/${docName}`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/print/${encodeURIComponent(tableSlug(DT))}/${docName}`))
   })
 
   await session

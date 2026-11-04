@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import type { PlaywrightStepContext, Session } from 'feather-testing-core/playwright'
 import { test, expect, adminAuth, type Page } from './fixtures'
 import { ensureListTableA, ensureTable, fillRows, LIST_DT_A as DT_A } from './fixtures-ui'
@@ -9,22 +10,11 @@ const RESPONSIVE_CHILD = 'List Toolbar Responsive Step'
 const TEN_DT = 'UI List Ten'
 const TEN_COLUMNS = ['title', 'stage', 'owner', 'region', 'amount', 'due', 'source', 'created_by_name', 'updated_by_name', 'notes']
 
-const HEADER_CONTROL_IDS = [
-  'list-columns',
-  'list-new',
-  'open-report',
-  'open-explore',
-  'explore-split-toggle',
-  'open-import',
-  'open-columns',
-  'open-merge',
-  'open-kanban',
-  'open-calendar',
-  'open-gantt',
-  'open-checklist',
-  'open-naming',
-  'open-permissions',
-  'delete-table',
+const HEADER_CONTROL_GROUPS = [
+  { label: null, ids: ['list-columns', 'list-new', 'open-explore', 'explore-split-toggle'] },
+  { label: 'View: List', ids: ['open-report', 'open-kanban', 'open-calendar', 'open-gantt', 'open-checklist'] },
+  { label: 'List actions', ids: ['open-import'] },
+  { label: 'Table administration', ids: ['open-columns', 'open-merge', 'open-naming', 'open-permissions', 'delete-table'] },
 ] as const
 
 test.beforeAll(async ({ request }) => {
@@ -121,7 +111,7 @@ test.beforeAll(async ({ request }) => {
 test('UI-002: one generic ListView renders two different Tables with sort + pagination', async ({ session }) => {
   // --- Table A: metadata columns, pagination
   await session
-    .visit(`/admin/${encodeURIComponent(DT_A)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT_A))}`)
     .assertHas('[data-testid="col-title"]', { text: 'Title' })
     .assertHas('[data-testid="col-qty"]', { text: 'Qty' })
     .assertHas('[data-testid="list-total"]', { text: '30 total' })
@@ -153,7 +143,7 @@ test('UI-002: one generic ListView renders two different Tables with sort + pagi
 
   // --- Table B: same component, entirely different columns
   await session
-    .visit(`/admin/${encodeURIComponent(DT_B)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT_B))}`)
     .assertHas('[data-testid="col-city"]', { text: 'City' })
     .assertHas('[data-testid="col-active"]', { text: 'Active' })
     .assertHas('[data-testid="list-total"]', { text: '3 total' })
@@ -180,15 +170,19 @@ async function assertResponsiveListLayout(
 
   const mainBox = await main.boundingBox()
   expect(mainBox).not.toBeNull()
-  for (const id of HEADER_CONTROL_IDS) {
-    const control = page.getByTestId(id)
-    await expect(control).toBeVisible()
-    const box = await control.boundingBox()
-    expect(box, `${id} must have a rendered box`).not.toBeNull()
-    expect(box!.x, `${id} must start inside Admin main`).toBeGreaterThanOrEqual(mainBox!.x)
-    expect(box!.x + box!.width, `${id} must end inside Admin main`).toBeLessThanOrEqual(
-      mainBox!.x + mainBox!.width + 1,
-    )
+  for (const group of HEADER_CONTROL_GROUPS) {
+    if (group.label) await page.getByRole('button', { name: group.label, exact: true }).click()
+    for (const id of group.ids) {
+      const control = page.getByTestId(id)
+      await expect(control).toBeVisible()
+      const box = await control.boundingBox()
+      expect(box, `${id} must have a rendered box`).not.toBeNull()
+      expect(box!.x, `${id} must start inside Admin main`).toBeGreaterThanOrEqual(mainBox!.x)
+      expect(box!.x + box!.width, `${id} must end inside Admin main`).toBeLessThanOrEqual(
+        mainBox!.x + mainBox!.width + 1,
+      )
+    }
+    if (group.label) await page.keyboard.press('Escape')
   }
 
   if (phone) {
@@ -212,11 +206,9 @@ async function assertResponsiveListLayout(
 }
 
 async function openResponsiveList(session: Session<PlaywrightStepContext, Page>): Promise<void> {
-  session
-    .visit(`/admin/${encodeURIComponent(RESPONSIVE_DT)}`)
-    .assertHas('[data-testid="list-view"]')
-  for (const id of HEADER_CONTROL_IDS) session.assertHas(`[data-testid="${id}"]`)
   await session
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(RESPONSIVE_DT))}`)
+    .assertHas('[data-testid="list-view"]')
 }
 
 test.describe('ListView toolbar phone layout', () => {
@@ -295,7 +287,7 @@ test.describe('ListView pop-ups on desktop', () => {
   })
 
   test('the Show columns menu of a ten-column Table fits without scrolling inside', async ({ session }) => {
-    await session.visit(`/admin/${encodeURIComponent(TEN_DT)}`).assertHas('[data-testid="list-columns"]')
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(TEN_DT))}`).assertHas('[data-testid="list-columns"]')
     await session.step('open Show columns, then measure it', async ({ page }) => {
       await page.getByTestId('list-columns').click()
       const popup = page.getByTestId('list-columns-popup')

@@ -10,6 +10,7 @@ import { resolve, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import { seedTasker, TASKER_SCENARIOS } from './seed-tasker-development.mjs'
 import { proveTaskerAcceptance } from './prove-tasker-acceptance.mjs'
+import { rowHref } from '../packages/shared/src/app-routes.ts'
 
 const root = resolve(import.meta.dirname, '..')
 const taskerPackage = JSON.parse(await readFile(resolve(root, 'example-apps/tasker/package.json'), 'utf8'))
@@ -299,9 +300,9 @@ try {
   await page.getByRole('textbox', { name: 'Description', exact: true }).fill('Delivered after the core artifact was frozen.')
   await page.getByRole('button', { name: 'Save task', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Edit task', exact: true })).toBeVisible()
-  await page.getByRole('textbox', { name: 'Add comment' }).fill('Verified in the independently built Tasker package.')
-  await page.getByRole('button', { name: 'Comment' }).click()
-  await expect(page.getByTestId('task-activity')).toContainText('Verified in the independently built Tasker package.')
+  await page.getByRole('textbox', { name: 'Your update' }).fill('Verified in the independently built Tasker package.')
+  await page.getByRole('button', { name: 'Post update' }).click()
+  await expect(page.getByRole('article').filter({ hasText: 'Verified in the independently built Tasker package.' })).toBeVisible()
   await expect(page.getByTestId('task-activity')).toContainText('description: empty → Delivered after the core artifact was frozen.')
   const inspectorBox = await page.getByRole('complementary', { name: 'Task details' }).boundingBox()
   const captureBox = await capture.boundingBox()
@@ -328,6 +329,7 @@ try {
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('tasker-compact-inspector-open'))).toBe(true)
     const lockedAt = await page.evaluate(() => ({
       top: document.documentElement.scrollTop,
+      bodyTop: document.body.scrollTop,
       locked: document.documentElement.classList.contains('tasker-compact-inspector-open'),
       overflow: getComputedStyle(document.body).overflow,
     }))
@@ -340,13 +342,23 @@ try {
     await inspector.hover()
     await page.mouse.wheel(0, 250)
     assert.equal(await page.evaluate(() => document.documentElement.scrollTop), lockedAt.top)
+    assert.equal(await page.evaluate(() => document.body.scrollTop), lockedAt.bodyTop)
     await inspector.evaluate(element => { element.scrollTop = 100 })
     assert((await inspector.evaluate(element => element.scrollTop)) > 0)
   }
   await page.getByRole('link', { name: 'Close' }).click()
   await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('tasker-compact-inspector-open'))).toBe(false)
-  await page.evaluate(() => window.scrollTo(0, 200))
-  assert((await page.evaluate(() => window.scrollY)) > 0)
+  assert(await page.evaluate(() => {
+    // The shared shell may scroll body rather than the viewport. Both must
+    // unlock after the mobile inspector closes.
+    for (const element of [document.scrollingElement, document.body, document.getElementById('root')]) {
+      if (element && element.scrollHeight > element.clientHeight) {
+        element.scrollTop = 200
+        if (element.scrollTop > 0) return true
+      }
+    }
+    return false
+  }), 'The application page did not unlock for scrolling after closing Inspector')
   await page.screenshot({ path: resolve(output, 'mobile.png'), fullPage: true })
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
   const packageFilter = encodeURIComponent(JSON.stringify([['task_title', '=', 'Package-delivered stock review']]))
@@ -422,21 +434,28 @@ try {
   const preservedTask = await api('/api/save_row', { table: 'tasker.task', row: {
     task_title: 'Preserved 37 cartons', project: projectId, assigned_to: 'Administrator', urgent: true, task_state: 'Blocked',
   } }, 201)
+  // #800: this proof exercises upload authorization, so explicitly enable
+  // that optional UI before freezing the pre-upgrade form.
+  await api('/api/save_row', { table: 'Metadata Override', row: {
+    table_name: 'tasker.task', property: 'enable_files', value: 'true',
+  } }, 201)
   await api('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: preservedTask.row_id, content: 'Retain this evidence' } }, 201)
   await page.goto(`${origin}/tasker/`)
   await page.evaluate(token => localStorage.setItem('fc_token', token), token)
   const staleCore = await page.context().newPage()
-  await staleCore.goto(`${origin}/featherbase/admin/tasker.task/${preservedTask.row_id}`)
+  await staleCore.goto(`${origin}${rowHref('tasker.task', preservedTask.row_id)}`)
   await expect(staleCore.locator('[data-field="task_title"]')).toHaveValue('Preserved 37 cartons')
   await staleCore.locator('[data-field="description"]').fill('Must not save a pre-upgrade draft')
   async function refuseStaleCore(expectedStatus) {
     const saving = staleCore.waitForResponse(response => response.url().endsWith('/api/save_row') && response.request().method() === 'POST')
     await staleCore.getByTestId('form-save').click()
     assert.equal((await saving).status(), expectedStatus)
+    await staleCore.getByRole('tab', { name: 'Collaboration', exact: true }).click()
     const uploading = staleCore.waitForResponse(response => response.url().endsWith('/api/upload_file'))
     await staleCore.getByTestId('attach-file-input').setInputFiles({ name: 'stale-37.txt', mimeType: 'text/plain', buffer: Buffer.from('Must not attach from obsolete form') })
     assert.equal((await uploading).status(), expectedStatus)
     await expect(staleCore.getByTestId('attach-error')).toBeVisible()
+    await staleCore.getByRole('tab', { name: 'Work', exact: true }).click()
   }
   const preferencesBefore = await api('/api/user_settings/tasker.preferences')
   const commentsBefore = await api('/api/table/Comment?limit_page_length=1000')
@@ -446,7 +465,7 @@ try {
   await expect(page.getByRole('heading', { name: 'Tasker v1 upgrade fixture' })).toBeVisible()
   const plan = await api('/api/preview_app_upgrade', { name: 'tasker', version: taskerPackage.version })
   assert.equal(plan.currentVersion, '0.0.1')
-  assert.deepEqual(plan.tables, ['tasker.project'])
+  assert.deepEqual(plan.tables, ['tasker.project', 'tasker.discussion', 'tasker.task', 'tasker.recurrence'])
   assert.equal(plan.migrations[0].id, 'project_description')
   // Restart before commit does not silently upgrade.
   await stop()
@@ -460,6 +479,8 @@ try {
   await start(upgradePaths)
   assert.equal((await api('/api/apps')).installed.find(a => a.name === 'tasker').activationPending, true)
   await api('/api/upgrade_app', upgrade)
+  const upgradeAdmin = await api('/api/table/Person/Administrator')
+  await api('/api/save_row', { table: 'Person', row: { row_id: 'Administrator', updated_at: upgradeAdmin.updated_at, roles: [...upgradeAdmin.roles, { role: 'Tasker Member' }] } }, 201)
   await api('/api/activate_app_upgrade', { name: 'tasker', version: taskerPackage.version })
   await refuseStaleCore(409)
   await staleCore.screenshot({ path: resolve(output, 'stale-core-form-after-upgrade.png'), fullPage: true })
@@ -492,18 +513,19 @@ try {
   }, { id: projectId, version: taskerPackage.version })
   assert.equal(browserRead.status, 200)
   assert.equal(browserRead.row.description, description)
-  assert.deepEqual(await api(`/api/table/tasker.task/${preservedTask.row_id}`), preservedTask)
+  assert.deepEqual(await api(`/api/table/tasker.task/${preservedTask.row_id}`), { ...preservedTask, shared: true, parent_task: null, recurrence: null, occurrence_key: null, completed_at: null })
   const coreFilesFilter = encodeURIComponent(JSON.stringify([['ref_table', '=', 'tasker.task'], ['ref_name', '=', preservedTask.row_id]]))
   assert.equal((await api(`/api/table/File?filters=${coreFilesFilter}`)).total, 0, 'Refused stale uploads left a File document')
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.getByRole('link', { name: 'Preserved 37 cartons', exact: true }).click()
   await page.getByRole('link', { name: 'Attachments and advanced fields in Featherbase ↗' }).click()
-  await expect(page).toHaveURL(`${origin}/featherbase/admin/tasker.task/${preservedTask.row_id}`)
+  await expect(page).toHaveURL(`${origin}${rowHref('tasker.task', preservedTask.row_id)}`)
   await expect(page.locator('[data-field="task_title"]')).toHaveValue('Preserved 37 cartons')
   await page.locator('[data-field="description"]').fill('Core form confirmed 37 cartons, not 83.')
   await page.getByTestId('form-save').click()
   await expect(page.getByTestId('form-banner')).toHaveText('Saved')
   assert.equal((await api(`/api/table/tasker.task/${preservedTask.row_id}`)).description, 'Core form confirmed 37 cartons, not 83.')
+  await page.getByRole('tab', { name: 'Collaboration', exact: true }).click()
   await page.getByTestId('attach-file-input').setInputFiles({ name: 'core-37.txt', mimeType: 'text/plain', buffer: Buffer.from('37 cartons independently verified') })
   const attachment = page.getByTestId('attachment-row').filter({ hasText: 'core-37.txt' })
   await expect(attachment).toHaveCount(1)
@@ -520,12 +542,17 @@ try {
     const sidebar = await page.getByTestId('admin-sidebar').boundingBox()
     return sidebar ? sidebar.x + sidebar.width : Number.POSITIVE_INFINITY
   }).toBeLessThanOrEqual(0)
+  await page.getByRole('tab', { name: 'Work', exact: true }).click()
   await page.screenshot({ path: resolve(output, 'upgraded-core-form-mobile.png'), fullPage: true })
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Upgraded core form has horizontal page overflow at 375px')
-  for (const control of [page.locator('[data-field="task_title"]'), page.locator('[data-field="description"]'), page.getByTestId('attachments-panel'), page.getByTestId('form-save')]) {
+  for (const control of [page.locator('[data-field="task_title"]'), page.locator('[data-field="description"]'), page.getByTestId('form-save')]) {
     const bounds = await control.boundingBox()
     assert(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 375, 'Core form control is horizontally clipped at 375px')
   }
+  await page.getByRole('tab', { name: 'Collaboration', exact: true }).click()
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Upgraded collaboration has horizontal page overflow at 375px')
+  const attachmentBounds = await page.getByTestId('attachments-panel').boundingBox()
+  assert(attachmentBounds && attachmentBounds.x >= 0 && attachmentBounds.x + attachmentBounds.width <= 375, 'Core attachment panel is horizontally clipped at 375px')
   await page.getByTestId('attachments-panel').scrollIntoViewIfNeeded()
   await page.screenshot({ path: resolve(output, 'upgraded-core-mobile-attachment.png'), fullPage: true })
   await attachment.hover()

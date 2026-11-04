@@ -1,9 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
 import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
-import { PrincipalName, isOpaqueId, usePrincipalName } from '../lib/people'
+import { isOpaqueId, usePrincipalName } from '../lib/people'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses } from './ui'
-import { fmtInstant } from '../lib/inr'
+import { buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
 
 interface CommentRow {
   row_id: string
@@ -49,8 +48,6 @@ export function Comments({ table, name }: { table: string; name: string }) {
   // A name-only mention that several people share notifies nobody; say so.
   const [mentionWarning, setMentionWarning] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-
-  const activity = useQuery(activityQuery(table, name))
 
   // @mention candidates from the people list, filtered by the token being
   // typed. person-rename: ids are opaque, so a mention names the person —
@@ -125,46 +122,10 @@ export function Comments({ table, name }: { table: string; name: string }) {
     }
   }
 
-  // Render @mentions as highlighted spans.
-  function renderContent(text: string) {
-    // `@username` or `@[Full Name]` (person-rename: never a row id).
-    // A mention starts a word: `name@gmail.com` is an address, not a mention.
-    const parts = text.split(/((?<![\w.@-])@\[[^\]\n]{1,140}\]|(?<![\w.@-])@[\w.-]+)/g)
-    return parts.map((p, i) =>
-      p.startsWith('@') ? (
-        <span key={i} className="font-medium text-action">
-          {p}
-        </span>
-      ) : (
-        <span key={i}>{p}</span>
-      ),
-    )
-  }
-
   return (
     <div className={cardClasses('p-4')} data-testid="comments-panel">
       <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
         Comments
-      </div>
-
-      <div className="mb-3 space-y-3" data-testid="comment-list">
-        {activity.data?.comments.length === 0 && (
-          <p className="text-xs text-ink-subtle">No comments yet</p>
-        )}
-        {activity.data?.comments.map((c) => (
-          <div key={c.row_id} className="flex gap-2" data-testid="comment-item">
-            <AuthorInitials id={c.created_by} />
-            <div className="min-w-0 flex-1">
-              <div className="text-xs text-ink-muted">
-                <span className="font-medium text-ink" data-testid="comment-author"><PrincipalName id={c.created_by} /></span>{' '}
-                <span data-testid="comment-time">{fmtInstant(c.created_at)}</span>
-              </div>
-              <div className="whitespace-pre-wrap break-words text-sm text-ink" data-testid="comment-content">
-                {renderContent(c.content)}
-              </div>
-            </div>
-          </div>
-        ))}
       </div>
 
       <div className="relative">
@@ -225,7 +186,7 @@ const initialsOf = (name: string) =>
   name.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('')
 
 /** The author's initials — from their name, never from an opaque id. */
-function AuthorInitials({ id }: { id: string }) {
+export function AuthorInitials({ id }: { id: string }) {
   const name = usePrincipalName(id)
   return (
     <span

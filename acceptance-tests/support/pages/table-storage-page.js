@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { rowHref } = require('../../../packages/shared/src/app-routes.ts');
 const { acceptanceSql, restartAcceptance } = require('../stack');
 
 class TableStoragePage {
@@ -14,7 +15,7 @@ class TableStoragePage {
   async authorTitle() {
     await this.api.call('PUT', `/api/table_def/${encodeURIComponent(this.table)}`,
       { name: this.table, module: 'Custom', description: 'Plant catalogue', columns: [{ column_name: 'plant_name', column_type: 'Data' }] }, [200]);
-    await this.api.saveRow('Metadata Override', { row_id: 'storage-860-title', table_name: 'Table', property: 'title_column', value: 'description' });
+    await this.api.call('POST', '/api/table/Metadata%20Override', { row_id: 'storage-860-title', table_name: 'Table', property: 'title_column', value: 'description' }, [201]);
     this.authored = true;
   }
 
@@ -26,15 +27,18 @@ class TableStoragePage {
   }
 
   async install() {
-    const existing = await this.api.call('GET', '/api/table/tasker.task:meta');
-    if (existing.status() !== 200) await this.api.call('POST', '/api/apps/prepare-install', { name: 'tasker' }, [201]);
+    const response = await this.api.call('GET', '/api/apps', undefined, [200], 'installed apps');
+    const { installed } = await response.json();
+    if (!installed.some(app => app.name === 'tasker'))
+      await this.api.call('POST', '/api/apps/prepare-install', { name: 'tasker' }, [201]);
+    await this.api.admitTaskerAdministrator();
     this.table = 'tasker.task';
     await acceptanceSql("update featherbase.table_def set label = 'SAP Plant' where name = 'tasker.task'");
     await restartAcceptance();
   }
 
   async open() {
-    await this.page.goto(`/featherbase/admin/Table/${encodeURIComponent(this.table)}`);
+    await this.page.goto(rowHref('Table', this.table));
     await this.page.getByTestId('form-view').waitFor();
   }
 

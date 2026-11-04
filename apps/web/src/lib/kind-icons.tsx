@@ -1,4 +1,4 @@
-import { FileText, LayoutDashboard, List, LogIn, Pencil, Search, type LucideIcon } from '../components/ui/icons'
+import { FileText, LayoutDashboard, List, LogIn, Pencil, Search, type LucideIcon } from '@featherbase/shop-floor'
 
 // One vocabulary for what kind of thing an activity or a remembered
 // destination is — the activity feed, the sidebar's Recently opened and the

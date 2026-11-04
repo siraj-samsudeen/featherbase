@@ -12,6 +12,7 @@ import { parseInstanceAddresses } from '../src/instance-addresses'
 import { discoverPackages } from '../src/runtime-packages'
 import { landingAfterSignIn } from '../src/landing'
 import { sql } from '../src/db'
+import { registerApp, installApp, uninstallApp } from '../src/apps'
 
 type Caps = { manage: boolean; admin: boolean; own_grant: boolean; tables: string[] }
 
@@ -317,4 +318,41 @@ test("a disabled app's Tables still do not count towards Admin", async ({ admin,
   await admin.post('/api/set_app_enabled', { name: 'feather_dash', enabled: false })
   const reader = await createUser({ email: 'disabled.app.reader@example.com', roles: [ROLE] })
   expect((await capsOf(reader)).admin).toBe(false)
+})
+
+
+describe('core grants contributed by an app with its own pages', () => {
+  async function member(admin: TestClient, createUser: CreateUserFn) {
+    expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
+    await admin.post('/api/install_app', { name: 'tasker' })
+    return createUser({ email: 'tasker.core.grant@example.com', roles: ['Tasker Member'] })
+  }
+
+  test('app membership does not grant the Admin shell through core collaboration tables', async ({ admin, createUser }) => {
+    const reader = await member(admin, createUser)
+    expect(await capsOf(reader)).toMatchObject({ admin: false, own_grant: false })
+    await expect(reader.post('/api/open_admin', {})).rejects.toMatchObject({ status: 403 })
+  })
+})
+
+
+test('an explicit operator core grant still opens Admin beside app-contributed grants', async ({ admin, createUser }) => {
+  expect(await discoverPackages([resolve('../..', 'example-apps/tasker')])).toEqual([])
+  await admin.post('/api/install_app', { name: 'tasker' })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Core Reviewer' } })
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Comment', role: 'Core Reviewer', can_read: true } })
+  const reader = await createUser({ email: 'core.operator.grant@example.com', roles: ['Tasker Member', 'Core Reviewer'] })
+  expect(await capsOf(reader)).toMatchObject({ admin: true, own_grant: true })
+})
+
+test('a core grant from an app without its own pages still opens Admin', async ({ createUser }) => {
+  const name = 'core-comment-helper'
+  registerApp({ name, tables: [], roles: ['Core Helper'], permissions: [{ table: 'Comment', role: 'Core Helper', can_read: true }] })
+  await installApp(name)
+  try {
+    const reader = await createUser({ email: 'core.helper.grant@example.com', roles: ['Core Helper'] })
+    expect(await capsOf(reader)).toMatchObject({ admin: true, own_grant: true })
+  } finally {
+    await uninstallApp(name)
+  }
 })

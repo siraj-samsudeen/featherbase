@@ -1,10 +1,11 @@
-import { anonymousTest as test, expect, ensureRuntimeApp, ADMIN_PWD } from './fixtures'
+import { anonymousTest as test, expect, ensureRuntimeApp, admitTaskerAdmin, ADMIN_PWD } from './fixtures'
 
 let taskId: string
 let taskHeaders: { Authorization: string; 'X-Featherbase-App-Version': string }
 
 test.beforeAll(async ({ request }) => {
   taskHeaders = await ensureRuntimeApp(request, 'tasker')
+  await admitTaskerAdmin(request)
   const saved = await request.post('/api/save_row', {
     headers: taskHeaders,
     data: {

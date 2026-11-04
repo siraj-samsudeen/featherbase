@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { adminPageTitle } from 'shared'
 import { useShellTables, type TableSummary } from '../lib/session'
-import { cardClasses, touchRowClasses } from '../components/ui'
+import { cardClasses, touchRowClasses } from '@featherbase/shop-floor'
 
 // #80: with the sidebar flipped to Home Pages, this page keeps EVERY table
 // reachable — it is the sidebar's "All tables" entry. Same curation as the
@@ -62,7 +62,7 @@ export function AllTablesPage() {
             {(byModule.get(mod) ?? []).map((dt) => (
               <Link
                 key={dt.row_id}
-                to="/featherbase/admin/$table"
+                to="/featherbase/admin/table/$table"
                 params={{ table: dt.row_id }}
                 search={{ filters: undefined }}
                 className={linkClass}
@@ -100,7 +100,7 @@ export function AllTablesPage() {
               systemTables.map((dt) => (
                 <Link
                   key={dt.row_id}
-                  to="/featherbase/admin/$table"
+                  to="/featherbase/admin/table/$table"
                   params={{ table: dt.row_id }}
                   search={{ filters: undefined }}
                   className={linkClass}

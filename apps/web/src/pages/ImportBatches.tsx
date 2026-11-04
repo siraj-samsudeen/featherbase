@@ -14,8 +14,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { adminPageTitle } from 'shared'
 import { PrincipalName } from '../lib/people'
-import { buttonClasses, cardClasses, pillClasses } from '../components/ui'
-import { fmtCount, fmtInstantIST } from '../lib/inr'
+import { buttonClasses, cardClasses, pillClasses } from '@featherbase/shop-floor'
+import { fmtCount, fmtInstantIST } from '@featherbase/shop-floor'
 
 interface BatchTarget {
   table: string
@@ -112,7 +112,7 @@ function BatchCard({ batch, onDone }: { batch: ImportBatch; onDone: (o: Outcome)
           >
             {target.exists ? (
               <Link
-                to="/featherbase/admin/$table"
+                to="/featherbase/admin/table/$table"
                 params={{ table: target.table }}
                 search={{ filters: undefined }}
                 className="underline"
@@ -216,7 +216,7 @@ export function ImportBatches() {
       <p className="mb-4 text-xs text-ink-muted">
         Every file you have imported, and what each one did.{' '}
         <Link
-          to="/featherbase/admin/$table"
+          to="/featherbase/admin/table/$table"
           params={{ table: 'Import Log' }}
           search={{ filters: undefined }}
           className="underline"

@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { expect } = require('playwright/test');
+const { rowHref } = require('../../../packages/shared/src/app-routes.ts');
 const { acceptanceSql, restartAcceptance } = require('../stack');
 const { Api } = require('../api');
 
@@ -27,7 +28,7 @@ class CapturedEmail {
   }
 
   async open() {
-    await this.page.goto(`/featherbase/admin/Email%20Sink/${this.id}`);
+    await this.page.goto(rowHref('Email Sink', this.id));
     await this.page.getByTestId('reading-presentation').waitFor();
   }
 
@@ -107,7 +108,7 @@ class CapturedEmail {
   }
 
   async openReference() {
-    await this.page.goto('/featherbase/admin/Reference%20Notice/notice');
+    await this.page.goto(rowHref('Reference Notice', 'notice'));
   }
 
   async expectReference() {
@@ -118,7 +119,7 @@ class CapturedEmail {
   }
 
   async expectEditable() {
-    await this.page.goto('/featherbase/admin/Writable%20Notice/notice');
+    await this.page.goto(rowHref('Writable Notice', 'notice'));
     await expect(this.page.locator('[data-field="message"]')).toBeEnabled();
     assert.equal(await this.page.getByTestId('reading-presentation').count(), 0);
     await expect(this.page.getByTestId('form-save')).toBeVisible();

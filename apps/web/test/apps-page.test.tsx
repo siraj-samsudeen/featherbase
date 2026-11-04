@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
@@ -29,7 +30,8 @@ test('the real catalog offers example and client apps, keeps the list alongside 
   expect(details).toHaveTextContent(/Version .+Requires platform 2026-10/)
   expect(within(details).getByRole('region', { name: 'What it adds' })).toHaveTextContent('Project')
   expect(within(details).getByRole('region', { name: 'Permissions' })).toHaveTextContent('read, edit, create, delete')
-  expect(details).toHaveTextContent('This app grants access to the All role.')
+  expect(within(details).getByRole('region', { name: 'Permissions' })).toHaveTextContent('Tasker Member')
+  expect(details).not.toHaveTextContent('This app grants access to the All role.')
   expect(within(details).getByRole('button', { name: 'Prepare and install' })).toBeEnabled()
   expect(within(details).queryByRole('textbox')).not.toBeInTheDocument()
   expect(within(details).queryByRole('link', { name: 'Configure settings' })).not.toBeInTheDocument()
@@ -97,6 +99,7 @@ test('explicit preparation shows progress, installs only after building, and off
     const switcher = await screen.findByRole('combobox', { name: 'Switch application' })
     expect(within(switcher).queryByRole('option', { name: 'Other tasks' })).not.toBeInTheDocument()
     const prepare = await screen.findByRole('button', { name: 'Prepare and install' })
+    expect(screen.getByRole('region', { name: 'Other tasks details' })).toHaveTextContent('This app grants access to the All role.')
     await userEvent.click(prepare)
     expect(await screen.findByRole('button', { name: 'Preparing and installing…' })).toBeDisabled()
     expect(screen.getByText(/Preparing the package, then installing/)).toBeInTheDocument()
@@ -104,7 +107,7 @@ test('explicit preparation shows progress, installs only after building, and off
     const roles = screen.getByRole('link', { name: 'Configure role mappings' })
     for (const [link, table] of [[settings, 'App Setting'], [roles, 'App Role Binding']] as const) {
       const url = new URL(link.getAttribute('href')!, 'http://test')
-      expect(decodeURIComponent(url.pathname)).toBe(`/featherbase/admin/${table}`)
+      expect(decodeURIComponent(url.pathname)).toBe(`/featherbase/admin/table/${tableSlug(table)}`)
       expect(JSON.parse(url.searchParams.get('filters')!)).toEqual([['app', '=', 'other']])
     }
     expect(screen.getByRole('region', { name: 'Other tasks details' })).toHaveTextContent('Installed on this instance.')

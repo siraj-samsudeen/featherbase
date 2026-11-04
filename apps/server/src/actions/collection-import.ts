@@ -6,7 +6,7 @@ import { quoteIdent } from '../sql-identifier'
 import { AppError } from '../errors'
 import { checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
-import { assertDocPermission, assertPermission, permissionScope } from '../permissions'
+import { assertDocPermission, assertPermission, permissionScope, permittedTiers } from '../permissions'
 import { registerCollectionAction } from '../actions'
 import { sql } from '../db'
 import { tableRelation, quoteRelation } from '../table-engine'
@@ -262,6 +262,54 @@ registerCollectionAction('import', {
         `${table} is bound to data source ${meta.data_source}; bulk import is not supported on bound Tables yet`,
       )
 
+    if (args.analyze_keys != null && typeof args.analyze_keys !== 'boolean')
+      throw new AppError('ValidationError', 'analyze_keys must be a boolean')
+    // Analysis must return before upsert setup: no index, save or Import Log.
+    if (args.analyze_keys) {
+      if (!Array.isArray(args.columns) || args.columns.some((c) => typeof c !== 'string'))
+        throw new AppError('ValidationError', 'columns must be an array of column names')
+      const columns = [...new Set(args.columns as string[])]
+      for (const column of columns)
+        if (column !== ROW_KEY && !meta.columns.some((c) => c.column_name === column))
+          throw new AppError('ValidationError', `${meta.name} has no column ${column}`)
+      const readTiers = await permittedTiers(user.row_id, table, 'read')
+      const writeTiers = await permittedTiers(user.row_id, table, 'write')
+      const key_candidates: { column: string; matched: number; complete: boolean; can_match: boolean }[] = []
+      for (const column of columns) {
+        const definition = meta.columns.find((c) => c.column_name === column)
+        if (definition && (definition.read_only || ['Section Break', 'Column Break', 'Sub-table'].includes(definition.column_type))) continue
+        const tier = definition?.tier ?? 'basic'
+        if (!readTiers.has(tier)) continue
+        const matches = await resolveRows(meta, rows, column)
+        // A single blank, duplicate or ambiguous key invalidates the column.
+        if (matches.some((r) => r.action === 'fail')) continue
+        try {
+          for (const match of matches) {
+            if (match.action !== 'update') continue
+            // getDoc includes own-row, reference-scope and attached-row gates.
+            await getDoc(table, match.row_id!, user.row_id)
+          }
+        } catch (err) {
+          if (err instanceof AppError && err.type === 'PermissionError') continue
+          throw err
+        }
+        // Readable overlap still matters to an append-only caller. Whether
+        // this key can authorize an upsert is a separate permission fact.
+        let can_match = writeTiers.has(tier)
+        if (can_match) {
+          try {
+            await assertRunPermitted(user.row_id, table, matches)
+          } catch (err) {
+            if (err instanceof AppError && err.type === 'PermissionError') can_match = false
+            else throw err
+          }
+        }
+        const matched = matches.filter((r) => r.action === 'update').length
+        key_candidates.push({ column, matched, complete: matched === rows.length, can_match })
+      }
+      return { key_candidates }
+    }
+
     const upsert = parseUpsertArgs(meta, args)
     // #145 (ruled 2026-08-11): the match key gets its index the first time a
     // REAL keyed run uses it — before resolution, so even this request's
@@ -282,6 +330,10 @@ registerCollectionAction('import', {
       const actions: RowAction[] = []
       let fieldsUpdated = 0
       let fieldsKept = 0
+      let changed = 0
+      let unchanged = 0
+      let rowsKept = 0
+      let conflicts = 0
       const seenNames = new Set<string>()
       for (const [index, row] of rows.entries()) {
         if (typeof row !== 'object' || row === null || Array.isArray(row)) {
@@ -304,14 +356,17 @@ registerCollectionAction('import', {
             const current = await getDoc(table, resolution.row_id!, user.row_id)
             const plan = await planImport(meta, current, updateValues(row as Record<string, unknown>, upsert!, resolution), user.row_id)
             fieldsUpdated += plan.fields_updated
-            fieldsKept += plan.conflicts.length
+            fieldsKept += plan.fields_kept
+            if (plan.fields_updated > 0) changed++
+            else unchanged++
+            if (plan.fields_kept > 0) rowsKept++
+            conflicts += plan.conflicts.length
             actions.push('update')
             continue
           }
-          const name = String((row as Record<string, unknown>)[ROW_KEY] ?? '').trim()
+          const name = await checkRowForInsert(meta, row as Record<string, unknown>)
           if (name && seenNames.has(name))
             throw new AppError('ConflictError', `Duplicate name ${name} within the import`)
-          await checkRowForInsert(meta, row as Record<string, unknown>)
           if (name) seenNames.add(name)
           actions.push('insert')
         } catch (err) {
@@ -323,7 +378,7 @@ registerCollectionAction('import', {
           actions.push('fail')
         }
       }
-      if (!resolutions) return { dry_run: true, valid: rows.length - failed.length, failed, fields_updated: 0, fields_kept: 0, tracks_changes: meta.track_changes }
+      if (!resolutions) return { dry_run: true, valid: rows.length - failed.length, failed, changed: 0, unchanged: 0, rows_kept: 0, conflicts: 0, fields_updated: 0, fields_kept: 0, tracks_changes: meta.track_changes }
       return {
         dry_run: true,
         valid: rows.length - failed.length,
@@ -331,6 +386,10 @@ registerCollectionAction('import', {
         inserted: actions.filter((a) => a === 'insert').length,
         failed,
         actions,
+        changed,
+        unchanged,
+        rows_kept: rowsKept,
+        conflicts,
         fields_updated: fieldsUpdated,
         fields_kept: fieldsKept,
         tracks_changes: meta.track_changes,

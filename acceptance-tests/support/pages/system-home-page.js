@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
+const { tableHref } = require('../../../packages/shared/src/app-routes.ts');
 const { acceptanceSql } = require('../stack');
 
 class SystemHomePage {
@@ -53,7 +54,7 @@ class SystemHomePage {
     return this.page.getByTestId('home-page-cards').locator(':scope > div').evaluateAll(cards => cards.map(card => ({
       heading: card.querySelector('[data-testid="home-card-heading"]').textContent.trim(),
       links: [...card.querySelectorAll('a')].map(link => ({
-        name: decodeURIComponent(new URL(link.href).pathname.split('/').pop()),
+        name: link.getAttribute('data-testid').slice('home-link-'.length),
         label: link.textContent.trim(),
         path: new URL(link.href).pathname,
       })),
@@ -61,7 +62,7 @@ class SystemHomePage {
   }
 
   expectedLinks(tables) {
-    return tables.map(table => ({ name: table.name, label: table.label, path: `/featherbase/admin/${encodeURIComponent(table.name)}` }));
+    return tables.map(table => ({ name: table.name, label: table.label, path: tableHref(table.name) }));
   }
 
   async expectStoredGroups() {

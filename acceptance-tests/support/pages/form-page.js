@@ -1,9 +1,17 @@
 'use strict';
 
+const { rowHref } = require('../addresses');
+
 // One row's form.
 class FormPage {
   constructor(page) {
     this.page = page;
+  }
+
+  /** Opens a row of a table, by the table's address and the row's id. */
+  async open(tableSlug, rowId) {
+    await this.page.goto(`/featherbase/admin/table/${tableSlug}/row/${encodeURIComponent(rowId)}`);
+    await this.page.getByTestId('form-view').waitFor();
   }
 
   /** Whether the open form shows a field with this label. */
@@ -46,9 +54,9 @@ class FormPage {
     return this.page.getByTestId('form-view');
   }
 
-  /** Opens a row and waits for its fields. */
-  async open(table, rowId) {
-    await this.page.goto(`/featherbase/admin/${encodeURIComponent(table)}/${encodeURIComponent(rowId)}`);
+  /** Opens a row by its table's name and waits for its fields. */
+  async openRow(table, rowId) {
+    await this.page.goto(rowHref(table, rowId));
     await this.form().locator('[data-form-field]').first().waitFor({ timeout: 10_000 });
   }
 
@@ -117,6 +125,20 @@ class FormPage {
 
   section(n) {
     return this.form().getByTestId(`form-section-${n}`);
+  }
+
+  /** Types a value into a field and saves the row. */
+  async setAndSave(field, value) {
+    await this.page.locator(`[data-field=${field}]`).fill(value);
+    await this.page.getByTestId('form-save').click();
+    await this.page.getByTestId('form-banner').filter({ hasText: 'Saved' }).waitFor();
+  }
+
+  /** The Rename the form offers when the row's id is out of step with its naming column (#858). */
+  async offeredRename() {
+    const offer = this.page.getByTestId('form-id-rename');
+    await offer.waitFor();
+    return (await offer.textContent()).trim();
   }
 }
 
