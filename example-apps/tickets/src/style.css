@@ -64,7 +64,6 @@ featherbase-sidebar.tickets-sidebar { position: relative; overflow: auto; }
 .toolbar-type { color: var(--color-ink-muted); font-weight: 600; }
 .toolbar input[type='search'] { flex: 1; max-width: 340px; }
 .toolbar select { width: auto; }
-.toolbar .refresh { padding: 7px 10px; border-color: var(--color-border); color: var(--color-ink-muted); font-size: 15px; line-height: 1; }
 .toolbar-end { margin-left: auto; }
 
 .error { padding: 10px 12px; border: 1px solid var(--color-negative); border-radius: var(--radius-control); background: var(--color-negative-tint); color: var(--color-negative); font-size: 13px; }
@@ -97,7 +96,7 @@ featherbase-sidebar.tickets-sidebar { position: relative; overflow: auto; }
 .tabs { display: flex; gap: 20px; margin: 18px 0 14px; border-bottom: 1px solid var(--color-border); }
 .tabs button { padding: 8px 0; border: 0; border-radius: 0; background: transparent; color: var(--color-ink-muted); font-weight: 500; }
 .tabs button:hover:not(:disabled) { background: transparent; color: var(--color-ink); }
-.tabs button.active { color: var(--color-action); font-weight: 600; box-shadow: inset 0 -2px 0 var(--color-action); }
+.tabs button.active, .tabs button.active:hover:not(:disabled) { color: var(--color-action); font-weight: 600; box-shadow: inset 0 -2px 0 var(--color-action); }
 
 .card { margin: 0 0 12px; padding: 14px 18px; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); }
 .card p { color: var(--color-ink-muted); }

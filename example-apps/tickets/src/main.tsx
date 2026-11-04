@@ -757,12 +757,14 @@ function CaseFile({
                 />
                 {support && (
                   <>
-                    <button
-                      className="secondary"
-                      onClick={() => setEditing(!editing)}
-                    >
-                      {editing ? 'Cancel editing' : 'Edit / classify request'}
-                    </button>
+                    {editing && (
+                      <button
+                        className="secondary"
+                        onClick={() => setEditing(false)}
+                      >
+                        Cancel editing
+                      </button>
+                    )}
                     {editing && (
                       <form
                         id="action-edit"
@@ -1259,7 +1261,10 @@ function App() {
     setDetail((current) =>
       current?.ticket.row_id === selected ? current : null,
     )
-    if (!selected) return
+    if (!selected) {
+      setDetailLoading(false)
+      return
+    }
     setDetailLoading(true)
     read<Detail>('detail', { row_id: selected })
       .then((value) => {
@@ -1308,6 +1313,15 @@ function App() {
   const visible = tickets.filter(
     (ticket) => view !== 'mine' || ticket.owner === userId,
   )
+  // The open ticket is always one the list shows: a filter that hides it
+  // moves to the first ticket shown, or to none.
+  const visibleIds = visible.map((ticket) => ticket.row_id).join(' ')
+  useEffect(() => {
+    if (loading) return
+    setSelected((id) =>
+      visible.some((ticket) => ticket.row_id === id) ? id : (visible[0]?.row_id ?? ''),
+    )
+  }, [visibleIds, loading])
   // Sidebar counts: one unfiltered queue read, counted here.
   const inView = (ticket: Ticket, name: string) =>
     name === 'mine'
@@ -1368,9 +1382,11 @@ function App() {
               </span>
             </button>
           ))}
-          <div className="sidebar-heading" id="ticket-types-heading">
-            Types
-          </div>
+          {typeKeys.length > 0 && (
+            <div className="sidebar-heading" id="ticket-types-heading">
+              Types
+            </div>
+          )}
           {typeKeys.map((key) => (
             <button
               key={key}
@@ -1436,16 +1452,6 @@ function App() {
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            className="refresh"
-            aria-label="Refresh tickets"
-            title="Refresh tickets"
-            disabled={loading || busy}
-            onClick={() => setReload((n) => n + 1)}
-          >
-            ↻
-          </button>
           <span className="toolbar-end">{newTicket}</span>
         </div>
         {error && (
