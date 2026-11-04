@@ -1,6 +1,8 @@
 import { expect } from 'vitest'
 import { test } from './pg-test'
+import { resolve } from 'node:path'
 import { grantRole } from './fixtures'
+import { discoverPackages } from '../src/runtime-packages'
 
 // #628: "What can this person see, and why". One page per person lists their
 // roles, the Tables those roles reach, the Data Scope rows that limit them and
@@ -42,15 +44,33 @@ test('roles say who gave them, and the Tables they reach name the roles that gra
   expect(page.change.find((t) => t.table === 'Ae Plant')).toEqual({ table: 'Ae Plant', own_rows: true, roles: ['Ae Plant Writer'] })
 })
 
-test('a role given later says who gave it then', async ({ admin, createUser }) => {
+test('a role given later says who gave it then; the roles held before keep theirs', async ({ admin, createUser }) => {
+  await grantRole(admin, { role: 'Ae Early Role', table: [] })
   await grantRole(admin, { role: 'Ae Late Role', table: [] })
   const manager = await createUser({ roles: ['System Manager'] })
-  const person = await createUser({ roles: [] })
-  const doc = await admin.get<{ updated_at: string }>(`/api/table/Person/${person.user}`)
-  await manager.post('/api/save_row', { table: 'Person', row: { row_id: person.user, updated_at: doc.updated_at, roles: [{ role: 'Ae Late Role' }] } })
+  const person = await createUser({ roles: ['Ae Early Role'] })
+  const doc = await admin.get<{ updated_at: string; roles: { role: string }[] }>(`/api/table/Person/${person.user}`)
+  await manager.post('/api/save_row', { table: 'Person', row: {
+    row_id: person.user, updated_at: doc.updated_at, roles: [...doc.roles, { role: 'Ae Late Role' }],
+  } })
 
   const page = await admin.get<Explanation>(pageOf(person.user!))
   expect(page.roles.find((r) => r.role === 'Ae Late Role')).toMatchObject({ given_by: manager.user })
+  expect(page.roles.find((r) => r.role === 'Ae Early Role')).toMatchObject({ given_by: 'Administrator' })
+})
+
+test('a service account\'s roles, and an app role held through one of them', async ({ admin }) => {
+  // Fixture app setupproof binds its role "Setup Reader" to the instance's "Setup Staff" (#620).
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Setup Staff' } })
+  expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/setup-proof-v1')])).toEqual([])
+  await admin.post('/api/install_app', { name: 'setupproof' })
+  const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'ae-importer', roles: ['Setup Staff'] })
+
+  const page = await admin.get<Explanation>(pageOf(account.row_id))
+  expect(page.roles).toEqual([
+    expect.objectContaining({ role: 'Setup Staff', app: null, through: null, given_by: 'Administrator' }),
+    { role: 'Setup Reader', app: 'setupproof', through: 'Setup Staff', given_by: null, given_at: null },
+  ])
 })
 
 test('a System Manager reaches every Table', async ({ admin, createUser }) => {
