@@ -4,7 +4,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, test, vi } from 'vitest'
-import { GroupChip, LinkChip, PanePlace, resolvePanePlace, ViewToggle } from '@featherbase/shop-floor'
+import { FieldGrid, GroupChip, LinkChip, PanePlace, resolvePanePlace, ViewToggle } from '@featherbase/shop-floor'
 
 describe('ViewToggle', () => {
   test('marks the chosen view as pressed and reports a change', async () => {
@@ -95,5 +95,43 @@ describe('GroupChip', () => {
     render(<GroupChip label="Shelf" count={3} onSelect={onSelect} />)
     await user.click(screen.getByRole('button', { name: 'Shelf 3' }))
     expect(onSelect).toHaveBeenCalledOnce()
+  })
+})
+
+describe('FieldGrid', () => {
+  const groups = [
+    { title: 'Location', fields: [
+      { label: 'Aisle', value: '4' },
+      { label: 'Temperature zone', value: '', empty: true },
+    ] },
+    { title: 'Notes', fields: [
+      { label: 'Handling', value: 'Keep upright. '.repeat(40), long: true },
+      { label: 'Hazard class', value: '', empty: true },
+    ] },
+  ]
+
+  test('labels each value inside its section', () => {
+    render(<FieldGrid groups={groups} />)
+    expect(screen.getByRole('heading', { name: 'Location' })).toBeInTheDocument()
+    expect(screen.getByText('Aisle').nextElementSibling).toHaveTextContent('4')
+  })
+
+  test('collapses every empty field under one closed disclosure', async () => {
+    const user = userEvent.setup()
+    render(<FieldGrid groups={groups} />)
+    expect(screen.queryByText('Temperature zone')).not.toBeVisible()
+    await user.click(screen.getByText('2 empty fields'))
+    expect(screen.getByText('Temperature zone')).toBeVisible()
+    expect(screen.getByText('Hazard class')).toBeVisible()
+  })
+
+  test('a long value clamps until Show more', async () => {
+    const user = userEvent.setup()
+    render(<FieldGrid groups={groups} />)
+    const value = screen.getByText(/Keep upright/)
+    expect(value.className).toMatch(/line-clamp-3/)
+    await user.click(screen.getByRole('button', { name: 'Show more' }))
+    expect(value.className).not.toMatch(/line-clamp-3/)
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
   })
 })
