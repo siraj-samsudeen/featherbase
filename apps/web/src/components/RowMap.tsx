@@ -155,20 +155,7 @@ export function RowMap({ table, name }: { table: string; name: string }) {
           {forward.length > 0 && (
             <section aria-label="Links from this row" className="space-y-2">
               <h2 className="text-xs font-semibold text-ink-muted">Links from this row</h2>
-              {forward.map((f, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => openRow(f)}
-                  data-testid={`map-narrow-forward-${f.table}`}
-                  className={buttonClasses({ className: 'w-full justify-start whitespace-normal break-words py-2 text-left' })}
-                >
-                  <span className="min-w-0">
-                    <RowName table={f.table} rowId={f.row_id} />
-                    <span className="block text-xs text-ink-muted">{linkAndTable(f)}</span>
-                  </span>
-                </button>
-              ))}
+              {forward.map((f, i) => <NarrowForward key={i} link={f} onOpen={openRow} />)}
             </section>
           )}
           {groups.length > 0 && (
@@ -247,29 +234,7 @@ export function RowMap({ table, name }: { table: string; name: string }) {
           </g>
           {/* forward reference nodes */}
           {forward.map((f, i) => (
-            <g
-              key={`fn-${i}`}
-              onClick={() => openRow(f)}
-              className="cursor-pointer"
-              data-testid={`map-forward-${f.table}`}
-            >
-              <title>{linkAndTable(f)}</title>
-              <rect
-                x={40}
-                y={nodeY(i)}
-                width={220}
-                height={nodeH}
-                rx={8}
-                fill="var(--color-surface)"
-                stroke="var(--color-border-control)"
-                className="hover:stroke-action"
-              />
-              <text x={52} y={nodeY(i) + 20} fontSize={12.5} fontWeight={600} fill="var(--color-ink)">
-                <SvgRowTitle table={f.table} rowId={f.row_id} max={30} />
-              </text>
-              {/* the relationship is named in the box, not on the line, so the line never crosses it */}
-              <BoxLines x={52} y={nodeY(i) + 35} lines={forwardLines[i]} />
-            </g>
+            <SvgForward key={`fn-${i}`} link={f} y={nodeY(i)} height={nodeH} lines={forwardLines[i]} onOpen={openRow} />
           ))}
           {/* backlink / child collection nodes */}
           {groups.map((g, i) => (
@@ -366,10 +331,63 @@ function BoxLines({ x, y, lines }: { x: number; y: number; lines: string[] }) {
   )
 }
 
-/** A linked row's name inside SVG text: never its id (#907), and never the
- *  name of a row the viewer cannot read. */
-function SvgRowTitle({ table, rowId, max }: { table: string; rowId: string; max: number }) {
-  const name = useRowName(table, rowId)
-  return <>{truncate(name.state === 'read' ? name.title : name.state === 'unreadable' ? 'Not visible to you' : '…', max)}</>
+// A link to a row the viewer cannot read is drawn, but offers no action
+// (checklist 22): not a button in the narrow list, not clickable on the map.
+
+/** One link of the narrow map: a button to the linked row, by its name. */
+function NarrowForward({ link, onOpen }: { link: ForwardNode; onOpen: (f: ForwardNode) => void }) {
+  const name = useRowName(link.table, link.row_id)
+  const body = (
+    <span className="min-w-0">
+      <RowName table={link.table} rowId={link.row_id} />
+      <span className="block text-xs text-ink-muted">{linkAndTable(link)}</span>
+    </span>
+  )
+  const classes = 'w-full justify-start whitespace-normal break-words py-2 text-left'
+  if (name.state === 'unreadable')
+    return <div data-testid={`map-narrow-forward-${link.table}`} className={buttonClasses({ className: `${classes} cursor-default` })}>{body}</div>
+  return (
+    <button type="button" onClick={() => onOpen(link)} data-testid={`map-narrow-forward-${link.table}`} className={buttonClasses({ className: classes })}>
+      {body}
+    </button>
+  )
+}
+
+/** One link box of the map, at the left. */
+function SvgForward({ link, y, height, lines, onOpen }: {
+  link: ForwardNode
+  y: number
+  height: number
+  lines: string[]
+  onOpen: (f: ForwardNode) => void
+}) {
+  const name = useRowName(link.table, link.row_id)
+  const unreadable = name.state === 'unreadable'
+  // Never its id (#907), and never the name of a row the viewer cannot read.
+  const title = name.state === 'read' ? name.title : unreadable ? 'Not visible to you' : '…'
+  return (
+    <g
+      onClick={unreadable ? undefined : () => onOpen(link)}
+      className={unreadable ? undefined : 'cursor-pointer'}
+      data-testid={`map-forward-${link.table}`}
+    >
+      <title>{linkAndTable(link)}</title>
+      <rect
+        x={40}
+        y={y}
+        width={220}
+        height={height}
+        rx={8}
+        fill="var(--color-surface)"
+        stroke="var(--color-border-control)"
+        className={unreadable ? undefined : 'hover:stroke-action'}
+      />
+      <text x={52} y={y + 20} fontSize={12.5} fontWeight={600} fill="var(--color-ink)">
+        {truncate(title, 30)}
+      </text>
+      {/* the relationship is named in the box, not on the line, so the line never crosses it */}
+      <BoxLines x={52} y={y + 35} lines={lines} />
+    </g>
+  )
 }
 
