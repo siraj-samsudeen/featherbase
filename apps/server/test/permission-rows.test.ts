@@ -1,6 +1,8 @@
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
+import { sql } from '../src/db'
+import { installApp, registerApp, uninstallApp } from '../src/apps'
 import { sameStoredValue } from '../src/permissions'
 import { readLegacyPermission } from '../src/app-permission-format'
 
@@ -69,6 +71,43 @@ describe('a Permission row that would mean something else is refused', () => {
   })
 })
 
+describe('the grant matrix keeps a flag Row\'s app ownership', () => {
+  test('an operation added to an app-owned basic grant is owned by that app', async ({ admin }) => {
+    await setup(admin)
+    const base = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: ROLE, operation: 'read' } })
+    await sql`update permission set owner_app = 'pr_app' where row_id = ${base.row_id}`
+    await admin.post(`/api/permissions/${encodeURIComponent(DT)}`, { role: ROLE, can_read: true, can_write: true })
+    expect(await sql`select operation, owner_app from permission where ref_table = ${DT} and role = ${ROLE} order by operation`)
+      .toEqual([{ operation: 'read', owner_app: 'pr_app' }, { operation: 'update', owner_app: 'pr_app' }])
+  })
+})
+
+describe('an app grant naming Columns', () => {
+  test('a listed Column the Table lacks refuses the install; a listed one is all it reaches', async () => {
+    registerApp({ name: 'pr-bad-columns', tables: [], roles: ['Pr Lister'], permissions: [{ table: 'Comment', role: 'Pr Lister', operations: { read: ['no_such_column'] } }] })
+    await expect(installApp('pr-bad-columns')).rejects.toMatchObject({ message: expect.stringContaining('unknown Column') })
+    registerApp({ name: 'pr-columns', tables: [], roles: ['Pr Lister'], permissions: [{ table: 'Comment', role: 'Pr Lister', operations: { read: ['content'] } }] })
+    await installApp('pr-columns')
+    try {
+      expect(await sql`select p.column_rule, c.column_name from permission p
+        join featherbase.permission_column pc on pc.parent = p.row_id join column_def c on c.row_id = pc.target_column
+        where p.role = 'Pr Lister'`).toEqual([{ column_rule: 'listed', column_name: 'content' }])
+    } finally { await uninstallApp('pr-columns') }
+  })
+})
+
+describe('a prerequisite that is not available', () => {
+  test('a grant whose prerequisite belongs to an unavailable app contributes nothing', async ({ admin, createUser }) => {
+    await setup(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pr Detail' } })
+    const base = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: 'Pr Detail', operation: 'read' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: 'Pr Detail', operation: 'read', column_rule: 'every', requires_permission: base.row_id } })
+    await sql`update permission set owner_app = 'pr_missing_app' where row_id = ${base.row_id}`
+    const user = await createUser({ roles: ['Pr Detail'] })
+    expect((await user.fetch(`/api/table/${encodeURIComponent(DT)}`)).status).toBe(403)
+  })
+})
+
 describe('how a released manifest grant is read', () => {
   test('flags become basic-level operations, creator-only becomes creator scope', () => {
     expect(readLegacyPermission({ table: 't.x', role: 'R', own_rows_only: true, can_read: true, can_write: true, can_delete: true }))
@@ -81,6 +120,8 @@ describe('how a released manifest grant is read', () => {
     const current = { table: 't.x', role: 'R', operations: { read: '*' } }
     expect(readLegacyPermission(current)).toBe(current)
     expect(readLegacyPermission(null)).toBeNull()
+    const neither = { table: 't.x', role: 'R' }
+    expect(readLegacyPermission(neither)).toBe(neither)
   })
 })
 
@@ -89,6 +130,7 @@ describe('stored forms of the same value', () => {
     ['Time', '2026-11-04T10:00:00Z', new Date('2026-11-04T10:00:00Z'), true],
     ['JSON', { a: 1 }, '{"a":1}', true],
     ['JSON', '{"a":1}', '{"a":2}', false],
+    ['JSON', 'not json', 'not json either', false],
     ['Date', 'not a date', 'not a date', true],
     ['Date', 'not a date', '2026-11-04', false],
     ['Float', 'x', 'y', false],
