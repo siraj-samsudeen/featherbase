@@ -111,7 +111,7 @@ test('a yes/no in a related group\'s rows reads ✓ or ✗', async ({ admin }) =
   // #910: the row's groups lead its page; a group's rows open in the drill pane.
   const chips = await screen.findByRole('region', { name: 'Connections' })
   await userEvent.click(await within(chips).findByRole('button', { name: /^Rfg Audit\s*2$/ }))
-  const embedded = within(await screen.findByRole('complementary')).getByRole('table')
+  const embedded = await within(await screen.findByRole('complementary', { name: 'ATK' })).findByRole('table')
   await waitFor(() => expect(embedded.querySelectorAll('tbody tr')).toHaveLength(2))
   expect([...embedded.querySelectorAll('tbody tr')].map((r) => r.textContent).join(' ')).toMatch(/✓[\s\S]*✗|✗[\s\S]*✓/)
 })

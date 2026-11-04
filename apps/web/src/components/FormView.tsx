@@ -27,7 +27,9 @@ import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
 import { ActionDisclosure } from './ActionDisclosure'
 import { WorkflowActions } from './WorkflowActions'
-import { RelatedWorkspace } from './RelatedWorkspace'
+import { RowConnections } from './RowPane'
+import { RowMap } from './RowMap'
+import { RowTree } from './RowTree'
 import { useNavigation } from '../lib/navigation'
 import { GlossaryHelp } from './GlossaryHelp'
 import { ReadingPresentation } from './ReadingPresentation'
@@ -60,6 +62,9 @@ function parseTypedJson(columns: ColumnDef[], values: Row, typed: ReadonlySet<st
   }
   return { values: out, errors }
 }
+
+const VIEW_TAB = { form: 'Form', map: 'Map', tree: 'Tree' } as const
+const TAB_VIEW: Record<string, 'form' | 'map' | 'tree' | undefined> = { Form: 'form', Map: 'map', Tree: 'tree' }
 
 // UI-004/UI-005: ONE form component renders and saves every Table from
 // its metadata. Layout columns group into sections/columns (UI-008 refines).
@@ -134,7 +139,18 @@ export function FormView({
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [staleBanner, setStaleBanner] = useState(false)
   const [scriptError, setScriptError] = useState<string | null>(null)
-  const [area, setArea] = useState('Work')
+  // #910 / #800: the row's areas. Form, Map and Tree are part of the path,
+  // so a step brings back the view it showed.
+  const nav = useNavigation()
+  const rowNav = nav?.step.screen === 'row' && nav.step.table === table && nav.step.row === name ? nav : null
+  const pathView = rowNav?.step.view
+  const [area, setLocalArea] = useState<string>(VIEW_TAB[pathView ?? 'form'])
+  useEffect(() => { if (pathView) setLocalArea(VIEW_TAB[pathView]) }, [pathView])
+  const setArea = (tab: string) => {
+    setLocalArea(tab)
+    const view = TAB_VIEW[tab]
+    if (rowNav && view && view !== (rowNav.step.view ?? 'form')) rowNav.replace({ ...rowNav.step, view })
+  }
 
   // CUST-003: client scripts registered for this Table. valuesRef mirrors the
   // live values so a script handler always sees current column values.
@@ -673,6 +689,7 @@ export function FormView({
           )}
         </div>
       </div>
+      {!isNew && <RowConnections table={table} row={name} values={doc.data} />}
       {storage && (
         <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>
           <span className="font-medium">Storage</span>
@@ -849,8 +866,9 @@ export function FormView({
       <RawDetails data-testid={reading || changeRecord ? 'raw-details' : undefined}>
       {(reading || changeRecord) && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t(changeRecord ? 'Raw JSON' : 'Raw details')}</summary>}
       {isNew ? work : <ContentTabs label="Record workspace" value={area} onChange={setArea} tabs={[
-        { id: 'Work', label: 'Work', content: work },
-        { id: 'Related', label: 'Related', content: <RelatedWorkspace table={table} name={name} title={rowDisplayTitle(m, doc.data ?? {}, name)} active={area === 'Related'} /> },
+        { id: 'Form', label: 'Form', content: work },
+        { id: 'Map', label: 'Map', content: <RowMap table={table} name={name} /> },
+        { id: 'Tree', label: 'Tree', content: <RowTree table={table} name={name} /> },
         { id: 'Collaboration', label: 'Collaboration', content: <>
           <p className="mb-4 text-sm text-ink-muted">People, tags and files for this record. Disabled features show existing content read-only.</p>
           <div className="grid max-w-5xl grid-cols-1 items-start gap-4 lg:grid-cols-3">

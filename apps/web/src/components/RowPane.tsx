@@ -324,3 +324,43 @@ function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: u
   if (col.column_type === 'Attach' || col.column_type === 'Attach Image') return <>{String(value).split('/').pop()}</>
   return <>{formatValue(col.column_type, value, settings) || String(value)}</>
 }
+
+// ---------- a row page's connections ----------
+
+/**
+ * #910 checklist 16: a row page's connections directly under its name — the
+ * rows it points at and the counted groups that point at it, the same chips
+ * as the drill pane. Opening one shows it in the pane.
+ */
+export function RowConnections({ table, row, values }: { table: string; row: string; values: Row | undefined }) {
+  const nav = useNavigation()
+  const meta = useMeta(table)
+  const cnx = useConnections(table, row, Boolean(values))
+  const holders = [...new Set((cnx.data?.connections ?? []).map((c) => c.via ?? c.table))]
+  const holderMetas = useQueries({ queries: holders.map((t) => metaQuery(t)) })
+  if (!nav || !meta.data || !values) return null
+  const links = forwardLinks(meta.data, values)
+  const groups = cnx.data ? backlinkGroups(cnx.data.connections, (c) =>
+    holderMetas[holders.indexOf(c.via ?? c.table)]?.data?.columns.find((x) => x.column_name === c.column)?.label ?? c.column) : []
+  if (!links.length && !groups.length) return null
+  const step = nav.step
+  const open = (pane: NavPane) => nav.push({ ...step, pane })
+  const chosen = step.pane?.table === table && step.pane.row === row ? step.pane.group : undefined
+  return (
+    <section aria-label="Connections" className="mb-4 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+      {links.map((link) => (
+        <span key={link.column} className="inline-flex min-w-0 items-center gap-2 text-sm">
+          <span className="text-ink-muted">{link.label}</span>
+          <PaneLink table={link.table} rowId={link.row_id} onOpen={open} />
+        </span>
+      ))}
+      {groups.length > 0 && <span className="flex flex-wrap gap-2">
+        {groups.map((g) => (
+          <GroupChip key={g.key} label={g.label} count={g.count}
+            selected={chosen ? groupKey(chosen) === g.key : false}
+            onSelect={() => open({ table, row, group: { table: g.connection.table, column: g.connection.column, via: g.connection.via } })} />
+        ))}
+      </span>}
+    </section>
+  )
+}
