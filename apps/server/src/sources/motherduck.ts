@@ -10,7 +10,10 @@ import type { DuckDBConnection, DuckDBInstance } from '@duckdb/node-api'
 import { AppError } from '../errors'
 import { openMotherDuck } from '../motherduck-hosted'
 
-export interface WarehouseDatabase { name: string; address: string; owner: string }
+/** `account` is the MotherDuck user that owns an account-relative database
+ *  (address `md:<name>`): the address alone names a different database for
+ *  every account, so a replacement token must sign in as the same user. */
+export interface WarehouseDatabase { name: string; address: string; owner: string; account?: string }
 export interface TokenReport { user: string; can_write: boolean; databases: WarehouseDatabase[] }
 
 /** One open MotherDuck session; `attach` opens one database under `alias`,
@@ -89,10 +92,11 @@ export async function inspectToken(token: string): Promise<TokenReport> {
     session = await openSession(token)
     const conn = await session.instance.connect()
     try {
+      const user = await session.user(conn)
       const owned = await rows(conn, 'select name from md_information_schema.databases order by name')
       const shared = await rows(conn, 'select name, url, owner from md_information_schema.shared_with_me order by name')
       const databases: WarehouseDatabase[] = [
-        ...owned.map((r) => ({ name: String(r.name), address: session!.ownedAddress(String(r.name)), owner: 'This account' })),
+        ...owned.map((r) => ({ name: String(r.name), address: session!.ownedAddress(String(r.name)), owner: 'This account', account: user })),
         ...shared.map((r) => ({ name: String(r.name), address: String(r.url), owner: String(r.owner) })),
       ]
       // A read scaling token opens even the account's own databases read-only,
@@ -103,7 +107,7 @@ export async function inspectToken(token: string): Promise<TokenReport> {
         const [probe] = await rows(conn, "select readonly from duckdb_databases() where database_name = 'featherbase_probe'")
         canWrite = probe?.readonly === false
       }
-      return { user: await session.user(conn), can_write: canWrite, databases }
+      return { user, can_write: canWrite, databases }
     } finally {
       conn.closeSync()
     }

@@ -92,9 +92,9 @@ test('the source page shows only the token\'s last four, and replacing it shows 
   expect(document.body).not.toHaveTextContent(STANDIN_TOKENS.reader)
   expect(screen.getByTestId('warehouse-databases')).toHaveTextContent('sales')
   await user.click(screen.getByTestId('replace-token'))
-  await user.type(screen.getByTestId('replace-token-input'), STANDIN_TOKENS.writer)
+  await user.type(screen.getByTestId('replace-token-input'), STANDIN_TOKENS.readerWriter)
   await user.click(screen.getByTestId('replace-token-save'))
-  await waitFor(() => expect(screen.getByTestId('warehouse-token')).toHaveTextContent('Saved, ending …77b1'), WAIT)
+  await waitFor(() => expect(screen.getByTestId('warehouse-token')).toHaveTextContent('Saved, ending …5d3a'), WAIT)
 })
 
 test('the searchable catalog opens a preview and keeps its filters and selection across tabs and copy-return', async ({ admin }) => {

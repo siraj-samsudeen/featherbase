@@ -136,7 +136,11 @@ And the rest of the token appears nowhere on the page
 ### Requirement: A warehouse token can be replaced
 
 A System Manager SHALL be able to replace a MotherDuck source's token at any
-time; the new token is tested before it is saved.
+time; the new token is tested before it is saved. It SHALL be refused unless
+it reads every chosen database as the same database: a shared database by its
+share address, and a database the account owns by its name signed in as the
+same MotherDuck user, since another account's database of the same name is a
+different database.
 
 #### Scenario: The new token's last four show
 
@@ -217,6 +221,26 @@ Then the native copy lists stores "S001", "S002" and "S003"
 And its ordinary row form uses the approved labels without the omitted city
 And a correction made in that form is saved
 ```
+
+### Requirement: A copy keeps long text and respects table restrictions
+
+A warehouse string column other than the key SHALL be copied as unbounded
+text, so a long value never fails the copy. A source's table restriction
+(`catalog.schema.table`) SHALL apply to preview, key checks, copying and
+Copy again alike.
+
+#### Scenario: A long note copies whole
+
+- **WHEN** a System Manager copies a warehouse table whose note column holds a
+  value longer than 140 characters
+- **THEN** the native copy holds the whole value, and only the key column is
+  bounded
+
+#### Scenario: A restricted table cannot be read through copying
+
+- **WHEN** a source is restricted to `stock.main.open_items` and someone asks
+  to preview, check a key in, copy, or copy again `stock.main.fenced_items`
+- **THEN** each request is refused, and `stock.main.open_items` still copies
 
 ### Requirement: Copy again follows the source without losing corrections
 

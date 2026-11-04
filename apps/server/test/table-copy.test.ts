@@ -65,12 +65,15 @@ describe('Copy a warehouse table into Featherbase', () => {
   test('warehouse scalar types retain their values in native rows', async ({ admin }) => {
     await changeStandin(dir, 'sales', [
       `create table typed_copy_rows(code varchar, amount double, opened date, note text, opening_time time)`,
-      `insert into typed_copy_rows values ('0007', 12.75, '2024-02-29', 'Long warehouse note', '08:37:12')`,
+      `insert into typed_copy_rows values ('0007', 12.75, '2024-02-29', '${'Long warehouse note. '.repeat(10)}', '08:37:12')`,
     ])
     await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-types', token: STANDIN_TOKENS.reader, databases: ['sales'] })
     await admin.post(`${SOURCES}/tc-types:copy_create`, { database: 'sales', schema: 'main', table: 'typed_copy_rows', name: 'Typed Copy', key: 'code', columns: ['code', 'amount', 'opened', 'note', 'opening_time'].map(source => ({ source, column_name: source })) })
     // Native Date columns serialize as midnight UTC, not a DuckDB object.
-    expect(await admin.get('/api/table/Typed%20Copy/0007')).toMatchObject({ code: '0007', amount: 12.75, opened: '2024-02-29T00:00:00.000Z', note: 'Long warehouse note', opening_time: '08:37:12' })
+    expect(await admin.get('/api/table/Typed%20Copy/0007')).toMatchObject({ code: '0007', amount: 12.75, opened: '2024-02-29T00:00:00.000Z', note: 'Long warehouse note. '.repeat(10), opening_time: '08:37:12' })
+    // A string longer than Data's 140 characters copies whole; only the key stays bounded.
+    const meta = await admin.get<{ columns: { column_name: string; column_type: string }[] }>('/api/table/Typed%20Copy:meta')
+    expect(Object.fromEntries(meta.columns.map(c => [c.column_name, c.column_type]))).toMatchObject({ code: 'Data', note: 'Text' })
   })
 
   test('copy, correct, copy again: the correction is kept, a changed source raises a conflict, a gone row is marked', async ({ admin }) => {
@@ -419,5 +422,29 @@ describe('Copy a warehouse table into Featherbase', () => {
     await expect(admin.get(`${SOURCES}/tc-fence:copy_check_key?${query}`)).rejects.toMatchObject({ status: 403 })
     await expect(admin.post(`${SOURCES}/tc-fence:copy_create`, payload)).rejects.toMatchObject({ status: 403 })
     await expect(admin.get('/api/table/Unchosen%20Copy:meta')).rejects.toMatchObject({ status: 404 })
+  })
+
+  test('a table restriction on the source refuses preview, key checks, copying and Copy again of any other table', async ({ admin }) => {
+    await changeStandin(dir, 'stock', [
+      'create table fenced_items (sku varchar, title varchar)',
+      `insert into fenced_items values ('F-1', 'Kept'), ('F-2', 'Also kept')`,
+      'create table open_items (sku varchar, title varchar)',
+      `insert into open_items values ('O-1', 'Allowed')`,
+    ])
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-allowlist', token: STANDIN_TOKENS.reader, databases: ['stock'] })
+    const columns = [{ source: 'sku', column_name: 'sku' }, { source: 'title', column_name: 'title' }]
+    await admin.post(`${SOURCES}/tc-allowlist:copy_create`, { database: 'stock', schema: 'main', table: 'fenced_items', name: 'Fenced Before Restriction', key: 'sku', columns })
+    await sql`update featherbase.data_source set table_allowlist = 'stock.main.open_items' where row_id = 'tc-allowlist'`
+    invalidateSources('tc-allowlist')
+    const fenced = 'database=stock&schema=main&table=fenced_items'
+    await expect(admin.get(`${SOURCES}/tc-allowlist:preview?${fenced}`)).rejects.toMatchObject({ status: 403 })
+    await expect(admin.get(`${SOURCES}/tc-allowlist:copy_check_key?${fenced}&column=sku`)).rejects.toMatchObject({ status: 403 })
+    await expect(admin.post(`${SOURCES}/tc-allowlist:copy_create`, { database: 'stock', schema: 'main', table: 'fenced_items', name: 'Fenced Copy', key: 'sku', columns })).rejects.toMatchObject({ status: 403 })
+    await expect(admin.get('/api/table/Fenced%20Copy:meta')).rejects.toMatchObject({ status: 404 })
+    await expect(admin.post('/api/table/Fenced%20Before%20Restriction:copy_again', {})).rejects.toMatchObject({ status: 403 })
+    // Positive control: the allowed table still previews and copies.
+    expect(await admin.get(`${SOURCES}/tc-allowlist:preview?database=stock&schema=main&table=open_items`)).toMatchObject({ rows: 1 })
+    await admin.post(`${SOURCES}/tc-allowlist:copy_create`, { database: 'stock', schema: 'main', table: 'open_items', name: 'Open Copy', key: 'sku', columns })
+    expect(await admin.get('/api/table/Open%20Copy/O-1')).toMatchObject({ title: 'Allowed' })
   })
 })
