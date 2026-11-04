@@ -4,7 +4,7 @@ class CopyRefreshPage {
   constructor(page) { this.page = page; }
 
   async open(readOnly = false) {
-    await this.page.goto('/featherbase/admin/Plants');
+    await this.page.goto('/featherbase/admin/table/plants');
     await this.page.getByTestId('list-view').waitFor();
     if (readOnly) return;
     await this.page.waitForFunction(() => {

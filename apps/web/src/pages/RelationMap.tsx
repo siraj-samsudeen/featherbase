@@ -6,9 +6,9 @@ import { NO_COLUMN_TYPES, listColumns, useMeta, type ColumnDef } from '../lib/me
 import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Connection } from '../lib/connections'
 import { useStepOptions } from '../lib/explore-steps'
-import { buttonClasses, cardClasses } from '../components/ui'
-import { fmtCount } from '../lib/inr'
-import { RowTitle } from '../lib/row-titles'
+import { buttonClasses, cardClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
+import { RowTitle, useRowTitle } from '../lib/row-titles'
 
 type Row = Record<string, unknown>
 
@@ -112,13 +112,13 @@ export function RelationMap({
   function hop(toTable: string, toRow: string) {
     const nextTrail = [...parsedTrail, [table, name] as [string, string]].slice(-8)
     setOpenGroup(null)
-    void navigate({ to: '/featherbase/admin/map/$table/$name', params: { table: toTable, name: toRow }, search: { trail: nextTrail } })
+    void navigate({ to: '/featherbase/admin/table/$table/row/$name/map', params: { table: toTable, name: toRow }, search: { trail: nextTrail } })
   }
   function backTo(i: number) {
     const [t, n] = parsedTrail[i]
     const previous = parsedTrail.slice(0, i)
     setOpenGroup(null)
-    void navigate({ to: '/featherbase/admin/map/$table/$name', params: { table: t, name: n }, search: { trail: previous.length ? previous : undefined } })
+    void navigate({ to: '/featherbase/admin/table/$table/row/$name/map', params: { table: t, name: n }, search: { trail: previous.length ? previous : undefined } })
   }
 
   const active = openGroup != null ? groups[openGroup] : null
@@ -129,7 +129,7 @@ export function RelationMap({
         <Link to="/featherbase/admin" className="hover:text-ink">Home</Link>
         {' / '}
         <Link
-          to="/featherbase/admin/$table"
+          to="/featherbase/admin/table/$table"
           params={{ table }}
           search={{ filters: undefined }}
           className="hover:text-ink"
@@ -145,7 +145,7 @@ export function RelationMap({
         </h1>
         <span className="text-xs text-ink-subtle">{table} · {name}</span>
         <Link
-          to="/featherbase/admin/$table/$name"
+          to="/featherbase/admin/table/$table/row/$name"
           params={{ table, name }}
           search={{ prefill: undefined }}
           data-testid="map-open-form"
@@ -320,7 +320,7 @@ export function RelationMap({
                 className="hover:stroke-action"
               />
               <text x={52} y={nodeY(i) + 20} fontSize={12.5} fontWeight={600} fill="var(--color-ink)">
-                {truncate(f.row_id, 20)}
+                <SvgRowTitle table={f.table} rowId={f.row_id} max={22} />
               </text>
               <text x={52} y={nodeY(i) + 35} fontSize={12} fill="var(--color-ink-muted)">
                 {truncate(f.table, 24)}
@@ -411,6 +411,11 @@ function parseTrail(raw: unknown): [string, string][] {
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n - 1)}…` : s
+}
+
+/** A linked row's title inside SVG text, its id until the title arrives. */
+function SvgRowTitle({ table, rowId, max }: { table: string; rowId: string; max: number }) {
+  return <>{truncate(useRowTitle(table, rowId) ?? rowId, max)}</>
 }
 
 function ChildRows({

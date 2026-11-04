@@ -1,9 +1,7 @@
-// Recent actions (issue #101, Phase 1): a per-user localStorage ring buffer
-// of what the operator visited — rows, filtered lists, reports, searches —
-// feeding the awesomebar's recents groups. Client-side only by design; the
-// server-side `user_event` log is a later phase of the same issue.
+// Per-user warm history cache, reconciled with the server on app load.
 
-import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle } from 'shared'
+import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle, choiceLabel } from 'shared'
+import type { ColumnDef } from './meta'
 
 export type RecentKind = 'row' | 'list' | 'page' | 'search'
 
@@ -47,8 +45,17 @@ function save(user: string, entries: RecentEntry[]): void {
   }
 }
 
-export function recordAction(user: string, action: RecentAction, now = Date.now()): void {
-  const entries = loadAll(user)
+// Unlike the transport queue this journal survives a flush, including failed
+// delivery and a summary captured before a successful POST. Only a summary
+// containing a visit confirms it. It has the same bounds as the visible cache.
+const unconfirmed = new Map<string, { entries: RecentEntry[]; remote?: RecentEntry[] }>()
+
+/** A completed session must not contribute visits to a later sign-in. */
+export function clearVisitJournal(): void {
+  unconfirmed.clear()
+}
+
+function remember(entries: RecentEntry[], action: RecentAction, now: number): void {
   const existing = entries.find((e) => e.key === action.key)
   if (existing) {
     Object.assign(existing, action)
@@ -60,7 +67,15 @@ export function recordAction(user: string, action: RecentAction, now = Date.now(
       entries.splice(0, entries.length - MAX_ENTRIES)
     }
   }
+}
+
+export function recordAction(user: string, action: RecentAction, now = Date.now()): void {
+  const entries = loadAll(user)
+  remember(entries, action, now)
   save(user, entries)
+  const journal = unconfirmed.get(user) ?? { entries: [] }
+  remember(journal.entries, action, now)
+  unconfirmed.set(user, journal)
   enqueueServerEvent(user, action, now)
 }
 
@@ -80,7 +95,7 @@ export function recordAction(user: string, action: RecentAction, now = Date.now(
 interface ServerEventSink {
   /** The user the transport would authenticate as right now. */
   currentUser: () => string | null
-  post: (events: Array<Record<string, unknown>>) => void
+  post: (events: Array<Record<string, unknown>>, recorded: (timestamps: number[]) => void) => void
   beacon: (events: Array<Record<string, unknown>>) => void
 }
 
@@ -94,8 +109,14 @@ function flush(useBeacon = false): void {
     clearTimeout(flushTimer)
     flushTimer = null
   }
-  if (!sink || queue.length === 0) return
+  if (!sink) return
   const current = sink.currentUser()
+  // A departing session's unconfirmed visits must not leak into a later
+  // sign-in. Its cache remains available only if that sign-in's summary fails.
+  for (const owner of unconfirmed.keys()) {
+    if (owner !== current) unconfirmed.delete(owner)
+  }
+  if (queue.length === 0) return
   // Fail closed: whatever does not belong to the authenticated session is
   // dropped — delivery is best-effort, attribution is not.
   const mine = current ? queue.filter((q) => q.owner === current) : []
@@ -103,11 +124,55 @@ function flush(useBeacon = false): void {
   if (mine.length === 0) return
   const batch = mine.slice(0, 50).map((q) => q.event)
   if (useBeacon) sink.beacon(batch)
-  else sink.post(batch)
+  else {
+    const owner = current!
+    const journal = unconfirmed.get(owner)
+    sink.post(batch, (timestamps) => {
+      // A late acknowledgement must not mutate a later session, even when
+      // the same person signs back in before the POST completes.
+      if (!journal || unconfirmed.get(owner) !== journal || sink?.currentUser() !== owner) return
+      const cached = loadAll(owner)
+      for (const entries of [journal.entries, cached]) {
+        for (const entry of entries) {
+          entry.visits = [...new Set(entry.visits.map((at) => {
+            const index = batch.findIndex((event) => event.key === entry.key && event.at === at)
+            return index < 0 ? at : timestamps[index]
+          }))].sort((a, b) => a - b)
+        }
+      }
+      // Delivery does not retire a visit: a summary captured before the POST
+      // can still arrive later. Reconcile against the latest actual snapshot.
+      if (journal.remote) replaceServerEntries(owner, journal.remote)
+      else save(owner, cached)
+    })
+  }
   if (mine.length > 50) {
     queue = mine.slice(50)
     flushTimer = setTimeout(() => flush(), FLUSH_DELAY_MS)
   }
+}
+
+// #871: a renamed Table's entries follow it, here as on the server: the
+// cached list, unconfirmed visits and events not yet sent all name the new
+// Table, so a visit made just before the rename does not bring the old back.
+export function renameTableInRecents(user: string, from: string, to: string, fromPath: string, toPath: string): void {
+  const moved = <T extends { key?: unknown; label?: unknown; sub?: unknown; path?: unknown }>(entry: T): T => {
+    const key = String(entry.key ?? '')
+    const prefix = ['row:', 'list:'].find((kind) => key.startsWith(kind + from) && ['/', '?'].includes(key.charAt(kind.length + from.length)))
+    if (!prefix) return entry
+    const path = String(entry.path ?? '')
+    return {
+      ...entry,
+      key: prefix + to + key.slice(prefix.length + from.length),
+      label: entry.label === from ? to : entry.label,
+      sub: entry.sub === from ? to : entry.sub,
+      path: path === fromPath || path.startsWith(fromPath + '/') || path.startsWith(fromPath + '?') ? toPath + path.slice(fromPath.length) : path,
+    }
+  }
+  save(user, loadAll(user).map(moved))
+  const journal = unconfirmed.get(user)
+  if (journal) journal.entries = journal.entries.map(moved)
+  queue = queue.map((q) => (q.owner === user ? { ...q, event: moved(q.event) } : q))
 }
 
 /** Drain the queue NOW (e.g. right before sign-out, while the departing
@@ -152,11 +217,9 @@ export interface ServerRecentEntry {
   visits: number[]
 }
 
-/** Cross-device merge: union the server's per-key aggregates into the local
- *  buffer (visits merged, deduplicated, capped — same shape both sides). */
-export function mergeServerEntries(user: string, remote: ServerRecentEntry[]): void {
-  if (remote.length === 0) return
-  const entries = loadAll(user)
+/** Replace cached history, folding this document's unconfirmed visits on top. */
+export function replaceServerEntries(user: string, remote: ServerRecentEntry[]): void {
+  const entries: RecentEntry[] = []
   for (const r of remote) {
     if (!['row', 'list', 'page', 'search'].includes(r.kind) || !r.key) continue
     const existing = entries.find((e) => e.key === r.key)
@@ -170,12 +233,32 @@ export function mergeServerEntries(user: string, remote: ServerRecentEntry[]): v
         label: r.label || r.key,
         sub: r.sub,
         path: r.path,
-        visits: r.visits.slice(-MAX_VISITS),
+        visits: [...new Set(r.visits)].sort((a, b) => a - b).slice(-MAX_VISITS),
       })
     }
   }
-  entries.sort((a, b) => lastVisit(a) - lastVisit(b))
-  entries.splice(0, Math.max(0, entries.length - MAX_ENTRIES))
+  const journal = unconfirmed.get(user) ?? { entries: [] }
+  journal.remote = entries.map((entry) => ({ ...entry, visits: [...entry.visits] }))
+  const pending: RecentEntry[] = []
+  for (const local of journal.entries) {
+    const confirmed = entries.find((e) => e.key === local.key)
+    const visits = local.visits.filter((at) => !confirmed?.visits.includes(at))
+    if (visits.length) pending.push({ ...local, visits })
+  }
+  journal.entries = pending
+  unconfirmed.set(user, journal)
+  for (const local of pending) {
+    const existing = entries.find((e) => e.key === local.key)
+    if (existing) {
+      Object.assign(existing, local, { visits: [...new Set([...existing.visits, ...local.visits])].sort((a, b) => a - b).slice(-MAX_VISITS) })
+    } else {
+      entries.push(local)
+    }
+  }
+  if (entries.length > MAX_ENTRIES) {
+    entries.sort((a, b) => lastVisit(a) - lastVisit(b))
+    entries.splice(0, entries.length - MAX_ENTRIES)
+  }
   save(user, entries)
 }
 
@@ -222,14 +305,24 @@ export function recentSearches(user: string, query: string, limit: number): Rece
 }
 
 /** "status = Overdue · region = South" from the list route's JSON filters. */
-export function describeFilters(filtersJson: string | undefined): string | undefined {
+export function describeFilters(
+  filtersJson: string | undefined,
+  columns: Pick<ColumnDef, 'column_name' | 'label' | 'column_type' | 'choice_labels'>[] = [],
+  t: (text: string) => string = text => text,
+): string | undefined {
   if (!filtersJson) return undefined
   try {
     const filters: unknown = JSON.parse(filtersJson)
     if (!Array.isArray(filters) || filters.length === 0) return undefined
     const parts = filters
       .filter((f): f is [string, string, unknown] => Array.isArray(f) && f.length >= 3)
-      .map((f) => `${f[0]} ${f[1]} ${String(f[2])}`)
+      .map((f) => {
+        const column = columns.find(c => c.column_name === f[0])
+        const value = column?.column_type === 'Choice' && ['=', '!='].includes(f[1])
+          ? choiceLabel(String(f[2]), column.choice_labels, t)
+          : String(f[2])
+        return `${t(column?.label ?? f[0])} ${f[1]} ${value}`
+      })
     return parts.length ? parts.join(' · ') : undefined
   } catch {
     return undefined
@@ -248,13 +341,17 @@ const UNRECORDED = new Set<string>(ADMIN_UNRECORDED_ROOTS)
 export function actionForLocation(
   pathname: string,
   search: Record<string, unknown>,
+  canonicalTable?: string,
+  navigatedPath?: string,
+  columns?: Pick<ColumnDef, 'column_name' | 'label' | 'column_type' | 'choice_labels'>[],
+  t?: (text: string) => string,
 ): RecentAction | null {
   const m = /^\/featherbase\/admin(?:\/(.*))?$/.exec(pathname)
   if (!m || !m[1]) return null
   const segs = m[1].split('/').map((s) => decodeURIComponent(s)).filter(Boolean)
   if (segs.length === 0) return null
 
-  const staticTitle = segs.length === 1 ? adminPageTitle(segs[0]) : undefined
+  const staticTitle = segs.length === 1 && !UNRECORDED.has(segs[0]) ? adminPageTitle(segs[0]) : undefined
   if (staticTitle)
     return { kind: 'page', key: `page:${segs[0]}`, label: staticTitle, path: pathname }
 
@@ -271,12 +368,19 @@ export function actionForLocation(
   }
   if (UNRECORDED.has(segs[0]) || pageKind) return null
 
-  const table = segs[0]
+  // Only metadata can supply an identity for a Table address. Never record
+  // the slug as its label/key, nor interpret a fixed page as a Table.
+  if (segs[0] !== 'table' || !segs[1] || !canonicalTable) return null
+  const table = canonicalTable
   const filtersJson = typeof search.filters === 'string' ? search.filters : undefined
-  if (segs.length === 1 || segs[1] === 'view') {
-    const mode = segs[1] === 'view' ? segs[2] : undefined
-    const sub = [mode, describeFilters(filtersJson)].filter(Boolean).join(' · ') || undefined
-    const href = filtersJson ? `${pathname}?filters=${encodeURIComponent(filtersJson)}` : pathname
+  const query = Object.entries(search)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(typeof value === 'string' ? value : JSON.stringify(value))}`)
+    .join('&')
+  const href = navigatedPath ?? (query ? `${pathname}?${query}` : pathname)
+  if (segs.length === 2 || (segs.length === 4 && segs[2] === 'view')) {
+    const mode = segs[2] === 'view' ? segs[3] : undefined
+    const sub = [mode, describeFilters(filtersJson, columns, t)].filter(Boolean).join(' · ') || undefined
     return {
       kind: 'list',
       key: `list:${table}${mode ? `/${mode}` : ''}?${filtersJson ?? ''}`,
@@ -285,13 +389,13 @@ export function actionForLocation(
       path: href,
     }
   }
-  if (segs.length === 2 && segs[1] !== 'new') {
+  if (segs.length === 4 && segs[2] === 'row') {
     return {
       kind: 'row',
-      key: `row:${table}/${segs[1]}`,
-      label: segs[1],
+      key: `row:${table}/${segs[3]}`,
+      label: segs[3],
       sub: table,
-      path: pathname,
+      path: href,
     }
   }
   return null

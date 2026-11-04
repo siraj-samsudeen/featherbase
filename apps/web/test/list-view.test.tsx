@@ -6,6 +6,7 @@
 // test that sorts waits for it to land (see list-settings.test.tsx) — a PUT
 // that arrives after the sandbox closes would commit for real.
 
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { afterAll, beforeAll, beforeEach, describe } from 'vitest'
@@ -24,12 +25,12 @@ const rowsEl = () => screen.getByTestId('list-rows')
 const cellTexts = (col: string) =>
   [...rowsEl().querySelectorAll(`[data-testid="cell-${col}"]`)].map((e) => e.textContent ?? '')
 
-async function seedTickets(admin: Admin, name: string, count = 3) {
+async function seedTickets(admin: Admin, name: string, count = 3, choice_labels?: Record<string, string>) {
   await admin.post('/api/table_def', {
     name,
     columns: [
       { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },
-      { column_name: 'stage', column_type: 'Choice', label: 'Stage', choices: 'Open\nClosed', in_list_view: true },
+      { column_name: 'stage', column_type: 'Choice', label: 'Stage', choices: 'Open\nClosed', choice_labels, in_list_view: true },
       { column_name: 'rank', column_type: 'Int', label: 'Rank', in_list_view: true },
     ],
   })
@@ -41,7 +42,7 @@ async function seedTickets(admin: Admin, name: string, count = 3) {
 }
 
 async function openList(admin: Admin, name: string, search = '') {
-  await renderApp(`/featherbase/admin/${enc(name)}${search}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(name))}${search}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   await screen.findByTestId('list-rows')
 }
@@ -115,15 +116,17 @@ test('Sort by any column: clicking a heading sorts, clicking it again reverses t
 })
 
 test('Narrow the list with filters: a filter narrows the rows, shows as its own chip, and removing it brings every row back', async ({ admin }) => {
-  await seedTickets(admin, 'Lv Filtered', 4)
+  await seedTickets(admin, 'Lv Filtered', 4, { Open: 'Awaiting response' })
   await openList(admin, 'Lv Filtered')
   await waitFor(() => expect(cellTexts('title')).toHaveLength(4))
 
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'stage' } })
+  expect(within(screen.getByRole('combobox', { name: 'Filter value' })).getByRole('option', { name: 'Awaiting response' })).toHaveValue('Open')
   fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'Open' } })
   fireEvent.click(screen.getByTestId('filter-add'))
   await waitFor(() => expect(cellTexts('title')).toEqual(['row-03', 'row-01']))
   expect(screen.getAllByTestId('filter-chip')).toHaveLength(1)
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Stage = Awaiting response')
 
   // A second filter narrows further, and each chip can go on its own.
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'rank' } })
@@ -167,7 +170,7 @@ test('Act on many rows at once: setting a field on selected rows changes all of 
 
   fireEvent.click(screen.getByTestId('select-all'))
   await waitFor(() => expect(screen.getByTestId('bulk-count')).toHaveTextContent('5 selected'))
-  fireEvent.change(screen.getByTestId('bulk-edit-field'), { target: { value: 'stage' } })
+  fireEvent.change(await screen.findByTestId('bulk-edit-field'), { target: { value: 'stage' } })
   fireEvent.change(await screen.findByTestId('bulk-edit-value'), { target: { value: 'Closed' } })
   fireEvent.click(screen.getByTestId('bulk-edit-apply'))
 
@@ -196,6 +199,13 @@ test('Bulk Check edits persist true and false only on rows selected after cleari
   await openList(admin, table)
   await waitFor(() => expect(cellTexts('title')).toHaveLength(2))
 
+  const initialTarget = within(rowsEl()).getByRole('link', { name: 'change' }).closest('tr')!
+  fireEvent.click(within(initialTarget).getByTestId('row-check'))
+  expect(screen.getByTestId('bulk-count')).toHaveTextContent('1 selected')
+  fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }))
+  expect(screen.queryByTestId('bulk-bar')).not.toBeInTheDocument()
+  expect(within(initialTarget).getByTestId('row-check')).not.toBeChecked()
+
   fireEvent.click(screen.getByTestId('select-all'))
   expect(screen.getByTestId('bulk-count')).toHaveTextContent('2 selected')
   fireEvent.click(screen.getByTestId('select-all'))
@@ -208,7 +218,7 @@ test('Bulk Check edits persist true and false only on rows selected after cleari
     const target = within(rowsEl()).getByRole('link', { name: 'change' }).closest('tr')!
     fireEvent.click(within(target).getByTestId('row-check'))
     expect(screen.getByTestId('bulk-count')).toHaveTextContent('1 selected')
-    fireEvent.change(screen.getByTestId('bulk-edit-field'), { target: { value: 'approved' } })
+    fireEvent.change(await screen.findByTestId('bulk-edit-field'), { target: { value: 'approved' } })
     fireEvent.change(screen.getByTestId('bulk-edit-value'), { target: { value: input } })
     fireEvent.click(screen.getByTestId('bulk-edit-apply'))
     await waitFor(() => expect(screen.queryByTestId('bulk-bar')).not.toBeInTheDocument())
@@ -228,7 +238,7 @@ test('Act on many rows at once: selected rows can be deleted together', async ({
   fireEvent.click(checks[0])
   fireEvent.click(checks[1])
   await waitFor(() => expect(screen.getByTestId('bulk-count')).toHaveTextContent('2 selected'))
-  fireEvent.click(screen.getByTestId('bulk-delete'))
+  fireEvent.click(await screen.findByTestId('bulk-delete'))
   // #327: it asks first, naming how many rows will go.
   const dialog = screen.getByRole('dialog', { name: 'Delete 2 rows?' })
   expect(dialog).toHaveTextContent('The selected rows will be permanently deleted. This cannot be undone.')
@@ -301,8 +311,8 @@ test('See a row\'s nested rows without opening it: expanding shows references, z
 
   fireEvent.click(screen.getByTestId('row-expand'))
   const grid = await screen.findByTestId('inline-children-lines')
-  expect(await within(grid).findByRole('link', { name: 'bolt' })).toHaveAttribute('href', '/featherbase/admin/Lv%20Item/bolt')
-  expect(await within(grid).findByRole('link', { name: 'Lila Lines' })).toHaveAttribute('href', `/featherbase/admin/Person/${owner.user}`)
+  expect(await within(grid).findByRole('link', { name: 'bolt' })).toHaveAttribute('href', '/featherbase/admin/table/lv-item/row/bolt')
+  expect(await within(grid).findByRole('link', { name: 'Lila Lines' })).toHaveAttribute('href', `/featherbase/admin/table/person/row/${owner.user}`)
   expect(within(grid).queryByText(owner.user!)).not.toBeInTheDocument()
   expect(within(grid).getByRole('cell', { name: '₹0.00' })).toBeInTheDocument()
   expect(within(grid).getByText('Σ Amount: ₹25.50')).toBeInTheDocument()
@@ -396,7 +406,7 @@ describe('A read-only source', () => {
     })
     const created = ((await res.json()) as { created: { name: string }[] }).created[0].name
 
-    await renderApp(`/featherbase/admin/${enc(created)}`, admin)
+    await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(created))}`, admin)
     await screen.findByTestId('list-view', {}, { timeout: 8000 })
     await waitFor(() => expect(within(rowsEl()).getByText('Karaikal')).toBeInTheDocument())
     expect(screen.getByTestId('source-badge')).toHaveTextContent('read-only')

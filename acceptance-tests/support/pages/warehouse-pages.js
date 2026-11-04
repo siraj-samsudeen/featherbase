@@ -3,7 +3,7 @@
 // #772: connecting a MotherDuck warehouse by its token, its source page, the
 // sidebar's Data sources group, searchable catalog, preview and copy setup.
 
-const SOURCE_TABLE = 'Data%20Source';
+const SOURCE_TABLE = 'data-source';
 
 class ConnectWarehousePage {
   constructor(page) {
@@ -11,7 +11,7 @@ class ConnectWarehousePage {
   }
 
   async open() {
-    await this.page.goto(`/featherbase/admin/${SOURCE_TABLE}/new`);
+    await this.page.goto(`/featherbase/admin/table/${SOURCE_TABLE}/new`);
     await this.page.getByTestId('kind-motherduck').click();
   }
 
@@ -54,7 +54,7 @@ class WarehouseSourcePage {
   }
 
   async open(name) {
-    await this.page.goto(`/featherbase/admin/${SOURCE_TABLE}/${encodeURIComponent(name)}`);
+    await this.page.goto(`/featherbase/admin/table/${SOURCE_TABLE}/row/${encodeURIComponent(name)}`);
     await this.page.getByTestId('warehouse-token').waitFor();
   }
 
@@ -270,7 +270,7 @@ class CopiedWarehousePage {
   }
 
   async open() {
-    await this.page.goto(`/featherbase/admin/${encodeURIComponent(this.table)}`);
+    await this.page.goto(`/featherbase/admin/table/${encodeURIComponent(this.table.toLowerCase().replace(/[-_\s]+/g, ' ').trim().replace(/ /g, '-'))}`);
     await this.page.getByTestId('list-view').waitFor();
   }
 

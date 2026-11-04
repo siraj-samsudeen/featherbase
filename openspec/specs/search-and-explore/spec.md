@@ -86,6 +86,58 @@ history is private to the user and follows them across devices.
 - **WHEN** the user starts typing something they searched before
 - **THEN** that past search is offered so they can rerun it
 
+### Requirement: Navigation history follows the current instance
+
+The user's recent and frequent destinations SHALL follow the instance's saved history on each app load and sign-in, replacing the browser's remembered history even when the instance has none. Visits not yet included in that history MUST remain available.
+
+A saved visit MUST count only once even when the browser's clock differs from the instance's clock. A delivery acknowledgement alone MUST NOT discard a visit missing from an earlier history snapshot.
+
+#### Scenario: Old destinations disappear after history is cleared
+
+```gherkin
+Given the user has remembered visits to the Person destination
+And the instance has forgotten the user's visits
+When the user reloads the app
+Then the user's navigation history has no Person destination
+```
+
+#### Scenario: Current history replaces old remembered destinations
+
+```gherkin
+Given the browser remembers an old destination absent from the instance history
+And the instance remembers the user's Person destination
+When the user reloads the app
+Then the user's navigation history contains Person but not the old destination
+```
+
+#### Scenario: A new visit survives a history refresh
+
+```gherkin
+Given the user's history is loading
+When the user opens the Person destination before history finishes loading
+Then the Person destination remains in the user's navigation history
+```
+
+### Requirement: Unconfirmed cached history stays hidden
+
+The user's cached navigation history MUST remain hidden until the initial history request finishes. If that request fails, the user SHALL be offered the remembered history as a best-effort fallback.
+
+#### Scenario: Old destinations never flash while history loads
+
+```gherkin
+Given the browser remembers an old destination absent from the instance history
+When the user's history is still loading
+Then neither navigation surface offers the old destination
+```
+
+#### Scenario: Remembered destinations remain usable when history fails
+
+```gherkin
+Given the user has remembered visits to the Person destination
+When the initial history request fails
+Then both navigation surfaces offer the Person destination
+```
+
 ### Requirement: Explore chains tables and narrows them as you click
 
 Explore SHALL let the user start from a Table and add up to two more, each
@@ -210,3 +262,54 @@ place without changing the selections that narrowed the chain.
   and selects one of the items
 - **THEN** the item's details open without leaving Explore
 - **AND** closing the details leaves the supplier and order selections intact
+
+### Requirement: Find the starting table by typing
+
+In Explore, the user SHALL be able to type words from a table's name, in any
+case, to narrow the tables to start from to those whose name holds every
+word, and press Enter to start from the first match.
+
+#### Scenario: Explore opens on the purchases
+
+```gherkin
+Given the user is a System Manager
+And a table of suppliers and a table of purchases, each purchase from a supplier
+When the user types "purch" in Explore's table search and presses Enter
+Then Explore starts from the purchases
+```
+
+### Requirement: Explore shows a linked row by its title
+
+A row in Explore SHALL show each row it links to by that row's title (the
+value that names it, such as a supplier's name) rather than its id, wherever
+the user may read that title.
+
+#### Scenario: Each purchase shows its supplier "Acme"
+
+```gherkin
+Given the user is a System Manager
+And a table of suppliers and a table of purchases, each purchase from a supplier
+And the purchases are from the supplier "Acme"
+When the user types "purch" in Explore's table search and presses Enter
+Then each purchase shows "Acme"
+```
+
+### Requirement: Recent and frequent destinations offer only rows that still exist
+
+The sidebar's recently opened and frequent destinations, and the command
+bar's recent and frequent groups, SHALL offer only remembered rows that still
+exist and that the user can read. The user's history SHALL be kept; a
+destination left out frees its place for the next one remembered.
+
+#### Scenario: A deleted row is no longer offered
+
+- **WHEN** the user opened the rows "Kept bin" and "Deleted bin", and
+  "Deleted bin" was then deleted
+- **THEN** the sidebar and the command bar offer "Kept bin" and not
+  "Deleted bin"
+
+#### Scenario: A row deleted from its form leaves at once
+
+- **WHEN** the user opens "Deleted bin" and deletes it from its form
+- **THEN** the sidebar stops offering it without a reload, and still offers
+  "Kept bin"

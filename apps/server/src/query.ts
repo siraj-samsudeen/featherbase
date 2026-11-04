@@ -7,8 +7,10 @@ import { getScopeMap, isPrivileged, permissionScope, permittedTiers } from './pe
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
+import { mandatoryWhere, needsMandatoryRowRead } from './mandatory-access'
+import { MAX_RELATED_DEPTH, MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
 
-export type Filter = [string, string, unknown]
+export type { Filter } from './related-filter'
 
 interface ListArgs {
   filters?: Filter[]
@@ -18,7 +20,7 @@ interface ListArgs {
   limit_page_length?: number
 }
 
-const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', 'related'] as const
+const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', 'related', 'not related'] as const
 
 // NAV-002: the 'related' operator — the ONE relationship-shaped filter the
 // list language understands. It constrains rows by a relationship to
@@ -44,54 +46,6 @@ const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in'
 // queries BEFORE any SQL executes, so a wide payload of sibling specs is
 // amplification. MAX_RELATED_HOPS caps the TOTAL specs compiled per
 // request, breadth and depth together.
-const MAX_RELATED_DEPTH = 3
-const MAX_RELATED_HOPS = 16
-
-interface RelatedSpec {
-  table: string
-  via?: string
-  column?: string
-  // #106 review: when one row table backs SEVERAL Sub-table columns
-  // (sales_lines and return_lines both → Order Line), an optional
-  // parentfield narrows the via hop to one owning column. Omitted = any
-  // field, which is the right default for "is this row referenced at all"
-  // (Connections counts).
-  parentfield?: string
-  filters?: Filter[]
-}
-
-function parseRelatedSpec(value: unknown): RelatedSpec {
-  const bad = (message: string) => new AppError('ValidationError', message)
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw bad(`'related' filter value must be an object { table, via?, column?, filters? }`)
-  const v = value as Record<string, unknown>
-  if (typeof v.table !== 'string' || !v.table)
-    throw bad(`'related' filter needs a target { table }`)
-  if (v.via !== undefined && (typeof v.via !== 'string' || !v.via))
-    throw bad(`'related' via must be a sub-table name`)
-  if (v.column !== undefined && (typeof v.column !== 'string' || !v.column))
-    throw bad(`'related' column must be a column name`)
-  // via and column travel together — a lone column would be silently
-  // ignored by the Reference shape, and a lone via has no column to hop on.
-  if (v.column !== undefined && v.via === undefined)
-    throw bad(`'related' column only applies together with via`)
-  if (v.via !== undefined && v.column === undefined)
-    throw bad(`'related' via needs the sub-table column that references the target`)
-  if (v.parentfield !== undefined && (typeof v.parentfield !== 'string' || !v.parentfield))
-    throw bad(`'related' parentfield must be a Sub-table column name`)
-  if (v.parentfield !== undefined && v.via === undefined)
-    throw bad(`'related' parentfield only applies together with via`)
-  if (v.filters !== undefined && !Array.isArray(v.filters))
-    throw bad(`'related' filters must be an array of [field, operator, value]`)
-  return {
-    table: v.table,
-    via: v.via as string | undefined,
-    column: v.column as string | undefined,
-    parentfield: v.parentfield as string | undefined,
-    filters: v.filters as Filter[] | undefined,
-  }
-}
-
 const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
 // PERM-006: the columns a caller may name in select/filter/order/group.
@@ -163,7 +117,7 @@ export async function scopedWhere(
   const filters = [...callerFilters]
   // Extra WHERE fragments that can't be expressed as plain [field, op, value]
   // filters (they need OR with IS NULL).
-  const extraConds: ReturnType<typeof sql>[] = []
+  const extraConds: ReturnType<typeof sql>[] = [(await mandatoryWhere(meta, user)).frag]
   if (scope === 'own_rows') filters.push(['created_by', '=', user])
   // PERM-005: user permissions narrow by the table itself and by any
   // Reference column pointing at a restricted table. An UNSET reference does
@@ -177,10 +131,10 @@ export async function scopedWhere(
   // ones carrying a Sub-table column pointing here), so each becomes a
   // branch scoped to what the caller may see of it — and a parent Table the
   // caller cannot read at all contributes no branch, hiding its children.
-  if (meta.kind === 'sub_table' && !bypass)
+  if (meta.kind === 'sub_table')
     extraConds.push((await parentScopeCond(meta.name, user)).frag)
   // #342: likewise a comment or an edit is only as visible as its row.
-  if (ROW_ATTACHED_TABLES.has(meta.name) && !bypass)
+  if (ROW_ATTACHED_TABLES.has(meta.name))
     extraConds.push((await attachedRowScopeCond(meta.name, user, callerFilters)).frag)
   if (!bypass) {
     const upMap = await getScopeMap(user)
@@ -226,6 +180,15 @@ export async function scopedWhere(
     if (!OPS.includes(op as (typeof OPS)[number]))
       throw new AppError('ValidationError', `Unknown filter operator ${op}`)
     if (op === 'related') return relatedCond(field, value)
+    // #835: rows holding NONE of a sub-table's matching rows ("people with no
+    // role of their own"). Only the via shape: negating a Reference match
+    // would also have to decide what an empty reference means.
+    if (op === 'not related') {
+      const spec = parseRelatedSpec(value)
+      if (!spec.via) throw new AppError('ValidationError', `'not related' needs a sub-table { via, column, table }`)
+      const { frag } = await relatedCond(field, value)
+      return { frag: sql`not ${frag}` }
+    }
     return { frag: plainCond(field, op, value) }
   }
 
@@ -378,10 +341,11 @@ async function parentScopeCond(
     const scope = await permissionScope(user, holder, 'read')
     if (scope === 'none') continue
     branches.push(
-      scope === 'all'
+      scope === 'all' && !holderMeta.access_policy
         ? sql`parenttype = ${holder}`
         : sql`(parenttype = ${holder} and parent in (
-             select ${sql(physicalRowKey(holder))} from ${sql(await tableRelation(holder))} where created_by = ${user}))`,
+             select ${sql(physicalRowKey(holder))} from ${sql(await tableRelation(holder))}
+             where ${(await mandatoryWhere(holderMeta, user)).frag} and ${scope === 'own_rows' ? sql`created_by = ${user}` : sql`true`}))`,
     )
   }
   if (!branches.length) return { frag: sql`false` }
@@ -422,10 +386,15 @@ async function attachedRowScopeCond(
     : (await sql`select distinct ref_table from ${rel} where ref_table is not null`).map((r) => String(r.ref_table))
   const branches: ReturnType<typeof sql>[] = table === 'File' ? [sql`coalesce(${rel}.ref_name, '') = ''`] : []
   const scopes = await getScopeMap(user)
+  const privileged = await isPrivileged(user)
   for (const target of targets) {
+    if (privileged && !(await needsMandatoryRowRead(target))) {
+      branches.push(sql`${rel}.ref_table = ${target}`)
+      continue
+    }
     const targetMeta = ROW_ATTACHED_TABLES.has(target) ? null : await getMeta(target).catch(() => null)
     if (!targetMeta) continue
-    branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
+    if (!targetMeta.access_policy) branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
       select share_name from share where share_table = ${target} and read = true
         and (person = ${user} or service_account = ${user})))`)
     const scope = await permissionScope(user, target, 'read')

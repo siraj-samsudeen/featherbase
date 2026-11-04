@@ -71,7 +71,7 @@ describe('WEB-002: web forms', () => {
       message: 'Hi',
       secret_note: 'should be dropped',
     })
-    expect(res.row_id).toMatch(/^[0-9a-f]{10}$/)
+    expect(res.row_id).toMatch(/^[1-9][0-9]*$/) // #855: new Tables number rows 1, 2, 3
     const [doc] =
       await sql`select full_name, message, secret_note from featherbase.wf_srv_msg where row_id = ${res.row_id}`
     expect(doc.full_name).toBe('Alice')

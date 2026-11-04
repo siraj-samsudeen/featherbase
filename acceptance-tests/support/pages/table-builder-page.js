@@ -37,6 +37,17 @@ class TableBuilderPage {
     }
   }
 
+  /** What the builder says about how the table's rows will be named. */
+  async namingPreview() {
+    return (await this.page.getByTestId('dt-naming-preview').first().textContent()).trim();
+  }
+
+  /** Names rows after a column, with fixed text before its value (#858). */
+  async nameRowsAfter(columnName, prefix) {
+    await this.page.getByTestId('dt-naming').first().selectOption(`field:${columnName}`);
+    await this.page.getByTestId('dt-naming-prefix').first().fill(prefix);
+  }
+
   /** Creates the table and waits for its list. */
   async create() {
     await this.page.getByTestId('dt-create').click();

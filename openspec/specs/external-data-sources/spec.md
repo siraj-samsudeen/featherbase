@@ -52,6 +52,75 @@ is connected.
 - **THEN** the request is refused, naming the table that is not on the list
 - **AND** neither allowed table is connected
 
+### Requirement: Incomplete table restrictions explain how to qualify a name
+
+Saving a data source SHALL refuse an SQL table restriction that lacks its namespace, giving correction guidance on the restriction field: schema and table for Postgres, database and table for MySQL, catalog, schema and table for DuckDB warehouses. CSV folders SHALL continue to accept exact relative filenames without a namespace; a default namespace SHALL NOT fill in an incomplete restriction.
+
+#### Scenario Outline: An incomplete restriction is refused before it is saved
+
+```gherkin
+Given the user manages a "<engine>" source with default namespace "<default>"
+When the user saves its table restriction as "<entry>"
+Then saving is refused with restriction-field guidance to use "<format>"
+And the source is not registered
+
+Examples:
+  | engine   | default   | entry             | format               |
+  | postgres | public    | stores            | schema.table         |
+  | postgres |           | stores            | schema.table         |
+  | mysql    | shop      | stores            | database.table       |
+  | duckdb   | gold.main | stores            | catalog.schema.table |
+  | duckdb   | gold      | main.stores       | catalog.schema.table |
+  | postgres | public    | public.ok,stores  | schema.table         |
+```
+
+#### Scenario Outline: An explicit restriction saves without contacting its source
+
+```gherkin
+Given the user manages a "<engine>" source with default namespace ""
+When the user saves its table restriction as "<entry>"
+Then the source is registered with exactly that restriction
+
+Examples:
+  | engine     | entry                 |
+  | postgres   | public.stores         |
+  | mysql      | shop.stores           |
+  | duckdb     | gold.main.stores      |
+  | csv-folder | stores.csv            |
+  | csv-folder | finance/stores.csv    |
+```
+
+#### Scenario: A refused edit preserves the saved restriction
+
+```gherkin
+Given a Postgres source is registered with restriction "public.stores"
+When the user changes its restriction to "public.stores,stores"
+Then saving is refused with restriction-field guidance to use "schema.table"
+And its stored restriction is still "public.stores"
+```
+
+### Requirement: Stored incomplete restrictions never gain implied access
+
+An existing incomplete restriction SHALL remain unchanged and SHALL NOT gain access through a default namespace; a refusal SHALL explain how to correct it. An exact allowed entry in the same stored restriction SHALL continue to work.
+
+#### Scenario: A stored bare name remains refused with correction guidance
+
+```gherkin
+Given a Postgres source already stores the restriction "stores" for its public stores table
+When the user tries to connect the public stores table
+Then connection is refused with guidance to use "schema.table"
+And its stored restriction is still "stores"
+```
+
+#### Scenario: A qualified entry still works beside an old incomplete entry
+
+```gherkin
+Given a Postgres source already stores the restriction "stores,public.stores" for its public stores table
+When the user tries to connect the public stores table
+Then the public stores table connects
+And its stored restriction is still "stores,public.stores"
+```
+
 ### Requirement: A data source that is in use can't be removed
 
 A data source SHALL NOT be removed while any table is still connected
@@ -333,3 +402,124 @@ A Featherbase table SHALL be able to link its rows to rows of a connected table.
 
 - **WHEN** the "Accounts" data source stops responding and the user saves a "Holders" row with an account link
 - **THEN** the row is not saved, and the user is told the data source can't be reached
+
+### Requirement: Tables connect through a login that owns none of them
+
+A Postgres data source whose login may read its tables but owns none of them
+SHALL find the column that identifies each row, and let the user connect the
+table, exactly as when the login owns the tables.
+
+#### Scenario: Shops connect through a login that owns nothing
+
+```gherkin
+Given the user is a System Manager
+And a Postgres database with a shop table whose rows are identified by their id
+And a data source whose login may only read that table and owns nothing
+When the user browses the data source
+Then the shop table is offered for connecting
+When the user connects it
+Then the user sees the database's shops listed in Featherbase
+```
+
+### Requirement: Name each table as it is connected
+
+When connecting a data source's tables, the user SHALL be able to give each
+one the name it will have in Featherbase; a table left as proposed keeps the
+proposed name.
+
+#### Scenario: The tables read "Shelf" and "Bin"
+
+```gherkin
+Given the user is a System Manager
+And a Postgres database of shelves and the bins on each shelf
+And a data source for that database
+When the user connects its shelf and bin tables, naming them "Shelf" and "Bin"
+Then the user sees tables called "Shelf" and "Bin" in Featherbase
+```
+
+### Requirement: A link column is named after what it points at
+
+A column that points at another table's rows SHALL be labelled by what it
+points at, so a bin's shelf column reads "Shelf", not "Shelf Id".
+
+#### Scenario: A bin's shelf is labelled "Shelf"
+
+```gherkin
+Given the user is a System Manager
+And a Postgres database of shelves and the bins on each shelf
+And its shelf and bin tables connected as "Shelf" and "Bin"
+When the user opens a bin
+Then the user sees its link to a shelf labelled "Shelf"
+```
+
+### Requirement: A connected row reads by its title
+
+Wherever Featherbase shows a row by its title (the value that names it, such
+as a shelf's name), a row of a connected table SHALL show that title, never
+its id. The user sees only the titles of rows they may read.
+
+#### Scenario: A bin's shelf reads "Top" on the relationship map
+
+```gherkin
+Given the user is a System Manager
+And a Postgres database of shelves and the bins on each shelf
+And its shelf and bin tables connected as "Shelf" and "Bin"
+And a bin on the shelf titled "Top"
+When the user opens that bin's relationship map
+Then the user sees its shelf as "Top"
+```
+
+#### Scenario: A shelf the user may not read keeps its title hidden
+
+```gherkin
+Given a Postgres database of shelves and the bins on each shelf
+And its shelf and bin tables connected as "Shelf" and "Bin"
+And a bin on the shelf titled "Top"
+And the user may read bins but not shelves
+When the user opens that bin's relationship map
+Then the user does not see "Top"
+```
+
+### Requirement: Explore follows linked rows within one connected Postgres source
+
+The user SHALL explore direct links within one Postgres data source over all matching upstream records, with exact totals and groups and the same access restrictions at every step. Other sources, indirect links and requests beyond the existing limits SHALL remain refused; selecting records and summing values remain unchanged.
+
+#### Scenario: All connected floors appear before selecting a store
+
+```gherkin
+Given a connected Postgres source has North with two floors, South with one floor and Empty with none
+When the user explores stores followed by floors without selecting a store
+Then the user sees the three linked floors with a total of three
+```
+
+#### Scenario: Selecting a store narrows its floors
+
+```gherkin
+Given a connected Postgres source has North with two floors, South with one floor and Empty with none
+When the user explores floors for North
+Then the user sees only North's two floors with a total of two
+```
+
+#### Scenario: Selecting an empty store shows no floors
+
+```gherkin
+Given a connected Postgres source has North with two floors, South with one floor and Empty with none
+When the user explores floors for Empty
+Then the user sees no floors with a total of zero
+```
+
+#### Scenario: An empty upstream search shows no floors
+
+```gherkin
+Given a connected Postgres source has North with two floors, South with one floor and Empty with none
+When the user explores floors for stores matching "Missing" without selecting a store
+Then the connected result has no floors with a total of zero
+```
+
+#### Scenario: A store beyond the displayed page still contributes its floors
+
+```gherkin
+Given a connected Postgres source has more than five hundred stores
+When the user explores floors without selecting a store from that source
+Then floors linked to stores beyond the displayed page contribute to the exact result
+```

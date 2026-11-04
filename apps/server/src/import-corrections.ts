@@ -16,7 +16,7 @@ type Row = Record<string, unknown>
 type Change = [string, unknown, unknown]
 interface History { row_id: string; created_by: string; created_at: Date; data: { changed?: Change[]; import_run?: string; import_revert?: string; resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown } } }
 interface Conflict { field: string; kept: unknown; incoming: unknown; editor: string; edited_at: Date }
-export interface ImportPlan { values: Row; conflicts: Conflict[]; fields_updated: number; source_values: Row; protected_values: Row }
+export interface ImportPlan { values: Row; conflicts: Conflict[]; fields_updated: number; fields_kept: number; source_values: Row; protected_values: Row }
 const normalized = (value: unknown, type: string): unknown => {
   // A save stores an empty cell as no value in every type but JSON.
   if (value == null || (value === '' && type !== 'JSON')) return null
@@ -38,6 +38,7 @@ export async function planImport(meta: TableMeta, current: Row, input: Row, user
   const protected_values: Row = {}
   const conflicts: Conflict[] = []
   let fields_updated = 0
+  let fields_kept = 0
   const history = meta.track_changes ? await sql<History[]>`select row_id, created_by, created_at, data from version where ref_table = ${meta.name} and ref_name = ${String(current.row_id)} and created_at >= (select created_at from table_def where name = ${meta.name}) order by created_at desc, row_id desc` : []
   // Pre-feature import versions already have a trustworthy link from their log.
   // Only the logs that touched this row: a Table's whole log history is read once per imported row otherwise.
@@ -55,6 +56,8 @@ export async function planImport(meta: TableMeta, current: Row, input: Row, user
     if (person) protected_values[field] = normalized(current[field], column.column_type)
     if (same(current[field], allowed[field], column.column_type)) continue
     if (person) {
+      // Retention includes the previous source, which raises no new conflict.
+      fields_kept++
       const observation = observations.find(o => Object.hasOwn(o.values, field))
       let supplied: unknown
       let hasSupplied = false
@@ -71,7 +74,7 @@ export async function planImport(meta: TableMeta, current: Row, input: Row, user
       if (!hasSupplied || !same(supplied, allowed[field], column.column_type)) conflicts.push({ field, kept: normalized(current[field], column.column_type), incoming: normalized(allowed[field], column.column_type), editor: latest.created_by, edited_at: latest.created_at })
     } else fields_updated++
   }
-  return { values, conflicts, fields_updated, source_values, protected_values }
+  return { values, conflicts, fields_updated, fields_kept, source_values, protected_values }
 }
 
 export async function latestVersion(table: string, name: string): Promise<string | null> {

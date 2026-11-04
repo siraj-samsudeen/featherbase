@@ -9,6 +9,7 @@ import { grantRole } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 import { registerJob, runOneJob } from '../src/jobs'
 import { invalidateMeta } from '../src/meta'
+import { runMigrations } from '../src/migrate'
 
 let dir: string
 beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir) })
@@ -37,6 +38,22 @@ describe('Scheduled copied-table refresh', () => {
     expect(changed).toMatchObject({ row_id: schedule.row_id, cadence: 'daily', enabled: false })
     expect(await sql`select row_id from background_job where method = ${schedule.method} and job_status = 'queued'`).toHaveLength(0)
     expect(await admin.get(path)).toMatchObject({ row_id: schedule.row_id, enabled: false })
+  })
+
+  test('a provisional schedule survives the final migration identity', async ({ admin }) => {
+    await makeCopy(admin)
+    const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
+    const before = await admin.get('/api/table/Scheduled%20Stores:copy_schedule')
+    const info = await admin.get('/api/table/Scheduled%20Stores:copy_info')
+    await sql`delete from migration where name = '0010_copy_refresh_schedule.sql'`
+    await sql`insert into migration (name) values ('0008_copy_refresh_schedule.sql')`
+    await runMigrations(() => {})
+    expect(await admin.get('/api/table/Scheduled%20Stores:copy_schedule')).toEqual(before)
+    expect(await admin.get('/api/table/Scheduled%20Stores:copy_info')).toEqual(info)
+    expect(await admin.get('/api/table/Scheduled%20Stores/S001')).toMatchObject({ title: 'Harbour Road' })
+    await admin.delete('/api/table/Data%20Source/refresh-test')
+    expect(await sql`select row_id from scheduled_job where method = ${schedule.method}`).toHaveLength(0)
+    expect(await sql`select row_id from background_job where method = ${schedule.method} and job_status = 'queued'`).toHaveLength(0)
   })
 
   test('ordinary editors cannot administer a refresh', async ({ admin, createUser }) => {

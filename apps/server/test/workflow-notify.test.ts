@@ -99,7 +99,7 @@ describe('WF-004: pending-approval notifications', () => {
     expect(String(mail.subject)).toContain('Approval required')
     expect(String(mail.subject)).toContain('wf-notify-1')
     // The body links to the document and lists the actions the approver can take.
-    expect(String(mail.body)).toContain(`/admin/${encodeURIComponent(DT)}/wf-notify-1`)
+    expect(String(mail.body)).toContain('/featherbase/admin/table/wf-notify-task/row/wf-notify-1')
     expect(String(mail.body)).toContain('Approve')
     expect(mail.ref_table).toBe(DT)
     expect(mail.send_status).toBe('queued')
@@ -127,7 +127,7 @@ describe('WF-004: pending-approval notifications', () => {
     expect(before).toHaveLength(1)
     expect(before[0]).toMatchObject({
       recipient: APPROVER, subject: `Approval required: ${DT} wf-notify-1`,
-      body: `${DT} wf-notify-1 has entered the "Pending" state and is awaiting your action.\n\nAvailable actions: Approve\nOpen the row: /featherbase/admin/${encodeURIComponent(DT)}/wf-notify-1`,
+      body: `${DT} wf-notify-1 has entered the "Pending" state and is awaiting your action.\n\nAvailable actions: Approve\nOpen the row: /featherbase/admin/table/wf-notify-task/row/wf-notify-1`,
       ref_table: DT, reference_name: 'wf-notify-1', send_status: 'queued',
     })
 
@@ -177,7 +177,7 @@ describe('WF-004: pending-approval notifications', () => {
     expect(await sql`select recipient, subject, body, ref_table, reference_name, send_status from email_queue where ref_table = ${DT}`)
       .toEqual([{
         recipient: 'wf-distinct@x.com', subject: `Approval required: ${DT} has-recipient`,
-        body: `${DT} has-recipient has entered the "Pending" state and is awaiting your action.\n\nAvailable actions: Approve\nOpen the row: /featherbase/admin/${encodeURIComponent(DT)}/has-recipient`,
+        body: `${DT} has-recipient has entered the "Pending" state and is awaiting your action.\n\nAvailable actions: Approve\nOpen the row: /featherbase/admin/table/wf-notify-task/row/has-recipient`,
         ref_table: DT, reference_name: 'has-recipient', send_status: 'queued',
       }])
     expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/no-recipient`)).toEqual(waiting)
@@ -244,7 +244,7 @@ describe('WF-004: pending-approval notifications', () => {
         where ref_table = ${DT} and reference_name = 'wf-notify-new'`
       expect(emails.map((e) => e.recipient)).toEqual([APPROVER])
       expect(String(emails[0].subject)).toContain('Approval required')
-      expect(String(emails[0].body)).toContain(`/admin/${encodeURIComponent(DT)}/wf-notify-new`)
+      expect(String(emails[0].body)).toContain('/featherbase/admin/table/wf-notify-task/row/wf-notify-new')
       expect(String(emails[0].body)).toContain('Approve')
     })
 

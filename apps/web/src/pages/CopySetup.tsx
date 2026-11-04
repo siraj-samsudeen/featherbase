@@ -5,9 +5,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
-import { fmtCount } from '../lib/inr'
+import { tableSlug } from 'shared'
+import { fmtCount } from '@featherbase/shop-floor'
 import { browserHref, clearCopyDraft, previewTable, readCopyDraft, writeCopyDraft } from '../lib/warehouse'
-import { Breadcrumbs, Button, DataList, Notice, SearchableList, Select, Skeleton, StatusPill, TextInput, cardClasses, type DataColumn } from '../components/ui'
+import { Breadcrumbs, Button, DataList, Notice, SearchableList, Select, Skeleton, StatusPill, TextInput, cardClasses, type DataColumn } from '@featherbase/shop-floor'
 
 const enc = encodeURIComponent
 const bookkeeping = (column: string) => column.startsWith('_')
@@ -65,7 +66,7 @@ export function CopySetup({ name, database, schema, table, returnTo }: { name: s
         columns: kept.map((r) => ({ source: r.source, column_name: r.column_name, label: r.label || undefined, description: r.description || undefined })),
       })
       clearCopyDraft(identity)
-      navigate({ to: '/featherbase/admin/$table', params: { table: made.table }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table', params: { table: tableSlug(made.table) }, search: { filters: undefined } })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'The copy could not be made')
     } finally {
@@ -84,8 +85,8 @@ export function CopySetup({ name, database, schema, table, returnTo }: { name: s
   return (
     <div data-testid="copy-setup" className="flex min-w-0 flex-1 flex-col gap-4">
       <Breadcrumbs items={[
-        { label: 'Data Source', href: '/featherbase/admin/Data%20Source' },
-        { label: name, href: `/featherbase/admin/Data%20Source/${enc(name)}` },
+        { label: 'Data Source', href: '/featherbase/admin/table/data-source' },
+        { label: name, href: `/featherbase/admin/table/data-source/row/${enc(name)}` },
         { label: database, href: catalogHref },
         { label: schema, href: catalogHref },
         { label: table, href: back },

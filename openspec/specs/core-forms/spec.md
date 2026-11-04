@@ -190,3 +190,105 @@ A form script is a small piece of code a developer attaches to a Table to adjust
 
 - **WHEN** the user saves a row whose on-load step changed a field
 - **THEN** the form shows the row as saved, with the value the step set
+
+### Requirement: Choose an adjustment without guessing names
+
+A user editing a metadata adjustment SHALL choose its Table, an existing column or the whole Table, and a setting permitted for that target. Boolean settings SHALL offer a yes-or-no control. New adjustments SHALL receive an ID automatically. Changing a target SHALL discard dependent selections so an old column or value cannot silently apply to the new target.
+
+#### Scenario: Hide a column without naming the adjustment
+
+```gherkin
+Given the user can adjust a Table with a column called "floor"
+When the user saves an adjustment that hides "floor"
+Then the adjustment is saved without the user supplying an ID
+And the saved adjustment identifies its Table, "floor" and "hidden"
+And the user can open the affected Table from the saved adjustment
+```
+
+#### Scenario: A different target requires a fresh selection
+
+```gherkin
+Given the user is preparing an adjustment that hides "floor"
+When the user chooses a different Table for the adjustment
+Then the old column, setting and value are cleared
+```
+
+#### Scenario: Whole-Table adjustments remain available
+
+```gherkin
+Given the user can adjust a Table with a column called "floor"
+When the user saves a label adjustment for the whole Table
+Then the adjustment is saved for the whole Table rather than a column
+```
+
+### Requirement: One adjustment for each setting
+
+A Table, column and setting SHALL have at most one adjustment; empty column scopes all mean the whole Table. A duplicate creation or move SHALL be refused with guidance to edit the existing adjustment, while editing that same adjustment remains allowed.
+
+#### Scenario: A second adjustment cannot compete with the first
+
+```gherkin
+Given the user has saved an adjustment that hides "floor"
+When the user tries to add the same adjustment again
+Then the user is told to edit the existing adjustment
+And only the original adjustment is saved
+```
+
+#### Scenario: A move cannot replace another adjustment
+
+```gherkin
+Given the user has saved an adjustment that hides "floor"
+When the user tries to move it to a setting that already has an adjustment
+Then the user is told to edit the existing adjustment
+And the original adjustment stays on its previous Table
+```
+
+### Requirement: A moved adjustment leaves no old effect
+
+Saving an adjustment for a different Table SHALL remove its effect from the previous Table and apply it to the new Table, including when those Tables have already been viewed.
+
+#### Scenario: Only the new target keeps the adjustment
+
+```gherkin
+Given the user has saved an adjustment that hides "floor"
+When the user moves the adjustment to another Table
+Then the old Table no longer hides its column
+And the new Table hides the selected column
+```
+
+### Requirement: Pick a linked row inside nested rows
+
+A link in a grid of nested rows SHALL offer the linked Table's matching rows as the user types and keep the
+one they pick, as a link field on the form does. Text the user typed but never picked SHALL NOT be saved as
+a link.
+
+#### Scenario: A role is picked from the roles that exist
+
+```gherkin
+Given the user is adding a role to a person
+When the user types "Sys" into the new role and picks "System Manager"
+Then only roles matching "Sys" were offered
+And after saving, the person has the System Manager role
+```
+
+#### Scenario: A typed role that was never picked is not saved
+
+```gherkin
+Given the user is adding a role to a person
+When the user types "Store Boss" into the new role without picking one
+Then the person cannot be saved until the role is picked
+And the person has no Store Boss role
+```
+
+### Requirement: Read a row using its configured presentation
+
+An existing read-only row with a reading presentation SHALL show its configured title, headers, body, optional attachment names and optional notice before its raw values. Unconfigured, editable and new rows SHALL retain the ordinary form.
+
+#### Scenario: Read a configured reference notice
+
+```gherkin
+Given the user can read a reference notice with a configured reading presentation
+When the user opens the reference notice
+Then the reference notice uses its configured reading presentation
+And the ordinary editable reference form remains available for writable rows
+```

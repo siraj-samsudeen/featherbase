@@ -3,9 +3,9 @@
 // opening the browser there. Styled like SidebarGroup (AdminLayout).
 import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Cable, Database, Plus } from './ui/icons'
+import { Cable, Database, Plus } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
-import { touchRowClasses } from './ui'
+import { touchRowClasses } from '@featherbase/shop-floor'
 
 interface SourceRow { row_id: string; engine: string; databases: { name: string }[] | null }
 
@@ -27,8 +27,8 @@ export function DataSourcesSidebar() {
       {(sources.data?.data ?? []).map((s) => (
         <div key={s.row_id} data-testid="sidebar-source">
           <Link
-            to="/featherbase/admin/$table/$name"
-            params={{ table: 'Data Source', name: s.row_id }}
+            to="/featherbase/admin/table/$table/row/$name"
+            params={{ table: 'data-source', name: s.row_id }}
             search={{ prefill: undefined }}
             className={link}
             data-testid="sidebar-source-link"
@@ -54,8 +54,8 @@ export function DataSourcesSidebar() {
         </div>
       ))}
       <Link
-        to="/featherbase/admin/$table/$name"
-        params={{ table: 'Data Source', name: 'new' }}
+        to="/featherbase/admin/table/$table/new"
+        params={{ table: 'data-source' }}
         search={{ prefill: undefined }}
         className={link}
         data-testid="sidebar-connect-source"

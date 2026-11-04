@@ -6,7 +6,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../lib/api'
 import { connectWarehouse, testToken, type TokenReport } from '../lib/warehouse'
-import { Breadcrumbs, Button, DataList, Field, Notice, SearchableList, StatusPill, TextInput, buttonClasses, cardClasses } from '../components/ui'
+import { Breadcrumbs, Button, DataList, Field, Notice, SearchableList, StatusPill, TextInput, buttonClasses, cardClasses } from '@featherbase/shop-floor'
 import { FormView } from '../components/FormView'
 
 const KINDS = [
@@ -26,7 +26,7 @@ export default function ConnectSource() {
     <div data-testid="connect-source">
       <div className="mb-4"><Breadcrumbs items={[
         { label: 'Admin', href: '/featherbase/admin' },
-        { label: 'Data Source', href: '/featherbase/admin/Data%20Source' },
+        { label: 'Data Source', href: '/featherbase/admin/table/data-source' },
         { label: 'New' },
       ]} /></div>
       {kind === 'motherduck' ? (
@@ -61,7 +61,7 @@ export default function ConnectSource() {
               </div>
             )}
           </section>
-          {picked && <FormView key={picked.engine} table="Data Source" name="new" prefill={{ engine: picked.engine }} />}
+          {picked && <FormView key={picked.engine} table="Data Source" name="" isNew prefill={{ engine: picked.engine }} />}
         </>
       )}
     </div>
@@ -141,7 +141,7 @@ function MotherDuckForm({ onChangeKind }: { onChangeKind: () => void }) {
           <p className="text-xs text-ink-muted">Read tables from a database or warehouse you already have. Only a System Manager can do this.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link to="/featherbase/admin/$table" params={{ table: 'Data Source' }} search={{ filters: undefined }} className={buttonClasses()}>
+          <Link to="/featherbase/admin/table/$table" params={{ table: 'data-source' }} search={{ filters: undefined }} className={buttonClasses()}>
             Cancel
           </Link>
           <Button

@@ -7,6 +7,8 @@
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { saveDoc } from './document'
+import { runAsSystemActor } from './system-actor'
+import { signInActor } from 'shared'
 import { writeThroughIdentity } from './person-identifiers'
 import { alertNewArrival, isMockProvider } from './waiting-for-access'
 import { INVALID_CREDENTIALS, burnPasswordCheck, findPasswordAccount, issueSession, verifyPassword, type IssuedSession } from './auth'
@@ -270,12 +272,14 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { test
       if (taken) throw new AppError('AuthenticationError', ADDRESS_IN_USE)
       // An opaque, permanent id (minted by the Person Table's id pattern) —
       // the address is contact data, not the anchor.
-      const created = await saveDoc(
+      // #829: recorded as created by the sign-in, not by an administrator.
+      const actor = signInActor(method.kind)
+      const created = await runAsSystemActor(actor, () => saveDoc(
         'Person',
         { email, full_name: starterName(v, email), enabled: true, roles: [] },
-        'Administrator',
+        actor,
         'insert',
-      )
+      ))
       const id = newIdentityId()
       await sql`insert into sign_in_identity ${sql({
         id,

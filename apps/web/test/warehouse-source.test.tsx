@@ -34,7 +34,7 @@ async function connect(admin: Client, name: string) {
 
 test('picking MotherDuck folds the kinds into one line; a tested token lists the databases to tick; saving opens the browser', async ({ admin }) => {
   const user = userEvent.setup()
-  await renderApp('/featherbase/admin/Data%20Source/new', admin)
+  await renderApp('/featherbase/admin/table/data-source/new', admin)
   await user.click(await screen.findByTestId('kind-motherduck', {}, WAIT))
   expect(screen.getByTestId('kind-line')).toHaveTextContent('MotherDuck')
   expect(screen.queryByTestId('kind-postgres')).not.toBeInTheDocument()
@@ -58,7 +58,7 @@ test('picking MotherDuck folds the kinds into one line; a tested token lists the
 
 test('a refused token says so in plain words and offers no databases', async ({ admin }) => {
   const user = userEvent.setup()
-  await renderApp('/featherbase/admin/Data%20Source/new', admin)
+  await renderApp('/featherbase/admin/table/data-source/new', admin)
   await user.click(await screen.findByTestId('kind-motherduck', {}, WAIT))
   await user.type(screen.getByTestId('connect-token'), STANDIN_TOKENS.refused)
   await user.click(screen.getByTestId('connect-test'))
@@ -69,7 +69,7 @@ test('a refused token says so in plain words and offers no databases', async ({ 
 
 test('a token that can write is flagged', async ({ admin }) => {
   const user = userEvent.setup()
-  await renderApp('/featherbase/admin/Data%20Source/new', admin)
+  await renderApp('/featherbase/admin/table/data-source/new', admin)
   await user.click(await screen.findByTestId('kind-motherduck', {}, WAIT))
   await user.type(screen.getByTestId('connect-token'), STANDIN_TOKENS.writer)
   await user.click(screen.getByTestId('connect-test'))
@@ -78,7 +78,7 @@ test('a token that can write is flagged', async ({ admin }) => {
 
 test('another kind keeps the native Data Source form', async ({ admin }) => {
   const user = userEvent.setup()
-  await renderApp('/featherbase/admin/Data%20Source/new', admin)
+  await renderApp('/featherbase/admin/table/data-source/new', admin)
   await user.click(await screen.findByTestId('kind-postgres', {}, WAIT))
   expect(await screen.findByTestId('form-view', {}, WAIT)).toBeInTheDocument()
   expect(screen.getByTestId('kind-line')).toHaveTextContent('Postgres')
@@ -87,7 +87,7 @@ test('another kind keeps the native Data Source form', async ({ admin }) => {
 test('the source page shows only the token\'s last four, and replacing it shows the new four', async ({ admin }) => {
   await connect(admin, 'web-wh-token')
   const user = userEvent.setup()
-  await renderApp('/featherbase/admin/Data%20Source/web-wh-token', admin)
+  await renderApp('/featherbase/admin/table/data-source/row/web-wh-token', admin)
   expect(await screen.findByTestId('warehouse-token', {}, WAIT)).toHaveTextContent('Saved, ending …4f2a')
   expect(document.body).not.toHaveTextContent(STANDIN_TOKENS.reader)
   expect(screen.getByTestId('warehouse-databases')).toHaveTextContent('sales')

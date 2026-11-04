@@ -1,79 +1,42 @@
+import type { QueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useQuery, type QueryClient } from '@tanstack/react-query'
-import { adminPageTitle } from 'shared'
-import { api } from '../lib/api'
-import { fmtInstantIST } from '../lib/inr'
-import { DataList, type DataColumn } from '../components/ui'
+import { adminPageTitle, WAITING_FOR_ACCESS_FILTERS } from 'shared'
+import { ListView, type Filter } from '../components/ListView'
 
-// #429: people a sign-in rule let in who hold no role yet, and see only the
-// no-access page. Opening one goes to their Person form to give roles.
+// #429, #835: people a sign-in rule let in who hold no role yet, and see only
+// the no-access page. The page is the standard Person list behind one filter,
+// so it sorts, filters, searches, picks columns and opens rows like any list;
+// opening one goes to their Person form to give roles. The menu badge counts
+// the same cohort on the server.
 
-interface WaitingPerson {
-  person: string
-  full_name: string | null
-  email_domain: string | null
-  method: string | null
-  method_label: string | null
-  arrived_by: string | null
-  first_sign_in: string | null
-  last_sign_in: string | null
-}
-
-const WAITING_QUERY_KEY = ['waiting-for-access'] as const
 export const WAITING_COUNT_QUERY_KEY = ['waiting-for-access-count'] as const
 
 /** Saving or deleting a person or a role assignment can change who is
- *  waiting, so the list and the menu count are asked again. */
+ *  waiting, so the Person list and the menu count are asked again. */
 export async function refreshWaitingAfterSave(queryClient: QueryClient, table: string): Promise<void> {
   if (table !== 'Person' && table !== 'Has Role') return
-  await queryClient.invalidateQueries({ queryKey: WAITING_QUERY_KEY })
+  await queryClient.invalidateQueries({ queryKey: ['list', 'Person'] })
   await queryClient.invalidateQueries({ queryKey: WAITING_COUNT_QUERY_KEY })
 }
 
-const columns: DataColumn<WaitingPerson>[] = [
-  {
-    key: 'name',
-    header: 'Name',
-    phone: 'title',
-    cell: (p) => (
-      <Link
-        to="/featherbase/admin/$table/$name"
-        params={{ table: 'Person', name: p.person }}
-        search={{ prefill: undefined }}
-        className="text-action hover:underline"
-        data-testid={`waiting-${p.person}`}
-      >
-        {p.full_name || p.person}
-      </Link>
-    ),
-  },
-  { key: 'domain', header: 'Email domain', phone: 'meta', cell: (p) => p.email_domain ?? '—' },
-  { key: 'method', header: 'Arrived by', phone: 'meta', cell: (p) => p.method_label ?? 'Added by an administrator' },
-  { key: 'first', header: 'First sign-in', cell: (p) => fmtInstantIST(p.first_sign_in) },
-  { key: 'last', header: 'Last sign-in', cell: (p) => fmtInstantIST(p.last_sign_in) },
-]
-
-export function WaitingForAccess() {
-  const q = useQuery({
-    queryKey: WAITING_QUERY_KEY,
-    queryFn: () => api.get<{ people: WaitingPerson[]; count: number }>('/api/people/waiting_for_access'),
-  })
+export function WaitingForAccess({ filters, onFiltersChange }: { filters: Filter[]; onFiltersChange: (next: Filter[]) => void }) {
   return (
-    <div className="space-y-4" data-testid="waiting-for-access">
-      <div>
-        <h1 className="text-lg font-semibold text-ink">{adminPageTitle('waiting-for-access')}</h1>
-        <p className="text-sm text-ink-muted">
-          People who signed in but hold no role yet, newest first. Open one to give them roles.
-        </p>
-      </div>
-      <DataList
-        caption="People waiting for access"
-        rows={q.data?.people ?? []}
-        columns={columns}
-        rowKey={(p) => p.person}
-        state={q.isPending ? 'loading' : q.isError ? 'error' : 'ready'}
-        onRetry={() => void q.refetch()}
-        empty={{ title: 'Nobody is waiting.', body: 'Someone who signs in without a role shows up here.' }}
+    <div data-testid="waiting-for-access">
+      <ListView
+        table="Person"
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+        baseFilters={WAITING_FOR_ACCESS_FILTERS}
+        defaultOrderBy="created_at desc"
+        title={adminPageTitle('waiting-for-access')}
+        breadcrumb={
+          <div className="text-xs text-ink-subtle">
+            <Link to="/featherbase/admin" className="hover:text-ink">Home</Link>
+            {' / People and access'}
+          </div>
+        }
+        subtitle="People who signed in but hold no role yet, newest first. Open one to give them roles."
+        empty={<span data-testid="waiting-empty">Nobody is waiting. Someone who signs in without a role shows up here.</span>}
       />
     </div>
   )

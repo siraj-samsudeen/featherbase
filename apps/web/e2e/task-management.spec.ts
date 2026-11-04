@@ -1,14 +1,15 @@
-import { test, expect, ensureRuntimeApp } from './fixtures'
+import { test, expect, ensureRuntimeApp, admitTaskerAdmin } from './fixtures'
 
 test.beforeAll(async ({ request }) => {
   await ensureRuntimeApp(request, 'tasker')
+  await admitTaskerAdmin(request)
 })
 
 test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and focus survive reload', async ({
   session,
 }) => {
   await session
-    .visit('/tasker/')
+    .visit('/tasker/').within('.tasker-nav-inbox', tab => tab.click('Inbox'))
     .fillIn('Quick capture', 'Review September stock variance')
     .pressKey('Enter')
     .assertText('Review September stock variance')
@@ -123,13 +124,20 @@ test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and fo
     .assertText('Compare September closing stock')
     .within('.tasker-nav-work', (tab) => tab.click('My Work'))
     .assertText('Review September stock variance')
+    .click('Review September stock variance')
+    .click('Attachments and advanced fields in Featherbase ↗')
+    .assertHas('[data-testid="form-view"]')
+  await session.step('the advanced destination opens the same task in the canonical Table route', async ({ page }) => {
+    await expect(page).toHaveURL(/\/featherbase\/admin\/table\/tasker\.task\/row\/[^/]+$/)
+    await expect(page.locator('[data-field="task_title"]')).toHaveValue('Review September stock variance')
+  })
 })
 
 test('tasker_focus_label: Focus identifies the star in both states without changing its accessible name', async ({
   session,
 }) => {
   await session
-    .visit('/tasker/')
+    .visit('/tasker/').within('.tasker-nav-inbox', tab => tab.click('Inbox'))
     .fillIn('Quick capture', 'Plan the weekly review')
     .pressKey('Enter')
     .assertHas('button.tasker-focus-star[aria-label="Add to My Focus: Plan the weekly review"]', { text: '☆ Focus' })
@@ -149,7 +157,7 @@ test('project_rename_conflict: a refetch cannot authorize an older rename', asyn
   const project = await created.json() as { row_id: string; updated_at: string }
 
   await session
-    .visit('/tasker/')
+    .visit('/tasker/').within('.tasker-nav-inbox', tab => tab.click('Inbox'))
     .clickButton('Rename conflict project')
     .clickButton('Rename')
     .fillIn('Rename project', 'My older rename')
@@ -185,7 +193,7 @@ test('offline_task_recovery: failed capture retains the draft and failed state c
   })
   expect(created.status()).toBe(201)
   const task = await created.json() as { row_id: string }
-  await session.visit('/tasker/').assertText('Offline recovery existing count')
+  await session.visit('/tasker/').within('.tasker-nav-inbox', tab => tab.click('Inbox')).assertText('Offline recovery existing count')
   try {
     await session.step('disconnect the browser from the real server', async ({ page }) => {
       await page.context().setOffline(true)
@@ -237,7 +245,7 @@ test('offline_preference_recovery: private choices roll back until the server ca
   expect((await request.post('/api/save_row', {
     headers, data: { table: 'tasker.task', row: { task_title: 'Offline private detail task' } },
   })).status()).toBe(201)
-  await session.visit('/tasker/').clickButton('Offline private project')
+  await session.visit('/tasker/').within('.tasker-nav-inbox', tab => tab.click('Inbox')).clickButton('Offline private project')
   try {
     await session.step('lose connectivity before starring a project', async ({ page }) => {
       await page.context().setOffline(true)
@@ -300,7 +308,7 @@ test('offline_project_recovery: shared project drafts survive failed writes', as
   })
   expect(created.status()).toBe(201)
   const project = await created.json() as { row_id: string }
-  await session.visit('/tasker/').clickButton('Offline rename original').clickButton('Rename').fillIn('Rename project', 'Offline rename retained')
+  await session.visit('/tasker/').within('.tasker-nav-inbox', tab => tab.click('Inbox')).clickButton('Offline rename original').clickButton('Rename').fillIn('Rename project', 'Offline rename retained')
   try {
     await session.step('disconnect before submitting the shared rename', async ({ page }) => {
       await page.context().setOffline(true)
@@ -347,7 +355,7 @@ test('tasker_keyboard_progression: ordinary Tab advances within task details and
   })
   expect(created.status()).toBe(201)
   const task = await created.json() as { row_id: string }
-  await session.visit('/tasker/').clickLink('Keyboard cancellation count').assertHas('[role="dialog"][aria-label="Focused task details"]')
+  await session.visit('/tasker/').within('.tasker-nav-inbox', tab => tab.click('Inbox')).clickLink('Keyboard cancellation count').assertHas('[role="dialog"][aria-label="Focused task details"]')
   await session.step('Tab advances from Close rather than wrapping to the last detail control', async ({ page }) => {
     const detail = page.getByRole('dialog', { name: 'Focused task details' })
     await detail.getByRole('link', { name: 'Close', exact: true }).focus()
@@ -374,7 +382,7 @@ test.describe('phone capture', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 
   test('responsive_workspace_flow: Tasker and its Projects landing have no page-level horizontal overflow', async ({ session }) => {
-    await session.visit('/tasker/')
+    await session.visit('/tasker/').within('.tasker-nav-inbox', tab => tab.click('Inbox'))
     await session
       .assertValue('Quick capture', '')
       .clickButton('Filter')

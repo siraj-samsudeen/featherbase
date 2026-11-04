@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
-import { Button, Card } from './ui'
+import { Button, Card } from '@featherbase/shop-floor'
 
 // person-resolution D2: on an Identifier System form, each Advanced setting
 // shows the default its kind gives it, with "Revert to default" where it

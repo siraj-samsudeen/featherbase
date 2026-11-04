@@ -29,7 +29,7 @@ async function seedRun(admin: Admin): Promise<string> {
   return run.row_id
 }
 
-const runPath = (run: string) => `/featherbase/admin/Checklist%20Run/view/checklist?run=${encodeURIComponent(run)}`
+const runPath = (run: string) => `/featherbase/admin/table/checklist-run/view/checklist?run=${encodeURIComponent(run)}`
 
 async function openRun(admin: Admin, run: string) {
   await renderApp(runPath(run), admin)

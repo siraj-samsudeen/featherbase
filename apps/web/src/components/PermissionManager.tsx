@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api'
-import { buttonClasses, cardClasses } from './ui'
+import { buttonClasses, cardClasses } from '@featherbase/shop-floor'
 
 // SET-003: edit the Permission matrix (roles × actions) for a Table at
 // tier 'basic'. System-Manager-only; changes take effect immediately because

@@ -12,7 +12,7 @@ const enc = encodeURIComponent
 test('a column rename can be cancelled, leaving the name as it was', async ({ admin }) => {
   const user = userEvent.setup()
   await admin.post('/api/table_def', { name: 'Apg Zone', columns: [{ column_name: 'glor', label: 'Glor', column_type: 'Data' }] })
-  await renderApp(`/featherbase/admin/${enc('Apg Zone')}/columns`, admin)
+  await renderApp(`/featherbase/admin/table/apg-zone/columns`, admin)
   await user.click(await screen.findByTestId('ce-rename-glor', {}, { timeout: 8000 }))
   expect(screen.getByTestId('ce-rename-input-glor')).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -22,8 +22,10 @@ test('a column rename can be cancelled, leaving the name as it was', async ({ ad
 })
 
 test('the column editor of a Table that is not there says so', async ({ admin }) => {
-  await renderApp(`/featherbase/admin/${enc('Apg Nowhere')}/columns`, admin)
-  expect(await screen.findByTestId('ce-error', {}, { timeout: 8000 })).toHaveTextContent(/not found/i)
+  await renderApp(`/featherbase/admin/table/apg-nowhere/columns`, admin)
+  expect(await screen.findByText('Page not found', {}, { timeout: 8000 })).toBeInTheDocument()
+  expect(screen.queryByTestId('column-editor')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('ce-add-go')).not.toBeInTheDocument()
 })
 
 test('Explore of a Table deleted meanwhile says it cannot be loaded', async ({ admin }) => {

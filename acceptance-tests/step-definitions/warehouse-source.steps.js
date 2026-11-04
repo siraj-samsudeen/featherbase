@@ -31,10 +31,6 @@ async function givenSource(world, databases, token = TOKENS.reader) {
 
 // ---- Given ----
 
-Given('the user is a System Manager', async function () {
-  this.page = await this.asSystemManager();
-});
-
 Given('a token that can read five databases, among them {string} and {string}', async function (first, second) {
   this.token = TOKENS.reader;
   this.expected = [first, second];

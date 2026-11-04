@@ -97,6 +97,29 @@ async function userWith(
 }
 
 describe('finding 1: bound tables honor own-rows and Data Scope rules', () => {
+  test('#800 bound-row capabilities distinguish unrestricted and own-row-only source mutations', async ({ admin, createUser }) => {
+    await bindAccount(admin)
+    const url = `/api/table/${encodeURIComponent(BOUND)}/ACC-A`
+    expect(await admin.get(`${url}:capabilities`)).toMatchObject({ write: true, delete: true, rename: false })
+    const user = await userWith(admin, createUser, { can_read: true })
+    await admin.post('/api/save_row', {
+      table: 'Permission', row: { ref_table: BOUND, role: 'Sec Role', can_write: true, can_delete: true, own_rows_only: true },
+    })
+    expect(await user.get(`${url}:capabilities`)).toMatchObject({ write: false, delete: false, rename: false })
+    await expectApiError(patchDoc(user, url, { label: 'Forbidden' }), { status: 403 })
+    await expectApiError(user.delete(url), { status: 403 })
+    await admin.post('/api/save_row', {
+      table: 'Permission', row: { ref_table: BOUND, role: 'Sec Role', can_write: true, can_delete: true },
+    })
+    expect(await user.get(`${url}:capabilities`)).toMatchObject({ write: true, delete: true, rename: false })
+    const loaded = await user.get<Record<string, unknown>>(url)
+    await patchDoc(user, url, { ...loaded, label: 'Saved through source' })
+    const saved = await admin.get<{ label: string; updated_at: string }>(url)
+    expect(saved).toMatchObject({ label: 'Saved through source' })
+    await user.delete(`${url}?updated_at=${encodeURIComponent(saved.updated_at)}`)
+    expect(await cli`select id from sec_fixture.account where id = 'ACC-A'`).toEqual([])
+  })
+
   test('an own-rows read grant is rejected, not silently treated as all-rows', async ({
     admin,
     createUser,

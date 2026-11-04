@@ -73,7 +73,7 @@ function registerCopyRefresh(method: string): void {
 }
 
 export async function registerCopyRefreshJobs(): Promise<void> {
-  // Let the existing startup migration check report a database awaiting 0008.
+  // Let the existing startup migration check report a database awaiting 0010.
   const [schema] = await sql`select to_regclass('featherbase.copy_refresh_schedule') as relation`
   if (!schema.relation) return
   for (const row of await sql`select scheduled_job from featherbase.copy_refresh_schedule`)

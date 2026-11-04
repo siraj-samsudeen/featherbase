@@ -9,7 +9,7 @@ import path from 'node:path'
 import { test } from './pg-test'
 import { invalidateSources } from '../src/sources/registry'
 import { duckdbDriver } from '../src/sources/duckdb-driver'
-import type { Binding } from '../src/sources/types'
+import type { Binding, SourceFilter } from '../src/sources/types'
 
 const DUCK_URL_ENV = 'DUCK_FIXTURE_URL'
 let dir: string
@@ -263,6 +263,16 @@ describe('Filtering rows read from a warehouse', () => {
     schema: 'warehouse.main', table: 'nullable_groups', pk: 'id', modified: null,
     columns: [{ column_name: 'qty', source_column: 'qty', column_type: 'Int' }],
   }
+
+  test('refuses internal relationship filters without returning warehouse rows', async () => {
+    const filters: SourceFilter[] = [{ column: 'qty', op: 'related', value: { binding: nullableBinding, filters: [] } }]
+    const refusal = { type: 'ValidationError', message: 'Related filters are not supported by this source engine' }
+    await expect(duckdbDriver.getList(nullableBinding, {
+      filters, columns: ['qty'], order: { column: 'id', dir: 'asc' }, limit: 10, offset: 0,
+    })).rejects.toMatchObject(refusal)
+    await expect(duckdbDriver.count(nullableBinding, filters)).rejects.toMatchObject(refusal)
+    expect(await duckdbDriver.count(nullableBinding, [])).toBe(6)
+  })
 
   test('group counts retain the rows whose grouping value is NULL', async () => {
     expect(await duckdbDriver.groupCount(nullableBinding, 'qty', [])).toEqual([

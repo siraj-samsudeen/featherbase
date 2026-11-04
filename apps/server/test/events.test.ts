@@ -67,7 +67,7 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
 
   test('client timestamps are clamped to the trust window', async ({ admin }) => {
     const now = Date.now()
-    await admin.post('/api/events', {
+    const result = await admin.post<{ timestamps: number[] }>('/api/events', {
       events: [ev('row:X/old', now - 400 * DAY), ev('row:X/future', now + 5 * DAY)],
     })
     const summary = await admin.get<{ entries: Array<{ key: string; visits: number[] }> }>(
@@ -77,6 +77,7 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
     const future = summary.entries.find((e) => e.key === 'row:X/future')!
     expect(old.visits[0]).toBeGreaterThanOrEqual(now - 8 * DAY)
     expect(future.visits[0]).toBeLessThanOrEqual(now + 60_000)
+    expect(result.timestamps).toEqual([old.visits[0], future.visits[0]])
   })
 
   // PR #104 review: the contract allows 400-char keys/labels and 1000-char

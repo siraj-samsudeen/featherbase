@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { COPY_CADENCES } from 'shared'
 import { ApiError, api } from '../lib/api'
-import { Button, Notice, Select } from './ui'
+import { Button, Notice, Select } from '@featherbase/shop-floor'
 
 interface Schedule { row_id: string; cadence: string; enabled: boolean; last_outcome: string | null; last_result: string | null }
 
@@ -41,7 +41,7 @@ export function CopySchedule({ table }: { table: string }) {
           <Button variant="secondary" disabled={busy} onClick={() => void save(current.cadence, !current.enabled)}>
             {current.enabled ? 'Pause' : 'Resume'}
           </Button>
-          <Link to="/featherbase/admin/$table/$name" params={{ table: 'Scheduled Job', name: current.row_id }} search={{ prefill: undefined }} className="text-accent hover:underline">Manage job</Link>
+          <Link to="/featherbase/admin/table/$table/row/$name" params={{ table: 'Scheduled Job', name: current.row_id }} search={{ prefill: undefined }} className="text-accent hover:underline">Manage job</Link>
           {!current.enabled && <span className="text-ink-muted">Paused · {current.cadence}</span>}
           {current.last_outcome && <span className="text-ink-muted">Last run: {current.last_outcome}{current.last_result ? ` · ${current.last_result}` : ''}</span>}
         </>}

@@ -2,6 +2,7 @@ import { expect, describe } from 'vitest'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { test } from './pg-test'
+import { committedTest } from './pg-test-shared'
 import { discoverPackages } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql, withTransaction } from '../src/db'
@@ -25,6 +26,40 @@ async function targetPackage() {
 }
 
 describe('runtime upgrades', () => {
+  test('an upgrade adds mandatory privacy without rewriting existing rows', async ({ admin, createUser }) => {
+    const source = resolve('../..', 'test-apps/other')
+    const { directory, manifest } = await targetPackage()
+    const policy = { version: 1, roles: ['System Manager'], shared_column: 'shared' }
+    const shared = { column_name: 'shared', column_type: 'Check', default_value: '0' }
+    manifest.tables[0].columns.push(shared)
+    manifest.migrations[0].operations.push({ kind: 'addColumn', table: 'other.task', column: shared })
+    manifest.tables[0].access_policy = policy
+    manifest.migrations[0].operations.push({ kind: 'addAccessPolicy', table: 'other.task', policy })
+    await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(manifest))
+    try {
+      await discoverPackages([source])
+      await admin.post('/api/install_app', { name: 'other' })
+      const owner = await createUser({ roles: ['System Manager'] })
+      await owner.post('/api/save_row', { table: 'other.task', row: { row_id: 'private-after-upgrade', quantity: 37 } })
+      const [before] = await sql`select * from other.task where row_id = 'private-after-upgrade'`
+      await discoverPackages([source, directory])
+      await loadInstalledApps()
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+      await admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId })
+      await discoverPackages([source, directory])
+      await loadInstalledApps()
+      await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
+      const [after] = await sql`select * from other.task where row_id = 'private-after-upgrade'`
+      expect(after).toMatchObject(before)
+      expect((await sql`select access_policy from table_def where name = 'other.task'`)[0].access_policy).toEqual(policy)
+      const headers = { 'X-Featherbase-App-Version': 'other@2.0.0' }
+      const visible = await owner.fetch('/api/table/other.task/private-after-upgrade', { headers })
+      expect(visible.status).toBe(200)
+      expect(await visible.json()).toMatchObject({ quantity: 37 })
+      expect((await admin.fetch('/api/table/other.task/private-after-upgrade', { headers })).status).toBe(403)
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   test('core identity snapshot is host derived; multiple identities never override availability or version', async ({ admin, createUser }) => {
     const { directory } = await targetPackage()
     try {
@@ -147,6 +182,8 @@ describe('runtime upgrades', () => {
       const body = { name: 'other', version: '2.0.0', planId: plan.planId }
       expect(await admin.post('/api/upgrade_app', body)).toMatchObject({ activationPending: true })
       expect(await admin.post('/api/upgrade_app', body)).toMatchObject({ activationPending: true })
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }))
+        .rejects.toMatchObject({ status: 409, message: expect.stringContaining('Activate the committed upgrade') })
       await expect(admin.get('/api/table/other.task/kept')).rejects.toMatchObject({ status: 403 })
       await discoverPackages([source, directory])
       await loadInstalledApps()
@@ -262,7 +299,7 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
-  test('upgrade waits for admitted post-commit save; queued disable preserves disabled activation', async ({ admin }) => {
+  committedTest('upgrade waits for admitted post-commit save; queued disable preserves disabled activation', async ({ admin }) => {
     const source = resolve('../..', 'test-apps/other')
     const { directory } = await targetPackage()
     let release!: () => void
@@ -360,6 +397,29 @@ describe('runtime upgrades', () => {
 })
 
 describe('An upgrade never goes backward', () => {
+  test('upgrade preview requires an installed app whose recorded artifact matches', async ({ admin }) => {
+    const source = resolve('../..', 'test-apps/other')
+    const { directory } = await targetPackage()
+    try {
+      await discoverPackages([source])
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }))
+        .rejects.toMatchObject({ status: 417, message: expect.stringContaining('installed runtime application') })
+      await admin.post('/api/install_app', { name: 'other' })
+      await discoverPackages([source, directory])
+      const [identity] = await sql`select artifact_digest from installed_app where name = 'other'`
+      await sql`update installed_app set artifact_digest = 'mismatched' where name = 'other'`
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }))
+        .rejects.toMatchObject({ status: 417, message: expect.stringContaining('recorded identity') })
+      await expect(admin.post('/api/set_app_enabled', { name: 'other', enabled: true }))
+        .rejects.toMatchObject({ status: 417, message: expect.stringContaining('exact installed artifact') })
+      expect(await sql`select package_version, activation_pending from installed_app where name = 'other'`)
+        .toEqual([{ package_version: '0.0.1', activation_pending: false }])
+      await sql`update installed_app set artifact_digest = ${identity.artifact_digest} where name = 'other'`
+      expect(await admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' }))
+        .toMatchObject({ currentVersion: '0.0.1', targetVersion: '2.0.0' })
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   test('previewing an upgrade to the version already installed is refused and changes nothing', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })

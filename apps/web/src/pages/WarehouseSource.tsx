@@ -6,7 +6,7 @@ import { Link } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { replaceToken, type WarehouseSource as Source } from '../lib/warehouse'
-import { Breadcrumbs, Button, DataList, Notice, SearchableList, Skeleton, TextInput, buttonClasses, cardClasses } from '../components/ui'
+import { Breadcrumbs, Button, DataList, Notice, SearchableList, Skeleton, TextInput, buttonClasses, cardClasses } from '@featherbase/shop-floor'
 import { FormView } from '../components/FormView'
 
 export default function WarehouseSource({ name }: { name: string }) {
@@ -48,7 +48,7 @@ function TokenSource({ source }: { source: Source }) {
     <div data-testid="warehouse-source">
       <div className="mb-4"><Breadcrumbs items={[
         { label: 'Admin', href: '/featherbase/admin' },
-        { label: 'Data Source', href: '/featherbase/admin/Data%20Source' },
+        { label: 'Data Source', href: '/featherbase/admin/table/data-source' },
         { label: source.row_id },
       ]} /></div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

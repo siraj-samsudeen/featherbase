@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { tableHref } from 'shared'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
 // imports this file — a strict useSearch would need the route object back)
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { applyColumnCombines, autoMapImportColumns, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, idPatternFor, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
+import { adminPageTitle } from 'shared'
+import { DEFAULT_ID_PATTERN, applyColumnCombines, autoMapImportColumns, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
@@ -16,7 +18,7 @@ import {
   parseWorkbook,
   type ParsedSheet,
 } from '../lib/parse-file'
-import { sendImportRun, type ImportUpsertArgs } from '../lib/import-run'
+import { analyzeImportKeys, sendImportRun, splitForSend, type ImportUpsertArgs } from '../lib/import-run'
 import {
   clearSession,
   loadDecisions,
@@ -27,8 +29,8 @@ import {
   shapeOf,
   type ImportDecisions,
 } from '../lib/import-session'
-import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '../components/ui'
-import { fmtCount } from '../lib/inr'
+import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 
 /**
  * Type-to-confirm for an update run: the prompt shows the count with Indian
@@ -87,8 +89,8 @@ interface SheetPlan {
   similar: { name: string; mapped: number; total: number } | null
   inferred: InferredTableDef
   // NAM-001, new-Table mode: the new Table's id_pattern, edited through the
-  // same NamingControl the Table Builder uses. null = keep the inferred
-  // default (a series derived from the Table name).
+  // same NamingControl the Table Builder uses. null = the default, plain
+  // numbers 1, 2, 3 (#855).
   id_pattern: string | null
   // per file column: target column_name in the existing Table, 'name' for
   // the Row ID (UPS-R4 — the file's own codes become the ids), or null (skip)
@@ -99,9 +101,7 @@ interface SheetPlan {
   // UPS-R3: what an empty mapped cell does to a matched row. Per run,
   // meaningful only when a key is set; keep is the default.
   empty_cells: 'keep' | 'clear'
-  // UPS-R5: the remembered choice pre-filled from this Table's last keyed
-  // import — kept around so the "as last time" notice can say so while the
-  // user is free to change or clear it.
+  // UPS-R5: a remembered choice, never an active key until accepted.
   suggested: { key: string; empty_cells: 'keep' | 'clear' } | null
   // Failures carry sourceIndex — the row's 0-based position in the sheet's
   // data rows, blanks included (#115). The server's per-chunk `index` is
@@ -111,6 +111,10 @@ interface SheetPlan {
   check: {
     fields_updated?: number
     fields_kept?: number
+    changed: number
+    unchanged: number
+    rows_kept: number
+    conflicts: number
     tracks_changes?: boolean | null
     valid: number
     updated: number
@@ -319,11 +323,73 @@ function TargetRowCount({ i, table }: { i: number; table: string }) {
   )
 }
 
+function ImportPreviewFacts({ report }: {
+  report: Omit<NonNullable<SheetPlan['check']>, 'failed'> & { failed: { message: string }[] }
+}) {
+  return (
+    <>
+      <p>
+        {fmtCount(report.changed)} {report.changed === 1 ? 'row changes' : 'rows change'} ·{' '}
+        {fmtCount(report.unchanged)} unchanged · {fmtCount(report.inserted)} added ·{' '}
+        {fmtCount(report.skipped)} skipped · {fmtCount(report.failed.length)} refused
+      </p>
+      <p>
+        {fmtCount(report.fields_updated ?? 0)} {report.fields_updated === 1 ? 'value changes' : 'values change'} ·{' '}
+        {fmtCount(report.rows_kept)} {report.rows_kept === 1 ? 'row keeps' : 'rows keep'} your corrections ·{' '}
+        {fmtCount(report.fields_kept ?? 0)} {report.fields_kept === 1 ? 'value' : 'values'} retained ·{' '}
+        {fmtCount(report.conflicts)} new {report.conflicts === 1 ? 'conflict' : 'conflicts'}
+      </p>
+      <p className="text-xs text-ink-muted">
+        Rows keeping corrections may also have other values change. Counts describe mapped values; import automation still runs.
+      </p>
+      {report.tracks_changes === false && (
+        <Notice tone="caution" className="mt-2">This Table does not keep change history. Imports overwrite existing values, including hand edits.</Notice>
+      )}
+    </>
+  )
+}
+
+function KeySuggestions({ i, table, rows, columns, suggested, label, onAccept }: {
+  i: number
+  table: string
+  rows: CoercedRow[]
+  columns: string[]
+  suggested: SheetPlan['suggested']
+  label: (column: string) => string
+  onAccept: (key: string, emptyCells: 'keep' | 'clear') => void
+}) {
+  const analysis = useQuery({
+    queryKey: ['iw-key-analysis', table, columns, rows],
+    queryFn: () => analyzeImportKeys({ table, columns, rows }),
+  })
+  if (analysis.isError) return (
+    <Notice tone="caution" className="mt-2">
+      Could not check matching columns. This does not mean that no rows overlap.{' '}
+      <button type="button" onClick={() => void analysis.refetch()} className="underline">Try again</button>
+    </Notice>
+  )
+  if (!analysis.data) return <p className="mt-1 text-xs text-ink-muted">Checking matching columns…</p>
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2">
+      {analysis.data.filter((c) => c.can_match && (c.complete || c.column === suggested?.key)).map((candidate) => {
+        const remembered = candidate.column === suggested?.key
+        return (
+          <span key={candidate.column} data-testid={remembered ? `iw-key-suggested-${i}` : undefined} className="text-xs text-action">
+            <button type="button" className="underline" onClick={() => onAccept(candidate.column, remembered ? suggested!.empty_cells : 'keep')}>
+              Match on {label(candidate.column)}
+            </button>
+            {remembered ? ', as last time' : ` — all ${fmtCount(candidate.matched)} rows match one-to-one`}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 // UPS-J1.3: real counts BEFORE anything commits — a dry run over the whole
 // (deduplicated) file the moment a match key is chosen, so marking a key is
-// never a silent mode switch. React Query keys on the run's shape; the
-// sheet's cells are fixed per file load, so the mapped columns + key +
-// choice identify the rows deterministically.
+// never a silent mode switch. Include the values in the cache identity:
+// another file can have the same row count but different changes.
 function UpsertPreview({
   i,
   table,
@@ -331,6 +397,7 @@ function UpsertPreview({
   emptyCells,
   columns,
   rows,
+  skipped,
 }: {
   i: number
   table: string
@@ -338,9 +405,10 @@ function UpsertPreview({
   emptyCells: 'keep' | 'clear'
   columns: string[]
   rows: CoercedRow[]
+  skipped: number
 }) {
   const preview = useQuery({
-    queryKey: ['iw-upsert-preview', table, keyColumn, emptyCells, columns.join('·'), rows.length],
+    queryKey: ['iw-upsert-preview', table, keyColumn, emptyCells, columns, rows],
     enabled: rows.length > 0,
     staleTime: 30_000,
     queryFn: async () => {
@@ -350,7 +418,7 @@ function UpsertPreview({
         dryRun: true,
         upsert: { key_column: keyColumn, empty_cells: emptyCells, columns },
       })
-      return { updated: report.updated, inserted: report.inserted, failed: report.failed.length }
+      return report
     },
   })
   if (preview.isError) return null // e.g. no permission — rehearse/import will say so
@@ -361,15 +429,9 @@ function UpsertPreview({
       </p>
     )
   return (
-    <p className="mt-1 text-sm text-ink" data-testid={`iw-preview-${i}`}>
-      <strong>{fmtCount(preview.data.updated)}</strong> rows match existing rows and will be{' '}
-      <strong>updated</strong>; <strong>{fmtCount(preview.data.inserted)}</strong> will be added
-      {preview.data.failed > 0 && (
-        <>
-          ; <strong>{fmtCount(preview.data.failed)}</strong> will fail
-        </>
-      )}
-    </p>
+    <div className="mt-1 text-sm text-ink" data-testid={`iw-preview-${i}`}>
+      <ImportPreviewFacts report={{ ...preview.data, skipped }} />
+    </div>
   )
 }
 
@@ -668,7 +730,7 @@ function RunHistory({ table }: { table: string }) {
           data-testid={`iw-run-${idx}`}
         >
           <span>
-            {r.file_name ?? 'API import'} — {fmtCount(r.updated)} updated · {fmtCount(r.inserted)} added · {fmtCount(r.failed)}{' '}
+            {r.file_name ?? 'API import'} — {fmtCount(r.updated)} processed matches · {fmtCount(r.inserted)} added · {fmtCount(r.failed)}{' '}
             failed
           </span>
           {r.reverted_at ? (
@@ -741,14 +803,34 @@ export function ImportWizard() {
   // it, not a blank one.
   const natural = useRef<SheetPlan[]>([])
   // UPS-H1's typed confirmation: set when a click-time dry run counted more
-  // than CONFIRM_UPDATES_OVER updates; cleared by any plan change.
+  // than CONFIRM_UPDATES_OVER changed rows; cleared by any plan change.
   // #202: `only` remembers the scope the confirmation was computed for — a
   // per-target run must not be confirmed into a run of everything.
   const [confirmUpdates, setConfirmUpdates] = useState<{
     total: number
     typed: string
     only?: number
+    identity: string
   } | null>(null)
+  const [appendWarning, setAppendWarning] = useState<{
+    targets: { index: number; table: string; rows: number }[]
+    acknowledged: boolean
+    only?: number
+    identity: string
+  } | null>(null)
+
+  // Consent belongs to these choices and this file, not to a cached preview.
+  // Check results, remembered suggestions and transient errors are not choices.
+  const guardIdentity = useMemo(() => JSON.stringify({
+    fileName, batchId, sheets, selected,
+    plans: plans.map(({ check, result, failure, suggested, ...choices }) => ({ ...choices, landed: !!result })),
+  }), [fileName, batchId, sheets, selected, plans])
+  const currentGuardIdentity = useRef(guardIdentity)
+  currentGuardIdentity.current = guardIdentity
+  useEffect(() => {
+    setConfirmUpdates(null)
+    setAppendWarning(null)
+  }, [guardIdentity])
 
   // Every importable Table with its mappable columns — the mapping targets
   // and the corpus the rename-tolerant suggestions score against.
@@ -887,6 +969,7 @@ export function ImportWizard() {
     // A changed plan invalidates a pending typed confirmation — its total
     // was computed for the previous mapping/key.
     setConfirmUpdates(null)
+    setAppendWarning(null)
   }
 
   // `resumeFrom` is the saved work this file is meant to carry on; null reads
@@ -1185,10 +1268,9 @@ export function ImportWizard() {
     void applySuggestion(i, value, mapping)
   }
 
-  // UPS-R5: the match key (and empty-cells choice) used on this Table's last
-  // keyed import, read back from the Import Log and PRE-FILLED as a visible
-  // suggestion — the user confirms or changes it; it is never silently
-  // active. A reader without an Import Log grant simply gets no suggestion.
+  // UPS-R5: read the remembered choice, without activating it. KeySuggestions
+  // validates it against the current mapped rows and server permissions.
+  // A reader without an Import Log grant simply gets no remembered suggestion.
   async function applySuggestion(i: number, forTable: string, map: (string | null)[]) {
     try {
       const logs = await api.get<{ data: { key_column: string | null; empty_cells: string | null }[] }>(
@@ -1206,13 +1288,14 @@ export function ImportWizard() {
       const empty_cells = last.empty_cells === 'clear' ? 'clear' : 'keep'
       setPlans((ps) =>
         ps.map((p, j) =>
-          j === i && p.mode === 'existing' && p.table === forTable && p.key === null
-            ? { ...p, key, empty_cells, suggested: { key, empty_cells } }
+          j === i && p.mode === 'existing' && p.table === forTable && p.mapping.length === map.length && p.mapping.every((m, idx) => m === map[idx])
+            ? { ...p, suggested: { key, empty_cells } }
             : p,
         ),
       )
     } catch {
-      // No read on Import Log (or a mid-upgrade database) — no suggestion.
+      // No read on Import Log — no remembered suggestion. Value-derived
+      // analysis is separate and its errors are shown, never treated as no overlap.
     }
   }
 
@@ -1240,7 +1323,7 @@ export function ImportWizard() {
   }
 
   function planIdPattern(plan: SheetPlan): string {
-    return plan.id_pattern ?? idPatternFor(plan.table)
+    return plan.id_pattern ?? DEFAULT_ID_PATTERN
   }
 
   // The mapped target columns of an existing-mode run — the `columns` the
@@ -1277,6 +1360,31 @@ export function ImportWizard() {
     }
   }
 
+  // Gate keys across the entire target before sending any member, but keep
+  // each row's sheet and source index for Check, failures and Import Logs.
+  function targetParts(plan: SheetPlan) {
+    const parts = plan.members.map((sheetIndex) => {
+      const sheet = memberSheet(plan, sheetIndex)
+      const rows = plan.mode === 'new' ? newTableRows(sheet, plan) : mappedRows(sheet, plan)
+      return { sheetIndex, rows, skipped: countDataRows(sheets[sheetIndex].rows) - rows.length }
+    })
+    const all = parts.flatMap((p) => p.rows).map((row, sourceIndex) => ({ ...row, sourceIndex }))
+    const duplicates = new Map(splitForSend(all, plan.mode === 'existing' ? plan.key : null)
+      .dupFailed.map((f) => [f.sourceIndex, f.message]))
+    let offset = 0
+    return parts.map((part) => {
+      const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
+      const rows = part.rows.filter((row, index) => {
+        const message = duplicates.get(offset + index)
+        if (!message) return true
+        failed.push({ sheetIndex: part.sheetIndex, sourceIndex: row.sourceIndex, message })
+        return false
+      })
+      offset += part.rows.length
+      return { ...part, rows, failed }
+    })
+  }
+
   // #202: the Check button rehearses the active existing-Table target.
   async function runCheck(only: number) {
     setError(null)
@@ -1286,15 +1394,15 @@ export function ImportWizard() {
         if (i !== only) continue
         // #201: rehearse member by member, exactly as the import will send
         // them, so a reported row number is true against its own sheet.
-        const totals = { valid: 0, updated: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, tracks_changes: null as boolean | null }
+        const totals = { valid: 0, updated: 0, changed: 0, unchanged: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, rows_kept: 0, conflicts: 0, tracks_changes: null as boolean | null }
         const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
-        for (const m of plan.members) {
+        for (const { sheetIndex: m, rows, skipped, failed: duplicates } of targetParts(plan)) {
           const sheet = memberSheet(plan, m)
-          const rows = mappedRows(sheet, plan)
           // IMP-I1 disclosure: data rows with nothing in any MAPPED column
           // are sent nowhere — say so instead of letting the counts quietly
           // disagree with the file.
-          totals.skipped += countDataRows(sheets[m].rows) - rows.length
+          totals.skipped += skipped
+          failed.push(...duplicates)
           if (!rows.length) continue
           const report = await sendImportRun({
             table: plan.table,
@@ -1305,12 +1413,17 @@ export function ImportWizard() {
           })
           totals.fields_updated += report.fields_updated
           totals.fields_kept += report.fields_kept
+          totals.changed += report.changed
+          totals.unchanged += report.unchanged
+          totals.rows_kept += report.rows_kept
+          totals.conflicts += report.conflicts
           totals.tracks_changes = report.tracks_changes
           totals.valid += report.valid
           totals.updated += report.updated
           totals.inserted += report.inserted
           failed.push(...report.failed.map((f) => ({ ...f, sheetIndex: m })))
         }
+        failed.sort((a, b) => plan.members.indexOf(a.sheetIndex) - plan.members.indexOf(b.sheetIndex) || a.sourceIndex - b.sourceIndex)
         setPlans((ps) => ps.map((p, j) => (j === i ? { ...p, check: { ...totals, failed } } : p)))
       }
     } catch (err) {
@@ -1323,7 +1436,7 @@ export function ImportWizard() {
   // #202: `only` imports a single target, so an eleven-sheet workbook is a
   // sequence of small commits rather than one all-or-nothing run. Omitted, it
   // imports every target that has not landed yet.
-  async function runImport(confirmed = false, only?: number) {
+  async function runImport(only?: number) {
     setError(null)
     setRunOutcome(null)
     setPlans((ps) =>
@@ -1331,32 +1444,54 @@ export function ImportWizard() {
     )
     setBusy('Importing…')
     try {
-      // UPS-H1: a run about to update more than CONFIRM_UPDATES_OVER rows
-      // stops here and demands the number be typed back. Counts come from a
-      // dry run at click time — the same rehearsal the server will honour —
-      // never from stale UI state.
-      if (!confirmed) {
-        let updates = 0
-        for (const [i, plan] of plans.entries()) {
-          if (only !== undefined && i !== only) continue
-          if (plan.mode !== 'existing' || !plan.key || plan.groupedInto !== null) continue
-          const rows = mappedRows(effectiveSheet(plan, i), plan)
-          if (!rows.length) continue
-          const report = await sendImportRun({
-            table: plan.table,
-            rows,
-            dryRun: true,
-            upsert: upsertArgs(plan),
-          })
-          updates += report.updated
-        }
-        if (updates > CONFIRM_UPDATES_OVER) {
-          setConfirmUpdates({ total: updates, typed: '', only })
-          setBusy(null)
-          return
+      // Recheck on EVERY click, including acknowledgement and typed-count
+      // acceptance. No preview or previous confirmation reserves stored rows.
+      let changes = 0
+      const overlaps: { index: number; table: string; rows: number }[] = []
+      for (const [i, plan] of plans.entries()) {
+        if (only !== undefined && i !== only) continue
+        if (only === undefined && plan.result) continue
+        if (plan.mode !== 'existing' || plan.groupedInto !== null) continue
+        const rows = mappedRows(effectiveSheet(plan, i), plan)
+        if (!rows.length) continue
+        try {
+          if (plan.key) {
+            const report = await sendImportRun({
+              table: plan.table,
+              rows,
+              dryRun: true,
+              upsert: upsertArgs(plan),
+            })
+            changes += report.changed
+          } else {
+            const candidates = await analyzeImportKeys({ table: plan.table, columns: mappedTargets(plan), rows })
+            if (candidates.some((c) => c.complete)) overlaps.push({ index: i, table: plan.table, rows: rows.length })
+          }
+        } catch (err) {
+          const message = err instanceof ApiError ? err.message : 'Import safety check failed'
+          if (currentGuardIdentity.current === guardIdentity)
+            setPlans((ps) => ps.map((p, j) => j === i ? { ...p, failure: message } : p))
+          throw err // Failed analysis is never permission to append or write other targets.
         }
       }
+      if (currentGuardIdentity.current !== guardIdentity) {
+        setError('Import choices changed while checking. Import again to check the current choices.')
+        return
+      }
+      const appendAccepted = appendWarning?.identity === guardIdentity && appendWarning.only === only &&
+        appendWarning.acknowledged && JSON.stringify(appendWarning.targets) === JSON.stringify(overlaps)
+      if (overlaps.length && !appendAccepted) {
+        setAppendWarning({ targets: overlaps, acknowledged: false, only, identity: guardIdentity })
+        setConfirmUpdates(null)
+        return
+      }
+      if (changes > CONFIRM_UPDATES_OVER && !(confirmUpdates?.identity === guardIdentity &&
+        confirmUpdates.only === only && confirmUpdates.total === changes && confirmsCount(confirmUpdates.typed, changes))) {
+        setConfirmUpdates({ total: changes, typed: '', only, identity: guardIdentity })
+        return
+      }
       setConfirmUpdates(null)
+      setAppendWarning(null)
       // #203: a target's failure belongs to THAT target. The loop used to sit
       // inside one try, so a throw on sheet 2 left sheets 3..n unattempted and
       // unreported, and skipped the completion block — taking with it the only
@@ -1407,13 +1542,10 @@ export function ImportWizard() {
         // the Table — and Past imports then calls it pre-existing and will
         // not offer to delete it.
         let creationStamped = false
-        for (const m of plan.members) {
+        for (const { sheetIndex: m, rows, skipped, failed: duplicates } of targetParts(plan)) {
           const sheet = sheets[m]
-          const rows =
-            plan.mode === 'new'
-              ? newTableRows(memberSheet(plan, m), plan)
-              : mappedRows(memberSheet(plan, m), plan)
-          total.skipped += countDataRows(sheet.rows) - rows.length
+          total.skipped += skipped
+          failed.push(...duplicates)
           if (!rows.length) continue
           const report = await sendImportRun({
             table: plan.table,
@@ -1440,6 +1572,7 @@ export function ImportWizard() {
           total.inserted += report.inserted
           failed.push(...report.failed.map((f) => ({ ...f, sheetIndex: m })))
         }
+        failed.sort((a, b) => plan.members.indexOf(a.sheetIndex) - plan.members.indexOf(b.sheetIndex) || a.sourceIndex - b.sourceIndex)
         setPlans((ps) =>
           ps.map((p, j) =>
             j === i
@@ -1500,7 +1633,7 @@ export function ImportWizard() {
       // #203: and never navigate away from a failure the user has not read.
       if (!failedTargets.length && active.length === 1 && active[0].members.length === 1) {
         navigate({
-          to: '/featherbase/admin/$table',
+          to: '/featherbase/admin/table/$table',
           params: { table: active[0].table },
           search: { filters: undefined },
         })
@@ -1556,7 +1689,7 @@ export function ImportWizard() {
 
   return (
     <div data-testid="import-wizard" className="max-w-4xl">
-      <h1 className="mb-4 text-xl font-semibold text-ink">Import Data</h1>
+      <h1 className="mb-4 text-xl font-semibold text-ink">{adminPageTitle('import')}</h1>
 
       <div
         data-testid="iw-dropzone"
@@ -1708,7 +1841,7 @@ export function ImportWizard() {
           It is present from the moment a file is loaded, and after. */}
       <p className="mb-3 text-xs text-ink-muted">
         <Link
-          to="/featherbase/admin/$table"
+          to="/featherbase/admin/table/$table"
           params={{ table: 'Import Log' }}
           search={{ filters: undefined }}
           className="underline"
@@ -1917,7 +2050,7 @@ export function ImportWizard() {
                     <TargetRowCount i={i} table={plan.table} />
                     {/* Peek at the target without losing wizard state. */}
                     <a
-                      href={`/featherbase/admin/${encodeURIComponent(plan.table)}`}
+                      href={tableHref(plan.table)}
                       target="_blank"
                       rel="noreferrer"
                       data-testid={`iw-view-target-${i}`}
@@ -1967,7 +2100,7 @@ export function ImportWizard() {
                   >
                     A similar existing Table matches this sheet:{' '}
                     <a
-                      href={`/featherbase/admin/${encodeURIComponent(plan.similar.name)}`}
+                      href={tableHref(plan.similar.name)}
                       target="_blank"
                       rel="noreferrer"
                       className="font-semibold underline"
@@ -2359,15 +2492,16 @@ export function ImportWizard() {
                   >
                     Auto-matched to the existing Table{' '}
                     <a
-                      href={`/featherbase/admin/${encodeURIComponent(plan.table)}`}
+                      href={tableHref(plan.table)}
                       target="_blank"
                       rel="noreferrer"
                       className="font-semibold underline"
                     >
                       {plan.table} ↗
                     </a>{' '}
-                    because its columns fit this sheet — rows will be <em>added to it</em>. Pick
-                    "New Table…" above if you meant to create a separate Table.
+                    because its columns fit this sheet — {plan.key
+                      ? `matching on ${targetCols.find((c) => c.column_name === plan.key)?.label || plan.key}.`
+                      : 'rows will be added to it.'} Pick "New Table…" above if you meant to create a separate Table.
                   </div>
                 )}
                 <div className="mb-1 text-xs text-ink-muted" data-testid={`iw-mapped-count-${i}`}>
@@ -2517,21 +2651,13 @@ export function ImportWizard() {
                           data-testid={`iw-key-${i}`}
                           className="rounded border border-border px-1 py-0.5 text-sm"
                         >
-                          <option value="">— none: always add rows —</option>
+                          <option value="">— none: append every row —</option>
                           {keyOptions.map((col) => (
                             <option key={col} value={col}>
                               {keyLabel(col)}
                             </option>
                           ))}
                         </select>
-                        {plan.suggested && plan.key === plan.suggested.key && (
-                          <span
-                            className="text-xs text-action"
-                            data-testid={`iw-key-suggested-${i}`}
-                          >
-                            Match on {friendly(plan.suggested.key)}, as last time
-                          </span>
-                        )}
                         {plan.key && (
                           <span
                             className="flex items-center gap-2 text-sm"
@@ -2561,6 +2687,20 @@ export function ImportWizard() {
                           </span>
                         )}
                       </div>
+                      <KeySuggestions
+                        i={i}
+                        table={plan.table}
+                        rows={mappedRows(sheet, plan)}
+                        columns={keyOptions}
+                        suggested={plan.suggested}
+                        label={friendly}
+                        onAccept={(key, empty_cells) => setPlan(i, { key, empty_cells })}
+                      />
+                      {plan.key && (
+                        <p className="mt-1 text-xs text-ink-muted">
+                          Matching on {friendly(plan.key)}, rather than appending every row.
+                        </p>
+                      )}
                       {plan.key && (
                         <UpsertPreview
                           i={i}
@@ -2569,6 +2709,7 @@ export function ImportWizard() {
                           emptyCells={plan.empty_cells}
                           columns={keyOptions}
                           rows={mappedRows(sheet, plan)}
+                          skipped={countDataRows(sheet.rows) - mappedRows(sheet, plan).length}
                         />
                       )}
                     </div>
@@ -2596,20 +2737,14 @@ export function ImportWizard() {
 
             {plan.check && (
               <div className="mt-2 text-sm" data-testid={`iw-check-${i}`}>
-                {/* UPS-J1.4: with a match key the rehearsal report is
-                    action-aware — updates and inserts counted apart. */}
+                {/* Matched rows are not necessarily changed rows. */}
                 {plan.check.failed.length === 0 ? (
                   <span className="text-positive">
                     ✓ All {fmtCount(plan.check.valid)} rows are ready to import
-                    {plan.key != null &&
-                      `: ${fmtCount(plan.check.updated)} will update, ${fmtCount(plan.check.inserted)} will insert`}
                   </span>
                 ) : (
                   <span className="text-negative">
-                    {fmtCount(plan.check.valid)} rows ready
-                    {plan.key != null &&
-                      ` (${fmtCount(plan.check.updated)} update · ${fmtCount(plan.check.inserted)} insert)`}
-                    , {fmtCount(plan.check.failed.length)} with problems:{' '}
+                    {fmtCount(plan.check.valid)} rows ready, {fmtCount(plan.check.failed.length)} with problems:{' '}
                     {plan.check.failed
                       .slice(0, ERRORS_ON_SCREEN)
                       .map((f) => failLabel(plan, f))
@@ -2617,14 +2752,13 @@ export function ImportWizard() {
                     {plan.check.failed.length > 5 && ` … and ${plan.check.failed.length - 5} more`}
                   </span>
                 )}
-                {plan.check.tracks_changes === false && (
+                {plan.key == null && plan.check.tracks_changes === false && (
                   <Notice tone="caution" className="mt-2">This Table does not keep change history. Imports overwrite existing values, including hand edits.</Notice>
                 )}
-                {plan.key != null && plan.check.fields_updated !== undefined && (
-                  <p className="mt-2 text-ink" data-testid={`iw-check-fields-${i}`}>
-                    {fmtCount(plan.check.fields_updated)} {plan.check.fields_updated === 1 ? 'field' : 'fields'} will update ·{' '}
-                    {fmtCount(plan.check.fields_kept ?? 0)} hand-edited {plan.check.fields_kept === 1 ? 'field' : 'fields'} will be kept and flagged.
-                  </p>
+                {plan.key != null && (
+                  <div className="mt-2 text-ink" data-testid={`iw-check-fields-${i}`}>
+                    <ImportPreviewFacts report={plan.check} />
+                  </div>
                 )}
                 {plan.check.skipped > 0 && (
                   <span className="ml-1 text-ink-muted" data-testid={`iw-check-skipped-${i}`}>
@@ -2674,10 +2808,10 @@ export function ImportWizard() {
                         number. */}
                     <span className={plan.result.failed.length ? 'text-negative' : 'text-positive'}>
                       {plan.result.updated > 0
-                        ? `Updated ${fmtCount(plan.result.updated)} and added ${fmtCount(plan.result.inserted)} rows in `
+                        ? `Recorded ${fmtCount(plan.result.updated)} processed matches and added ${fmtCount(plan.result.inserted)} rows in `
                         : `Imported ${fmtCount(plan.result.inserted)} rows into `}
                       <Link
-                        to="/featherbase/admin/$table"
+                        to="/featherbase/admin/table/$table"
                         params={{ table: plan.table }}
                         search={{ filters: undefined }}
                         className="underline"
@@ -2743,12 +2877,12 @@ export function ImportWizard() {
               className="mr-2 rounded bg-caution-tint px-2 py-1 text-sm text-caution"
               data-testid="iw-confirm-updates"
             >
-              This import will <strong>update {fmtCount(confirmUpdates.total)} existing rows</strong>. Type{' '}
+              This import will <strong>change {fmtCount(confirmUpdates.total)} existing rows</strong>. Type{' '}
               <strong>{fmtCount(confirmUpdates.total)}</strong> to confirm:{' '}
               <input
                 className={inputClasses('mx-1 w-24 py-0.5')}
                 data-testid="iw-confirm-input"
-                aria-label={`Type ${fmtCount(confirmUpdates.total)} to confirm updating ${fmtCount(confirmUpdates.total)} rows`}
+                aria-label={`Type ${fmtCount(confirmUpdates.total)} to confirm changing ${fmtCount(confirmUpdates.total)} rows`}
                 value={confirmUpdates.typed}
                 onChange={(e) => setConfirmUpdates({ ...confirmUpdates, typed: e.target.value })}
               />
@@ -2756,11 +2890,29 @@ export function ImportWizard() {
                 className={buttonClasses({ variant: 'primary', className: 'py-0.5 disabled:opacity-40' })}
                 data-testid="iw-confirm-go"
                 disabled={!!busy || !confirmsCount(confirmUpdates.typed, confirmUpdates.total)}
-                onClick={() => void runImport(true, confirmUpdates.only)}
+                onClick={() => void runImport(confirmUpdates.only)}
               >
-                Update {fmtCount(confirmUpdates.total)} rows
+                Change {fmtCount(confirmUpdates.total)} rows
               </button>
             </span>
+          )}
+          {appendWarning && !confirmUpdates && (
+            <div className="rounded bg-caution-tint px-2 py-1 text-sm text-caution" data-testid="iw-append-warning">
+              Appending adds {fmtCount(appendWarning.targets.reduce((n, t) => n + t.rows, 0))} more rows
+              {' '}to {appendWarning.targets.map((t) => t.table).join(', ')} rather than matching existing rows.
+              {' '}Choose a matching column above instead, or deliberately add another set.
+              <label className="mx-2 inline-flex items-center gap-1">
+                <input type="checkbox" data-testid="iw-append-ack" checked={appendWarning.acknowledged}
+                  onChange={(e) => setAppendWarning({ ...appendWarning, acknowledged: e.target.checked })} />
+                Add another set of rows
+              </label>
+              <button type="button" data-testid="iw-append-go"
+                className={buttonClasses({ variant: 'primary', className: 'py-0.5 disabled:opacity-40' })}
+                disabled={!!busy || !appendWarning.acknowledged}
+                onClick={() => void runImport(appendWarning.only)}>
+                Append deliberately
+              </button>
+            </div>
           )}
           {/* #202: import THIS target, then step on. The owner asked to
               "import and then go to that screen where the row is imported"
@@ -2774,8 +2926,8 @@ export function ImportWizard() {
               </span>
             ) : (
               <button
-                onClick={() => void runImport(false, activeTarget)}
-                disabled={!!busy || !!confirmUpdates}
+                onClick={() => void runImport(activeTarget)}
+                disabled={!!busy || !!confirmUpdates || !!appendWarning}
                 data-testid="iw-import-one"
                 className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
               >
@@ -2787,6 +2939,7 @@ export function ImportWizard() {
             disabled={
               !!busy ||
               !!confirmUpdates ||
+              !!appendWarning ||
               plans.every((p) => p.mode === 'skip') ||
               targetIndexes.every((i) => plans[i]?.result)
             }

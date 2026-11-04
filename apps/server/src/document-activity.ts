@@ -4,6 +4,8 @@ import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { AppError } from './errors'
 import { PLATFORM_SCHEMA } from './platform-schema'
+import { displayName } from './people-directory'
+import { SYSTEM_ACTOR_LABELS } from 'shared'
 
 // Platform records that name one row by its id in plain text, beside a column
 // naming its Table: its timeline, attachments, shares, assignments, tags,
@@ -50,7 +52,8 @@ export async function repointRowActivity(tx: typeof sql, table: string, oldId: s
 export async function retainedActivityCounts(tx: typeof sql, table: string, rowId: string) {
   const [counts] = await tx`
     select (select count(*)::int from comment where ref_table = ${table} and ref_name = ${rowId}) as comments,
-           (select count(*)::int from version where ref_table = ${table} and ref_name = ${rowId}) as versions,
+           (select count(*)::int from version where ref_table = ${table} and ref_name = ${rowId}
+              and data->>'created' is distinct from 'true') as versions,
            (select count(*)::int from file where ref_table = ${table} and ref_name = ${rowId}) as files,
            (select count(*)::int from share where share_table = ${table} and share_name = ${rowId}) as shares`
   return { comments: Number(counts.comments), versions: Number(counts.versions),
@@ -97,16 +100,31 @@ export async function documentActivity(table: string, name: string, user: string
     sql`select data, created_by, created_at from version
         where ref_table = ${table} and ref_name = ${name} order by created_at asc`,
   ])
+  // Only authors of this already-authorized row's activity are resolved.
+  // This does not grant the caller access to the Person directory or emails.
+  // #829: the row's own creator is resolved too. A source-bound row has none.
+  const ids = [...new Set([...comments, ...versions, visibleDoc].map(entry => entry.created_by).filter(id => id != null).map(String))]
+  const actors = await sql`
+    select row_id, full_name, username from person where row_id = any(${ids})
+    union all select row_id, label as full_name, null as username from service_account where row_id = any(${ids})`
+  const names = new Map(actors.map(actor => [String(actor.row_id), displayName(actor)]))
+  const withAuthor = (entry: Record<string, unknown>) => ({
+    ...entry,
+    author_name: names.get(String(entry.created_by)) ?? SYSTEM_ACTOR_LABELS[String(entry.created_by)] ?? 'Unknown person',
+  })
   const visibleVersions = versions.map((version) => {
-    const data = version.data as { changed?: [string, unknown, unknown][]; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown } } | null
+    const data = version.data as { changed?: [string, unknown, unknown][]; created?: boolean; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown } } | null
     return {
-      ...version,
+      ...withAuthor(version),
       data: {
+        ...(data?.created ? { created: true } : {}),
         ...(data?.import_run ? { import_run: data.import_run } : {}),
         ...(data?.resolution && visibleFields.has(data.resolution.field) ? { resolution: data.resolution } : {}),
         changed: (data?.changed ?? []).filter(([field]) => visibleFields.has(field)),
       },
     }
   })
-  return { comments, versions: visibleVersions }
+  // #829: who made the row, and when, opens its Activity.
+  const created = withAuthor({ created_by: visibleDoc.created_by, created_at: visibleDoc.created_at })
+  return { created, comments: comments.map(withAuthor), versions: visibleVersions }
 }
