@@ -125,3 +125,11 @@ test('Tree of all shows 20 rows at a time, with Show more', async ({ admin }) =>
   fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
   await waitFor(() => expect(topLines(t)).toHaveLength(25))
 })
+
+test("a group of code-named rows lists them in code order, so a group's first 20 are its lowest codes", async ({ admin }) => {
+  await seedSites(admin)
+  await openTree(admin, SITE, 'ENK')
+  const plants = await line(`${PLANT} 3`)
+  await waitFor(() => expect(within(plants).getAllByRole('treeitem').map((i) => i.getAttribute('aria-level') === '2' && i.textContent))
+    .toEqual([expect.stringContaining('1503'), expect.stringContaining('1504'), expect.stringContaining('1505')]))
+})

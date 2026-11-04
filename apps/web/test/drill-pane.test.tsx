@@ -215,3 +215,9 @@ test('a pane on a row that is gone says so, without its id', async ({ admin }) =
   expect(await within(gone).findByText("You can't see this row.")).toBeInTheDocument()
   expect(gone).not.toHaveTextContent('gone-1901')
 })
+
+test('Filter from the pane puts the filter on the path before the row it was read from', async ({ admin }) => {
+  const { pane: site } = await openEnchakkal(admin)
+  fireEvent.click(await within(site).findByRole('button', { name: 'Filter' }))
+  await waitFor(() => expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala · KL', 'Enchakkal · ENK']))
+})

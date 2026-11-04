@@ -190,9 +190,14 @@ describe('SplitWithPane', () => {
     expect(screen.queryByTestId('split-pane')).not.toBeInTheDocument()
   })
 
-  test.each(['right', 'bottom'] as const)('a pane at the %s stays in sight while the page scrolls', (place) => {
-    render(<SplitWithPane place={place} pane={<p>Pane</p>}><p>List</p></SplitWithPane>)
+  test('a pane on the right stays in sight while the page scrolls', () => {
+    render(<SplitWithPane place="right" pane={<p>Pane</p>}><p>List</p></SplitWithPane>)
     expect(screen.getByTestId('split-pane').className).toMatch(/\bsticky\b/)
+  })
+
+  test('a pane at the bottom opens below the content, not over it', () => {
+    render(<SplitWithPane place="bottom" pane={<p>Pane</p>}><p>List</p></SplitWithPane>)
+    expect(screen.getByTestId('split-pane').className).not.toMatch(/\bsticky\b/)
   })
 
   test('says where its pane is, so the page around it can make room', () => {
