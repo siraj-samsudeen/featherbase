@@ -278,8 +278,18 @@ sample. Build it with `npm ci --prefix example-apps/tickets` followed by
 `npm run build --prefix example-apps/tickets`. Add that folder's absolute path
 to the JSON array `FEATHERBASE_APP_PATHS` in your untracked `.env.local`, restart
 the server, then choose Tickets in app administration (or run
-`featherbase advanced apps install-app tickets`). Ordinary startup does not
-install it or create sample requests.
+`featherbase advanced apps install-app tickets`). Either takes effect at once,
+with no second restart; if the app cannot run, the Apps screen and every
+Tickets request say why. Ordinary startup does not install it or create
+sample requests.
+
+An instance adds its own ticket types without a release: a System Manager
+adds a row to Tickets' *Ticket type* Table (its states, one per line, the
+first being where a ticket starts; its done states; the state a reopened
+ticket returns to; optional routing) and one *Ticket type field* row per
+field (text, long text, choice, date, person or link). A link field reads an
+instance Table only when that Table is listed in the `linked_tables` setting,
+and always with the requester's own permissions.
 
 Requesters share public ticket summaries and progress. Original request details
 stay with the submitter and support; employee verification and investigation
