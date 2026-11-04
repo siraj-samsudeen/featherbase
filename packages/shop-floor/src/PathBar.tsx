@@ -16,7 +16,8 @@ const COPIED_MS = 2000
  * The path the user has walked: Back and Forward (disabled at the ends), every
  * step as a button (the current one aria-current="step"), Copy link with an
  * inline "Copied", and a slot for the Recent paths menu. A long path scrolls
- * sideways inside the bar, never the page.
+ * sideways inside the bar, never the page, by whole steps; a "…" before it
+ * says earlier steps are out of sight and brings them back.
  */
 export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink, recent }: {
   steps: PathStep[]
@@ -28,16 +29,32 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
   recent?: ReactNode
 }) {
   const [copied, setCopied] = useState(false)
+  const [earlier, setEarlier] = useState(false)
   const nav = useRef<HTMLElement>(null)
+  // Whether any step starts left of the bar's edge, i.e. is out of sight.
+  const notice = (left: number) => {
+    const bar = nav.current
+    if (!bar) return
+    const outer = bar.getBoundingClientRect()
+    const offsets = [...bar.querySelectorAll('li')].map((li) => li.getBoundingClientRect().left - outer.left + bar.scrollLeft)
+    setEarlier(offsets.some((offset) => offset < left - 0.5))
+  }
   // A long path scrolls inside the bar; keep the current step in sight
-  // by scrolling the bar alone (scrollIntoView would also move the page).
+  // by scrolling the bar alone (scrollIntoView would also move the page),
+  // by whole steps, so no step is ever cut through a word.
   useEffect(() => {
     const bar = nav.current
     const step = bar?.querySelector('[aria-current="step"]')
     if (!bar || !step) return
     const [outer, inner] = [bar.getBoundingClientRect(), step.getBoundingClientRect()]
     const shift = inner.right > outer.right ? inner.right - outer.right : inner.left < outer.left ? inner.left - outer.left : 0
-    if (shift) bar.scrollTo?.({ left: bar.scrollLeft + shift })
+    let left = bar.scrollLeft + shift
+    if (shift > 0) {
+      const starts = [...bar.querySelectorAll('li')].map((li) => li.getBoundingClientRect().left - outer.left + bar.scrollLeft)
+      left = starts.find((start) => start >= left) ?? left
+    }
+    if (shift) bar.scrollTo?.({ left })
+    notice(left)
   }, [current, steps.length])
   useEffect(() => {
     if (!copied) return
@@ -48,10 +65,17 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
     <div className="flex min-w-0 items-center gap-2 border-b border-border bg-surface px-4 py-2">
       <Button onClick={onBack} disabled={current <= 0}>Back</Button>
       <Button onClick={onForward} disabled={current >= steps.length - 1}>Forward</Button>
-      <nav ref={nav} aria-label="Path" className="min-w-0 flex-1 overflow-x-auto">
+      {earlier && (
+        <button type="button" aria-label="Earlier steps" title="Earlier steps"
+          onClick={() => { nav.current?.scrollTo?.({ left: 0 }); setEarlier(false) }}
+          className="inline-flex min-h-control shrink-0 items-center rounded-control px-2 text-sm text-ink-muted hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus"
+        >…</button>
+      )}
+      <nav ref={nav} aria-label="Path" onScroll={(event) => notice(event.currentTarget.scrollLeft)}
+        className="min-w-0 flex-1 snap-x overflow-x-auto">
         <ol className="flex w-max items-center gap-1 text-sm">
           {steps.map((step, index) => (
-            <li key={step.key} className="flex shrink-0 items-center gap-1">
+            <li key={step.key} className="flex shrink-0 snap-start items-center gap-1">
               {index > 0 && <ChevronRight aria-hidden size={14} className="text-ink-subtle" />}
               <button type="button" onClick={() => onStep(index)} aria-current={index === current ? 'step' : undefined}
                 className={cx('inline-flex min-h-control items-center gap-1 whitespace-nowrap rounded-control px-2 focus-visible:outline-2 focus-visible:outline-focus',
