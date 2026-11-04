@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { iconButtonClasses } from './Button'
 import { cx } from './cx'
 import { X } from './icons'
@@ -6,7 +6,8 @@ import type { ResolvedPanePlace } from './PanePlace'
 
 /**
  * The frame of the drill pane: the row's table (small, muted) above its name,
- * the pane's actions and a close button. Escape anywhere inside closes it.
+ * the pane's actions and a close button. It takes focus when it opens;
+ * Escape anywhere inside closes it.
  */
 export function DrillPane({ kind, title, onClose, actions, children, place }: {
   kind: string
@@ -16,8 +17,11 @@ export function DrillPane({ kind, title, onClose, actions, children, place }: {
   children: ReactNode
   place: ResolvedPanePlace
 }) {
+  // Opening (or drilling to) a row puts focus in the pane, so Escape closes it.
+  const frame = useRef<HTMLElement>(null)
+  useEffect(() => { frame.current?.focus({ preventScroll: true }) }, [])
   return (
-    <aside aria-label={title} data-place={place} tabIndex={-1}
+    <aside ref={frame} aria-label={title} data-place={place} tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key !== 'Escape') return
         event.stopPropagation()

@@ -47,6 +47,13 @@ export function SplitWithPane({ place, pane, children }: {
   const shown = pane != null && pane !== false
   const docked = shown && !right
   const split = useRef<HTMLDivElement>(null)
+  // The control the pane was opened from gets focus back when it closes.
+  const opener = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (shown) return
+    const back = opener.current
+    if (back?.isConnected && (!document.activeElement || document.activeElement === document.body)) back.focus({ preventScroll: true })
+  }, [shown])
   useEffect(() => {
     if (!docked) return
     // The line the pane shows stays in sight in the shorter content above it.
@@ -56,7 +63,8 @@ export function SplitWithPane({ place, pane, children }: {
   return (
     <div ref={split} data-testid="split-with-pane" data-pane={shown ? place : undefined}
       className={`flex min-h-0 min-w-0 flex-1 ${right ? 'flex-row items-start gap-4' : 'flex-col'} ${docked ? 'h-[calc(100dvh-7rem)] min-h-96' : ''}`}>
-      <div className="min-h-0 min-w-0 flex-1 self-stretch overflow-auto">{children}</div>
+      <div className="min-h-0 min-w-0 flex-1 self-stretch overflow-auto"
+        onFocus={(event) => { opener.current = event.target as HTMLElement }}>{children}</div>
       {shown && (
         <div data-testid="split-pane" className={right
           ? 'sticky top-0 flex max-h-[calc(100dvh-5rem)] min-h-0 w-2/5 min-w-90 max-w-full shrink-0 flex-col overflow-y-auto bg-surface'

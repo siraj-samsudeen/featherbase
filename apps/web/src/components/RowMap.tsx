@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { api } from '../lib/api'
@@ -241,7 +242,8 @@ export function RowMap({ table, name }: { table: string; name: string }) {
             <g
               key={`gn-${i}`}
               onClick={() => openGroup(g)}
-              className="cursor-pointer"
+              {...activatable(`${g.label} ${g.count}, ${g.via}`, () => openGroup(g))}
+              className="cursor-pointer focus:outline-none [&:focus-visible>rect]:stroke-focus [&:focus-visible>rect]:stroke-2"
               data-testid={`map-group-${g.table}`}
             >
               <title>{`${g.label}, ${g.via}`}</title>
@@ -353,6 +355,20 @@ function NarrowForward({ link, onOpen }: { link: ForwardNode; onOpen: (f: Forwar
   )
 }
 
+/** A map box people reach by Tab and open by Enter or Space (checklist 21). */
+function activatable(label: string, open: () => void) {
+  return {
+    tabIndex: 0,
+    role: 'button',
+    'aria-label': label,
+    onKeyDown: (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      open()
+    },
+  }
+}
+
 /** One link box of the map, at the left. */
 function SvgForward({ link, y, height, lines, onOpen }: {
   link: ForwardNode
@@ -368,7 +384,8 @@ function SvgForward({ link, y, height, lines, onOpen }: {
   return (
     <g
       onClick={unreadable ? undefined : () => onOpen(link)}
-      className={unreadable ? undefined : 'cursor-pointer'}
+      {...(unreadable ? {} : activatable(`${title}, ${linkAndTable(link)}`, () => onOpen(link)))}
+      className={unreadable ? undefined : 'cursor-pointer focus:outline-none [&:focus-visible>rect]:stroke-focus [&:focus-visible>rect]:stroke-2'}
       data-testid={`map-forward-${link.table}`}
     >
       <title>{linkAndTable(link)}</title>

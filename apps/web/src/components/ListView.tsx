@@ -1167,7 +1167,15 @@ function ListRow({
   return (
     <>
       <tr onClick={select || undefined} aria-selected={onOpenPane ? inPane : undefined}
-        className={`border-b border-border last:border-0 hover:bg-subtle ${onOpenPane ? 'cursor-pointer' : ''} ${inPane ? 'bg-action-tint' : ''}`}>
+        // #910 checklist 21: a line goes to the pane from the keyboard too;
+        // Enter on a link or control inside it keeps doing its own thing.
+        tabIndex={onOpenPane ? 0 : undefined}
+        onKeyDown={onOpenPane && ((e) => {
+          if (e.key !== 'Enter' || e.target !== e.currentTarget) return
+          e.preventDefault()
+          onOpenPane({ table, row: rowId })
+        })}
+        className={`border-b border-border last:border-0 hover:bg-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${onOpenPane ? 'cursor-pointer' : ''} ${inPane ? 'bg-action-tint' : ''}`}>
         {expandable && (
           <td className="pl-2">
             <button
