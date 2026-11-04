@@ -13,4 +13,4 @@
 - [x] 3.1 Run targeted native/source/web tests, types, guards and strict OpenSpec validation.
 - [x] 3.2 Run effective acceptance and fresh init/smoke on isolated databases/ports.
 - [x] 3.3 Independent desktop verification plus inspected screenshots/interaction clip; ordinary hidden-logic review and fixes.
-- [ ] 3.4 Publish issue PR/evidence and subscribe to exact-head CI/comments; retain active change pending owner media review, no merge/deploy.
+- [x] 3.4 Publish issue PR/evidence and subscribe to exact-head CI/comments; retain active change pending owner media review, no merge/deploy.
