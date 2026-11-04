@@ -103,7 +103,7 @@ export function AccessExplanation({ person }: { person: string }) {
           </Section>
           <Section title="Tables they reach" testid="access-tables" empty={null}>
             {data.every_table ? (
-              <p className="text-sm text-ink" data-testid="access-every-table">Every Table, to read and to change: they are a System Manager.</p>
+              <p className="text-sm text-ink" data-testid="access-every-table">Every Table, to read and to change — through System Manager.</p>
             ) : (
               <>
                 <TableList label="Can read" tables={data.read} testid="access-read" />
