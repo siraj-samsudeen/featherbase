@@ -44,6 +44,21 @@ describe('migrate: one file', () => {
     expect(await sql`select count(*)::int as count from navigation_row_target`).toEqual([{ count: 0 }])
   })
 
+  test('#873 event row lookup upgrades an already-applied navigation migration without changing history', async ({ admin }) => {
+    await admin.post('/api/events', { events: [{ kind: 'search', key: 'search:depot', label: 'depot' }] })
+    const history = await sql`select * from user_event`
+    await sql`drop index featherbase.user_event_destination_row`
+    await sql`delete from migration where name = '0017_navigation_event_row_index.sql'`
+    expect(await pendingMigrations()).toEqual(['0017_navigation_event_row_index.sql'])
+    await withTransaction(() => applyMigrationFile('0017_navigation_event_row_index.sql'))
+    expect(await pendingMigrations()).toEqual([])
+    expect(await sql`select * from user_event`).toEqual(history)
+    expect(await sql`select pg_get_expr(indexprs, indrelid) as expression, indpred is null as nonpartial
+      from pg_index where indexrelid = 'featherbase.user_event_destination_row'::regclass`).toEqual([
+      { expression: "(destination ->> 'row'::text)", nonpartial: true },
+    ])
+  })
+
   test('a pending file reported, applied and recorded', async () => {
     await sql`delete from migration where name = '0003_mock_google_sign_in.ts'`
     await sql`update sign_in_method set enabled = false where row_id = 'google'`
