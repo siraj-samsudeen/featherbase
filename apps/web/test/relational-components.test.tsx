@@ -233,6 +233,20 @@ describe('SplitWithPane', () => {
     }
   })
 
+  test('the content keeps its selected line in sight when a pane docks below it', () => {
+    const scrolled: Element[] = []
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this) }
+    try {
+      const list = <table><tbody><tr><td>Other</td></tr><tr aria-selected="true"><td>Chosen</td></tr></tbody></table>
+      const { rerender } = render(<SplitWithPane place="bottom" pane={null}>{list}</SplitWithPane>)
+      rerender(<SplitWithPane place="bottom" pane={<p>Pane</p>}>{list}</SplitWithPane>)
+      expect(scrolled).toContain(screen.getByText('Chosen').closest('tr'))
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
+
   test('says where its pane is, so the page around it can make room', () => {
     render(<SplitWithPane place="right" pane={<p>Pane</p>}><p>List</p></SplitWithPane>)
     expect(screen.getByTestId('split-with-pane')).toHaveAttribute('data-pane', 'right')
