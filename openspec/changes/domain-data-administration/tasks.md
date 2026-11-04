@@ -15,10 +15,10 @@ The four follow-up policies and initial sample field set are agreed. Resolve the
 remaining physical mapping, contract and migration questions with concrete records
 and expected outcomes, not another UI prototype.
 
-- [ ] 2.1 Map the agreed separation of operational contacts from sign-in/recovery data to the current Employee/Person/account schema, using the agreed sample: read Name, Employee number, Operational phone and Emergency contact; update only the latter two (V28 verifies account separation). Shared contact maintenance uses any matching authorised membership (V22, agreed); bulk submissions process permitted rows with explicit per-row applied/pending/rejected results (V23, agreed). Approval authority is independent of direct-edit rights (V24, agreed); define its scoped column representation in the implementation contract.
-- [ ] 2.2 Define the membership and job-capability contracts with #617: correlated scope tuples, missing/ambiguous results, temporal activation, cycles and locking. Cover JA3/JA6, acting JA8 and multi-membership without a cross-product.
-- [ ] 2.3 Specify protected grant/revoke operations, shared-role/binding-change checks, successor-office resolution and delegation descendant limits. Grant and revoke authority are independently scoped (owner-approved); no direct grant, revocation, role edit or appointment change may exceed the corresponding boundary.
-- [ ] 2.4 Reconcile approval application, proposal versioning and rule combination with #627. Specify fresh review and maker/approver/scope revalidation through the normal save path.
+- [x] 2.1 Map the agreed separation of operational contacts from sign-in/recovery data to the current Employee/Person/account schema, using the agreed sample: read Name, Employee number, Operational phone and Emergency contact; update only the latter two (V28 verifies account separation). Shared contact maintenance uses any matching authorised membership (V22, agreed); bulk submissions process permitted rows with explicit per-row applied/pending/rejected results (V23, agreed). Approval authority is independent of direct-edit rights (V24, agreed); define its scoped column representation in the implementation contract.
+- [x] 2.2 Define the membership and job-capability contracts with #617: correlated scope tuples, missing/ambiguous results, temporal activation, cycles and locking. Cover JA3/JA6, acting JA8 and multi-membership without a cross-product.
+- [x] 2.3 Specify protected grant/revoke operations, shared-role/binding-change checks, successor-office resolution and delegation descendant limits. Grant and revoke authority are independently scoped (owner-approved); no direct grant, revocation, role edit or appointment change may exceed the corresponding boundary.
+- [x] 2.4 Reconcile approval application, proposal versioning and rule combination with #627. Specify fresh review and maker/approver/scope revalidation through the normal save path.
 - [ ] 2.5 Finalise migration mapping for flags/tiers, creator-only access, shares, Data Scope, app entry policy and Platform Admin naming. Preserve submit/cancel/amend behaviour and system-written protections. Obtain decisions on unresolved policies, then split implementation into bounded changes.
 
 ## 3. Server implementation and sample-data verification
@@ -27,20 +27,21 @@ Use tdd and the repository's existing real Postgres rollback sandbox. Construct
 sample values inline per test; do not load the design JSON as a test fixture.
 Declare app models through Table metadata. No new frontend or simulation UI work.
 
-Prerequisite implemented: app-owned data no longer inherits platform-admin
-permission bypasses. Explicit grants and Data Scope apply to detail/list reads,
-attached comments/history and realtime event delivery. The report-scope provider
-uses an explicit server actor only inside its declared read interface. This is
-not complete-grant evaluation, bounded delegation or proposal application; the
-implementation tasks below remain open. Regression checks live in
-`apps/server/test/domain-administration.test.ts` and use real Postgres/public HTTP.
+Implemented locally: explicit operation/Column grants, complete correlated scopes,
+bounded delegation and held proposal application. App-owned data does not inherit
+platform-admin bypasses. Regression scenarios live in `domain-administration`,
+`domain-delegation` and `domain-approvals` server tests and Dash's
+`platform-test/administration.test.ts`. A separate `domain-administration-commit`
+suite proves cross-connection revocation and concurrent review behavior. The
+scenario coverage audit is recorded in design.md. Installed legacy artifact
+migration remains open; successful fresh-install tests do not complete it.
 
 - [ ] 3.1 Add approved metadata and converging migrations for per-operation/column permissions, scope and provenance, claiming migration numbers under #566. Verify fresh/local restored-database migrations and legacy access mapping.
-- [ ] 3.2 Implement complete-grant evaluation and current membership. Through public server operations, verify independent create/read/update column sets, delete, self/direct/subtree/named scopes, fail-closed missing scope and correlated tuples; assert forbidden fields never save partially.
-- [ ] 3.3 Implement bounded delegation and checked job-derived authority. Use Meera/Arun/Ravi and RA6/JA6/JA7/JA8 to verify grant boundaries, transfer, revoked authority, successor continuity and direct/indirect escalation refusal. Include shared-role edits and future appointments. Verify V29–V30: removing powers needs independently scoped revoke authority; grant-only and revoke-only authority cannot substitute for each other, and mixed replacements check both atomically.
-- [ ] 3.4 Implement held proposals through existing approval/save machinery. Exercise Arun proposal CP1 and Meera approval, rejection reason, no self-approval, mandatory rule composition, original/current/proposed conflicts, replay protection and current maker/approver authority.
-- [ ] 3.5 Run the sample verification cases as independent server integration scenarios, asserting returned data and persisted rows, proposals, decisions and history. Cover list/report reads, imports/bulk/API paths and concurrency beyond the illustrative dataset. Convert unresolved cases only after their policies are decided.
-- [ ] 3.6 Replace app decides_scope protection only after equivalent domain/scope/approval checks pass across public and trusted write paths. Keep platform access configuration and system-written audit protection separate. Verify direct data maintenance cannot self-widen authority.
+- [x] 3.2 Implement complete-grant evaluation and current membership. Through public server operations, verify independent create/read/update column sets, delete, self/direct/subtree/named scopes, fail-closed missing scope and correlated tuples; assert forbidden fields never save partially.
+- [x] 3.3 Implement bounded delegation and checked job-derived authority. Use Meera/Arun/Ravi and RA6/JA6/JA7/JA8 to verify grant boundaries, transfer, revoked authority, successor continuity and direct/indirect escalation refusal. Include shared-role edits and future appointments. Verify V29–V30: removing powers needs independently scoped revoke authority; grant-only and revoke-only authority cannot substitute for each other, and mixed replacements check both atomically.
+- [x] 3.4 Implement held proposals through existing approval/save machinery. Exercise Arun proposal CP1 and Meera approval, rejection reason, no self-approval, mandatory rule composition, original/current/proposed conflicts, replay protection and current maker/approver authority.
+- [x] 3.5 Run the sample verification cases as independent server integration scenarios, asserting returned data and persisted rows, proposals, decisions and history. Cover list/report reads, imports/bulk/API paths and concurrency beyond the illustrative dataset. Convert unresolved cases only after their policies are decided.
+- [x] 3.6 Replace app decides_scope protection only after equivalent domain/scope/approval checks pass across public and trusted write paths. Keep platform access configuration and system-written audit protection separate. Verify direct data maintenance cannot self-widen authority.
 
 ## 4. Integration and delivery
 

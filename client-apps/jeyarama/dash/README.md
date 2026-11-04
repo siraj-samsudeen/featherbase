@@ -136,6 +136,44 @@ safe to rerun, and it refuses a database that isn't stamped `development`.
 It prints who to sign in as: `reader-sm@example.test` shows figures, and the others
 each show one state of the page. They all use the password it prints.
 
+### Checking scoped administration through the API
+
+Use a disposable database installed from this checkout with `--made-up-data`.
+The existing report is unchanged; this check exercises the backend, not a new
+permissions screen. From the repository root, set `FEATHERBASE_API_URL` to that
+instance's API origin and `FEATHERBASE_DEMO_PASSWORD` to its printed demo password:
+
+```sh
+pnpm --filter server exec tsx ../../client-apps/jeyarama/dash/scripts/check-administration.mts
+```
+
+The command signs in as the synthetic Store Manager (`reader-sm@example.test`),
+Department Manager (`reader-dm2@example.test`), Section Manager
+(`reader-one@example.test`, whose job is Team Leader), and section staff. It
+checks scoped mapping CRUD, refuses a section-to-department move by the Section
+Manager, permits that move by the Store Manager, and restores the mapping. It
+then grants contact access for Sarees, submits a held correction, refuses
+self-approval, approves as the Store Manager and revokes access. It restores
+the contact value and leaves the real audit/decision history of these actions.
+It uses ordinary authenticated HTTP throughout, with no database bypass.
+
+Configuration is app-owned in `featherbase.json`: `permissions` selects each
+role's operations and Columns per Table; `administration.targets` maps target
+Rows to dimensions; `memberships` supplies dated correlated facts; `jobs`
+projects job appointments into scoped roles; `approvals` defines independent
+review requirements. Store Manager covers store-related Tables within its
+store; Department Manager and Section Manager maintain section-to-subcategory
+mappings within their department or section. Multiple Tables are configured
+as multiple grants on one role, not a separate Table-group object.
+
+The local seed explicitly bootstraps Scope, Authority and separate grant/revoke
+Delegation Boundary records. After bootstrap, use `/api/administration/grant`,
+`/api/administration/revoke`, `/api/administration/proposals?table=…` and
+`/api/administration/review`. Generic writes cannot forge these system-written
+records. Operational Employee contacts are separate from Person sign-in and
+recovery data. Installing this configuration on an existing instance is not
+authorised by running the demo, and must not overwrite its installed artifact.
+
 Without the flag the instance has no secret and no identifier system, so readers
 get "couldn't load" and an administrator is told what is missing. To use another
 database or other ports, set `DATABASE_URL`, `API_PORT` and `WEB_PORT` in `.env.local`

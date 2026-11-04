@@ -20,6 +20,7 @@ import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { grantAdministration, revokeAdministration } from './administration-authority'
+import { reviewCorrection, listCorrections, isPendingCorrection } from './administration-approvals'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
@@ -873,6 +874,12 @@ app.route('/api/sales_target', salesTargetRoutes)
 
 app.post('/api/administration/grant', async (c) => c.json(await grantAdministration(who(c), await c.req.json()), 201))
 app.post('/api/administration/revoke', async (c) => c.json(await revokeAdministration(who(c), await c.req.json())))
+app.post('/api/administration/review', async (c) => c.json(await reviewCorrection(who(c), await c.req.json())))
+app.get('/api/administration/proposals', async (c) => {
+  const table = c.req.query('table')
+  if (!table) throw new AppError('ValidationError', 'A target Table is required')
+  return c.json(await listCorrections(who(c), await resolveTableName(table)))
+})
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
@@ -1590,6 +1597,7 @@ app.post('/api/save_row', async (c) => {
     throw new AppError('ValidationError', 'Expected { table, row }')
   const hadRowId = Boolean(body.row[ROW_KEY])
   const saved = await saveDoc(body.table, body.row, who(c))
+  if (isPendingCorrection(saved)) return c.json(saved, 202)
   publishDocEvent(body.table, String(saved.row_id), hadRowId ? 'updated' : 'created')
   return c.json(await rowForCaller(body.table, saved, who(c)), 201)
 })
@@ -2237,6 +2245,7 @@ app.post('/api/table/:table', async (c) => {
   }
   const doc = (await c.req.json()) as Record<string, unknown>
   const saved = await saveDoc(table, doc, user.row_id, 'insert')
+  if (isPendingCorrection(saved)) return c.json(saved, 202)
   publishDocEvent(table, String(saved.row_id), 'created')
   return c.json(await rowForCaller(table, saved, user.row_id), 201)
 })
@@ -2272,6 +2281,8 @@ app.post('/api/table/:table/:name', async (c) => {
   assertNotSystemWritten(await getMeta(table), 'changed')
   const args = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
   const result = await action.handler({ table, name, args, user })
+  if (result && typeof result === 'object' && isPendingCorrection(result as Record<string, unknown>))
+    return c.json(result, 202)
   publishDocEvent(table, name, 'updated')
   return c.json(result)
 })
@@ -2283,6 +2294,7 @@ app.patch('/api/table/:table/:name', async (c) => {
   const doc = (await c.req.json()) as Record<string, unknown>
   doc.row_id = name
   const saved = await saveDoc(table, doc, user.row_id)
+  if (isPendingCorrection(saved)) return c.json(saved, 202)
   publishDocEvent(table, String(saved.row_id), 'updated')
   return c.json(await rowForCaller(table, saved, user.row_id))
 })
@@ -2294,9 +2306,10 @@ app.delete('/api/table/:table/:name', async (c) => {
   // Optional optimistic echo (?updated_at=...): on source-bound rows the
   // delete conflicts when the store changed after the client loaded —
   // essential for csv-folder rows, whose identity is positional.
-  await deleteDoc(table, name, user.row_id, {
+  const result = await deleteDoc(table, name, user.row_id, {
     expectUpdatedAt: c.req.query('updated_at') ?? null,
   })
+  if (result && isPendingCorrection(result)) return c.json(result, 202)
   publishDocEvent(table, name, 'deleted')
   return c.json({ ok: true })
 })

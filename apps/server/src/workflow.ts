@@ -344,16 +344,20 @@ async function notifyPendingApprovers(
   if (approvers.length === 0) return
 
   const actions = outgoing.map((t) => t.action).join(', ')
-  const link = `/featherbase/admin/${encodeURIComponent(table)}/${encodeURIComponent(name)}`
+  await queueApprovalEmails(table, name, state, actions, approvers.map(approver => approver.email))
+}
+
+export async function queueApprovalEmails(table: string, name: string, state: string, actions: string,
+  recipients: string[], link = `/featherbase/admin/${encodeURIComponent(table)}/${encodeURIComponent(name)}`) {
   const subject = `Approval required: ${table} ${name}`
   const body =
     `${table} ${name} has entered the "${state}" state and is awaiting your action.\n\n` +
     `Available actions: ${actions}\n` +
     `Open the row: ${link}`
 
-  for (const approver of approvers) {
+  for (const recipient of recipients) {
     await queueEmail({
-      to: approver.email,
+      to: recipient,
       subject,
       body,
       ref_table: table,

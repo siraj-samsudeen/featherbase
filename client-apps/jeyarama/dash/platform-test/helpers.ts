@@ -5,6 +5,7 @@ import { resolve } from 'node:path'
 import { makeClient, type TestClient } from 'feather-testing-postgres'
 import { expect } from 'vitest'
 import { discoverPackages } from '../../src/runtime-packages'
+import { provisionApp } from '../../src/app-lifecycle'
 
 export const APP_DIR = process.env.FEATHER_DASH_DIR!
 /** The version under test: the app folder's own package.json. */
@@ -23,6 +24,11 @@ export async function installApp(admin: TestClient) {
 /** Saves a row of one of the app's Tables. */
 export const saveRow = (client: TestClient, table: string, row: Record<string, unknown>) =>
   client.post<Record<string, unknown>>('/api/save_row', { table: table.includes('.') || !/^[a-z_]+$/.test(table) ? table : `feather_dash.${table}`, row })
+
+/** Trusted initial facts for validator/report tests, not user authority.
+ * Administration journeys use saveRow without this provisioning context. */
+export const saveFixtureRow = (client: TestClient, table: string, row: Record<string, unknown>) =>
+  provisionApp('feather_dash', () => saveRow(client, table, row))
 
 // The old Tables, as an instance holds them (featherbase's sales-target tests' shapes).
 export const OLD_TABLES: [string, Record<string, unknown>[]][] = [

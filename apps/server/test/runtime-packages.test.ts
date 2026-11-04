@@ -71,7 +71,7 @@ describe('Rejected runtime artifacts never become applications', () => {
       change: ({ manifest }) => { manifest.client = '..' } },
     { name: 'provider has no server', error: 'A scope provider requires a server module',
       change: ({ manifest }) => { manifest.scopeProvider = provider; delete manifest.server } },
-    { name: 'provider reads an unmarked Table', error: 'A scope provider reads only Tables marked decides_scope',
+    { name: 'provider reads an unmarked Table', error: 'A scope provider reads only Tables marked decides_scope or protected by administration',
       change: ({ manifest }) => { manifest.scopeProvider = provider } },
     { name: 'provider reads a Table containing Sub-tables', error: 'A scope provider cannot read Tables with Sub-tables',
       change: ({ manifest }) => {

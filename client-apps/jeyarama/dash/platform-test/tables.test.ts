@@ -5,7 +5,7 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test as pgTest } from '../pg-test'
 import { expectApiError } from '../fixtures'
-import { installApp as install, pinned, saveRow } from './helpers'
+import { installApp as install, pinned, saveFixtureRow as saveRow } from './helpers'
 
 const test = pgTest.extend<{ admin: TestClient }>({ admin: async ({ admin }, use) => use(pinned(admin)) })
 const save = (admin: TestClient, table: string, row: Record<string, unknown>) => saveRow(admin, table, row)

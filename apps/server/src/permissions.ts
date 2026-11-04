@@ -4,7 +4,8 @@ import { AppError } from './errors'
 import { activeApps, isProvisioningApp } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
 import { asNameList, declaresOwnPages } from './installed-app-ledger'
-import { assignmentPredicate, scopedRoles, type AssignmentScope, type ScopeRow } from './administration-scopes'
+import { administrationApps, administrationFor, assignmentPredicate, scopedRoles, type AssignmentScope, type ScopeRow } from './administration-scopes'
+import { effectiveAssignments } from './administration-authority'
 import { tableRelation } from './table-engine'
 
 // PERM-001: role resolution for a principal — a person or a service account
@@ -49,6 +50,12 @@ export const PLATFORM_ROLES: readonly string[] = ['Administrator', 'System Manag
  *  holds All, and anyone holds Guest. */
 export const OPEN_ROLES: readonly string[] = ['All', 'Guest']
 
+export async function enabledPrincipal(user: string): Promise<boolean> {
+  const [person] = await sql`select enabled from featherbase.person where row_id = ${user}
+    union all select enabled from featherbase.service_account where row_id = ${user}`
+  return person?.enabled === true
+}
+
 // PERM-002/003/009: role-based Table permissions from Permission rows.
 // Administrator (and System Manager holders) bypass all checks so a fresh
 // Table with no Permission rows is still manageable.
@@ -79,6 +86,7 @@ export interface PermissionGrant {
 /** Resolve whole contributions, including their prerequisites. A missing or
  * cyclic prerequisite contributes nothing; it never becomes an open grant. */
 export async function permissionGrants(user: string, table: string, action: PermAction, parentPermission?: string, parentColumn?: string): Promise<PermissionGrant[]> {
+  if (administrationFor(table.split('.')[0]) && !await enabledPrincipal(user)) return []
   const roles = await getRoles(user)
   const assignments = await scopedRoles(user, table)
   const rows = await sql`
@@ -243,13 +251,18 @@ export async function tableAccessFor(
   principal: string,
   roles: string[],
 ): Promise<{ readable: string[]; readableByOwnRole: string[]; creatable: string[]; ownGrant: boolean; admin: boolean }> {
+  let scoped = sql`false`
+  for (const app of administrationApps()) {
+    const assigned = [...new Set((await effectiveAssignments(app, principal)).map(assignment => assignment.role))]
+    if (assigned.length) scoped = sql`${scoped} or (d.owner_app = ${app} and p.role in ${sql(assigned)})`
+  }
   const rows = await sql`
     select p.ref_table, p.role, (p.operation = 'read') as can_read, p.owner_app,
       -- #432: a grant never makes a system-written Table creatable.
       (p.operation = 'create' and not d.system_written) as can_create
     from permission p
     join table_def d on d.name = p.ref_table and d.kind = 'table'
-    where p.parent_permission is null and p.requires_permission is null and p.role in ${sql(roles)}`
+    where p.parent_permission is null and p.requires_permission is null and (p.role in ${sql(roles)} or (${scoped}))`
   const active = rows.filter(
     (r) => r.owner_app == null || activeApps.has(String(r.owner_app)),
   )

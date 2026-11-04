@@ -125,7 +125,8 @@ describe('the read grants, declared before the first install', () => {
     expect(granted('Feather Dash Section Reviewer')).toEqual([...ORG_CHART, 'feather_dash.store_rollout'].sort())
   })
 
-  it('grant reads only: writing a Table that decides scope waits for featherbase #462', () => {
-    expect(manifest.permissions.every(p => Object.keys(p).sort().join() === 'can_read,role,table' && p.can_read === true)).toBe(true)
+  it('keeps the report roles read-only; scoped administration uses separate roles', () => {
+    expect(manifest.permissions.filter(p => ROLES.includes(p.role)).every(p =>
+      Object.keys(p.operations).join() === 'read' && p.operations.read === '*')).toBe(true)
   })
 })

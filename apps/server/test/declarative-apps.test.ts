@@ -1,7 +1,8 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { loadInstalledApps, uninstallApp, isInstalled, registerApp, listInstalledApps } from '../src/apps'
+import { loadInstalledApps, uninstallApp, isInstalled, registerApp, listInstalledApps, suspendRuntimeApp } from '../src/apps'
 import { sql } from '../src/db'
+import { saveSystemRow } from '../src/document'
 
 // PLAT-005 (#55): an app can be installed from a JSON manifest over the API —
 // no code in this repo. The manifest persists in installed_app, uninstall
@@ -30,6 +31,32 @@ async function unwire() {
 }
 
 describe('PLAT-005: declarative app install over the API', () => {
+  test('a JSON app restores its scoped administration contract at boot', async ({ admin, createUser }) => {
+    const user = await createUser({ roles: [] })
+    const name = 'jsonadministration'
+    const table = `${name}.contact`
+    const membership = `${name}.membership`
+    try {
+      await admin.post('/api/install_app', { manifest: { name, roles: ['JSON Contact Reader'],
+        administration: { version: 1, targets: { [table]: { person: 'person' } },
+          memberships: { table: membership, person: 'person', dimensions: { store: ['store'] } } },
+        tables: [{ name: table, id_pattern: 'prompt', columns: [
+          { column_name: 'person', column_type: 'Reference', reference_table: 'Person' }, { column_name: 'phone', column_type: 'Data' },
+        ] }, { name: membership, id_pattern: 'prompt', columns: [
+          { column_name: 'person', column_type: 'Reference', reference_table: 'Person' }, { column_name: 'store', column_type: 'Data' },
+        ] }], permissions: [{ table, role: 'JSON Contact Reader', operations: { read: ['phone'] } }],
+        fixtures: [{ table, rows: [{ row_id: 'contact', person: user.user, phone: 'json-phone' }] },
+          { table: membership, rows: [{ row_id: 'member', person: user.user, store: 'A' }] }],
+      } })
+      const scope = await saveSystemRow('Scope', { app: name, mode: 'named', tuples: [{ store: 'A' }] }, 'bootstrap')
+      await saveSystemRow('Role Assignment', { app: name, person: user.user, role: 'JSON Contact Reader', scope: scope.row_id }, 'bootstrap')
+      for (const restart of [false, true]) {
+        if (restart) { suspendRuntimeApp(name); await loadInstalledApps() }
+        expect(await user.get(`/api/table/${encodeURIComponent(table)}/contact`)).toMatchObject({ phone: 'json-phone' })
+      }
+    } finally { suspendRuntimeApp(name) }
+  })
+
   test('install from { manifest } end-to-end: schema, access, uninstall — no code anywhere', async ({
     admin,
     createUser,

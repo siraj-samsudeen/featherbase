@@ -11,12 +11,13 @@ describe('bounded delegation', () => {
     const meera = await createUser({ roles: ['Staffing'] })
     const arun = await createUser({ roles: [] })
     registerApp({ name: 'jobproof',
-      administration: { version: 1, targets: { 'jobproof.employee': { person: 'person' } },
+      administration: { version: 1, targets: { 'jobproof.appointment': { person: 'person' }, 'jobproof.employee': { person: 'person' } },
         memberships: { table: 'jobproof.appointment', person: 'person', startsOn: 'starts_on', endsOn: 'ends_on',
           dimensions: { store: ['store'] } },
         jobs: { column: 'job', capabilities: [
           { job: 'manager', role: 'Job Contact Admin', dimensions: ['store'] },
           { job: 'manager', role: 'Job Access Admin', dimensions: ['store'] },
+          { job: 'reviewer', role: 'Job Contact Reviewer', dimensions: ['store'] },
         ] } },
       tables: [
         { name: 'jobproof.employee', id_pattern: 'prompt', columns: [
@@ -28,9 +29,10 @@ describe('bounded delegation', () => {
           { column_name: 'store', column_type: 'Data' }, { column_name: 'job', column_type: 'Data' },
           { column_name: 'starts_on', column_type: 'Date' }, { column_name: 'ends_on', column_type: 'Date' },
         ] },
-      ], roles: ['Job Contact Admin', 'Job Access Admin', 'Staffing'],
+      ], roles: ['Job Contact Admin', 'Job Access Admin', 'Job Contact Reviewer', 'Staffing'],
       permissions: [
         { table: 'jobproof.employee', role: 'Job Contact Admin', operations: { read: ['phone'], update: ['phone'] } },
+        { table: 'jobproof.employee', role: 'Job Contact Reviewer', operations: { approve: ['phone'] } },
         { table: 'jobproof.appointment', role: 'Staffing', operations: {
           read: ['person', 'store', 'job', 'starts_on', 'ends_on'],
           create: ['person', 'store', 'job', 'starts_on', 'ends_on'], update: ['job', 'ends_on'], delete: true,
@@ -53,6 +55,10 @@ describe('bounded delegation', () => {
         max_scope: scope.row_id, recipient_scope: scope.row_id }, 'bootstrap')
       const contact = tableRef('jobproof.employee').rowUrl('arun')
       expect(await meera.get(contact)).toMatchObject({ phone: 'original' })
+      await sql`update installed_app set enabled = false where name = 'jobproof'`
+      const disabled = await meera.get<{ capabilities: { tables: string[] } }>('/api/whoami')
+      expect(disabled.capabilities.tables).not.toContain('jobproof.employee')
+      await sql`update installed_app set enabled = true where name = 'jobproof'`
       await meera.post('/api/administration/grant', { app: 'jobproof', person: arun.user,
         role: 'Job Contact Admin', scope: scope.row_id })
       const appointments = tableRef('jobproof.appointment')
@@ -75,6 +81,18 @@ describe('bounded delegation', () => {
       await meera.post('/api/save_row', { table: appointments.name, row: { ...own, ends_on: '2999-01-01' } })
       const shortened = await meera.get<Record<string, unknown>>(appointments.rowUrl('meera'))
       expect(shortened).toMatchObject({ ends_on: '2999-01-01T00:00:00.000Z' })
+      // Removing the old powers is authorised, but a replacement also adds
+      // reviewer power. Both checks must pass before either change persists.
+      await expectApiError(meera.post('/api/save_row', { table: appointments.name,
+        row: { ...shortened, job: 'reviewer' } }), { status: 403 })
+      expect(await meera.get(appointments.rowUrl('meera'))).toMatchObject({
+        job: 'manager', ends_on: '2999-01-01T00:00:00.000Z', updated_at: shortened.updated_at,
+      })
+      // Revoke authority permits shortening, never restoring an open-ended
+      // appointment that confers Access Admin without its grant boundary.
+      await expectApiError(meera.post('/api/save_row', { table: appointments.name,
+        row: { ...shortened, ends_on: null } }), { status: 403 })
+      expect(await meera.get(appointments.rowUrl('meera'))).toMatchObject({ ends_on: shortened.ends_on })
       await meera.post('/api/save_row', { table: appointments.name, row: { ...shortened, ends_on: '2000-01-01' } })
       await expectApiError(meera.get(contact), { status: 403 })
     } finally { suspendRuntimeApp('jobproof') }
@@ -121,6 +139,10 @@ describe('bounded delegation', () => {
         max_scope: scope.row_id, recipient_scope: scope.row_id, allow_further_delegation: false }, 'bootstrap')
       const args = { app: 'delegationproof', person: arun.user, role: 'Contact Admin', scope: scope.row_id }
       const contact = tableRef('delegationproof.employee').rowUrl('arun')
+      await expectApiError(arun.get(contact), { status: 403 })
+      await expectApiError(meera.post('/api/administration/grant', {
+        app: args.app, person: args.person, role: args.role,
+      }), { status: 417 })
       await expectApiError(arun.get(contact), { status: 403 })
       await expectApiError(admin.post('/api/administration/grant', args), { status: 403 })
       await expectApiError(meera.post('/api/administration/grant', { ...args, scope: outside.row_id }), { status: 403 })

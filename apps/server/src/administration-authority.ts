@@ -6,8 +6,8 @@ import { getMeta, type TableMeta } from './meta'
 import { saveSystemRow } from './document'
 import { appDeclaresRole } from './apps'
 import { tableRelation } from './table-engine'
-import { permissionGrants, type PermissionGrant, type PermAction } from './permissions'
-import { administrationFor, administrationApps, administrationAccessTables, administrationSources, assignmentPredicate, holdAdministrationSources, jobAssignments, type AssignmentScope } from './administration-scopes'
+import { enabledPrincipal, permissionGrants, type PermissionGrant, type PermAction } from './permissions'
+import { administrationFor, administrationApps, administrationAccessTables, administrationSources, personScopePredicate, holdAdministrationSources, jobAssignments, type AssignmentScope } from './administration-scopes'
 
 const reservedRoles = new Set(['Administrator', 'System Manager', 'All', 'Guest'])
 const tuples = z.array(z.record(z.string().min(1), z.string().min(1)).refine(value => Object.keys(value).length > 0))
@@ -50,7 +50,7 @@ export interface EffectiveAssignment {
  * authority survives that person's departure, but not its own withdrawal or
  * a narrower boundary. Cyclic/missing legacy provenance contributes nothing. */
 export async function effectiveAssignments(app: string, person: string): Promise<EffectiveAssignment[]> {
-  if (!administrationFor(app)) return []
+  if (!administrationFor(app) || !await enabledPrincipal(person)) return []
   const rows = await sql`select a.* from featherbase.role_assignment a
     join installed_app i on i.name = a.app and i.enabled and not i.activation_pending
     where a.app = ${app} and a.revoked_at is null
@@ -93,10 +93,7 @@ export async function effectiveAssignments(app: string, person: string): Promise
 }
 
 export async function personInScope(person: string, scope: AssignmentScope, anchor: string): Promise<boolean> {
-  const declaration = administrationFor(scope.app)
-  const target = declaration && Object.entries(declaration.targets)[0]
-  if (!target) return false
-  const [result] = await sql`select ${(await assignmentPredicate(anchor, target[0], scope, { [target[1].person]: person })).frag} as allowed`
+  const [result] = await sql`select ${(await personScopePredicate(anchor, person, scope)).frag} as allowed`
   return result.allowed === true
 }
 
@@ -178,7 +175,19 @@ export async function checkJobAuthority(before: Awaited<ReturnType<typeof captur
 
 async function accessContributions(app: string) {
   const result = new Map<string, { role: string; person: string; scope: AssignmentScope }>()
-  const principals = await sql`select row_id from person union select row_id from service_account`
+  // Principals with no contributing role cannot be affected by an app's
+  // permission edit. Resolve candidates once, rather than checking every
+  // person against every operation of every Table.
+  const jobs = await jobAssignments(app)
+  const principals = await sql`with roles as (
+    select distinct p.role from permission p join table_def t on t.name = p.ref_table where t.owner_app = ${app}
+  ) select distinct h.parent as row_id from has_role h
+    where h.parenttype in ('Person', 'Service Account') and (h.role in (select role from roles)
+      or h.role in (select bound_role from app_role_binding where app = ${app} and app_role in (select role from roles)))
+    union select coalesce(person, service_account) as row_id from featherbase.role_assignment where app = ${app}
+    union select row_id from person where exists (select 1 from roles where role = 'All')
+    union select row_id from service_account where exists (select 1 from roles where role = 'All')
+    union select unnest(${jobs.map(job => job.person)}::text[]) as row_id`
   const targets = await sql`select distinct p.ref_table, p.operation from permission p
     join table_def t on t.name = p.ref_table where t.owner_app = ${app}`
   const identity = (grant: PermissionGrant): unknown => ({ id: grant.id, scope: grant.scope,

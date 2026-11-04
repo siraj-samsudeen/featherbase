@@ -3,6 +3,7 @@ import { amendDoc, cancelDoc, renameDoc, submitDoc } from '../document'
 import { applyWorkflowAction } from '../workflow'
 import { rowForCaller } from '../row-readers'
 import { registerRowAction } from '../actions'
+import { isPendingCorrection } from '../administration-approvals'
 
 // The row actions every Table gets from the engine itself (not app/plugin
 // contributed) — submit/cancel/amend gated by is_submittable, workflow
@@ -24,7 +25,10 @@ registerRowAction('cancel', {
 registerRowAction('amend', {
   effect: 'write',
   description: 'Create an editable copy of a cancelled row (amended_from).',
-  handler: async ({ table, name, user }) => rowForCaller(table, await amendDoc(table, name, user.row_id), user.row_id),
+  handler: async ({ table, name, user }) => {
+    const result = await amendDoc(table, name, user.row_id)
+    return isPendingCorrection(result) ? result : rowForCaller(table, result, user.row_id)
+  },
 })
 
 registerRowAction('apply_workflow_action', {

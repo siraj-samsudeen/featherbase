@@ -28,6 +28,12 @@ const { sql } = await server('db.ts')
 const { setUserPassword } = await server('auth.ts')
 const { applySeedPack } = await server('seed-packs.ts')
 const { datasetsDeclaration } = await server('app-datasets.ts')
+const { saveDoc, saveSystemRow } = await server('document.ts')
+const { getList } = await server('query.ts')
+const { provisionApp } = await server('app-lifecycle.ts')
+const { discoverPackages } = await server('runtime-packages.ts')
+const { loadInstalledApps } = await server('apps.ts')
+const { loadControllers } = await server('controllers.ts')
 const { markScopeTables } = await import(pathToFileURL(resolve(appDir, 'platform-test/mark-scope-tables.mjs')).href)
 
 /** The local password every made-up reader signs in with (this script's own test value). */
@@ -46,11 +52,18 @@ async function call<T = Record<string, unknown>>(path: string, init: RequestInit
   return body as T
 }
 const post = (path: string, body: unknown) => call(path, { method: 'POST', body: JSON.stringify(body) })
-const save = (table: string, row: Record<string, unknown>) => post('/api/save_row', { table, row }) as Promise<{ row_id: string }>
+// Synthetic bootstrap is explicitly local/trusted. Administrator HTTP no
+// longer bypasses app permissions or bounded appointment authority.
+const save = (table: string, row: Record<string, unknown>): Promise<{ row_id: string }> =>
+  table.startsWith('feather_dash.') || table === 'Person'
+    ? provisionApp('feather_dash', () => saveDoc(table, row))
+    : post('/api/save_row', { table, row }) as Promise<{ row_id: string }>
 /** The row these values name, made when it isn't there: what keeps a rerun safe. */
 async function ensure(table: string, row: Record<string, unknown>, create: () => Promise<{ row_id: unknown }> = () => save(table, row)) {
-  const filters = encodeURIComponent(JSON.stringify(Object.entries(row).map(([column, value]) => [column, '=', value])))
-  const found = await call<{ data: { row_id: string }[] }>(`/api/table/${encodeURIComponent(table)}?filters=${filters}`)
+  const filters = Object.entries(row).map(([column, value]) => [column, '=', value])
+  const found = table.startsWith('feather_dash.')
+    ? await provisionApp('feather_dash', () => getList(table, { fields: ['row_id'], filters }, 'Administrator'))
+    : await call<{ data: { row_id: string }[] }>(`/api/table/${encodeURIComponent(table)}?filters=${encodeURIComponent(JSON.stringify(filters))}`)
   return found.data[0] ?? { row_id: String((await create()).row_id) }
 }
 
@@ -59,6 +72,10 @@ await applySeedPack('jeyarama')
 
 const [installed] = await sql`select 1 from installed_app where name = 'feather_dash'`
 if (!installed) await post('/api/install_app', { name: 'feather_dash' })
+await loadControllers()
+const discovery = await discoverPackages([appDir])
+if (discovery.length) throw new Error(`Cannot load Feather Dash: ${JSON.stringify(discovery)}`)
+await loadInstalledApps()
 
 // Until every store is live the provider reads the old Store Sections Tables, so they exist, marked.
 const OLD = [
@@ -92,7 +109,7 @@ for (const [key, name] of [['many', 'Asha Many-Stores'], ['one', 'Ravi One-Store
   ['smlarge', 'Bala Large-Store']]) {
   const email = `reader-${key}@example.test`
   const [found] = await sql`select row_id from person where lower(email) = ${email}`
-  const id = found ? String(found.row_id) : String((await post('/api/table/Person', { email, full_name: name, enabled: true,
+  const id = found ? String(found.row_id) : String((await save('Person', { email, full_name: name, enabled: true,
     roles: [{ role: 'Feather Dash Reader' }] })).row_id)
   await setUserPassword(id, PASSWORD)
   people[key] = id
@@ -157,6 +174,37 @@ const baysideToys = await section('9906', 'Toys')
 for (const code of LARGE.slice(0, 3)) await place('9906', code, baysideHome.row_id)
 for (const code of LARGE.slice(3, 6)) await place('9906', code, baysideToys.row_id)
 await job(people.smlarge, 'Store Manager', '9906')
+// #462: operational contacts and bounded delegation for the same synthetic
+// org chart. This is trusted instance bootstrap, never an Administrator HTTP
+// bypass. Store/department/section maintenance comes from the appointments above.
+for (const [key, person] of Object.entries(people)) await ensure('feather_dash.employee', { person }, () =>
+  save('feather_dash.employee', { person, name: `Made-up ${key}`, employee_number: `DEMO-${key}`,
+    phone: `operational-${key}`, emergency_contact: `emergency-${key}` }))
+async function bootstrap(table: string, row_id: string, row: Record<string, unknown>) {
+  const relation = `featherbase.${table.toLowerCase().replaceAll(' ', '_')}`
+  const [existing] = await sql`select row_id from ${sql(relation)} where row_id = ${row_id}`
+  return existing ?? await saveSystemRow(table, { row_id, ...row }, 'bootstrap')
+}
+const storeScope = await bootstrap('Scope', 'demo-store-9901', {
+  app: 'feather_dash', mode: 'named', tuples: [{ store: '9901' }],
+})
+await bootstrap('Scope', 'demo-department-menswear', {
+  app: 'feather_dash', mode: 'named', tuples: [{ store: '9901', department: menswear.row_id }],
+})
+await bootstrap('Scope', 'demo-section-sarees', {
+  app: 'feather_dash', mode: 'named', tuples: [{ store: '9901', section: sarees.row_id }],
+})
+const selfScope = await bootstrap('Scope', 'demo-self', { app: 'feather_dash', mode: 'self' })
+const authority = await bootstrap('Authority', 'demo-store-office', {
+  app: 'feather_dash', scope: storeScope.row_id, holder_role: 'Store Manager', office_job: 'Store Manager', enabled: true,
+})
+for (const action of ['grant', 'revoke']) await bootstrap('Delegation Boundary', `demo-contact-${action}`, {
+  app: 'feather_dash', authority: authority.row_id, required_role: 'Employee Contact Access Admin', action,
+  target_role: 'Employee Contact Admin', max_scope: storeScope.row_id, recipient_scope: storeScope.row_id,
+})
+for (const person of Object.values(people)) await bootstrap('Role Assignment', `demo-self-${person}`, {
+  app: 'feather_dash', person, role: 'Employee Self-Service', scope: selfScope.row_id,
+})
 // Parkside, on the old rules: its merchandise map, and one subcategory assigned to a person with no employee code.
 const oldRow = (table: string, row: Record<string, unknown>) =>
   ensure(table, row, () => post(`/api/table/${encodeURIComponent(table)}`, row) as Promise<{ row_id: unknown }>)

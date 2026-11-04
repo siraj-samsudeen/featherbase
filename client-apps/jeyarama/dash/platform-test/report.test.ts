@@ -11,13 +11,14 @@ import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { afterEach, beforeEach, describe, expect } from 'vitest'
 import { test as pgTest } from '../pg-test'
 import { applySeedPack } from '../../src/seed-packs'
+import { provisionApp } from '../../src/app-lifecycle'
 import { datasetsDeclaration } from '../../src/app-datasets'
 import { invalidateSources } from '../../src/sources/registry'
 import { withNamedVariable } from '../../src/env'
 import { sql } from '../../src/db'
 import { activeSnapshot, buildSnapshot } from '../../src/dataset-snapshot'
 import { drainJobs, enqueue, loadJobs } from '../../src/jobs'
-import { APP_DIR, createOldTables, installApp, pinned, saveRow } from './helpers'
+import { APP_DIR, createOldTables, installApp, pinned, saveFixtureRow as saveRow } from './helpers'
 import { FOUR_TARGETS, addSource, answerWithoutPeriod, closeWarehouse, fillWarehouse, openWarehouse } from './warehouse'
 // @ts-expect-error a plain .mjs module, copied in beside this file by the runner
 import { markScopeTables } from './mark-scope-tables.mjs'
@@ -60,7 +61,8 @@ async function setup(admin: TestClient, createUser: CreateUserFn, facts?: Record
   // accepts it as read-only. The reads never query it; a refresh below queries the
   // made-up warehouse instead (warehouse.ts).
   await addSource(admin)
-  const user = async (name: string) => createUser({ email: `${name}@example.test`, roles: [READER] })
+  const user = async (name: string) => provisionApp('feather_dash', () =>
+    createUser({ email: `${name}@example.test`, roles: [READER] }))
   const people = { manager: await user('p-101'), leader: await user('p-103'), nobody: await user('p-999') }
   const save = (table: string, row: Record<string, unknown>) => saveRow(admin, table, row)
   await save('store_rollout', { store: '9901', live_since: '2026-01-01' })

@@ -8,7 +8,8 @@ import manifest from '../featherbase.json' with { type: 'json' }
 const PROSE_WITHOUT_IDENTIFIERS = (text: string) => text.replace(/`[^`]*`|\([a-z_]+\)|\b[a-z]+(?:_[a-z]+)+\b/g, '')
 
 describe('the column descriptions people read', () => {
-  const columns = manifest.tables.flatMap(t => t.columns.map(c => ({ table: t.name, ...c })))
+  const columns: { table: string; column_name: string; description?: string }[] =
+    manifest.tables.flatMap(t => t.columns.map(c => ({ table: t.name, ...c })))
 
   it.each(columns.filter(c => 'description' in c && c.description).map(c => [`${c.table}.${c.column_name}`, c.description as string]))(
     "%s never uses SAP's name for the subcategory outside an identifier", (_name, description) => {

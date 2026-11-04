@@ -11,6 +11,7 @@ import { assertDocPermission } from './permissions'
 import { includesColumn, permittedColumns, isSharedWith, stripUnwritableFields } from './permissions'
 import { assertManagedUnchanged } from './managed-settings'
 import { registerCollectionAction } from './actions'
+import { isPendingCorrection } from './administration-approvals'
 
 type Row = Record<string, unknown>
 type Change = [string, unknown, unknown]
@@ -32,7 +33,7 @@ const same = (a: unknown, b: unknown, type: string) => isDeepStrictEqual(normali
  * history, including an initial import and an import that changed nothing. */
 export async function planImport(meta: TableMeta, current: Row, input: Row, user: string): Promise<ImportPlan> {
   const shared = await isSharedWith(user, meta.name, String(current.row_id), 'write')
-  const allowed = shared ? input : stripUnwritableFields(meta.columns.filter((column) => !column.read_only), await permittedColumns(user, meta.name, 'write', String(current.created_by)), input, current)
+  const allowed = shared ? input : stripUnwritableFields(meta.columns.filter((column) => !column.read_only), await permittedColumns(user, meta.name, 'write', current, { ...current, ...input }), input, current)
   const values: Row = { ...input }
   const source_values: Row = {}
   const protected_values: Row = {}
@@ -107,6 +108,7 @@ export async function saveImportedRow(meta: TableMeta, input: Row, user: string,
     }
     const previous = await latestVersion(meta.name, String(input.row_id))
     const saved = await saveDoc(meta.name, plan?.values ?? input, user, update ? 'upsert' : 'insert')
+    if (isPendingCorrection(saved)) return { saved }
     for (const [field, kept] of Object.entries(plan?.protected_values ?? {})) {
       const column = meta.columns.find(c => c.column_name === field)!
       if (!same(saved[field], kept, column.column_type)) throw new AppError('ValidationError', 'An automation changed a protected import field')
@@ -141,8 +143,8 @@ export async function mayResolve(meta: TableMeta, row: Row, field: string, user:
   const column = meta.columns.find(c => c.column_name === field)
   if (!column || column.read_only) return false
   if (await isSharedWith(user, meta.name, String(row.row_id), 'write')) return true
-  try { await assertDocPermission(user, meta.name, 'write', String(row.created_by)) } catch (e) { if (e instanceof AppError) return false; throw e }
-  return includesColumn(await permittedColumns(user, meta.name, 'write', String(row.created_by)), column)
+  try { await assertDocPermission(user, meta.name, 'write', row) } catch (e) { if (e instanceof AppError) return false; throw e }
+  return includesColumn(await permittedColumns(user, meta.name, 'write', row), column)
 }
 registerCollectionAction('import-conflicts', {
   effect: 'read', description: 'List readable import conflicts for this Table.',
@@ -181,6 +183,7 @@ registerCollectionAction('resolve-import-conflict', {
       const previous = await latestVersion(table, String(row.row_id))
       // Both decisions pass through saveDoc for the same row/field write gates.
       const saved = await saveDoc(table, { row_id: row.row_id, updated_at: row.updated_at, [column.column_name]: args.decision === 'source' ? conflict.incoming : row[column.column_name] }, user.row_id)
+      if (isPendingCorrection(saved)) return saved
       await annotateHistory(meta, saved, user.row_id, previous, { resolution: { field: column.column_name, decision: args.decision, incoming: conflict.incoming } })
       await sql`update featherbase.import_conflict set closed = true where row_id = ${conflict.row_id}`
       return { resolved: true }

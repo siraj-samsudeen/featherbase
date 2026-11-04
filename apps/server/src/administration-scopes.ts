@@ -7,9 +7,20 @@ import type { TableMeta } from './meta'
 import { effectiveAssignments } from './administration-authority'
 
 const name = z.string().min(1)
+const approvalRule = z.object({
+  id: name, table: name, operation: z.enum(['create', 'update', 'delete']), columns: z.array(name).min(1),
+  maker: z.object({ role: name.optional(), notRole: name.optional(), self: z.boolean().optional() }).strict().optional(),
+  outcome: z.enum(['approval', 'apply_and_log']), approverRole: name.optional(),
+  authorityRole: name.optional(), alternativeGroup: name.optional(),
+}).strict().refine(rule => rule.outcome !== 'approval' || !!rule.approverRole)
+export type ApprovalRule = z.infer<typeof approvalRule>
+
 export const administrationDeclaration = z.object({
   version: z.literal(1),
-  targets: z.record(name, z.object({ person: name }).strict()),
+  targets: z.record(name, z.union([
+    z.object({ person: name }).strict(),
+    z.object({ dimensions: z.record(name, z.array(name).min(1)) }).strict(),
+  ])),
   memberships: z.object({
     table: name, person: name, startsOn: name.optional(), endsOn: name.optional(),
     reportsTo: name.optional(),
@@ -18,6 +29,7 @@ export const administrationDeclaration = z.object({
   jobs: z.object({ column: name, capabilities: z.array(z.object({
     job: name, role: name, dimensions: z.array(name).min(1),
   }).strict()) }).strict().optional(),
+  approvals: z.array(approvalRule).refine(rules => new Set(rules.map(rule => rule.id)).size === rules.length).optional(),
 }).strict()
 export type AdministrationDeclaration = z.infer<typeof administrationDeclaration>
 const declarations = new Map<string, AdministrationDeclaration>()
@@ -41,9 +53,11 @@ export async function administrationSources(app: string): Promise<Set<string>> {
   const declaration = administrationFor(app)
   if (!declaration) return new Set()
   const tables = new Set([declaration.memberships.table])
-  for (const paths of Object.values(declaration.memberships.dimensions)) {
+  const sources = [declaration.memberships, ...Object.entries(declaration.targets)
+    .flatMap(([table, target]) => 'dimensions' in target ? [{ table, dimensions: target.dimensions }] : [])]
+  for (const source of sources) for (const paths of Object.values(source.dimensions)) {
     for (const path of paths) {
-      let table = declaration.memberships.table
+      let table = source.table
       for (const name of path.split('.')) {
         const column = (await getMeta(table)).columns.find(column => column.column_name === name)
         if (column?.column_type !== 'Reference' || !column.reference_table) break
@@ -73,7 +87,7 @@ export async function holdAdministrationSources(db: typeof sql, meta: TableMeta)
   if (!needed) return
   const relations = ['featherbase.role_assignment', 'featherbase.scope', 'featherbase.permission',
     'featherbase.permission_column', 'featherbase.has_role', 'featherbase.app_role_binding',
-    'featherbase.authority', 'featherbase.delegation_boundary',
+    'featherbase.authority', 'featherbase.delegation_boundary', 'featherbase.person', 'featherbase.service_account',
     ...await Promise.all([...tables].map(tableRelation))]
   for (const relation of [...new Set(relations)].sort())
     await db`lock table ${db(relation)} in share row exclusive mode`
@@ -87,6 +101,7 @@ export interface AssignmentScope {
 
 export async function scopedRoles(user: string, table: string): Promise<Map<string, AssignmentScope[]>> {
   const result = new Map<string, AssignmentScope[]>()
+  if (!administrationFor(table.split('.')[0])) return result
   const meta = await getMeta(table)
   if (!meta.owner_app || !activeApps.has(meta.owner_app)) return result
   for (const assignment of await effectiveAssignments(meta.owner_app, user))
@@ -103,6 +118,8 @@ export type ScopeRow = Record<string, unknown>
 async function factPath(app: string, table: string, alias: string, path: string[]): Promise<{ frag: Expression; valid: Expression; invalid?: boolean }> {
   const meta = await getMeta(table)
   if (meta.owner_app !== app || meta.system || meta.data_source || meta.kind !== 'table') return { frag: sql`null`, valid: sql`false`, invalid: true }
+  if (path.length === 1 && path[0] === meta.row_key)
+    return { frag: sql`${sql(alias)}.${sql(meta.row_key)}`, valid: sql`true` }
   const column = meta.columns.find(column => column.column_name === path[0])
   if (!column || ['Sub-table', 'Section Break', 'Column Break'].includes(column.column_type)) return { frag: sql`null`, valid: sql`false`, invalid: true }
   const value: Expression = sql`${sql(alias)}.${sql(column.column_name)}`
@@ -122,6 +139,8 @@ async function factPath(app: string, table: string, alias: string, path: string[
 export async function jobAssignments(app: string, includeFuture = false) {
   const declaration = administrationFor(app)
   if (!declaration?.jobs) return []
+  const [installed] = await sql`select enabled, activation_pending from installed_app where name = ${app}`
+  if (!installed?.enabled || installed.activation_pending) return []
   const membership = declaration.memberships
   const meta = await getMeta(membership.table)
   if (meta.owner_app !== app || meta.system || meta.data_source || meta.kind !== 'table') return []
@@ -167,8 +186,20 @@ export async function jobAssignments(app: string, includeFuture = false) {
 }
 
 export async function assignmentPredicate(user: string, table: string, scope: AssignmentScope, row?: ScopeRow): Promise<{ frag: Expression }> {
+  return scopePredicate(user, table, scope, row)
+}
+
+/** Recipient eligibility concerns current membership, not a synthetic
+ * appointment or whichever target happens to be declared first. */
+export async function personScopePredicate(user: string, person: string, scope: AssignmentScope): Promise<{ frag: Expression }> {
+  const membership = administrationFor(scope.app)?.memberships
+  if (!membership) return { frag: sql`false` }
+  return scopePredicate(user, membership.table, scope, { [membership.person]: person }, true)
+}
+
+async function scopePredicate(user: string, table: string, scope: AssignmentScope, row?: ScopeRow, recipient = false): Promise<{ frag: Expression }> {
   const declaration = declarations.get(scope.app)
-  const target = declaration?.targets[table]
+  const target = recipient && declaration ? { person: declaration.memberships.person } : declaration?.targets[table]
   if (!activeApps.has(scope.app) || !declaration || !target) return { frag: sql`false` }
   const meta = await getMeta(table)
   if (meta.owner_app !== scope.app || meta.data_source || meta.system || meta.kind !== 'table') return { frag: sql`false` }
@@ -178,6 +209,37 @@ export async function assignmentPredicate(user: string, table: string, scope: As
     : sql`${sql(relation)}.${sql(column)}`
   if (scope.mode === 'all') return { frag: sql`true` }
   if (scope.mode === 'creator') return { frag: sql`${value('created_by')} = ${user}` }
+  if ('dimensions' in target) {
+    if (scope.mode !== 'named' || !Array.isArray(scope.tuples) || !scope.tuples.length) return { frag: sql`false` }
+    let valid = sql`true`
+    const dimensions = new Map<string, Expression>()
+    for (const [dimension, paths] of Object.entries(target.dimensions)) {
+      const resolved = await Promise.all(paths.map(path => factPath(scope.app, table, 'domain_target', path.split('.'))))
+      if (resolved.some(result => result.invalid)) return { frag: sql`false` }
+      let combined = resolved[0].frag
+      for (const result of resolved) valid = sql`${valid} and (${result.valid})`
+      for (const other of resolved.slice(1)) {
+        valid = sql`${valid} and (${combined} is null or ${other.frag} is null or ${combined} = ${other.frag})`
+        combined = sql`coalesce(${combined}, ${other.frag})`
+      }
+      dimensions.set(dimension, combined)
+    }
+    let matches = sql`false`
+    for (const tuple of scope.tuples) {
+      if (!tuple || typeof tuple !== 'object' || Array.isArray(tuple) || !Object.keys(tuple).length) return { frag: sql`false` }
+      let match = sql`true`
+      for (const [dimension, expected] of Object.entries(tuple)) {
+        const actual = dimensions.get(dimension)
+        if (!actual || typeof expected !== 'string' || !expected) return { frag: sql`false` }
+        match = sql`${match} and ${actual} = ${expected}`
+      }
+      matches = sql`${matches} or (${match})`
+    }
+    const source = row ? sql`jsonb_populate_record(null::${sql(relation)}, ${sql.json(row as never)})` : sql(relation)
+    return { frag: sql`exists (select 1 from ${source} as domain_target
+      where ${row ? sql`true` : sql`domain_target.${sql(meta.row_key)} = ${value(meta.row_key)}`}
+        and (${valid}) and (${matches}))` }
+  }
   const person = meta.columns.find(column => column.column_name === target.person)
   if (person?.column_type !== 'Reference' || person.reference_table !== 'Person') return { frag: sql`false` }
   if (scope.mode === 'self') return { frag: sql`${value(person.column_name)} = ${user}` }
@@ -188,6 +250,10 @@ export async function assignmentPredicate(user: string, table: string, scope: As
   const membership = declaration.memberships
   const membershipMeta = await getMeta(membership.table)
   if (membershipMeta.owner_app !== scope.app || membershipMeta.system || membershipMeta.data_source || membershipMeta.kind !== 'table') return { frag: sql`false` }
+  const appointment = !recipient && membership.table === table
+  const membershipRelation = await tableRelation(membership.table)
+  const proposedMembership = appointment && row
+    ? sql`jsonb_populate_record(null::${sql(membershipRelation)}, ${sql.json(row as never)})` : undefined
   const personColumn = membershipMeta.columns.find(column => column.column_name === membership.person)
   if (personColumn?.column_type !== 'Reference' || personColumn.reference_table !== 'Person') return { frag: sql`false` }
   let valid = sql`true`
@@ -216,7 +282,7 @@ export async function assignmentPredicate(user: string, table: string, scope: As
     tuples = sql`${tuples} or (${matches})`
   }
   for (const [column, start] of [[membership.startsOn, true], [membership.endsOn, false]] as const) {
-    if (!column) continue
+    if (!column || appointment && !reporting) continue
     if (!membershipMeta.columns.some(c => c.column_name === column && c.column_type === 'Date')) return { frag: sql`false` }
     const date = sql`membership.${sql(column)}`
     valid = start ? sql`${valid} and (${date} is null or ${date} <= (now() at time zone 'Asia/Kolkata')::date)`
@@ -224,26 +290,36 @@ export async function assignmentPredicate(user: string, table: string, scope: As
   }
   if (reporting) {
     const reportsTo = membershipMeta.columns.find(column => column.column_name === membership.reportsTo)
-    if (reportsTo?.column_type !== 'Reference' || reportsTo.reference_table !== membership.table) return { frag: sql`false` }
+    if (reportsTo?.column_type !== 'Reference' || ![membership.table, 'Person'].includes(reportsTo.reference_table!)) return { frag: sql`false` }
     const key = sql(membershipMeta.row_key)
     const personKey = sql(membership.person)
     const parentKey = sql(reportsTo.column_name)
+    // A Person reference is resolvable only to one current appointment.
+    // Never manufacture reporting edges across multiple appointments.
+    const parent = reportsTo.reference_table === 'Person'
+      ? sql`m.${parentKey} = r.principal and (select count(*) from effective p where p.${personKey} = r.principal) = 1`
+      : sql`m.${parentKey} = r.${key}`
     return { frag: sql`exists (
       with recursive effective as (
-        select membership.* from ${sql(await tableRelation(membership.table))} as membership where ${valid}
+        select membership.* from ${proposedMembership
+          ? sql`(select * from ${sql(membershipRelation)} where ${key} <> ${String(row![meta.row_key] ?? '')}
+            union all select * from ${proposedMembership})`
+          : sql(membershipRelation)} as membership where ${valid}
       ), reports as (
-        select m.${key}, array[m.${key}]::text[] as path, false as cycle, 0 as depth
+        select m.${key}, m.${personKey} as principal, array[m.${key}]::text[] as path, false as cycle, 0 as depth
         from effective m where m.${personKey} = ${user}
         union all
-        select m.${key}, r.path || m.${key}, m.${key} = any(r.path), r.depth + 1
-        from effective m join reports r on m.${parentKey} = r.${key} where not r.cycle
+        select m.${key}, m.${personKey} as principal, r.path || m.${key}, m.${key} = any(r.path), r.depth + 1
+        from effective m join reports r on ${parent} where not r.cycle
       )
       select 1 from effective as membership join reports r on r.${key} = membership.${key}
       where membership.${personKey} = ${value(person.column_name)} and membership.${personKey} <> ${user}
+        and (${appointment ? sql`membership.${key} = ${value(meta.row_key)}` : sql`true`})
         and ${scope.mode === 'direct_reports' ? sql`r.depth = 1` : sql`r.depth > 0`}
         and not exists (select 1 from reports where cycle) and (${tuples})
     )` }
   }
-  return { frag: sql`exists (select 1 from ${sql(await tableRelation(membership.table))} as membership
-    where membership.${sql(membership.person)} = ${value(person.column_name)} and (${valid}) and (${tuples}))` }
+  return { frag: sql`exists (select 1 from ${proposedMembership ?? sql(membershipRelation)} as membership
+    where ${appointment ? proposedMembership ? sql`true` : sql`membership.${sql(meta.row_key)} = ${value(meta.row_key)}`
+      : sql`membership.${sql(membership.person)} = ${value(person.column_name)}`} and (${valid}) and (${tuples}))` }
 }

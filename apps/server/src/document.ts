@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { opaqueId } from './opaque-id'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
-import { sql } from './db'
+import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
@@ -12,6 +12,8 @@ import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
 import { holdBeforeRowLock } from './row-lock-order'
 import { captureJobAuthority, checkJobAuthority, captureAccessAuthority, checkAccessAuthority } from './administration-authority'
+import { withCorrectionApproval, checkCorrectionApproval, correctionHistory } from './administration-approvals'
+import { administrationFor } from './administration-scopes'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
 import { applySla } from './sla'
@@ -22,7 +24,7 @@ import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, childColumns, readerFor, restrictRow, seesEveryColumn } from './row-readers'
 import { assertNotSystemWritten } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
-import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
+import { domainControlled, assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
 import {
   assertDocPermission,
   assertPermission,
@@ -783,8 +785,12 @@ async function saveDocImpl(
   mode: 'upsert' | 'insert' = 'upsert',
   opts: SaveOptions = {},
 ): Promise<RowValues> {
-  assertNotSystemWritten(await getMeta(table), mode === 'insert' ? 'created' : 'saved')
-  return writeDoc(table, values, user, mode, opts)
+  const meta = await getMeta(table)
+  assertNotSystemWritten(meta, mode === 'insert' ? 'created' : 'saved')
+  // A configured web form is not a root of domain authority. Provisioning
+  // retains its explicit server context; ordinary saves use complete grants.
+  if (meta.owner_app && administrationFor(meta.owner_app)?.targets[table]) opts = { ...opts, skipPermissions: false }
+  return withCorrectionApproval(meta, user, values, () => writeDoc(table, values, user, mode, opts))
 }
 
 // #432: the trusted path for the server's own writers into a system-written
@@ -828,7 +834,7 @@ async function writeDoc(
       'ValidationError',
       `${table} rows are managed via /api/table`,
     )
-  await assertSecurityWriter(table, user, { trusted: opts.skipPermissions })
+  await assertSecurityWriter(table, user, { trusted: opts.skipPermissions, documentOperation: true })
   if (isBound(meta)) return saveBoundDoc(meta, values, user, mode)
   if (meta.kind === 'settings') return saveSingle(table, values, user)
   if (meta.kind === 'sub_table')
@@ -881,9 +887,11 @@ async function writeDoc(
   const childInputs = pickChildInputs(meta, values)
   const tbl = await tableRelation(table)
   let attemptedRow: RowValues = {}
-  const [saved] = await afterCommitOf(() => sql
-    .begin(async (tx) => {
-      const stx = tx as unknown as typeof sql
+  const [saved] = await afterCommitOf(() => withTransaction(async () => {
+      // Hooks and authority resolvers must see this mutation on the same
+      // connection, including callers that use the exported sql client.
+      const tx = sql
+      const stx = sql
       await holdBeforeRowLock(stx, meta, user, { ...values }, true)
       const authorityBefore = await captureJobAuthority(meta, user)
       const accessBefore = await captureAccessAuthority(meta, user)
@@ -949,6 +957,8 @@ async function writeDoc(
       await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
       await checkJobAuthority(authorityBefore)
       await checkAccessAuthority(accessBefore)
+      const approval = await checkCorrectionApproval(meta, user, {}, inserted[0] as RowValues, 'create')
+      if (approval) await recordVersion(stx, meta, String(rowId), {}, inserted[0] as RowValues, user, approval)
       return inserted
     })
     .catch((err) => mapDbError(meta, err, attemptedRow.ref_table)))
@@ -1156,9 +1166,9 @@ async function updateDoc(
   // Snapshot of the row before this save, for post-commit transition checks.
   let previous: RowValues | undefined
   let attemptedRow: RowValues = {}
-  const saved = await afterCommitOf(() => sql
-    .begin(async (tx) => {
-      const stx = tx as unknown as typeof sql
+  const saved = await afterCommitOf(() => withTransaction(async () => {
+      const tx = sql
+      const stx = sql
       await holdBeforeRowLock(stx, meta, user, { ...values, [meta.row_key]: name })
       const authorityBefore = await captureJobAuthority(meta, user)
       const accessBefore = await captureAccessAuthority(meta, user)
@@ -1238,13 +1248,14 @@ async function updateDoc(
       // sent it or a hook set it.
       for (const input of pickChildInputs(meta, row))
         await saveChildren(stx, meta, name, input, user, writeTiers, 'write', existing)
-      await recordVersion(stx, meta, name, existing as RowValues, updated as RowValues, user)
       ctx.row = { ...(updated as RowValues) }
       await runHooks('after_save', ctx)
       await runHooks('on_update', ctx)
       await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
       await checkJobAuthority(authorityBefore)
       await checkAccessAuthority(accessBefore)
+      const approval = await checkCorrectionApproval(meta, user, existing as RowValues, updated as RowValues)
+      await recordVersion(stx, meta, name, existing as RowValues, updated as RowValues, user, approval)
       return updated
     })
     .catch((err) => mapDbError(meta, err, attemptedRow.ref_table)))
@@ -1272,8 +1283,9 @@ async function recordVersion(
   before: RowValues,
   after: RowValues,
   user: string,
+  approval = correctionHistory(meta.name, name),
 ) {
-  if (!meta.track_changes || UNVERSIONED.has(meta.name)) return
+  if ((!meta.track_changes && !approval) || UNVERSIONED.has(meta.name)) return
   // #421: a Date column is a calendar day, which the driver hands back as UTC
   // midnight; record the day itself. A Datetime keeps its full instant.
   const norm = (v: unknown, type: string) =>
@@ -1285,7 +1297,7 @@ async function recordVersion(
     const a = norm(own(after, f.column_name), f.column_type)
     if (JSON.stringify(b) !== JSON.stringify(a)) changed.push([f.column_name, b, a])
   }
-  if (!changed.length) return
+  if (!changed.length && !approval) return
   // #432: dated by the database's wall clock, like its Table, so a skewed
   // app clock never misdates history. clock_timestamp(), not now(): the
   // import's revert trail ties a version to its run by comparing against a
@@ -1301,7 +1313,7 @@ async function recordVersion(
     position: 0,
     ref_table: meta.name,
     ref_name: name,
-    data: { changed } as unknown as string,
+    data: { changed, ...(approval ? { approval } : {}) } as unknown as string,
   })}`
 }
 
@@ -1318,12 +1330,13 @@ async function setStatus(
 ): Promise<RowValues> {
   const meta = await getMeta(table)
   assertNotSystemWritten(meta, event === 'on_submit' ? 'submitted' : 'cancelled')
-  await assertSecurityWriter(table, user)
+  await assertSecurityWriter(table, user, { documentOperation: true })
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
   const tbl = await tableRelation(table)
-  const [saved] = await afterCommitOf(() => sql.begin(async (tx) => {
-    const stx = tx as unknown as typeof sql
+  const [saved] = await afterCommitOf(() => withTransaction(async () => {
+    const tx = sql
+    const stx = sql
     await holdBeforeRowLock(stx, meta, user, { [meta.row_key]: name })
     const authorityBefore = await captureJobAuthority(meta, user)
     const accessBefore = await captureAccessAuthority(meta, user)
@@ -1366,6 +1379,7 @@ async function setStatus(
     await runHooks(event, ctx)
     await checkJobAuthority(authorityBefore)
     await checkAccessAuthority(accessBefore)
+    await checkCorrectionApproval(meta, user, existing as RowValues, updated as RowValues)
     return [updated]
   }))
   const result = await loadChildren(meta, { table, ...(saved as RowValues) })
@@ -1397,7 +1411,7 @@ async function amendDocImpl(
 ): Promise<RowValues> {
   const meta = await getMeta(table)
   assertNotSystemWritten(meta, 'amended')
-  await assertSecurityWriter(table, user)
+  await assertSecurityWriter(table, user, { documentOperation: true })
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
   const source = await getDoc(table, name, user)
@@ -1445,7 +1459,10 @@ async function assertChildRowsWritable(tx: typeof sql, meta: TableMeta, name: st
 
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
 export function deleteDoc(...args: Parameters<typeof deleteDocImpl>) {
-  return appOperation(() => deleteDocImpl(...args))
+  return appOperation(async () => {
+    const meta = await getMeta(args[0])
+    return withCorrectionApproval(meta, args[2] ?? 'Administrator', { [meta.row_key]: args[1] }, () => deleteDocImpl(...args))
+  })
 }
 async function deleteDocImpl(
   table: string,
@@ -1455,12 +1472,13 @@ async function deleteDocImpl(
 ): Promise<void> {
   const meta = await getMeta(table)
   assertNotSystemWritten(meta, 'deleted')
-  await assertSecurityWriter(table, user)
+  await assertSecurityWriter(table, user, { documentOperation: true })
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
   if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
-  await afterCommitOf(() => sql.begin(async (tx) => {
-    const stx = tx as unknown as typeof sql
+  await afterCommitOf(() => withTransaction(async () => {
+    const tx = sql
+    const stx = sql
     await holdBeforeRowLock(stx, meta, user, { [meta.row_key]: name })
     const authorityBefore = await captureJobAuthority(meta, user)
     const accessBefore = await captureAccessAuthority(meta, user)
@@ -1537,6 +1555,8 @@ async function deleteDocImpl(
     await tx`delete from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name}`
     await checkJobAuthority(authorityBefore)
     await checkAccessAuthority(accessBefore)
+    const approval = await checkCorrectionApproval(meta, user, existing as RowValues, existing as RowValues, 'delete')
+    if (approval) await recordVersion(stx, meta, name, existing as RowValues, {}, user, approval)
   }))
   // Post-commit: caches keyed on this row (e.g. a Data Source's pool and
   // the meta of Tables bound to it) may only be dropped once the delete is
@@ -1650,7 +1670,8 @@ async function renameDocImpl(
   if (!target) throw new AppError('ValidationError', 'A new Row ID is required', { [ROW_KEY]: 'Required' })
   if (target === oldName) return getDoc(table, oldName, user)
 
-  await sql.begin(async (tx) => {
+  await withTransaction(async () => {
+    const tx = sql
     const tbl = await tableRelation(table)
     await holdManagedSet(tx as unknown as typeof sql, null)
     await holdBeforeRowLock(tx as unknown as typeof sql, meta, user, { [meta.row_key]: oldName })
@@ -1692,6 +1713,9 @@ async function renameDocImpl(
       const [pm] = await tx`select kind from table_def where name = ${parentTable}`
       if (!pm || pm.kind === 'settings') continue
       const col = lf.column_name as string
+      const [referenced] = await tx`select 1 from ${tx(await tableRelation(parentTable))} where ${tx(col)} = ${oldName} limit 1`
+      if (referenced && await domainControlled(parentTable))
+        throw new AppError('PermissionError', 'A rename cannot rewrite domain-controlled references')
       await tx`
         update ${tx(await tableRelation(parentTable))} set ${tx(col)} = ${target}
         where ${tx(col)} = ${oldName}`
@@ -1814,8 +1838,8 @@ async function saveSingleImpl(
   )
   // #465: one transaction, and a version like any other row's save, so a
   // settings change has history. Compared as stored text, both sides.
-  await sql.begin(async (tx) => {
-    const stx = tx as unknown as typeof sql
+  await withTransaction(async () => {
+    const stx = sql
     const stored = async () => Object.fromEntries(
       (await stx`select field, value from single_value where table_name = ${table}`).map((r) => [r.field as string, r.value as string | null]))
     await holdManagedSet(stx, table)

@@ -1,5 +1,6 @@
 import { annotateHistory, latestVersion, mayResolve } from '../import-corrections'
 import { actionTransaction } from '../action-transaction'
+import { isPendingCorrection } from '../administration-approvals'
 // Spec 0005: revert an import run, row by row. RVT-R2's contract:
 // POST /api/table/:table:import-revert { run_id, dry_run?, override? }.
 //
@@ -36,7 +37,7 @@ interface Skip {
   reason: SkipReason
 }
 
-interface CurrentRow {
+interface CurrentRow extends Record<string, unknown> {
   updated_at: Date
   created_by: string
 }
@@ -88,13 +89,13 @@ async function assertRevertPermitted(user: string, table: string, plan: Plan): P
     const scope = await permissionScope(user, table, 'write')
     if (scope !== 'all')
       for (const r of plan.restores)
-        await assertDocPermission(user, table, 'write', r.current.created_by)
+        await assertDocPermission(user, table, 'write', r.current)
   }
   if (plan.deletes.length) {
     const scope = await permissionScope(user, table, 'delete')
     if (scope !== 'all')
       for (const d of plan.deletes)
-        await assertDocPermission(user, table, 'delete', d.current.created_by)
+        await assertDocPermission(user, table, 'delete', d.current)
   }
 }
 
@@ -151,13 +152,13 @@ registerCollectionAction('import-revert', {
     // Current state of every recorded row, in one read.
     const names = [...known]
     const rows = await sql`
-      select ${sql(physicalRowKey(table))} as row_id, updated_at, created_by
+      select *, ${sql(physicalRowKey(table))} as row_id
       from ${sql(await tableRelation(table))}
       where ${sql(physicalRowKey(table))} = any(${names})`
     const current = new Map<string, CurrentRow>(
       rows.map((r) => [
         String(r.row_id),
-        { updated_at: r.updated_at as Date, created_by: String(r.created_by) },
+        { ...r, updated_at: r.updated_at as Date, created_by: String(r.created_by) },
       ]),
     )
 
@@ -189,6 +190,7 @@ registerCollectionAction('import-revert', {
     let restored = 0
     let deleted = 0
     const failed: { row_id: string; message: string }[] = []
+    const pending: Record<string, unknown>[] = []
     for (const r of plan.restores) {
       const data = beforeByVersion.get(r.touched.version!) as
         | { changed?: [string, unknown, unknown][] }
@@ -207,11 +209,14 @@ registerCollectionAction('import-revert', {
       try {
         // The restore is the import's own undoing, not a person's correction:
         // a later import of the same value updates the field again.
-        await actionTransaction(async () => {
+        const result = await actionTransaction(async () => {
           const previous = await latestVersion(table, r.touched.row_id)
           const saved = await saveDoc(table, values, user.row_id, 'upsert')
+          if (isPendingCorrection(saved)) return saved
           await annotateHistory(meta, saved, user.row_id, previous, { import_revert: runId })
+          return saved
         })
+        if (isPendingCorrection(result)) { pending.push(result); continue }
         restored++
       } catch (err) {
         failed.push({ row_id: r.touched.row_id, message: err instanceof Error ? err.message : String(err) })
@@ -219,9 +224,10 @@ registerCollectionAction('import-revert', {
     }
     for (const d of plan.deletes) {
       try {
-        await deleteDoc(table, d.touched.row_id, user.row_id, {
+        const result = await deleteDoc(table, d.touched.row_id, user.row_id, {
           expectUpdatedAt: d.current.updated_at.toISOString(),
         })
+        if (result && isPendingCorrection(result)) { pending.push(result); continue }
         deleted++
       } catch (err) {
         failed.push({ row_id: d.touched.row_id, message: err instanceof Error ? err.message : String(err) })
@@ -230,13 +236,15 @@ registerCollectionAction('import-revert', {
 
     // J1.5: the run's log entries record the revert. System-written like the
     // log itself; best-effort for the same reason writeImportLog is.
-    await sql`update featherbase.import_conflict set closed = true where ref_table = ${table} and run_id = ${runId}`
+    const incomplete = [...pending.map(row => String(row.row_id)), ...failed.map(row => row.row_id)]
+    await sql`update featherbase.import_conflict set closed = true
+      where ref_table = ${table} and run_id = ${runId} and not (ref_name = any(${incomplete}))`
     const now = new Date().toISOString()
-    for (const p of parts)
+    for (const p of pending.length || failed.length ? [] : parts)
       await sql`
         update ${sql(importLog)}
         set reverted_at = ${now} where row_id = ${String(p.row_id)}`.catch(() => {})
 
-    return { restored, deleted, skipped: plan.skipped, failed }
+    return { restored, deleted, skipped: plan.skipped, failed, ...(pending.length ? { pending } : {}) }
   },
 })

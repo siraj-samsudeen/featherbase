@@ -11,7 +11,7 @@ import { invalidateSources } from './sources/registry'
 import { activeApps, appOperation, provisionApp } from './app-lifecycle'
 import { cadenceSeconds, jobRegistrant, registerJob, syncScheduledJobs, unregisterAppJobs, type Cadence, type JobHandler } from './jobs'
 import { assertJobClaimable } from './app-jobs'
-import { registerAdministration, type AdministrationDeclaration } from './administration-scopes'
+import { administrationDeclaration, registerAdministration, type AdministrationDeclaration } from './administration-scopes'
 import {
   registerController,
   unregisterController,
@@ -123,10 +123,10 @@ export interface AppManifest {
 // Registry of apps KNOWN to this process (installed or not).
 const available = new Map<string, AppManifest>()
 // Controllers currently wired for each installed app, for clean removal.
-const wired = new Map<string, TableController[]>()
+const wired = new Map<string, { controllers: TableController[]; roles: string[] }>()
 
 export function registerApp(manifest: AppManifest): void {
-  registerAdministration(manifest.name, manifest.administration)
+  if (manifest.administration) administrationDeclaration.parse(manifest.administration)
   available.set(manifest.name, manifest)
 }
 
@@ -135,7 +135,7 @@ export function getAvailableApps(): string[] {
 }
 
 export function appDeclaresRole(app: string, role: string): boolean {
-  return activeApps.has(app) && (available.get(app)?.roles ?? []).includes(role)
+  return activeApps.has(app) && (wired.get(app)?.roles ?? []).includes(role)
 }
 
 // A fixture row's identity in the install ledger: enough to delete exactly
@@ -177,13 +177,14 @@ async function claimedJobs(manifest: AppManifest): Promise<Set<string>> {
 
 function wireHooks(manifest: AppManifest, claimed?: Set<string>): void {
   if (wired.has(manifest.name)) return
+  registerAdministration(manifest.name, manifest.administration)
   const controllers: TableController[] = []
   for (const [table, hooks] of Object.entries(manifest.doc_events ?? {})) {
     const controller: TableController = { table, hooks }
     registerController(controller)
     controllers.push(controller)
   }
-  wired.set(manifest.name, controllers)
+  wired.set(manifest.name, { controllers, roles: manifest.roles ?? [] })
   activeApps.add(manifest.name)
 
   // scheduler_events: register the handlers; the recurring enqueue itself is
@@ -199,7 +200,7 @@ function wireHooks(manifest: AppManifest, claimed?: Set<string>): void {
 
 function unwireHooks(name: string): void {
   activeApps.delete(name)
-  for (const controller of wired.get(name) ?? []) unregisterController(controller)
+  for (const controller of wired.get(name)?.controllers ?? []) unregisterController(controller)
   wired.delete(name)
   unregisterAppJobs(name)
 }
@@ -715,6 +716,7 @@ const declarativeManifestSchema = z
     tables: z.array(z.unknown()).optional(),
     roles: z.array(z.string().min(1)).optional(),
     permissions: z.array(appPermissionSchema).optional(),
+    administration: z.lazy(() => administrationDeclaration).optional(),
     fixtures: z.array(appFixtureSchema).optional(),
   })
   .strict()
@@ -808,7 +810,8 @@ async function uninstallAppImpl(name: string): Promise<{ name: string; removed: 
 export async function loadInstalledApps(): Promise<void> {
   const rows = await sql`select * from installed_app`
   for (const r of rows) {
-    const manifest = available.get(r.name as string)
+    const stored = !r.runtime_package && r.manifest ? declarativeManifestSchema.safeParse(r.manifest) : undefined
+    const manifest = available.get(r.name as string) ?? (stored?.success && stored.data.name === r.name ? stored.data as AppManifest : undefined)
     if (r.enabled === false || r.activation_pending || (r.runtime_package && (!manifest?.runtime_package ||
       manifest.runtime_identity?.version !== r.package_version ||
       (r.artifact_digest && manifest.runtime_identity?.digest !== r.artifact_digest)))) {

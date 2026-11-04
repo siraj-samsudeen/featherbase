@@ -1,6 +1,7 @@
 import { AppError } from './errors'
 import { isPrivileged } from './permissions'
 import { getMeta } from './meta'
+import { administrationFor, administrationSources } from './administration-scopes'
 
 // #437: the Tables that decide who may do what. Writing them is System
 // Manager work whatever the Permission rows say: a grant on one of them must
@@ -54,10 +55,17 @@ export async function isSecurityTable(table: string): Promise<boolean> {
  *  on a new one: #473 — it lets a Google account link by address alone). */
 const PERSON_ACCESS_COLUMNS = ['roles', 'enabled', 'expects_google_sign_in'] as const
 
+export async function domainControlled(table: string): Promise<boolean> {
+  const app = table.split('.')[0]
+  const declaration = administrationFor(app)
+  if (!declaration) return false
+  return !!declaration.targets[table] || (await administrationSources(app)).has(table)
+}
+
 /** Workflows and Assignment Rules write directly, outside the save path.
  *  They may target neither access data nor an upload-managed storage path. */
 export async function directWriteRestriction(table: string, column: string): Promise<'access' | 'upload' | null> {
-  if (await isSecurityTable(table)
+  if (await isSecurityTable(table) || await domainControlled(table)
     || (table === 'Person' && (PERSON_ACCESS_COLUMNS as readonly string[]).includes(column))) return 'access'
   if (table === 'File' && column === 'file_url') return 'upload'
   return null
@@ -81,9 +89,17 @@ export function securityRefusal(what: string): AppError {
 export async function assertSecurityWriter(
   table: string,
   user: string,
-  opts: { trusted?: boolean } = {},
+  opts: { trusted?: boolean; documentOperation?: boolean } = {},
 ): Promise<void> {
+  // Domain writes must run the document permission/approval transaction.
+  // Privilege is not permission to bypass it via workflow or rename SQL.
+  if (!opts.documentOperation && await domainControlled(table))
+    throw new AppError('PermissionError', 'Domain-controlled rows must use the checked document operations')
   if (!(await isSecurityTable(table))) return
+  if (opts.documentOperation && !SECURITY_TABLES.has(table)) {
+    const meta = await getMeta(table)
+    if (meta.owner_app && administrationFor(meta.owner_app)?.targets[table]) return
+  }
   if (!opts.trusted && (await isPrivileged(user))) return
   throw securityRefusal(`${table} rows`)
 }

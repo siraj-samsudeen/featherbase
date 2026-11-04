@@ -9,9 +9,61 @@
   "roles": [
     "Feather Dash Reader",
     "Feather Dash Section Editor",
-    "Feather Dash Section Reviewer"
+    "Feather Dash Section Reviewer",
+    "Store Manager",
+    "Department Manager",
+    "Section Manager",
+    "Employee Contact Admin",
+    "Employee Contact Approver",
+    "Employee Contact Access Admin",
+    "Employee Self-Service"
   ],
   "roleDefaults": {},
+  "administration": {
+    "version": 1,
+    "targets": {
+      "feather_dash.employee": { "person": "person" },
+      "feather_dash.store_floor": { "dimensions": { "store": ["store"] } },
+      "feather_dash.department": { "dimensions": { "store": ["store"], "department": ["row_id"] } },
+      "feather_dash.section": { "dimensions": { "store": ["store", "department.store", "floor.store"], "department": ["department"], "section": ["row_id"] } },
+      "feather_dash.section_subcategory": { "dimensions": { "store": ["store", "section.store"], "department": ["section.department"], "section": ["section"] } },
+      "feather_dash.display_location": { "dimensions": { "store": ["store"] } },
+      "feather_dash.job_assignment": { "person": "person" },
+      "feather_dash.section_alias": { "dimensions": { "store": ["store", "section.store"], "section": ["section"] } },
+      "feather_dash.floor_alias": { "dimensions": { "store": ["store", "floor.store"] } }
+    },
+    "memberships": {
+      "table": "feather_dash.job_assignment",
+      "person": "person",
+      "reportsTo": "reports_to",
+      "startsOn": "starts_on",
+      "endsOn": "ends_on",
+      "dimensions": {
+        "store": ["store", "department.store", "section.store", "floor.store"],
+        "department": ["department", "section.department"],
+        "section": ["section"]
+      }
+    },
+    "jobs": {
+      "column": "job",
+      "capabilities": [
+        { "job": "Store Manager", "role": "Store Manager", "dimensions": ["store"] },
+        { "job": "Store Manager", "role": "Employee Contact Admin", "dimensions": ["store"] },
+        { "job": "Store Manager", "role": "Employee Contact Approver", "dimensions": ["store"] },
+        { "job": "Store Manager", "role": "Employee Contact Access Admin", "dimensions": ["store"] },
+        { "job": "Department Manager", "role": "Department Manager", "dimensions": ["store", "department"] },
+        { "job": "Team Leader", "role": "Section Manager", "dimensions": ["store", "section"] }
+      ]
+    },
+    "approvals": [
+      { "id": "manager-contact", "table": "feather_dash.employee", "operation": "update", "columns": ["phone", "emergency_contact"],
+        "maker": { "role": "Store Manager" }, "outcome": "apply_and_log" },
+      { "id": "delegated-contact", "table": "feather_dash.employee", "operation": "update", "columns": ["phone", "emergency_contact"],
+        "maker": { "notRole": "Store Manager", "self": false }, "outcome": "approval", "approverRole": "Employee Contact Approver", "authorityRole": "Store Manager" },
+      { "id": "self-contact", "table": "feather_dash.employee", "operation": "update", "columns": ["phone"],
+        "maker": { "role": "Employee Self-Service", "self": true }, "outcome": "apply_and_log" }
+    ]
+  },
   "settings": [
     {
       "name": "dive_id",
@@ -184,6 +236,21 @@
   ],
   "tables": [
     {
+      "name": "feather_dash.employee",
+      "label": "Employee",
+      "module": "Feather Dash",
+      "title_column": "name",
+      "track_changes": true,
+      "description": "Operational employee contacts. Changes here never change sign-in or account-recovery identifiers.",
+      "columns": [
+        { "column_name": "person", "label": "Person", "column_type": "Reference", "reference_table": "Person", "reqd": true, "unique": true },
+        { "column_name": "name", "label": "Name", "column_type": "Data", "reqd": true, "in_list_view": true },
+        { "column_name": "employee_number", "label": "Employee number", "column_type": "Data", "reqd": true, "unique": true, "in_list_view": true },
+        { "column_name": "phone", "label": "Operational phone", "column_type": "Data", "in_list_view": true },
+        { "column_name": "emergency_contact", "label": "Emergency contact", "column_type": "Data" }
+      ]
+    },
+    {
       "name": "feather_dash.store_rollout",
       "label": "Store rollout",
       "module": "Feather Dash",
@@ -216,7 +283,6 @@
       "module": "Feather Dash",
       "description": "The floors of a store. A section names its floor; a Floor Manager's job assignment names one.",
       "title_column": "floor_name",
-      "decides_scope": true,
       "columns": [
         {
           "column_name": "store",
@@ -254,7 +320,6 @@
       "module": "Feather Dash",
       "description": "A named group of sections in one store, which may span floors. A Department Manager's job assignment names one.",
       "title_column": "display_name",
-      "decides_scope": true,
       "columns": [
         {
           "column_name": "store",
@@ -311,7 +376,6 @@
       "module": "Feather Dash",
       "description": "One area of one store, named uniquely in that store. Its subcategories come from section_subcategory.",
       "title_column": "section_name",
-      "decides_scope": true,
       "columns": [
         {
           "column_name": "store",
@@ -375,7 +439,6 @@
       "module": "Feather Dash",
       "description": "Which section owns a subcategory in a store, from starts_on up to but not including ends_on. All its credit and coverage go to that section.",
       "title_column": "subcategory",
-      "decides_scope": true,
       "columns": [
         {
           "column_name": "store",
@@ -476,7 +539,6 @@
       "label": "Job assignment",
       "module": "Feather Dash",
       "description": "Who holds which job, where and when. A person's coverage is worked out from their current rows, acting included.",
-      "decides_scope": true,
       "columns": [
         {
           "column_name": "person",
@@ -710,6 +772,21 @@
     ]
   },
   "permissions": [
+    { "table": "feather_dash.employee", "role": "Employee Contact Admin", "operations": { "read": ["name", "employee_number", "phone", "emergency_contact"], "update": ["phone", "emergency_contact"] } },
+    { "table": "feather_dash.employee", "role": "Employee Contact Approver", "operations": { "approve": ["phone", "emergency_contact"] } },
+    { "table": "feather_dash.employee", "role": "Employee Self-Service", "operations": { "read": ["name", "employee_number", "phone", "emergency_contact"], "update": ["phone"] } },
+    { "table": "feather_dash.store_floor", "role": "Store Manager", "operations": { "read": "*", "create": "*", "update": "*", "delete": true } },
+    { "table": "feather_dash.department", "role": "Store Manager", "operations": { "read": "*", "create": "*", "update": "*", "delete": true } },
+    { "table": "feather_dash.section", "role": "Store Manager", "operations": { "read": "*", "create": "*", "update": "*", "delete": true } },
+    { "table": "feather_dash.section_subcategory", "role": "Store Manager", "operations": { "read": "*", "create": "*", "update": "*", "delete": true } },
+    { "table": "feather_dash.display_location", "role": "Store Manager", "operations": { "read": "*", "create": "*", "update": "*", "delete": true } },
+    { "table": "feather_dash.job_assignment", "role": "Store Manager", "operations": { "read": "*", "create": "*", "update": "*", "delete": true } },
+    { "table": "feather_dash.section_alias", "role": "Store Manager", "operations": { "read": "*", "create": "*", "update": "*", "delete": true } },
+    { "table": "feather_dash.floor_alias", "role": "Store Manager", "operations": { "read": "*", "create": "*", "update": "*", "delete": true } },
+    { "table": "feather_dash.section", "role": "Department Manager", "operations": { "read": "*" } },
+    { "table": "feather_dash.section_subcategory", "role": "Department Manager", "operations": { "read": "*", "create": "*", "update": "*", "delete": true } },
+    { "table": "feather_dash.section", "role": "Section Manager", "operations": { "read": "*" } },
+    { "table": "feather_dash.section_subcategory", "role": "Section Manager", "operations": { "read": "*", "create": "*", "update": "*", "delete": true } },
     {
       "table": "feather_dash.store_rollout",
       "role": "Feather Dash Reader",

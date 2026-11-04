@@ -11,6 +11,116 @@ import { provisionApp } from '../src/app-lifecycle'
 const employee = tableRef('contactproof.employee')
 
 describe('domain administration', () => {
+  test.for(['store', 'section', 'after hook', 'raw assignment', 'rename', 'lifecycle'] as const)('%s grants constrain organisational mappings without a Person target', async (dimension, { admin, createUser }) => {
+    const manager = await createUser({ roles: [] })
+    const mapping = tableRef('orgproof.mapping')
+    registerApp({ name: 'orgproof',
+      administration: { version: 1, targets: { [mapping.name]: { dimensions: { store: ['section.store'], section: ['section'] } } },
+        memberships: { table: 'orgproof.membership', person: 'person', dimensions: {} } },
+      tables: [
+        { name: 'orgproof.membership', columns: [{ column_name: 'person', column_type: 'Reference', reference_table: 'Person' }] },
+        { name: 'orgproof.section', id_pattern: 'prompt', columns: [{ column_name: 'store', column_type: 'Data' }] },
+        { name: mapping.name, id_pattern: 'prompt', is_submittable: true, decides_scope: dimension === 'lifecycle', columns: [
+          { column_name: 'section', column_type: 'Reference', reference_table: 'orgproof.section' },
+          { column_name: 'subcategory', column_type: 'Data' },
+        ] },
+      ], roles: ['Mapping Manager'], permissions: [{ table: mapping.name, role: 'Mapping Manager',
+        operations: { read: '*', create: '*', update: '*', delete: true, submit: true, cancel: true, amend: true } }],
+      doc_events: { [mapping.name]: { async after_save(ctx) {
+        if (ctx.row.subcategory === 'redirect') await ctx.tx`update orgproof.mapping set section = 'B1' where row_id = ${String(ctx.row.row_id)}`
+      } } }, fixtures: [
+        { table: 'orgproof.section', rows: [{ row_id: 'A1', store: 'A' }, { row_id: 'A2', store: 'A' }, { row_id: 'B1', store: 'B' }] },
+        { table: mapping.name, rows: ['A1', 'A2', 'B1'].map(section => ({ row_id: section, section, subcategory: `category-${section}` })) },
+      ],
+    })
+    await installApp('orgproof')
+    try {
+      const scope = await saveSystemRow('Scope', { app: 'orgproof', mode: 'named',
+        tuples: [dimension === 'store' ? { store: 'A' } : { store: 'A', section: 'A1' }] }, 'bootstrap')
+      await saveSystemRow('Role Assignment', { app: 'orgproof', person: manager.user, role: 'Mapping Manager', scope: scope.row_id }, 'bootstrap')
+      if (dimension === 'store') {
+        const identity = await manager.get<{ roles: string[]; capabilities: { tables: string[]; creatable: string[] } }>('/api/whoami')
+        expect(identity.capabilities.tables).toContain(mapping.name)
+        expect(identity.capabilities.creatable).toContain(mapping.name)
+        expect(identity.roles).not.toContain('Mapping Manager')
+      }
+      const rows = await manager.get<{ data: { row_id: string }[] }>(mapping.listUrl({ fields: ['row_id'] }))
+      expect(rows.data.map(row => row.row_id).sort()).toEqual(dimension === 'store' ? ['A1', 'A2'] : ['A1'])
+      await expectApiError(manager.get(mapping.rowUrl('B1')), { status: 403 })
+      const current = await manager.get<Record<string, unknown>>(mapping.rowUrl('A1'))
+      if (dimension === 'lifecycle') {
+        await expectApiError(manager.post(`${mapping.rowUrl('B1')}:submit`, {}), { status: 403 })
+        expect(await manager.post(`${mapping.rowUrl('A1')}:submit`, {})).toMatchObject({ status: 'submitted' })
+        expect(await manager.post(`${mapping.rowUrl('A1')}:cancel`, {})).toMatchObject({ status: 'cancelled' })
+        expect(await manager.post(`${mapping.rowUrl('A1')}:amend`, {})).toMatchObject({ status: 'draft', section: 'A1' })
+        return
+      }
+      if (dimension === 'raw assignment') {
+        await expectApiError(admin.post('/api/save_row', { table: 'Assignment Rule', row: {
+          row_id: 'unsafe-rule', ref_table: mapping.name, assign_to_field: 'subcategory',
+        } }), { status: 417 })
+        return
+      }
+      if (dimension === 'rename') {
+        await expectApiError(manager.post(`${mapping.rowUrl('A1')}:rename`, { new_name: 'changed-id' }), { status: 403 })
+        expect(await manager.get(mapping.rowUrl('A1'))).toMatchObject({ section: 'A1' })
+        return
+      }
+      if (dimension === 'after hook') {
+        await expectApiError(manager.post('/api/save_row', { table: mapping.name,
+          row: { row_id: 'A1', updated_at: current.updated_at, subcategory: 'redirect' } }), { status: 409 })
+        expect((await sql`select section, subcategory from orgproof.mapping where row_id = 'A1'`)[0])
+          .toEqual({ section: 'A1', subcategory: 'category-A1' })
+        return
+      }
+      await expectApiError(manager.post('/api/save_row', { table: mapping.name,
+        row: { row_id: 'A1', updated_at: current.updated_at, section: 'B1' } }), { status: 403 })
+      const transfer = () => manager.post('/api/save_row', { table: mapping.name,
+        row: { row_id: 'A1', updated_at: current.updated_at, section: 'A2' } })
+      if (dimension === 'store') expect(await transfer()).toMatchObject({ section: 'A2' })
+      else await expectApiError(transfer(), { status: 403 })
+      await expectApiError(manager.post('/api/save_row', { table: mapping.name,
+        row: { row_id: 'outside', section: 'B1', subcategory: 'forbidden' } }), { status: 403 })
+      const created = await manager.post<Record<string, unknown>>('/api/save_row', { table: mapping.name,
+        row: { row_id: 'new', section: 'A1', subcategory: 'allowed' } })
+      expect(created).toMatchObject({ section: 'A1', subcategory: 'allowed' })
+      const removed = await manager.fetch(`${mapping.rowUrl('new')}?updated_at=${encodeURIComponent(String(created.updated_at))}`, { method: 'DELETE' })
+      expect(removed.ok).toBe(true)
+      expect(await sql`select row_id from orgproof.mapping where row_id in ('new', 'outside')`).toEqual([])
+      expect((await sql`select subcategory from orgproof.mapping where row_id = 'B1'`)[0].subcategory).toBe('category-B1')
+    } finally { suspendRuntimeApp('orgproof') }
+  })
+
+  test('staffing scope follows the appointment rather than another membership of its person', async ({ createUser }) => {
+    const user = await createUser({ roles: [] })
+    const member = tableRef('contactproof.membership')
+    registerApp({ name: 'contactproof',
+      administration: { version: 1, targets: { [member.name]: { person: 'person' } },
+        memberships: { table: member.name, person: 'person', dimensions: { store: ['store'] } } },
+      tables: [{ name: member.name, id_pattern: 'prompt', columns: [
+        { column_name: 'person', column_type: 'Reference', reference_table: 'Person' },
+        { column_name: 'store', column_type: 'Data' },
+      ] }], roles: ['Scoped Staffing'], permissions: [{ table: member.name, role: 'Scoped Staffing',
+        operations: { read: '*', update: '*', create: '*' } }], fixtures: [{ table: member.name, rows: [
+        { row_id: 'inside', person: user.user, store: 'A' }, { row_id: 'outside', person: user.user, store: 'B' },
+      ] }],
+    })
+    await installApp('contactproof')
+    try {
+      const scope = await saveSystemRow('Scope', { app: 'contactproof', mode: 'named', tuples: [{ store: 'A' }] }, 'bootstrap')
+      await saveSystemRow('Role Assignment', { app: 'contactproof', person: user.user, role: 'Scoped Staffing', scope: scope.row_id }, 'bootstrap')
+      expect(await user.get(member.listUrl({ fields: ['row_id', 'store'] }))).toMatchObject({ data: [{ row_id: 'inside', store: 'A' }], total: 1 })
+      await expectApiError(user.get(member.rowUrl('outside')), { status: 403 })
+      const current = await user.get<Record<string, unknown>>(member.rowUrl('inside'))
+      await expectApiError(user.post('/api/save_row', { table: member.name,
+        row: { row_id: 'inside', updated_at: current.updated_at, store: 'B' } }), { status: 403 })
+      await expectApiError(user.post('/api/save_row', { table: member.name,
+        row: { row_id: 'forbidden', person: user.user, store: 'B' } }), { status: 403 })
+      expect(await user.post('/api/save_row', { table: member.name,
+        row: { row_id: 'allowed', person: user.user, store: 'A' } })).toMatchObject({ store: 'A' })
+    } finally { suspendRuntimeApp('contactproof') }
+  })
+
   test('derived dimensions refuse ambiguous or dangling membership facts', async ({ createUser }) => {
     const reader = await createUser({ roles: [] })
     registerApp({ name: 'contactproof',
@@ -52,12 +162,13 @@ describe('domain administration', () => {
     } finally { suspendRuntimeApp('contactproof') }
   })
 
-  test('reporting subtrees follow only current acyclic appointments excluding their holder', async ({ createUser }) => {
+  test.for(['contactproof.membership', 'Person'])('reporting subtrees through %s follow only current acyclic appointments', async (reportingTable, { createUser }) => {
     const holder = await createUser({ roles: [] })
     const leader = await createUser({ roles: [] })
     const worker = await createUser({ roles: [] })
     const ended = await createUser({ roles: [] })
     const future = await createUser({ roles: [] })
+    const parent = (name: 'holder' | 'leader' | 'worker') => reportingTable === 'Person' ? { holder, leader, worker }[name].user : name
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
     registerApp({ name: 'contactproof',
       administration: { version: 1, targets: { [employee.name]: { person: 'person' } },
@@ -70,7 +181,7 @@ describe('domain administration', () => {
         ] },
         { name: 'contactproof.membership', id_pattern: 'prompt', columns: [
           { column_name: 'person', column_type: 'Reference', reference_table: 'Person' },
-          { column_name: 'reports_to', column_type: 'Reference', reference_table: 'contactproof.membership' },
+          { column_name: 'reports_to', column_type: 'Reference', reference_table: reportingTable },
           { column_name: 'starts_on', column_type: 'Date' }, { column_name: 'ends_on', column_type: 'Date' },
         ] },
       ], roles: ['Subtree Reader'],
@@ -80,10 +191,10 @@ describe('domain administration', () => {
           ({ row_id, person: person.user, phone: row_id })) },
         { table: 'contactproof.membership', rows: [
           { row_id: 'holder', person: holder.user },
-          { row_id: 'leader', person: leader.user, reports_to: 'holder', starts_on: today },
-          { row_id: 'worker', person: worker.user, reports_to: 'leader' },
-          { row_id: 'ended', person: ended.user, reports_to: 'holder', ends_on: today },
-          { row_id: 'future', person: future.user, reports_to: 'holder', starts_on: '2999-01-01' },
+          { row_id: 'leader', person: leader.user, reports_to: parent('holder'), starts_on: today },
+          { row_id: 'worker', person: worker.user, reports_to: parent('leader') },
+          { row_id: 'ended', person: ended.user, reports_to: parent('holder'), ends_on: today },
+          { row_id: 'future', person: future.user, reports_to: parent('holder'), starts_on: '2999-01-01' },
         ] },
       ],
     })
@@ -96,10 +207,15 @@ describe('domain administration', () => {
       expect(await holder.get(listing)).toMatchObject({ total: 2, data: [{ row_id: 'leader' }, { row_id: 'worker' }] })
       for (const id of ['holder', 'ended', 'future']) await expectApiError(holder.get(employee.rowUrl(id)), { status: 403 })
       // Legacy corrupt facts cannot turn a recursive scope into all access.
-      await sql`update contactproof.membership set reports_to = 'worker' where row_id = 'holder'`
+      await sql`update contactproof.membership set reports_to = ${parent('worker')} where row_id = 'holder'`
       expect(await holder.get(listing)).toMatchObject({ total: 0, data: [] })
       await sql`update contactproof.membership set reports_to = null where row_id = 'holder'`
       expect(await holder.get(employee.rowUrl('worker'))).toMatchObject({ phone: 'worker' })
+      if (reportingTable === 'Person') {
+        await sql`insert into contactproof.membership (row_id, person) values ('second-office', ${holder.user})`
+        expect(await holder.get(listing)).toMatchObject({ total: 0, data: [] })
+        await sql`delete from contactproof.membership where row_id = 'second-office'`
+      }
       // Expiry is automatic and end-exclusive, including the assignment itself.
       await sql`update featherbase.role_assignment set starts_on = '2000-01-01', ends_on = ${today}
         where row_id = ${String(assignment.row_id)}`
@@ -149,7 +265,7 @@ describe('domain administration', () => {
     await installApp('contactproof')
     try {
       const scope = await saveSystemRow('Scope', { app: 'contactproof', mode,
-        tuples: mode === 'named' ? [{ store: 'A', department: 'Homeware' }] : null }, 'provisioning')
+        tuples: mode === 'named' ? [{ store: 'A', department: 'Homeware' }, { store: 'B', department: 'Clothing' }] : null }, 'provisioning')
       await saveSystemRow('Role Assignment', { app: 'contactproof', person: reader.user,
         role: 'Scoped Contact Reader', scope: scope.row_id }, 'provisioning')
       expect(await reader.get(employee.rowUrl('priya'))).toMatchObject({ phone: 'permitted' })
@@ -157,6 +273,8 @@ describe('domain administration', () => {
       expect(await reader.get(employee.listUrl({ fields: ['row_id', 'phone'] })))
         .toMatchObject({ total: 1, data: [{ row_id: 'priya', phone: 'permitted' }] })
       if (mode === 'named') {
+        await sql`update contactproof.membership set reports_to = null where row_id = 'priya-a'`
+        expect(await reader.get(employee.rowUrl('priya'))).toMatchObject({ phone: 'permitted' })
         const directoryReader = await provisionApp('contactproof', () => createUser({ roles: ['Contact Directory'] }))
         await saveSystemRow('Role Assignment', { app: 'contactproof', person: directoryReader.user,
           role: 'Scoped Contact Reader', scope: scope.row_id }, 'provisioning')
@@ -194,6 +312,14 @@ describe('domain administration', () => {
       await expectApiError(admin.post('/api/save_row', { table: 'Role Assignment', row: {
         app: 'contactproof', person: reader.user, role: 'Scoped Contact Reader', scope: scope.row_id,
       } }), { status: 403 })
+      if (mode === 'named') {
+        await sql`update featherbase.scope set tuples = '[]'::jsonb where row_id = ${String(scope.row_id)}`
+        await expectApiError(reader.get(employee.rowUrl('priya')), { status: 403 })
+        await expectApiError(reader.post('/api/save_row', { table: employee.name,
+          row: { row_id: 'priya', updated_at: changed.updated_at, phone: 'empty-scope-must-not-save' },
+        }), { status: 403 })
+        expect((await sql`select phone from contactproof.employee where row_id = 'priya'`)[0].phone).toBe('corrected')
+      }
     } finally { suspendRuntimeApp('contactproof') }
   })
 
@@ -246,6 +372,8 @@ describe('domain administration', () => {
       ['create', 'all', ['name', 'phone']],
       ['read', 'all', ['name']],
       ['read', 'creator', ['phone']],
+      ['update', 'all', ['name']],
+      ['update', 'creator', ['phone']],
     ] as const) {
       await admin.post('/api/save_row', { table: 'Permission', row: {
         ref_table: contacts.name, role: 'Mixed Contact Reader', operation, scope_mode,
@@ -259,6 +387,11 @@ describe('domain administration', () => {
     const other = await admin.post<{ row_id: string }>('/api/save_row', {
       table: contacts.name, row: { name: 'Other', phone: '111-secret' },
     })
+    const before = await admin.get<Record<string, unknown>>(contacts.rowUrl(other.row_id))
+    await expectApiError(reader.post('/api/save_row', { table: contacts.name,
+      row: { row_id: other.row_id, updated_at: before.updated_at, phone: 'must-not-borrow-name-scope' },
+    }), { status: 403 })
+    expect(await admin.get(contacts.rowUrl(other.row_id))).toMatchObject({ phone: '111-secret', updated_at: before.updated_at })
     expect(await reader.get(contacts.rowUrl(other.row_id))).not.toHaveProperty('phone')
     expect(await reader.get(contacts.listUrl({ fields: ['row_id', 'name', 'phone'], order_by: 'name asc' })))
       .toMatchObject({ total: 2, data: [

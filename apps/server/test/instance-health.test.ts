@@ -50,6 +50,9 @@ async function healthCommand(environment: string) {
 describe('the checks (5.1)', () => {
   test('a fresh local instance treats file-managed settings as optional', async () => {
     await sql`delete from instance_settings_apply`
+    // This example is a fresh instance, regardless of how long this shared
+    // test database has existed or how many earlier files the suite ran.
+    await sql`update scheduled_job set updated_at = now(), last_run_at = null, last_outcome = null`
     await withVariable('FEATHERBASE_INSTANCE', '', async () => {
       const health = await instanceHealth({ environment: 'development', record: false })
       expect(byKey(health.checks, 'settings-applied')).toMatchObject({ ok: true, state: 'optional', fix: null })
@@ -364,6 +367,7 @@ describe('the health API (5.3, 5.4)', () => {
   test('a System Manager sees every check with its history; the count is the failing checks', async ({ admin }) => {
     await sql`delete from instance_settings_apply`
     await sql`delete from health_check_event`
+    await sql`update scheduled_job set updated_at = now(), last_run_at = null, last_outcome = null`
     const health = await admin.get<{
       checks: (HealthCheck & { since: string | null; history: { ok: boolean }[] })[]
       failing: number

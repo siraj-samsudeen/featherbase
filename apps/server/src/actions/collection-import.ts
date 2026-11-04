@@ -10,6 +10,8 @@ import { assertDocPermission, assertPermission, permissionScope } from '../permi
 import { registerCollectionAction } from '../actions'
 import { sql } from '../db'
 import { tableRelation, quoteRelation } from '../table-engine'
+import { administrationFor } from '../administration-scopes'
+import { isPendingCorrection } from '../administration-approvals'
 
 // IMP-005: bulk import — POST /api/table/:table:import { rows: [...] }.
 // The first real collection-action registrant (#61 left the registry empty on
@@ -263,13 +265,14 @@ registerCollectionAction('import', {
       )
 
     const upsert = parseUpsertArgs(meta, args)
+    const domainManaged = !!meta.owner_app && !!administrationFor(meta.owner_app)?.targets[meta.name]
     // #145 (ruled 2026-08-11): the match key gets its index the first time a
     // REAL keyed run uses it — before resolution, so even this request's
     // lookup is served. Rehearsals create nothing (IMP-I3's spirit covers
     // the catalog too).
     if (upsert && !args.dry_run) await ensureKeyIndex(table, upsert.keyColumn)
     const resolutions = upsert ? await resolveRows(meta, rows, upsert.keyColumn) : null
-    if (resolutions) await assertRunPermitted(user.row_id, table, resolutions)
+    if (resolutions && !domainManaged) await assertRunPermitted(user.row_id, table, resolutions)
 
     // IMP-007: dry run — same gates, schema-level validation of every row
     // (types, reqd, choices, name rules, existing-name conflicts), zero
@@ -342,6 +345,7 @@ registerCollectionAction('import', {
     let inserted = 0
     let updated = 0
     const failed: FailedRow[] = []
+    const accepted = new Map<number, Record<string, unknown>>()
     // RVT-R1 (spec 0005): record every row this part writes — id, action,
     // and the updated_at stamp the write left — so the run is revertable.
     const touched: TouchedRow[] = []
@@ -362,10 +366,14 @@ registerCollectionAction('import', {
           // exactly as the check step does. A conflict cannot legitimize bad data.
           checkRowForUpdate(meta, record, resolution, upsert!)
           const { saved, version } = await saveImportedRow(meta, updateValues(record, upsert!, resolution), user.row_id, runId, true)
+          if (isPendingCorrection(saved)) { accepted.set(index, { ...saved, index }); continue }
+          accepted.set(index, { index, row_id: saved.row_id, outcome: 'applied' })
           updated++
           touched.push({ row_id: String(saved.row_id), action: 'updated', stamp: stampOf(saved.updated_at), ...(version ? { version } : {}) })
         } else {
           const { saved } = await saveImportedRow(meta, row as Record<string, unknown>, user.row_id, runId, false)
+          if (isPendingCorrection(saved)) { accepted.set(index, { ...saved, index }); continue }
+          accepted.set(index, { index, row_id: saved.row_id, outcome: 'applied' })
           inserted++
           touched.push({
             row_id: String(saved[ROW_KEY]),
@@ -374,7 +382,7 @@ registerCollectionAction('import', {
           })
         }
       } catch (err) {
-        if (err instanceof AppError && err.type === 'PermissionError') throw err
+        if (!domainManaged && err instanceof AppError && err.type === 'PermissionError') throw err
         failed.push({
           index,
           message: err instanceof Error ? err.message : String(err),
@@ -383,6 +391,9 @@ registerCollectionAction('import', {
       }
     }
     await writeImportLog(table, user.row_id, { inserted, updated, upsert }, failed, { ...context, run_id: runId }, touched)
+    if (domainManaged) return { updated, inserted, failed, run_id: runId,
+      outcomes: rows.map((row, index) => accepted.get(index) ?? { index, row_id: row?.row_id,
+        outcome: 'rejected', message: failed.find(failure => failure.index === index)?.message }) }
     // #687: every writing run names its run ID, so the caller can undo it.
     if (!upsert) return { inserted, failed, run_id: runId }
     return { updated, inserted, failed, run_id: runId }

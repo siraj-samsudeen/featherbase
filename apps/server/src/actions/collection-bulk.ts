@@ -18,6 +18,8 @@ import { actionTransaction } from '../action-transaction'
 import { publishDocEvent } from '../realtime'
 import { isBound } from '../sources/dispatch'
 import type { SessionUser } from '../auth'
+import { administrationFor } from '../administration-scopes'
+import { isPendingCorrection } from '../administration-approvals'
 
 // A list page is far smaller; this only bounds a hand-made request.
 const MAX_ROWS = 500
@@ -57,12 +59,12 @@ async function stampOf(table: string, name: string, user: SessionUser): Promise<
 
 async function editRow(table: string, name: string, values: Record<string, unknown>, user: SessionUser) {
   const updated_at = await stampOf(table, name, user)
-  await saveDoc(table, { ...values, [ROW_KEY]: name, updated_at }, user.row_id)
+  return saveDoc(table, { ...values, [ROW_KEY]: name, updated_at }, user.row_id)
 }
 
 async function deleteRow(table: string, name: string, user: SessionUser, bound: boolean) {
-  const stamp = bound ? await stampOf(table, name, user) : null
-  await deleteDoc(table, name, user.row_id, {
+  const stamp = bound || (await getMeta(table)).owner_app ? await stampOf(table, name, user) : null
+  return deleteDoc(table, name, user.row_id, {
     expectUpdatedAt: stamp == null ? null : stamp instanceof Date ? stamp.toISOString() : String(stamp),
   })
 }
@@ -71,9 +73,28 @@ async function runBulk(
   table: string,
   rows: string[],
   verb: 'changed' | 'deleted',
-  apply: (name: string) => Promise<void>,
-): Promise<{ done: number; failed?: FailedRow[] }> {
+  apply: (name: string) => Promise<void | Record<string, unknown>>,
+): Promise<{ done: number; failed?: FailedRow[]; outcomes?: Record<string, unknown>[] }> {
   const meta = await getMeta(table)
+  if (meta.owner_app && administrationFor(meta.owner_app)?.targets[meta.name]) {
+    const outcomes: Record<string, unknown>[] = []
+    let done = 0
+    for (const name of rows) {
+      try {
+        const result = await actionTransaction(() => apply(name))
+        if (result && isPendingCorrection(result)) outcomes.push({ ...result, row_id: name })
+        else {
+          done++
+          outcomes.push({ row_id: name, outcome: 'applied' })
+          publishDocEvent(table, name, verb === 'deleted' ? 'deleted' : 'updated')
+        }
+      } catch (error) {
+        if (!(error instanceof AppError)) throw error
+        outcomes.push({ row_id: name, outcome: 'rejected', message: error.message, fields: error.fields })
+      }
+    }
+    return { done, outcomes }
+  }
   if (isBound(meta)) {
     const failed: FailedRow[] = []
     let done = 0
@@ -118,7 +139,8 @@ registerCollectionAction('bulk-edit', {
   handler: async ({ table, args, user }) => {
     const rows = rowsOf(args)
     const values = valuesOf(args)
-    const { done, failed } = await runBulk(table, rows, 'changed', (name) => editRow(table, name, values, user))
+    const { done, failed, outcomes } = await runBulk(table, rows, 'changed', (name) => editRow(table, name, values, user))
+    if (outcomes) return { changed: done, outcomes }
     return failed ? { changed: done, failed } : { changed: done }
   },
 })
@@ -131,7 +153,8 @@ registerCollectionAction('bulk-delete', {
   handler: async ({ table, args, user }) => {
     const rows = rowsOf(args)
     const bound = isBound(await getMeta(table))
-    const { done, failed } = await runBulk(table, rows, 'deleted', (name) => deleteRow(table, name, user, bound))
+    const { done, failed, outcomes } = await runBulk(table, rows, 'deleted', (name) => deleteRow(table, name, user, bound))
+    if (outcomes) return { deleted: done, outcomes }
     return failed ? { deleted: done, failed } : { deleted: done }
   },
 })

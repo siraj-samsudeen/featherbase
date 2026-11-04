@@ -13,7 +13,7 @@ import { applySeedPack } from '../../src/seed-packs'
 import { sql } from '../../src/db'
 import { tableRelation } from '../../src/table-engine'
 import { statusOf } from '../../src/errors'
-import { APP_DIR, OLD_TABLES, VERSION, installApp, pinned, saveRow } from './helpers'
+import { APP_DIR, OLD_TABLES, VERSION, installApp, pinned, saveFixtureRow as saveRow } from './helpers'
 // @ts-expect-error a plain .mjs module, copied in beside this file by the runner
 import { markScopeTables } from './mark-scope-tables.mjs'
 

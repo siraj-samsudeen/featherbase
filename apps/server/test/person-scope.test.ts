@@ -667,7 +667,7 @@ describe('declaring a scope provider', () => {
       'Package handlers and authorization callbacks must match declared names'],
     ['over an owned Table that is not marked as deciding scope', (m: Record<string, any>, s: string) =>
       [{ ...m, tables: m.tables.map((t: Record<string, unknown>) => ({ ...t, decides_scope: false })) }, s],
-      'A scope provider reads only Tables marked decides_scope'],
+      'A scope provider reads only Tables marked decides_scope or protected by administration'],
     ['over an owned Table with a Sub-table', (m: Record<string, any>, s: string) => [{ ...m, tables: [
       ...m.tables.map((t: Record<string, any>) => ({ ...t, columns: [...t.columns, { column_name: 'lines', column_type: 'Sub-table', row_table: 'placeroster.line' }] })),
       { name: 'placeroster.line', label: 'line', kind: 'sub_table', columns: [{ column_name: 'code', column_type: 'Data' }] }] }, s],

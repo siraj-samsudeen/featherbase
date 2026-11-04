@@ -20,6 +20,7 @@ export const ROW_ID_HOLDERS = [
   { relation: 'import_source', tableColumn: 'ref_table', nameColumn: 'ref_name' },
   { relation: 'import_conflict', tableColumn: 'ref_table', nameColumn: 'ref_name' },
   { relation: 'notification_log', tableColumn: 'ref_table', nameColumn: 'ref_name' },
+  { relation: 'proposal', tableColumn: 'ref_table', nameColumn: 'ref_name' },
   { relation: 'share', tableColumn: 'share_table', nameColumn: 'share_name' },
   { relation: 'tag_link', tableColumn: 'ref_table', nameColumn: 'ref_name' },
   { relation: 'todo', tableColumn: 'ref_table', nameColumn: 'reference_name' },

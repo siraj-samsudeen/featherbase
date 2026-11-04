@@ -309,11 +309,12 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   const provider = manifest.scopeProvider
   if (provider) {
     if (!manifest.server) throw new Error('A scope provider requires a server module')
-    // An owned Table the provider reads must carry the mark; another
-    // Table's mark is checked on every read.
+    // Owned scope Tables need either the platform-admin mark or the
+    // app's checked administration contract. Recheck protection on reads.
     for (const table of provider.tables) {
       const owned = manifest.tables.find(t => t.name === table)
-      if (owned && !owned.decides_scope) throw new Error('A scope provider reads only Tables marked decides_scope')
+      if (owned && !owned.decides_scope && !manifest.administration?.targets[table])
+        throw new Error('A scope provider reads only Tables marked decides_scope or protected by administration')
       if (owned?.columns.some(column => column.column_type === 'Sub-table')) throw new Error('A scope provider cannot read Tables with Sub-tables')
     }
   }

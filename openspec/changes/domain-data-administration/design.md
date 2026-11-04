@@ -1,4 +1,19 @@
-## Agent handoff — updated 3 November 2026
+## Agent handoff — updated 4 November 2026
+
+**Delivery priority (owner, 4 November):** commit and push the coherent current
+implementation to existing draft PR #683 for the owner's local agent to finish
+and integrate. Stop feature expansion here. This is an incomplete takeover,
+not merge/deployment approval. Start from the PR head, reconcile current
+`origin/main`, and use the remaining checkboxes in `tasks.md`; do not restart
+from the historical design-only task 1.4 instructions.
+
+**Integration warning:** the handoff branch's common ancestor with the fetched
+`origin/main` is `47541845`. At handoff, `origin/main` is `06ed1f83` and has 607
+commits not included here. Its migrations now include `0006_readable_labels.sql`
+and `0138_mandatory_access.sql`; reconcile these with this branch's
+`0006_operation_permissions.ts` and authority model before applying migrations
+to any existing instance. The passing checks below are branch-local, not proof
+of compatibility with that newer main.
 
 The owner requests a data-led handoff with **no new UI work**. The four follow-up
 policies and initial sample field set are now agreed: shared contacts through one
@@ -13,19 +28,54 @@ model and bootstrap-to-approval examples below, and the structured examples in
 at the owner's request. Do not restore it or use its checks as proof of server
 security. The retained design and sample cases are the takeover references.
 
-**Not done:** production metadata, migrations, server-side checks, approval
-application, transactional integration tests, preflight, or deployment. No claim
-is made that these proposed permissions work in the running platform. Evidence
-about the existing code in this document was gathered on the old checkout base
-`40151182`; recheck it against current main before coding. Related #246, #392,
-#449, #617 and #627 may have progressed independently.
+**Locally implemented:** operation/Column permissions, correlated scoped grants,
+independent bounded grant/revoke, job-derived authority, held corrections and
+independent review through the normal save path. Dash declares its own
+administration contract and operational Employee Table. Its Store, Department
+and Section Manager configuration is exercised against actual organizational
+mapping Rows, not only Person/contact examples. Generic metadata/save paths
+enforce these contracts; platform code contains no Dash-specific role checks.
 
-**First step for the next agent:** read the delta specs, this document's agreed
-rules and provisional choices, and `tasks.md`. Compare current main and linked
-issues to the design, record what is already supplied elsewhere, then resolve
-only the remaining production decisions. Implement one bounded server slice at
-a time, starting with per-operation/column permissions and fail-closed scope.
-Use existing metadata and save paths, not a parallel hard-coded permission engine.
+**Verification evidence:** Dash's real-Postgres platform suite passes 46 tests
+(one existing skip). Its ordinary-HTTP walkthrough passes scoped mapping CRUD,
+cross-section refusal, bounded delegation, forbidden-Column refusal, held
+correction, independent approval and revocation. The committed-transaction
+proof covers revocation while a write waits and competing reviews applying once.
+Migration rehearsal on a restored disposable legacy database preserves creator
+and restricted-Column contributions and rolls back the rehearsal. These checks
+do not authorise a live migration or deployment.
+
+**Still open:** the Platform Admin rename, installed legacy artifact/manifest
+upgrade mapping, review consent, and delivery/archive. Current code still calls
+the platform role System Manager; its app-data bypass has been removed. Multiple
+Tables are configured as multiple grants on one role: there is no first-class
+Table-group object. The PR remains draft/unmerged for local-agent integration.
+Do not mark the entire change complete from the successful demo alone.
+
+The isolated full server run passes 3,304 tests (one expected failure, 99 skips)
+on a fresh disposable database. Server typecheck passes. The strengthened
+administration/delegation scenarios pass all 23 focused tests; the actual Dash
+administration scenarios pass all six, including successor and transfer at the
+business-date boundary. The earlier overlapping run failed because temporary
+Dash files disappeared and old activity history collided with a synthetic time
+window. No expectation was weakened. Run the full server suite separately from
+Dash's copy/remove test script.
+
+**Existing-instance policy gate:** `runtime-packages.ts:upgradePlan` still
+refuses new or widened grants on existing Tables, including reviewed upgrades.
+The new Dash manager grants therefore cannot be delivered by that upgrade path.
+Do not alter recorded artifact identities or silently remove this restriction.
+The proposed resolution needs owner approval: permit an explicitly reviewed
+security upgrade, while keeping unapproved grant expansion refused. Approval
+must name the reviewed grant diff, including affected Tables, roles, operations
+and Columns; ordinary app-update consent must never imply permission expansion.
+The owner has not approved this policy. This is a policy decision, not
+authorisation to migrate or deploy a live instance.
+
+**Continue here:** finish the remaining tasks in `tasks.md`, preserving the
+approved production contracts below. The original source audit at `40151182`
+is historical; the current-main reconciliation below supersedes it. Keep the
+discarded simulation out of implementation and verification.
 
 ### Sample data and verification without the UI
 
@@ -49,9 +99,40 @@ Exercise public server operations as the named actors and assert both responses
 and stored rows/proposals/history. Verify list/report reads as well as writes;
 checking a pure permission helper or trusting the browser model is insufficient.
 Keep each case isolated. Trusted bootstrap creates initial authority; subsequent
-grants and edits must pass the normal checked operations. Document the eventual
-commands here or in the implementation PR once they exist—there is no working
-backend verification command for this proposal today.
+grants and edits must pass the normal checked operations. The runnable Dash
+walkthrough and its required environment are documented in
+`client-apps/jeyarama/dash/README.md`, under "Checking scoped administration
+through the API". Its command is:
+
+```sh
+pnpm --filter server exec tsx ../../client-apps/jeyarama/dash/scripts/check-administration.mts
+```
+
+Run the sandbox scenarios with `pnpm --filter server test test/domain-` and the
+Dash integration with `npm run test:platform` from the Dash directory, each with
+its own disposable test `DATABASE_URL`. The separate multi-connection proof
+requires `DOMAIN_ADMINISTRATION_COMMIT_PROOF=1` and the database named
+`featherbase_issue462_administration_commit_test` on the local Postgres server;
+its configuration refuses another host/database before migration setup.
+
+### Scenario coverage audit — 4 November 2026
+
+These are public-operation assertions with inline setup, not a JSON fixture
+loader. The named design records are represented by equivalent synthetic values.
+Server filenames below are under `apps/server/test`; Dash's file is
+`client-apps/jeyarama/dash/platform-test/administration.test.ts`.
+
+| Cases | Executed coverage |
+| --- | --- |
+| V01–V09, V18, V28 | Dash delegation/correction scenario: before-grant refusal, held correction, independent review, forbidden Columns, department refusal, self service, no Employee create/delete, account snapshots unchanged. Other-store refusal is also asserted by the correlated-scope and actual mapping scenarios. |
+| V10 | `domain-delegation.test.ts` refuses a grant with no Scope; `domain-administration.test.ts` refuses reads/writes after a named Scope loses all tuples. |
+| V11, V17, V20–V21, V23–V24 | `domain-approvals.test.ts`: revoked/disabled maker, conflict revision, rejection, mandatory/alternative rule composition, mixed bulk/import outcomes and approver without direct-edit power. |
+| V12, V14 | Dash transfer/successor variants: old membership ends and replacement begins today; transferred contact loses delegated visibility and cannot be approved; departing officeholder cannot approve, successor can approve/revoke, original grantor/authority/Scope stay unchanged. |
+| V13, V22, V26 | `domain-administration.test.ts`: named department access survives removal of reporting link, shared contacts use one matching membership, and (A, Homeware) OR (B, Clothing) never permits the cross-product. Reporting subtree tests cover cycles and start/end boundaries. |
+| V15–V16, V29–V30 | `domain-delegation.test.ts`: acting/future escalation, further-delegation limits, shared-role/binding edits, descendant revocation, separate grant/revoke boundaries, atomic refusal of mixed replacement, and refusal to extend an appointment using revoke authority. |
+| V19, V25 | Independent Column selections and creator-only contributions in `domain-administration.test.ts`: readable details need not be writable; a phone update cannot borrow another Column's unrestricted scope. |
+| V27 | Domain tests refuse forged Role Assignments and platform-role holdings; `system-written.test.ts` preserves audit immutability. |
+| Beyond samples | `domain-administration-commit.test.ts` proves competing revocation and review with committed transactions; approval tests cover import revert, PATCH, create/delete/amend and hook substitution; `migrate.test.ts` checks legacy grants through HTTP. |
 
 ### Current-main reconciliation — 3 November 2026 (task 1.4)
 
@@ -105,7 +186,8 @@ cannot end or narrow a capability-bearing assignment solely through staffing
 permission. Check the removed capabilities, recipient and affected scope against
 the actor's revoke boundary. A replacement that both removes and adds powers
 needs both checks. Expiry of an already-authorised period is not a new mutation;
-changing that period is. Tasks 2.2–2.5 remain design gates, not completed implementation.
+changing that period is. The production contracts below resolve tasks 2.2–2.4;
+task 2.5's naming and installed-artifact migration work remains open.
 
 Owner decision (3 November 2026): use the recommended remaining choices and
 complete the implementation before the walkthrough. Platform Admin requires

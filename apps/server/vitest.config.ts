@@ -1,5 +1,13 @@
 import { defineConfig } from 'vitest/config'
 
+if (process.env.DOMAIN_ADMINISTRATION_COMMIT_PROOF === '1') {
+  const url = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : null
+  if (!url || url.hostname !== '127.0.0.1' || url.port !== '5432'
+    || url.pathname !== '/featherbase_issue462_administration_commit_test'
+    || (process.env.FEATHERBASE_ENV && process.env.FEATHERBASE_ENV !== 'test'))
+    throw new Error('Administration committed proof requires its disposable local test database')
+}
+
 if (process.env.SECURITY_COMMIT_PROOF === '1') {
   const url = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : null
   if (!url || url.hostname !== '127.0.0.1' || url.port !== '5432'

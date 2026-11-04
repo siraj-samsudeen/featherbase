@@ -8,7 +8,12 @@ export interface RowReader {
   childColumns: (childTable: string, parentColumn: string) => Promise<ColumnSelection>
 }
 
-export const FULL_READER: RowReader = { columns: new Set(ALL_COLUMNS), childColumns: async () => new Set(ALL_COLUMNS) }
+export const FULL_READER: RowReader = {
+  // Document and permission evaluation depend on one another; read the
+  // selection when used, after native ESM has initialized both modules.
+  get columns() { return new Set(ALL_COLUMNS) },
+  childColumns: async () => new Set(ALL_COLUMNS),
+}
 
 // #340: what leaves the platform (a webhook's body, an email rule's text) is
 // read by nobody in particular, so it carries the basic tier only.
