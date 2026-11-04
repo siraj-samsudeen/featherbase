@@ -213,6 +213,26 @@ describe('SplitWithPane', () => {
     expect(screen.getByTestId('split-pane').className).not.toMatch(/\bsticky\b/)
   })
 
+  test("a pane at the bottom docks to the window's foot: the split is as tall as the window, the content scrolling above the pane", () => {
+    render(<SplitWithPane place="bottom" pane={<p>Pane</p>}><p>List</p></SplitWithPane>)
+    expect(screen.getByTestId('split-with-pane').className).toMatch(/\bh-\[calc\(100dvh/)
+    expect(screen.getByText('List').parentElement!.className).toMatch(/\boverflow-auto\b/)
+  })
+
+  test('opening a pane at the bottom brings it into view', () => {
+    const scrolled = vi.fn()
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = scrolled
+    try {
+      const { rerender } = render(<SplitWithPane place="bottom" pane={null}><p>List</p></SplitWithPane>)
+      expect(scrolled).not.toHaveBeenCalled()
+      rerender(<SplitWithPane place="bottom" pane={<p>Pane</p>}><p>List</p></SplitWithPane>)
+      expect(scrolled).toHaveBeenCalledOnce()
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
+
   test('says where its pane is, so the page around it can make room', () => {
     render(<SplitWithPane place="right" pane={<p>Pane</p>}><p>List</p></SplitWithPane>)
     expect(screen.getByTestId('split-with-pane')).toHaveAttribute('data-pane', 'right')
