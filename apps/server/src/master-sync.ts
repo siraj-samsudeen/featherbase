@@ -56,9 +56,20 @@ export type DifferenceKind = 'source_changed' | 'edited_here' | 'conflict' | 'di
 export type ColumnDecision = { apply: true } | { apply: false; raise?: DifferenceKind }
 
 type Value = string | null
+const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})(?:$|[T ])/
+/** A date written as an ISO day (optionally with a time), whose day exists. */
+function isoDay(value: string): string | null {
+  const day = ISO_DAY.exec(value)
+  if (!day) return null
+  const d = new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])))
+  return d.getUTCFullYear() === Number(day[1]) && d.getUTCMonth() === Number(day[2]) - 1 && d.getUTCDate() === Number(day[3])
+    ? `${day[1]}-${day[2]}-${day[3]}` : null
+}
 /** One spelling per value, read as the master column's type, so 7, "7" and
  *  "7.000000000" compare equal for a number, and a date for its day. */
 export function normalize(value: unknown, columnType?: string): Value {
+  // JSON keeps its types: 7 and "7", "" and nothing, are different values.
+  if (columnType === 'JSON') return value === null || value === undefined ? null : JSON.stringify(value)
   if (value === null || value === undefined || value === '') return null
   if (columnType === 'Int' || columnType === 'Float' || columnType === 'Currency') {
     const n = Number(value)
@@ -66,9 +77,13 @@ export function normalize(value: unknown, columnType?: string): Value {
   }
   if (columnType === 'Check') return ['1', 'true', 't', 'yes'].includes(String(value).toLowerCase()) ? 'true' : 'false'
   if (columnType === 'Date' || columnType === 'Datetime') {
-    const d = value instanceof Date ? value : new Date(String(value))
-    if (Number.isNaN(d.getTime())) return String(value)
-    return columnType === 'Date' ? d.toISOString().slice(0, 10) : d.toISOString()
+    if (value instanceof Date) return columnType === 'Date' ? value.toISOString().slice(0, 10) : value.toISOString()
+    const text = String(value)
+    // Only ISO dates are read as dates; the day is the one written, never shifted by a zone.
+    if (!isoDay(text)) return text
+    if (columnType === 'Date') return isoDay(text)
+    const d = new Date(text)
+    return Number.isNaN(d.getTime()) ? text : d.toISOString()
   }
   if (value instanceof Date) return value.toISOString()
   if (typeof value === 'object') return JSON.stringify(value)
@@ -78,23 +93,22 @@ export function normalize(value: unknown, columnType?: string): Value {
 const NOT_FITTING = Symbol('not fitting')
 /** The source value as the master column stores it; NOT_FITTING when it cannot be. */
 export function toMaster(value: unknown, columnType?: string): unknown {
+  // JSON keeps its own value; comparison spells it as text, storage must not.
+  if (columnType === 'JSON') return value ?? null
   const n = normalize(value, columnType)
   if (n === null) return null
-  // JSON keeps its own value; comparison spells it as text, storage must not.
-  if (columnType === 'JSON') return value
-  // A calendar date that does not exist (30-Feb) never rolls over into another day.
-  const day = typeof value === 'string' ? /^(\d{4})-(\d{2})-(\d{2})/.exec(value) : null
-  if (day && (columnType === 'Date' || columnType === 'Datetime')) {
-    const d = new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])))
-    if (d.getUTCFullYear() !== Number(day[1]) || d.getUTCMonth() !== Number(day[2]) - 1 || d.getUTCDate() !== Number(day[3])) return NOT_FITTING
-  }
   if (columnType === 'Int' || columnType === 'Float' || columnType === 'Currency') {
     const number = Number(n)
     if (!Number.isFinite(number) || (columnType === 'Int' && !Number.isInteger(number))) return NOT_FITTING
     return number
   }
   if (columnType === 'Check') return typeof value === 'boolean' || ['true', 'false', '0', '1'].includes(String(value).toLowerCase()) ? n === 'true' : NOT_FITTING
-  if (columnType === 'Date' || columnType === 'Datetime') return Number.isNaN(new Date(n).getTime()) ? NOT_FITTING : n
+  if (columnType === 'Date' || columnType === 'Datetime') {
+    if (value instanceof Date) return n
+    // Not an ISO date, a day that does not exist (30-Feb), or an unreadable time: never guessed.
+    if (!isoDay(String(value)) || (columnType === 'Datetime' && Number.isNaN(new Date(String(value)).getTime()))) return NOT_FITTING
+    return n
+  }
   return n
 }
 export const isNotFitting = (value: unknown) => value === NOT_FITTING
