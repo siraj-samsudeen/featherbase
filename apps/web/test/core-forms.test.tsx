@@ -99,7 +99,8 @@ test('A save that arrives too late is refused: the other person\'s change stands
   expect(await titleOf(admin, row.row_id)).toBe('theirs')
 })
 
-test('Peek at a linked row: a chain of links opens in panels over the page, and closing returns to the page unchanged', async ({ admin }) => {
+// #910: the drill pane replaces peek (core-forms delta: peek is removed).
+test('a linked row opens in the drill pane beside the form; its own link moves the pane, and closing leaves the form unchanged', async ({ admin }) => {
   await admin.post('/api/table_def', {
     name: 'Peek Country',
     columns: [{ column_name: 'label', column_type: 'Data', label: 'Label' }],
@@ -132,31 +133,24 @@ test('Peek at a linked row: a chain of links opens in panels over the page, and 
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('label')).toHaveValue('Main Street'))
 
-  // First link: the city, in a panel; the form is still underneath.
+  // First link: the city, in the pane; the form is still there.
   fireEvent.mouseDown(await screen.findByTestId('link-peek-city'))
-  const first = await screen.findByTestId('peek-panel-0')
-  expect(await within(first).findByText('Chennai')).toBeInTheDocument()
+  const first = await screen.findByRole('complementary', { name: 'Chennai' })
+  expect(first).toHaveTextContent('Peek City')
 
-  // Its own link: the country, one level deeper.
-  fireEvent.click(await within(first).findByTestId('peek-ref-country'))
-  const second = await screen.findByTestId('peek-panel-1')
-  expect(await within(second).findByText('Indialand')).toBeInTheDocument()
-  expect(within(second).getByTestId('peek-title')).toHaveTextContent(country.row_id)
+  // Its own link: the country; the pane moves there.
+  fireEvent.click(await within(first).findByRole('button', { name: 'Indialand' }))
+  const second = await screen.findByRole('complementary', { name: 'Indialand' })
+  expect(second).toHaveTextContent('Peek Country')
 
-  // Step back one level, then forward again, then close it all.
-  fireEvent.click(within(second).getByTestId('peek-back'))
-  await waitFor(() => expect(screen.queryByTestId('peek-panel-1')).not.toBeInTheDocument())
-  expect(screen.getByTestId('peek-panel-0')).toBeInTheDocument()
-  fireEvent.click(await within(screen.getByTestId('peek-panel-0')).findByTestId('peek-ref-country'))
-  await screen.findByTestId('peek-panel-1')
-  fireEvent.click(within(screen.getByTestId('peek-panel-1')).getByTestId('peek-close'))
-
-  await waitFor(() => expect(screen.queryByTestId('peek-panel-0')).not.toBeInTheDocument())
+  // Close it; the form is as it was.
+  fireEvent.click(within(second).getByRole('button', { name: 'Close' }))
+  await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Indialand' })).not.toBeInTheDocument())
   expect(screen.getByTestId('form-view')).toBeInTheDocument()
   expect(field('label')).toHaveValue('Main Street')
 })
 
-test('Peek at a linked row: the open-as-full-page control navigates to that row\'s own form', async ({ admin }) => {
+test('a linked row in the drill pane: Open row page goes to that row\'s own form', async ({ admin }) => {
   await admin.post('/api/table_def', {
     name: 'Peek Parent',
     columns: [{ column_name: 'label', column_type: 'Data', label: 'Label' }],
@@ -178,11 +172,12 @@ test('Peek at a linked row: the open-as-full-page control navigates to that row\
   await waitFor(() => expect(field('label')).toHaveValue('Kid'))
 
   fireEvent.mouseDown(await screen.findByTestId('link-peek-mother'))
-  fireEvent.click(await screen.findByTestId('peek-open-full'))
+  const pane = await screen.findByRole('complementary', { name: 'Mother' })
+  fireEvent.click(within(pane).getByRole('link', { name: 'Open row page' }))
 
   await waitFor(() => expect(field('label')).toHaveValue('Mother'))
   expect(screen.getByTestId('breadcrumbs')).toHaveTextContent('Peek Parent')
-  expect(screen.queryByTestId('peek-panel-0')).not.toBeInTheDocument()
+  expect(screen.queryByRole('complementary', { name: 'Mother' })).not.toBeInTheDocument()
 })
 
 test('Pick a linked row by typing: matching rows are offered, picking one fills the field and saves, and a new one can be created from the list', async ({ admin }) => {
