@@ -181,6 +181,13 @@ body,
   height: 100%;
 }
 
+/* #941: on an app's page the shared top bar sits in the flow above the app's
+   root, so the root takes what is left of the window, not all of it; a page
+   sized to the window then never scrolls by the bar's height. */
+featherbase-bar ~ #root {
+  height: calc(100% - var(--featherbase-bar-height, 0px));
+}
+
 body {
   background: var(--color-canvas);
   color: var(--color-ink);
