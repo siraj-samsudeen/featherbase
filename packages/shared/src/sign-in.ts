@@ -7,3 +7,14 @@ export type SignInMethodKind = (typeof SIGN_IN_METHOD_KINDS)[number]
 
 export const NEW_PERSON_RULES = ['refuse', 'create_if_email_domain_allowed', 'create'] as const
 export type NewPersonRule = (typeof NEW_PERSON_RULES)[number]
+
+// #829: a person a sign-in rule creates is recorded as created by the
+// sign-in itself, not by Administrator. The actor is not a person; it holds
+// System Manager only inside that one save (apps/server/src/system-actor.ts).
+export const signInActor = (kind: SignInMethodKind): string => `${kind.replace(/_/g, '-')}-sign-in`
+
+/** How such an actor reads wherever a person's name would show. */
+export const SYSTEM_ACTOR_LABELS: Readonly<Record<string, string>> = {
+  [signInActor('google')]: 'Google sign-in',
+  [signInActor('password')]: 'Password sign-in',
+}

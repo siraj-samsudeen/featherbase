@@ -97,7 +97,7 @@ test('a comment on a row deleted meanwhile is refused and the draft is kept', as
   const rowId = await seedRow(admin, 'enable_discussion')
   await openRow(admin, rowId, 'Activity')
   const panel = await screen.findByTestId('comments-panel')
-  await waitFor(() => expect(screen.getByTestId('activity-timeline')).toHaveTextContent('No activity yet'))
+  await waitFor(() => expect(screen.getByTestId('activity-timeline')).toHaveTextContent('Administrator created this'))
   await admin.delete(`/api/table/${ENC}/${rowId}`)
   await user.type(within(panel).getByTestId('comment-input'), 'still there?')
   await user.click(within(panel).getByTestId('comment-submit'))
