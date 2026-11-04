@@ -27,6 +27,24 @@ export function PanePlace({ value, resolved, onChange, label = 'Pane place' }: {
   ]} />
 }
 
+// Where focus was in the content when a pane opened, kept outside the
+// component: the page around it can be drawn anew while the pane is open.
+const opener: { el: HTMLElement | null; route: number[]; open: boolean } = { el: null, route: [], open: false }
+
+/** The child positions from `root` down to `el`. */
+function routeTo(root: Element, el: Element): number[] {
+  const route: number[] = []
+  for (let at: Element | null = el; at && at !== root; at = at.parentElement)
+    route.unshift(at.parentElement ? [...at.parentElement.children].indexOf(at) : 0)
+  return route
+}
+
+function find(root: Element, route: number[]): HTMLElement | null {
+  let at: Element | undefined = root
+  for (const i of route) at = at?.children[i]
+  return at instanceof HTMLElement ? at : null
+}
+
 /**
  * Content with the drill pane beside it (right: about 40% wide, at least
  * 360px, as tall as the window) or below it (bottom: docked at the foot of
@@ -48,11 +66,16 @@ export function SplitWithPane({ place, pane, children }: {
   const docked = shown && !right
   const split = useRef<HTMLDivElement>(null)
   // The control the pane was opened from gets focus back when it closes.
-  const opener = useRef<HTMLElement | null>(null)
+  const content = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (shown) return
-    const back = opener.current
-    if (back?.isConnected && (!document.activeElement || document.activeElement === document.body)) back.focus({ preventScroll: true })
+    if (shown) { opener.open = true; return }
+    if (!opener.open) return
+    opener.open = false
+    if (document.activeElement && document.activeElement !== document.body) return
+    // The page may have been drawn anew while the pane was open (its address
+    // changed): the control is then found again at the same place in it.
+    const back = opener.el?.isConnected ? opener.el : content.current && find(content.current, opener.route)
+    back?.focus({ preventScroll: true })
   }, [shown])
   useEffect(() => {
     if (!docked) return
@@ -63,8 +86,11 @@ export function SplitWithPane({ place, pane, children }: {
   return (
     <div ref={split} data-testid="split-with-pane" data-pane={shown ? place : undefined}
       className={`flex min-h-0 min-w-0 flex-1 ${right ? 'flex-row items-start gap-4' : 'flex-col'} ${docked ? 'h-[calc(100dvh-7rem)] min-h-96' : ''}`}>
-      <div className="min-h-0 min-w-0 flex-1 self-stretch overflow-auto"
-        onFocus={(event) => { opener.current = event.target as HTMLElement }}>{children}</div>
+      <div ref={content} className="min-h-0 min-w-0 flex-1 self-stretch overflow-auto"
+        onFocus={(event) => {
+          opener.el = event.target as HTMLElement
+          opener.route = routeTo(event.currentTarget, opener.el)
+        }}>{children}</div>
       {shown && (
         <div data-testid="split-pane" className={right
           ? 'sticky top-0 flex max-h-[calc(100dvh-5rem)] min-h-0 w-2/5 min-w-90 max-w-full shrink-0 flex-col overflow-y-auto bg-surface'
