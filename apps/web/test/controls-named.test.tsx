@@ -87,6 +87,8 @@ test('Controls are clearly named: no two controls in a Table\'s list toolbar sha
   await renderApp('/featherbase/admin/table/named-thing', admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   const toolbar = screen.getByTestId('list-toolbar')
+  fireEvent.click(within(toolbar).getByRole('button', { name: 'Table administration' }))
+  await within(toolbar).findByRole('link', { name: 'Edit columns' })
   const names = Array.from(toolbar.querySelectorAll('button, a[href]'))
     .map((el) => el.getAttribute('aria-label') ?? el.textContent?.trim() ?? '')
   expect(names.filter((n, i) => names.indexOf(n) !== i)).toEqual([])

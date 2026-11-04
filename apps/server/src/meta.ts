@@ -111,6 +111,10 @@ export interface TableMeta {
   sort_column: string
   sort_order: string
   track_changes: boolean
+  enable_assignments: boolean
+  enable_tags: boolean
+  enable_files: boolean
+  enable_discussion: boolean
   description: string | null
   custom: boolean
   // #74: true for platform tables created by the migration chain. The Admin
@@ -350,6 +354,10 @@ export async function getMeta(name: string): Promise<TableMeta> {
   delete dt.navigation_identity
   const meta = {
     ...(dt as unknown as Omit<TableMeta, 'columns' | 'row_key'>),
+    enable_assignments: false,
+    enable_tags: false,
+    enable_files: false,
+    enable_discussion: false,
     row_key: physicalRowKey(name),
     columns,
   }

@@ -189,7 +189,7 @@ test('A past search comes back in the empty bar: arrow keys choose it and Enter 
   // counting keyboard steps, and distinguish Search from the row's title.
   await within(recents).findByText('Zebrafinch widget')
   const items = within(recents).getAllByRole('option')
-  const at = items.findIndex((b) => within(b).queryByRole('img', { name: 'Search' }) && b.textContent?.includes('Zebrafinch'))
+  const at = items.findIndex((b) => b.textContent?.includes('Zebrafinch') && within(b).queryByRole('img', { name: 'Search' }))
   expect(at).toBeGreaterThanOrEqual(0)
   // ArrowUp from the top wraps to the bottom; ArrowDown walks forward again.
   fireEvent.keyDown(bar, { key: 'ArrowUp' })

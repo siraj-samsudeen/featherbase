@@ -1,4 +1,5 @@
 import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
+import { enableTableFeatures } from './fixtures-ui'
 
 // FILE-002: attach two files to a document via the form sidebar; both are
 // listed; deleting one removes its storage object too.
@@ -21,6 +22,9 @@ async function cleanup(request: APIRequestContext) {
     await request.delete(`/api/table/File/${f.row_id}`, { headers: auth })
 }
 
+test.beforeAll(async ({ request }) => {
+  await enableTableFeatures(request, bearer(await adminToken(request)), 'Person', ['enable_files'])
+})
 test.beforeEach(async ({ request }) => cleanup(request))
 test.afterEach(async ({ request }) => cleanup(request))
 
@@ -29,6 +33,7 @@ test('FILE-002: attach two files, both listed, delete one cleans up storage', as
 }) => {
   await session
     .visit('/featherbase/admin/table/person/row/Guest')
+    .click('Collaboration')
     .assertHas('[data-testid="attachments-panel"]')
     .assertHas('[data-testid="attachments-panel"]', { text: 'No attachments' })
 

@@ -1,5 +1,5 @@
 import { AppError } from '../errors'
-import { amendDoc, cancelDoc, renameDoc, submitDoc } from '../document'
+import { amendDoc, cancelDoc, renameDoc, rowCapabilities, submitDoc } from '../document'
 import { applyWorkflowAction } from '../workflow'
 import { rowForCaller } from '../row-readers'
 import { registerRowAction } from '../actions'
@@ -8,6 +8,12 @@ import { registerRowAction } from '../actions'
 // contributed) — submit/cancel/amend gated by is_submittable, workflow
 // actions gated by an active Workflow, both enforced inside the engine
 // functions below exactly as the old one-off /api/submit_doc etc. routes did.
+
+registerRowAction('capabilities', {
+  effect: 'read',
+  description: 'Display advice for operations on an already readable row; never a write grant.',
+  handler: ({ table, name, user }) => rowCapabilities(table, name, user.row_id),
+})
 
 registerRowAction('submit', {
   effect: 'write',

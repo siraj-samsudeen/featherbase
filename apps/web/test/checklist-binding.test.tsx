@@ -74,6 +74,7 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
 
   // The switcher offers it…
   await renderApp('/featherbase/admin/table/third-sub-parent', admin)
+  await userEvent.click(await screen.findByRole('button', { name: 'View: List' }))
   expect(await screen.findByTestId('open-checklist')).toBeInTheDocument()
 
   // …and the run pane binds `steps`, the one carrying `done` — not the
@@ -106,9 +107,11 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
 test('the shipped Checklist Template is a standard, not a runnable checklist', async ({ admin }) => {
   await installChecklists()
 
-  await renderApp('/featherbase/admin/table/checklist-template', admin)
+  const templateList = await renderApp('/featherbase/admin/table/checklist-template', admin)
   await screen.findByTestId('list-view')
+  await userEvent.click(await screen.findByRole('button', { name: 'View: List' }))
   await waitFor(() => expect(screen.queryByTestId('open-checklist')).not.toBeInTheDocument())
+  templateList.unmount()
 
   // Reached directly, the view says so rather than rendering must_do as
   // completion state.
@@ -117,6 +120,7 @@ test('the shipped Checklist Template is a standard, not a runnable checklist', a
 
   // The run, by contrast, still qualifies.
   await renderApp('/featherbase/admin/table/checklist-run', admin)
+  await userEvent.click(await screen.findByRole('button', { name: 'View: List' }))
   expect(await screen.findByTestId('open-checklist')).toBeInTheDocument()
 })
 

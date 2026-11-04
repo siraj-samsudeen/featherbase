@@ -166,7 +166,9 @@ test('a Table list offers Columns, Merge and Import only to a System Manager, an
   await renderApp('/featherbase/admin/table/back-office', clerk)
   await screen.findByTestId('list-new')
   // Import is a System Manager tool (its route and wizard are), even for someone who can create rows.
+  await userEvent.click(await screen.findByRole('button', { name: 'List actions' }))
   expect(screen.queryByTestId('open-import')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Table administration' })).not.toBeInTheDocument()
   expect(screen.queryByTestId('open-columns')).not.toBeInTheDocument()
   expect(screen.queryByTestId('open-merge')).not.toBeInTheDocument()
   cleanup()
@@ -180,9 +182,19 @@ test('a Table list offers Columns, Merge and Import only to a System Manager, an
   cleanup()
 
   await renderApp('/featherbase/admin/table/back-office', admin)
+  await userEvent.click(await screen.findByRole('button', { name: 'Table administration' }))
   expect(await screen.findByTestId('open-columns')).toBeInTheDocument()
   expect(screen.getByTestId('open-merge')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'List actions' }))
   expect(screen.getByTestId('open-import')).toBeInTheDocument()
+  // Escape from a menu item dismisses the disclosure and returns focus to
+  // its trigger, so keyboard users can continue along the toolbar.
+  screen.getByTestId('open-import').focus()
+  await userEvent.keyboard('{Escape}')
+  const actions = screen.getByRole('button', { name: 'List actions' })
+  expect(actions).toHaveAttribute('aria-expanded', 'false')
+  expect(actions).toHaveFocus()
+  expect(screen.queryByTestId('open-import')).not.toBeInTheDocument()
 })
 
 // (6) Manage-only routes bounce everyone else to the admin home.

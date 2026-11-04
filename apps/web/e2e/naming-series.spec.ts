@@ -20,7 +20,7 @@ test('NAM-001: the builder numbers rows 1, 2, 3 by default and derives a series 
   const exists = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers: auth })
   test.skip(exists.status() === 200, `${DT} already exists in this DB; skipping the create path`)
 
-  await session.visit('/admin/new-table').assertHas('[data-testid="table-builder"]')
+  await session.visit('/featherbase/admin/new-table').assertHas('[data-testid="table-builder"]')
 
   await session.step('numbers 1, 2, 3 are the default (#855); a series takes its prefix from the Table name', async ({ page }) => {
     await expect(page.getByTestId('dt-naming')).toHaveValue('integer')
@@ -68,7 +68,7 @@ test('NAM-001: switching an existing Table to a series offers the derived prefix
     data: { id_pattern: 'hash' },
   })
 
-  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`).clickButton('Table administration')
   await session.step('open the naming dialog', async ({ page }) => {
     await page.getByTestId('open-naming').click()
   })

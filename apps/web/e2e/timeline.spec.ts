@@ -1,5 +1,6 @@
 import { tableSlug } from 'shared'
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
+import { enableTableFeatures } from './fixtures-ui'
 
 const DT = 'Tl DT'
 
@@ -19,6 +20,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
+  await enableTableFeatures(request, headers, DT, ['enable_discussion'])
   // Fresh doc name per run so accumulated versions/comments from prior runs
   // don't skew the exact-count assertions.
   docName = `tl-doc-${Math.random().toString(36).slice(2, 8)}`
@@ -37,13 +39,17 @@ test('UI-019: timeline interleaves an edit (with diff) and a comment in order', 
   session,
 }) => {
   await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`)
-  await session.step('an edit (with diff) and a comment both land in chronological order', async ({ page }) => {
+  await session.step('open Activity, then return to Work', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Activity', exact: true }).click()
     await expect(page.getByTestId('activity-timeline')).toBeVisible()
-
+    await page.getByRole('tab', { name: 'Work', exact: true }).click()
+  })
+  await session.step('an edit (with diff) and a comment both land in chronological order', async ({ page }) => {
     // Edit the title → produces a version with a diff.
     await page.locator('[data-field=title]').fill('revised title')
     await page.getByTestId('form-save').click()
     await expect(page.getByTestId('form-banner')).toContainText('Saved')
+    await page.getByRole('tab', { name: 'Activity', exact: true }).click()
     await expect(page.getByTestId('activity-version')).toHaveCount(1)
     await expect(page.getByTestId('activity-diff')).toContainText('title')
     await expect(page.getByTestId('activity-diff')).toContainText('original')

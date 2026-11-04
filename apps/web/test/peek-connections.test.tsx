@@ -1,8 +1,7 @@
-// Relational navigation (#100): from a record's Connections, peek at the rows
+// Relational navigation (#100): from a record's Relationships, peek at the rows
 // that point at it, step into one of them (its fields, its sub-table, its own
-// connections), and close the stack again; and the related tabs above the
-// form, which open a short embedded list of the same rows. These are the
-// paths the merged web coverage report (ADR 0012) showed no test taking —
+// connections), and close the stack again; and the native related rows list.
+// These are paths the merged web coverage report (ADR 0012) showed no test taking —
 // core-forms.test.tsx covers peeking along a Reference field only.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -66,11 +65,12 @@ async function seed(admin: { post: <T>(p: string, b: unknown) => Promise<T> }) {
 test('peek at a connection: its rows, then one row with its lines, a deeper link, and back out', async ({ admin }) => {
   const { asha, saree, order } = await seed(admin)
   await renderApp(`/featherbase/admin/table/pc-customer/row/${asha.row_id}`, admin)
-  await screen.findByTestId('connections-panel', {}, { timeout: 10_000 })
-  expect(await screen.findByTestId('connection-count-Pc Order')).toHaveTextContent('2')
+  fireEvent.click(await screen.findByRole('tab', { name: 'Related' }))
+  const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
+  expect(within(relationships).getByRole('button', { name: /^Pc Order · customer\s*2$/ })).toHaveAttribute('aria-pressed', 'true')
 
   // The connection's rows, read-only, in a panel over the form.
-  fireEvent.click(screen.getByTestId('connection-peek-Pc Order'))
+  fireEvent.click(within(screen.getByRole('region', { name: 'Related rows' })).getByRole('button', { name: 'Peek' }))
   const list = await screen.findByTestId('peek-panel-0')
   const rows = await within(list).findAllByTestId('peek-list-row')
   expect(rows).toHaveLength(2)
@@ -97,10 +97,10 @@ test('peek at a connection: its rows, then one row with its lines, a deeper link
   // Esc closes the whole stack; the form is still there.
   fireEvent.keyDown(document, { key: 'Escape' })
   await waitFor(() => expect(screen.queryByTestId('peek-panel-0')).not.toBeInTheDocument())
-  expect(screen.getByTestId('connections-panel')).toBeInTheDocument()
+  expect(screen.getByRole('navigation', { name: 'Relationships' })).toBeInTheDocument()
 
   // The scrim closes it too.
-  fireEvent.click(screen.getByTestId('connection-peek-Pc Order'))
+  fireEvent.click(within(screen.getByRole('region', { name: 'Related rows' })).getByRole('button', { name: 'Peek' }))
   await screen.findByTestId('peek-panel-0')
   fireEvent.click(screen.getByTestId('peek-scrim'))
   await waitFor(() => expect(screen.queryByTestId('peek-panel-0')).not.toBeInTheDocument())
@@ -109,8 +109,9 @@ test('peek at a connection: its rows, then one row with its lines, a deeper link
 test("a peeked record's own connections open as a list, and ↗ on a list opens the filtered list itself", async ({ admin }) => {
   const { asha } = await seed(admin)
   await renderApp(`/featherbase/admin/table/pc-customer/row/${asha.row_id}`, admin)
-  await screen.findByTestId('connections-panel', {}, { timeout: 10_000 })
-  fireEvent.click(screen.getByTestId('connection-peek-Pc Order'))
+  fireEvent.click(await screen.findByRole('tab', { name: 'Related' }))
+  const related = await screen.findByRole('region', { name: 'Related rows' })
+  fireEvent.click(within(related).getByRole('button', { name: 'Peek' }))
   const list = await screen.findByTestId('peek-panel-0')
   fireEvent.click((await within(list).findAllByTestId('peek-list-row'))[0])
   const record = await screen.findByTestId('peek-panel-1')
@@ -132,31 +133,106 @@ test("a peeked record's own connections open as a list, and ↗ on a list opens 
   expect(screen.queryByTestId('form-view')).not.toBeInTheDocument()
 })
 
-test('related tabs open a short list of the rows that point here, with ways on to the full list and a new row', async ({ admin }) => {
+test('a selected relationship shows native rows, with ways on to the full list and a new row', async ({ admin }) => {
   const user = userEvent.setup()
   const { asha, order } = await seed(admin)
   await renderApp(`/featherbase/admin/table/pc-customer/row/${asha.row_id}`, admin)
-  const tab = await screen.findByTestId('related-tab-Pc Order', {}, { timeout: 10_000 })
-  expect(within(tab).getByTestId('related-count-Pc Order')).toHaveTextContent('2')
-  await user.click(tab)
-  expect(tab).toHaveAttribute('aria-expanded', 'true')
-  const embedded = await screen.findByTestId('embedded-list')
+  await user.click(await screen.findByRole('tab', { name: 'Related' }))
+  const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
+  const relationship = within(relationships).getByRole('button', { name: /^Pc Order · customer\s*2$/ })
+  await user.click(relationship)
+  expect(relationship).toHaveAttribute('aria-pressed', 'true')
+  const related = await screen.findByRole('region', { name: 'Related rows' })
+  const embedded = await within(related).findByTestId('list-view')
   await waitFor(() =>
     expect(embedded.querySelectorAll('tbody a')).toHaveLength(2),
   )
   expect(embedded.querySelector(`a[href$="/table/pc-order/row/${enc(order.row_id)}"]`)).not.toBeNull()
-  expect(within(embedded).getByTestId('embedded-open-list')).toHaveAttribute(
+  expect(within(related).getByRole('link', { name: 'Open full list' })).toHaveAttribute(
     'href',
     expect.stringContaining(`/featherbase/admin/table/pc-order`),
   )
-  const create = within(embedded).getByTestId('embedded-new')
-  expect(create).toHaveTextContent('+ New Pc Order')
+  const create = within(embedded).getByRole('link', { name: 'New' })
+  expect(create).toHaveAttribute('href', expect.stringContaining(`/featherbase/admin/table/pc-order/new`))
   // The router writes the search value as JSON, so the prefill string is quoted once more.
   const prefill = new URL(create.getAttribute('href')!, 'http://x').searchParams.get('prefill')!
   expect(JSON.parse(JSON.parse(prefill) as string)).toEqual({ customer: asha.row_id })
 
-  // Pressing the tab again folds the list away.
-  await user.click(tab)
-  expect(tab).toHaveAttribute('aria-expanded', 'false')
-  expect(screen.queryByTestId('embedded-list')).not.toBeInTheDocument()
+  // Selecting the current relationship again keeps its native rows visible.
+  await user.click(relationship)
+  expect(relationship).toHaveAttribute('aria-pressed', 'true')
+  expect(within(related).getByTestId('list-view')).toBeVisible()
+  expect(embedded.querySelectorAll('tbody a')).toHaveLength(2)
+
+  // The shared content tabs preserve actual unfinished form work while
+  // keyboard navigation selects/focuses sections, including wraparound.
+  const work = screen.getByRole('tab', { name: 'Work' })
+  await user.click(work)
+  await user.clear(screen.getByRole('textbox', { name: 'Label' }))
+  await user.type(screen.getByRole('textbox', { name: 'Label' }), 'Unfinished Asha')
+  await user.click(work)
+  await user.keyboard('{ArrowRight}')
+  expect(screen.getByRole('tab', { name: 'Related' })).toHaveFocus()
+  await user.keyboard('{End}')
+  expect(screen.getByRole('tab', { name: 'Activity' })).toHaveFocus()
+  await user.keyboard('{Home}')
+  expect(work).toHaveFocus()
+  await user.keyboard('{ArrowLeft}')
+  expect(screen.getByRole('tab', { name: 'Activity' })).toHaveFocus()
+  await user.keyboard('{ArrowRight}x')
+  expect(work).toHaveFocus()
+  expect(work).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('textbox', { name: 'Label' })).toHaveValue('Unfinished Asha')
+  expect(screen.getByTestId('form-status')).toHaveTextContent('Not saved')
+})
+
+test('relationship search and record search keep distinct paths and owner filters', async ({ admin }) => {
+  const user = userEvent.setup()
+  await admin.post('/api/table_def', {
+    name: 'Rws Project', id_pattern: 'prompt',
+    columns: [{ column_name: 'label', column_type: 'Data', label: 'Label' }],
+  })
+  await admin.post('/api/table_def', {
+    name: 'Rws Task', id_pattern: 'prompt', title_column: 'label',
+    columns: [
+      { column_name: 'label', column_type: 'Data', label: 'Label', in_list_view: true },
+      { column_name: 'project', column_type: 'Reference', reference_table: 'Rws Project' },
+      { column_name: 'review_project', column_type: 'Reference', reference_table: 'Rws Project' },
+    ],
+  })
+  for (const row of [{ row_id: 'north', label: 'North workshop' }, { row_id: 'south', label: 'South studio' }])
+    await admin.post('/api/save_row', { table: 'Rws Project', row })
+  for (const row of [
+    { row_id: 'prepare', label: 'Prepare workshop', project: 'north' },
+    { row_id: 'review', label: 'Review materials', project: 'north' },
+    { row_id: 'foreign', label: 'Review budget', project: 'south', review_project: 'south' },
+  ]) await admin.post('/api/save_row', { table: 'Rws Task', row })
+  await renderApp('/featherbase/admin/table/rws-project/row/north', admin)
+  await user.click(await screen.findByRole('tab', { name: 'Related' }))
+  const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
+  const rows = () => screen.getByRole('region', { name: 'Related rows' })
+  await within(rows()).findByText('Review materials')
+  const recordSearch = within(rows()).getByRole('searchbox', { name: 'Search related record names' })
+  await user.type(recordSearch, 'Review')
+  await waitFor(() => expect(within(rows()).getByTestId('list-total')).toHaveTextContent('1 total'))
+  expect(within(rows()).getByText('Review materials')).toBeVisible()
+  expect(within(rows()).queryByText('Review budget')).not.toBeInTheDocument()
+  await user.clear(recordSearch)
+  await waitFor(() => expect(within(rows()).getByTestId('list-total')).toHaveTextContent('2 total'))
+  expect(within(rows()).getByText('Prepare workshop')).toBeVisible()
+
+  const pathSearch = screen.getByRole('searchbox', { name: 'Search relationships' })
+  await user.type(pathSearch, 'review_project')
+  expect(within(relationships).getAllByRole('button')).toHaveLength(1)
+  expect(screen.getByRole('region', { name: 'Search relationships' })).toHaveTextContent('1 of 2')
+  await user.click(within(relationships).getByRole('button', { name: /^Rws Task · review_project\s*0$/ }))
+  await within(rows()).findByText('No rows', { exact: false })
+  expect(within(rows()).getByTestId('list-total')).toHaveTextContent('0 total')
+  const create = within(rows()).getByTestId('list-empty-new')
+  const prefill = new URL(create.getAttribute('href')!, 'http://x').searchParams.get('prefill')!
+  expect(JSON.parse(JSON.parse(prefill) as string)).toEqual({ review_project: 'north' })
+  await user.click(screen.getByRole('button', { name: 'Clear search' }))
+  expect(pathSearch).toHaveValue('')
+  expect(within(relationships).getAllByRole('button')).toHaveLength(2)
+  expect(within(rows()).getByTestId('list-total')).toHaveTextContent('0 total')
 })

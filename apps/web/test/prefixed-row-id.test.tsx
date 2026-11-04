@@ -1,9 +1,10 @@
 // #858: row ids from a fixed prefix plus one column, e.g. PLANT-8151. The
 // Naming page sets the rule and shows a sample id; a row whose column no longer
 // matches its id offers Rename to the id the rule would give it now.
-import { tableSlug } from 'shared'
-import { screen, waitFor } from '@testing-library/react'
+import { rowHref, tableSlug } from 'shared'
+import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -61,4 +62,63 @@ test('changing the plant code keeps the id and offers Rename to the new one', as
   expect(note).toHaveTextContent('This row keeps the id PLANT-8151.')
   await user.click(screen.getByTestId('form-id-rename'))
   expect(screen.getByTestId('rename-input')).toHaveValue('PLANT-8159')
+  expect(screen.getByRole('button', { name: 'Record actions' })).toHaveAttribute('aria-expanded', 'true')
+  await user.click(screen.getByTestId('rename-input'))
+  await user.keyboard('{Escape}')
+  expect(screen.getByRole('button', { name: 'Record actions' })).toHaveFocus()
+  expect(screen.queryByTestId('rename-input')).not.toBeInTheDocument()
+
+  cleanup()
+  await renderApp(`/featherbase/admin/table/${tableSlug(T)}/new`, admin)
+  await user.type(await screen.findByRole('textbox', { name: 'Plant code' }), '8159')
+  expect(screen.queryByTestId('form-id-rename')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('form-rename')).not.toBeInTheDocument()
+})
+
+test('missing or denied rename advice exposes neither rename action, even on a writable shared row with ID drift', async ({ admin, createUser }) => {
+  await seed(admin, 'PLANT-{plant_code}')
+  const row = await admin.post<{ row_id: string; updated_at: string }>('/api/save_row', {
+    table: T, row: { plant_code: '8151', title: 'Chennai' },
+  })
+  await admin.post('/api/save_row', { table: T, row: { ...row, plant_code: '8159' } })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pri Reader' } })
+  await admin.post('/api/save_row', {
+    table: 'Permission', row: { ref_table: T, role: 'Pri Reader', can_read: true },
+  })
+  const reader = await createUser({ email: 'pri.reader@example.com', roles: ['Pri Reader'] })
+  await admin.post('/api/save_row', {
+    table: 'Share', row: { share_table: T, share_name: row.row_id, person: reader.user, read: true, write: true },
+  })
+  expect(await reader.get(`/api/table/${encodeURIComponent(T)}/${row.row_id}:capabilities`))
+    .toMatchObject({ write: true, rename: false })
+
+  // Delay delivery, not the server answer: the same real request eventually
+  // resolves with write=true and rename=false. Neither state may flash Rename.
+  let release!: () => void
+  const delivery = new Promise<void>((resolve) => { release = resolve })
+  let requested = false
+  const real = globalThis.fetch
+  const delayed = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).endsWith(':capabilities')) {
+      requested = true
+      await delivery
+    }
+    return real(input, init)
+  })
+  try {
+    await renderApp(rowHref(T, row.row_id), reader)
+    await waitFor(() => expect(requested).toBe(true))
+    expect(screen.queryByTestId('form-rename')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('form-id-rename')).not.toBeInTheDocument()
+    release()
+    await waitFor(() => expect(field('plant_code')).toBeEnabled())
+    expect(field('plant_code')).toHaveValue('8159')
+    await userEvent.click(screen.getByRole('button', { name: 'Record actions' }))
+    expect(screen.queryByTestId('form-rename')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('form-id-rename')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('form-id-out-of-step')).not.toBeInTheDocument()
+  } finally {
+    release()
+    delayed.mockRestore()
+  }
 })

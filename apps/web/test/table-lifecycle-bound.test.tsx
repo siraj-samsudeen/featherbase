@@ -88,6 +88,7 @@ test('TLC-R3.bound: deleting a bound row echoes the loaded revision, so the dele
 
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(enc)))}/row/1`, admin)
   await screen.findByTestId('form-view')
+  ;(await screen.findByRole('button', { name: 'Record actions' })).click()
   ;(await screen.findByTestId('form-delete')).click()
   ;(await screen.findByTestId('delete-row-confirm')).click()
 
@@ -136,6 +137,8 @@ test('A read-only data source keeps its tables view-only: the row form names the
   await screen.findByTestId('form-view', undefined, { timeout: 8000 })
 
   expect(await screen.findByTestId('source-badge')).toHaveTextContent('lifecycle-fixture · read-only')
+  ;(await screen.findByRole('button', { name: 'Record actions' })).click()
+  await screen.findByTestId('form-print')
   expect(screen.queryByTestId('form-save')).toBeNull()
   expect(screen.queryByTestId('form-delete')).toBeNull()
   expect(screen.queryByTestId('form-rename')).toBeNull()

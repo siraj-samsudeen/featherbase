@@ -64,7 +64,7 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
     await request.get(`/api/table/${encodeURIComponent(EXISTING_DT)}:count`, { headers })
   ).json()) as { count: number }
 
-  await session.visit('/admin')
+  await session.visit('/featherbase/admin')
   await session.step('drop the two-sheet workbook and select both on the overview', async ({ page }) => {
     await page.getByTestId('import-data-link').click()
     await expect(page.getByTestId('import-wizard')).toBeVisible()
@@ -200,7 +200,7 @@ test('IMP-013: leave a sheet out, drop a column, and drive the target picker', a
   XLSX.utils.book_append_sheet(wb, drop, 'Wizard Drop')
   const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
 
-  await session.visit('/admin')
+  await session.visit('/featherbase/admin')
   await session.step('drop the workbook and leave the second sheet unselected', async ({ page }) => {
     await page.getByTestId('import-data-link').click()
     await page.getByTestId('iw-file-input').setInputFiles({
@@ -272,7 +272,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
     await request.get(`/api/table/${encodeURIComponent(EXISTING_DT)}:count`, { headers })
   ).json()) as { count: number }
 
-  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(EXISTING_DT))}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(EXISTING_DT))}`).clickButton('List actions')
 
   // Unique per run: this spec appends to a persistent Table, so a fixed SKU
   // would accumulate across runs and break the exactly-one-row assertion.
@@ -342,7 +342,7 @@ test.describe('phone layout', () => {
     ])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, sheet, 'Phone Sheet')
-    await session.visit('/admin/import').assertHas('[data-testid="import-wizard"]')
+    await session.visit('/featherbase/admin/import').assertHas('[data-testid="import-wizard"]')
     await session.step('drop a one-sheet workbook, then measure each In list tick', async ({ page }) => {
       await page.getByTestId('iw-file-input').setInputFiles({
         name: 'phone.xlsx',

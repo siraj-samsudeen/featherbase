@@ -143,9 +143,9 @@ class ListCards {
     await this.card(n).getByTestId('row-expand').click();
     const nested = this.card(n).getByTestId('expanded-row');
     await nested.waitFor();
-    // The row and then its child schema load separately. The row's spinner
-    // disappearing does not mean the child grid has mounted yet.
-    await nested.locator('[data-testid^="inline-children-"]').first().waitFor();
+    // The row and its child Table metadata load separately. The spinner can
+    // disappear before that metadata arrives; wait for the rendered grid.
+    await nested.getByRole('table').first().waitFor();
     return ((await nested.textContent()) ?? '').trim();
   }
 
