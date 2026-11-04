@@ -1187,8 +1187,9 @@ function ListCell({
           // A title that links to another row reads as that row's title.
           <RowTitle table={col.reference_table} rowId={String(row[col.column_name])} />
         ) : col.column_name !== 'row_id' && isBlank(row[col.column_name]) ? (
-          // #792: a row with a blank title is led by its id, never a blank.
-          String(row.row_id)
+          // #792: a row with a blank title is led by its id, never a blank; a
+          // person's opaque id reads as what identifies them (#835).
+          isPrincipalTable(table) ? <PrincipalName id={String(row.row_id)} /> : String(row.row_id)
         ) : (
           col.column_type === 'Choice' && row[col.column_name] != null
             ? choiceLabel(String(row[col.column_name]), col.choice_labels, t)
