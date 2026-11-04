@@ -7,6 +7,7 @@ import { describeFilters, recentActions, type RecentEntry } from '../lib/recents
 import { RowTitle } from '../lib/row-titles'
 import { RowName } from '../lib/row-name'
 import { useNavigation } from '../lib/navigation'
+import { TreeOfAll } from './RelationTree'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
 import { LinkControl } from './FormView'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
@@ -153,6 +154,16 @@ export function ListView({
   const nav = navigation?.step.screen === 'list' && navigation.step.table === table ? navigation : null
   const paneRow = nav?.step.pane?.table === table ? nav.step.pane.row : undefined
   const openPane = nav ? (pane: { table: string; row: string }) => nav.push({ ...nav.step, pane }) : undefined
+  // #910 checklist 19: every row as a folded tree line, kept in the path.
+  const [localTree, setLocalTree] = useState<{ on: boolean; expanded: string[] }>({ on: false, expanded: [] })
+  const treeOn = nav ? nav.step.view === 'tree' : localTree.on
+  const treeExpanded = new Set(nav ? nav.step.expanded ?? [] : localTree.expanded)
+  function setTree(on: boolean, expandedIds: string[] = []) {
+    if (nav) {
+      const { view: _, expanded: __, ...rest } = nav.step
+      nav.replace(on ? { ...rest, view: 'tree', ...(expandedIds.length ? { expanded: expandedIds } : {}) } : rest)
+    } else setLocalTree({ on, expanded: expandedIds })
+  }
   const isSystemManager = useIsSystemManager()
   const caps = useCapabilities()
   // #410: New is offered only to someone the server would let create a row here.
@@ -682,6 +693,8 @@ export function ListView({
               New
             </Link>
           )}
+          <Button aria-pressed={treeOn} onClick={() => setTree(!treeOn)}
+            className={treeOn ? 'border-action bg-action-tint text-action' : undefined}>Tree of all</Button>
           <ActionDisclosure label="View: List">
           <Link
             to="/featherbase/admin/table/$table/view/report"
@@ -953,7 +966,13 @@ export function ListView({
           )}
         </div>
       )}
-      {narrow ? (
+      {treeOn ? (
+        <div className={cardClasses('p-3')}>
+          <TreeOfAll table={table} filters={queryFilters} expanded={treeExpanded}
+            onExpandedChange={(next) => setTree(true, [...next])}
+            onOpen={(pane) => openPane?.(pane)} />
+        </div>
+      ) : narrow ? (
         <PhoneList
           table={table}
           titleColumn={meta.data?.title_column}

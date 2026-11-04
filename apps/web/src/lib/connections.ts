@@ -23,14 +23,21 @@ export interface Backlink {
   via: string | null
 }
 
-export function useConnections(table: string, name: string, enabled = true) {
-  return useQuery({
+/** The one query for a row's counted backlinks. */
+export function connectionsQuery(table: string, name: string) {
+  return {
     queryKey: ['connections', table, name],
-    enabled: enabled && Boolean(table) && Boolean(name) && name !== 'new',
     queryFn: () =>
       api.get<{ connections: Connection[] }>(
         `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}:connections`,
       ),
+  }
+}
+
+export function useConnections(table: string, name: string, enabled = true) {
+  return useQuery({
+    ...connectionsQuery(table, name),
+    enabled: enabled && Boolean(table) && Boolean(name) && name !== 'new',
   })
 }
 

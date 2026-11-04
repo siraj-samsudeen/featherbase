@@ -15,6 +15,7 @@ const line = async (name: string | RegExp) => {
   const t = await tree()
   return (await within(t).findAllByRole('treeitem', { name })).at(-1)!
 }
+const topLines = (t: HTMLElement) => within(t).getAllByRole('treeitem').filter((i) => i.getAttribute('aria-level') === '1')
 const unfold = (item: HTMLElement) => fireEvent.keyDown(item, { key: 'ArrowRight' })
 
 async function openTree(admin: Admin, table: string, row: string) {
@@ -71,7 +72,10 @@ test('Focus here centres the tree on the chosen line', async ({ admin }) => {
   await openTree(admin, SITE, 'ENK')
   const item = await line('Enchakkal Supermarket · 1503')
   fireEvent.click(within(item).getByText('Enchakkal Supermarket · 1503'))
-  fireEvent.click(await within(await line('Enchakkal Supermarket · 1503')).findByRole('button', { name: 'Focus here' }))
+  await screen.findByRole('complementary', { name: 'Enchakkal Supermarket · 1503' })
+  const focus = await within(await tree()).findByRole('button', { name: 'Focus here' })
+  fireEvent.click(focus)
+  await screen.findByRole('tree', { name: 'Around Enchakkal Supermarket' })
   expect(await line(`${PROFIT} 2`)).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getByRole('tab', { name: 'Tree' })).toHaveAttribute('aria-selected', 'true')
 })
@@ -104,8 +108,8 @@ test('Tree of all shows every site as a folded line, unfolding into its region a
   await renderApp(tableHref(SITE), admin)
   fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }))
   const t = await tree()
-  await waitFor(() => expect(within(t).getAllByRole('treeitem', { level: 1 })).toHaveLength(3))
-  for (const item of within(t).getAllByRole('treeitem', { level: 1 })) expect(item).toHaveAttribute('aria-expanded', 'false')
+  await waitFor(() => expect(topLines(t)).toHaveLength(3))
+  for (const item of topLines(t)) expect(item).toHaveAttribute('aria-expanded', 'false')
   const enchakkal = await line('Enchakkal · ENK')
   unfold(enchakkal)
   await waitFor(() => expect(within(enchakkal).getByRole('treeitem', { name: 'Kerala · KL' })).toBeInTheDocument())
@@ -117,7 +121,7 @@ test('Tree of all shows 20 rows at a time, with Show more', async ({ admin }) =>
   await renderApp(tableHref(PROFIT), admin)
   fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }))
   const t = await tree()
-  await waitFor(() => expect(within(t).getAllByRole('treeitem', { level: 1 })).toHaveLength(20))
+  await waitFor(() => expect(topLines(t)).toHaveLength(20))
   fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
-  await waitFor(() => expect(within(t).getAllByRole('treeitem', { level: 1 })).toHaveLength(25))
+  await waitFor(() => expect(topLines(t)).toHaveLength(25))
 })

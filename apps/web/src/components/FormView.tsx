@@ -149,7 +149,9 @@ export function FormView({
   const setArea = (tab: string) => {
     setLocalArea(tab)
     const view = TAB_VIEW[tab]
-    if (rowNav && view && view !== (rowNav.step.view ?? 'form')) rowNav.replace({ ...rowNav.step, view })
+    // Always written: a quick Form-then-Tree must end on Tree even before
+    // the first address change lands.
+    if (rowNav && view) rowNav.replace({ ...rowNav.step, view })
   }
 
   // CUST-003: client scripts registered for this Table. valuesRef mirrors the
