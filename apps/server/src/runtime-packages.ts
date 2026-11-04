@@ -12,6 +12,7 @@ import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
+import { administrationDeclaration } from './administration-scopes'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
@@ -92,6 +93,7 @@ const manifestSchema = z.object({
   reads: readDeclaration.optional(),
   // #559: this app provides people's scope for the instance (one app at most).
   scopeProvider: scopeProviderDeclaration.optional(),
+  administration: administrationDeclaration.optional(),
   // #620 (E2): what the app reads per instance, and the deployment variables
   // it reads. D4: which of the instance's roles should carry each app role,
   // written as App Role Binding rows once, at install.
@@ -368,6 +370,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
       ...(declaration.policy.kind === 'person_scope' ? { scopeProvider: findScopeProvider } : {}) }]))
   const setup = () => loadAppSetup(manifest.name, manifest)
   const app: AppManifest = { name: manifest.name, tables: manifest.tables,
+    administration: manifest.administration,
     roles: manifest.roles, permissions: manifest.permissions, doc_events, runtime_package: true,
     scheduler_events: bindAppJobs({ app: manifest.name, jobs: manifest.jobs ?? [], handlers: jobHandlers, setup, datasets: manifest.datasets ?? [] }),
     runtime_identity: { version: pkg.version, digest, ledger: migrationLedger(manifest.migrations) },

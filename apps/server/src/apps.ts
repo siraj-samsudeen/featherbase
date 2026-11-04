@@ -11,6 +11,7 @@ import { invalidateSources } from './sources/registry'
 import { activeApps, appOperation, provisionApp } from './app-lifecycle'
 import { cadenceSeconds, jobRegistrant, registerJob, syncScheduledJobs, unregisterAppJobs, type Cadence, type JobHandler } from './jobs'
 import { assertJobClaimable } from './app-jobs'
+import { registerAdministration, type AdministrationDeclaration } from './administration-scopes'
 import {
   registerController,
   unregisterController,
@@ -86,6 +87,7 @@ export interface AppSource {
 
 export interface AppManifest {
   name: string
+  administration?: AdministrationDeclaration
   runtime_package?: boolean
   runtime_manifest?: unknown
   runtime_identity?: { version: string; digest: string; ledger: { id: string; checksum: string }[] }
@@ -124,6 +126,7 @@ const available = new Map<string, AppManifest>()
 const wired = new Map<string, TableController[]>()
 
 export function registerApp(manifest: AppManifest): void {
+  registerAdministration(manifest.name, manifest.administration)
   available.set(manifest.name, manifest)
 }
 

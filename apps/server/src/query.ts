@@ -3,7 +3,7 @@ import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableRelation } from './table-engine'
-import { getScopeMap, includesColumn, isPrivileged, permissionScope, permittedColumns } from './permissions'
+import { getScopeMap, includesColumn, isPrivileged, permissionScope, permittedColumns, permissionGrants, permissionPredicate, grantHasAssignments } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
@@ -162,9 +162,17 @@ export async function scopedWhere(
   const unrestricted = await permittedColumns(user, table, 'read', '')
   const creatorColumns = new Set(meta.columns.filter((column) =>
     cols.has(column.column_name) && !includesColumn(unrestricted, column)).map((column) => column.column_name))
+  const assigned = (await permissionGrants(user, table, 'read')).some(grantHasAssignments)
+  const conditions = new Map<string, ReturnType<typeof sql>>()
+  if (assigned) {
+    for (const column of meta.columns.filter(column => cols.has(column.column_name)))
+      conditions.set(column.column_name, (await permissionPredicate(user, table, 'read', column.row_id)).frag)
+  }
   // Apply the Column's own scope before selecting, sorting or aggregating.
   // An unrelated unrestricted Row grant must never expose this value.
-  const readExpression = (field: string) => creatorColumns.has(field)
+  const readExpression = (field: string) => conditions.has(field)
+    ? sql`case when ${conditions.get(field)!} then ${sql(phys(field))} else null end`
+    : creatorColumns.has(field)
     ? sql`case when ${sql(tbl)}.created_by = ${user} then ${sql(phys(field))} else null end`
     : sql`${sql(phys(field))}`
 
@@ -172,6 +180,7 @@ export async function scopedWhere(
   // Extra WHERE fragments that can't be expressed as plain [field, op, value]
   // filters (they need OR with IS NULL).
   const extraConds: ReturnType<typeof sql>[] = []
+  if (assigned) extraConds.push((await permissionPredicate(user, table, 'read')).frag)
   if (scope === 'own_rows') filters.push(['created_by', '=', user])
   // PERM-005: user permissions narrow by the table itself and by any
   // Reference column pointing at a restricted table. An UNSET reference does
@@ -234,7 +243,9 @@ export async function scopedWhere(
     if (!OPS.includes(op as (typeof OPS)[number]))
       throw new AppError('ValidationError', `Unknown filter operator ${op}`)
     const condition = op === 'related' ? await relatedCond(field, value) : { frag: plainCond(field, op, value) }
-    return { frag: creatorColumns.has(field)
+    return { frag: conditions.has(field)
+      ? sql`(${conditions.get(field)!} and ${condition.frag})`
+      : creatorColumns.has(field)
       ? sql`(${sql(tbl)}.created_by = ${user} and ${condition.frag})`
       : condition.frag }
   }

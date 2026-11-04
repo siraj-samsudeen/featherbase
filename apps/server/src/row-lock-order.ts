@@ -4,6 +4,7 @@ import type { sql } from './db'
 import { runHooks } from './controllers'
 import { holdManagedSet } from './managed-settings'
 import type { TableMeta } from './meta'
+import { holdAdministrationSources } from './administration-scopes'
 
 /** The managed-settings hold, then the Table's before_lock hooks (the Sign In
  *  Method controller takes the ways-in lock there). saveDoc and deleteDoc take
@@ -17,5 +18,6 @@ export async function holdBeforeRowLock(
   isNew = false,
 ): Promise<void> {
   await holdManagedSet(db, meta.name)
+  await holdAdministrationSources(db, meta)
   await runHooks('before_lock', { row, meta, user, isNew, tx: db })
 }

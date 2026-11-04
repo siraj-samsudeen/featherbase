@@ -350,7 +350,7 @@ async function assertParentReadable(row: RowValues, user: string) {
     where ${sql(parentMeta.row_key)} = ${parentRowId}`
   if (!parent) return
   await assertPermission(user, parentType, 'read')
-  await assertDocPermission(user, parentType, 'read', String(parent.created_by))
+  await assertDocPermission(user, parentType, 'read', parent)
   await assertUserPermissions(user, parentMeta, parent as RowValues)
 }
 
@@ -379,7 +379,7 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
     if (err instanceof AppError && err.type !== 'NotFoundError') throw refused()
     throw err
   }
-  if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta, String(target.created_by))))
+  if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta, target)))
     throw refused()
 }
 
@@ -522,7 +522,7 @@ async function assertAccessColumnsUnchanged(
     }
     const childMeta = await getMeta(input.childTable)
     const parentColumn = meta.columns.find((column) => column.column_name === input.columnName)!.row_id
-    const childTiers = await childWriteColumns(user, writeTiers, meta.name, childMeta.name, parentColumn, 'write', String(existing.created_by))
+    const childTiers = await childWriteColumns(user, writeTiers, meta.name, childMeta.name, parentColumn, 'write', existing)
     const cols = childMeta.columns.filter((f) => !NO_COLUMN_TYPES.has(f.column_type))
     const key = (r: RowValues) => JSON.stringify(cols.map((f) => (own(r, f.column_name) == null ? '' : String(r[f.column_name]))))
     const current = await tx`
@@ -591,7 +591,7 @@ async function assertAccessColumnsUnchanged(
 // reaches a restricted child column. Basic columns stay writable whatever the
 // tier grant says: whether this writer may save these child rows at all was
 // already settled on the parent (a create-only grant carries no write tier).
-async function childWriteColumns(user: string, parentColumns: ColumnSelection, parentTable: string, childTable: string, parentColumn: string, action: 'write' | 'create', createdBy?: string): Promise<ColumnSelection> {
+async function childWriteColumns(user: string, parentColumns: ColumnSelection, parentTable: string, childTable: string, parentColumn: string, action: 'write' | 'create', createdBy?: string | RowValues): Promise<ColumnSelection> {
   if (parentColumns.has('*')) return new Set(ALL_COLUMNS)
   return childColumns(user, parentTable, childTable, parentColumn, action, createdBy)
 }
@@ -615,7 +615,7 @@ async function saveChildren(
   user: string,
   parentWriteTiers: ColumnSelection,
   action: 'write' | 'create',
-  createdBy: string,
+  createdBy: string | RowValues,
 ) {
   const childMeta = await getMeta(input.childTable)
   // Child columns are subject to the same atomic refusal as parent columns.
@@ -855,9 +855,9 @@ async function writeDoc(
     await assertPermission(user, table, 'create')
     await assertUserPermissions(user, meta, values)
   }
-  const writeTiers = opts.skipPermissions
+  let writeTiers = opts.skipPermissions
     ? new Set(ALL_COLUMNS)
-    : await permittedColumns(user, table, 'create', user)
+    : await permittedColumns(user, table, 'create')
   const fieldValues = validateValues(
     meta,
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
@@ -906,6 +906,11 @@ async function writeDoc(
       await runDocEventScripts('validate', meta.name, ctx.row, ctx.tx)
       await runHooks('before_save', ctx)
       await runDocEventScripts('before_save', meta.name, ctx.row, ctx.tx)
+      if (!opts.skipPermissions) {
+        await assertDocPermission(user, table, 'create', row)
+        writeTiers = await permittedColumns(user, table, 'create', row)
+        stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))
+      }
       stripUnwritableFields(meta.columns.filter((column) => !column.read_only), writeTiers, row, fieldValues)
       await assertAttachedTarget(meta, row, null, user, Boolean(opts.skipPermissions))
       assertStoredFileUrl(meta, row, opts.uploadedFileUrl)
@@ -933,7 +938,7 @@ async function writeDoc(
       // #465 D5: a new row under a locked row's id would set its locked fields.
       await assertManagedUnchanged(stx, meta, String(rowId), null, inserted[0] as RowValues, user)
       for (const input of finalChildInputs)
-        await saveChildren(stx, meta, rowId, input, user, writeTiers, 'create', user)
+        await saveChildren(stx, meta, rowId, input, user, writeTiers, 'create', row)
       ctx.row = { ...(inserted[0] as RowValues) }
       await runHooks('after_insert', ctx)
       await runHooks('after_save', ctx)
@@ -1157,9 +1162,9 @@ async function updateDoc(
       previous = { ...(existing as RowValues) }
       // PERM-008: a share with write grants update even without role write.
       if (!sharedWrite) {
-        await assertDocPermission(user, meta.name, 'write', String(existing.created_by))
+        await assertDocPermission(user, meta.name, 'write', existing as RowValues)
         await assertUserPermissions(user, meta, existing as RowValues)
-        writeTiers = await permittedColumns(user, meta.name, 'write', String(existing.created_by))
+        writeTiers = await permittedColumns(user, meta.name, 'write', existing as RowValues)
       }
       const dbModified = (existing.updated_at as Date).getTime()
       const sentModified = new Date(expectedStamp(values.updated_at)).getTime()
@@ -1199,6 +1204,11 @@ async function updateDoc(
       // Judged on the row the hooks and scripts leave behind — the one that
       // is written — against the stored row.
       stripUnwritableFields(meta.columns.filter((column) => !column.read_only), writeTiers, row, existing as RowValues)
+      if (!sharedWrite) {
+        await assertDocPermission(user, meta.name, 'write', row)
+        stripUnwritableFields(meta.columns.filter((column) => !column.read_only),
+          await permittedColumns(user, meta.name, 'write', existing as RowValues, row), row, existing as RowValues)
+      }
       await assertAccessColumnsUnchanged(stx, meta, row, existing as RowValues, user, trusted, writeTiers)
       await assertAttachedTarget(meta, row, existing as RowValues, user, trusted)
       assertStoredFileUrl(meta, row, existing.file_url)
@@ -1220,7 +1230,7 @@ async function updateDoc(
       // carries no Sub-table columns, so the key exists only if the payload
       // sent it or a hook set it.
       for (const input of pickChildInputs(meta, row))
-        await saveChildren(stx, meta, name, input, user, writeTiers, 'write', String(existing.created_by))
+        await saveChildren(stx, meta, name, input, user, writeTiers, 'write', existing)
       await recordVersion(stx, meta, name, existing as RowValues, updated as RowValues, user)
       ctx.row = { ...(updated as RowValues) }
       await runHooks('after_save', ctx)
@@ -1305,13 +1315,13 @@ async function setStatus(
   const tbl = await tableRelation(table)
   const [saved] = await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
-    await runHooks('before_lock', { row: { [meta.row_key]: name }, meta, user, isNew: false, tx: stx })
+    await holdBeforeRowLock(stx, meta, user, { [meta.row_key]: name })
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
       throw new AppError('NotFoundError', `${table} ${name} not found`)
     await assertDocPermission(
-      user, table, event === 'on_submit' ? 'submit' : 'cancel', String(existing.created_by))
+      user, table, event === 'on_submit' ? 'submit' : 'cancel', existing)
     await assertUserPermissions(user, meta, existing as RowValues)
     if ((existing.status as string) !== from)
       throw new AppError(
@@ -1380,7 +1390,7 @@ async function amendDocImpl(
   const source = await getDoc(table, name, user)
   if ((source.status as string) !== 'cancelled')
     throw new AppError('ValidationError', `${table} ${name} must be cancelled before amending`)
-  await assertDocPermission(user, table, 'amend', String(source.created_by))
+  await assertDocPermission(user, table, 'amend', source)
 
   const [{ count }] = await sql`
     select count(*)::int as count from ${sql(await tableRelation(table))}
@@ -1443,7 +1453,7 @@ async function deleteDocImpl(
       select * from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
       throw new AppError('NotFoundError', `${table} ${name} not found`)
-    await assertDocPermission(user, table, 'delete', String(existing.created_by))
+    await assertDocPermission(user, table, 'delete', existing)
     await assertUserPermissions(user, meta, existing as RowValues)
     // #610: a comment or file on a row is removed only by someone who may
     // open that row, as only they may read it (#342, #609).
@@ -1626,11 +1636,11 @@ async function renameDocImpl(
   await sql.begin(async (tx) => {
     const tbl = await tableRelation(table)
     await holdManagedSet(tx as unknown as typeof sql, null)
-    await runHooks('before_lock', { row: { [meta.row_key]: oldName }, meta, user, isNew: false, tx: tx as unknown as typeof sql })
+    await holdBeforeRowLock(tx as unknown as typeof sql, meta, user, { [meta.row_key]: oldName })
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${oldName} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${oldName} not found`)
-    await assertDocPermission(user, table, 'write', String(existing.created_by))
+    await assertDocPermission(user, table, 'write', existing)
     await assertUserPermissions(user, meta, existing as RowValues)
     const [clash] = await tx`select 1 from ${tx(tbl)} where ${tx(meta.row_key)} = ${target}`
     if (clash) throw new AppError('ConflictError', `${table} ${target} already exists`)
@@ -1712,14 +1722,14 @@ async function getDocImpl(
   const shared = await isSharedWith(user, table, name, 'read')
   if (!shared) {
     await assertPermission(user, table, 'read')
-    await assertDocPermission(user, table, 'read', String(row.created_by))
+    await assertDocPermission(user, table, 'read', row as RowValues)
     await assertUserPermissions(user, meta, row as RowValues)
     if (meta.kind === 'sub_table') await assertParentReadable(row as RowValues, user)
     if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, row as RowValues, user)
   }
   // A share grants full field visibility; otherwise honor tiers, on the row
   // and on its sub-table rows alike (#341).
-  const reader = shared ? FULL_READER : await readerFor(user, table, 'read', String(row.created_by))
+  const reader = shared ? FULL_READER : await readerFor(user, table, 'read', row as RowValues)
   return restrictRow(meta, await loadChildren(meta, { table, ...(row as RowValues) }), reader)
 }
 

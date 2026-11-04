@@ -4,6 +4,8 @@ import { AppError } from './errors'
 import { activeApps, isProvisioningApp } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
 import { asNameList, declaresOwnPages } from './installed-app-ledger'
+import { assignmentPredicate, scopedRoles, type AssignmentScope, type ScopeRow } from './administration-scopes'
+import { tableRelation } from './table-engine'
 
 // PERM-001: role resolution for a principal — a person or a service account
 // (person-rename R2). Every enabled principal implicitly holds 'All';
@@ -62,24 +64,27 @@ type PermAction =
 
 // PERM-007: an own_rows_only grant applies only to rows the user created.
 // 'all' = unconditional grant, 'own_rows' = created_by-scoped only, 'none' = denied.
-type PermScope = 'all' | 'own_rows' | 'none'
+type PermScope = 'all' | 'own_rows' | 'scoped' | 'none'
 
 export interface PermissionGrant {
   id: string
-  scope: Exclude<PermScope, 'none'>
+  scope: 'all' | 'own_rows'
   columns: string[]
+  assignments?: AssignmentScope[]
+  prerequisite?: PermissionGrant
 }
 
 /** Resolve whole contributions, including their prerequisites. A missing or
  * cyclic prerequisite contributes nothing; it never becomes an open grant. */
 export async function permissionGrants(user: string, table: string, action: PermAction, parentPermission?: string, parentColumn?: string): Promise<PermissionGrant[]> {
   const roles = await getRoles(user)
+  const assignments = await scopedRoles(user, table)
   const rows = await sql`
-    select p.row_id, p.scope_mode, p.owner_app, p.requires_permission, p.parent_permission, p.parent_column,
+    select p.row_id, p.role, p.scope_mode, p.owner_app, p.requires_permission, p.parent_permission, p.parent_column,
       coalesce(array_agg(c.target_column) filter (where c.target_column is not null), '{}') as columns
     from permission p left join featherbase.permission_column c on c.parent = p.row_id
     where p.ref_table = ${table} and p.operation = ${action === 'write' ? 'update' : action}
-      and p.role in ${sql(roles)}
+      and p.role in ${sql([...new Set([...roles, ...assignments.keys()])])}
     group by p.row_id`
   const active = new Map(rows.filter((row) => row.owner_app == null || activeApps.has(String(row.owner_app)))
     .map((row) => [String(row.row_id), row]))
@@ -88,16 +93,58 @@ export async function permissionGrants(user: string, table: string, action: Perm
     if (!row || seen.has(id) || !['all', 'creator'].includes(String(row.scope_mode))) return
     seen.add(id)
     let scope: PermissionGrant['scope'] = row.scope_mode === 'creator' ? 'own_rows' : 'all'
+    let prerequisite: PermissionGrant | undefined
     if (row.requires_permission) {
-      const prerequisite = resolve(String(row.requires_permission), seen)
+      prerequisite = resolve(String(row.requires_permission), seen)
       if (!prerequisite) return
       if (prerequisite.scope === 'own_rows') scope = 'own_rows'
     }
-    return { id, scope, columns: row.columns as string[] }
+    return { id, scope, columns: row.columns as string[], prerequisite,
+      assignments: roles.includes(String(row.role)) ? undefined : assignments.get(String(row.role)) }
+  }
+  function contributions(grant: PermissionGrant): PermissionGrant[] {
+    const scopes = grant.assignments ? grant.assignments.map(scope => [scope]) : [undefined]
+    const prerequisites = grant.prerequisite ? contributions(grant.prerequisite) : [undefined]
+    return scopes.flatMap(assignments => prerequisites.map(prerequisite => ({ ...grant, assignments, prerequisite })))
   }
   return rows.filter((row) => (row.parent_permission ?? undefined) === parentPermission &&
       (row.parent_column ?? undefined) === parentColumn)
-    .flatMap((row) => { const grant = resolve(String(row.row_id)); return grant ? [grant] : [] })
+    .flatMap((row) => { const grant = resolve(String(row.row_id)); return grant ? contributions(grant) : [] })
+}
+
+/** One complete contribution: its Columns, assignment and prerequisites must
+ * match together. SQL predicates are wrapped because the driver is thenable. */
+export async function grantPredicate(user: string, table: string, grant: PermissionGrant, row?: ScopeRow): Promise<{ frag: ReturnType<typeof sql> }> {
+  let frag: ReturnType<typeof sql> = grant.scope === 'all' ? sql`true` : row
+    ? sql`${String(row.created_by ?? '')} = ${user}`
+    : sql`${sql(await tableRelation(table))}.created_by = ${user}`
+  if (grant.assignments) {
+    let assigned = sql`false`
+    for (const scope of grant.assignments) assigned = sql`${assigned} or (${(await assignmentPredicate(user, table, scope, row)).frag})`
+    frag = sql`(${frag}) and (${assigned})`
+  }
+  if (grant.prerequisite) frag = sql`(${frag}) and (${(await grantPredicate(user, table, grant.prerequisite, row)).frag})`
+  return { frag }
+}
+
+export async function grantMatches(user: string, table: string, grant: PermissionGrant, row: ScopeRow): Promise<boolean> {
+  if (!grantHasAssignments(grant)) return grant.scope === 'all' || row.created_by === user
+  const [result] = await sql`select ${(await grantPredicate(user, table, grant, row)).frag} as allowed`
+  return result.allowed === true
+}
+
+export function grantHasAssignments(grant: PermissionGrant): boolean {
+  return !!grant.assignments || !!(grant.prerequisite && grantHasAssignments(grant.prerequisite))
+}
+
+export async function permissionPredicate(user: string, table: string, action: PermAction, column?: string): Promise<{ frag: ReturnType<typeof sql> }> {
+  if (await isPrivileged(user, table)) return { frag: sql`true` }
+  let frag: ReturnType<typeof sql> = sql`false`
+  for (const grant of await permissionGrants(user, table, action)) {
+    if (column && !grant.columns.includes(column)) continue
+    frag = sql`${frag} or (${(await grantPredicate(user, table, grant)).frag})`
+  }
+  return { frag: sql`(${frag})` }
 }
 
 export async function permissionScope(
@@ -107,7 +154,8 @@ export async function permissionScope(
 ): Promise<PermScope> {
   if (await isPrivileged(user, table)) return 'all'
   const active = await permissionGrants(user, table, action)
-  if (active.some((grant) => grant.scope === 'all')) return 'all'
+  if (active.some((grant) => grant.scope === 'all' && !grantHasAssignments(grant))) return 'all'
+  if (active.some(grantHasAssignments)) return 'scoped'
   if (active.length) return 'own_rows'
   return 'none'
 }
@@ -141,11 +189,16 @@ export async function assertDocPermission(
   user: string,
   table: string,
   action: PermAction,
-  createdBy: string,
+  createdBy: string | ScopeRow,
 ) {
   const scope = await permissionScope(user, table, action)
   if (scope === 'all') return
-  if (scope === 'own_rows' && createdBy === user) return
+  const row = typeof createdBy === 'string' ? { created_by: createdBy } : createdBy
+  if (scope === 'own_rows' && row.created_by === user) return
+  if (scope === 'scoped') {
+    for (const grant of await permissionGrants(user, table, action))
+      if (await grantMatches(user, table, grant, row)) return
+  }
   throw new AppError(
     'PermissionError',
     `No ${action} permission on ${table} for ${user}`,
@@ -292,12 +345,19 @@ export async function permittedColumns(
   user: string,
   table: string,
   action: 'read' | 'write' | 'create',
-  createdBy?: string,
+  createdBy?: string | ScopeRow,
+  proposed?: ScopeRow,
 ): Promise<ColumnSelection> {
   if (await isPrivileged(user, table)) return new Set(ALL_COLUMNS)
   const grants = await permissionGrants(user, table, action)
-  return new Set(grants.filter((grant) => createdBy === undefined || grant.scope === 'all' || createdBy === user)
-    .flatMap((grant) => grant.columns))
+  const columns = new Set<string>()
+  const row = typeof createdBy === 'string' ? { created_by: createdBy } : createdBy
+  for (const grant of grants) {
+    if (row && !await grantMatches(user, table, grant, row)) continue
+    if (proposed && !await grantMatches(user, table, grant, proposed)) continue
+    for (const column of grant.columns) columns.add(column)
+  }
+  return columns
 }
 
 export function includesColumn(selection: ReadonlySet<string>, column: { row_id: string; tier: 'basic' | 'restricted' }): boolean {
