@@ -45,6 +45,27 @@ function titleWords(raw: string): string {
   )
 }
 
+// Source columns a row is read by, in order of preference; the first present
+// becomes the Table's title column (#796).
+const TITLE_COLUMNS = ['name', 'title', 'label', 'full_name', 'display_name', 'first_name']
+// What a source records about a row rather than about the thing it
+// describes: when it was created or changed, and by whom. Never listed.
+const BOOKKEEPING = /^(created|updated|modified|deleted)_(on|at|by|by_id|date)$/i
+// The title plus this many more columns make the list (#796).
+const LIST_COLUMNS = 5
+
+// The title column and the listed columns of a newly connected table, as
+// indexes into its data columns (the key and the modified column are
+// already left out).
+export function connectDefaults(names: string[]): { title: number | undefined; listed: Set<number> } {
+  const lower = names.map((n) => n.toLowerCase())
+  const title = TITLE_COLUMNS.map((n) => lower.indexOf(n)).find((i) => i >= 0)
+  const listed = new Set<number>(title === undefined ? [] : [title])
+  for (const [i, n] of names.entries())
+    if (listed.size < LIST_COLUMNS && !BOOKKEEPING.test(n)) listed.add(i)
+  return { title, listed }
+}
+
 // Proposed Admin name: "<Prefix> <Table>", legal per the Table name rule.
 function proposeName(cfg: SourceConfig, t: IntrospectedTable, prefix?: string): string {
   const defaultPrefix =
@@ -330,6 +351,7 @@ async function buildBoundTable(
     const key = `${b.external_schema ?? ''}\u0000${b.external_table ?? ''}`
     if (!boundByRelation.has(key)) boundByRelation.set(key, b)
   }
+  const defaults = connectDefaults(dataColumns.map((c) => c.name))
   const columns = dataColumns.map((c, i) => {
     const target = c.references
       ? boundByRelation.get(`${c.references.schema}\u0000${c.references.table}`)
@@ -345,7 +367,7 @@ async function buildBoundTable(
       // Write-relevant only on engines with a write path; keeps forms honest
       // about what the source will reject.
       reqd: (cfg.engine === 'postgres' || cfg.engine === 'mysql') && !c.nullable && !c.has_default,
-      in_list_view: i < 4,
+      in_list_view: defaults.listed.has(i),
     }
   })
   const name = candidate.proposed_name
@@ -361,6 +383,7 @@ async function buildBoundTable(
     external_table: t.table,
     external_pk: pk,
     ...(modified ? { external_modified: modified } : {}),
+    ...(defaults.title === undefined ? {} : { title_column: legalNames[defaults.title] }),
     columns,
   })
   // Without a modified mapping the table has no updated_at, so the DB-default

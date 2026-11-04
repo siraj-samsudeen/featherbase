@@ -14,6 +14,7 @@ import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type Column
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
+import { useIsSystemManager } from '../lib/session'
 import { Attachments } from './Attachments'
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
@@ -492,6 +493,7 @@ export function FormView({
             <RouterLink
               to="/featherbase/admin/source/$name"
               params={{ name }}
+              search={{ connect: undefined }}
               data-testid="form-source-browser"
               className={buttonClasses()}
             >
@@ -834,6 +836,15 @@ const ROW_ID_FIELD = {
   description: 'Rows in this table take the ID you type here. It must not already be in use.',
 } as ColumnDef
 
+// The source table a column points at when no connected table binds it yet:
+// the foreign key was recorded when the table was connected, and the column
+// becomes a link as soon as its target is connected (#796).
+export function unlinkedSourceTable(field: ColumnDef, meta: TableMeta): { table: string; key: string } | null {
+  if (!meta.data_source || !field.source_fk_table || field.column_type === 'Reference') return null
+  const schema = field.source_fk_schema ?? ''
+  return { table: field.source_fk_table, key: schema ? `${schema}.${field.source_fk_table}` : field.source_fk_table }
+}
+
 function FieldControl({
   field,
   value,
@@ -899,7 +910,32 @@ function FieldControl({
       {withFileName(t(managedHint))}
     </p>
   ) : null
-  const describedBy = [hintText ? hintId : null, managedHint ? managedId : null].filter(Boolean).join(' ')
+  // #796: a column whose source foreign key has no connected table to link
+  // to says so, and offers a System Manager the table to connect.
+  const canConnect = useIsSystemManager()
+  const unlinkedTarget = unlinkedSourceTable(field, meta)
+  const unlinkedId = `${controlId}-unlinked`
+  const unlinkedNote = unlinkedTarget ? (
+    <p id={unlinkedId} className="mt-1 text-xs text-ink-subtle" data-testid={`unlinked-${field.column_name}`}>
+      The {unlinkedTarget.table} table is not connected yet, so this isn’t a link.
+      {canConnect && (
+        <>
+          {' '}
+          <RouterLink
+            to="/featherbase/admin/source/$name"
+            params={{ name: meta.data_source! }}
+            search={{ connect: unlinkedTarget.key }}
+            className="text-action hover:underline"
+          >
+            Connect the {unlinkedTarget.table} table
+          </RouterLink>
+        </>
+      )}
+    </p>
+  ) : null
+  const describedBy = [hintText ? hintId : null, managedHint ? managedId : null, unlinkedTarget ? unlinkedId : null]
+    .filter(Boolean)
+    .join(' ')
   const common = {
     id: controlId,
     'aria-labelledby': labelId,
@@ -917,6 +953,7 @@ function FieldControl({
       {control}
       {hint}
       {managedNote}
+      {unlinkedNote}
       {preview}
       {err}
     </div>
@@ -1232,13 +1269,25 @@ function ChildGrid({
 }
 
 
+/** The target Table's title column, when it is one of its columns the
+ *  caller may read: a column above the caller's readable levels can be
+ *  neither searched nor shown, and a title that is the row key itself (a
+ *  Table named by its id) is already what row_id shows. */
+function readableTitleColumn(meta: TableMeta | undefined): string | undefined {
+  const title = meta?.title_column
+  const column = title ? meta.columns.find((c) => c.column_name === title) : undefined
+  if (!column || (meta?.readable_tiers && !meta.readable_tiers.includes(column.tier))) return undefined
+  return column.column_name
+}
+
 // UI-006: debounced autocomplete over the permission-filtered list API.
-function LinkControl({
+export function LinkControl({
   field,
   value,
   onChange,
   className,
   common,
+  forFilter = false,
   floating = false,
 }: {
   field: ColumnDef
@@ -1246,6 +1295,8 @@ function LinkControl({
   onChange: (value: unknown) => void
   className: string
   common: Record<string, unknown>
+  /** A list filter: it only picks existing rows, never creates one. */
+  forFilter?: boolean
   /** Inside a scrolling frame (a grid of nested rows): the list is placed
    *  over the page under the box, so the frame cannot cut it off. */
   floating?: boolean
@@ -1253,7 +1304,15 @@ function LinkControl({
   const target = field.reference_table ?? ''
   const box = useRef<HTMLInputElement>(null)
   const [place, setPlace] = useState<{ top: number; left: number; width: number } | null>(null)
-  const picker = pickerFor(target)
+  // #793: a Table with no picker of its own is searched and shown by its
+  // title column, never by its row id — only when the caller may read that
+  // column; otherwise it stays searched and shown by row id.
+  const targetMeta = useMeta(target)
+  const own = pickerFor(target)
+  const title = readableTitleColumn(targetMeta.data)
+  const picker = own.labelField === null && own.searchField === 'row_id' && !own.peopleSearch && title
+    ? { ...own, searchField: title, labelField: title }
+    : own
   const [query, setQuery] = useState<string | null>(null) // null = not searching
   const [open, setOpen] = useState(false)
   const [options, setOptions] = useState<{ value: string; label: string }[]>([])
@@ -1275,7 +1334,8 @@ function LinkControl({
   const navigate = useNavigate()
   // #100 pattern 1: a set reference is a place you can GO — ◎ peeks at the
   // row in a slide-over, ↗ navigates to its form. Hidden while searching.
-  const hasValue = Boolean(value) && query === null
+  // A filter has its own clear control and stays a filter: no peek or open.
+  const hasValue = Boolean(value) && query === null && !forFilter
 
   // The floating list is placed once, under the box; scrolling or resizing
   // would leave it behind, so either closes it.
@@ -1337,7 +1397,7 @@ function LinkControl({
         type="text"
         role="combobox"
         aria-expanded={open}
-        placeholder={`Reference: ${target}`}
+        placeholder={forFilter ? `Filter ${field.label ?? field.column_name}…` : `Reference: ${target}`}
         value={shown}
         onFocus={() => search(query ?? (picker.labelField ? '' : shown))}
         onBlur={() => {
@@ -1347,9 +1407,9 @@ function LinkControl({
           clearTimeout(blurTimer.current)
           blurTimer.current = setTimeout(() => {
             setOpen(false)
-            // In a grid, text typed but never picked goes, so the cell shows
-            // what will be saved.
-            if (floating) setQuery(null)
+            // A filter shows only what it filters by, and a grid cell what will
+            // be saved: text typed but never picked goes.
+            if (forFilter || floating) setQuery(null)
           }, 150)
         }}
         onChange={(e) => {
@@ -1422,15 +1482,17 @@ function LinkControl({
           {!options.length && (
             <p className="px-3 py-1.5 text-sm text-ink-subtle">No matches</p>
           )}
-          <RouterLink
-            to="/featherbase/admin/table/$table/new"
-            params={{ table: target }}
-            search={{ prefill: undefined }}
-            className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
-            data-testid="link-create-new"
-          >
-            + Create new {target}
-          </RouterLink>
+          {!forFilter && (
+            <RouterLink
+              to="/featherbase/admin/table/$table/new"
+              params={{ table: target }}
+              search={{ prefill: undefined }}
+              className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
+              data-testid="link-create-new"
+            >
+              + Create new {target}
+            </RouterLink>
+          )}
         </div>
       )}
     </div>

@@ -28,8 +28,9 @@ test('list: an admin sees a freshly created ticket', async ({ admin }) => {
     row: { subject: 'Rendered by the generic ListView' },
   })
   await renderApp('/featherbase/admin/table/hd-ticket', admin)
-  expect(await screen.findByText(doc.row_id)).toBeInTheDocument()
-  expect(await screen.findByText('Rendered by the generic ListView')).toBeInTheDocument()
+  // #792: the list leads with the ticket's subject, its title, as the link to it.
+  const link = await screen.findByRole('link', { name: 'Rendered by the generic ListView' })
+  expect(link.getAttribute('href')).toContain(doc.row_id)
 })
 
 test('list: a customer with no tickets sees an empty, permission-scoped list', async ({
@@ -61,7 +62,9 @@ test('list: a customer with no tickets sees an empty, permission-scoped list', a
     values: { subject: 'My own ticket, scoped visible' },
   })
   await renderApp('/featherbase/admin/table/hd-ticket', customer)
-  expect(await screen.findByText(mine.row_id)).toBeInTheDocument()
+  // #792: the list leads with each ticket's subject, its title.
+  expect(await screen.findByText('My own ticket, scoped visible')).toBeInTheDocument()
+  expect(screen.queryByText('Someone else’s ticket')).not.toBeInTheDocument()
   expect(screen.queryByText(other.row_id)).not.toBeInTheDocument()
 })
 
