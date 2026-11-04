@@ -80,7 +80,8 @@
         "Sign In Method": [
           {
             "row_id": "google",
-            "client_id": "526042382398-1bqqe2ejsbsi3elihqrkv9k1diorc93l.apps.googleusercontent.com"
+            "client_id": "526042382398-1bqqe2ejsbsi3elihqrkv9k1diorc93l.apps.googleusercontent.com",
+            "self_link": true
           }
         ],
         "App Setting": [
