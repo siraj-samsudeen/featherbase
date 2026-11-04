@@ -4,6 +4,7 @@
 // that row in the drill pane and leaves the map where it is; Focus here
 // re-centres it. The separate map page is gone.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import { tableHref } from 'shared'
 import { createUserWithRole } from 'server/test/fixtures'
 import { test, expect, renderApp } from './pg-test'
@@ -178,4 +179,26 @@ test('the separate map page is gone', async ({ admin }) => {
   await seed(admin)
   await renderApp(`${tableHref('Rm Order')}/row/ord-1/map`, admin)
   expect(await screen.findByTestId('page-not-found')).toBeInTheDocument()
+})
+
+test("the map's centre box never shows the row's id while its name is on its way", async ({ admin }) => {
+  await seed(admin)
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  const real = globalThis.fetch
+  const held = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes('/api/row_titles')) await gate
+    return real(input, init)
+  })
+  try {
+    await openMap(admin, 'Rm Order', 'ord-1')
+    const centre = await screen.findByTestId('map-center')
+    expect(centre).not.toHaveTextContent('ord-1')
+    expect(screen.getByTestId('map-svg')).not.toHaveAttribute('aria-label', expect.stringContaining('ord-1'))
+    release()
+    await waitFor(() => expect(centre).toHaveTextContent('First order'))
+  } finally {
+    release()
+    held.mockRestore()
+  }
 })
