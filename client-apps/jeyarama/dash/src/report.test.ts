@@ -45,6 +45,41 @@ describe('the period', () => {
   it('is the month to date', () => {
     expect(periodOf('2026-10-15')).toEqual({ period_start: '2026-10-01', period_end: '2026-10-15' })
   })
+
+  // #750
+  it.each([
+    ['2026-11-01', '2026-10-01', '2026-10-31'],
+    ['2027-01-15', '2026-12-01', '2026-12-31'],
+    ['2028-03-31', '2028-02-01', '2028-02-29'],
+    ['2026-10-31', '2026-09-01', '2026-09-30'],
+  ])('on %s, last month is %s to %s', (today, start, end) => {
+    expect(periodOf(today, 'last')).toEqual({ period_start: start, period_end: end })
+  })
+})
+
+describe('a report of last month (#750)', () => {
+  const sarees = [place('9901 / Section: Sarees', '9901', ['010101001', '010303001'])]
+  const sept = (code: string) => row(code, { period_start: '2026-09-01', data_through: '2026-09-30' })
+
+  it('is ready from a copy of last month', () => {
+    const report = buildReport({ store: '9901', places: sarees, answer: { at: AT, rows: [sept('010101001')] }, today: TODAY, choice: 'last' })
+    expect([report.state, report.month, report.period_start, report.period_end]).toEqual(['ready', 'last', '2026-09-01', '2026-09-30'])
+  })
+
+  it("is not yet arrived from a copy of the month before last", () => {
+    const august = row('010101001', { period_start: '2026-08-01', data_through: '2026-08-31' })
+    expect(buildReport({ store: '9901', places: sarees, answer: { at: AT, rows: [august] }, today: TODAY, choice: 'last' }).state).toBe('no_data_yet')
+  })
+
+  it("never reads this month's copy as last month", () => {
+    expect(buildReport({ store: '9901', places: sarees, answer: { at: AT, rows: [row('010101001')] }, today: TODAY, choice: 'last' }).state).toBe('no_data_yet')
+  })
+
+  it("gives the Dive last month's period, which v14 caps its anchor day at", () => {
+    const answer = { at: AT, rows: [sept('010101001')] }
+    const report = buildReport({ store: '9901', places: sarees, answer, today: TODAY, choice: 'last' })
+    expect(initialState(report, answer, sarees, TODAY, { compress: s => s })).toMatchObject({ period_start: '2026-09-01', period_end: '2026-09-30' })
+  })
 })
 
 describe('the report for one store', () => {

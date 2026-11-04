@@ -32,6 +32,9 @@ const READER = 'Feather Dash Reader'
 process.env.MOTHERDUCK_TOKEN = 'made-up-token'
 const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
 const periodStart = `${today.slice(0, 8)}01`
+const lastMonthEnd = new Date(new Date(`${periodStart}T00:00:00Z`).getTime() - 86_400_000).toISOString().slice(0, 10)
+const lastMonthStart = `${lastMonthEnd.slice(0, 8)}01`
+const monthName = (day: string) => `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(day.slice(5, 7)) - 1]}'${day.slice(2, 4)}`
 
 const salesRow = (store: string, code: string, name: string, target: number, actual: number) => ({
   store_code: store, store_name: name, short_code: null, subcategory_code: code, subcategory: `Made-up ${code}`, target, actual,
@@ -126,9 +129,25 @@ describe('the report reads on the platform', () => {
     await expect(report(nobody)).rejects.toMatchObject({ status: 403 })
   })
 
-  test("fill the bar's store picker with the reader's stores", async ({ admin, createUser }) => {
+  test("fill the bar's store picker with the reader's stores, and its month picker with this month and last (#750)", async ({ admin, createUser }) => {
     const { manager } = await setup(admin, createUser)
-    expect(await manager.get('/api/app_bar/feather_dash')).toEqual({ controls: [{ picker: 'Store', sets: 'store', options: [{ value: '9901', label: 'Lakeside' }] }] })
+    expect(await manager.get('/api/app_bar/feather_dash')).toEqual({ controls: [
+      { picker: 'Store', sets: 'store', options: [{ value: '9901', label: 'Lakeside' }] },
+      { picker: 'Month', sets: 'month', options: [{ value: 'this', label: `This month · ${monthName(periodStart)}` },
+        { value: 'last', label: `Last month · ${monthName(lastMonthStart)}` }] },
+    ] })
+  })
+
+  // #750: last month's copy is limited to the reader's places as this month's is.
+  test("give a Team Leader only their section's rows of last month", async ({ admin, createUser }) => {
+    const { leader } = await setup(admin, createUser)
+    await seedSnapshot([
+      { ...salesRow('9901', '010101001', 'Lakeside', 900, 950), period_start: lastMonthStart, data_through: lastMonthEnd },
+      { ...salesRow('9901', '010101003', 'Lakeside', 400, 300), period_start: lastMonthStart, data_through: lastMonthEnd },
+    ], 'sales_last_month')
+    const answer = await report(leader, { store: '9901', month: 'last' }) as Awaited<ReturnType<typeof report>> & { period_start: string; period_end: string }
+    expect([answer.state, answer.period_start, answer.period_end, answer.rows.map(r => r.code)])
+      .toEqual(['ready', lastMonthStart, lastMonthEnd, ['010101001']])
   })
 
   test('say the Dive is not set up while the instance has no Dive settings, so the page shows the quick view', async ({ admin, createUser }) => {
