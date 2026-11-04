@@ -10,22 +10,11 @@ const RESPONSIVE_CHILD = 'List Toolbar Responsive Step'
 const TEN_DT = 'UI List Ten'
 const TEN_COLUMNS = ['title', 'stage', 'owner', 'region', 'amount', 'due', 'source', 'created_by_name', 'updated_by_name', 'notes']
 
-const HEADER_CONTROL_IDS = [
-  'list-columns',
-  'list-new',
-  'open-report',
-  'open-explore',
-  'explore-split-toggle',
-  'open-import',
-  'open-columns',
-  'open-merge',
-  'open-kanban',
-  'open-calendar',
-  'open-gantt',
-  'open-checklist',
-  'open-naming',
-  'open-permissions',
-  'delete-table',
+const HEADER_CONTROL_GROUPS = [
+  { label: null, ids: ['list-columns', 'list-new', 'open-explore', 'explore-split-toggle'] },
+  { label: 'View: List', ids: ['open-report', 'open-kanban', 'open-calendar', 'open-gantt', 'open-checklist'] },
+  { label: 'List actions', ids: ['open-import'] },
+  { label: 'Table administration', ids: ['open-columns', 'open-merge', 'open-naming', 'open-permissions', 'delete-table'] },
 ] as const
 
 test.beforeAll(async ({ request }) => {
@@ -181,15 +170,19 @@ async function assertResponsiveListLayout(
 
   const mainBox = await main.boundingBox()
   expect(mainBox).not.toBeNull()
-  for (const id of HEADER_CONTROL_IDS) {
-    const control = page.getByTestId(id)
-    await expect(control).toBeVisible()
-    const box = await control.boundingBox()
-    expect(box, `${id} must have a rendered box`).not.toBeNull()
-    expect(box!.x, `${id} must start inside Admin main`).toBeGreaterThanOrEqual(mainBox!.x)
-    expect(box!.x + box!.width, `${id} must end inside Admin main`).toBeLessThanOrEqual(
-      mainBox!.x + mainBox!.width + 1,
-    )
+  for (const group of HEADER_CONTROL_GROUPS) {
+    if (group.label) await page.getByRole('button', { name: group.label, exact: true }).click()
+    for (const id of group.ids) {
+      const control = page.getByTestId(id)
+      await expect(control).toBeVisible()
+      const box = await control.boundingBox()
+      expect(box, `${id} must have a rendered box`).not.toBeNull()
+      expect(box!.x, `${id} must start inside Admin main`).toBeGreaterThanOrEqual(mainBox!.x)
+      expect(box!.x + box!.width, `${id} must end inside Admin main`).toBeLessThanOrEqual(
+        mainBox!.x + mainBox!.width + 1,
+      )
+    }
+    if (group.label) await page.keyboard.press('Escape')
   }
 
   if (phone) {
@@ -213,11 +206,9 @@ async function assertResponsiveListLayout(
 }
 
 async function openResponsiveList(session: Session<PlaywrightStepContext, Page>): Promise<void> {
-  session
+  await session
     .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(RESPONSIVE_DT))}`)
     .assertHas('[data-testid="list-view"]')
-  for (const id of HEADER_CONTROL_IDS) session.assertHas(`[data-testid="${id}"]`)
-  await session
 }
 
 test.describe('ListView toolbar phone layout', () => {

@@ -154,11 +154,16 @@ class TableAddresses {
     assert.deepEqual(queryValue(this.page.url(), 'filters'), FILTERS);
     assert.equal((await this.list.rowTexts()).length, 1);
     // Generated links, not just successful direct loads.
+    await expect(this.page.getByTestId('list-new')).toHaveAttribute('href', ROOT + '/new');
+    await this.page.getByRole('button', { name: 'Table administration', exact: true }).click();
     for (const [control, path] of [
-      ['list-new', ROOT + '/new'], ['open-columns', ROOT + '/columns'],
+      ['open-columns', ROOT + '/columns'],
       ['open-merge', ROOT + '/merge'], ['open-naming', ROOT + '/naming'],
-      ['open-permissions', ROOT + '/permissions'], ['open-report', ROOT + '/view/report'],
+      ['open-permissions', ROOT + '/permissions'],
     ]) await expect(this.page.getByTestId(control)).toHaveAttribute('href', path);
+    await this.page.keyboard.press('Escape');
+    await this.page.getByRole('button', { name: 'View: List', exact: true }).click();
+    await expect(this.page.getByTestId('open-report')).toHaveAttribute('href', ROOT + '/view/report');
 
     await this.visit(ROOT + '/new?prefill=' + encodeURIComponent(JSON.stringify(PREFILL)));
     await this.formReady();
@@ -174,6 +179,7 @@ class TableAddresses {
       template: '<p>Canonical review: {{ subject }}</p>' });
     await this.visit(STOCK);
     await this.formReady();
+    await this.page.getByRole('button', { name: 'Record actions', exact: true }).click();
     await expect(this.page.getByTestId('form-print')).toHaveAttribute('href', '/featherbase/print/route-probe/Stock%20review');
     await expect(this.page.getByTestId('form-map')).toHaveAttribute('href', STOCK + '/map');
     await this.page.getByTestId('form-print').click();

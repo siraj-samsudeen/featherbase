@@ -74,7 +74,17 @@ test('form: create a ticket through the UI (Session DSL) — real save, real ser
     .fillIn('Subject', 'Filed from a component test')
     .selectOption('Priority', 'High')
     .clickButton('Save')
-    .assertText('HDT-')
+  // The save numbers the ticket from the series, and the form shows it. (The row
+  // id is not on that page: the form reads by its subject. #898 stopped the
+  // sidebar flashing the id while the title loads, which this used to find.)
+  const saved = await waitFor(async () => {
+    const { data } = await admin.get<{ data: { row_id: string }[] }>('/api/table/HD%20Ticket')
+    expect(data).toHaveLength(1)
+    return data[0].row_id
+  }, { timeout: 5000 })
+  expect(saved).toMatch(/^HDT-\d+$/)
+  expect(await admin.get<{ subject: string }>(`/api/table/HD%20Ticket/${saved}`)).toMatchObject({ subject: 'Filed from a component test' })
+  await waitFor(() => expect(screen.getByTestId('form-view')).toHaveTextContent('Filed from a component test'), { timeout: 5000 })
 })
 
 test('form: a dirty form with an empty required subject shows the field error', async ({
@@ -98,7 +108,10 @@ test('workflow: Start from the ticket form moves the bound status field', async 
     row: { subject: 'Workflow via the UI' },
   })
   const { session } = await renderSession(`/featherbase/admin/table/hd-ticket/row/${doc.row_id}`, admin)
-  await session.assertText(doc.row_id).clickButton('Start')
+  // The ticket's page reads by its subject, not its id (#898: the sidebar no
+  // longer flashes the id while the title loads, which this used to find).
+  expect(await screen.findByTestId('form-view', {}, { timeout: 5000 })).toHaveTextContent('Workflow via the UI')
+  await session.clickButton('Start')
   // 'In Progress' sits in the status <select>'s options from the first
   // render, so a bare assertText would pass before the transition even
   // lands — assert the workflow-state pill specifically.

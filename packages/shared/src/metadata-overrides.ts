@@ -7,6 +7,10 @@ export const METADATA_OVERRIDE_PROPERTIES = {
     search_columns: 'text',
     sort_column: 'text',
     sort_direction: 'text',
+    enable_assignments: 'boolean',
+    enable_tags: 'boolean',
+    enable_files: 'boolean',
+    enable_discussion: 'boolean',
   },
   column: {
     label: 'text',

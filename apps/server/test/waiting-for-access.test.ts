@@ -9,6 +9,7 @@ import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
 import { googleSignIn } from './google-mock'
 import { completeSignIn } from '../src/sign-in'
 import { methodOfKind } from '../src/identities'
+import { WAITING_FOR_ACCESS_FILTERS } from 'shared'
 import { ALERT_SUBJECT, DAILY_ALERT_CAP, _setAlertSender, alertNewArrival } from '../src/waiting-for-access'
 
 afterEach(() => {
@@ -16,20 +17,23 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-interface Waiting {
-  person: string
+interface PersonRow {
+  row_id: string
   full_name: string | null
-  email_domain: string | null
-  method: string | null
-  method_label: string | null
-  arrived_by: string | null
-  first_sign_in: string | null
-  last_sign_in: string | null
+  email: string | null
 }
 
-async function list(client: TestClient) {
-  const res = await client.fetch('/api/people/waiting_for_access')
-  return { status: res.status, body: (await res.json()) as { people: Waiting[]; count: number } }
+/** #835: the waiting list is the standard Person list behind one filter. */
+async function list(client: TestClient, extra: unknown[] = []) {
+  const qs = new URLSearchParams({
+    filters: JSON.stringify([...WAITING_FOR_ACCESS_FILTERS, ...extra]),
+    fields: JSON.stringify(['row_id', 'full_name', 'email']),
+    order_by: 'created_at desc',
+    limit_page_length: '500',
+  })
+  const res = await client.fetch(`/api/table/Person?${qs}`)
+  const body = res.ok ? ((await res.json()) as { data: PersonRow[]; total: number }) : { data: [], total: 0 }
+  return { status: res.status, body: { people: body.data.map((r) => ({ ...r, person: r.row_id })), count: body.total } }
 }
 
 const DOMAIN = 'staff.example.com'
@@ -66,24 +70,11 @@ async function fillCap(at: string) {
 const IST_MIDNIGHT = `(date_trunc('day', now() at time zone 'Asia/Kolkata') at time zone 'Asia/Kolkata')`
 
 describe('the waiting-for-access list', () => {
-  test('shows a person a sign-in rule let in, with domain, method and sign-in times but not the full address', async ({ admin }) => {
+  test('shows a person a sign-in rule let in, with their full address (#835)', async ({ admin }) => {
     const id = await arrive(`new.starter@${DOMAIN}`, 'g-wfa-1')
     const { status, body } = await list(admin)
     expect(status).toBe(200)
-    const row = body.people.find((p) => p.person === id)!
-    expect(row).toMatchObject({ full_name: 'New Starter', email_domain: DOMAIN, method: 'google', arrived_by: 'new-person' })
-    expect(row.first_sign_in).toBeTruthy()
-    expect(row.last_sign_in).toBeTruthy()
-    expect(JSON.stringify(row)).not.toContain('new.starter@')
-    expect(body.count).toBe(body.people.length)
-  })
-
-  test('first and last sign-in come from the sign-in log', async ({ admin }) => {
-    const id = await arrive(`twice@${DOMAIN}`, 'g-wfa-2')
-    await sql`update activity_log set created_at = now() - interval '3 days' where "user" = ${id} and operation = 'login'`
-    await arrive(`twice@${DOMAIN}`, 'g-wfa-2')
-    const row = (await list(admin)).body.people.find((p) => p.person === id)!
-    expect(new Date(row.first_sign_in!).getTime()).toBeLessThan(new Date(row.last_sign_in!).getTime() - 2 * 86400_000)
+    expect(body.people.find((p) => p.person === id)).toMatchObject({ full_name: 'New Starter', email: `new.starter@${DOMAIN}` })
   })
 
   test('leaves out people with a role, built-in accounts, disabled and merged-away people', async ({ admin }) => {
@@ -95,22 +86,31 @@ describe('the waiting-for-access list', () => {
     const noRole = await makePerson({ full_name: 'No Role', email: 'no.role@example.com' })
     const ids = (await list(admin)).body.people.map((p) => p.person)
     expect(ids).toContain(noRole)
-    for (const out of [withRole, disabled, merged, 'Administrator', 'Guest']) expect(ids).not.toContain(out)
-    const row = (await list(admin)).body.people.find((p) => p.person === noRole)!
-    // Added by hand, never signed in: no method, no sign-in times.
-    expect(row).toMatchObject({ email_domain: 'example.com', method: null, first_sign_in: null, last_sign_in: null })
+    for (const out of [withRole, disabled, merged, survivor, 'Administrator', 'Guest']) expect(ids).not.toContain(out)
   })
 
-  test('a name that is still an address shows as its domain only', async ({ admin }) => {
-    const p = await makePerson({ full_name: 'legacy.name@example.com' })
-    const res = await admin.fetch('/api/people/waiting_for_access')
-    expect(await res.clone().text()).not.toContain('legacy.name@')
-    expect(((await res.json()) as { people: Waiting[] }).people.find((r) => r.person === p)!.full_name).toBe('example.com')
+  test('the implicit All and Guest roles do not count as a role of their own', async ({ admin }) => {
+    const all = await makePerson({ full_name: 'Only All', roles: [{ role: 'All' }] })
+    const guest = await makePerson({ full_name: 'Only Guest', roles: [{ role: 'Guest' }] })
+    const ids = (await list(admin)).body.people.map((r) => r.person)
+    expect(ids).toContain(all)
+    expect(ids).toContain(guest)
   })
 
-  test('the implicit All role does not count as a role of their own', async ({ admin }) => {
-    const p = await makePerson({ full_name: 'Only All', roles: [{ role: 'All' }] })
+  test('giving a role takes them off the list', async ({ admin }) => {
+    const p = await makePerson({ full_name: 'Soon Given' })
     expect((await list(admin)).body.people.map((r) => r.person)).toContain(p)
+    const [row] = await sql`select updated_at from person where row_id = ${p}`
+    await admin.post('/api/save_row', { table: 'Person', row: { row_id: p, updated_at: row.updated_at, roles: [{ role: 'System Manager' }] } })
+    expect((await list(admin)).body.people.map((r) => r.person)).not.toContain(p)
+  })
+
+  test('narrows further like any list filter', async ({ admin }) => {
+    const a = await makePerson({ full_name: 'Asha Waiting', email: 'asha@example.com' })
+    const b = await makePerson({ full_name: 'Bala Waiting', email: 'bala@example.com' })
+    const ids = (await list(admin, [['full_name', 'like', '%Asha%']])).body.people.map((r) => r.person)
+    expect(ids).toEqual([a])
+    expect(ids).not.toContain(b)
   })
 
   test('newest first', async ({ admin }) => {
@@ -121,17 +121,23 @@ describe('the waiting-for-access list', () => {
     expect(ids.indexOf(newer)).toBeLessThan(ids.indexOf(older))
   })
 
-  test('the count answers on its own, for the badge', async ({ admin }) => {
+  test('the menu count is the same cohort as the list', async ({ admin }) => {
     await makePerson({ full_name: 'Counted' })
+    await makePerson({ full_name: 'Not counted', roles: [{ role: 'System Manager' }] })
     const res = await admin.fetch('/api/people/waiting_for_access/count')
     expect(res.status).toBe(200)
     expect(((await res.json()) as { count: number }).count).toBe((await list(admin)).body.count)
   })
 
-  test('is System Manager only', async ({ createUser }) => {
+  test('the count is System Manager only', async ({ createUser }) => {
     const clerk = await createUser({ email: 'clerk@example.com', roles: [] })
-    expect((await list(clerk)).status).toBe(403)
     expect((await clerk.fetch('/api/people/waiting_for_access/count')).status).toBe(403)
+  })
+
+  test("'not related' takes only the sub-table shape, and a source never accepts it", async ({ admin }) => {
+    const bad = async (filters: unknown[]) =>
+      (await admin.fetch(`/api/table/Person?filters=${encodeURIComponent(JSON.stringify(filters))}`)).status
+    expect(await bad([['replaced_by', 'not related', { table: 'Person' }]])).toBe(417)
   })
 })
 

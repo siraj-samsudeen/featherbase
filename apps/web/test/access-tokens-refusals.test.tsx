@@ -15,6 +15,9 @@ test('a token asked for from a preview sign-in is refused with the reason', asyn
   await user.click(await screen.findByTestId('issue-token', {}, { timeout: 10_000 }))
   await user.type(screen.getByTestId('token-label'), 'from preview')
   await user.click(screen.getByTestId('issue-confirm'))
+  // #852: a token that never expires is issued on a second, deliberate press.
+  await screen.findByTestId('token-no-expiry')
+  await user.click(screen.getByTestId('issue-confirm'))
   expect(await screen.findByTestId('issue-error')).toHaveTextContent(
     'Not allowed from this sign-in. Sign in again normally to change how this account signs in.',
   )

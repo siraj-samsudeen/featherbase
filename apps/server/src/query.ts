@@ -20,7 +20,7 @@ interface ListArgs {
   limit_page_length?: number
 }
 
-const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', 'related'] as const
+const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', 'related', 'not related'] as const
 
 // NAV-002: the 'related' operator — the ONE relationship-shaped filter the
 // list language understands. It constrains rows by a relationship to
@@ -182,6 +182,15 @@ export async function scopedWhere(
     if (!OPS.includes(op as (typeof OPS)[number]))
       throw new AppError('ValidationError', `Unknown filter operator ${op}`)
     if (op === 'related') return relatedCond(field, value)
+    // #835: rows holding NONE of a sub-table's matching rows ("people with no
+    // role of their own"). Only the via shape: negating a Reference match
+    // would also have to decide what an empty reference means.
+    if (op === 'not related') {
+      const spec = parseRelatedSpec(value)
+      if (!spec.via) throw new AppError('ValidationError', `'not related' needs a sub-table { via, column, table }`)
+      const { frag } = await relatedCond(field, value)
+      return { frag: sql`not ${frag}` }
+    }
     return { frag: plainCond(field, op, value) }
   }
 
