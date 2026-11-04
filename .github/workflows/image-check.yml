@@ -32,10 +32,12 @@ on:
       - .github/image-check/**
       - tools/build-instance-apps.mjs
       - tools/dev.mjs
-      - client-apps/*/instances/**
       - test-apps/other/**
-      # No image holds a client app, so its manifest is not a build input.
+      # A client app's own manifest is not a build input here, but an
+      # instance's folder is. A later pattern overrides an earlier one, so the
+      # instance folders come after the exclusion, or it would drop them too.
       - '!client-apps/**'
+      - client-apps/*/instances/**
 
 permissions:
   contents: read
@@ -111,17 +113,17 @@ jobs:
           done
           echo "platform image: no app folders, no FEATHERBASE_APP_PATHS"
 
-      - name: The default image still holds Tasker
+      - name: The default image holds Tasker and Tickets
         run: |
           app_paths=$(docker image inspect featherbase-default:ci --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^FEATHERBASE_APP_PATHS=//p')
-          expected='["/app/example-apps/tasker"]'
+          expected='["/app/example-apps/tasker","/app/example-apps/tickets"]'
           [ "$app_paths" = "$expected" ] || { echo "FEATHERBASE_APP_PATHS=$app_paths, expected $expected"; exit 1; }
-          for app in tasker; do
+          for app in tasker tickets; do
             for file in package.json featherbase.json dist; do
               docker run --rm featherbase-default:ci test -e "/app/example-apps/$app/$file" || { echo "missing /app/example-apps/$app/$file"; exit 1; }
             done
           done
-          echo "default image: Tasker present; FEATHERBASE_APP_PATHS=$app_paths"
+          echo "default image: Tasker and Tickets present; FEATHERBASE_APP_PATHS=$app_paths"
 
       # --network host: the Postgres service listens on the runner's 5432.
       - name: The platform image releases and passes boot-check
@@ -146,7 +148,7 @@ jobs:
       - name: The image for a client instance deploys its apps and settings
         run: |
           docker buildx build --builder default --load -f apps/server/Dockerfile --build-arg FEATHERBASE_INSTANCE=jeyarama/dash -t featherbase-instance:ci .
-          docker run --rm featherbase-instance:ci sh -c 'test -e /app/client-apps/jeyarama/instances/dash/instance-settings.json && ls -d /app/instance-apps/feather_dash-* /app/instance-apps/tasker-*'
+          docker run --rm featherbase-instance:ci sh -c 'test -e /app/client-apps/jeyarama/instances/dash/instance-settings.json && ls -d /app/instance-apps/feather_dash-* /app/instance-apps/tasker-* /app/instance-apps/tickets-*'
           psql_new() { docker run --rm --network host postgres:17 psql "postgres://postgres:postgres@127.0.0.1:5432/postgres" -c "create database instance_check"; }
           psql_new
           # Made-up values for a database created and destroyed with this job.
@@ -155,6 +157,6 @@ jobs:
             -e GOOGLE_CLIENT_SECRET=made-up -e DIVE_ID=made-up -e DIVE_VERSION=1 -e SERVICE_ACCOUNT=made-up \
             featherbase-instance:ci pnpm --filter server pre-deploy; }
           run | tee first.log
-          grep -q 'installed feather_dash' first.log
+          for app in feather_dash tasker tickets; do grep -q "installed $app" first.log || { echo "the first deploy did not install $app"; exit 1; }; done
           run | tee second.log
           grep -q 'settings:apply: nothing changed' second.log

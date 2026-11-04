@@ -41,6 +41,11 @@
       "picker": "Store",
       "options": "stores",
       "sets": "store"
+    },
+    {
+      "picker": "Month",
+      "options": "months",
+      "sets": "month"
     }
   ],
   "datasets": [
@@ -147,6 +152,143 @@
       "name": "sales_month",
       "source": "motherduck",
       "query": "with period as (\n  select cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) as date) as period_start,\n         cast(timezone('Asia/Kolkata', now()) as date) as period_end\n),\ncutoff as (\n  select p.period_start,\n         least(p.period_end, coalesce((select max(actuals_as_of_date) from \"marts\".\"sales\".\"target_vs_actual_daily\"), p.period_end)) as effective_end,\n         exists (select 1 from \"marts\".\"sales\".\"target_vs_actual_daily\" t\n                 where t.hierarchy_level = 'material_group' and t.business_date between p.period_start and p.period_end) as targets_available\n  from period p\n),\npairs as (\n  select s.store_code, s.store_name, h.material_group_code as subcategory_code\n  from (select store_code, any_value(store_name) as store_name from \"gold\".\"masters\".\"store\" group by 1) s\n  cross join (select distinct material_group_code from \"gold\".\"masters\".\"merchandise_hierarchy\" where material_group_code is not null) h\n)\nselect pr.store_code, pr.store_name, pr.subcategory_code, c.period_start, c.effective_end as data_through, c.targets_available\nfrom pairs pr cross join cutoff c",
+      "columns": [
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "period_start",
+          "type": "date"
+        },
+        {
+          "name": "data_through",
+          "type": "date"
+        },
+        {
+          "name": "targets_available",
+          "type": "boolean"
+        }
+      ],
+      "keys": [
+        "store_code"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      }
+    },
+    {
+      "name": "sales_last_month",
+      "source": "motherduck",
+      "query": "with period as (\n  select cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) - interval 1 month as date) as period_start,\n         cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) - interval 1 day as date) as period_end\n),\ncutoff as (\n  select p.period_start,\n         least(p.period_end, coalesce((select max(actuals_as_of_date) from \"marts\".\"sales\".\"target_vs_actual_daily\"), p.period_end)) as effective_end,\n         exists (select 1 from \"marts\".\"sales\".\"target_vs_actual_daily\" t\n                 where t.hierarchy_level = 'material_group' and t.business_date between p.period_start and p.period_end) as targets_available\n  from period p\n),\nstores as (\n  select store_code, any_value(store_name) as store_name, any_value(short_code) as short_code\n  from \"gold\".\"masters\".\"store\" group by 1\n),\nnames as (\n  select material_group_code, any_value(subcategory) as subcategory\n  from \"gold\".\"masters\".\"merchandise_hierarchy\" where material_group_code is not null group by 1\n),\ntargets as (\n  select t.plant_code, t.hierarchy_code, t.business_date, t.target_daily_before_tax, t.actual_before_tax,\n         t.target_quantity, t.actual_quantity\n  from \"marts\".\"sales\".\"target_vs_actual_daily\" t cross join cutoff c\n  where t.hierarchy_level = 'material_group' and t.business_date between c.period_start and c.effective_end\n),\nsales as (\n  select s.store_code as plant_code, lpad(s.material_group, 9, '0') as hierarchy_code, s.business_date,\n         sum(s.sales_before_tax_net) as actual_before_tax, sum(s.qty_net) as actual_quantity\n  from \"gold\".\"sales\".\"sales_item_daily\" s cross join cutoff c\n  where s.material_group is not null and s.business_date between c.period_start and c.effective_end\n  group by 1, 2, 3\n),\ndays as (\n  select coalesce(t.plant_code, s.plant_code) as plant_code,\n         coalesce(t.hierarchy_code, s.hierarchy_code) as hierarchy_code,\n         t.target_daily_before_tax as target,\n         case when t.plant_code is not null then t.actual_before_tax else s.actual_before_tax end as actual,\n         t.target_quantity,\n         case when t.plant_code is not null then t.actual_quantity else s.actual_quantity end as actual_quantity\n  from targets t\n  full join sales s on s.plant_code = t.plant_code and s.hierarchy_code = t.hierarchy_code and s.business_date = t.business_date\n)\nselect d.plant_code as store_code, st.store_name, st.short_code,\n       d.hierarchy_code as subcategory_code, n.subcategory,\n       sum(d.target) as target, sum(d.actual) as actual,\n       count(d.actual) as days_with_actual, count(*) as days,\n       c.period_start, c.effective_end as data_through, c.targets_available,\n       count(d.target) as target_days,\n       sum(d.target_quantity) as target_quantity, sum(d.actual_quantity) as actual_quantity\nfrom days d\ncross join cutoff c\nleft join stores st on st.store_code = d.plant_code\nleft join names n on n.material_group_code = d.hierarchy_code\ngroup by d.plant_code, st.store_name, st.short_code, d.hierarchy_code, n.subcategory, c.period_start, c.effective_end, c.targets_available",
+      "columns": [
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_name",
+          "type": "text"
+        },
+        {
+          "name": "short_code",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "subcategory",
+          "type": "text"
+        },
+        {
+          "name": "target",
+          "type": "money"
+        },
+        {
+          "name": "actual",
+          "type": "money"
+        },
+        {
+          "name": "days_with_actual",
+          "type": "integer"
+        },
+        {
+          "name": "days",
+          "type": "integer"
+        },
+        {
+          "name": "period_start",
+          "type": "date"
+        },
+        {
+          "name": "data_through",
+          "type": "date"
+        },
+        {
+          "name": "targets_available",
+          "type": "boolean"
+        },
+        {
+          "name": "target_days",
+          "type": "integer"
+        },
+        {
+          "name": "target_quantity",
+          "type": "number"
+        },
+        {
+          "name": "actual_quantity",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "store_code",
+        "subcategory_code"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      },
+      "guard": [
+        {
+          "kind": "not_all_zero",
+          "column": "target"
+        },
+        {
+          "kind": "max_drop_pct",
+          "column": "target",
+          "value": 50,
+          "within": "period_start"
+        },
+        {
+          "kind": "max_sum_drop_pct",
+          "column": "target",
+          "value": 50,
+          "within": "period_start"
+        },
+        {
+          "kind": "max_sum_drop_pct",
+          "column": "target_days",
+          "value": 50,
+          "within": "period_start"
+        }
+      ]
+    },
+    {
+      "name": "sales_last_month_meta",
+      "source": "motherduck",
+      "query": "with period as (\n  select cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) - interval 1 month as date) as period_start,\n         cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) - interval 1 day as date) as period_end\n),\ncutoff as (\n  select p.period_start,\n         least(p.period_end, coalesce((select max(actuals_as_of_date) from \"marts\".\"sales\".\"target_vs_actual_daily\"), p.period_end)) as effective_end,\n         exists (select 1 from \"marts\".\"sales\".\"target_vs_actual_daily\" t\n                 where t.hierarchy_level = 'material_group' and t.business_date between p.period_start and p.period_end) as targets_available\n  from period p\n),\npairs as (\n  select s.store_code, s.store_name, h.material_group_code as subcategory_code\n  from (select store_code, any_value(store_name) as store_name from \"gold\".\"masters\".\"store\" group by 1) s\n  cross join (select distinct material_group_code from \"gold\".\"masters\".\"merchandise_hierarchy\" where material_group_code is not null) h\n)\nselect pr.store_code, pr.store_name, pr.subcategory_code, c.period_start, c.effective_end as data_through, c.targets_available\nfrom pairs pr cross join cutoff c",
       "columns": [
         {
           "name": "store_code",
@@ -360,6 +502,18 @@
           "description": "How many non-acting Team Leaders this section may have. More are listed as a conflict."
         },
         {
+          "column_name": "approved_headcount_min",
+          "label": "Approved headcount, minimum",
+          "column_type": "Int",
+          "description": "The fewest people the section is approved to have deployed. Blank until approved."
+        },
+        {
+          "column_name": "approved_headcount_max",
+          "label": "Approved headcount, maximum",
+          "column_type": "Int",
+          "description": "The most people the section is approved to have deployed; at least the minimum. A range, not named slots."
+        },
+        {
           "column_name": "section_key",
           "label": "Section key",
           "column_type": "Data",
@@ -367,7 +521,8 @@
           "read_only": true,
           "description": "Set on save: the store and the section name. Unique, so a store has each section name once."
         }
-      ]
+      ],
+      "track_changes": true
     },
     {
       "name": "feather_dash.section_subcategory",
@@ -475,7 +630,7 @@
       "name": "feather_dash.job_assignment",
       "label": "Job assignment",
       "module": "Feather Dash",
-      "description": "Who holds which job, where and when. A person's coverage is worked out from their current rows, acting included.",
+      "description": "Who holds which job, where and when, with the HR designation beside the job. A person's coverage is worked out from their current rows, acting included.",
       "decides_scope": true,
       "columns": [
         {
@@ -490,9 +645,18 @@
           "column_name": "job",
           "label": "Job",
           "column_type": "Choice",
-          "choices": "Store Manager\nFloor Manager\nDepartment Manager\nTeam Leader\nStaff\nCluster Manager",
+          "choices": "Director\nChief Operating Officer\nCluster Manager\nStore Manager\nFloor Manager\nDepartment Manager\nTeam Leader\nStaff",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The org-chart role. Separate from the designation: a promotion closes one assignment and opens the next."
+        },
+        {
+          "column_name": "designation",
+          "label": "Designation",
+          "column_type": "Reference",
+          "reference_table": "feather_dash.designation",
+          "in_list_view": true,
+          "description": "The HR title, from the group's one designation list. Separate from the job."
         },
         {
           "column_name": "store",
@@ -500,7 +664,14 @@
           "column_type": "Data",
           "reqd": true,
           "in_list_view": true,
-          "description": "The store's plant code, as the scope filters name it."
+          "description": "The plant code of the site the person works at, as the scope filters name it. Director, Chief Operating Officer and Cluster Manager name the site they are based at, such as the corporate office."
+        },
+        {
+          "column_name": "cluster",
+          "label": "Cluster",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "Cluster Manager only: the code of the cluster they manage, as the organisation's Cluster master names it. A store's staff get their Cluster Manager through the store's cluster, never typed in per person."
         },
         {
           "column_name": "floor",
@@ -538,6 +709,25 @@
           "column_type": "Check",
           "in_list_view": true,
           "description": "Acting cover; the absent person's row stays open."
+        },
+        {
+          "column_name": "assignment_type",
+          "label": "Assignment type",
+          "column_type": "Choice",
+          "choices": "Primary\nSecondary\nTemporary deployment",
+          "reqd": true,
+          "default_value": "Primary",
+          "in_list_view": true,
+          "description": "Primary is the person's home assignment and cost centre; it stays Primary during a temporary deployment. A temporary deployment's sales count against the store the person works in."
+        },
+        {
+          "column_name": "percentage",
+          "label": "Percentage",
+          "column_type": "Float",
+          "reqd": true,
+          "default_value": "100",
+          "in_list_view": true,
+          "description": "The share of the person's time. Primary and Secondary together take at most 100%; a temporary deployment takes its share out of the Primary's. Acting cover takes none."
         },
         {
           "column_name": "starts_on",
@@ -674,7 +864,170 @@
           "column_name": "job",
           "label": "Job",
           "column_type": "Choice",
-          "choices": "Store Manager\nFloor Manager\nDepartment Manager\nTeam Leader\nStaff\nCluster Manager",
+          "choices": "Director\nChief Operating Officer\nCluster Manager\nStore Manager\nFloor Manager\nDepartment Manager\nTeam Leader\nStaff",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "alias_key",
+          "label": "Alias key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "Set on save: the source and the alias. Unique."
+        }
+      ]
+    },
+    {
+      "name": "feather_dash.employee",
+      "label": "Employee",
+      "module": "Feather Dash",
+      "title_column": "name",
+      "track_changes": true,
+      "description": "A person who works, or has worked, for the group, with their operational contacts. Changes here never change sign-in or account-recovery identifiers. Employee numbers belong to employments, never to the person.",
+      "columns": [
+        {
+          "column_name": "person",
+          "label": "Person",
+          "column_type": "Reference",
+          "reference_table": "Person",
+          "reqd": true,
+          "unique": true,
+          "description": "The person, who keeps their own permanent number across every employment."
+        },
+        {
+          "column_name": "name",
+          "label": "Name",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "phone",
+          "label": "Operational phone",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "emergency_contact",
+          "label": "Emergency contact",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "feather_dash.employment",
+      "label": "Employment",
+      "module": "Feather Dash",
+      "title_column": "employee_number",
+      "track_changes": true,
+      "description": "One stint of a person working for one legal company, from joined_on up to but not including left_on. A rejoin is a new row; one person's stints at one company never overlap.",
+      "columns": [
+        {
+          "column_name": "employee",
+          "label": "Employee",
+          "column_type": "Reference",
+          "reference_table": "feather_dash.employee",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "legal_company",
+          "label": "Legal company",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The employing company's code, as the organisation's Legal Company master names it."
+        },
+        {
+          "column_name": "employee_number",
+          "label": "Employee number",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The number this company issued for this stint. A rejoin may carry a new number; one number never belongs to two people at one company."
+        },
+        {
+          "column_name": "joined_on",
+          "label": "Joined on",
+          "column_type": "Date",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "left_on",
+          "label": "Left on",
+          "column_type": "Date",
+          "in_list_view": true,
+          "description": "Exclusive: the first day the person no longer works here, the day after their last working day. Empty means current."
+        },
+        {
+          "column_name": "leaving_reason",
+          "label": "Leaving reason",
+          "column_type": "Data",
+          "description": "Why the stint ended, as the HR system gives it. Empty while current."
+        }
+      ]
+    },
+    {
+      "name": "feather_dash.designation",
+      "label": "Designation",
+      "module": "Feather Dash",
+      "title_column": "title",
+      "description": "The group's one clean list of HR titles. Each source system's spellings map to a title through designation_alias.",
+      "columns": [
+        {
+          "column_name": "title",
+          "label": "Designation",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "active",
+          "label": "Active",
+          "column_type": "Check",
+          "default_value": "1",
+          "in_list_view": true,
+          "description": "Cleared for a title no longer given; job assignments that name it keep it."
+        },
+        {
+          "column_name": "title_key",
+          "label": "Title key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "Set on save: the title, trimmed and case-folded. Unique, so the list has each title once."
+        }
+      ]
+    },
+    {
+      "name": "feather_dash.designation_alias",
+      "label": "Designation alias",
+      "module": "Feather Dash",
+      "title_column": "alias",
+      "description": "A source system's spelling of a designation, matched as a whole value. Central: the same in every company and store.",
+      "columns": [
+        {
+          "column_name": "source",
+          "label": "Source",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "alias",
+          "label": "Alias",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "The title exactly as the source system spells it."
+        },
+        {
+          "column_name": "designation",
+          "label": "Designation",
+          "column_type": "Reference",
+          "reference_table": "feather_dash.designation",
           "reqd": true,
           "in_list_view": true
         },
@@ -814,6 +1167,26 @@
       "table": "feather_dash.job_alias",
       "role": "Feather Dash Section Reviewer",
       "can_read": true
+    },
+    {
+      "table": "feather_dash.designation",
+      "role": "Feather Dash Section Editor",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.designation",
+      "role": "Feather Dash Section Reviewer",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.designation_alias",
+      "role": "Feather Dash Section Editor",
+      "can_read": true
+    },
+    {
+      "table": "feather_dash.designation_alias",
+      "role": "Feather Dash Section Reviewer",
+      "can_read": true
     }
   ],
   "reads": {
@@ -839,6 +1212,14 @@
             "Feather Dash Section Reviewer"
           ],
           "actionRoles": []
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "months": {
+        "policy": {
+          "kind": "table"
         },
         "authorization": {
           "kind": "generic"
@@ -875,6 +1256,18 @@
       }
     }
   },
-  "migrations": [{"id": "compact_sales_target_dive_v13", "fromVersion": "0.10.0", "toVersion": "0.10.1", "operations": []},
-    {"id": "shared_app_navigation", "fromVersion": "0.10.1", "toVersion": "0.10.2", "operations": []}]
+  "migrations": [
+    {
+      "id": "compact_sales_target_dive_v13",
+      "fromVersion": "0.10.0",
+      "toVersion": "0.10.1",
+      "operations": []
+    },
+    {
+      "id": "shared_app_navigation",
+      "fromVersion": "0.10.1",
+      "toVersion": "0.10.2",
+      "operations": []
+    }
+  ]
 }

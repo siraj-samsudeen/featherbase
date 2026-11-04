@@ -1,4 +1,4 @@
-import { tableMembers } from './people-directory'
+import { ownDisplayName, principalNames, tableMembers } from './people-directory'
 import { z } from 'zod'
 import type { ActionRow, AppAuthorizationContext, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler } from 'shared'
 import { inAppTransaction, sql } from './db'
@@ -36,8 +36,23 @@ function reject(message: string, fields?: Record<string, string>): never {
   throw new AppError('ValidationError', message, fields)
 }
 
-export function callerDocuments(app: string, allowed: string[], user: string) {
+/** #912: the instance Tables an administrator lists in an app's declared
+ *  `linked_tables` setting. The app reads them as the caller, never writes. */
+export function linkedTables(settings: Readonly<Record<string, string>>): string[] {
+  try {
+    const value: unknown = JSON.parse(settings.linked_tables ?? '[]')
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : []
+  } catch { return [] }
+}
+
+/** #912: names of people, read as the caller (the Person permission applies). */
+function callerPeople(user: string): RuntimeActionContext['people'] {
+  return Object.freeze({ names: (ids: string[]) => principalNames(ids, user) })
+}
+
+export function callerDocuments(app: string, allowed: string[], user: string, linked: string[] = []) {
   let open = true
+  const readOnly = (table: string) => !allowed.includes(table) && linked.includes(table)
   let pending: Promise<unknown> | undefined
   let failure: unknown
   async function operation<T>(fn: () => Promise<T>): Promise<T> {
@@ -54,8 +69,8 @@ export function callerDocuments(app: string, allowed: string[], user: string) {
     catch (error) { failure = error; throw error }
     finally { pending = undefined }
   }
-  async function metaFor(table: string, appendComment = false) {
-    if (!allowed.includes(table)) reject(`Action has not declared Table ${table}`)
+  async function metaFor(table: string, appendComment = false, write = false) {
+    if (!allowed.includes(table) && (write || !linked.includes(table))) reject(`Action has not declared Table ${table}`)
     const meta = await getMeta(table)
     // No generic privilege-bearing platform rows. Comment is the only v1
     // shared system relation; its target is separately authorized below.
@@ -78,7 +93,7 @@ export function callerDocuments(app: string, allowed: string[], user: string) {
     return retainedDocumentCounts(sql, table, rowId)
   }
   async function save(table: string, values: ActionRow, insert: boolean) {
-    const meta = await metaFor(table, insert)
+    const meta = await metaFor(table, insert, true)
     if (!values || typeof values !== 'object' || Array.isArray(values)) reject('Expected row values')
     if (!insert) {
       if (typeof values.row_id !== 'string' || values.updated_at == null) reject('Update requires row_id and updated_at')
@@ -103,19 +118,23 @@ export function callerDocuments(app: string, allowed: string[], user: string) {
     return getDoc(table, String(saved.row_id), user)
   }
   const documents: RuntimeActionContext['documents'] = Object.freeze({
-    get: (table, id) => operation(() => locked(table, id)),
+    // A linked Table is read without a row lock: the app never writes it.
+    get: (table, id) => operation(async () => readOnly(table) ? (await metaFor(table), getDoc(table, id, user)) : locked(table, id)),
     members: table => operation(async () => { await metaFor(table); return tableMembers(table, user) }),
     list: (table, args = {}) => operation(async () => {
       await metaFor(table)
       if (args.filters?.some(([, operator]) => operator === 'related' || operator === 'not related')) reject('Action lists do not support cross-table related filters')
+      // What the caller may not read of a linked Table reads as nothing.
+      if (readOnly(table)) return getList(table, args, user).then(r => r.data, (error: unknown) =>
+        error instanceof AppError && error.type === 'PermissionError' ? [] : Promise.reject(error))
       return (await getList(table, args, user)).data
     }),
     create: (table, values) => operation(() => save(table, values, true)),
     update: (table, values) => operation(() => save(table, values, false)),
-    activity: (table, id) => operation(async () => { await locked(table, id); return documentActivity(table, id, user) }),
-    deletionState: (table, id) => operation(() => state(table, id)),
+    activity: (table, id) => operation(async () => { await (readOnly(table) ? metaFor(table).then(() => getDoc(table, id, user)) : locked(table, id)); return documentActivity(table, id, user) }),
+    deletionState: (table, id) => operation(async () => { await metaFor(table, false, true); return state(table, id) }),
     delete: (table, id, updatedAt) => operation(async () => {
-      if ((await metaFor(table)).owner_app !== app) reject('Actions may delete only their owned rows')
+      if ((await metaFor(table, false, true)).owner_app !== app) reject('Actions may delete only their owned rows')
       await locked(table, id)
       if (typeof updatedAt !== 'string') reject('Delete requires updatedAt')
       await deleteDoc(table, id, user, { expectUpdatedAt: updatedAt })
@@ -139,7 +158,7 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
     // A refusal is recorded in the access log before it is answered.
     await assertAppAvailable(`${app}.__action`, true).catch((error: unknown) =>
       error instanceof AppError && error.type === 'PermissionError'
-        ? recordAppAccessRefusal(user, app, name, 'permission')
+        ? recordAppAccessRefusal(user, app, name, 'permission', error)
         : Promise.reject(error))
     const contribution = declaration()
     const handler = contribution?.handlers.get(name)
@@ -160,11 +179,11 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
         return { result: previous.result }
       }
       const { settings, secrets, kept } = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP), contribution.operations.get(name)?.declaration.needs)
-      const context = callerDocuments(app, contribution.tables, user)
+      const context = callerDocuments(app, contribution.tables, user, linkedTables(settings))
       // Serialized inside the guard (Codex round 2 on #670): a getter on the
       // result is the app's code running, and may log or throw a secret.
       const json = await withSecretsKept(kept, async () => {
-        try { return canonicalJson(await handler(Object.freeze({ user, payload: normalized, authorization, settings, secrets, documents: context.documents, reject }))) }
+        try { return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), people: callerPeople(user), payload: normalized, authorization, settings, secrets, documents: context.documents, reject }))) }
         finally { await context.close() }
       })
       assertNoSecret(kept, JSON.parse(json))
@@ -200,7 +219,7 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
       // have been released, so it holds no row lock, no transaction and no
       // lifecycle connection while it calls out.
       if (outbound) return { outbound: { handler, contribution, frozen: { authorization, payload, setup, provenance }, identity: await servingIdentity(app) } }
-      const context = callerDocuments(app, contribution.tables, user)
+      const context = callerDocuments(app, contribution.tables, user, linkedTables(setup.settings))
       const { get, list, activity } = context.documents
       return await runRead(app, name, user, handler, contribution, { authorization, payload, setup, provenance },
         Object.freeze({ get, list, activity }), () => context.close())
@@ -259,7 +278,7 @@ async function runRead(app: string, name: string, user: string, handler: Runtime
     places: authorization.places, outbound: !inAppTransaction(), deferWrite, provenance })
   const json = await withSecretsKept(kept, async () => {
     try {
-      return canonicalJson(await handler(Object.freeze({ user, payload, authorization, settings, secrets, reject, documents, datasets, recordView })))
+      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), people: callerPeople(user), payload, authorization, settings, secrets, reject, documents, datasets, recordView })))
     } finally { await close() }
   })
   assertNoSecret(kept, JSON.parse(json))

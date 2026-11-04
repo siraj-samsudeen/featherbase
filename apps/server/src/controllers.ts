@@ -43,6 +43,7 @@ export const HOOK_EVENTS = [
   'before_cancel',
   'on_cancel',
   'on_trash',
+  'before_rename',
   // Runs AFTER the control-DB transaction commits (insert, update and
   // delete alike). The only event where a cache may be invalidated: an
   // in-transaction invalidation can be repopulated from the pre-commit

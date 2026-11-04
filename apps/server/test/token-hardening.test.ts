@@ -346,16 +346,16 @@ describe('#137 R2: the reserved set covers every engine-owned raw table', () => 
     // The first cut listed three names by hand; the database has ten such
     // tables. Deriving the set means this list is a witness, not a duplicate
     // of the implementation — a new raw table is covered the day it lands.
+    // #906: public.site is not here; a Table "Site" compiles to featherbase.site.
     const raw = (
       await sql`
         select t.table_name from information_schema.tables t
-        where ((t.table_schema = 'featherbase' and t.table_name in
-                 ('access_token','installed_app','internal_metadata','migration','password_reset',
-                  'series','single_value','tag_link','user_settings'))
-               or (t.table_schema = 'public' and t.table_name = 'site'))
+        where t.table_schema = 'featherbase' and t.table_name in
+                ('access_token','installed_app','internal_metadata','migration','password_reset',
+                 'series','single_value','tag_link','user_settings')
         order by 1`
     ).map((r) => r.table_name as string)
-    expect(raw.length).toBe(10)
+    expect(raw.length).toBe(9)
 
     for (const physical of raw) {
       // 'single_value' -> 'Single Value': the inverse of tableName().

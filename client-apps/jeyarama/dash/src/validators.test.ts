@@ -20,7 +20,7 @@ const STORE_TABLES: [string, Row][] = [
   ['feather_dash.section', { section_name: 'Sarees', team_leaders_allowed: 1 }],
   ['feather_dash.section_subcategory', { subcategory: '010101001', section: 's1', starts_on: '2026-08-01' }],
   ['feather_dash.display_location', { subcategory: '010101001', location_name: 'Billing counter', starts_on: '2026-08-01' }],
-  ['feather_dash.job_assignment', { person: 'psn_101', job: 'Store Manager', starts_on: '2026-08-01' }],
+  ['feather_dash.job_assignment', { person: 'psn_101', job: 'Store Manager', assignment_type: 'Primary', percentage: 100, starts_on: '2026-08-01' }],
   ['feather_dash.section_alias', { source: 'hr', alias: 'Saree', section: 's1' }],
   ['feather_dash.floor_alias', { source: 'hr', alias: 'GF', floor: 'f1' }],
 ]
@@ -119,11 +119,13 @@ describe('display_location', () => {
 })
 
 describe('job_assignment', () => {
-  const base = { person: 'psn_101', store: '9901', starts_on: '2026-08-01' }
+  const base = { person: 'psn_101', store: '9901', assignment_type: 'Primary', percentage: 100, starts_on: '2026-08-01' }
 
   it.each([
+    ['Director', {}],
+    ['Chief Operating Officer', {}],
     ['Store Manager', {}],
-    ['Cluster Manager', {}],
+    ['Cluster Manager', { cluster: 'CL-NORTH' }],
     ['Floor Manager', { floor: 'f1' }],
     ['Department Manager', { department: 'd1' }],
     ['Team Leader', { section: 's1' }],
@@ -140,13 +142,48 @@ describe('job_assignment', () => {
     ['Floor Manager', { floor: 'f1', section: 's1' }, /Floor Manager names no section/],
     ['Team Leader', { section: 's1', department: 'd1' }, /Team Leader names no department/],
     ['Store Manager', { floor: 'f1' }, /Store Manager names no floor/],
-    ['Cluster Manager', { section: 's1' }, /Cluster Manager names no section/],
+    ['Cluster Manager', { cluster: 'CL-NORTH', section: 's1' }, /Cluster Manager names no section/],
+    ['Cluster Manager', {}, /Cluster Manager needs the cluster/],
+    ['Cluster Manager', { cluster: ' CL-NORTH' }, /no spaces/],
+    ['Store Manager', { cluster: 'CL-NORTH' }, /Store Manager names no cluster/],
+    ['Store Manager', { assignment_type: 'Deputation' }, /Primary, Secondary or a Temporary deployment/],
+    ['Store Manager', { percentage: 0 }, /more than 0 and at most 100/],
+    ['Store Manager', { percentage: 120 }, /more than 0 and at most 100/],
+    ['Store Manager', { percentage: null }, /more than 0 and at most 100/],
   ])('refuses a %s of the wrong shape (%o)', (job, place, message) => {
     expect(() => save('feather_dash.job_assignment', { ...base, job, ...place })).toThrow(message)
   })
 
   it('refuses an end on or before the start', () => {
     expect(() => save('feather_dash.job_assignment', { ...base, job: 'Store Manager', ends_on: '2026-07-01' })).toThrow(/after starts_on/)
+  })
+})
+
+describe('people', () => {
+  it('refuses an approved headcount that is not a whole number', () => {
+    expect(() => save('feather_dash.section', { store: '9901', section_name: 'Sarees', team_leaders_allowed: 1, approved_headcount_min: 2.5 })).toThrow(/whole number/)
+    expect(() => save('feather_dash.section', { store: '9901', section_name: 'Sarees', team_leaders_allowed: 1, approved_headcount_max: -1 })).toThrow(/whole number/)
+  })
+
+  it('refuses an employment code padded with spaces, before reading any other row', () => {
+    expect(() => save('feather_dash.employment', { employee: 'e1', legal_company: ' DEMO-CO', employee_number: 'DEMO-0101', joined_on: '2026-01-01' })).toThrow(/no spaces/)
+    expect(() => save('feather_dash.employment', { employee: 'e1', legal_company: 'DEMO-CO', employee_number: 'DEMO-0101', joined_on: '2026-01-01' })).not.toThrow()
+  })
+
+  it('reads every page of a person\'s stints before deciding', async () => {
+    const pages: Row[][] = [Array.from({ length: 500 }, (_, i) => ({ row_id: `x${i}`, employee: 'e1', legal_company: 'OTHER-CO', employee_number: `N${i}`, joined_on: '2020-01-01' })),
+      [{ row_id: 'last', employee: 'e1', legal_company: 'DEMO-CO', employee_number: 'DEMO-0101', joined_on: '2025-01-01' }], []]
+    const calls: unknown[] = []
+    const documents = { get: async () => ({}), list: async (_table: string, args: unknown) => { calls.push(args); return pages.shift() ?? [] } }
+    const row = { employee: 'e1', legal_company: 'DEMO-CO', employee_number: 'DEMO-0101', joined_on: '2026-01-01' }
+    await expect(Promise.resolve(validators['feather_dash.employment']({ row, user: 'admin@example.test', isNew: true, documents,
+      reject(message: string): never { throw new Refused(message) } }))).rejects.toThrow(/overlaps/)
+    expect(calls).toHaveLength(3)
+  })
+
+  it('keys a designation by its folded title, and an alias by its source and alias', () => {
+    expect(save('feather_dash.designation', { title: ' Assistant  Manager ' }).title_key).toBe('assistant manager')
+    expect(save('feather_dash.designation_alias', { source: 'hr', alias: 'ASST MGR', designation: 'd1' }).alias_key).toBe('hr/asst mgr')
   })
 })
 

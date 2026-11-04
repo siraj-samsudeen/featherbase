@@ -1735,6 +1735,7 @@ async function renameDocImpl(
     await assertNoManagedReference(stx, table, oldName, user)
 
     await assertChildRowsWritable(stx, meta, oldName, user)
+    await runHooks('before_rename', { row: existing as RowValues, meta, user, isNew: false, tx: stx })
     // Rename the row itself.
     await tx`update ${tx(tbl)} set ${tx(meta.row_key)} = ${target}, updated_at = now() where ${tx(meta.row_key)} = ${oldName}`
 

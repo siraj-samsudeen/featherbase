@@ -35,6 +35,7 @@ interface PackageHookContext {
   reject(message: string, fields?: Record<string, string>): never
 }
 type Validator = (context: PackageHookContext) => void | Promise<void>
+type DestructiveGuard = (context: Pick<PackageHookContext, 'row' | 'user' | 'isNew' | 'reject'>) => void | Promise<void>
 
 // #551 (ADR 0011): an app names the platform version it was built for, dated by
 // month. These are the versions this Featherbase runs apps on.
@@ -217,6 +218,31 @@ export async function repinToFolder(name: string, development: boolean): Promise
   return 'repinned'
 }
 
+/** #912: why the installed package row is not the one this server holds,
+ *  from the artifacts already loaded (no disk read): null when it matches. */
+export function installedPackageDifference(row: Record<string, unknown>): 'files' | 'manifest' | 'version' | 'absent' | null {
+  const name = String(row.name)
+  const pkg = artifacts.get(`${name}@${String(row.package_version)}`)
+  if (!pkg) return packages.has(name) ? 'version' : 'absent'
+  if (matchesInstalled(pkg, row)) return null
+  return sameManifest(pkg, row) ? 'files' : 'manifest'
+}
+
+/** #912: what an administrator reads when an installed, enabled app is not
+ *  running on this server, and what to do about it. */
+export function notRunningReason(row: Record<string, unknown>): string {
+  return notRunningMessage(String(row.name), String(row.package_version ?? ''), installedPackageDifference(row), packages.get(String(row.name))?.version)
+}
+export function notRunningMessage(name: string, version: string, reason: 'files' | 'manifest' | 'version' | 'absent' | null, shipped?: string): string {
+  switch (reason) {
+    case 'files': return `App ${name} ${version} is installed, but its files changed on this server under the same version. On a development database run \`featherbase advanced apps install-app ${name}\` to re-pin it; otherwise give the changed app a new version and upgrade it.`
+    case 'manifest': return `App ${name} ${version} is installed, but its featherbase.json changed on this server under the same version. Give the changed app a new version and upgrade it; on a development database you may instead recreate the database.`
+    case 'version': return `App ${name} ${version} is installed, but this server has ${name} ${shipped}. Upgrade it in Apps, or ship ${name} ${version}.`
+    case 'absent': return `App ${name} ${version} is installed, but this server does not have its files. Add its folder to FEATHERBASE_APP_PATHS and restart the server.`
+    default: return `App ${name} is installed; it starts working after the server restarts.`
+  }
+}
+
 /** The manifest this artifact declares is the one the instance installed. */
 function sameManifest(pkg: RuntimePackage, row: Record<string, unknown>) {
   const stored = { ...(row.manifest as object), migrations: (row.manifest as { migrations?: unknown })?.migrations ?? [] }
@@ -379,6 +405,18 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
           })
         } finally { await access.close() }
       }) }
+    }
+    // Destructive operations do not run save validation. Opt in separately
+    // without changing existing validators or pre-row lock acquisition.
+    for (const [table, guard] of Object.entries(module.destructiveGuards ?? {})) {
+      if (!names.has(table) || typeof guard !== 'function')
+        throw new Error('Destructive guards must target owned Tables')
+      for (const event of ['on_trash', 'before_rename'] as const) {
+        (doc_events[table] ??= {})[event] = (ctx) => (guard as DestructiveGuard)({
+          row: ctx.row, user: ctx.user, isNew: false,
+          reject(message, fields) { throw new AppError('ValidationError', message, fields) },
+        })
+      }
     }
   }
   const bindOperations = (operations: Record<string, AppOperationDeclaration>) => new Map(Object.entries(operations).map(([name, declaration]): [string, DeclaredAppOperation] =>

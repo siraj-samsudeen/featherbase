@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { AppAuthorizationContext, AppFactDeclaration, AppOperationDeclaration, AppProductAuthorizer, AppScopeFacts, AppScopeResolver, RuntimeActionAuthorization } from 'shared'
 import { sql, withTransaction } from './db'
-import { appOperation, assertAppAvailable } from './app-lifecycle'
+import { AppNotRunningError, appOperation, assertAppAvailable } from './app-lifecycle'
 import { actionTransaction } from './action-transaction'
 import { assertPermission, getRoles, getScopeMap } from './permissions'
 import { getMeta } from './meta'
@@ -87,9 +87,11 @@ class AccessRefusal extends AppError {
 }
 function refuseAppAccess(reason = 'scope'): never { throw new AccessRefusal(reason) }
 
-export async function recordAppAccessRefusal(user: string, app: string, operation: string, reason: string): Promise<never> {
+export async function recordAppAccessRefusal(user: string, app: string, operation: string, reason: string, cause?: unknown): Promise<never> {
   const boundedName = (value: string) => name.safeParse(value).success ? value : 'unknown'
-  await logAccess(user, 'app_access_denied', { method: `${boundedName(app)}.${boundedName(operation)}:${reason}`, required: true })
+  const notRunning = cause instanceof AppNotRunningError
+  await logAccess(user, 'app_access_denied', { method: `${boundedName(app)}.${boundedName(operation)}:${notRunning ? 'not_running' : reason}`, required: true })
+  if (notRunning) throw cause
   throw new AppError('PermissionError', 'Application access refused')
 }
 
@@ -292,7 +294,7 @@ export function withAppAuthorization<T>(request: AccessRequest,
     } catch (error) {
       // Outside the failed business transaction so the audit survives rollback.
       if (error instanceof AccessRefusal || (error instanceof AppError && error.type === 'PermissionError')) {
-        return recordAppAccessRefusal(request.user, request.app, request.operation, error instanceof AccessRefusal ? error.reason : 'permission')
+        return recordAppAccessRefusal(request.user, request.app, request.operation, error instanceof AccessRefusal ? error.reason : 'permission', error)
       }
       throw error
     }

@@ -4,7 +4,7 @@
 // will need (an upgrade can never add one: featherbase #617).
 import { describe, expect, it } from 'vitest'
 import manifest from '../featherbase.json' with { type: 'json' }
-import { EMBED_ORIGIN, SALES_DATASET, reads } from './server.ts'
+import { EMBED_ORIGIN, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH_DATASET, SALES_DATASET, reads } from './server.ts'
 import type { SalesRow } from './report.ts'
 
 type Dataset = { name: string; source: string; query: string; columns: { name: string; type: string }[]; keys: string[]; filters: Record<string, string>
@@ -71,8 +71,12 @@ describe('the report in the manifest', () => {
     expect(Object.entries(operations).filter(([, o]) => o.outbound).map(([name]) => name)).toEqual(['embed_session'])
   })
 
-  it('draws the store picker in the top bar, filled by the stores read, setting ?store=', () => {
-    expect(manifest.bar).toEqual([{ picker: 'Store', options: 'stores', sets: 'store' }])
+  it('draws the store picker and the month picker (#750) in the top bar, setting ?store= and ?month=', () => {
+    expect(manifest.bar).toEqual([{ picker: 'Store', options: 'stores', sets: 'store' }, { picker: 'Month', options: 'months', sets: 'month' }])
+  })
+
+  it("lets anyone who can open the app read the month picker's options: they hold no figure", () => {
+    expect(operations.months.policy).toEqual(operations.me.policy)
   })
 
   it("frames only MotherDuck's embed site", () => {
@@ -104,9 +108,28 @@ describe("the month's metadata dataset", () => {
   })
 })
 
+// #750: last month's figures and metadata are this month's datasets over last month whole, kept
+// apart so each refresh holds one period_start (the guards compare within one).
+describe("last month's datasets", () => {
+  const named = (name: string) => datasets.find(d => d.name === name)!
+  const THIS = "cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) as date) as period_start,\n         cast(timezone('Asia/Kolkata', now()) as date) as period_end"
+  const LAST = "cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) - interval 1 month as date) as period_start,\n         cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) - interval 1 day as date) as period_end"
+
+  it.each([[LAST_SALES_DATASET, SALES_DATASET], [LAST_MONTH_DATASET, MONTH_DATASET]])('%s is %s with only its period changed', (last, current) => {
+    const { name: _a, query: lastQuery, ...lastRest } = named(last)
+    const { name: _b, query: thisQuery, ...thisRest } = named(current)
+    expect([lastRest, lastQuery]).toEqual([thisRest, thisQuery.replace(THIS, LAST)])
+  })
+
+  it("changes this month's period, which each query works out once", () => {
+    expect([named(SALES_DATASET).query.split(THIS).length, named(MONTH_DATASET).query.split(THIS).length]).toEqual([2, 2])
+  })
+})
+
 describe('the read grants, declared before the first install', () => {
   const ORG_CHART = ['feather_dash.store_floor', 'feather_dash.department', 'feather_dash.section', 'feather_dash.section_subcategory',
-    'feather_dash.display_location', 'feather_dash.job_assignment', 'feather_dash.section_alias', 'feather_dash.floor_alias', 'feather_dash.job_alias']
+    'feather_dash.display_location', 'feather_dash.job_assignment', 'feather_dash.section_alias', 'feather_dash.floor_alias', 'feather_dash.job_alias',
+    'feather_dash.designation', 'feather_dash.designation_alias']
   const granted = (role: string) => manifest.permissions.filter(p => p.role === role).map(p => p.table).sort()
 
   it('give every app role a read of the entry Table, which opening the app needs', () => {
@@ -123,6 +146,10 @@ describe('the read grants, declared before the first install', () => {
 
   it("give stage D's Section Reviewer a read of every org chart Table", () => {
     expect(granted('Feather Dash Section Reviewer')).toEqual([...ORG_CHART, 'feather_dash.store_rollout'].sort())
+  })
+
+  it('give no app role the people Tables: who reads contacts and stints is the scopes\' to decide (#683)', () => {
+    expect(manifest.permissions.filter(p => ['feather_dash.employee', 'feather_dash.employment'].includes(p.table))).toEqual([])
   })
 
   it('grant reads only: writing a Table that decides scope waits for featherbase #462', () => {

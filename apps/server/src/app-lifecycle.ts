@@ -90,13 +90,25 @@ export function provisionApp<T>(name: string, fn: () => Promise<T>): Promise<T> 
   return appOperation(() => scope.run({ exclusive: true, provisioning: name }, fn), true)
 }
 
+/** #912: refused like any unavailable app (403, audited), but answered with
+ *  its plain reason, never as a bare "Application access refused". */
+export class AppNotRunningError extends AppError {
+  constructor(message: string) { super('PermissionError', message) }
+}
+
 export async function assertAppAvailable(name: string, exactClientIdentity = false): Promise<void> {
   if (!name.includes('.')) return
   const owner = name.split('.')[0]
   if (scope.getStore()?.provisioning === owner) return
   const [installed] = await sql`select enabled, activation_pending, package_version, migration_ledger from installed_app where name = ${owner}`
-  if (!installed?.enabled || installed.activation_pending || !activeApps.has(owner))
+  if (!installed?.enabled || installed.activation_pending)
     throw new AppError('PermissionError', `App ${owner} is disabled or unavailable`)
+  // #912: installed or enabled by another process while this one ran: start
+  // it now, or say plainly why it cannot run here (not an access refusal).
+  if (!activeApps.has(owner)) {
+    const apps = await import('./apps')
+    if (!(await apps.activateInstalledApp(owner))) throw new AppNotRunningError(await apps.whyAppNotRunning(owner))
+  }
   const supplied = clientVersion.getStore()
   // The declared boundary requires an exact HTTP identity even on first install.
   // Trusted in-process calls have no HTTP client snapshot; legacy CRUD is unchanged.

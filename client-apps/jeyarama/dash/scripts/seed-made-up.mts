@@ -132,24 +132,30 @@ const toys = await section('9905', 'Toys')
 await place('9905', '011111001', toys.row_id)
 const job = (person: string, job: string, store: string, extra: Record<string, unknown> = {}) =>
   ensure('feather_dash.job_assignment', { person, job, store, starts_on: '2026-01-01', ...extra })
-await job(people.many, 'Cluster Manager', '9901')
-await job(people.many, 'Cluster Manager', '9902')
+// #928: a person's assignments share their time, one Primary at a time. Until the scopes derive a
+// cluster's stores (#683), the made-up Cluster Manager holds a row in each store, splitting the time.
+const second = (percentage: number) => ({ assignment_type: 'Secondary', percentage })
+const first = (percentage: number) => ({ assignment_type: 'Primary', percentage })
+await job(people.many, 'Cluster Manager', '9901', { cluster: 'DEMO-NORTH', ...first(50) })
+await job(people.many, 'Cluster Manager', '9902', { cluster: 'DEMO-NORTH', ...second(50) })
 await job(people.one, 'Team Leader', '9901', { section: sarees.row_id })
 await job(people.quiet, 'Team Leader', '9901', { section: bags.row_id })
 await job(people.bare, 'Store Manager', '9903')
 // #4486: one reader per reason, so the page's "why" sentence can be seen in each state.
 await job(people.sm, 'Store Manager', '9901')
-await job(people.tl2, 'Team Leader', '9901', { section: sarees.row_id })
-await job(people.tl2, 'Team Leader', '9901', { section: kids.row_id })
-for (const s of [bags, footwear, watches, sports]) await job(people.tl4, 'Team Leader', '9901', { section: s.row_id })
-await job(people.several, 'Team Leader', '9901', { section: sarees.row_id })
-await job(people.several, 'Staff', '9901', { section: kids.row_id })
+await job(people.tl2, 'Team Leader', '9901', { section: sarees.row_id, ...first(50) })
+await job(people.tl2, 'Team Leader', '9901', { section: kids.row_id, ...second(50) })
+for (const [i, s] of [bags, footwear, watches, sports].entries())
+  await job(people.tl4, 'Team Leader', '9901', { section: s.row_id, ...(i ? second(25) : first(25)) })
+await job(people.several, 'Team Leader', '9901', { section: sarees.row_id, ...first(50) })
+await job(people.several, 'Staff', '9901', { section: kids.row_id, ...second(50) })
 await job(people.preparing, 'Team Leader', '9905', { section: toys.row_id })
 await job(people.dm2, 'Department Manager', '9901', { department: menswear.row_id })
 await job(people.staff1, 'Staff', '9901', { section: sarees.row_id })
-for (const s of [bags, footwear, watches]) await job(people.tl3, 'Team Leader', '9901', { section: s.row_id })
-await job(people.smtl, 'Store Manager', '9901')
-await job(people.smtl, 'Team Leader', '9901', { section: sarees.row_id })
+for (const [i, s] of [bags, footwear, watches].entries())
+  await job(people.tl3, 'Team Leader', '9901', { section: s.row_id, ...(i ? second(33) : first(34)) })
+await job(people.smtl, 'Store Manager', '9901', first(50))
+await job(people.smtl, 'Team Leader', '9901', { section: sarees.row_id, ...second(50) })
 // #4453: a large store, Bayside 9906, with 1,600 made-up subcategories; two sections name a few of them.
 const LARGE = Array.from({ length: 1600 }, (_, i) => `02${String(Math.floor(i / 100)).padStart(2, '0')}${String(i % 100).padStart(5, '0')}`)
 const baysideHome = await section('9906', 'Home Linen')
@@ -220,6 +226,22 @@ async function seed(name: string, rows: Record<string, unknown>[]) {
 }
 await seed('sales_to_date', facts)
 await seed('sales_month', month)
+// #750: last month's copies, the whole month, with figures of their own so the two months never agree.
+const lastFacts = [
+  row('9901', 'Lakeside', '010101001', 'Silk sarees', 2400000.80, 2515000.35, lastMonth, lastMonthEnd),
+  row('9901', 'Lakeside', '010101002', 'Cotton sarees', 780000, 702500.60, lastMonth, lastMonthEnd),
+  row('9901', 'Lakeside', '010202001', 'Boys shirts', 560000, 610250, lastMonth, lastMonthEnd),
+  row('9901', 'Lakeside', '010707001', 'Sandals', 150000, 98000.45, lastMonth, lastMonthEnd),
+  row('9901', 'Lakeside', '010808001', 'Wrist watches', 230000, 241000, lastMonth, lastMonthEnd),
+  row('9901', 'Lakeside', '011212001', 'Formal shirts', 290000, 301500.25, lastMonth, lastMonthEnd),
+  row('9904', 'Parkside', '010101001', 'Silk sarees', 1150000, 1201000.10, lastMonth, lastMonthEnd),
+  row('9902', 'Hillview', '010404001', 'Belts', 90000, 70000, lastMonth, lastMonthEnd),
+]
+await seed('sales_last_month', lastFacts)
+await seed('sales_last_month_meta', [...new Set(month.map(m => `${m.store_code} ${m.subcategory_code}`))].map(key => {
+  const [store_code, subcategory_code] = key.split(' ')
+  return { store_code, store_name: STORE_NAMES[store_code], subcategory_code, period_start: lastMonth, data_through: lastMonthEnd, targets_available: true }
+}))
 
 // The proof it worked: a made-up Store Manager opens Lakeside's report and gets figures.
 const signIn = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' },

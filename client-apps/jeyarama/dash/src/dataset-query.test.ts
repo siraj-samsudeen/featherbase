@@ -12,6 +12,8 @@ const query = (name: string) => (manifest as unknown as { datasets: { name: stri
 let run: (sql: string) => Promise<Row[]>
 // The first of this month in IST, as the query works it out: from DuckDB's own clock.
 let day1: string
+// The last day of last month (#750).
+let lastDay: string
 
 beforeAll(async () => {
   // This repository's root (client-apps/jeyarama/dash/src → four levels up), with `pnpm install` run.
@@ -22,6 +24,7 @@ beforeAll(async () => {
   run = async (sql: string) => (await connection.runAndReadAll(sql)).getRowObjectsJS() as Row[]
   const [first] = await run(`select strftime(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)), '%Y-%m-%d') as day1`)
   day1 = String(first.day1)
+  lastDay = String((await run(`select strftime(date '${day1}' - interval 1 day, '%Y-%m-%d') as d`))[0].d)
   for (const statement of [
     `attach ':memory:' as marts`, `attach ':memory:' as gold`,
     `create schema marts.sales`, `create schema gold.masters`, `create schema gold.sales`,
@@ -41,7 +44,8 @@ beforeAll(async () => {
     // the mart's day row overrides, as it does for the value); Scarves sold 2 with no mart row.
     `insert into marts.sales.target_vs_actual_daily values
        ('9901', '010101001', 'material_group', date '${day1}', 1000, 800, date '${day1}', 5, 4),
-       ('9901', '010101002', 'material_group', date '${day1}', 500, 0, date '${day1}', 2.5, 0)`,
+       ('9901', '010101002', 'material_group', date '${day1}', 500, 0, date '${day1}', 2.5, 0),
+       ('9901', '010101001', 'material_group', date '${lastDay}', 700, 650, date '${day1}', 7, 6)`,
     `insert into gold.sales.sales_item_daily values
        ('9901', '010101001', date '${day1}', 800, 'merchandise', 3),
        ('9901', '010303001', date '${day1}', 0, 'merchandise', 2),
@@ -114,6 +118,24 @@ describe('the quantities of a sales_to_date row', () => {
 
   it('give no target quantity to a subcategory that only sold', async () => {
     expect((await rowOf('010303001'))!.target_quantity).toBeNull()
+  })
+})
+
+// #750: last month whole, and this month never holding any of it.
+describe('the sales_last_month query on the warehouse', () => {
+  it("gives every row last month's first day, and its last day as the day the data runs to", async () => {
+    const rows = await run(query('sales_last_month'))
+    const day = (v: unknown) => (v as Date).toISOString().slice(0, 10)
+    expect([...new Set(rows.map(r => `${day(r.period_start)} ${day(r.data_through)}`))]).toEqual([`${lastDay.slice(0, 8)}01 ${lastDay}`])
+  })
+
+  it("holds last month's figures only", async () => {
+    const rows = await run(query('sales_last_month'))
+    expect(rows.map(r => [r.subcategory_code, Number(r.target), Number(r.actual)])).toEqual([['010101001', 700, 650]])
+  })
+
+  it("leaves last month out of this month's figures", async () => {
+    expect(Number((await rowOf('010101001'))!.target)).toBe(1000)
   })
 })
 

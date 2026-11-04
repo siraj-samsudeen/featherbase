@@ -215,6 +215,20 @@ at the repository root.
   with only `period_start`, `data_through` and `targets_available`, limited
   to the reader the same way. It tells a month that hasn't arrived from a
   section that sold nothing, whose figures are empty either way.
+- **Last month's datasets, `sales_last_month` and `sales_last_month_meta`**
+  (#750): the same queries, columns, filters and guards over last month whole
+  (its first day to its last, the data running to its last day with actuals).
+  They are separate datasets, so each refresh holds one `period_start` and the
+  guards still compare within it.
+- **The month picker** in the bar (`months` → `?month=this|last`, labelled
+  "This month · Nov'26" and "Last month · Oct'26"). The value is the choice,
+  not the month, so an address keeps meaning "last month". `report` and
+  `embed_session` take `{ month }` (`this` when missing) and read that month's
+  datasets. The Dive shows last month only on a pin listed in `MONTH_DIVES`
+  (`src/server.ts`; the Sales Target Dive at v14, data-warehouse#4630, which
+  caps its anchor day at `period_end`). On any other pin `embed_session`
+  answers `{ month_unsupported: true }` and the page shows last month's cached
+  table, saying the interactive report can't show last month yet.
 - **The reads** (`POST /api/app_reads/feather_dash/<read>` with
   `{"payload":{…}}` and the header `X-Featherbase-App-Version:
   feather_dash@<version>`, which the client sends):
@@ -247,7 +261,7 @@ at the repository root.
       whole-store reader's keys follow the pinned Dive (`dive_id` and
       `dive_version`):
       - **compact**, only for a Dive and version listed in `COMPACT_DIVES`
-        (`src/server.ts`; the Sales Target Dive at v13): no
+        (`src/server.ts`; the Sales Target Dive at v13 and v14): no
         `material_groups` or `section_by_material_group`; the Dive filters
         on the store alone, and the sections come as `sections: { <name>:
         [codes] }`;

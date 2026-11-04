@@ -159,6 +159,43 @@ describe('choosing another store on the rendered page', () => {
       .toBe('This store is too large for the interactive report yet. Showing the cached table.')
     await unmount()
   })
+
+  // #750: the bar's month picker.
+  it('opens last month when the bar chooses it, and never draws this month under it', async () => {
+    const { act, container, unmount } = await openOn9901()
+    calls.length = 0
+    await act(async () => {
+      history.pushState(null, '', '?store=9901&month=last')
+      window.dispatchEvent(new (DomEvent().CustomEvent)('featherbase:bar-change', { detail: { key: 'month', value: 'last' } }))
+      await settle()
+    })
+    // (The first test's page is still mounted and hears the bar too.)
+    expect([[...new Set(calls.map(c => `${c.name} ${c.payload.month}`))].sort(), container.textContent?.includes('Lakeside silk')])
+      .toEqual([['embed_session last', 'report last'], false])
+    await unmount()
+  })
+
+  it('opens the month in the address', async () => {
+    history.replaceState(null, '', '?store=9901&month=last')
+    const { act } = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { FeatherDash } = await import('./app')
+    calls.length = 0
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => { root.render(<FeatherDash />) })
+    await act(async () => { await settle() })
+    expect(calls.filter(c => c.name !== 'stores').map(c => c.payload.month)).toEqual(['last', 'last'])
+    await act(async () => root.unmount())
+  })
+
+  it("says the Dive can't show last month yet when the pinned Dive shows only the latest", async () => {
+    const { container, unmount } = await openOn9901({ embed: { month_unsupported: true } })
+    expect(container.querySelector('[data-testid=quick-label]')?.textContent)
+      .toBe("The interactive report can't show last month yet. Showing the cached table.")
+    await unmount()
+  })
 })
 
 // #4486: the header says why the reader sees the store on show, and follows the bar's store picker.
