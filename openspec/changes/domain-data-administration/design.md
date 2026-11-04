@@ -115,6 +115,120 @@ one by Administrator, is not trusted bootstrap. Only the server's explicit
 provisioning/system-actor context may initialise app data without a domain grant.
 Business approvals still apply to a platform administrator's domain operations.
 
+### Production contracts — implementation baseline, 4 November 2026
+
+These technical choices implement the owner's approved policies. The logical
+records below remain useful examples; their illustrative IDs are not wire IDs.
+No additional business decision or new UI is required for these contracts.
+
+**Permissions and migration.** Replace the operation flags with one operation
+per Permission Row and explicit Permission Column children. A permission names
+its target Table, role, operation and contribution scope (`all` or `creator`).
+Operations are create/read/update/delete/submit/cancel/amend/approve. Approve has
+its own Column selection and never implies update. Column references must belong
+to the permission's target Table; an empty selection never means all Columns.
+Generated Row IDs, revision fields and system-managed Columns stay outside the
+ordinary editable selection. Read visibility also governs searching, sorting,
+grouping, exporting, printing, activity and attached records.
+
+Do not enforce the provisional unique role/Table/operation key: two contributions
+may have different creator restrictions or app provenance. Preserve those
+contributions separately rather than merging their powers or reach. Migration
+0006 is reserved on #566. Expand existing enabled operation flags and Tier reach
+into explicit selections, retaining creator restrictions and owner_app. Existing
+create reach includes the previously effective create/write Columns; newly
+configured create and update selections are independent. Preserve child-column
+inheritance as explicit target-column contributions, not a runtime Tier fallback.
+Remove the old permission flags/Tier evaluator after the cutover; no dual writes.
+Column sensitivity still controls anonymous outbound presentation separately
+from a principal's explicit permission. Existing row Shares remain explicit
+single-row contributions; Data Scope remains an additional narrowing constraint.
+The migration must not interpret an absent legacy Data Scope as a new deny rule.
+
+**Assignment and complete-grant evaluation.** A Role Assignment names exactly
+one Person or Service Account, a reusable role, an explicit Scope, optional
+effective dates, and provenance. Scope modes are all, creator, self, named,
+direct_reports and subtree. Missing Scope, unavailable app, invalid resolver
+output and missing required relationships deny that contribution. Conditions
+within each tuple are AND; tuples are OR. One whole matching membership is
+sufficient for shared operational contacts. Every changed Column must have a
+complete grant for both stored and proposed values. Never union independent
+dimensions or use another grant's Column selection for a matching Scope.
+
+**App contracts and membership.** Apps declare versioned administration
+contracts naming owned Tables, their dimension relationships, dated assignment
+sources and the Columns the resolver may read. Extend the existing declared-fact
+reader with bounded set reads. The resolver returns facts, never an allow/deny
+decision: target Person, correlated dimension tuples, assignment IDs, reporting
+edges and effective periods. The platform validates the result and evaluates
+Scope. Reject cycles, unresolved references, conflicting dimension derivations
+and unsupported output; never turn them into all access. Dates use the instance
+business date, start inclusive and end exclusive. Reporting traversal excludes
+the holder; named departmental membership does not depend on reports_to.
+
+Feather Dash declares Employee as its own Table linked to Person, with name,
+employee_number, phone and emergency_contact Columns. It uses its existing
+job_assignment, section, department and store Tables for membership; a section
+supplies department where an assignment omits it. Explicit and derived dimensions
+must agree. Employee has no copied store/department or account credential.
+Operational contact writes never touch Person account Columns, sign_in_identity,
+password/reset storage or person_identifier. Other apps declare different Tables,
+Columns and membership contracts; no Dash role name appears in platform checks.
+
+**Continuing authority and delegation.** Authority identifies an app-declared
+office and Scope. A boundary names its required Access Admin role, action (grant
+or revoke), target role, maximum Scope, recipient restriction and permitted
+further delegation. The actor must currently occupy the office and hold the
+required complete scoped role. A checked grant records the boundary/authority
+and issuer separately. Descendants keep that provenance and are revalidated
+against the current continuing boundary on every request. Reject provenance
+cycles; an officeholder handover alone does not invalidate a grant. Each role
+definition or binding change is evaluated as effective removals and additions
+for its assignments. Protected generic CRUD cannot bypass these checks.
+
+Job capability bindings name the roles and Scope projection a job confers. The
+same grant/revoke checks cover appointment creation, replacement, deletion,
+period extension or shortening, and acting appointments. Check future
+appointments when saved and re-evaluate their provenance when effective.
+Authorised expiry is automatic, not a new revocation act. A grant-only boundary
+cannot remove powers; a revoke-only boundary cannot add them. Replacements
+check both atomically. Trusted provisioning is the explicit root of authority;
+an ordinary Administrator HTTP request is not provisioning.
+
+**Held proposals and decisions.** App-owned configuration declares approval
+rules with target operation/Columns, maker condition, Scope and outcome.
+Approval rules compose after permission: gather every applicable mandatory
+requirement, with approval taking precedence over apply-and-log. Every changed
+Column needs a configured outcome on an approval-managed Table. Approve is an
+independent scoped permission and may be narrower than read or update. A
+reviewer also needs the rule's required current authority; no self approval.
+
+Store held work in system-written Proposal, Proposal Change and Decision Tables.
+A proposal identifies maker, target, operation, reviewed revision, version and
+original/current/proposed values. Submission does not change the live Row or
+emit its update event. A review names the exact proposal version; changed
+affected values advance that version and require a fresh decision. Unrelated
+Column changes do not manufacture a conflict. Rejection requires a reason.
+Application locks/rechecks the proposal, maker, reviewer, rules, memberships,
+provenance and affected values. Run the normal save hooks as the maker, under a
+transaction-local approval context limited to the exact reviewed operation and
+Columns. A hook that changes the reviewed correction cannot extend approval.
+Record the maker, reviewer, authority and proposal in existing Version history.
+Replay or concurrent review can apply a version at most once. Existing workflow
+notification machinery delivers eligible reviewers' pending work; it does not
+decide whether the proposal is authorised.
+
+**Transactions and entry points.** Use one documented pre-row lock order for
+authority configuration, membership sources, proposal and target Rows. Scope
+reads must protect the membership set from inserts as well as existing-row
+updates. Recompute authorisation after acquiring locks; an earlier request
+snapshot is not proof after waiting for revocation. All participating public,
+import, workflow and trusted mutation paths take the same locks and final checks.
+Independent bulk Rows use actionTransaction/savepoints and return applied,
+pending or rejected individually. A rejected Row rolls back its full hook chain
+and queued effects, without rolling back another independent accepted Row.
+Do not remove app decides_scope until these paths enforce its replacement.
+
 ## Context
 
 See [proposal.md](proposal.md) for why this change is needed and the delta specs
