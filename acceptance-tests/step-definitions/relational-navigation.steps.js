@@ -18,7 +18,7 @@ const { TreeOutline } = require('../support/pages/tree-outline');
 const { RelationMapPage } = require('../support/pages/relation-map-page');
 const { tableHref } = require('../support/addresses');
 const {
-  SITE, seedOrganisation, dropOrganisation, readerRoles, limitRows, listColumns, PLANTS,
+  add, SITE, seedOrganisation, dropOrganisation, readerRoles, limitRows, listColumns, PLANTS,
 } = require('../support/organisation');
 
 const WAIT = 10_000;
@@ -562,4 +562,58 @@ Then('unfolding Enchakkal shows its region and its group of plants', async funct
   const enchakkal = await unfoldRow(this, 'Enchakkal');
   await expect(enchakkal.getByText(/\bKerala\b/).first(), "Enchakkal's region does not show").toBeVisible({ timeout: WAIT });
   assert.equal(await this.tree.groupCount('Plant', enchakkal), 3);
+});
+
+// ---- Two links from one table; a new row from a group ----
+
+Given('each cost centre names a supplying plant and a billing plant', async function () { await seed(this); });
+
+Given('Enchakkal Supermarket supplies 8 cost centres and bills none', async function () {
+  const plant = this.org.Plant['Enchakkal Supermarket'];
+  const profitCentre = this.org['Profit Centre']['EKL - Retail (All)'];
+  await this.withApi(async (api) => {
+    for (let i = 1; i <= 8; i++)
+      await add(api, 'Cost Centre', { row_id: `15039900${i}`, name: `EKL-Supply ${i}`, profit_centre: profitCentre, supplying_plant: plant });
+  });
+});
+
+When('the user opens Enchakkal Supermarket in the drill pane', async function () {
+  await on(this);
+  await this.list.open('Plant');
+  await this.list.select('Enchakkal Supermarket');
+  await this.pane.shows('Enchakkal Supermarket');
+});
+
+/** A group named by its table and the link it comes through: "Cost Centre · Supplying plant 8". */
+const viaGroup = (world, link, count) => world.pane.pane('Enchakkal Supermarket')
+  .getByRole('button', { name: new RegExp(`^Cost Centres? · ${link}\\s*${count}$`, 'i') });
+
+Then('a group of 8 cost centres by supplying plant shows', async function () {
+  await expect(viaGroup(this, 'Supplying plant', 8)).toBeVisible({ timeout: WAIT });
+});
+
+Then('a group of 0 cost centres by billing plant shows, quieter than the other', async function () {
+  const empty = viaGroup(this, 'Billing plant', 0);
+  await expect(empty).toBeVisible({ timeout: WAIT });
+  const colour = (locator) => locator.evaluate((el) => getComputedStyle(el).color);
+  assert.notEqual(await colour(empty), await colour(viaGroup(this, 'Supplying plant', 8)), 'the empty group reads like the full one');
+});
+
+Given("the user may add plants and has Enchakkal's plants open as a list", async function () {
+  await seed(this);
+  await selectInSites(this, 'Enchakkal');
+  await this.pane.openGroup('Enchakkal', 'Plant');
+  await this.pane.openGroupAsList('Enchakkal');
+  await this.list.page.waitForURL((url) => url.pathname === tableHref('Plant'), { timeout: WAIT });
+});
+
+When('the user starts a new plant', async function () {
+  const page = this.list.page;
+  await page.getByRole('link', { name: 'New', exact: true }).click({ timeout: WAIT });
+  await page.waitForURL((url) => url.pathname === `${tableHref('Plant')}/new`, { timeout: WAIT });
+});
+
+Then("the new plant's site is already Enchakkal", async function () {
+  const site = this.list.page.getByTestId('form-view').getByLabel('Site', { exact: true });
+  await expect(site).toHaveValue('Enchakkal', { timeout: WAIT });
 });

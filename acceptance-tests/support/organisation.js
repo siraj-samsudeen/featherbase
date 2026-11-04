@@ -77,7 +77,12 @@ const DEFS = {
   },
   'Cost Centre': {
     name: 'Cost Centre', id_pattern: 'prompt', title_column: 'name',
-    columns: [data('name', 'Name'), link('profit_centre', 'Profit Centre', 'Profit Centre'), data('category', 'Category')],
+    columns: [
+      data('name', 'Name'), link('profit_centre', 'Profit Centre', 'Profit Centre'), data('category', 'Category'),
+      // Two links to the same table: separate groups on a plant (#910).
+      { ...link('supplying_plant', 'Supplying plant', 'Plant'), in_list_view: false },
+      { ...link('billing_plant', 'Billing plant', 'Plant'), in_list_view: false },
+    ],
   },
 };
 
@@ -163,6 +168,6 @@ async function seedPurchasing(api) {
 }
 
 module.exports = {
-  SITE, seedOrganisation, dropOrganisation, readerRoles, limitRows, listColumns,
+  add, SITE, seedOrganisation, dropOrganisation, readerRoles, limitRows, listColumns,
   seedPurchasing, dropPurchasing, PLANTS, PROFIT_CENTRES, COST_CENTRES,
 };

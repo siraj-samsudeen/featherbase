@@ -45,7 +45,8 @@ class RelationMapPage {
   /** Chooses to centre the map on the row it links to in `table`. */
   async centreOn(table) {
     await this.clickLinked(table);
-    await this.page.getByRole('button', { name: /^(Centre|Center)( here| on| the map)?/i }).first().click({ timeout: WAIT });
+    // #910 checklist 17: the drill pane's "Focus here" re-centres the map.
+    await this.page.getByRole('button', { name: /^(Centre|Center|Focus)( here| on| the map)?/i }).first().click({ timeout: WAIT });
   }
 
   async centredOn(title) {

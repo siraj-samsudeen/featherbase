@@ -166,10 +166,12 @@ class ListPage {
     return this.page.getByTestId('filter-chip').getByRole('button', { name: 'Remove filter', exact: true });
   }
 
-  /** The list's layouts, buttons whose chosen state is aria-pressed: "Table", "Compact", "Tree". */
+  /** The list's layouts, buttons whose chosen state is aria-pressed: "Table", "Compact", "Tree" (the
+   *  list header's "Tree of all", #910 checklist 19). */
   layout(name) {
-    return this.page.getByRole('group', { name: /layout|view/i }).getByRole('button', { name, exact: true })
-      .or(this.page.getByRole('main').getByRole('button', { name, exact: true }).and(this.page.locator('[aria-pressed]')))
+    const label = name === 'Tree' ? { name: /^Tree( of all)?$/ } : { name, exact: true };
+    return this.page.getByRole('group', { name: /layout|view/i }).getByRole('button', label)
+      .or(this.page.getByRole('main').getByRole('button', label).and(this.page.locator('[aria-pressed]')))
       .first();
   }
 
