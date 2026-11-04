@@ -52,7 +52,8 @@ export async function repointRowActivity(tx: typeof sql, table: string, oldId: s
 export async function retainedActivityCounts(tx: typeof sql, table: string, rowId: string) {
   const [counts] = await tx`
     select (select count(*)::int from comment where ref_table = ${table} and ref_name = ${rowId}) as comments,
-           (select count(*)::int from version where ref_table = ${table} and ref_name = ${rowId}) as versions,
+           (select count(*)::int from version where ref_table = ${table} and ref_name = ${rowId}
+              and data->>'created' is distinct from 'true') as versions,
            (select count(*)::int from file where ref_table = ${table} and ref_name = ${rowId}) as files,
            (select count(*)::int from share where share_table = ${table} and share_name = ${rowId}) as shares`
   return { comments: Number(counts.comments), versions: Number(counts.versions),
@@ -112,10 +113,11 @@ export async function documentActivity(table: string, name: string, user: string
     author_name: names.get(String(entry.created_by)) ?? SYSTEM_ACTOR_LABELS[String(entry.created_by)] ?? 'Unknown person',
   })
   const visibleVersions = versions.map((version) => {
-    const data = version.data as { changed?: [string, unknown, unknown][]; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown } } | null
+    const data = version.data as { changed?: [string, unknown, unknown][]; created?: boolean; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown } } | null
     return {
       ...withAuthor(version),
       data: {
+        ...(data?.created ? { created: true } : {}),
         ...(data?.import_run ? { import_run: data.import_run } : {}),
         ...(data?.resolution && visibleFields.has(data.resolution.field) ? { resolution: data.resolution } : {}),
         changed: (data?.changed ?? []).filter(([field]) => visibleFields.has(field)),
