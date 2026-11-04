@@ -286,7 +286,7 @@ describe('a newer version in the image', () => {
 describe('a live server working while the deploy runs (#943)', () => {
   test('a live job waiting on a row the deploy saves does not hang it', async () => {
     await pretendTo('staging')
-    const [before] = await sql`select enabled from scheduled_job where row_id = 'check_sla'`
+    const [before] = await sql`select enabled, now() as at from scheduled_job where row_id = 'check_sla'`
     await sql`update scheduled_job set enabled = false where row_id = 'check_sla'`
     const live = mkdtempSync(join(import.meta.dirname, '.deploy-instance-'))
     mkdirSync(join(live, 'client-apps/acme/instances/board'), { recursive: true })
@@ -320,6 +320,8 @@ describe('a live server working while the deploy runs (#943)', () => {
       await running.catch(() => {})
       await runner.end({ timeout: 1 })
       await sql`update scheduled_job set enabled = ${before.enabled} where row_id = 'check_sla'`
+      // Switching the job on queued a run; left queued, a later file drains it.
+      await sql`delete from background_job where method = 'check_sla' and created_at >= ${before.at}`
       rmSync(live, { recursive: true, force: true })
     }
   }, 30_000)
