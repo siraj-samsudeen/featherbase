@@ -118,7 +118,7 @@ export function callerDocuments(app: string, allowed: string[], user: string, li
     members: table => operation(async () => { await metaFor(table); return tableMembers(table, user) }),
     list: (table, args = {}) => operation(async () => {
       await metaFor(table)
-      if (args.filters?.some(([, operator]) => operator === 'related')) reject('Action lists do not support cross-table related filters')
+      if (args.filters?.some(([, operator]) => operator === 'related' || operator === 'not related')) reject('Action lists do not support cross-table related filters')
       // What the caller may not read of a linked Table reads as nothing.
       if (readOnly(table)) return getList(table, args, user).then(r => r.data, (error: unknown) =>
         error instanceof AppError && error.type === 'PermissionError' ? [] : Promise.reject(error))

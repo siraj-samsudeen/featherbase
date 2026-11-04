@@ -71,6 +71,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   // the Table preselected (IMP-R7's entry variant, unchanged).
   await signIn(session)
     .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
+    .clickButton('List actions')
     .assertHas('[data-testid="open-import"]')
   await session.step('J1.1: Import from the list view preselects the Table', async ({ page }) => {
     await page.getByTestId('open-import').click()
@@ -119,10 +120,18 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
     expect(count.count).toBe(8)
   })
 
-  // J1.5 — Import: completion reports updated / inserted as separate counts.
-  await session.clickButton('Import 8 rows')
-  await session.step('J1.5: completion reports separate counts', async ({ page }) => {
-    await expect(page.getByTestId('iw-result-0')).toContainText('Recorded 8 processed matches and added 0 rows')
+  // A successful single-sheet import navigates to the list, so its transient
+  // result panel is not a durable completion surface. Keep the exact counts
+  // on the real import response, followed by list, identity and log checks.
+  await session.step('J1.5: completed import reports separate counts', async ({ page }) => {
+    const completed = page.waitForResponse((response) =>
+      response.request().method() === 'POST' &&
+      response.url().endsWith(`/api/table/${encodeURIComponent(DT)}:import`),
+    )
+    await page.getByRole('button', { name: 'Import 8 rows', exact: true }).click()
+    const response = await completed
+    expect(response.ok()).toBe(true)
+    expect(await response.json()).toMatchObject({ updated: 8, inserted: 0, failed: [] })
   })
 
   // J1.6 — still 8 rows, Alpha corrected, every row keeps its original id.
@@ -161,7 +170,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   // UPS-R5 — a fresh visit: the remembered key is offered as a visible
   // suggestion ("Match on Zone Name, as last time"), active only on acceptance.
   await session
-    .visit(`/admin/import?table=${encodeURIComponent(DT)}`)
+    .visit(`/featherbase/admin/import?table=${encodeURIComponent(DT)}`)
     .dropFile('[data-testid="iw-dropzone"]', 'e2e/fixtures/zones-v2.csv')
   await session.step('UPS-R5: the key comes back as a visible suggestion', async ({ page }) => {
     await expect(page.getByTestId('iw-key-suggested-0')).toContainText(
@@ -203,7 +212,7 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
 
   // J2.3′ — in the mapping step (append), map the Code column onto Row ID.
   await signIn(session)
-    .visit(`/admin/import?table=${encodeURIComponent(DT2)}`)
+    .visit(`/featherbase/admin/import?table=${encodeURIComponent(DT2)}`)
     .dropFile('[data-testid="iw-dropzone"]', 'e2e/fixtures/zone-codes.csv')
     .assertText('3 rows, 3 columns in the file')
   await session.step('J2.3′: the Row ID accepts the mapping', async ({ page }) => {
@@ -243,7 +252,7 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
   // an update (that is UPS-J1's mechanics): preview says so, and the
   // code-less row now fails — a row without a key cannot claim a match.
   await session
-    .visit(`/admin/import?table=${encodeURIComponent(DT2)}`)
+    .visit(`/featherbase/admin/import?table=${encodeURIComponent(DT2)}`)
     .dropFile('[data-testid="iw-dropzone"]', 'e2e/fixtures/zone-codes.csv')
   await session.step('J2 branch: Row ID as match key turns collisions into updates', async ({ page }) => {
     await page.getByTestId('iw-map-0-0').selectOption('row_id')

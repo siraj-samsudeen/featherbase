@@ -421,6 +421,65 @@ When the user connects it
 Then the user sees the database's shops listed in Featherbase
 ```
 
+### Requirement: Name each table as it is connected
+
+When connecting a data source's tables, the user SHALL be able to give each
+one the name it will have in Featherbase; a table left as proposed keeps the
+proposed name.
+
+#### Scenario: The tables read "Shelf" and "Bin"
+
+```gherkin
+Given the user is a System Manager
+And a Postgres database of shelves and the bins on each shelf
+And a data source for that database
+When the user connects its shelf and bin tables, naming them "Shelf" and "Bin"
+Then the user sees tables called "Shelf" and "Bin" in Featherbase
+```
+
+### Requirement: A link column is named after what it points at
+
+A column that points at another table's rows SHALL be labelled by what it
+points at, so a bin's shelf column reads "Shelf", not "Shelf Id".
+
+#### Scenario: A bin's shelf is labelled "Shelf"
+
+```gherkin
+Given the user is a System Manager
+And a Postgres database of shelves and the bins on each shelf
+And its shelf and bin tables connected as "Shelf" and "Bin"
+When the user opens a bin
+Then the user sees its link to a shelf labelled "Shelf"
+```
+
+### Requirement: A connected row reads by its title
+
+Wherever Featherbase shows a row by its title (the value that names it, such
+as a shelf's name), a row of a connected table SHALL show that title, never
+its id. The user sees only the titles of rows they may read.
+
+#### Scenario: A bin's shelf reads "Top" on the relationship map
+
+```gherkin
+Given the user is a System Manager
+And a Postgres database of shelves and the bins on each shelf
+And its shelf and bin tables connected as "Shelf" and "Bin"
+And a bin on the shelf titled "Top"
+When the user opens that bin's relationship map
+Then the user sees its shelf as "Top"
+```
+
+#### Scenario: A shelf the user may not read keeps its title hidden
+
+```gherkin
+Given a Postgres database of shelves and the bins on each shelf
+And its shelf and bin tables connected as "Shelf" and "Bin"
+And a bin on the shelf titled "Top"
+And the user may read bins but not shelves
+When the user opens that bin's relationship map
+Then the user does not see "Top"
+```
+
 ### Requirement: Explore follows linked rows within one connected Postgres source
 
 The user SHALL explore direct links within one Postgres data source over all matching upstream records, with exact totals and groups and the same access restrictions at every step. Other sources, indirect links and requests beyond the existing limits SHALL remain refused; selecting records and summing values remain unchanged.
@@ -463,4 +522,81 @@ Then the connected result has no floors with a total of zero
 Given a connected Postgres source has more than five hundred stores
 When the user explores floors without selecting a store from that source
 Then floors linked to stores beyond the displayed page contribute to the exact result
+```
+
+### Requirement: Connecting a table picks the column that names its rows
+
+Connecting a table SHALL make its title the first column it has from this
+order: name, title, label, full name, display name, first name. A table with
+none of them is read by its values, like any table without a title.
+
+#### Scenario: A shelf is titled by its label, not its aisle
+
+```gherkin
+Given the user is a System Manager
+And a Postgres database of shelves and the bins on each shelf
+And a shelf labelled "Top" in the "East" aisle
+And its shelf and bin tables connected as "Shelf" and "Bin"
+When the user opens that shelf
+Then the user sees the shelf as "Top"
+```
+
+### Requirement: A connected table's list shows what a row is about
+
+A connected table's list SHALL show its title and up to four more of its
+columns, in the source's order. It leaves out the columns that only record
+when a row was created or changed, and by whom.
+
+#### Scenario: The shelf list leaves out when each shelf was created
+
+```gherkin
+Given the user is a System Manager
+And a Postgres database of shelves and the bins on each shelf
+And a shelf labelled "Top" in the "East" aisle
+And its shelf and bin tables connected as "Shelf" and "Bin"
+When the user opens the list of shelves
+Then the user sees each shelf's label and aisle
+And the user does not see when each shelf was created
+```
+
+### Requirement: A link to a table not connected yet says so
+
+Where a row's value is shown, a column that points at a table not connected
+yet SHALL show its value and say that table isn't connected yet.
+
+#### Scenario: A bin's shelf says its table isn't connected
+
+```gherkin
+Given a Postgres database of shelves and the bins on each shelf
+And only its bin table connected, as "Bin"
+And the user may read bins
+When the user opens a bin
+Then the user sees that its shelf's table is not connected yet
+And the user is not offered to connect it
+```
+
+### Requirement: A System Manager can connect that table from the row
+
+A System Manager SHALL also be offered to connect that table, which opens the
+data source's tables with it already chosen.
+
+#### Scenario: A System Manager is offered the shelf table
+
+```gherkin
+Given the user is a System Manager
+And a Postgres database of shelves and the bins on each shelf
+And only its bin table connected, as "Bin"
+When the user opens a bin
+Then the user sees that its shelf's table is not connected yet
+And the user is offered to connect the shelf table
+```
+
+#### Scenario: The shelf table is ready to connect
+
+```gherkin
+Given the user is a System Manager
+And a Postgres database of shelves and the bins on each shelf
+And only its bin table connected, as "Bin"
+When the user opens a bin and takes the offer to connect the shelf table
+Then the user sees the shelf table chosen, ready to connect
 ```

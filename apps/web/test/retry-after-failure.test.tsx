@@ -23,22 +23,3 @@ test('Instance health that could not be loaded says so, and Try again loads it o
   expect(await screen.findByTestId('instance-health-summary')).toBeInTheDocument()
   expect(screen.queryByText('The checks could not be loaded.')).not.toBeInTheDocument()
 })
-
-test('Waiting for access that could not be loaded offers Try again, and asks again when pressed', async ({ admin }) => {
-  vi.spyOn(console, 'error').mockImplementation(() => {})
-  // This read is not in a step of its own: its failure ends the test's
-  // transaction, so the retry fails too — what is under test is that the
-  // page asks again and keeps offering the way back.
-  await sql.unsafe('alter table featherbase.sign_in_identity rename column linked_by to linked_by_gone')
-  const asked: string[] = []
-  const real = globalThis.fetch
-  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : (input as Request).url
-    if (url.startsWith('/api/people/waiting_for_access?') || url === '/api/people/waiting_for_access') asked.push(url)
-    return real(input, init)
-  })
-  await renderApp('/featherbase/admin/waiting-for-access', admin)
-  await userEvent.click(await screen.findByRole('button', { name: /try again/i }, { timeout: 8000 }))
-  await waitFor(() => expect(asked).toHaveLength(2))
-  expect(await screen.findByRole('button', { name: /try again/i })).toBeInTheDocument()
-})

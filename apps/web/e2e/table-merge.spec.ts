@@ -71,7 +71,7 @@ test.afterEach(async ({ request }) => {
 })
 
 test('folding pairs what it can, and refuses to guess the rest', async ({ session }) => {
-  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(SRC))}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(SRC))}`).clickButton('Table administration')
   await session.step('open the merge screen and pick the target', async ({ page }) => {
     await page.getByTestId('open-merge').click()
     await expect(page.getByTestId('table-merge')).toBeVisible()
@@ -160,7 +160,7 @@ test('a merge is an import, so it appears in the history and can be undone', asy
     await expect(page.getByTestId('tm-outcome')).toBeVisible()
   })
 
-  await session.visit('/admin/imports')
+  await session.visit('/featherbase/admin/imports')
   await session.step('recorded as an import of the source Table', async ({ page }) => {
     // Recorded as an import of the source Table — the provenance a merge would
     // otherwise lose entirely.
@@ -170,7 +170,7 @@ test('a merge is an import, so it appears in the history and can be undone', asy
     await expect(card.getByTestId(`ib-appended-${DST}`)).toContainText('existing Table')
   })
 
-  await session.visit(`/admin/import?table=${encodeURIComponent(DST)}`)
+  await session.visit(`/featherbase/admin/import?table=${encodeURIComponent(DST)}`)
   await session.step('undoable through the run history, like any other import', async ({ page }) => {
     // And undoable through the run history, like any other import.
     await expect(page.getByTestId('iw-run-history')).toBeVisible()

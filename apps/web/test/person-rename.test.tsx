@@ -100,21 +100,25 @@ test('names, not ids: a comment by a person shows their name and initials', asyn
   const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Names Row', row: { title: 'discuss' } })
   await asha.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Names Row', ref_name: doc.row_id, content: 'looks right, mail sm.atk@jeyarama.com' } })
   await renderApp(`/featherbase/admin/table/names-row/row/${doc.row_id}`, admin)
+  await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
   const author = await screen.findByTestId('comment-author')
   await waitFor(() => expect(author).toHaveTextContent('Asha Kumar'))
   expect(screen.getByTestId('comment-initials')).toHaveTextContent('AK')
   // An address is not highlighted as a mention.
-  const highlighted = [...screen.getByTestId('comment-list').querySelectorAll('span[class*="text-action"]')]
+  const highlighted = [...screen.getByTestId('comment-content').querySelectorAll('span[class*="text-action"]')]
   expect(highlighted.some((e) => e.textContent?.includes('@'))).toBe(false)
-  expect(screen.getByTestId('comment-list')).toHaveTextContent('sm.atk@jeyarama.com')
-  expect(screen.getByTestId('comment-list').textContent).not.toContain(asha.user!)
+  expect(screen.getByTestId('activity-comment')).toHaveTextContent('sm.atk@jeyarama.com')
+  expect(screen.getByTestId('activity-comment').textContent).not.toContain(asha.user!)
 })
 
 test('the Person list shows each person’s name in its first column', async ({ admin, createUser }) => {
   const ravi = await createUser({ email: 'ravi.list@example.com', fullName: 'Ravi Menon' })
   await renderApp('/featherbase/admin/table/person', admin)
-  await waitFor(() => expect(screen.getAllByTestId('principal-name').some((n) => n.textContent === 'Ravi Menon')).toBe(true))
-  const table = screen.getAllByTestId('principal-name')[0].closest('table') as HTMLElement
+  // #792: the list leads with Person's title column, the full name, as the link to the row.
+  const link = await screen.findByRole('link', { name: 'Ravi Menon' })
+  expect(link.getAttribute('href')).toContain(encodeURIComponent(ravi.user!))
+  const table = link.closest('table') as HTMLElement
+  expect(within(table).getAllByRole('columnheader')[0]).not.toHaveTextContent('Row ID')
   expect(within(table).queryByText(ravi.user!)).toBeNull()
 })
 
@@ -131,6 +135,7 @@ test('a name the viewer may not read is "Unnamed person", never a stuck "…" or
   const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Hidden Row', row: { title: 'x' } })
   await author.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Hidden Row', ref_name: doc.row_id, content: 'hello' } })
   await renderApp(`/featherbase/admin/table/hidden-row/row/${doc.row_id}`, reader)
+  await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
   const name = await screen.findByTestId('comment-author')
   await waitFor(() => expect(name).toHaveTextContent('Unnamed person'))
   expect(name.textContent).not.toContain(author.user!)
@@ -147,6 +152,7 @@ test('a Person form is headed by the name, never the id, offers no Rename, and R
   await waitFor(() => expect(heading).toHaveTextContent('Person: Asha Form'))
   expect(heading.textContent).not.toContain(asha.user!)
   expect(within(form).getByTestId('breadcrumbs').textContent).not.toContain(asha.user!)
+  await userEvent.click(within(form).getByRole('button', { name: 'Record actions' }))
   expect(within(form).queryByRole('button', { name: 'Rename' })).toBeNull()
   const recent = await screen.findAllByTestId('sidebar-recent')
   const row = recent.find((r) => r.textContent?.includes('Person'))!

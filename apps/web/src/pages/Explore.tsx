@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, listResource } from '../lib/api'
 import { listColumns, useMeta } from '../lib/meta'
+import { listFields } from '../lib/list-view-columns'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { stepKey, useStepOptions, type Step } from '../lib/explore-steps'
 import { adminPageTitle } from 'shared'
@@ -370,7 +371,7 @@ function Pane({
   // Headline: hash-named tables (sub-tables, mostly) lead with their first
   // real column instead of an opaque row id.
   const displayColumns = useMemo(
-    () => (meta.data?.id_pattern === 'hash' && columns.length > 1 ? columns.slice(1) : columns),
+    () => (meta.data?.id_pattern === 'hash' && columns.length > 1 && columns[0].column_name === 'row_id' ? columns.slice(1) : columns),
     [meta.data, columns],
   )
   // Σ prefers money over measures: Currency, then Float, then Int.
@@ -388,7 +389,7 @@ function Pane({
     queryFn: () =>
       listResource(table, {
         filters,
-        fields: columns.map((c) => c.column_name),
+        fields: listFields(columns),
         limit_page_length: PANE_LIMIT,
       }),
   })

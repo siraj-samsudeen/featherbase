@@ -620,13 +620,31 @@ const findPersonRoute = createRoute({
 })
 
 // #429: people who signed in but hold no role yet (System Manager only).
+// #835: the standard Person list behind the waiting filter; the person's own
+// filters live in the address like any list's.
 const waitingForAccessRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'waiting-for-access',
-  component: () => (
-    <ManageOnly><WaitingForAccess /></ManageOnly>
-  ),
+  validateSearch: (search: Record<string, unknown>) => ({
+    filters: searchString(search.filters),
+  }),
+  component: WaitingForAccessPage,
 })
+
+function WaitingForAccessPage() {
+  const { filters } = waitingForAccessRoute.useSearch()
+  const navigate = waitingForAccessRoute.useNavigate()
+  return (
+    <ManageOnly>
+      <WaitingForAccess
+        filters={parseFilters(filters)}
+        onFiltersChange={(next) =>
+          navigate({ search: { filters: next.length ? JSON.stringify(next) : undefined }, replace: true })
+        }
+      />
+    </ManageOnly>
+  )
+}
 
 // #465 D8: instance health (System Manager only).
 const instanceHealthRoute = createRoute({
@@ -694,14 +712,19 @@ const allTablesRoute = createRoute({
 const sourceBrowserRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'source/$name',
+  // #796: `connect=<schema.table>` opens with that table loaded and chosen.
+  validateSearch: (search: Record<string, unknown>) => ({
+    connect: searchString(search.connect),
+  }),
   component: SourceBrowserPage,
 })
 
 function SourceBrowserPage() {
   const { name } = sourceBrowserRoute.useParams()
+  const { connect } = sourceBrowserRoute.useSearch()
   return (
     <div data-testid="table-page">
-      <SourceBrowser key={name} name={name} />
+      <SourceBrowser key={`${name}\u0000${connect ?? ''}`} name={name} connect={connect} />
     </div>
   )
 }

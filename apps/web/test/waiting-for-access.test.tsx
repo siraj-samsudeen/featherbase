@@ -1,5 +1,6 @@
-// #429: System Managers see who signed in without a role, from a nav item
-// with a count, and open the Person form from a row.
+// #429, #835: System Managers see who signed in without a role, from a nav
+// item with a count, as the standard Person list, and open the Person form
+// from a row.
 import { afterEach, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -23,7 +24,7 @@ async function waitingPerson(name: string, email: string) {
 
 test('a System Manager sees the count, the list and opens the Person form', async ({ admin }) => {
   await clearWaiting()
-  const id = await waitingPerson('Waiting Person', 'waiting.person@staff.example.com')
+  await waitingPerson('Waiting Person', 'waiting.person@staff.example.com')
   await waitingPerson('Second Person', 'second.person@staff.example.com')
   await renderApp('/featherbase/admin/waiting-for-access', admin)
 
@@ -31,11 +32,15 @@ test('a System Manager sees the count, the list and opens the Person form', asyn
   await waitFor(() => expect(within(link).getByTestId('waiting-for-access-count')).toHaveTextContent('2'))
 
   const page = await screen.findByTestId('waiting-for-access')
-  const row = await within(page).findByTestId(`waiting-${id}`)
-  expect(row).toHaveTextContent('Waiting Person')
-  expect(page).toHaveTextContent('staff.example.com')
-  expect(page).not.toHaveTextContent('waiting.person@')
-
+  // The standard list, under the page's own name, with the full address.
+  expect(within(page).getByRole('heading', { level: 1 })).toHaveTextContent('Waiting for access')
+  expect(within(page).getByTestId('list-view')).toBeInTheDocument()
+  await waitFor(() => expect(within(page).getByTestId('list-total')).toHaveTextContent('2 total'))
+  expect(page).toHaveTextContent('waiting.person@staff.example.com')
+  expect(page).toHaveTextContent('Waiting Person')
+  // A list's own tools: filters and column choice.
+  expect(within(page).getByTestId('list-columns')).toBeInTheDocument()
+  const row = await within(page).findByRole('link', { name: 'Waiting Person' })
   await userEvent.click(row)
   // The Person form, where roles are given, for that person.
   expect(await screen.findByTestId('user-sign-in-methods', {}, { timeout: 5000 })).toBeInTheDocument()
@@ -45,7 +50,7 @@ test('a System Manager sees the count, the list and opens the Person form', asyn
 test('nobody waiting: an empty state and no badge', async ({ admin }) => {
   await clearWaiting()
   await renderApp('/featherbase/admin/waiting-for-access', admin)
-  expect(await screen.findByText('Nobody is waiting.')).toBeInTheDocument()
+  expect(await screen.findByTestId('waiting-empty')).toHaveTextContent('Nobody is waiting.')
   expect(screen.getByTestId('waiting-for-access-link')).toBeInTheDocument()
   expect(screen.queryByTestId('waiting-for-access-count')).not.toBeInTheDocument()
 })
@@ -85,4 +90,14 @@ test('saving a Person refreshes the count, so someone given a role leaves the ba
   await userEvent.type(field, 'First Renamed')
   await userEvent.click(within(form).getByTestId('form-save'))
   await waitFor(() => expect(within(link).getByTestId('waiting-for-access-count')).toHaveTextContent('1'))
+})
+
+test('#835: a person with no name is still identifiable by their address', async ({ admin }) => {
+  await clearWaiting()
+  const { saveDoc } = await import('server/src/document')
+  await saveDoc('Person', { email: 'no.name@staff.example.com', enabled: true }, 'Administrator', 'insert')
+  await renderApp('/featherbase/admin/waiting-for-access', admin)
+  const page = await screen.findByTestId('waiting-for-access')
+  await waitFor(() => expect(page).toHaveTextContent('no.name@staff.example.com'))
+  expect(page.textContent).not.toMatch(/psn_[a-z2-7]{20}/)
 })

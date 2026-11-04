@@ -3,7 +3,7 @@
 // recordView), and a stand-in for MotherDuck's embed API (the network
 // boundary). Made-up stores, people and figures.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { COMPACT_DIVES, EMBED_API_TIMEOUT_MS, MONTH_DATASET, STORE_NAMES_TIMEOUT_MS, appOrigin, reads, setCompactDives, setEmbedFetch, SALES_DATASET, stateFormat } from './server'
+import { COMPACT_DIVES, EMBED_API_TIMEOUT_MS, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH_DATASET, MONTH_DIVES, STORE_NAMES_TIMEOUT_MS, appOrigin, reads, setCompactDives, setEmbedFetch, setMonthDives, SALES_DATASET, showsChosenMonth, stateFormat } from './server'
 import type { Place } from './provider.ts'
 import { EMBED_STATE_LIMIT_BYTES, type SalesRow } from './report.ts'
 
@@ -50,7 +50,7 @@ function context({ places = [place('9901 / Section: Sarees', '9901', ['010101001
       datasets: {
         async active(name: string, filters?: Record<string, unknown>) {
           asked.push([name, filters])
-          if (name === MONTH_DATASET) {
+          if (name === MONTH_DATASET || name === LAST_MONTH_DATASET) {
             if (monthStalls) return new Promise<null>(() => {})
             if (monthThrows) throw new Error('not set up')
             return month && { dataset: name, served: 'cached', at: AT, rows: month }
@@ -79,6 +79,7 @@ beforeEach(() => {
 afterEach(() => {
   setEmbedFetch(null)
   setCompactDives(null)
+  setMonthDives(null)
   vi.useRealTimers()
 })
 
@@ -194,6 +195,97 @@ describe('the report read', () => {
     const { ctx, views } = context({ payload: { store: '9901' } })
     await reads.report(ctx)
     expect(views).toEqual([{ dataset: SALES_DATASET }])
+  })
+})
+
+// #750: this month or last month. The clock is 15-Oct-2026, so last month is September.
+describe("the months read (the bar's month picker)", () => {
+  it('offers this month and last month, each named by its month', () => {
+    expect(reads.months()).toEqual([{ value: 'this', label: "This month · Oct'26" }, { value: 'last', label: "Last month · Sep'26" }])
+  })
+
+  it('names December of the year before in January', () => {
+    vi.setSystemTime(new Date('2027-01-01T00:30:00Z'))
+    expect(reads.months().map(o => o.label)).toEqual(["This month · Jan'27", "Last month · Dec'26"])
+  })
+})
+
+describe('a report of last month (#750)', () => {
+  const september = (store: string, code: string): SalesRow => ({ ...row(store, code), period_start: '2026-09-01', data_through: '2026-09-30', days: 30, days_with_actual: 30 })
+  const lastMonth = (options: Options = {}) => context({ rows: [september('9901', '010101001')], ...options, payload: { store: '9901', month: 'last', ...options.payload } })
+
+  it("reads last month's datasets, never this month's", async () => {
+    const { ctx, asked } = lastMonth()
+    await reads.report(ctx)
+    expect(asked).toEqual([[LAST_SALES_DATASET, { store_code: '9901' }], [LAST_MONTH_DATASET, { store_code: '9901' }]])
+  })
+
+  it('answers the whole of last month', async () => {
+    const { ctx } = lastMonth()
+    expect(await reads.report(ctx)).toMatchObject({ state: 'ready', month: 'last', period_start: '2026-09-01', period_end: '2026-09-30', data_through: '2026-09-30' })
+  })
+
+  it("answers this month's datasets when the month says this", async () => {
+    const { ctx, asked } = context({ payload: { store: '9901', month: 'this' } })
+    expect(await reads.report(ctx)).toMatchObject({ month: 'this', period_start: '2026-10-01' })
+    expect(asked.map(a => (a as unknown[])[0])).toEqual([SALES_DATASET, MONTH_DATASET])
+  })
+
+  it('records the view against the dataset it read', async () => {
+    const { ctx, views } = lastMonth()
+    await reads.report(ctx)
+    expect(views).toEqual([{ dataset: LAST_SALES_DATASET }])
+  })
+
+  it.each([['next'], [1], [{}]])('refuses any other month (%j)', async month => {
+    const { ctx } = context({ payload: { store: '9901', month } })
+    await expect(reads.report(ctx)).rejects.toThrow('Choose this month or last month')
+  })
+
+  it("says last month hasn't arrived while its copy still holds the month before", async () => {
+    const { ctx } = context({ rows: [row('9901', '010101001')], payload: { store: '9901', month: 'last' } })
+    expect((await reads.report(ctx)).state).toBe('no_data_yet')
+  })
+
+  const V14 = { ...DIVE, dive_id: SALES_DIVE, dive_version: '14' }
+  const upstream = () => {
+    const calls: { init: RequestInit }[] = []
+    setEmbedFetch(async (_url, init) => { calls.push({ init: init! }); return new Response(JSON.stringify({ session: 's' }), { status: 200 }) })
+    return calls
+  }
+
+  it('opens no Dive that always shows the latest month: the page shows the cached table', async () => {
+    const calls = upstream()
+    const { ctx } = lastMonth({ settings: V13 })
+    expect(await reads.embed_session(ctx)).toEqual({ month_unsupported: true })
+    expect(calls).toHaveLength(0)
+  })
+
+  it("gives a month-aware Dive last month's period and cache", async () => {
+    const calls = upstream()
+    const { ctx } = lastMonth({ settings: V14 })
+    await reads.embed_session(ctx)
+    expect(JSON.parse(String(calls[0].init.body)).initial_state).toMatchObject({ period_start: '2026-09-01', period_end: '2026-09-30',
+      cached: { data_through: '2026-09-30', cols: { c: [10101001] } } })
+  })
+
+  it('keeps this month on any Dive', async () => {
+    const calls = upstream()
+    const { ctx } = context({ payload: { store: '9901', month: 'this' }, settings: V13 })
+    await reads.embed_session(ctx)
+    expect(JSON.parse(String(calls[0].init.body)).initial_state).toMatchObject({ period_start: '2026-10-01', period_end: '2026-10-15' })
+  })
+
+  it('ships knowing only the Sales Target Dive at 14 as month-aware', () => {
+    expect(MONTH_DIVES).toEqual({ [SALES_DIVE]: [14] })
+  })
+
+  it.each([['14', true], ['13', false], ['14.0', false], ['', false]])('a pin at %j shows the chosen month: %s', (version, shows) => {
+    expect(showsChosenMonth(SALES_DIVE, version)).toBe(shows)
+  })
+
+  it('knows a month-aware Dive only by its own id', () => {
+    expect(showsChosenMonth('dive-made-up', '14')).toBe(false)
   })
 })
 
@@ -378,8 +470,8 @@ describe('the embed_session read', () => {
 describe('the state format, from the pinned Dive', () => {
   // 0.10.1 lists the published cached-first Sales Target Dive, v13, and nothing else: v12 on
   // MotherDuck is an older wording-only version, which reads a missing material_groups as every store.
-  it('ships knowing only the Sales Target Dive at 13', () => {
-    expect(COMPACT_DIVES).toEqual({ [SALES_DIVE]: [13] })
+  it('ships knowing only the Sales Target Dive, at 13 and 14 (#750 keeps the compact state)', () => {
+    expect(COMPACT_DIVES).toEqual({ [SALES_DIVE]: [13, 14] })
   })
 
   it.each([

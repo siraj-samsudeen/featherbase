@@ -23,6 +23,9 @@ export interface ColumnDef {
   tier: 'basic' | 'restricted'
   /** One plain line shown under the control (#473). */
   description?: string | null
+  /** On a source-bound Table: the source table this column's foreign key lands on (#796). */
+  source_fk_schema?: string | null
+  source_fk_table?: string | null
   created_by: string
   updated_by: string
   created_at: string
@@ -41,6 +44,10 @@ export interface TableMeta {
   sort_column: string
   sort_order: string
   track_changes: boolean
+  enable_assignments?: boolean
+  enable_tags?: boolean
+  enable_files?: boolean
+  enable_discussion?: boolean
   description: string | null
   custom: boolean
   // #74: platform tables created by the migration chain — grouped under the

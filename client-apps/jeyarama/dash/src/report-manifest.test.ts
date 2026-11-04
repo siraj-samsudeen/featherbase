@@ -4,7 +4,7 @@
 // will need (an upgrade can never add one: featherbase #617).
 import { describe, expect, it } from 'vitest'
 import manifest from '../featherbase.json' with { type: 'json' }
-import { EMBED_ORIGIN, SALES_DATASET, reads } from './server.ts'
+import { EMBED_ORIGIN, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH_DATASET, SALES_DATASET, reads } from './server.ts'
 import type { SalesRow } from './report.ts'
 
 type Dataset = { name: string; source: string; query: string; columns: { name: string; type: string }[]; keys: string[]; filters: Record<string, string>
@@ -71,8 +71,12 @@ describe('the report in the manifest', () => {
     expect(Object.entries(operations).filter(([, o]) => o.outbound).map(([name]) => name)).toEqual(['embed_session'])
   })
 
-  it('draws the store picker in the top bar, filled by the stores read, setting ?store=', () => {
-    expect(manifest.bar).toEqual([{ picker: 'Store', options: 'stores', sets: 'store' }])
+  it('draws the store picker and the month picker (#750) in the top bar, setting ?store= and ?month=', () => {
+    expect(manifest.bar).toEqual([{ picker: 'Store', options: 'stores', sets: 'store' }, { picker: 'Month', options: 'months', sets: 'month' }])
+  })
+
+  it("lets anyone who can open the app read the month picker's options: they hold no figure", () => {
+    expect(operations.months.policy).toEqual(operations.me.policy)
   })
 
   it("frames only MotherDuck's embed site", () => {
@@ -101,6 +105,24 @@ describe("the month's metadata dataset", () => {
 
   it('is limited to the reader by the same scope mapping as the figures', () => {
     expect([month().source, month().filters, month().keys]).toEqual(['motherduck', sales().filters, ['store_code']])
+  })
+})
+
+// #750: last month's figures and metadata are this month's datasets over last month whole, kept
+// apart so each refresh holds one period_start (the guards compare within one).
+describe("last month's datasets", () => {
+  const named = (name: string) => datasets.find(d => d.name === name)!
+  const THIS = "cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) as date) as period_start,\n         cast(timezone('Asia/Kolkata', now()) as date) as period_end"
+  const LAST = "cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) - interval 1 month as date) as period_start,\n         cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) - interval 1 day as date) as period_end"
+
+  it.each([[LAST_SALES_DATASET, SALES_DATASET], [LAST_MONTH_DATASET, MONTH_DATASET]])('%s is %s with only its period changed', (last, current) => {
+    const { name: _a, query: lastQuery, ...lastRest } = named(last)
+    const { name: _b, query: thisQuery, ...thisRest } = named(current)
+    expect([lastRest, lastQuery]).toEqual([thisRest, thisQuery.replace(THIS, LAST)])
+  })
+
+  it("changes this month's period, which each query works out once", () => {
+    expect([named(SALES_DATASET).query.split(THIS).length, named(MONTH_DATASET).query.split(THIS).length]).toEqual([2, 2])
   })
 })
 

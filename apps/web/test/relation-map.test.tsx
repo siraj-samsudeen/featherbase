@@ -3,6 +3,7 @@
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
+import { tableHref } from 'shared'
 
 configure({ asyncUtilTimeout: 10_000 })
 const enc = encodeURIComponent
@@ -28,13 +29,27 @@ test('the map shows what a row points to and what points back, with a count', as
   await seed(admin)
   await renderApp(`/featherbase/admin/table/rm-order/row/ord-1/map`, admin)
   await screen.findByTestId('relation-map')
-  expect(await screen.findByTestId('map-forward-Rm Customer')).toHaveTextContent('cust-1')
+  // The box names the link in words, beside the Table it leads to (#794).
+  expect(await screen.findByTestId('map-forward-Rm Customer')).toHaveTextContent('Customer · Rm Customer')
   // Nothing points back at an order, so no collection is drawn for it.
   expect(screen.queryByTestId('map-group-Rm Order')).not.toBeInTheDocument()
 
   await renderApp(`/featherbase/admin/table/rm-customer/row/cust-1/map`, admin)
   const back = await screen.findByTestId('map-group-Rm Order')
   expect(back).toHaveTextContent('2')
+  await waitFor(() => expect(back).toHaveTextContent('via Customer'))
+})
+
+// SPEC: The relationship map lists its center row until a collection is opened (#794).
+test('with nothing opened the center row is listed, and opening a collection lists its rows instead', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(`${tableHref('Rm Customer')}/row/cust-1/map`, admin)
+  const self = await screen.findByTestId('map-self-row')
+  await waitFor(() => expect(within(self).getByTestId('map-row')).toHaveTextContent('Asha Stores'))
+  fireEvent.click(await screen.findByTestId('map-group-Rm Order'))
+  await screen.findByTestId('map-group-rows')
+  expect(screen.queryByTestId('map-self-row')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.getAllByTestId('map-row')).toHaveLength(2))
 })
 
 async function hopOrderToCustomerToOtherOrder(admin: Parameters<typeof renderApp>[1]) {
@@ -70,7 +85,7 @@ test('the trail leads back to the original order in one click', async ({ admin }
   await hopOrderToCustomerToOtherOrder(admin)
   fireEvent.click(within(screen.getByTestId('map-trail')).getByTestId('map-trail-0'))
   await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('First order'), { timeout: 3000 })
-  expect(screen.getByTestId('map-forward-Rm Customer')).toHaveTextContent('cust-1')
+  await waitFor(() => expect(screen.getByTestId('map-forward-Rm Customer')).toHaveTextContent('Asha Stores'))
 })
 
 test('a copied single-encoded trail restores titles and a removed stop safely falls back to its id', async ({ admin }) => {

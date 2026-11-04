@@ -23,6 +23,7 @@ export const labTables = [
   table('Lab Task', [
     { column_name: 'name', label: 'Name', column_type: 'Data' },
     { column_name: 'project', label: 'Project', column_type: 'Reference', reference_table: 'Lab Project' },
+    { column_name: 'review_project', label: 'Review project', column_type: 'Reference', reference_table: 'Lab Project' },
     { column_name: 'state', label: 'State', column_type: 'Choice', choices: 'Open\nDone' },
   ]),
 ]

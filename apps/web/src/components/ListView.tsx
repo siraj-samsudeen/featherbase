@@ -1,12 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useQueries, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { choiceLabel, rowDisplayTitle } from 'shared'
+import { choiceLabel, parseFilters, rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, getToken, listResource } from '../lib/api'
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
+import { rowCapabilitiesQuery } from '../lib/row-capabilities'
+import { LinkControl } from './FormView'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
-import { dataColumns, defaultColumnNames, isShown, listFlagsFromView, switchColumn, viewColumns, type ColumnArrangement, type ListColumn } from '../lib/list-view-columns'
+import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, switchColumn, titleListColumn, viewColumns, type ColumnArrangement, type ListColumn } from '../lib/list-view-columns'
 import { useI18n } from '../lib/i18n'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
@@ -20,6 +22,7 @@ import { GlossaryHelp } from './GlossaryHelp'
 import { fmtCount } from '@featherbase/shop-floor'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
+import { ActionDisclosure } from './ActionDisclosure'
 import { RenameTable } from './RenameTable'
 
 export type Filter = [string, string, unknown]
@@ -96,22 +99,45 @@ export function Indicator({ value, label = value }: { value: string; label?: str
   )
 }
 
+const NO_FILTERS: Filter[] = []
+
 // UI-002/UI-003: ONE list component renders every Table from its metadata.
 export function ListView({
   table,
   filters = [],
   onFiltersChange,
+  breadcrumb,
+  newRowPrefill,
+  baseFilters = NO_FILTERS,
+  title,
+  defaultOrderBy,
+  empty,
+  subtitle,
 }: {
   table: string
   filters?: Filter[]
   onFiltersChange?: (filters: Filter[]) => void
+  breadcrumb?: ReactNode
+  /** null disables direct creation for a via-sub-table relationship. */
+  newRowPrefill?: Record<string, unknown> | null
+  /** #835: filters that define the page itself (Waiting for access). Always
+   *  applied, never shown as chips or saved into a view. */
+  baseFilters?: Filter[]
+  /** The page's heading in place of the Table's name. */
+  title?: ReactNode
+  /** The order before the person picks one, in place of the Table's. */
+  defaultOrderBy?: string
+  /** What an empty list says, in place of "No rows". */
+  empty?: ReactNode
+  /** One line under the heading saying what the page lists. */
+  subtitle?: ReactNode
 }) {
   const meta = useMeta(table)
   const settings = useSettings()
   const isSystemManager = useIsSystemManager()
   const caps = useCapabilities()
   // #410: New is offered only to someone the server would let create a row here.
-  const canAddRows = Boolean(caps?.manage || caps?.creatable.includes(table))
+  const canAddRows = newRowPrefill !== null && Boolean(caps?.manage || caps?.creatable.includes(table))
   const queryClient = useQueryClient()
   // usable-on-any-device "Lists fit a phone": below 40rem the rows are cards.
   const narrow = useMediaQuery(NARROW_QUERY)
@@ -141,6 +167,11 @@ export function ListView({
   const [makingDefault, setMakingDefault] = useState<'saving' | 'failed' | null>(null)
   // UI-012: bulk selection state.
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const selectedAccess = useQueries({ queries: [...selected].map((name) => rowCapabilitiesQuery(table, name)) })
+  // Keep existing bulk refusal/partial-result semantics. A mixed selection
+  // still reaches the server; no mutation is offered when none is authorized.
+  const canBulkDelete = selectedAccess.some((q) => q.data?.delete)
+  const canBulkEdit = selectedAccess.some((q) => q.data?.write)
   const [bulkField, setBulkField] = useState('')
   const [bulkValue, setBulkValue] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -161,7 +192,8 @@ export function ListView({
     const opener = bulkDeleteButton.current
     return () => opener?.focus()
   }, [confirmingBulkDelete])
-  const filterKey = JSON.stringify(filters)
+  const queryFilters = baseFilters.length ? [...baseFilters, ...filters] : filters
+  const filterKey = JSON.stringify(queryFilters)
   useEffect(() => setStart(0), [filterKey])
   useEffect(() => setSelected(new Set()), [filterKey, start, table])
   // DEL-J1 (docs/specs/0003-table-deletion.md): deleting the whole Table.
@@ -267,9 +299,11 @@ export function ListView({
     caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source,
   )
   // The menu (#738): the Table's list columns first, then every other column
-  // the person may read; Row ID is always on.
+  // the person may read; the column the list leads with (its title, else
+  // Row ID, #792) is always on.
   const listDefaults = meta.data ? defaultColumnNames(meta.data) : new Set<string>()
-  const readableColumns = meta.data ? dataColumns(meta.data) : []
+  const leadingTitle = meta.data ? titleListColumn(meta.data) : undefined
+  const readableColumns = (meta.data ? dataColumns(meta.data) : []).filter((c) => c !== leadingTitle)
   const inListChoices = readableColumns.filter((c) => listDefaults.has(c.column_name))
   const otherChoices = readableColumns.filter((c) => !listDefaults.has(c.column_name))
   // A bound table only has updated_at when the source table has a modified
@@ -284,9 +318,9 @@ export function ListView({
     boundNoRevision && meta.data?.sort_column === 'updated_at' ? '' : (meta.data?.sort_column ?? '')
   const orderBy = sort
     ? `${sort.field} ${sort.dir}`
-    : meta.data
+    : defaultOrderBy ?? (meta.data
       ? `${metaSortColumn || (boundNoRevision ? 'row_id' : 'updated_at')} ${meta.data.sort_order || 'desc'}`
-      : undefined
+      : undefined)
 
   const list = useQuery({
     queryKey: ['list', table, columns.map((c) => c.column_name), orderBy, start, filterKey],
@@ -294,8 +328,8 @@ export function ListView({
     placeholderData: keepPreviousData,
     queryFn: () =>
       listResource(table, {
-        filters,
-        fields: columns.map((c) => c.column_name),
+        filters: queryFilters,
+        fields: listFields(columns),
         order_by: orderBy,
         limit_start: start,
         limit_page_length: PAGE,
@@ -313,7 +347,9 @@ export function ListView({
     )
 
   const total = list.data?.total ?? 0
-  const rows = list.data?.data ?? []
+  // A refetch refusal must replace cached rows with the error, not silently
+  // keep showing a successful list after its Table/access disappeared.
+  const rows = list.isError ? [] : list.data?.data ?? []
   const childFields = (meta.data?.columns ?? []).filter(
     (f) => f.column_type === 'Sub-table' && !f.hidden,
   )
@@ -341,7 +377,7 @@ export function ListView({
     // Not yet loaded is not empty: "No rows" would alarm someone whose
     // Table holds data (#871, a list reopened after its rename).
     'Loading…'
-  ) : (
+  ) : empty ?? (
     <>
       No rows
       {/* TLC-J1.2: an empty table is the moment the user most
@@ -356,7 +392,7 @@ export function ListView({
           <Link
             to="/featherbase/admin/table/$table/new"
             params={{ table }}
-            search={{ prefill: undefined }}
+            search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
             className="text-action underline"
             data-testid="list-empty-new"
           >
@@ -475,6 +511,9 @@ export function ListView({
         `/api/table/${encodeURIComponent(table)}:bulk-delete`,
         { rows: [...selected] },
       )
+      // #898: the deleted rows' titles go, so recents stop offering them.
+      const failed = new Set((result.failed ?? []).map((f) => f.row_id))
+      for (const id of selected) if (!failed.has(id)) queryClient.setQueryData(['row-title', table, id], null)
       await reportPartial('deleted', result.deleted, result.failed ?? [])
     } catch (err) {
       setBulkError(err instanceof ApiError ? refusal(err) : 'Bulk delete failed')
@@ -511,16 +550,17 @@ export function ListView({
     <div data-testid="list-view">
       {/* Top-aligned on desktop: however many rows the actions wrap to, the first
           row sits level with the title (listview.spec "share a vertical band"). */}
-      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div>
-          <div className="text-xs text-ink-subtle">
+          {breadcrumb ?? <div className="text-xs text-ink-subtle">
             <Link to="/featherbase/admin" className="hover:text-ink">
               Home
             </Link>
             {' / '}
             {table}
-          </div>
-          <h1 className="text-xl font-semibold text-ink">{table}<GlossaryHelp table={table} className="ml-1" /></h1>
+          </div>}
+          <h1 className="text-xl font-semibold text-ink">{title ?? <>{table}<GlossaryHelp table={table} className="ml-1" /></>}</h1>
+          {subtitle && <p className="text-sm text-ink-muted">{subtitle}</p>}
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
           </span>
@@ -535,7 +575,7 @@ export function ListView({
           )}
         </div>
         <div
-          className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:justify-end"
+          className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:basis-64 sm:justify-end"
           data-testid="list-toolbar"
         >
           <div className="relative">
@@ -558,10 +598,10 @@ export function ListView({
                 style={colPickerMax ? { maxHeight: colPickerMax } : undefined}
                 data-testid="list-columns-popup"
               >
-                {/* Row ID names each row, so it is always on. */}
+                {/* The leading column names each row, so it is always on. */}
                 <label className={touchRowClasses(`flex items-center gap-2 rounded px-2 py-1 text-sm text-ink-muted ${PHONE_ROW}`)}>
-                  <input type="checkbox" checked disabled data-testid="list-col-toggle-row_id" />
-                  Row ID
+                  <input type="checkbox" checked disabled data-testid={`list-col-toggle-${leadingTitle?.column_name ?? 'row_id'}`} />
+                  {leadingTitle ? (leadingTitle.label ?? leadingTitle.column_name) : 'Row ID'}
                 </label>
                 {inListChoices.map(columnChoice)}
                 {otherChoices.length > 0 && (
@@ -613,13 +653,14 @@ export function ListView({
             <Link
               to="/featherbase/admin/table/$table/new"
               params={{ table }}
-              search={{ prefill: undefined }}
+              search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
               className={buttonClasses({ variant: 'primary' })}
               data-testid="list-new"
             >
               New
             </Link>
           )}
+          <ActionDisclosure label="View: List">
           <Link
             to="/featherbase/admin/table/$table/view/report"
             params={{ table }}
@@ -629,53 +670,6 @@ export function ListView({
           >
             Report
           </Link>
-          <ExploreSplitButton table={table} />
-          {table === 'Person' && (
-            <Link to="/featherbase/admin/find-person" className={buttonClasses()} data-testid="open-find-person">
-              Find by code
-            </Link>
-          )}
-          {/* IMP-010: append rows to this Table from a CSV/Excel file —
-              absent on read-only sources (EDS-13). */}
-          {!isRowsReadOnly(meta.data) && caps?.manage && (
-            <Link
-              to="/featherbase/admin/import"
-              search={{ table: table }}
-              className={buttonClasses()}
-              data-testid="open-import"
-            >
-              Import
-            </Link>
-          )}
-          {meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data) && (
-            <Button aria-expanded={conflictsOpen} aria-controls="import-conflicts" onClick={() => setConflictsOpen((open) => !open)}>
-              Import conflicts
-            </Button>
-          )}
-          {/* #209: add a column, or fix a misspelled one, without rebuilding
-              the Table. Absent on system Tables (their columns are the
-              platform's) and on bound ones (their storage is the source's). */}
-          {canShapeColumns && (
-            <Link
-              to="/featherbase/admin/table/$table/columns"
-              params={{ table }}
-              className={buttonClasses()}
-              data-testid="open-columns"
-            >
-              Edit columns
-            </Link>
-          )}
-          {/* #208: two Tables that turned out to be the same thing. */}
-          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && (
-            <Link
-              to="/featherbase/admin/table/$table/merge"
-              params={{ table }}
-              className={buttonClasses()}
-              data-testid="open-merge"
-            >
-              Merge into…
-            </Link>
-          )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
               to="/featherbase/admin/table/$table/view/kanban"
@@ -711,6 +705,16 @@ export function ListView({
           {/* Checklist needs a Sub-table whose row table has a Check column —
               the component renders nothing when the shape is absent. */}
           <ChecklistSwitch table={table} meta={meta.data} />
+          </ActionDisclosure>
+          <ExploreSplitButton table={table} />
+          {(table === 'Person' || (!isRowsReadOnly(meta.data) && caps?.manage) || (meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data))) && <ActionDisclosure label="List actions">
+            {table === 'Person' && <Link to="/featherbase/admin/find-person" className={buttonClasses()} data-testid="open-find-person">Find by code</Link>}
+            {!isRowsReadOnly(meta.data) && caps?.manage && <Link to="/featherbase/admin/import" search={{ table }} className={buttonClasses()} data-testid="open-import">Import</Link>}
+            {meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data) && <Button aria-expanded={conflictsOpen} aria-controls="import-conflicts" onClick={() => setConflictsOpen((open) => !open)}>Import conflicts</Button>}
+          </ActionDisclosure>}
+          {(canShapeColumns || caps?.manage || isSystemManager) && <ActionDisclosure label="Table administration">
+          {canShapeColumns && <Link to="/featherbase/admin/table/$table/columns" params={{ table }} className={buttonClasses()} data-testid="open-columns">Edit columns</Link>}
+          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && <Link to="/featherbase/admin/table/$table/merge" params={{ table }} className={buttonClasses()} data-testid="open-merge">Merge into…</Link>}
           {isSystemManager && (
             <>
               {/* NAM-001: change how new rows in this Table are named —
@@ -751,6 +755,7 @@ export function ListView({
               )}
             </>
           )}
+          </ActionDisclosure>}
         </div>
       </div>
       {conflictsOpen && meta.data && <ImportConflicts key={table} table={table} meta={meta.data} />}
@@ -857,8 +862,8 @@ export function ListView({
           </div>
         </div>
       )}
-      {onFiltersChange && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
-      {onFiltersChange && <RecentStrip table={table} onApply={onFiltersChange} />}
+      {onFiltersChange && !baseFilters.length && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
+      {onFiltersChange && !baseFilters.length && <RecentStrip table={table} meta={meta.data} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
         <>
           <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
@@ -873,16 +878,17 @@ export function ListView({
           <span className="font-medium text-ink" data-testid="bulk-count">
             {fmtCount(selected.size)} selected
           </span>
-          <button
+          {canBulkDelete && <button
             ref={bulkDeleteButton}
             onClick={() => setConfirmingBulkDelete(true)}
             disabled={bulkBusy}
             className={buttonClasses({ variant: 'danger' })}
             data-testid="bulk-delete"
           >
-            Delete
-          </button>
-          <span className="flex flex-wrap items-center gap-2">
+            Delete rows
+          </button>}
+          <button onClick={() => setSelected(new Set())} disabled={bulkBusy} className={buttonClasses()}>Clear selection</button>
+          {canBulkEdit && <span className="flex flex-wrap items-center gap-2">
             <select
               value={bulkField}
               onChange={(e) => setBulkField(e.target.value)}
@@ -917,7 +923,7 @@ export function ListView({
                 </button>
               </>
             )}
-          </span>
+          </span>}
           {bulkError && (
             <span className="text-xs text-negative" data-testid="bulk-error">
               {bulkError}
@@ -1177,6 +1183,13 @@ function ListCell({
         ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && row[col.column_name] ? (
           // A title column that names a person reads as their name, never the opaque id.
           <PrincipalName id={String(row[col.column_name])} />
+        ) : col.column_type === 'Reference' && col.reference_table && !isBlank(row[col.column_name]) ? (
+          // A title that links to another row reads as that row's title.
+          <RowTitle table={col.reference_table} rowId={String(row[col.column_name])} />
+        ) : col.column_name !== 'row_id' && isBlank(row[col.column_name]) ? (
+          // #792: a row with a blank title is led by its id, never a blank; a
+          // person's opaque id reads as what identifies them (#835).
+          isPrincipalTable(table) ? <PrincipalName id={String(row.row_id)} /> : String(row.row_id)
         ) : (
           col.column_type === 'Choice' && row[col.column_name] != null
             ? choiceLabel(String(row[col.column_name]), col.choice_labels, t)
@@ -1195,12 +1208,25 @@ function ListCell({
         <Indicator value={String(value)} label={choiceLabel(String(value), col.choice_labels, t)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
         <PrincipalName id={String(value)} />
+      ) : col.column_type === 'Reference' && col.reference_table && !isBlank(value) ? (
+        // #792: a link reads as the linked row's title and opens that row.
+        <Link
+          to="/featherbase/admin/table/$table/row/$name"
+          search={{ prefill: undefined }}
+          params={{ table: col.reference_table, name: String(value) }}
+          onClick={(e) => e.stopPropagation()}
+          className="text-action hover:underline"
+        >
+          <RowTitle table={col.reference_table} rowId={String(value)} />
+        </Link>
       ) : (
         cell(value, col.column_type, settings)
       )}
     </span>
   )
 }
+
+const isBlank = (v: unknown) => v == null || String(v).trim() === ''
 
 // usable-on-any-device "Lists fit a phone": the same rows as cards. The first
 // column is the card's title and link, the first Choice its status, and the
@@ -1502,7 +1528,35 @@ function StandardFilters({
   return (
     <div className="mb-3 flex flex-wrap items-end gap-2" data-testid="standard-filters">
       {columns.map((f) =>
-        f.column_type === 'Choice' ? (
+        f.column_type === 'Reference' && f.reference_table ? (
+          // #793: a link filters by picking a row by its name, not by typing its id.
+          <label key={f.column_name} className="flex flex-col gap-0.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+              {f.label ?? f.column_name}
+            </span>
+            <span className="flex items-center gap-1">
+              <LinkControl
+                field={f}
+                value={current(f.column_name, '=')}
+                onChange={(v) => apply(f.column_name, '=', String(v ?? ''))}
+                className={inputClasses('max-w-[10rem]')}
+                common={{ 'data-testid': `std-filter-${f.column_name}` }}
+                forFilter
+              />
+              {current(f.column_name, '=') && (
+                <button
+                  type="button"
+                  onClick={() => apply(f.column_name, '=', '')}
+                  aria-label={`Clear the ${f.label ?? f.column_name} filter`}
+                  data-testid={`std-filter-clear-${f.column_name}`}
+                  className="px-1 text-ink-subtle hover:text-action"
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          </label>
+        ) : f.column_type === 'Choice' ? (
           <label key={f.column_name} className="flex flex-col gap-0.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
               {f.label ?? f.column_name}
@@ -1553,7 +1607,7 @@ function StandardFilters({
 // Chips must stay readable for non-scalar filter values: a 'related'
 // relationship filter (NAV-002) names its target, long in-lists truncate.
 export function filterValueLabel(op: string, value: unknown): string {
-  if (op === 'related' && value && typeof value === 'object' && !Array.isArray(value)) {
+  if ((op === 'related' || op === 'not related') && value && typeof value === 'object' && !Array.isArray(value)) {
     const spec = value as { table?: string; via?: string }
     return spec.via ? `${spec.table ?? ''} via ${spec.via}` : String(spec.table ?? '')
   }
@@ -1562,6 +1616,26 @@ export function filterValueLabel(op: string, value: unknown): string {
       ? `${value.slice(0, 3).map(String).join(', ')} +${value.length - 3}`
       : value.map(String).join(', ')
   return String(value)
+}
+
+/** One filter as a person reads it (#792): its column as the list's heading
+ *  names it, and a link compared with one row reads as that row's title. */
+export function FilterWords({ meta, filter }: { meta: import('../lib/meta').TableMeta | undefined; filter: Filter }) {
+  const { t } = useI18n()
+  const [column, op, value] = filter
+  const col = meta?.columns.find((c) => c.column_name === column)
+  const label = column === 'row_id' ? 'Row ID' : t(col?.label ?? column)
+  const linked =
+    col?.column_type === 'Reference' && col.reference_table && (op === '=' || op === '!=') &&
+    (typeof value === 'string' || typeof value === 'number') && String(value) !== ''
+  return (
+    <>
+      {label} {op}{' '}
+      {linked ? <RowTitle table={col.reference_table!} rowId={String(value)} />
+        : (op === '=' || op === '!=') && col?.column_type === 'Choice' ? choiceLabel(String(value), col.choice_labels, t)
+        : filterValueLabel(op, value)}
+    </>
+  )
 }
 
 export function FilterBar({
@@ -1655,28 +1729,22 @@ export function FilterBar({
       </div>
       {filters.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2" data-testid="filter-chips">
-          {filters.map((f, i) => {
-            const column = meta.columns.find((c) => c.column_name === f[0])
-            return (
-              <span
-                key={i}
-                className={pillClasses('bg-subtle text-ink gap-1 border border-border')}
-                data-testid="filter-chip"
+          {filters.map((f, i) => (
+            <span
+              key={i}
+              className={pillClasses('bg-subtle text-ink gap-1 border border-border')}
+              data-testid="filter-chip"
+            >
+              <FilterWords meta={meta} filter={f} />
+              <button
+                aria-label="Remove filter"
+                onClick={() => onChange(filters.filter((_, j) => j !== i))}
+                className="text-ink-subtle hover:text-ink"
               >
-                {t(column?.label ?? f[0])} {f[1]}{' '}
-                {['=', '!='].includes(f[1]) && column?.column_type === 'Choice'
-                  ? choiceLabel(String(f[2]), column.choice_labels, t)
-                  : filterValueLabel(f[1], f[2])}
-                <button
-                  aria-label="Remove filter"
-                  onClick={() => onChange(filters.filter((_, j) => j !== i))}
-                  className="text-ink-subtle hover:text-ink"
-                >
-                  ×
-                </button>
-              </span>
-            )
-          })}
+                ×
+              </button>
+            </span>
+          ))}
         </div>
       )}
     </div>
@@ -1690,13 +1758,15 @@ export function FilterBar({
 // live in the URL, so this is just replaying a remembered list state).
 function RecentStrip({
   table,
+  meta,
   onApply,
 }: {
   table: string
+  /** Names each filter's column; until it loads a filter reads as stored. */
+  meta: import('../lib/meta').TableMeta | undefined
   onApply: (filters: Filter[]) => void
 }) {
   const { t } = useI18n()
-  const meta = useMeta(table)
   const queryClient = useQueryClient()
   const user = getSessionUser()
   const entries = user ? recentActions(user.row_id, 60) : []
@@ -1718,12 +1788,10 @@ function RecentStrip({
   const views = entries
     .map((e) => {
       if (e.kind !== 'list' || !e.key.startsWith(`list:${table}?`)) return null
-      try {
-        const parsed = JSON.parse(e.key.slice(`list:${table}?`.length)) as Filter[]
-        return Array.isArray(parsed) && parsed.length > 0 ? { entry: e, parsed } : null
-      } catch {
-        return null
-      }
+      // A remembered address is user input: keep only well-formed filters (#87),
+      // so one typed by hand can never blank the list.
+      const parsed = parseFilters(e.key.slice(`list:${table}?`.length)) as Filter[]
+      return parsed.length > 0 ? { entry: e, parsed } : null
     })
     .filter((v): v is { entry: RecentEntry; parsed: Filter[] } => v !== null)
     .slice(0, 3)
@@ -1751,10 +1819,15 @@ function RecentStrip({
           type="button"
           onClick={() => onApply(parsed)}
           data-testid="recent-strip-view"
-          title={describeFilters(JSON.stringify(parsed), meta.data?.columns, t)}
+          title={describeFilters(JSON.stringify(parsed), meta?.columns, t)}
           className={touchRowClasses('max-w-72 truncate rounded-full bg-action-tint px-2.5 py-0.5 text-xs font-medium text-action hover:opacity-80')}
         >
-          {describeFilters(JSON.stringify(parsed), meta.data?.columns, t)}
+          {parsed.map((f, i) => (
+            <Fragment key={i}>
+              {i > 0 && ' · '}
+              <FilterWords meta={meta} filter={f} />
+            </Fragment>
+          ))}
         </button>
       ))}
     </div>

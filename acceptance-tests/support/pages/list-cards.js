@@ -143,8 +143,9 @@ class ListCards {
     await this.card(n).getByTestId('row-expand').click();
     const nested = this.card(n).getByTestId('expanded-row');
     await nested.waitFor();
-    // The nested rows load after the area opens: wait until they are no longer loading.
-    await nested.getByText(/^\s*Loading/).first().waitFor({ state: 'detached' });
+    // The row and its child Table metadata load separately. The spinner can
+    // disappear before that metadata arrives; wait for the rendered grid.
+    await nested.getByRole('table').first().waitFor();
     return ((await nested.textContent()) ?? '').trim();
   }
 

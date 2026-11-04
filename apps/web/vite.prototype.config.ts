@@ -100,7 +100,16 @@ function syntheticApi(): Plugin {
           const match = /^\/api\/table\/(Lab Project|Lab Task)(?:\/([^/:]+))?(?::([a-z_]+))?$/.exec(path)
           if (match) {
             const [, table, id, action] = match
-            if (request.method === 'GET' && action === 'connections') return send({ connections: [] })
+            // Explicit synthetic read contracts only; these do not prove permissions.
+            if (request.method === 'GET' && action === 'capabilities') return send({
+              write: scenario !== 'permission-limited', rename: false, delete: false,
+              submit: false, cancel: false, amend: false, assign: false, tag: false, comment: false, upload: false,
+            })
+            if (request.method === 'GET' && action === 'connections') return send({ connections: table === 'Lab Project' && scenario !== 'permission-limited'
+              ? ['project', 'review_project'].map((column) => ({ table: 'Lab Task', column, via: null,
+                count: scenario === 'empty' ? 0 : rows['Lab Task'].filter((row) => row[column] === id).length,
+                filters: [[column, '=', id]],
+              })) : [] })
             if (request.method === 'GET' && !action) {
               if (scenario === 'error') return refuse('Synthetic load failed. Choose another scenario to retry.', 503)
               if (scenario === 'permission-limited') return refuse('Simulated permission restriction — not a security test', 403)

@@ -41,6 +41,9 @@ test('#131: service account + token lifecycle through the Admin screen', async (
       await expect(page.getByTestId('token-owner')).toHaveValue(id)
       await page.getByTestId('token-label').fill('e2e spec token')
       await page.getByTestId('issue-confirm').click()
+      // #852: a token that never expires is issued on a second, deliberate press.
+      await expect(page.getByTestId('token-no-expiry')).toBeVisible()
+      await page.getByTestId('issue-confirm').click()
       await expect(page.getByTestId('secret-dialog')).toBeVisible()
       secret = (await page.getByTestId('secret-value').textContent())!.trim()
       expect(secret).toMatch(/^fbt_/)
