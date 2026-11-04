@@ -1,3 +1,4 @@
+import { APP_ACCENT_ATTRIBUTE } from '@featherbase/shop-floor/theme'
 import platformCss from '../index.css?inline'
 import { shadowCss } from './style'
 
@@ -41,7 +42,12 @@ export class FeatherbaseSidebar extends HTMLElement {
 
     // Observe the platform bar, not the app document: switching navigation's
     // theme must never restyle content owned by the app.
-    const bar = document.querySelector('featherbase-bar')?.shadowRoot
+    const host = document.querySelector<HTMLElement>('featherbase-bar')
+    const bar = host?.shadowRoot
+    // #941 (ADR 0019): the app's accent goes on the element that carries the
+    // painted theme, so the accent's dark block matches after a switch.
+    const accent = host?.dataset.accent ?? document.documentElement.getAttribute(APP_ACCENT_ATTRIBUTE)
+    if (accent) nav.setAttribute(APP_ACCENT_ATTRIBUTE, accent)
     const syncTheme = () => {
       const theme = bar?.querySelector<HTMLElement>('[data-testid=bar-theme-root]')?.dataset.theme
       if (theme) nav.dataset.theme = theme
