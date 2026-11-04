@@ -6,6 +6,8 @@ import { scopedWhere } from './query'
 import { principalNames } from './people-directory'
 import { getMeta, ROW_KEY, type TableMeta } from './meta'
 import { boundGetList, isBound } from './sources/dispatch'
+import { permittedTiers } from './permissions'
+import { isSensitiveColumn } from './sensitive-columns'
 
 // Home cleanup: what a person reads for each referenced row (Home tiles,
 // Recent, the activity feed). Scoped like a list read — a row the caller may
@@ -78,12 +80,16 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
 // through the same scoped list a bound Table's list view uses. A source that
 // refuses or is down leaves these rows out, like any unreadable Table.
 async function boundTitles(meta: TableMeta, ids: string[], user: string): Promise<RowTitle[]> {
-  const fields = meta.columns.filter((c) => c.column_type !== 'Sub-table').map((c) => c.column_name)
+  const tiers = await permittedTiers(user, meta.name, 'read')
+  const columns = meta.columns.filter((c) => tiers.has(c.tier ?? 'basic')
+    && !['Sub-table', 'Section Break', 'Column Break'].includes(c.column_type)
+    && !isSensitiveColumn(c.column_name) && !isSensitiveColumn(c.source_column || ''))
+  const fields = columns.map((c) => c.column_name)
   const list = await boundGetList(meta, { filters: [[ROW_KEY, 'in', ids]], fields, limit_page_length: ids.length }, user)
     .catch((err: unknown) => (err instanceof AppError ? null : Promise.reject(err)))
   if (!list) return []
   const readable = new Set(Object.keys(list.data[0] ?? {}))
-  const titleMeta = { ...meta, title_column: meta.title_column && readable.has(meta.title_column) ? meta.title_column : null }
+  const titleMeta = { ...meta, columns, title_column: meta.title_column && readable.has(meta.title_column) ? meta.title_column : null }
   return list.data.map((row) => {
     const rowId = String(row[ROW_KEY])
     return { table: meta.name, row_id: rowId, title: rowDisplayTitle(titleMeta, row, rowId) }

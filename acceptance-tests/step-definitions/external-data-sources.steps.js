@@ -108,13 +108,13 @@ When('the user connects its shelf and bin tables, naming them {string} and {stri
 
 When('the user opens a bin', async function () {
   const page = await this.actor();
-  await page.goto(`/featherbase/admin/Bin/${this.bin}`);
+  await page.goto(`/featherbase/admin/table/bin/row/${this.bin}`);
   await page.getByTestId('form-view').waitFor();
 });
 
 When("the user opens that bin's relationship map", async function () {
   const page = await this.actor();
-  await page.goto(`/featherbase/admin/map/Bin/${this.bin}`);
+  await page.goto(`/featherbase/admin/table/bin/row/${this.bin}/map`);
   await page.getByTestId('map-forward-Shelf').waitFor();
 });
 
