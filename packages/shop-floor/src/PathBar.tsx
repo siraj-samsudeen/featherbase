@@ -28,6 +28,17 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
   recent?: ReactNode
 }) {
   const [copied, setCopied] = useState(false)
+  const nav = useRef<HTMLElement>(null)
+  // A long path scrolls inside the bar; keep the current step in sight
+  // by scrolling the bar alone (scrollIntoView would also move the page).
+  useEffect(() => {
+    const bar = nav.current
+    const step = bar?.querySelector('[aria-current="step"]')
+    if (!bar || !step) return
+    const [outer, inner] = [bar.getBoundingClientRect(), step.getBoundingClientRect()]
+    const shift = inner.right > outer.right ? inner.right - outer.right : inner.left < outer.left ? inner.left - outer.left : 0
+    if (shift) bar.scrollTo?.({ left: bar.scrollLeft + shift })
+  }, [current, steps.length])
   useEffect(() => {
     if (!copied) return
     const timer = setTimeout(() => setCopied(false), COPIED_MS)
@@ -37,7 +48,7 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
     <div className="flex min-w-0 items-center gap-2 border-b border-border bg-surface px-4 py-2">
       <Button onClick={onBack} disabled={current <= 0}>Back</Button>
       <Button onClick={onForward} disabled={current >= steps.length - 1}>Forward</Button>
-      <nav aria-label="Path" className="min-w-0 flex-1 overflow-x-auto">
+      <nav ref={nav} aria-label="Path" className="min-w-0 flex-1 overflow-x-auto">
         <ol className="flex w-max items-center gap-1 text-sm">
           {steps.map((step, index) => (
             <li key={step.key} className="flex shrink-0 items-center gap-1">

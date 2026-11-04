@@ -13,7 +13,7 @@ export function Segmented<T extends string>({ label, options, value, onChange, c
   className?: string
 }) {
   return (
-    <div role="group" aria-label={label} className={cx('inline-flex shrink-0 rounded-control border border-border-control bg-surface p-0.5', className)}>
+    <div role="group" aria-label={label} className={cx('inline-flex w-fit shrink-0 rounded-control border border-border-control bg-surface p-0.5', className)}>
       {options.map((option) => (
         <button key={option.value} type="button" aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
