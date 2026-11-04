@@ -2,6 +2,7 @@
 
 const { randomUUID } = require('node:crypto');
 const { expect } = require('playwright/test');
+const { tableHref } = require('../../../packages/shared/src/app-routes.ts');
 
 class OverrideEditor {
   constructor(page, api) { this.page = page; this.api = api; this.table = `Editor Shelf ${randomUUID().slice(0, 8)}`; }
@@ -10,7 +11,7 @@ class OverrideEditor {
     await this.api.createTable({ name: this.table, columns: [{ column_name: 'floor', column_type: 'Data', in_list_view: true }] });
     await this.api.saveRow('Custom Field', { row_id: `${this.table}-note`, dt: this.table, column_name: 'note', column_type: 'Data', label: 'Note' });
     const prefill = encodeURIComponent(JSON.stringify({ table_name: this.table }));
-    await this.page.goto(`/featherbase/admin/Metadata%20Override/new?prefill=${prefill}`);
+    await this.page.goto(`${tableHref('Metadata Override')}/new?prefill=${prefill}`);
     this.form = this.page.getByTestId('form-view');
     await expect(this.form.getByLabel('Column', { exact: true })).toBeEnabled();
   }
@@ -66,7 +67,7 @@ class OverrideEditor {
 
   async attemptDuplicate() {
     const prefill = encodeURIComponent(JSON.stringify({ table_name: this.table }));
-    await this.page.goto(`/featherbase/admin/Metadata%20Override/new?prefill=${prefill}`);
+    await this.page.goto(`${tableHref('Metadata Override')}/new?prefill=${prefill}`);
     await expect(this.form.getByLabel('Column', { exact: true })).toBeEnabled();
     await this.chooseHidden('floor');
     await this.form.getByTestId('form-save').click();

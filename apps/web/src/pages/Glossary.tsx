@@ -26,7 +26,7 @@ function TermCard({ term, canEdit }: { term: GlossaryTerm; canEdit: boolean }) {
           {term.editedHere && <StatusPill tone="neutral">Edited here</StatusPill>}
           {canEdit && (
             <Link
-              to="/featherbase/admin/$table/$name"
+              to="/featherbase/admin/table/$table/row/$name"
               params={{ table: GLOSSARY_TABLE, name: term.id }}
               search={{ prefill: undefined }}
               aria-label={`Edit ${term.term}`}
@@ -81,7 +81,7 @@ function TermCard({ term, canEdit }: { term: GlossaryTerm; canEdit: boolean }) {
                 {term.describes.map((d) => (
                   <Link
                     key={`${d.table}.${d.column ?? ''}`}
-                    to="/featherbase/admin/$table"
+                    to="/featherbase/admin/table/$table"
                     params={{ table: d.table }}
                     search={{ filters: undefined }}
                     className="inline-flex min-h-8 items-center text-action underline underline-offset-2 [overflow-wrap:anywhere] max-sm:min-h-11"
@@ -119,8 +119,8 @@ export function GlossaryPage() {
         </div>
         {data?.canAdd && (
           <Link
-            to="/featherbase/admin/$table/$name"
-            params={{ table: GLOSSARY_TABLE, name: 'new' }}
+            to="/featherbase/admin/table/$table/new"
+            params={{ table: GLOSSARY_TABLE }}
             search={{ prefill: undefined }}
             className={buttonClasses({ variant: 'primary' })}
             data-testid="glossary-add"

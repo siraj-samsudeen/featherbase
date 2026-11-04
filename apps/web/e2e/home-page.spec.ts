@@ -1,3 +1,4 @@
+import { tableHref, tableSlug } from 'shared'
 import { test, expect, adminAuth } from './fixtures'
 
 const DT = 'WS E2E Task'
@@ -54,7 +55,7 @@ test('UI-027: home page lists shortcuts and they navigate', async ({ session }) 
 
   await session.step('a Table shortcut opens that list', async ({ page }) => {
     await page.getByTestId('shortcut-Tasks').click()
-    await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`))
   })
   await session.assertHas('[data-testid="list-view"]')
 
@@ -87,7 +88,7 @@ test('#80: sidebar flip — landing, System page cards, All tables', async ({ se
 
   await session.step('a card link opens the Table list', async ({ page }) => {
     await page.getByTestId('home-link-Person').click()
-    await expect(page).toHaveURL(/\/admin\/Person/)
+    await expect(page).toHaveURL(/\/featherbase\/admin\/table\/person/)
   })
   await session.assertHas('[data-testid="list-view"]')
 
@@ -117,9 +118,9 @@ test('#831: generated System links open their canonical destinations', async ({ 
     await session.visit('/admin/home/system')
     await session.step(`open ${table} from its generated card`, async ({ page }) => {
       const link = page.getByTestId(`home-link-${table}`)
-      await expect(link).toHaveAttribute('href', `/featherbase/admin/${encodeURIComponent(table)}`)
+      await expect(link).toHaveAttribute('href', tableHref(table))
       await link.click()
-      await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(table)}$`))
+      await expect(page).toHaveURL(new RegExp(`${tableHref(table)}$`))
     })
     await session.assertHas(`[data-testid="${table === 'System Settings' ? 'form-view' : 'list-view'}"]`)
   }

@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, getToken, listResource } from '../lib/api'
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
+import { rowCapabilitiesQuery } from '../lib/row-capabilities'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
 import { dataColumns, defaultColumnNames, isShown, listFlagsFromView, switchColumn, viewColumns, type ColumnArrangement, type ListColumn } from '../lib/list-view-columns'
 import { useI18n } from '../lib/i18n'
@@ -20,6 +21,8 @@ import { GlossaryHelp } from './GlossaryHelp'
 import { fmtCount } from '@featherbase/shop-floor'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
+import { ActionDisclosure } from './ActionDisclosure'
+import { RenameTable } from './RenameTable'
 
 export type Filter = [string, string, unknown]
 
@@ -100,17 +103,22 @@ export function ListView({
   table,
   filters = [],
   onFiltersChange,
+  breadcrumb,
+  newRowPrefill,
 }: {
   table: string
   filters?: Filter[]
   onFiltersChange?: (filters: Filter[]) => void
+  breadcrumb?: ReactNode
+  /** null disables direct creation for a via-sub-table relationship. */
+  newRowPrefill?: Record<string, unknown> | null
 }) {
   const meta = useMeta(table)
   const settings = useSettings()
   const isSystemManager = useIsSystemManager()
   const caps = useCapabilities()
   // #410: New is offered only to someone the server would let create a row here.
-  const canAddRows = Boolean(caps?.manage || caps?.creatable.includes(table))
+  const canAddRows = newRowPrefill !== null && Boolean(caps?.manage || caps?.creatable.includes(table))
   const queryClient = useQueryClient()
   // usable-on-any-device "Lists fit a phone": below 40rem the rows are cards.
   const narrow = useMediaQuery(NARROW_QUERY)
@@ -140,6 +148,11 @@ export function ListView({
   const [makingDefault, setMakingDefault] = useState<'saving' | 'failed' | null>(null)
   // UI-012: bulk selection state.
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const selectedAccess = useQueries({ queries: [...selected].map((name) => rowCapabilitiesQuery(table, name)) })
+  // Keep existing bulk refusal/partial-result semantics. A mixed selection
+  // still reaches the server; no mutation is offered when none is authorized.
+  const canBulkDelete = selectedAccess.some((q) => q.data?.delete)
+  const canBulkEdit = selectedAccess.some((q) => q.data?.write)
   const [bulkField, setBulkField] = useState('')
   const [bulkValue, setBulkValue] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -312,7 +325,9 @@ export function ListView({
     )
 
   const total = list.data?.total ?? 0
-  const rows = list.data?.data ?? []
+  // A refetch refusal must replace cached rows with the error, not silently
+  // keep showing a successful list after its Table/access disappeared.
+  const rows = list.isError ? [] : list.data?.data ?? []
   const childFields = (meta.data?.columns ?? []).filter(
     (f) => f.column_type === 'Sub-table' && !f.hidden,
   )
@@ -336,6 +351,10 @@ export function ListView({
     ) : (
       `Cannot load rows for ${table}`
     )
+  ) : list.isPending ? (
+    // Not yet loaded is not empty: "No rows" would alarm someone whose
+    // Table holds data (#871, a list reopened after its rename).
+    'Loading…'
   ) : (
     <>
       No rows
@@ -349,9 +368,9 @@ export function ListView({
         <>
           {' — '}
           <Link
-            to="/featherbase/admin/$table/$name"
-            params={{ table, name: 'new' }}
-            search={{ prefill: undefined }}
+            to="/featherbase/admin/table/$table/new"
+            params={{ table }}
+            search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
             className="text-action underline"
             data-testid="list-empty-new"
           >
@@ -506,15 +525,15 @@ export function ListView({
     <div data-testid="list-view">
       {/* Top-aligned on desktop: however many rows the actions wrap to, the first
           row sits level with the title (listview.spec "share a vertical band"). */}
-      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div>
-          <div className="text-xs text-ink-subtle">
+          {breadcrumb ?? <div className="text-xs text-ink-subtle">
             <Link to="/featherbase/admin" className="hover:text-ink">
               Home
             </Link>
             {' / '}
             {table}
-          </div>
+          </div>}
           <h1 className="text-xl font-semibold text-ink">{table}<GlossaryHelp table={table} className="ml-1" /></h1>
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
@@ -530,7 +549,7 @@ export function ListView({
           )}
         </div>
         <div
-          className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:justify-end"
+          className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:basis-64 sm:justify-end"
           data-testid="list-toolbar"
         >
           <div className="relative">
@@ -606,17 +625,18 @@ export function ListView({
             meta.data?.kind !== 'settings' &&
             meta.data?.kind !== 'sub_table' && (
             <Link
-              to="/featherbase/admin/$table/$name"
-              params={{ table, name: 'new' }}
-              search={{ prefill: undefined }}
+              to="/featherbase/admin/table/$table/new"
+              params={{ table }}
+              search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
               className={buttonClasses({ variant: 'primary' })}
               data-testid="list-new"
             >
               New
             </Link>
           )}
+          <ActionDisclosure label="View: List">
           <Link
-            to="/featherbase/admin/$table/view/report"
+            to="/featherbase/admin/table/$table/view/report"
             params={{ table }}
             search={{ report: undefined }}
             className={buttonClasses()}
@@ -624,56 +644,9 @@ export function ListView({
           >
             Report
           </Link>
-          <ExploreSplitButton table={table} />
-          {table === 'Person' && (
-            <Link to="/featherbase/admin/find-person" className={buttonClasses()} data-testid="open-find-person">
-              Find by code
-            </Link>
-          )}
-          {/* IMP-010: append rows to this Table from a CSV/Excel file —
-              absent on read-only sources (EDS-13). */}
-          {!isRowsReadOnly(meta.data) && caps?.manage && (
-            <Link
-              to="/featherbase/admin/import"
-              search={{ table: table }}
-              className={buttonClasses()}
-              data-testid="open-import"
-            >
-              Import
-            </Link>
-          )}
-          {meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data) && (
-            <Button aria-expanded={conflictsOpen} aria-controls="import-conflicts" onClick={() => setConflictsOpen((open) => !open)}>
-              Import conflicts
-            </Button>
-          )}
-          {/* #209: add a column, or fix a misspelled one, without rebuilding
-              the Table. Absent on system Tables (their columns are the
-              platform's) and on bound ones (their storage is the source's). */}
-          {canShapeColumns && (
-            <Link
-              to="/featherbase/admin/$table/columns"
-              params={{ table }}
-              className={buttonClasses()}
-              data-testid="open-columns"
-            >
-              Edit columns
-            </Link>
-          )}
-          {/* #208: two Tables that turned out to be the same thing. */}
-          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && (
-            <Link
-              to="/featherbase/admin/$table/merge"
-              params={{ table }}
-              className={buttonClasses()}
-              data-testid="open-merge"
-            >
-              Merge into…
-            </Link>
-          )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
-              to="/featherbase/admin/$table/view/kanban"
+              to="/featherbase/admin/table/$table/view/kanban"
               params={{ table }}
               search={{ group_by: undefined }}
               className={buttonClasses()}
@@ -684,7 +657,7 @@ export function ListView({
           )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Date') && (
             <Link
-              to="/featherbase/admin/$table/view/calendar"
+              to="/featherbase/admin/table/$table/view/calendar"
               params={{ table }}
               className={buttonClasses()}
               data-testid="open-calendar"
@@ -695,7 +668,7 @@ export function ListView({
           {/* UI-022: Gantt needs two Date columns (start + end). */}
           {(meta.data?.columns ?? []).filter((f) => f.column_type === 'Date').length >= 2 && (
             <Link
-              to="/featherbase/admin/$table/view/gantt"
+              to="/featherbase/admin/table/$table/view/gantt"
               params={{ table }}
               className={buttonClasses()}
               data-testid="open-gantt"
@@ -706,13 +679,23 @@ export function ListView({
           {/* Checklist needs a Sub-table whose row table has a Check column —
               the component renders nothing when the shape is absent. */}
           <ChecklistSwitch table={table} meta={meta.data} />
+          </ActionDisclosure>
+          <ExploreSplitButton table={table} />
+          {(table === 'Person' || (!isRowsReadOnly(meta.data) && caps?.manage) || (meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data))) && <ActionDisclosure label="List actions">
+            {table === 'Person' && <Link to="/featherbase/admin/find-person" className={buttonClasses()} data-testid="open-find-person">Find by code</Link>}
+            {!isRowsReadOnly(meta.data) && caps?.manage && <Link to="/featherbase/admin/import" search={{ table }} className={buttonClasses()} data-testid="open-import">Import</Link>}
+            {meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data) && <Button aria-expanded={conflictsOpen} aria-controls="import-conflicts" onClick={() => setConflictsOpen((open) => !open)}>Import conflicts</Button>}
+          </ActionDisclosure>}
+          {(canShapeColumns || caps?.manage || isSystemManager) && <ActionDisclosure label="Table administration">
+          {canShapeColumns && <Link to="/featherbase/admin/table/$table/columns" params={{ table }} className={buttonClasses()} data-testid="open-columns">Edit columns</Link>}
+          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && <Link to="/featherbase/admin/table/$table/merge" params={{ table }} className={buttonClasses()} data-testid="open-merge">Merge into…</Link>}
           {isSystemManager && (
             <>
               {/* NAM-001: change how new rows in this Table are named —
                   never for a Table whose rows the platform writes (#432). */}
               {!isSystemWritten(meta.data) && (
                 <Link
-                  to="/featherbase/admin/naming/$table"
+                  to="/featherbase/admin/table/$table/naming"
                   params={{ table }}
                   className={buttonClasses()}
                   data-testid="open-naming"
@@ -721,7 +704,7 @@ export function ListView({
                 </Link>
               )}
               <Link
-                to="/featherbase/admin/permissions/$table"
+                to="/featherbase/admin/table/$table/permissions"
                 params={{ table }}
                 className={buttonClasses()}
                 data-testid="open-permissions"
@@ -731,6 +714,10 @@ export function ListView({
               {/* DEL-J1/DEL-R1 (docs/specs/0003-table-deletion.md): the
                   affordance is generic and metadata-gated — never rendered
                   for system tables, never per-table code. */}
+              {/* #871: a custom Table only; app and platform Tables are named elsewhere. */}
+              {meta.data && !meta.data.system && !meta.data.owner_app && !meta.data.data_source && meta.data.kind !== 'settings' && !isSystemWritten(meta.data) && (
+                <RenameTable table={table} />
+              )}
               {!meta.data?.system && !isSystemWritten(meta.data) && (
                 <button
                   onClick={() => setConfirmingDelete(true)}
@@ -742,6 +729,7 @@ export function ListView({
               )}
             </>
           )}
+          </ActionDisclosure>}
         </div>
       </div>
       {conflictsOpen && meta.data && <ImportConflicts key={table} table={table} meta={meta.data} />}
@@ -864,16 +852,17 @@ export function ListView({
           <span className="font-medium text-ink" data-testid="bulk-count">
             {fmtCount(selected.size)} selected
           </span>
-          <button
+          {canBulkDelete && <button
             ref={bulkDeleteButton}
             onClick={() => setConfirmingBulkDelete(true)}
             disabled={bulkBusy}
             className={buttonClasses({ variant: 'danger' })}
             data-testid="bulk-delete"
           >
-            Delete
-          </button>
-          <span className="flex flex-wrap items-center gap-2">
+            Delete rows
+          </button>}
+          <button onClick={() => setSelected(new Set())} disabled={bulkBusy} className={buttonClasses()}>Clear selection</button>
+          {canBulkEdit && <span className="flex flex-wrap items-center gap-2">
             <select
               value={bulkField}
               onChange={(e) => setBulkField(e.target.value)}
@@ -908,7 +897,7 @@ export function ListView({
                 </button>
               </>
             )}
-          </span>
+          </span>}
           {bulkError && (
             <span className="text-xs text-negative" data-testid="bulk-error">
               {bulkError}
@@ -1156,7 +1145,7 @@ function ListCell({
   if (first)
     return (
       <Link
-        to="/featherbase/admin/$table/$name"
+        to="/featherbase/admin/table/$table/row/$name"
         search={{ prefill: undefined }}
         params={{ table, name: String(row.row_id) }}
         className={touchLinkClasses(`font-medium text-action hover:underline ${
@@ -1404,7 +1393,7 @@ function InlineChildGrid({
                 <td key={c.column_name} className="px-3 py-1 text-ink">
                   {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
                     <Link
-                      to="/featherbase/admin/$table/$name"
+                      to="/featherbase/admin/table/$table/row/$name"
                       search={{ prefill: undefined }}
                         params={{ table: c.reference_table, name: String(r[c.column_name]) }}
                       className="text-action hover:underline"
@@ -1688,9 +1677,24 @@ function RecentStrip({
 }) {
   const { t } = useI18n()
   const meta = useMeta(table)
+  const queryClient = useQueryClient()
   const user = getSessionUser()
   const entries = user ? recentActions(user.row_id, 60) : []
-  const rows = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${table}/`)).slice(0, 4)
+  const remembered = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${table}/`)).slice(0, 8)
+  // #741: history outlives rows. Offer only rows the server still has for this
+  // reader (row_titles answers for those alone), and none until it has said.
+  const ids = remembered.map((e) => e.label)
+  const present = useQuery({
+    queryKey: ['recent-strip-rows', table, ids],
+    enabled: ids.length > 0,
+    queryFn: async () => {
+      const { titles } = await api.post<{ titles: Array<{ table: string; row_id: string; title: string }> }>(
+        '/api/row_titles', { rows: ids.map((row_id) => ({ table, row_id })) })
+      for (const t of titles) queryClient.setQueryData(['row-title', table, t.row_id], t.title)
+      return new Set(titles.map((t) => t.row_id))
+    },
+  })
+  const rows = remembered.filter((e) => present.data?.has(e.label)).slice(0, 4)
   const views = entries
     .map((e) => {
       if (e.kind !== 'list' || !e.key.startsWith(`list:${table}?`)) return null
@@ -1712,7 +1716,7 @@ function RecentStrip({
       {rows.map((r) => (
         <Link
           key={r.key}
-          to="/featherbase/admin/$table/$name"
+          to="/featherbase/admin/table/$table/row/$name"
           params={{ table, name: r.label }}
           search={{ prefill: undefined }}
           data-testid="recent-strip-row"

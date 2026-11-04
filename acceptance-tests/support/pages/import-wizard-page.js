@@ -7,6 +7,7 @@
 // that need them fail at once with a message naming what is missing, rather
 // than waiting out a timeout.
 
+const { tableHref } = require('../../../packages/shared/src/app-routes.ts');
 const NEW_TABLE = 'New Table…';
 
 class ImportWizardPage {
@@ -23,7 +24,8 @@ class ImportWizardPage {
 
   /** Enter from the existing table's list, just as a returning importer does. */
   async openForTable(table) {
-    await this.page.goto(`/featherbase/admin/${encodeURIComponent(table)}`);
+    await this.page.goto(tableHref(table));
+    await this.page.getByRole('button', { name: 'List actions', exact: true }).click();
     await this.page.getByTestId('open-import').click();
     await this.page.getByTestId('import-wizard').waitFor();
   }

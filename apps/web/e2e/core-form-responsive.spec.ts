@@ -1,10 +1,11 @@
+import { tableSlug } from 'shared'
 import { anonymousTest as test, expect, adminAuth, ADMIN_PWD, waitForRealtime, type Page } from './fixtures'
-import { ensureTable } from './fixtures-ui'
+import { enableTableFeatures, ensureTable } from './fixtures-ui'
 
 const table = 'Responsive row editor'
 const name = 'Stock-review-with-a-long-unbroken-identifier-3783'
 const url = `/api/table/${encodeURIComponent(table)}/${name}`
-const newFormPath = `/featherbase/admin/${encodeURIComponent(table)}/new`
+const newFormPath = `/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}/new`
 const fileName = `stock-review-${'x'.repeat(70)}.txt`
 
 test.beforeAll(async ({ request }) => {
@@ -21,6 +22,7 @@ test.beforeAll(async ({ request }) => {
     headers, data: { row_id: name, title: 'Southern 37 cartons', qty: 83, notes: 'Keep **this** description' },
   })
   expect([201, 409]).toContain(created.status())
+  await enableTableFeatures(request, headers, table, ['enable_files'])
 })
 
 async function contained(page: Page, selectors: string[]) {
@@ -71,7 +73,7 @@ for (const width of [375, 1440]) {
       await page.screenshot({ path: `../../dist/core-responsive-${width}-blank.png` })
     })
 
-    await session.visit(`/featherbase/admin/${encodeURIComponent(table)}/${name}`)
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}/row/${name}`)
     await session.step('an external save while open shows the stale banner, contained', async ({ page }) => {
       await expect(page.locator('[data-field=title]')).toBeVisible()
       const headers = await adminAuth(request)
@@ -96,13 +98,15 @@ for (const width of [375, 1440]) {
       expect(await (await request.get(url, { headers })).json()).toMatchObject({ title: `Northern ${width} crates`, qty: 83, notes: 'Keep **this** description' })
     })
 
-    await session.step('the attachments sidebar sits beside/below the form section by breakpoint', async ({ page }) => {
-      const sections = page.getByTestId('form-section-0')
-      const sidebar = page.getByTestId('attachments-panel').locator('..')
-      const sectionBox = (await sections.boundingBox())!
-      const sideBox = (await sidebar.boundingBox())!
-      if (width === 1440) expect(sideBox.x).toBeGreaterThan(sectionBox.x + sectionBox.width)
-      else expect(sideBox.y).toBeGreaterThan(sectionBox.y + sectionBox.height)
+    await session.step('Work and Collaboration separate form fields from reachable attachments', async ({ page }) => {
+      await expect(page.getByTestId('form-section-0')).toBeVisible()
+      await expect(page.getByTestId('attachments-panel')).toBeHidden()
+      await page.getByRole('tab', { name: 'Collaboration', exact: true }).click()
+      await expect(page.getByTestId('attachments-panel')).toBeVisible()
+      await expect(page.getByTestId('form-section-0')).toBeHidden()
+      await contained(page, controls)
+      await page.getByRole('tab', { name: 'Work', exact: true }).click()
+      await expect(page.locator('[data-field=title]')).toHaveValue(`Northern ${width} crates`)
     })
 
     await session.step('an overlong title surfaces the validation error, contained', async ({ page }) => {
@@ -129,6 +133,7 @@ for (const width of [375, 1440]) {
         await expect(page.getByTestId('form-banner')).toHaveText(message)
         await expect(page.locator('[data-field=title]')).toHaveValue('Unsaved 37, not 83')
         await expect(page.getByTestId('form-status')).toHaveText('Not saved')
+        await page.getByRole('tab', { name: 'Collaboration', exact: true }).click()
         await page.getByTestId('attach-file-input').setInputFiles({ name: fileName, mimeType: 'text/plain', buffer: Buffer.from('37 cartons, not 83') })
         try {
           await expect(page.getByTestId('attach-file')).toHaveText('Uploading…')
@@ -143,10 +148,12 @@ for (const width of [375, 1440]) {
         await page.screenshot({ path: `../../dist/core-responsive-${width}-${status}.png` })
         await page.unroute('**/api/save_row')
         await page.unroute('**/api/upload_file')
+        await page.getByRole('tab', { name: 'Work', exact: true }).click()
       })
     }
 
     await session.step('a real attachment uploads, is downloadable, and stays contained', async ({ page }) => {
+      await page.getByRole('tab', { name: 'Collaboration', exact: true }).click()
       await page.getByTestId('attach-file-input').setInputFiles({ name: fileName, mimeType: 'text/plain', buffer: Buffer.from('37 cartons, not 83') })
       const attachment = page.getByTestId('attachment-row').filter({ hasText: fileName })
       await expect(attachment).toBeVisible()

@@ -72,7 +72,7 @@ test('saving a Person refreshes the count, so someone given a role leaves the ba
   await clearWaiting()
   const a = await waitingPerson('First Waiting', 'first.waiting@staff.example.com')
   const b = await waitingPerson('Second Waiting', 'second.waiting@staff.example.com')
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(a)}`, admin)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(a)}`, admin)
   const link = await screen.findByTestId('waiting-for-access-link')
   await waitFor(() => expect(within(link).getByTestId('waiting-for-access-count')).toHaveTextContent('2'))
 

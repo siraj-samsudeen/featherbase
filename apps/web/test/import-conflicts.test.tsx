@@ -1,4 +1,5 @@
 // #626: conflict decisions and preview are driven through the real import API.
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
@@ -22,8 +23,9 @@ test('conflicts distinguish a cleared correction from structured JSON values', a
   await admin.post(`${path}:import`, {
     key_column: 'code', rows: [{ code: 'C1', city: 'East', details: { zone: 'source' } }],
   })
-  await renderApp(`/featherbase/admin/${encodeURIComponent(TABLE)}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(TABLE))}`, admin)
   const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: 'List actions' }))
   await user.click(await screen.findByRole('button', { name: 'Import conflicts' }))
   const panel = await screen.findByRole('region', { name: 'Import conflicts' })
   expect(await within(panel).findByText('Empty')).toBeInTheDocument()
@@ -52,8 +54,9 @@ test('a Table exposes the kept correction and lets the user keep it or adopt the
   const row = await admin.get<Record<string, unknown>>(`${path}/${rows.data[0].row_id}`)
   await admin.post('/api/save_row', { table: TABLE, row: { ...row, city: 'South' } })
   await load('East', 'ui-conflict')
-  await renderApp(`/featherbase/admin/${encodeURIComponent(TABLE)}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(TABLE))}`, admin)
   const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: 'List actions' }))
   await user.click(await screen.findByRole('button', { name: 'Import conflicts' }, { timeout: 8000 }))
   const panel = await screen.findByRole('region', { name: 'Import conflicts' })
   expect(await within(panel).findByText('South')).toBeInTheDocument()
@@ -64,6 +67,7 @@ test('a Table exposes the kept correction and lets the user keep it or adopt the
   await user.click(within(panel).getByRole('button', { name: 'Keep mine' }))
   expect(await within(panel).findByText('No open import conflicts.')).toBeInTheDocument()
   await load('West', 'ui-next')
+  await user.click(screen.getByRole('button', { name: 'List actions' }))
   await user.click(screen.getByRole('button', { name: 'Import conflicts' }))
   await user.click(screen.getByRole('button', { name: 'Import conflicts' }))
   await user.click(await screen.findByRole('button', { name: 'Take the source' }))
@@ -88,8 +92,9 @@ test('a conflict changed after opening is refused without overwriting the newer 
   }
   await edit('South')
   await admin.post(`${path}:import`, { key_column: 'code', rows: [{ code: 'C1', city: 'East' }] })
-  await renderApp(`/featherbase/admin/${encodeURIComponent(TABLE)}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(TABLE))}`, admin)
   const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: 'List actions' }))
   await user.click(await screen.findByRole('button', { name: 'Import conflicts' }))
   const panel = await screen.findByRole('region', { name: 'Import conflicts' })
   await within(panel).findByText('South')
@@ -103,10 +108,11 @@ test('a conflict changed after opening is refused without overwriting the newer 
 test('a conflict read for a deleted Table can be retried after the Table is recreated', async ({ admin }) => {
   const meta = { name: TABLE, columns: [{ column_name: 'city', column_type: 'Data' }] }
   await admin.post('/api/table_def', meta)
-  await renderApp(`/featherbase/admin/${encodeURIComponent(TABLE)}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(TABLE))}`, admin)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: 'List actions' }))
   const open = await screen.findByRole('button', { name: 'Import conflicts' })
   await admin.delete(`/api/table_def/${encodeURIComponent(TABLE)}`)
-  const user = userEvent.setup()
   await user.click(open)
   const panel = await screen.findByRole('region', { name: 'Import conflicts' })
   expect(await within(panel).findByText('Could not load import conflicts.')).toBeInTheDocument()

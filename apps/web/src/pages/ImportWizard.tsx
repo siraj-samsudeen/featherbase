@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { tableHref } from 'shared'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
 // imports this file — a strict useSearch would need the route object back)
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminPageTitle } from 'shared'
-import { applyColumnCombines, autoMapImportColumns, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, idPatternFor, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
+import { DEFAULT_ID_PATTERN, applyColumnCombines, autoMapImportColumns, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
@@ -88,8 +89,8 @@ interface SheetPlan {
   similar: { name: string; mapped: number; total: number } | null
   inferred: InferredTableDef
   // NAM-001, new-Table mode: the new Table's id_pattern, edited through the
-  // same NamingControl the Table Builder uses. null = keep the inferred
-  // default (a series derived from the Table name).
+  // same NamingControl the Table Builder uses. null = the default, plain
+  // numbers 1, 2, 3 (#855).
   id_pattern: string | null
   // per file column: target column_name in the existing Table, 'name' for
   // the Row ID (UPS-R4 — the file's own codes become the ids), or null (skip)
@@ -1322,7 +1323,7 @@ export function ImportWizard() {
   }
 
   function planIdPattern(plan: SheetPlan): string {
-    return plan.id_pattern ?? idPatternFor(plan.table)
+    return plan.id_pattern ?? DEFAULT_ID_PATTERN
   }
 
   // The mapped target columns of an existing-mode run — the `columns` the
@@ -1632,7 +1633,7 @@ export function ImportWizard() {
       // #203: and never navigate away from a failure the user has not read.
       if (!failedTargets.length && active.length === 1 && active[0].members.length === 1) {
         navigate({
-          to: '/featherbase/admin/$table',
+          to: '/featherbase/admin/table/$table',
           params: { table: active[0].table },
           search: { filters: undefined },
         })
@@ -1840,7 +1841,7 @@ export function ImportWizard() {
           It is present from the moment a file is loaded, and after. */}
       <p className="mb-3 text-xs text-ink-muted">
         <Link
-          to="/featherbase/admin/$table"
+          to="/featherbase/admin/table/$table"
           params={{ table: 'Import Log' }}
           search={{ filters: undefined }}
           className="underline"
@@ -2049,7 +2050,7 @@ export function ImportWizard() {
                     <TargetRowCount i={i} table={plan.table} />
                     {/* Peek at the target without losing wizard state. */}
                     <a
-                      href={`/featherbase/admin/${encodeURIComponent(plan.table)}`}
+                      href={tableHref(plan.table)}
                       target="_blank"
                       rel="noreferrer"
                       data-testid={`iw-view-target-${i}`}
@@ -2099,7 +2100,7 @@ export function ImportWizard() {
                   >
                     A similar existing Table matches this sheet:{' '}
                     <a
-                      href={`/featherbase/admin/${encodeURIComponent(plan.similar.name)}`}
+                      href={tableHref(plan.similar.name)}
                       target="_blank"
                       rel="noreferrer"
                       className="font-semibold underline"
@@ -2491,7 +2492,7 @@ export function ImportWizard() {
                   >
                     Auto-matched to the existing Table{' '}
                     <a
-                      href={`/featherbase/admin/${encodeURIComponent(plan.table)}`}
+                      href={tableHref(plan.table)}
                       target="_blank"
                       rel="noreferrer"
                       className="font-semibold underline"
@@ -2810,7 +2811,7 @@ export function ImportWizard() {
                         ? `Recorded ${fmtCount(plan.result.updated)} processed matches and added ${fmtCount(plan.result.inserted)} rows in `
                         : `Imported ${fmtCount(plan.result.inserted)} rows into `}
                       <Link
-                        to="/featherbase/admin/$table"
+                        to="/featherbase/admin/table/$table"
                         params={{ table: plan.table }}
                         search={{ filters: undefined }}
                         className="underline"

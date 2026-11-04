@@ -1,6 +1,7 @@
 // Merging one Table into another when the server refuses: a target deleted
 // after it was chosen, and a merge page for a Table that is not there. Gaps
 // the merged web coverage report (ADR 0012) showed; the refusals are real.
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
@@ -13,7 +14,7 @@ test('a target deleted after it was chosen is refused with the reason, and the s
   for (const name of [SRC, DST])
     await admin.post('/api/table_def', { name, columns: [{ column_name: 'zone_name', label: 'Zone', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: SRC, row: { zone_name: 'Fresh' } })
-  await renderApp(`/featherbase/admin/${encodeURIComponent(SRC)}/merge`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(SRC))}/merge`, admin)
   const picker = await screen.findByTestId('tm-target', {}, { timeout: 8000 })
   await waitFor(() => expect(within(picker).getByRole('option', { name: DST })).toBeInTheDocument(), { timeout: 10_000 })
   await user.selectOptions(picker, DST)
@@ -25,6 +26,8 @@ test('a target deleted after it was chosen is refused with the reason, and the s
 })
 
 test('the merge page of a Table that is not there says so', async ({ admin }) => {
-  await renderApp('/featherbase/admin/Tmr%20Nowhere/merge', admin)
-  expect(await screen.findByTestId('tm-error', {}, { timeout: 8000 })).toHaveTextContent(/not found/i)
+  await renderApp('/featherbase/admin/table/tmr-nowhere/merge', admin)
+  expect(await screen.findByText('Page not found', {}, { timeout: 8000 })).toBeInTheDocument()
+  expect(screen.queryByTestId('tm-target')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('tm-go')).not.toBeInTheDocument()
 })

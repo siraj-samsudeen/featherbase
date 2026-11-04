@@ -73,13 +73,14 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
   })
 
   // The switcher offers it…
-  await renderApp('/featherbase/admin/Third%20Sub%20Parent', admin)
+  await renderApp('/featherbase/admin/table/third-sub-parent', admin)
+  await userEvent.click(await screen.findByRole('button', { name: 'View: List' }))
   expect(await screen.findByTestId('open-checklist')).toBeInTheDocument()
 
   // …and the run pane binds `steps`, the one carrying `done` — not the
   // near-miss ahead of it, and not nothing at all.
   const runView = await renderApp(
-    `/featherbase/admin/Third%20Sub%20Parent/view/checklist?run=${encodeURIComponent(run.row_id)}`,
+    `/featherbase/admin/table/third-sub-parent/view/checklist?run=${encodeURIComponent(run.row_id)}`,
     admin,
   )
   // #736: the run pane reads each Sub-table's metadata in turn before it can
@@ -96,7 +97,7 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
   const reader = await createUser({ roles: ['Checklist Reader'] })
   // The first two metadata reads now really fail permission checks. They
   // must not prevent discovery of the readable, qualifying third child.
-  await renderApp(`/featherbase/admin/Third%20Sub%20Parent/view/checklist?run=${encodeURIComponent(run.row_id)}`, reader)
+  await renderApp(`/featherbase/admin/table/third-sub-parent/view/checklist?run=${encodeURIComponent(run.row_id)}`, reader)
   expect(await screen.findByText('Unlock the shutter', {}, { timeout: 5_000 })).toBeInTheDocument()
   expect(screen.queryByText('not a checklist item')).not.toBeInTheDocument()
 }, 20_000) // #619: creates four tables and traverses two screens on busy CI runners.
@@ -108,17 +109,20 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
 test('the shipped Checklist Template is a standard, not a runnable checklist', async ({ admin }) => {
   await installChecklists()
 
-  await renderApp('/featherbase/admin/Checklist%20Template', admin)
+  const templateList = await renderApp('/featherbase/admin/table/checklist-template', admin)
   await screen.findByTestId('list-view')
+  await userEvent.click(await screen.findByRole('button', { name: 'View: List' }))
   await waitFor(() => expect(screen.queryByTestId('open-checklist')).not.toBeInTheDocument())
+  templateList.unmount()
 
   // Reached directly, the view says so rather than rendering must_do as
   // completion state.
-  await renderApp('/featherbase/admin/Checklist%20Template/view/checklist', admin)
+  await renderApp('/featherbase/admin/table/checklist-template/view/checklist', admin)
   expect(await screen.findByTestId('checklist-no-shape')).toBeInTheDocument()
 
   // The run, by contrast, still qualifies.
-  await renderApp('/featherbase/admin/Checklist%20Run', admin)
+  await renderApp('/featherbase/admin/table/checklist-run', admin)
+  await userEvent.click(await screen.findByRole('button', { name: 'View: List' }))
   expect(await screen.findByTestId('open-checklist')).toBeInTheDocument()
 })
 
@@ -145,7 +149,7 @@ async function seedRun(admin: Admin, section: string) {
 }
 
 async function openRun(admin: Admin, run: string) {
-  await renderApp(`/featherbase/admin/Checklist%20Run/view/checklist?run=${encodeURIComponent(run)}`, admin)
+  await renderApp(`/featherbase/admin/table/checklist-run/view/checklist?run=${encodeURIComponent(run)}`, admin)
   await screen.findByTestId('checklist-run-view')
   await waitFor(() => expect(screen.getAllByTestId('checklist-item')).toHaveLength(8))
 }

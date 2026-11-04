@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { getMeta } from '../src/meta'
 import type { TestClient } from 'feather-testing-postgres'
-import { expectApiError } from './fixtures'
+import { expectApiError, patchDoc, tableRef } from './fixtures'
 
 // CUST-002: Metadata Overrides override column/Table properties without
 // touching the base definition.
@@ -31,6 +31,56 @@ async function addLabelSetter(admin: TestClient) {
 }
 
 describe('CUST-002: metadata overrides', () => {
+  test('#800 existing and new Tables default every collaboration flag to false over HTTP', async ({ admin }) => {
+    await makeDT(admin)
+    const tables = await sql<{ name: string }[]>`select name from table_def order by name`
+    for (const { name } of tables) {
+      expect(await admin.get(tableRef(name).metaUrl)).toMatchObject({
+        enable_assignments: false, enable_tags: false, enable_files: false, enable_discussion: false,
+      })
+    }
+  })
+
+  test('#800 a mistyped enablement value is refused rather than silently disabling the feature', async ({ admin }) => {
+    await makeDT(admin)
+    const response = await admin.fetch('/api/save_row', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'Metadata Override', row: {
+        table_name: DT, property: 'enable_tags', value: 'yes',
+      } }),
+    })
+    expect(response.status).toBe(417)
+    expect(await response.json()).toMatchObject({ error: { type: 'ValidationError' } })
+    expect(await admin.get(tableRef(DT).metaUrl)).toMatchObject({ enable_tags: false })
+  })
+
+  for (const property of ['enable_assignments', 'enable_tags', 'enable_files', 'enable_discussion']) {
+    test(`#800 ${property} independently enables and invalidates warmed HTTP metadata on edit and delete`, async ({ admin }) => {
+      await makeDT(admin)
+      const metaUrl = tableRef(DT).metaUrl
+      const defaults = { enable_assignments: false, enable_tags: false, enable_files: false, enable_discussion: false }
+      expect(await admin.get(metaUrl)).toMatchObject(defaults)
+      const saved = await admin.post<{ row_id: string }>('/api/save_row', {
+        table: 'Metadata Override',
+        row: { table_name: DT, property, value: '1' },
+      })
+      expect(await admin.get(metaUrl)).toMatchObject({ ...defaults, [property]: true })
+      const overrideUrl = tableRef('Metadata Override').rowUrl(saved.row_id)
+      // An edited override has retained history and is intentionally undeletable.
+      // Exercise deletion before editing, then recreate it for the edit checks.
+      await admin.delete(overrideUrl)
+      expect(await admin.get(metaUrl)).toMatchObject(defaults)
+      await admin.post('/api/table/Metadata%20Override', {
+        row_id: saved.row_id, table_name: DT, property, value: '1',
+      })
+      expect(await admin.get(metaUrl)).toMatchObject({ ...defaults, [property]: true })
+      await patchDoc(admin, overrideUrl, { ...await admin.get(overrideUrl), value: '0' })
+      expect(await admin.get(metaUrl)).toMatchObject(defaults)
+      await patchDoc(admin, overrideUrl, { ...await admin.get(overrideUrl), value: 'true' })
+      expect(await admin.get(metaUrl)).toMatchObject({ ...defaults, [property]: true })
+    })
+  }
+
   test('refuses a column label used as its name', async ({ admin }) => {
     await makeDT(admin)
     await expectApiError(admin.post('/api/table/Metadata%20Override', {
@@ -89,7 +139,7 @@ describe('CUST-002: metadata overrides', () => {
       }), { status: 417, type: 'ValidationError' })
       expect(error.message.split('Permitted properties: ')[1]).toBe(column
         ? 'label, hidden, reqd, read_only, in_list_view, default_value, choices'
-        : 'label, title_column, search_columns, sort_column, sort_direction')
+        : 'label, title_column, search_columns, sort_column, sort_direction, enable_assignments, enable_tags, enable_files, enable_discussion')
     })
   }
 

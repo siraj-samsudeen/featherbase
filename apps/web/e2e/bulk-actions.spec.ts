@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
@@ -35,7 +36,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 
 test('UI-012: bulk edit a field then bulk delete selected rows', async ({ session }) => {
   await session
-    .visit(`/admin/${encodeURIComponent(DT)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     .assertHas('[data-testid="list-total"]', { text: '5 total' })
 
   await session.step('select 3 rows and bulk-edit the stage field', async ({ page }) => {

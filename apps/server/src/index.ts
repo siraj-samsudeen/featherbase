@@ -10,7 +10,7 @@ import { assertNotSystemWritten } from './system-written'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
-import { createTable, deleteTable, renameColumn, setIdPattern, tableStorageIdentity, updateTable } from './table-engine'
+import { createTable, deleteTable, renameColumn, renameCustomTable, setIdPattern, tableStorageIdentity, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
@@ -60,7 +60,7 @@ import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker, stopWorker, syncScheduledJobs } from './jobs'
 import { attachRealtime, closeSessionSockets, publishDocEvent, publishUserEvent } from './realtime'
 import { createAssignment } from './assign'
-import { queueEmail, sendTestEmail } from './email'
+import { mailTransport, queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
 import { MIN_PASSWORD_LENGTH, requestPasswordReset, resetPassword } from './password-reset'
 import { renderWebPage } from './website'
@@ -81,7 +81,7 @@ import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uni
 import { packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { discoverAppLibrary, appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { documentActivity } from './document-activity'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -1091,7 +1091,7 @@ app.get('/api/activity_feed', async (c) => {
           kind: 'change',
           label,
           sub,
-          path: sub && label ? `/featherbase/admin/${sub}/${label}` : '',
+          path: sub && label ? rowHref(sub, label) : '',
           at: new Date(r.at as string).toISOString(),
           count: Number(r.count),
         }
@@ -1181,12 +1181,21 @@ app.post('/api/set_password', async (c) => {
 app.get('/api/people/:id/identities', async (c) => {
   await assertSystemManager(who(c))
   const user = c.req.param('id')
-  const [row] = await sql`select (password_hash is not null) as has_password from person where row_id = ${user}`
+  const [row] = await sql`select (password_hash is not null) as has_password, email, expects_google_sign_in from person where row_id = ${user}`
   if (!row) throw new AppError('NotFoundError', `Person ${user} not found`)
   // Every method row, turned off or not, so an identity on a disabled method
   // still shows its name on the Person form.
   const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
-  return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
+  return c.json({
+    identities: await listIdentities(user, { includeEnded: true }),
+    has_password: row.has_password === true,
+    methods,
+    // #833: the Person's own address starts a Google invite, the panel explains
+    // an expected Google sign-in, and says where an invitation went.
+    email: row.email ?? null,
+    expects_google_sign_in: row.expects_google_sign_in === true,
+    mail_transport: mailTransport(),
+  })
 })
 
 // #667: why a person sees nothing from an app's datasets: the provider's
@@ -1586,6 +1595,14 @@ app.post('/api/table_def/:name/rename_column', async (c) => {
   if (typeof body.from !== 'string' || typeof body.to !== 'string')
     throw new AppError('ValidationError', 'Expected { from, to }')
   return c.json(await renameColumn(c.req.param('name'), body.from, body.to, who(c)))
+})
+
+// #871: rename a custom Table, carrying everything that names it.
+app.post('/api/table_def/:name/rename', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json()) as { to?: unknown }
+  if (typeof body.to !== 'string') throw new AppError('ValidationError', 'Expected { to }')
+  return c.json(await renameCustomTable(await resolveTableName(c.req.param('name')), body.to, who(c)))
 })
 
 app.put('/api/table_def/:name', async (c) => {

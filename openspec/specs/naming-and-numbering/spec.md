@@ -81,3 +81,106 @@ When a Table's rows are named by whoever creates them, the form for a new row SH
 
 - **WHEN** the user fills in a new row of that Table but leaves its name blank and saves
 - **THEN** nothing is saved, the name is called out as required, and what they typed stays on screen
+
+### Requirement: New tables number their rows 1, 2, 3
+
+A new table SHALL number its rows 1, 2, 3 and so on, with no prefix and no
+leading zeros, unless its maker chooses another way of naming them. Before the
+table is created, its maker sees how its rows will be numbered.
+
+#### Scenario: The first rows of a new table are 1, 2 and 3
+
+```gherkin
+Given the user creates a table "Plant" without choosing how its rows are named
+When the user adds three plants
+Then the plants are numbered 1, 2 and 3
+```
+
+#### Scenario: The builder shows the numbering before the table is made
+
+```gherkin
+Given the user is building a table "Plant"
+Then the builder says its rows will be numbered 1, 2, 3
+```
+
+### Requirement: Each table keeps its own count
+
+Each table SHALL count its own rows, so two tables numbered the same way never
+take numbers from each other.
+
+#### Scenario: Two tables with the same prefix both start at 001
+
+```gherkin
+Given two tables "Store" and "Store Copy" both named by a series with the prefix "STORE-" and three digits
+When the user adds a store to each
+Then each store is numbered STORE-001
+```
+
+### Requirement: A number already in the table is skipped
+
+When the next number is already the id of one of the table's rows, for example
+one an import brought in, the row SHALL get the next free number instead of
+being refused.
+
+#### Scenario: An imported row already holds the next number
+
+```gherkin
+Given a table "Bin" whose rows are numbered 1, 2, 3
+And the user has added bin 1 and imported a bin with the id 2
+When the user adds another bin
+Then it is numbered 3
+```
+
+### Requirement: A prefix plus a column names a row
+
+A Table developer SHALL be able to name rows by fixed text followed by one of
+the row's own columns, for example PLANT- followed by the plant code. A row
+gets that id when it is created, whether from the form, an import or the API.
+The column is required, and before the rule is saved its maker sees a sample
+id.
+
+#### Scenario: A plant is named after its plant code
+
+```gherkin
+Given a table "Plant" whose rows are named "PLANT-" followed by their plant code
+When the user adds a plant with the plant code 8151
+Then the plant is named PLANT-8151
+```
+
+#### Scenario: The builder shows the shape of the id
+
+```gherkin
+Given the user is building a table "Plant" with a column "Plant Code"
+When the user names its rows "PLANT-" followed by the plant code
+Then the builder says ids look like PLANT-‹Plant Code›
+```
+
+### Requirement: A value already naming a row is refused by its column
+
+When rows are named after a column, with or without a prefix, a new row whose
+value would give an id already in use SHALL be refused, with the column called
+out, and the existing row SHALL be left untouched.
+
+#### Scenario: Two plants with the same code
+
+```gherkin
+Given plant PLANT-8151 exists
+When the user adds another plant with the plant code 8151
+Then the save is refused, naming the plant code
+And PLANT-8151 is unchanged
+```
+
+### Requirement: A changed naming column keeps the id and offers Rename
+
+Changing the column a row is named after SHALL NOT change the row's id. While
+the row's id differs from the id its column now gives, the row's form SHALL
+say so and offer to rename it to that id.
+
+#### Scenario: A plant's code is corrected
+
+```gherkin
+Given plant PLANT-8151 is open
+When the user changes its plant code to 8159
+Then the plant keeps the id PLANT-8151
+And the form offers Rename to PLANT-8159
+```

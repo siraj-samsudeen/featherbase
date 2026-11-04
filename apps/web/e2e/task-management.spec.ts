@@ -124,6 +124,13 @@ test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and fo
     .assertText('Compare September closing stock')
     .within('.tasker-nav-work', (tab) => tab.click('My Work'))
     .assertText('Review September stock variance')
+    .click('Review September stock variance')
+    .click('Attachments and advanced fields in Featherbase ↗')
+    .assertHas('[data-testid="form-view"]')
+  await session.step('the advanced destination opens the same task in the canonical Table route', async ({ page }) => {
+    await expect(page).toHaveURL(/\/featherbase\/admin\/table\/tasker\.task\/row\/[^/]+$/)
+    await expect(page.locator('[data-field="task_title"]')).toHaveValue('Review September stock variance')
+  })
 })
 
 test('tasker_focus_label: Focus identifies the star in both states without changing its accessible name', async ({

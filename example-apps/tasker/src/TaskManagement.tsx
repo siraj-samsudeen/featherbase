@@ -6,6 +6,7 @@ import { Discussion } from './Discussion'
 import { Button, cardClasses, buttonClasses } from '@featherbase/shop-floor'
 import { createElement, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { rowHref } from '../../../packages/shared/src/app-routes'
 import { fmtDateTime } from '@featherbase/shop-floor'
 import { ApiError, api, getSessionUser, listAllResources } from './api'
 import { listVisiblePeople, PEOPLE_LIMITED_NOTICE, type PersonOption } from './people'
@@ -1344,7 +1345,7 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
               : <ul className="mt-1 pointer-fine:text-xs text-[var(--color-ink-muted)]">{entry.changes.length ? entry.changes.map(([field, from, to], changeIndex) => <li key={changeIndex}><strong>{field.replaceAll('_', ' ')}</strong>: {formatValue(from)} → {formatValue(to)}</li>) : <li>Task updated</li>}</ul>}
           </li>)}
         </ol>
-        <a className="mt-6 block pointer-fine:text-xs text-[var(--color-action)]" href={`/featherbase/admin/tasker.task/${encodeURIComponent(id)}`}>Attachments and advanced fields in Featherbase ↗</a>
+        <a className="mt-6 block pointer-fine:text-xs text-[var(--color-action)]" href={rowHref('tasker.task', id)}>Attachments and advanced fields in Featherbase ↗</a>
       </div>
       </>}
     </>}

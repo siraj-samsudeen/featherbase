@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth } from './fixtures'
 
 const DT = 'Rc E2E Sale'
@@ -51,7 +52,7 @@ test.beforeAll(async ({ request }) => {
 
 test('RPT-006: chart reflects report data and pinning shows it on the dashboard', async ({ session }) => {
   // Open the saved report; group by region so the chart shows per-region counts.
-  await session.visit(`/admin/${encodeURIComponent(DT)}/view/report?report=${encodeURIComponent(REPORT)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/view/report?report=${encodeURIComponent(REPORT)}`)
   await session.step('group by region; the chart reflects report data', async ({ page }) => {
     await expect(page.getByTestId('report-view')).toBeVisible()
     await page.getByTestId('report-groupby').selectOption('region')

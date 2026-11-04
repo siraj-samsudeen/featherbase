@@ -10,6 +10,7 @@ import { resolve, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import { seedTasker, TASKER_SCENARIOS } from './seed-tasker-development.mjs'
 import { proveTaskerAcceptance } from './prove-tasker-acceptance.mjs'
+import { rowHref } from '../packages/shared/src/app-routes.ts'
 
 const root = resolve(import.meta.dirname, '..')
 const taskerPackage = JSON.parse(await readFile(resolve(root, 'example-apps/tasker/package.json'), 'utf8'))
@@ -433,21 +434,28 @@ try {
   const preservedTask = await api('/api/save_row', { table: 'tasker.task', row: {
     task_title: 'Preserved 37 cartons', project: projectId, assigned_to: 'Administrator', urgent: true, task_state: 'Blocked',
   } }, 201)
+  // #800: this proof exercises upload authorization, so explicitly enable
+  // that optional UI before freezing the pre-upgrade form.
+  await api('/api/save_row', { table: 'Metadata Override', row: {
+    table_name: 'tasker.task', property: 'enable_files', value: 'true',
+  } }, 201)
   await api('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: preservedTask.row_id, content: 'Retain this evidence' } }, 201)
   await page.goto(`${origin}/tasker/`)
   await page.evaluate(token => localStorage.setItem('fc_token', token), token)
   const staleCore = await page.context().newPage()
-  await staleCore.goto(`${origin}/featherbase/admin/tasker.task/${preservedTask.row_id}`)
+  await staleCore.goto(`${origin}${rowHref('tasker.task', preservedTask.row_id)}`)
   await expect(staleCore.locator('[data-field="task_title"]')).toHaveValue('Preserved 37 cartons')
   await staleCore.locator('[data-field="description"]').fill('Must not save a pre-upgrade draft')
   async function refuseStaleCore(expectedStatus) {
     const saving = staleCore.waitForResponse(response => response.url().endsWith('/api/save_row') && response.request().method() === 'POST')
     await staleCore.getByTestId('form-save').click()
     assert.equal((await saving).status(), expectedStatus)
+    await staleCore.getByRole('tab', { name: 'Collaboration', exact: true }).click()
     const uploading = staleCore.waitForResponse(response => response.url().endsWith('/api/upload_file'))
     await staleCore.getByTestId('attach-file-input').setInputFiles({ name: 'stale-37.txt', mimeType: 'text/plain', buffer: Buffer.from('Must not attach from obsolete form') })
     assert.equal((await uploading).status(), expectedStatus)
     await expect(staleCore.getByTestId('attach-error')).toBeVisible()
+    await staleCore.getByRole('tab', { name: 'Work', exact: true }).click()
   }
   const preferencesBefore = await api('/api/user_settings/tasker.preferences')
   const commentsBefore = await api('/api/table/Comment?limit_page_length=1000')
@@ -511,12 +519,13 @@ try {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.getByRole('link', { name: 'Preserved 37 cartons', exact: true }).click()
   await page.getByRole('link', { name: 'Attachments and advanced fields in Featherbase ↗' }).click()
-  await expect(page).toHaveURL(`${origin}/featherbase/admin/tasker.task/${preservedTask.row_id}`)
+  await expect(page).toHaveURL(`${origin}${rowHref('tasker.task', preservedTask.row_id)}`)
   await expect(page.locator('[data-field="task_title"]')).toHaveValue('Preserved 37 cartons')
   await page.locator('[data-field="description"]').fill('Core form confirmed 37 cartons, not 83.')
   await page.getByTestId('form-save').click()
   await expect(page.getByTestId('form-banner')).toHaveText('Saved')
   assert.equal((await api(`/api/table/tasker.task/${preservedTask.row_id}`)).description, 'Core form confirmed 37 cartons, not 83.')
+  await page.getByRole('tab', { name: 'Collaboration', exact: true }).click()
   await page.getByTestId('attach-file-input').setInputFiles({ name: 'core-37.txt', mimeType: 'text/plain', buffer: Buffer.from('37 cartons independently verified') })
   const attachment = page.getByTestId('attachment-row').filter({ hasText: 'core-37.txt' })
   await expect(attachment).toHaveCount(1)
@@ -533,12 +542,17 @@ try {
     const sidebar = await page.getByTestId('admin-sidebar').boundingBox()
     return sidebar ? sidebar.x + sidebar.width : Number.POSITIVE_INFINITY
   }).toBeLessThanOrEqual(0)
+  await page.getByRole('tab', { name: 'Work', exact: true }).click()
   await page.screenshot({ path: resolve(output, 'upgraded-core-form-mobile.png'), fullPage: true })
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Upgraded core form has horizontal page overflow at 375px')
-  for (const control of [page.locator('[data-field="task_title"]'), page.locator('[data-field="description"]'), page.getByTestId('attachments-panel'), page.getByTestId('form-save')]) {
+  for (const control of [page.locator('[data-field="task_title"]'), page.locator('[data-field="description"]'), page.getByTestId('form-save')]) {
     const bounds = await control.boundingBox()
     assert(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 375, 'Core form control is horizontally clipped at 375px')
   }
+  await page.getByRole('tab', { name: 'Collaboration', exact: true }).click()
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Upgraded collaboration has horizontal page overflow at 375px')
+  const attachmentBounds = await page.getByTestId('attachments-panel').boundingBox()
+  assert(attachmentBounds && attachmentBounds.x >= 0 && attachmentBounds.x + attachmentBounds.width <= 375, 'Core attachment panel is horizontally clipped at 375px')
   await page.getByTestId('attachments-panel').scrollIntoViewIfNeeded()
   await page.screenshot({ path: resolve(output, 'upgraded-core-mobile-attachment.png'), fullPage: true })
   await attachment.hover()

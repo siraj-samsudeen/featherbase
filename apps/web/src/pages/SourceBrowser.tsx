@@ -120,7 +120,7 @@ export default function SourceBrowser({ name }: { name: string }) {
           <Link to="/featherbase/admin" className="hover:text-ink">Home</Link>
           {' / '}
           <Link
-            to="/featherbase/admin/$table/$name"
+            to="/featherbase/admin/table/$table/row/$name"
             params={{ table: 'Data Source', name }}
             search={{ prefill: undefined }}
             className="hover:text-ink"
@@ -206,7 +206,7 @@ export default function SourceBrowser({ name }: { name: string }) {
                 <span key={c.name}>
                   {i > 0 && ', '}
                   <Link
-                    to="/featherbase/admin/$table"
+                    to="/featherbase/admin/table/$table"
                     params={{ table: c.name }}
                     search={{ filters: undefined }}
                     className="text-action hover:underline"
@@ -304,7 +304,7 @@ export default function SourceBrowser({ name }: { name: string }) {
                     <td className="px-3 py-2 text-xs">
                       {t.already_reflected ? (
                         <Link
-                          to="/featherbase/admin/$table"
+                          to="/featherbase/admin/table/$table"
                           params={{ table: t.already_reflected }}
                           search={{ filters: undefined }}
                           className="text-action hover:underline"
