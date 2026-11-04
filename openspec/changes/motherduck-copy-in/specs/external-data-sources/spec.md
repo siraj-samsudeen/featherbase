@@ -225,7 +225,9 @@ And a correction made in that form is saved
 ### Requirement: A copy keeps long text and respects table restrictions
 
 A warehouse string column other than the key SHALL be copied as unbounded
-text, so a long value never fails the copy. A source's table restriction
+text, so a long value never fails the copy. A number wider than a native
+number holds exactly (a DECIMAL over 15 digits, HUGEINT, UBIGINT) SHALL be
+copied as text, never rounded. A source's table restriction
 (`catalog.schema.table`) SHALL apply to preview, key checks, copying and
 Copy again alike.
 
@@ -276,7 +278,9 @@ And store "S002" still has the person's correction
 ### Requirement: Saved source mappings survive a later column rename
 
 Renaming a copied key or data column through Columns SHALL retain its source
-identity so the next copy still updates the same native rows.
+identity so the next copy still updates the same native rows. Renaming the
+copied Table itself SHALL keep where it was copied from, so Copy again still
+works under the new name.
 
 #### Scenario: Copy again follows renamed native columns
 

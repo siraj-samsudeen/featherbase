@@ -139,6 +139,15 @@ describe('Copy a warehouse table into Featherbase', () => {
     expect(await admin.get('/api/table/Renamed%20Copy/S002')).toMatchObject({ warehouse_code: 'S002', trading_name: 'Hill Street' })
   })
 
+  test('renaming the copied Table keeps its provenance, so Copy again still works', async ({ admin }) => {
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-table-rename', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-table-rename:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Store Copy Before', key: 'code', columns: STORES })
+    await admin.post('/api/table_def/Store%20Copy%20Before/rename', { to: 'Store Copy After' })
+    expect(await admin.get('/api/table/Store%20Copy%20After:copy_info')).toMatchObject({ target_table: 'Store Copy After', source_table: 'stores' })
+    await admin.post('/api/table/Store%20Copy%20After:copy_again', {})
+    expect(await admin.get('/api/table/Store%20Copy%20After/S002')).toMatchObject({ store_code: 'S002', display_name: 'Hill Street' })
+  })
+
   test('removing the matching column refuses refresh without changing rows', async ({ admin }) => {
     await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-removed-key', token: STANDIN_TOKENS.reader, databases: ['sales'] })
     await admin.post(`${SOURCES}/tc-removed-key:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Removed Key Copy', key: 'code', columns: STORES })
@@ -422,6 +431,20 @@ describe('Copy a warehouse table into Featherbase', () => {
     await expect(admin.get(`${SOURCES}/tc-fence:copy_check_key?${query}`)).rejects.toMatchObject({ status: 403 })
     await expect(admin.post(`${SOURCES}/tc-fence:copy_create`, payload)).rejects.toMatchObject({ status: 403 })
     await expect(admin.get('/api/table/Unchosen%20Copy:meta')).rejects.toMatchObject({ status: 404 })
+  })
+
+  test('wide decimals and integers keep every digit; narrow ones stay numbers', async ({ admin }) => {
+    await changeStandin(dir, 'sales', [
+      'create table exact_numbers (code varchar, wide decimal(18,2), narrow decimal(10,2), huge hugeint)',
+      `insert into exact_numbers values ('N-1', 9999999999999999.99, 12.50, 123456789012345678901234567890)`,
+    ])
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-exact', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-exact:copy_create`, { database: 'sales', schema: 'main', table: 'exact_numbers', name: 'Exact Numbers', key: 'code', columns: ['code', 'wide', 'narrow', 'huge'].map(source => ({ source, column_name: source })) })
+    const meta = await admin.get<{ columns: { column_name: string; column_type: string }[] }>('/api/table/Exact%20Numbers:meta')
+    expect(Object.fromEntries(meta.columns.map(c => [c.column_name, c.column_type]))).toMatchObject({ wide: 'Text', narrow: 'Float', huge: 'Text' })
+    expect(await admin.get('/api/table/Exact%20Numbers/N-1')).toMatchObject({ wide: '9999999999999999.99', narrow: 12.5, huge: '123456789012345678901234567890' })
+    await admin.post('/api/table/Exact%20Numbers:copy_again', {})
+    expect(await admin.get('/api/table/Exact%20Numbers/N-1')).toMatchObject({ wide: '9999999999999999.99' })
   })
 
   test('a table restriction on the source refuses preview, key checks, copying and Copy again of any other table', async ({ admin }) => {
