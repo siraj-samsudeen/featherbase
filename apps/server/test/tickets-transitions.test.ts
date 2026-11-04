@@ -258,6 +258,18 @@ describe('Tickets: transitions per ticket type (#918)', () => {
     await refused(take(w.support, fixed, 'Not fixed', { still_wrong: 'x' }), /not allowed/i)
   })
 
+  test('a switched-off type is not offered for new tickets, and its tickets still move only through its actions', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    const ticket = await raise(w)
+    const row = (await admin.get<any>(`/api/table/tickets.ticket_type/${w.dq.row_id}`))
+    await save(admin, 'tickets.ticket_type', { ...row, enabled: false })
+    expect((await read(w.raiser, 'form')).types.find((t: any) => t.key === 'data_quality_issue')).toMatchObject({ enabled: false })
+    await refused(act(w.raiser, 'create', { title: 't', original: 'o', kind: 'data_quality_issue', details: { source_system: w.sap } }))
+    await refused(act(w.support, 'resolve', { ...revision(ticket), reason: 'r', reference: 'x' }), /actions/)
+    expect(await offered(w.contact, ticket)).toEqual(['Confirm', 'Ask a question', 'Reject'])
+    expect((await take(w.contact, ticket, 'Confirm', plan)).ticket_state).toBe('Fix planned')
+  })
+
   test('"any" is anyone involved, never a colleague who only sees the summary', async ({ admin, createUser }) => {
     const w = await world(admin, createUser)
     const row = (await admin.get<any>(`/api/table/tickets.ticket_type/${w.dq.row_id}`))

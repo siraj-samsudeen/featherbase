@@ -100,7 +100,7 @@ const short = (id: string) =>
 // Ticket types the instance configured (Tickets configuration Tables), with
 // their fields and the options their links and people offer this viewer.
 type ConfiguredField = { name: string; label: string; type: string; required: boolean; choices?: string[]; options?: { value: string; label: string }[]; asked_by_action?: boolean }
-type ConfiguredType = { key: string; label: string; states: string[]; done: string[]; fields: ConfiguredField[]; transitions?: boolean; details_visible_to?: 'everyone' | 'private' }
+type ConfiguredType = { key: string; label: string; states: string[]; done: string[]; fields: ConfiguredField[]; transitions?: boolean; details_visible_to?: 'everyone' | 'private'; enabled?: boolean }
 // #918: an action the viewer may take now, and what it asks them to record.
 type TicketAction = { action: string; next_state: string; fields: ConfiguredField[] }
 const configuredTypes: Record<string, ConfiguredType> = {}
@@ -157,13 +157,14 @@ function TypeSelect({
 }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)}>
+      {!kinds[value] && configuredTypes[value]?.enabled === false && <option value={value}>{configuredTypes[value].label}</option>}
       {!kinds[value] && !configuredTypes[value] && <option value={value}>{stateLabel(value)}</option>}
       {Object.entries(kinds).map(([key, name]) => (
         <option key={key} value={key}>
           {name}
         </option>
       ))}
-      {Object.values(configuredTypes).map((type) => (
+      {Object.values(configuredTypes).filter((type) => type.enabled !== false).map((type) => (
         <option key={type.key} value={type.key}>
           {type.label}
         </option>
@@ -1255,7 +1256,7 @@ function App() {
           Reports & exports
           <br />
           Sources & pipelines
-          {Object.values(configuredTypes).map((type) => (
+          {Object.values(configuredTypes).filter((type) => type.enabled !== false).map((type) => (
             <span key={type.key}>
               <br />
               {type.label}

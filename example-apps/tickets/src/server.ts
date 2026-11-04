@@ -180,7 +180,7 @@ async function all(ctx: ReadContext, table: string, fields: string[], filters: L
   }
 }
 interface TypeField { name: string; label: string; type: string; choices: string[]; required: boolean; link_table?: string; link_label?: string }
-interface TicketType { key: string; label: string; states: string[]; done: string[]; reopen: string; routing: Row | null; fields: TypeField[]; transitions: Transition[]; visibility: 'everyone' | 'private' }
+interface TicketType { key: string; label: string; states: string[]; done: string[]; reopen: string; routing: Row | null; fields: TypeField[]; transitions: Transition[]; visibility: 'everyone' | 'private'; enabled: boolean }
 // Fields a transition asks for are recorded by that action, never on intake.
 const actionFieldNames = (type: TicketType) => new Set(type.transitions.flatMap(t => t.fields))
 const intakeFields = (type: TicketType) => { const asked = actionFieldNames(type); return type.fields.filter(f => !asked.has(f.name)) }
@@ -189,12 +189,13 @@ async function configuredTypes(ctx: ReadContext): Promise<Map<string, TicketType
   const fieldRows = await all(ctx, 'tickets.type_field', ['row_id', 'ticket_type', 'field_name', 'label', 'field_type', 'choices', 'link_table', 'link_label', 'required', 'field_order'])
   const types = new Map<string, TicketType>()
   for (const row of rows) {
-    if (!row.enabled) continue
+    // A switched-off type is not offered for new tickets, but its existing
+    // tickets keep its states, actions and privacy.
     const states = lines(row.states)
     types.set(String(row.type_key), { key: String(row.type_key), label: String(row.label), states, done: lines(row.done_states),
       reopen: String(row.reopen_state || states[0]), routing: row.routing ? parse(row.routing) : null, transitions: transitionsOf(row.transitions),
       // Siraj, 04-Nov-2026: privacy is a choice per type, and open is the default.
-      visibility: row.details_visible_to === 'private' ? 'private' : 'everyone',
+      visibility: row.details_visible_to === 'private' ? 'private' : 'everyone', enabled: !!row.enabled,
       fields: fieldRows.filter(f => f.ticket_type === row.row_id).sort((a, b) => Number(a.field_order ?? 0) - Number(b.field_order ?? 0)).map(f => ({
         name: String(f.field_name), label: String(f.label), type: String(f.field_type), choices: lines(f.choices), required: !!f.required,
         ...(f.link_table ? { link_table: String(f.link_table), link_label: String(f.link_label || 'row_id') } : {}),
@@ -215,8 +216,11 @@ function isDone(ticket: Row, types: Map<string, TicketType>) {
   const type = types.get(String(ticket.kind))
   return type ? type.done.includes(String(ticket.ticket_state)) : ticket.ticket_state === 'Resolved'
 }
-function kind(ctx: ReadContext, value: unknown, types: Map<string, TicketType>) {
-  if (typeof value !== 'string' || !(kinds.includes(value) || types.has(value))) ctx.reject('Choose a valid ticket kind')
+/** A kind a ticket may be given now: a built-in or an enabled configured type
+ *  (`current` is the ticket's own kind, which it may keep while switched off). */
+function kind(ctx: ReadContext, value: unknown, types: Map<string, TicketType>, current?: unknown) {
+  if (typeof value !== 'string' || !(kinds.includes(value) || (types.has(value) && (types.get(value)!.enabled || value === current))))
+    ctx.reject('Choose a valid ticket kind')
   return value
 }
 // A configured type's values are checked against its current fields.
@@ -365,7 +369,7 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const { ticket, request, structured, support, where } = await current(ctx, p, false)
     if (!support && ['kind', 'assigned_to', 'public_update', 'state'].some(key => p[key] !== undefined)) ctx.reject('Only support may triage or publish progress')
     const types = await configuredTypes(ctx)
-    const category = p.kind === undefined ? String(ticket.kind) : kind(ctx, p.kind, types)
+    const category = p.kind === undefined ? String(ticket.kind) : kind(ctx, p.kind, types, ticket.kind)
     const type = types.get(category)
     // A ticket whose type has actions moves only through them, and keeps that
     // type: reclassifying it would let a state change skip them.
@@ -593,6 +597,8 @@ export const reads = {
     input(ctx, [])
     const types = await configuredTypes(ctx)
     const configuredList: Row[] = []
+    // Switched-off types are listed (their tickets still show and move), marked
+    // so the form never offers them for a new ticket.
     for (const type of types.values()) {
       const fields: Row[] = []
       const asked = actionFieldNames(type)
@@ -600,7 +606,7 @@ export const reads = {
         ...(asked.has(field.name) ? { asked_by_action: true } : {}),
         ...(field.type === 'choice' ? { choices: field.choices } : {}),
         ...(field.type === 'link' ? { options: (await linkRows(ctx, field)).map(r => ({ value: String(r.row_id), label: String(r[field.link_label!] ?? r.row_id) })) } : {}) })
-      configuredList.push({ key: type.key, label: type.label, states: type.states, done: type.done, fields, transitions: type.transitions.length > 0, details_visible_to: type.visibility })
+      configuredList.push({ key: type.key, label: type.label, states: type.states, done: type.done, fields, transitions: type.transitions.length > 0, details_visible_to: type.visibility, enabled: type.enabled })
     }
     return { answer: { types: [...kinds.map(key => ({ key, builtin: true })), ...configuredList] } }
   },
