@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Segmented } from './Segmented'
 
 export type PanePlaceValue = 'auto' | 'right' | 'bottom'
@@ -45,13 +45,28 @@ function find(root: Element, route: number[]): HTMLElement | null {
   return at instanceof HTMLElement ? at : null
 }
 
+/** The least height a docked split takes, however little room is left. */
+const MIN_DOCK = 320
+
+/** The height from `el`'s top to the foot of what its scrolling frame shows. */
+function roomBelow(el: HTMLElement): number {
+  let frame = el.parentElement
+  while (frame && !/(auto|scroll|hidden|clip)/.test(getComputedStyle(frame).overflowY)) frame = frame.parentElement
+  const top = el.getBoundingClientRect().top
+  if (!frame) return Math.max(MIN_DOCK, window.innerHeight - (top + window.scrollY))
+  const box = frame.getBoundingClientRect()
+  const offset = top - box.top + frame.scrollTop
+  const padding = parseFloat(getComputedStyle(frame).paddingBottom) || 0
+  return Math.max(MIN_DOCK, Math.round(frame.clientHeight - offset - padding))
+}
+
 /**
  * Content with the drill pane beside it (right: about 40% wide, at least
  * 360px, as tall as the window) or below it (bottom: docked at the foot of
- * the window, half its height, so the content above keeps its size as the pane fills). A pane on the right stays in sight
- * while the page scrolls. With a pane at the bottom the split takes the
- * window's height, the content scrolling on its own above the pane, never
- * under it; opening one scrolls the split into view so the pane shows. Either
+ * its scrolling frame, half the split's height). A pane on the right stays in
+ * sight while the page scrolls. With a pane at the bottom the split fills the
+ * room its frame shows below what sits above it (a path bar stays in sight),
+ * the content scrolling on its own above the pane, never under it. Either
  * pane scrolls inside itself, and neither ever scrolls the page sideways.
  * With no pane the content fills it all. `data-pane` says where the pane is,
  * so the page around can make room for one on the right.
@@ -77,15 +92,26 @@ export function SplitWithPane({ place, pane, children }: {
     const back = opener.el?.isConnected ? opener.el : content.current && find(content.current, opener.route)
     back?.focus({ preventScroll: true })
   }, [shown])
+  // Docked, the split fills what its scrolling frame (the page, or a frame it
+  // sits in) shows below whatever is above it, so nothing above scrolls away.
+  const [height, setHeight] = useState<number | null>(null)
+  useLayoutEffect(() => {
+    if (!docked) { setHeight(null); return }
+    const measure = () => { if (split.current) setHeight(roomBelow(split.current)) }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [docked])
   useEffect(() => {
     if (!docked) return
     // The line the pane shows stays in sight in the shorter content above it.
     split.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' })
-    split.current?.scrollIntoView?.({ block: 'end' })
+    split.current?.scrollIntoView?.({ block: 'nearest' })
   }, [docked])
   return (
     <div ref={split} data-testid="split-with-pane" data-pane={shown ? place : undefined}
-      className={`flex min-h-0 min-w-0 flex-1 ${right ? 'flex-row items-start gap-4' : 'flex-col'} ${docked ? 'h-[calc(100dvh-7rem)] min-h-96' : ''}`}>
+      style={docked && height ? { height } : undefined}
+      className={`flex min-h-0 min-w-0 flex-1 ${right ? 'flex-row items-start gap-4' : 'flex-col'}`}>
       <div ref={content} className="min-h-0 min-w-0 flex-1 self-stretch overflow-auto"
         onFocus={(event) => {
           opener.el = event.target as HTMLElement
