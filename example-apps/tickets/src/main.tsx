@@ -118,18 +118,26 @@ const person = (id: unknown): string =>
   typeof id !== 'string' || !id
     ? '—'
     : (knownNames[id] ?? (isPersonId(id) ? 'Unnamed person' : id))
+// Dates read DD-Mon-YYYY (04-Nov-2026), never a slash form.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const two = (n: number) => String(n).padStart(2, '0')
+const dayMonthYear = (d: Date) => `${two(d.getDate())}-${MONTHS[d.getMonth()]}-${d.getFullYear()}`
+const isoDate = /^(\d{4})-(\d{2})-(\d{2})$/
 const display = (value: unknown): string =>
   value == null
     ? '—'
     : typeof value === 'object'
       ? JSON.stringify(value, (_key, item) => typeof item === 'string' && knownNames[item] ? knownNames[item] : item, 2)
       : typeof value === 'string'
-        ? person(value)
+        ? isoDate.test(value)
+          ? value.replace(isoDate, (_m, y, mo, d) => `${d}-${MONTHS[Number(mo) - 1]}-${y}`)
+          : person(value)
         : String(value)
-const time = (value: unknown) =>
-  typeof value === 'string' && !Number.isNaN(Date.parse(value))
-    ? new Date(value).toLocaleString()
-    : display(value)
+const time = (value: unknown) => {
+  if (typeof value !== 'string' || Number.isNaN(Date.parse(value)) || isoDate.test(value)) return display(value)
+  const d = new Date(value)
+  return `${dayMonthYear(d)}, ${two(d.getHours())}:${two(d.getMinutes())}`
+}
 function Label({ children, title }: { children: ReactNode; title: string }) {
   return (
     <label>
@@ -182,7 +190,9 @@ function Structured({
             <Label key={field.name} title={title}>
               {field.type === 'long text' ? (
                 <textarea rows={3} value={value} required={field.required} onChange={(e) => set(e.target.value)} />
-              ) : field.type === 'choice' || field.type === 'link' || field.type === 'person' ? (
+              ) : field.type === 'person' ? (
+                <PersonPicker value={value} required={field.required} onChange={set} />
+              ) : field.type === 'choice' || field.type === 'link' ? (
                 <select value={value} required={field.required} onChange={(e) => set(e.target.value)}>
                   <option value="">Choose…</option>
                   {(field.type === 'choice'
@@ -214,6 +224,42 @@ function Structured({
         </Label>
       ))}
     </div>
+  )
+}
+// Any Person the signed-in person may see, found by name through the
+// platform's people picker (the Person permission applies).
+function PersonPicker({ value, required, onChange }: { value: string; required: boolean; onChange: (value: string) => void }) {
+  const [query, setQuery] = useState(''),
+    [found, setFound] = useState<{ row_id: string; label: string }[]>([]),
+    [note, setNote] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      const token = localStorage.getItem('fc_token')
+      const response = await fetch(`/api/people/pick?q=${encodeURIComponent(query)}&limit=20`, {
+        credentials: 'same-origin', headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }).catch(() => null)
+      if (!response?.ok) {
+        setFound([])
+        setNote('You cannot look people up here.')
+        return
+      }
+      setNote('')
+      setFound(((await response.json()) as { people: { row_id: string; label: string }[] }).people)
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [query])
+  return (
+    <>
+      <input type="search" placeholder="Search by name" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <select value={value} required={required} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Choose…</option>
+        {value && !found.some((p) => p.row_id === value) && <option value={value}>{person(value)}</option>}
+        {found.map((p) => (
+          <option key={p.row_id} value={p.row_id}>{p.label}</option>
+        ))}
+      </select>
+      {note && <small className="fine">{note}</small>}
+    </>
   )
 }
 function Facts({ values }: { values: RecordData }) {
@@ -1119,10 +1165,8 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="logo">f</span>
-          <div>
-            feather<span>TICKETS</span>
-          </div>
+          <span className="logo">T</span>
+          <div>Tickets</div>
         </div>
         <div className="workspace">
           Data support<small>One queue. An accountable path.</small>
@@ -1155,6 +1199,12 @@ function App() {
           Reports & exports
           <br />
           Sources & pipelines
+          {Object.values(configuredTypes).map((type) => (
+            <span key={type.key}>
+              <br />
+              {type.label}
+            </span>
+          ))}
         </div>
         <div className="sidebar-bottom">
           <span className="avatar">
