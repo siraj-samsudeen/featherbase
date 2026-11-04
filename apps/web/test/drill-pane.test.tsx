@@ -115,7 +115,8 @@ test("Open as list opens the group's table narrowed to the row", async ({ admin 
 
 test('Open row page and Edit are separate ways to the row', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
-  expect(within(site).getByRole('link', { name: 'Open row page' })).toHaveAttribute('href', expect.stringContaining(`${tableHref(SITE)}/row/ENK`))
+  // The ways to the row show once the row is known to be readable.
+  expect(await within(site).findByRole('link', { name: 'Open row page' })).toHaveAttribute('href', expect.stringContaining(`${tableHref(SITE)}/row/ENK`))
   expect(within(site).getByRole('link', { name: 'Edit' })).toHaveAttribute('href', expect.stringContaining(`${tableHref(SITE)}/row/ENK`))
 })
 
@@ -214,6 +215,15 @@ test('a pane on a row that is gone says so, without its id', async ({ admin }) =
   const gone = await screen.findByRole('complementary', { name: 'A row you cannot see' })
   expect(await within(gone).findByText("You can't see this row.")).toBeInTheDocument()
   expect(gone).not.toHaveTextContent('gone-1901')
+})
+
+test('a pane on a row the viewer cannot read offers no way to the row', async ({ admin }) => {
+  await seedSites(admin)
+  const path = { steps: [{ screen: 'list', table: SITE, pane: { table: PLANT, row: 'gone-1901' } }], at: 0 }
+  await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(JSON.stringify(path))}`, admin)
+  const gone = await screen.findByRole('complementary', { name: 'A row you cannot see' })
+  await within(gone).findByText("You can't see this row.")
+  expect(within(gone).queryAllByRole('link').map((l) => l.textContent)).toEqual([])
 })
 
 test('Filter from the pane puts the filter on the path before the row it was read from', async ({ admin }) => {
