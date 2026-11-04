@@ -209,6 +209,9 @@ async function runOneJobImpl(): Promise<boolean> {
   const maxAttempts = Number(claimed.max_attempts)
   const handler = registry.get(method)
   const payload = (claimed.payload as Record<string, unknown>) ?? {}
+  // Remember administration before the handler runs: removal while it is
+  // running must not turn its old interval into a standalone recurrence.
+  const wasAdministered = await scheduledJob(method)
 
   // JOB-005: progress reports go to the job owner's realtime channel.
   //
@@ -284,7 +287,7 @@ async function runOneJobImpl(): Promise<boolean> {
           trigger: 'schedule',
         })
       }
-    } else if (claimed.repeat_every != null) {
+    } else if (!wasAdministered && claimed.repeat_every != null) {
       const every = Number(claimed.repeat_every)
       if (every > 0)
         await enqueue(method, payload, {
