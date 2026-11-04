@@ -730,7 +730,9 @@ const sourceBrowserRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'source/$name',
   // #772: a MotherDuck source's browser keeps its place in the address.
-  validateSearch: (search: Record<string, unknown>): BrowseContext => ({
+  // #796: `connect=<schema.table>` opens a non-MotherDuck source with that table loaded and chosen.
+  validateSearch: (search: Record<string, unknown>): BrowseContext & { connect?: string } => ({
+    connect: searchString(search.connect),
     database: searchString(search.database),
     schema: searchString(search.schema),
     table: searchString(search.table),
@@ -746,7 +748,7 @@ const sourceBrowserRoute = createRoute({
 
 function SourceBrowserPage() {
   const { name } = sourceBrowserRoute.useParams()
-  const context = sourceBrowserRoute.useSearch()
+  const { connect, ...context } = sourceBrowserRoute.useSearch()
   const source = useQuery({
     queryKey: ['data-source', name],
     queryFn: () => api.get<{ engine: string }>(`/api/table/Data%20Source/${encodeURIComponent(name)}`),
@@ -768,7 +770,7 @@ function SourceBrowserPage() {
     <div data-testid="table-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
       {source.data?.engine === 'motherduck'
         ? <WarehouseBrowser key={name} name={name} {...context} />
-        : <SourceBrowser key={name} name={name} />}
+        : <SourceBrowser key={`${name}\u0000${connect ?? ''}`} name={name} connect={connect} />}
     </div>
   )
 }

@@ -416,6 +416,14 @@ export async function installedAppNames(): Promise<string[]> {
 
 export async function listInstalledApps() {
   const rows = await sql`select * from installed_app order by installed_at asc`
+  // #912: an install or enable made by another process shows as running (or
+  // says plainly why not), never as a silent refusal.
+  const notRunning = new Map<string, string>()
+  for (const r of rows) {
+    const name = r.name as string
+    if (r.enabled === false || r.activation_pending || !available.get(name)) continue
+    if (!(await activateInstalledApp(name))) notRunning.set(name, await whyAppNotRunning(name))
+  }
   return rows.map((r) => ({
     name: r.name as string,
     tables: asNameList(r.tables),
@@ -427,7 +435,8 @@ export async function listInstalledApps() {
       ? 'Unversioned legacy installation: recover its reviewed package version and complete declaration; do not guess or reset data'
       : r.activation_pending ? 'Activate the committed version after restoring its exact artifact'
         : r.runtime_package && !available.get(r.name as string)?.runtime_package
-          ? 'Restore the exact installed artifact in configured application paths and restart; do not downgrade or reset data' : null,
+          ? 'Restore the exact installed artifact in configured application paths and restart; do not downgrade or reset data'
+          : notRunning.get(r.name as string) ?? null,
     available: !r.runtime_package || available.get(r.name as string)?.runtime_package === true,
     active: activeApps.has(r.name as string) && r.enabled !== false,
     ownPages: declaresOwnPages(r),
@@ -776,6 +785,28 @@ export async function loadInstalledApps(): Promise<void> {
       await ensureSchedulerJobs(manifest, claimed)
     }
   }
+}
+
+/** #912: an app the database says is installed and enabled, but which this
+ *  process has not wired, because another process (the CLI, another server)
+ *  installed or enabled it while this one ran. Wire it now, exactly as boot
+ *  would, when this server holds its exact package; answer whether it runs. */
+export async function activateInstalledApp(name: string): Promise<boolean> {
+  if (activeApps.has(name)) return true
+  const [r] = await sql`select * from installed_app where name = ${name}`
+  const manifest = available.get(name)
+  if (!r || !manifest || r.enabled === false || r.activation_pending) return false
+  if (r.runtime_package && (await import('./runtime-packages')).installedPackageDifference(r) !== null) return false
+  const claimed = await claimedJobs(manifest)
+  wireHooks(manifest, claimed)
+  await ensureSchedulerJobs(manifest, claimed)
+  return activeApps.has(name)
+}
+
+/** #912: the plain reason an installed, enabled app is not running here. */
+export async function whyAppNotRunning(name: string): Promise<string> {
+  const [r] = await sql`select * from installed_app where name = ${name}`
+  return (await import('./runtime-packages')).notRunningReason(r ?? { name })
 }
 
 export function setAppEnabled(name: string, enabled: boolean) {

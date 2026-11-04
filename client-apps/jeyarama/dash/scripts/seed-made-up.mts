@@ -220,6 +220,22 @@ async function seed(name: string, rows: Record<string, unknown>[]) {
 }
 await seed('sales_to_date', facts)
 await seed('sales_month', month)
+// #750: last month's copies, the whole month, with figures of their own so the two months never agree.
+const lastFacts = [
+  row('9901', 'Lakeside', '010101001', 'Silk sarees', 2400000.80, 2515000.35, lastMonth, lastMonthEnd),
+  row('9901', 'Lakeside', '010101002', 'Cotton sarees', 780000, 702500.60, lastMonth, lastMonthEnd),
+  row('9901', 'Lakeside', '010202001', 'Boys shirts', 560000, 610250, lastMonth, lastMonthEnd),
+  row('9901', 'Lakeside', '010707001', 'Sandals', 150000, 98000.45, lastMonth, lastMonthEnd),
+  row('9901', 'Lakeside', '010808001', 'Wrist watches', 230000, 241000, lastMonth, lastMonthEnd),
+  row('9901', 'Lakeside', '011212001', 'Formal shirts', 290000, 301500.25, lastMonth, lastMonthEnd),
+  row('9904', 'Parkside', '010101001', 'Silk sarees', 1150000, 1201000.10, lastMonth, lastMonthEnd),
+  row('9902', 'Hillview', '010404001', 'Belts', 90000, 70000, lastMonth, lastMonthEnd),
+]
+await seed('sales_last_month', lastFacts)
+await seed('sales_last_month_meta', [...new Set(month.map(m => `${m.store_code} ${m.subcategory_code}`))].map(key => {
+  const [store_code, subcategory_code] = key.split(' ')
+  return { store_code, store_name: STORE_NAMES[store_code], subcategory_code, period_start: lastMonth, data_through: lastMonthEnd, targets_available: true }
+}))
 
 // The proof it worked: a made-up Store Manager opens Lakeside's report and gets figures.
 const signIn = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' },

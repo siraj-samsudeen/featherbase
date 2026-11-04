@@ -85,6 +85,16 @@ export function useCapabilities(): Capabilities | undefined {
   return useWhoAmI().data?.capabilities
 }
 
+/**
+ * #861: whether this person may read a Table, so a page does not ask for rows
+ * their role cannot read. Undefined until the server has said. Display only:
+ * the server still checks every read.
+ */
+export function useCanReadTable(table: string): boolean | undefined {
+  const caps = useCapabilities()
+  return caps && (caps.manage || caps.tables.includes(table))
+}
+
 export interface TableSummary {
   row_id: string
   module: string

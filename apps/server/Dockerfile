@@ -56,6 +56,17 @@ COPY example-apps/tasker/public public
 COPY example-apps/tasker/scripts/build-server.mjs scripts/build-server.mjs
 RUN npm run build
 
+# Tickets (#810) ships beside Tasker in the default image. Shipped is not
+# installed: an administrator installs it explicitly (install-app or Apps).
+FROM web-build AS tickets-build
+WORKDIR /app/example-apps/tickets
+COPY example-apps/tickets/package.json example-apps/tickets/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY example-apps/tickets/featherbase.json example-apps/tickets/index.html example-apps/tickets/tsconfig.json example-apps/tickets/vite.config.ts ./
+COPY example-apps/tickets/src src
+COPY example-apps/tickets/scripts/build-server.mjs scripts/build-server.mjs
+RUN npm run build
+
 # ---- Stage 3: the platform image -------------------------------------------
 # The server, the built SPA and the start command, with no app and no
 # FEATHERBASE_APP_PATHS. This is the image published to GHCR by commit
@@ -108,16 +119,19 @@ ENV FEATHERBASE_INSTANCE=$FEATHERBASE_INSTANCE
 ENV FEATHERBASE_APP_PATHS='["/app/instance-apps/*"]'
 
 # ---- Stage 6: this repository's own server image (the default target) ------
-# The platform image plus Tasker. NODE_ENV, EXPOSE and CMD come from the
-# platform stage.
+# The platform image plus Tasker and Tickets. NODE_ENV, EXPOSE and CMD come
+# from the platform stage.
 FROM platform AS tasker-image
 COPY --from=tasker-build /app/example-apps/tasker/package.json example-apps/tasker/package.json
 COPY --from=tasker-build /app/example-apps/tasker/featherbase.json example-apps/tasker/featherbase.json
 COPY --from=tasker-build /app/example-apps/tasker/dist example-apps/tasker/dist
+COPY --from=tickets-build /app/example-apps/tickets/package.json example-apps/tickets/package.json
+COPY --from=tickets-build /app/example-apps/tickets/featherbase.json example-apps/tickets/featherbase.json
+COPY --from=tickets-build /app/example-apps/tickets/dist example-apps/tickets/dist
 
 # When a later Tasker version ships, the version installed on the instances
 # is built beside it and listed here too, so an upgrade can find it.
-ENV FEATHERBASE_APP_PATHS='["/app/example-apps/tasker"]'
+ENV FEATHERBASE_APP_PATHS='["/app/example-apps/tasker","/app/example-apps/tickets"]'
 
 # ---- The image this build produces ------------------------------------------
 FROM ${FINAL_STAGE:-tasker-image}
