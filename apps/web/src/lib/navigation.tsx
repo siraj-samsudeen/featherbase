@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { rowHref, tableHref } from 'shared'
-import { EMPTY_PATH, decodePath, encodePath, go as goTo, push as pushStep, replace as replaceAt, type NavPath, type NavStep } from './nav-path'
+import { EMPTY_PATH, decodePath, encodePath, go as goTo, push as pushStep, replace as replaceAt, stepShows, type NavPath, type NavStep } from './nav-path'
 
 // #910 D1: where the user is on their walk between related rows. The list
 // and row pages keep the path in their address (`?path=`), so every drill and
@@ -23,6 +23,10 @@ export interface Navigation {
   open: (path: NavPath) => void
   /** Puts a whole path on screen in place of the current one, adding no history entry. */
   reshape: (path: NavPath) => void
+  /** Rewrites the path and moves one step on along it: the step before the
+   *  new current one takes this history entry and the new one adds an entry,
+   *  so the browser's back button lands on the step before it on the path. */
+  advanceTo: (path: NavPath) => void
   /** The address of a path on the page that shows its current step, for links. */
   href: (path: NavPath) => string
   /** Whether this navigation lives in the address (and so can be shared). */
@@ -83,11 +87,19 @@ export function useAddressNavigation(here: NavStep, raw: unknown): Navigation {
     return {
       path,
       step,
-      push: (next) => show(pushStep(path, carry(next))),
+      // A step that takes the current one's place (it shows the same) changes
+      // this history entry; anything else is a new one.
+      push: (next) => show(pushStep(path, carry(next)), stepShows(stored) === stepShows(next)),
       replace: (next) => show(replaceAt(path, next), true),
       go: (index) => show(goTo(path, index)),
       open: (next) => show(next),
       reshape: (next) => show(next, true),
+      advanceTo: (next) => {
+        void (async () => {
+          if (next.at > 0) await navigate({ href: pathHref({ steps: next.steps, at: next.at - 1 }), replace: true })
+          await navigate({ href: pathHref(next) })
+        })()
+      },
       href: pathHref,
       addressed: true,
       setExpanded: (expanded) => setUnfolded({ path, expanded }),
@@ -106,6 +118,7 @@ export function useLocalNavigation(here: NavStep): Navigation {
     go: (index) => setPath((p) => goTo(p, index)),
     open: setPath,
     reshape: setPath,
+    advanceTo: setPath,
     href: () => '',
     addressed: false,
     setExpanded: (expanded) => setPath((p) => replaceAt(p, { ...p.steps[p.at], expanded })),

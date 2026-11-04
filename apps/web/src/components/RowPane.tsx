@@ -173,7 +173,7 @@ function PointsAt({ links, nav, onOpen }: { links: ForwardLink[]; nav: Navigatio
             const filtered: NavStep = { ...step, filters: [...kept, [column.column_name, '=', link.row_id]] }
             const { pane: _, ...listOnly } = filtered
             const before = { steps: nav.path.steps.slice(0, nav.path.at), at: nav.path.at - 1 }
-            nav.reshape(push(push(before, listOnly), filtered))
+            nav.advanceTo(push(push(before, listOnly), filtered))
           })
           return (
             <div key={link.column} className="contents">
