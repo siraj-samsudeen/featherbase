@@ -226,13 +226,11 @@ export async function installedAppsAtStart(environment = currentEnvironment()): 
     await assertInstalledAppsShipped()
     return []
   }
-  const found = await installedNotShipped()
-  if (!found) return []
+  const { missingRows = [], paths = [] } = (await installedNotShipped()) ?? {}
   // #912: say which difference it is, and what to do, not only "does not have it".
   const { whyUnshipped, notRunningMessage } = await import('./runtime-packages')
-  const paths = await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
   const lines: string[] = []
-  for (const row of found.missingRows) {
+  for (const row of missingRows) {
     const reason = await whyUnshipped(row, paths)
     const name = String(row.name), version = String(row.package_version)
     lines.push(reason === 'absent'
@@ -249,8 +247,9 @@ async function installedNotShipped() {
   const rows = await sql`select name, package_version, artifact_digest, manifest from installed_app
     where runtime_package and enabled and package_version is not null order by name`
   const named = (row: Record<string, unknown>) => ({ name: String(row.name), version: String(row.package_version) })
-  const missing = await unshippedApps(rows, await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[]))
-  return { installed: rows.map(named), missing: missing.map(named), missingRows: missing }
+  const paths = await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+  const missing = await unshippedApps(rows, paths)
+  return { installed: rows.map(named), missing: missing.map(named), missingRows: missing, paths }
 }
 
 /** 5e. #651: a warning, never a refusal (the step's destructive: true is the

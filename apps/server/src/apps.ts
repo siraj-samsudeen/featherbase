@@ -797,7 +797,6 @@ export async function activateInstalledApp(name: string): Promise<boolean> {
   const manifest = available.get(name)
   if (!r || !manifest || r.enabled === false || r.activation_pending) return false
   if (r.runtime_package && (await import('./runtime-packages')).installedPackageDifference(r) !== null) return false
-  if (wired.has(name)) unwireHooks(name)
   const claimed = await claimedJobs(manifest)
   wireHooks(manifest, claimed)
   await ensureSchedulerJobs(manifest, claimed)
@@ -807,9 +806,7 @@ export async function activateInstalledApp(name: string): Promise<boolean> {
 /** #912: the plain reason an installed, enabled app is not running here. */
 export async function whyAppNotRunning(name: string): Promise<string> {
   const [r] = await sql`select * from installed_app where name = ${name}`
-  if (!r) return `App ${name} is not installed`
-  if (!r.runtime_package) return `App ${name} is installed; it starts working after the server restarts.`
-  return (await import('./runtime-packages')).notRunningReason(r)
+  return (await import('./runtime-packages')).notRunningReason(r ?? { name })
 }
 
 export function setAppEnabled(name: string, enabled: boolean) {
