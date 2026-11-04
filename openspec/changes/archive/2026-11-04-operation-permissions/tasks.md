@@ -25,7 +25,6 @@ approvals or platform-admin changes (pieces B–D).
 
 ## 5. Verification and delivery
 
-- [ ] 5.1 Server and web typecheck, server suite, web suite, spec/sensitive/vocabulary/import guards.
-- [ ] 5.2 Standard and adversarial Codex reviews until no blocker; record dispositions in the PR.
-- [ ] 5.3 Before a live instance takes 0139, rehearse it on a restored snapshot (`docs/DEPLOY.md`). Not part of this PR.
-- [ ] 5.4 Sync this change into the main spec and archive it in the PR, before merge.
+- [x] 5.1 Server and web typecheck, server suite, web suite, spec/sensitive/vocabulary/import guards.
+- [x] 5.2 Standard and adversarial Codex reviews until no blocker; record dispositions in the PR.
+- [x] 5.3 Sync this change into the main spec and archive it in the PR, before merge.
