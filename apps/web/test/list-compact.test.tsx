@@ -31,8 +31,11 @@ test('Compact leads with the name and two key values', async ({ admin }) => {
 test('the compact choice is kept for that table alone, after signing in again', async ({ admin }) => {
   await seedSites(admin)
   const first = await renderApp(tableHref(SITE), admin)
-  fireEvent.click(within(await layout()).getByRole('button', { name: 'Compact' }))
+  // A click before the person's saved list settings arrive cannot overwrite
+  // them (list-settings.test.tsx), so choose Compact until one is saved;
+  // choosing it again once it is on changes nothing.
   await waitFor(async () => {
+    fireEvent.click(within(await layout()).getByRole('button', { name: 'Compact' }))
     const { settings } = await admin.get<{ settings: { compact?: boolean } | null }>(`/api/user_settings/${encodeURIComponent(SITE)}`)
     expect(settings?.compact).toBe(true)
   })
@@ -44,9 +47,9 @@ test('the compact choice is kept for that table alone, after signing in again', 
   expect(within(await layout()).getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'true')
 })
 
-test("Compact chosen before the person's saved list settings arrive is kept and saved, not undone", async ({ admin }) => {
+test("Compact clicked before the person's saved list settings arrive cannot overwrite them", async ({ admin }) => {
   await seedSites(admin)
-  // Saved settings exist (a column shown), and they arrive late.
+  // Saved settings exist (a column shown, not compact), and they arrive late.
   await admin.put(`/api/user_settings/${encodeURIComponent(SITE)}`, { shownCols: ['rent'] })
   let release!: () => void
   const gate = new Promise<void>((resolve) => { release = resolve })
@@ -59,13 +62,10 @@ test("Compact chosen before the person's saved list settings arrive is kept and 
     await renderApp(tableHref(SITE), admin)
     fireEvent.click(within(await layout()).getByRole('button', { name: 'Compact' }))
     release()
-    await waitFor(async () => {
-      const { settings } = await admin.get<{ settings: { compact?: boolean; shownCols?: string[] } | null }>(`/api/user_settings/${encodeURIComponent(SITE)}`)
-      expect(settings?.compact).toBe(true)
-      // The saved column is kept, not overwritten by the early choice.
-      expect(settings?.shownCols).toEqual(['rent'])
-    })
-    expect(within(await layout()).getByRole('button', { name: 'Compact' })).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(async () => expect(within(await layout()).getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'true'))
+    const { settings } = await admin.get<{ settings: { compact?: boolean; shownCols?: string[] } | null }>(`/api/user_settings/${encodeURIComponent(SITE)}`)
+    expect(settings?.compact).toBeFalsy()
+    expect(settings?.shownCols).toEqual(['rent'])
   } finally {
     release()
     held.mockRestore()
