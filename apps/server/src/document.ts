@@ -350,7 +350,7 @@ async function anyTableLinkProblem(tx: typeof sql, f: TableMeta['columns'][numbe
   const [found] = await tx`select 1 from ${tx(await tableRelation(target))}
     where ${tx(targetMeta.row_key)} = ${value} for key share`
   if (!found) return `${target} ${value} does not exist`
-  const unchanged = old != null && String(own(old, f.column_name) ?? '') === value && String(own(old, f.table_column!) ?? '') === target
+  const unchanged = old != null && [f.column_name, f.table_column!].every((c) => String(own(old, c)) === String(own(row, c)))
   if (!unchanged) {
     try {
       await getDoc(target, value, user)

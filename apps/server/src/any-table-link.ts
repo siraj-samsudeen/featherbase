@@ -28,17 +28,15 @@ export async function anyTableLinkColumns(tx: typeof sql): Promise<AnyTableLinkC
 }
 
 /** The rows holding a link to `table` row `rowId`, per link column. */
-async function holders(tx: typeof sql, table: string, rowId: string, limit?: number) {
+async function holders(tx: typeof sql, table: string, rowId: string) {
   const { getMeta } = await import('./meta')
   const { tableRelation } = await import('./table-engine')
   const found: { table: string; row: Record<string, unknown>; kind: string }[] = []
   for (const link of await anyTableLinkColumns(tx)) {
     const meta = await getMeta(link.parent)
     const rows = await tx`select * from ${tx(await tableRelation(link.parent))}
-      where ${tx(link.table_column)} = ${table} and ${tx(link.column_name)} = ${rowId}
-      ${limit ? tx`limit ${limit}` : tx``}`
+      where ${tx(link.table_column)} = ${table} and ${tx(link.column_name)} = ${rowId}`
     for (const row of rows) found.push({ table: link.parent, row, kind: meta.kind })
-    if (limit && found.length >= limit) break
   }
   return found
 }
@@ -50,7 +48,7 @@ export async function anyTableLinkCount(tx: typeof sql, table: string, rowId: st
 
 /** "Decision 3" (or the parent row of a Sub-table's row) linking to this row, if any. */
 export async function anyTableLinkHolder(tx: typeof sql, table: string, rowId: string): Promise<string | null> {
-  const [first] = await holders(tx, table, rowId, 1)
+  const [first] = await holders(tx, table, rowId)
   if (!first) return null
   const { physicalRowKey } = await import('./meta')
   return first.kind === 'sub_table'
