@@ -2,8 +2,8 @@
 
 - [x] 1.1 Rebase on main after #792 / PR #839; merge #795's branch (PR #857) underneath
 - [x] 1.2 Delta specs re-checked against #839's map requirements; independent MECE review applied
-- [ ] 1.3 Owner answers the row page's tab set (Form · Map · Tree · Collaboration · Activity
-      recommended)
+- [x] 1.3 Owner chose the row page's tab set from drawn options (04-Nov-2026): Form · Map · Tree ·
+      Collaboration · Activity; Work becomes Form, Related goes
 
 ## 2. Shared components and UI Lab (before any page uses them)
 
