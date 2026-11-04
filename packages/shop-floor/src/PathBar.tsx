@@ -55,39 +55,45 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
     }
     if (shift) bar.scrollTo?.({ left })
     notice(left)
-  }, [current, steps.length])
+  }, [current, steps.length, earlier])
   useEffect(() => {
     if (!copied) return
     const timer = setTimeout(() => setCopied(false), COPIED_MS)
     return () => clearTimeout(timer)
   }, [copied])
   return (
-    <div className="flex min-w-0 items-center gap-2 border-b border-border bg-surface px-4 py-2">
+    // On a narrow bar the path takes a line of its own under the buttons,
+    // so the current step always has room.
+    <div className="@container flex min-w-0 flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-2">
       <Button onClick={onBack} disabled={current <= 0}>Back</Button>
       <Button onClick={onForward} disabled={current >= steps.length - 1}>Forward</Button>
-      {earlier && (
-        <button type="button" aria-label="Earlier steps" title="Earlier steps"
-          onClick={() => { nav.current?.scrollTo?.({ left: 0 }); setEarlier(false) }}
-          className="inline-flex min-h-control shrink-0 items-center rounded-control px-2 text-sm text-ink-muted hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus"
-        >…</button>
-      )}
-      <nav ref={nav} aria-label="Path" onScroll={(event) => notice(event.currentTarget.scrollLeft)}
-        className="min-w-0 flex-1 snap-x overflow-x-auto">
-        <ol className="flex w-max items-center gap-1 text-sm">
-          {steps.map((step, index) => (
-            <li key={step.key} className="flex shrink-0 snap-start items-center gap-1">
-              {index > 0 && <ChevronRight aria-hidden size={14} className="text-ink-subtle" />}
-              <button type="button" onClick={() => onStep(index)} aria-current={index === current ? 'step' : undefined}
-                className={cx('inline-flex min-h-control items-center gap-1 whitespace-nowrap rounded-control px-2 focus-visible:outline-2 focus-visible:outline-focus',
-                  'text-ink hover:bg-subtle aria-[current=step]:bg-action-tint aria-[current=step]:font-semibold aria-[current=step]:text-action')}
-              >
-                {step.kindLabel && <><span className="text-xs text-ink-muted">{step.kindLabel}</span>{' '}</>}
-                {step.label}
-              </button>
-            </li>
-          ))}
-        </ol>
-      </nav>
+      <div className="flex min-w-0 flex-1 items-center gap-1 @max-2xl:order-last @max-2xl:basis-full">
+        {earlier && (
+          <button type="button" aria-label="Earlier steps" title="Earlier steps"
+            onClick={() => { nav.current?.scrollTo?.({ left: 0 }); setEarlier(false) }}
+            className="inline-flex min-h-control shrink-0 items-center rounded-control px-2 text-sm text-ink-muted hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus"
+          >…</button>
+        )}
+        <nav ref={nav} aria-label="Path" onScroll={(event) => notice(event.currentTarget.scrollLeft)}
+          // A sliver of a step left over at the edge (the bar cannot scroll
+          // any further) fades out rather than showing a cut word.
+          className={cx('min-w-0 flex-1 snap-x overflow-x-auto', earlier && '[mask-image:linear-gradient(to_right,transparent,black_2rem)]')}>
+          <ol className="flex w-max items-center gap-1 text-sm">
+            {steps.map((step, index) => (
+              <li key={step.key} className="flex shrink-0 snap-start items-center gap-1">
+                {index > 0 && <ChevronRight aria-hidden size={14} className="text-ink-subtle" />}
+                <button type="button" onClick={() => onStep(index)} aria-current={index === current ? 'step' : undefined}
+                  className={cx('inline-flex min-h-control items-center gap-1 whitespace-nowrap rounded-control px-2 focus-visible:outline-2 focus-visible:outline-focus',
+                    'text-ink hover:bg-subtle aria-[current=step]:bg-action-tint aria-[current=step]:font-semibold aria-[current=step]:text-action')}
+                >
+                  {step.kindLabel && <><span className="text-xs text-ink-muted">{step.kindLabel}</span>{' '}</>}
+                  {step.label}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      </div>
       {recent}
       <Button onClick={() => { onCopyLink(); setCopied(true) }}>Copy link</Button>
       <span role="status" className="min-w-0 shrink-0 text-sm text-positive">{copied ? 'Copied' : ''}</span>
