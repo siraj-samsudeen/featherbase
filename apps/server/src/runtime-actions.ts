@@ -1,4 +1,4 @@
-import { ownDisplayName, tableMembers } from './people-directory'
+import { ownDisplayName, principalNames, tableMembers } from './people-directory'
 import { z } from 'zod'
 import type { ActionRow, AppAuthorizationContext, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler } from 'shared'
 import { inAppTransaction, sql } from './db'
@@ -43,6 +43,11 @@ export function linkedTables(settings: Readonly<Record<string, string>>): string
     const value: unknown = JSON.parse(settings.linked_tables ?? '[]')
     return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : []
   } catch { return [] }
+}
+
+/** #912: names of people, read as the caller (the Person permission applies). */
+function callerPeople(user: string): RuntimeActionContext['people'] {
+  return Object.freeze({ names: (ids: string[]) => principalNames(ids, user) })
 }
 
 export function callerDocuments(app: string, allowed: string[], user: string, linked: string[] = []) {
@@ -178,7 +183,7 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
       // Serialized inside the guard (Codex round 2 on #670): a getter on the
       // result is the app's code running, and may log or throw a secret.
       const json = await withSecretsKept(kept, async () => {
-        try { return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), payload: normalized, authorization, settings, secrets, documents: context.documents, reject }))) }
+        try { return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), people: callerPeople(user), payload: normalized, authorization, settings, secrets, documents: context.documents, reject }))) }
         finally { await context.close() }
       })
       assertNoSecret(kept, JSON.parse(json))
@@ -273,7 +278,7 @@ async function runRead(app: string, name: string, user: string, handler: Runtime
     places: authorization.places, outbound: !inAppTransaction(), deferWrite, provenance })
   const json = await withSecretsKept(kept, async () => {
     try {
-      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), payload, authorization, settings, secrets, reject, documents, datasets, recordView })))
+      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), people: callerPeople(user), payload, authorization, settings, secrets, reject, documents, datasets, recordView })))
     } finally { await close() }
   })
   assertNoSecret(kept, JSON.parse(json))

@@ -13,6 +13,7 @@ interface ListArgs {
 interface ReadContext {
   user: string
   userName: string
+  people: { names(ids: string[]): Promise<Record<string, string | null>> }
   payload: unknown
   settings: Readonly<Record<string, string>>
   reject(message: string, fields?: Record<string, string>): never
@@ -174,7 +175,9 @@ async function typedDetails(ctx: ReadContext, type: TicketType, values: Row): Pr
   const known = new Map(type.fields.map(field => [field.name, field]))
   const unknown = Object.keys(values).find(key => !known.has(key))
   if (unknown) ctx.reject(`${type.label} has no field ${unknown}`)
-  const people = type.fields.some(f => f.type === 'person') ? new Set((await all(ctx, 'tickets.member', ['row_id'])).map(r => String(r.row_id))) : new Set<string>()
+  // A person field takes any Person the caller may see (the Person permission applies).
+  const personIds = type.fields.filter(f => f.type === 'person').map(f => values[f.name]).filter((v): v is string => typeof v === 'string' && !!v.trim()).map(v => v.trim())
+  const visible = personIds.length ? await ctx.people.names(personIds) : {}
   const out: Row = {}
   for (const field of type.fields) {
     const raw = values[field.name]
@@ -186,7 +189,7 @@ async function typedDetails(ctx: ReadContext, type: TicketType, values: Row): Pr
     if (typeof value !== 'string') return ctx.reject(`${field.label} must be text`)
     if (field.type === 'choice' && !field.choices.includes(value)) ctx.reject(`${field.label} must be one of: ${field.choices.join(', ')}`)
     if (field.type === 'date' && !(/^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)))) ctx.reject(`${field.label} must be a date (YYYY-MM-DD)`)
-    if (field.type === 'person' && !people.has(value)) ctx.reject(`${field.label} must be a person who uses Tickets`)
+    if (field.type === 'person' && !visible[value]) ctx.reject(`${field.label} must be a person you can see`)
     if (field.type === 'link' && !(await linkRows(ctx, field, [['row_id', '=', value]])).length) ctx.reject(`${field.label} must be one of its listed rows`)
     out[field.name] = value
   }
@@ -254,7 +257,11 @@ async function names(ctx: ReadContext, ...values: unknown[]): Promise<Record<str
   for (const value of values) idsIn(value, ids)
   if (!ids.size) return {}
   const rows = await all(ctx, 'tickets.member', ['row_id', 'full_name'], [['row_id', 'in', [...ids]]])
-  return Object.fromEntries(rows.map(row => [String(row.row_id), String(row.full_name)]))
+  const known: Record<string, string> = Object.fromEntries(rows.map(row => [String(row.row_id), String(row.full_name)]))
+  // Anyone else (a "raised for" person who never used Tickets), as the viewer may see them.
+  const rest = [...ids].filter(id => !known[id] && /^(psn|sa)_/.test(id))
+  if (rest.length) for (const [id, name] of Object.entries(await ctx.people.names(rest))) if (name) known[id] = name
+  return known
 }
 async function history(ctx: ReadContext, ticket: Row) {
   return all(ctx, 'tickets.event', eventFields, [['ticket', '=', ticket.row_id]])
@@ -438,14 +445,11 @@ export const reads = {
   async form(ctx: ReadContext) {
     input(ctx, [])
     const types = await configuredTypes(ctx)
-    const people = [...types.values()].some(t => t.fields.some(f => f.type === 'person'))
-      ? (await all(ctx, 'tickets.member', ['row_id', 'full_name'])).map(r => ({ value: String(r.row_id), label: String(r.full_name) })) : []
     const configuredList: Row[] = []
     for (const type of types.values()) {
       const fields: Row[] = []
       for (const field of type.fields) fields.push({ name: field.name, label: field.label, type: field.type, required: field.required,
         ...(field.type === 'choice' ? { choices: field.choices } : {}),
-        ...(field.type === 'person' ? { options: people } : {}),
         ...(field.type === 'link' ? { options: (await linkRows(ctx, field)).map(r => ({ value: String(r.row_id), label: String(r[field.link_label!] ?? r.row_id) })) } : {}) })
       configuredList.push({ key: type.key, label: type.label, states: type.states, done: type.done, fields })
     }
