@@ -21,23 +21,23 @@
 
 ## 4. Navigation state
 
-- [ ] 4.1 Path model: identities only, defensive URL parsing, forward steps dropped on a new
+- [x] 4.1 Path model: identities only, defensive URL parsing, forward steps dropped on a new
       drill, last 12 steps (unit tests)
-- [ ] 4.2 Path bar wiring: back, forward, any step, browser history, copy link, names via row titles
-- [ ] 4.3 Per-person settings: compact per table, pane place, last ten paths
+- [x] 4.2 Path bar wiring: back, forward, any step, browser history, copy link, names via row titles
+- [x] 4.3 Per-person settings: compact per table, pane place, last ten paths
 
 ## 5. Pages (compose section 2 only)
 
-- [ ] 5.1 Drill pane on lists, row pages and Explore: points at, pointed at by, group rows, open as
+- [x] 5.1 Drill pane on lists, row pages and Explore: points at, pointed at by, group rows, open as
       list, drill, fields via #795's arrangement, edit opens the form
-- [ ] 5.2 Link cells and form link fields open the pane; filter narrows the list underneath
-- [ ] 5.3 Row page: connection chips under the title; Form · Map · Tree in #800's tab set; remove
+- [x] 5.2 Link cells and form link fields open the pane; filter narrows the list underneath
+- [x] 5.3 Row page: connection chips under the title; Form · Map · Tree in #800's tab set; remove
       Related, peek and the map route
-- [ ] 5.4 Map tab: click shows in pane, centre re-centres, labels clear of edges (#794), State by
+- [x] 5.4 Map tab: click shows in pane, centre re-centres, labels clear of edges (#794), State by
       name (#907)
-- [ ] 5.5 Tree tab and list's tree of all: both directions, several levels, first 20 then all,
+- [x] 5.5 Tree tab and list's tree of all: both directions, several levels, first 20 then all,
       default depth 2
-- [ ] 5.6 List: compact toggle
+- [x] 5.6 List: compact toggle
 
 ## 6. Check and hand off
 
