@@ -1,0 +1,4 @@
+- [x] A failing test: the sidebar and the command bar skip a deleted row; a row deleted from its form leaves at once
+- [x] Filter remembered destinations through the row-title check
+- [x] Drop a deleted row's title from its form and from bulk delete
+- [x] Headless check at 1280

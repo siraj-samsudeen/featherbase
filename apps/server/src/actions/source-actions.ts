@@ -51,6 +51,10 @@ registerRowAction('reflect', {
       tables,
       module: typeof args.module === 'string' && args.module ? args.module : undefined,
       prefix: typeof args.prefix === 'string' && args.prefix ? args.prefix : undefined,
+      names: args.names && typeof args.names === 'object' && !Array.isArray(args.names)
+        ? Object.fromEntries(Object.entries(args.names as Record<string, unknown>)
+            .filter(([, v]) => typeof v === 'string' && v.trim()).map(([k, v]) => [k, String(v).trim()]))
+        : undefined,
     })
   },
 })

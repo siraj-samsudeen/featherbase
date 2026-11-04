@@ -7,7 +7,7 @@ import { useChangeFormat } from '../lib/change-format'
 
 type Entry =
   | { kind: 'comment'; at: string; who: string; content: string }
-  | { kind: 'version'; at: string; who: string; changes: [string, unknown, unknown][]; importRun?: string; resolution?: NonNullable<VersionRow['data']>['resolution'] }
+  | { kind: 'version'; at: string; who: string; changes: [string, unknown, unknown][]; created?: boolean; importRun?: string; resolution?: NonNullable<VersionRow['data']>['resolution'] }
 
 // UI-019: activity timeline interleaving comments and versions (edits with
 // their column diff) chronologically. Workflow actions join here once WF
@@ -25,6 +25,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
         at: v.created_at,
         who: v.created_by,
         changes: v.data?.changed ?? [],
+        created: v.data?.created,
         importRun: v.data?.import_run,
         resolution: v.data?.resolution,
       })
@@ -66,7 +67,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
             <div className="min-w-0 flex-1">
               <div className="text-xs text-ink-muted">
                 <span className="font-medium text-ink" data-testid={e.kind === 'comment' ? 'comment-author' : undefined}><PrincipalName id={e.who} /></span>{' '}
-                {e.kind === 'comment' ? 'commented' : e.resolution ? (e.resolution.decision === 'keep' ? 'kept their correction' : 'adopted the import value') : e.importRun ? 'imported' : 'edited'} ·{' '}
+                {e.kind === 'comment' ? 'commented' : e.resolution ? (e.resolution.decision === 'keep' ? 'kept their correction' : 'adopted the import value') : e.importRun ? 'imported' : e.created ? 'created' : 'edited'} ·{' '}
                 <span className="whitespace-nowrap" data-testid="activity-time">{fmtInstant(e.at)}</span>
               </div>
               {e.kind === 'comment' ? (

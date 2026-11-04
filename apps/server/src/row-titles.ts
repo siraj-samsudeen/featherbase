@@ -4,12 +4,16 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { scopedWhere } from './query'
 import { principalNames } from './people-directory'
+import { getMeta, ROW_KEY, type TableMeta } from './meta'
+import { boundGetList, isBound } from './sources/dispatch'
+import { permittedTiers } from './permissions'
+import { isSensitiveColumn } from './sensitive-columns'
 
 // Home cleanup: what a person reads for each referenced row (Home tiles,
 // Recent, the activity feed). Scoped like a list read — a row the caller may
 // not read, a missing row, or a Table that cannot be read here (unknown,
-// source-bound, Settings) is simply left out, and the caller falls back to
-// what it already had.
+// Settings) is simply left out, and the caller falls back to what it already
+// had. A source-bound Table's titles are read at its data source.
 
 interface RowRef {
   table: string
@@ -34,6 +38,11 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
   for (const r of refs) byTable.set(r.table, (byTable.get(r.table) ?? new Set()).add(r.row_id))
   const out: RowTitle[] = []
   for (const [table, ids] of byTable) {
+    const bound = await getMeta(table).then((m) => (isBound(m) ? m : null), () => null)
+    if (bound) {
+      out.push(...(await boundTitles(bound, [...ids], user)))
+      continue
+    }
     // A Table this caller cannot read here (an AppError) is left out; any
     // other failure propagates.
     const scoped = await scopedWhere(table, user, [['row_id', 'in', [...ids]]])
@@ -65,4 +74,24 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
     }
   }
   return out
+}
+
+// A source-bound Table's rows live at its data source, so they are read
+// through the same scoped list a bound Table's list view uses. A source that
+// refuses or is down leaves these rows out, like any unreadable Table.
+async function boundTitles(meta: TableMeta, ids: string[], user: string): Promise<RowTitle[]> {
+  const tiers = await permittedTiers(user, meta.name, 'read')
+  const columns = meta.columns.filter((c) => tiers.has(c.tier ?? 'basic')
+    && !['Sub-table', 'Section Break', 'Column Break'].includes(c.column_type)
+    && !isSensitiveColumn(c.column_name) && !isSensitiveColumn(c.source_column || ''))
+  const fields = columns.map((c) => c.column_name)
+  const list = await boundGetList(meta, { filters: [[ROW_KEY, 'in', ids]], fields, limit_page_length: ids.length }, user)
+    .catch((err: unknown) => (err instanceof AppError ? null : Promise.reject(err)))
+  if (!list) return []
+  const readable = new Set(Object.keys(list.data[0] ?? {}))
+  const titleMeta = { ...meta, columns, title_column: meta.title_column && readable.has(meta.title_column) ? meta.title_column : null }
+  return list.data.map((row) => {
+    const rowId = String(row[ROW_KEY])
+    return { table: meta.name, row_id: rowId, title: rowDisplayTitle(titleMeta, row, rowId) }
+  })
 }

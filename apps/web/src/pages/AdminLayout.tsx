@@ -26,7 +26,7 @@ import { AppSwitcher } from '../components/AppSwitcher'
 import { PHONE_QUERY, TopBar } from '../components/TopBar'
 import { PeekProvider } from '../components/Peek'
 import { isOpaqueId } from '../lib/people'
-import { EntryLabel } from '../lib/row-titles'
+import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { metaQuery, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
 import { KindIcon } from '../lib/kind-icons'
@@ -344,10 +344,14 @@ function AdminShell({ wide }: { wide: boolean }) {
   // it is not a result of the text currently in the input.
   const recordHits = trimmed === debounced ? docHits.data?.results ?? [] : []
   const showRecents = Boolean(barFocused && trimmed === '' && historyReady)
-  const recentItems = showRecents && user ? uniqueByDisplay(recentActions(user.row_id, 12)).slice(0, 6) : []
+  // #898: the command bar and the sidebar offer only rows that still exist.
+  const remembered = historyReady && user ? [...recentActions(user.row_id, 20), ...frequentActions(user.row_id, 12)] : []
+  const live = useLiveDestinations(remembered)
+  const offered = (entries: RecentEntry[]) => entries.filter((e) => live?.has(e.key))
+  const recentItems = showRecents && user ? uniqueByDisplay(offered(recentActions(user.row_id, 12))).slice(0, 6) : []
   const frequentItems =
     showRecents && user
-      ? uniqueByDisplay([...recentItems, ...frequentActions(user.row_id, 8)]).slice(recentItems.length, recentItems.length + 4)
+      ? uniqueByDisplay([...recentItems, ...offered(frequentActions(user.row_id, 8))]).slice(recentItems.length, recentItems.length + 4)
       : []
   const pick = [...recentItems, ...frequentItems]
   const searchChips = historyReady && user && trimmed ? recentSearches(user.row_id, trimmed, 3) : []
@@ -367,11 +371,11 @@ function AdminShell({ wide }: { wide: boolean }) {
   // #101 Phase 2: the sidebar's zero-keystroke recall — destinations only
   // (searches stay in the command bar, where they can be re-run).
   const sidebarCandidates = historyReady && user
-    ? uniqueByDisplay(recentActions(user.row_id, 20).filter((e) => e.kind !== 'search')).slice(0, SIDEBAR_RECENT_CAP)
+    ? uniqueByDisplay(offered(recentActions(user.row_id, 20)).filter((e) => e.kind !== 'search')).slice(0, SIDEBAR_RECENT_CAP)
     : []
   const recentSlots = sidebarCandidates.slice(0, 3)
   const sidebarFrequent = historyReady && user
-    ? uniqueByDisplay([...recentSlots, ...frequentActions(user.row_id, 12)]).slice(recentSlots.length, recentSlots.length + 2)
+    ? uniqueByDisplay([...recentSlots, ...offered(frequentActions(user.row_id, 12))]).slice(recentSlots.length, recentSlots.length + 2)
     : []
   const sidebarRecent = sidebarFrequent.length ? recentSlots : sidebarCandidates
 

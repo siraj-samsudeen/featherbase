@@ -39,6 +39,9 @@ export default function SourceBrowser({ name }: { name: string }) {
   const [prefix, setPrefix] = useState('')
   const [module, setModule] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // The name each selected table will have, keyed like `selected`; a table
+  // with no entry keeps its proposed name.
+  const [names, setNames] = useState<Record<string, string>>({})
   const [testResult, setTestResult] = useState<string | null>(null)
   const [reflectResult, setReflectResult] = useState<
     | { created: { table: string; name: string }[]; skipped: { table: string; reason: string }[] }
@@ -97,12 +100,14 @@ export default function SourceBrowser({ name }: { name: string }) {
         {
           schema: schema || undefined,
           tables: [...selected],
+          names: Object.fromEntries([...selected].flatMap((k) => (names[k]?.trim() ? [[k, names[k].trim()]] : []))),
           module: module || undefined,
           prefix: prefix || undefined,
         },
       )
       setReflectResult(r)
       setSelected(new Set())
+      setNames({})
       setLoadKey((k) => k + 1)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Reflect failed')
@@ -312,7 +317,12 @@ export default function SourceBrowser({ name }: { name: string }) {
                           {t.already_reflected}
                         </Link>
                       ) : t.bindable ? (
-                        t.proposed_name
+                        <input
+                          className={inputClasses('w-56')}
+                          aria-label={`Name for ${key}`}
+                          value={names[key] ?? t.proposed_name}
+                          onChange={(e) => setNames((prev) => ({ ...prev, [key]: e.target.value }))}
+                        />
                       ) : (
                         <span className="text-negative">{t.reason}</span>
                       )}
