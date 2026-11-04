@@ -80,6 +80,14 @@ const NOT_FITTING = Symbol('not fitting')
 export function toMaster(value: unknown, columnType?: string): unknown {
   const n = normalize(value, columnType)
   if (n === null) return null
+  // JSON keeps its own value; comparison spells it as text, storage must not.
+  if (columnType === 'JSON') return value
+  // A calendar date that does not exist (30-Feb) never rolls over into another day.
+  const day = typeof value === 'string' ? /^(\d{4})-(\d{2})-(\d{2})/.exec(value) : null
+  if (day && (columnType === 'Date' || columnType === 'Datetime')) {
+    const d = new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])))
+    if (d.getUTCFullYear() !== Number(day[1]) || d.getUTCMonth() !== Number(day[2]) - 1 || d.getUTCDate() !== Number(day[3])) return NOT_FITTING
+  }
   if (columnType === 'Int' || columnType === 'Float' || columnType === 'Currency') {
     const number = Number(n)
     if (!Number.isFinite(number) || (columnType === 'Int' && !Number.isInteger(number))) return NOT_FITTING
@@ -299,11 +307,23 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
           on conflict (copied_table, source_key) do update set master_row = excluded.master_row, source_values = excluded.source_values, seen_at = now()`
       }
       if (!Object.keys(values).length) { result.unchanged++; continue }
-      const previous = await latestVersion(master.name, target)
-      const saved = await saveDoc(master.name, { row_id: target, updated_at: current.updated_at, ...values }, actor, 'upsert')
-      // Provenance: a later outbound feed skips what came from this source.
-      await annotateHistory(master, saved, actor, previous, { synced_from: rule.source_system, sync_copied_table: copied, sync_run: runId })
-      result.applied++
+      try {
+        // One row's save is its own savepoint: a value the master refuses
+        // (a Choice it does not offer, a required value emptied, too long)
+        // is raised, and every other row still syncs.
+        await actionTransaction(async () => {
+          const previous = await latestVersion(master.name, target)
+          const saved = await saveDoc(master.name, { row_id: target, updated_at: current.updated_at, ...values }, actor, 'upsert')
+          // Provenance: a later outbound feed skips what came from this source.
+          await annotateHistory(master, saved, actor, previous, { synced_from: rule.source_system, sync_copied_table: copied, sync_run: runId })
+        })
+        result.applied++
+      } catch (error) {
+        if (!(error instanceof AppError) || error.type !== 'ValidationError') throw error
+        for (const field of Object.keys(values))
+          differences.push({ kind: 'cannot_apply', source_key: key, master_row: target, column_name: field,
+            source_value: normalize(values[field], master.columns.find(c => c.column_name === field)?.column_type), featherbase_value: normalize(current[field]) })
+      }
     }
   }
   for (const d of differences) {

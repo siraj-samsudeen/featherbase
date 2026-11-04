@@ -54,6 +54,8 @@ describe('the three-way rule for one column', () => {
     expect(toMaster(new Date('2026-11-04T10:00:00Z'), 'Datetime')).toBe('2026-11-04T10:00:00.000Z')
     expect(toMaster(new Date('2026-11-04T00:00:00Z'), 'Date')).toBe('2026-11-04')
     expect(toMaster(42, 'Data')).toBe('42')
+    expect(toMaster({ shelf: 3 }, 'JSON')).toEqual({ shelf: 3 })
+    expect(isNotFitting(toMaster('2026-02-30', 'Date'))).toBe(true)
     expect(normalize('')).toBeNull()
     expect(normalize(undefined)).toBeNull()
     expect(normalize(7)).toBe('7')
@@ -202,6 +204,22 @@ describe('Master sync (#927)', () => {
     await sql`update table_def set track_changes = false where name = 'Sync Untracked'`
     invalidateMeta('Sync Untracked')
     await expect(admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, master_table: 'Sync Untracked' } })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('a value the master refuses is raised, and every other row still syncs', async ({ admin }) => {
+    const { source } = await world(admin, 'staff_refused')
+    await run(admin)
+    // The master's phone becomes a required Choice; StyleHR sends one it does not offer.
+    await sql`update column_def set column_type = 'Choice', choices = ${'111\n222\n333\n444\n555'} where parent = 'Sync Person' and column_name = 'phone'`
+    invalidateMeta('Sync Person')
+    const result = (await sourceChanges(admin, source, [
+      `update $T set phone = '000' where emp_id = 'E1'`,   // not a choice: raised
+      `update $T set phone = '555' where emp_id = 'E2'`,   // a choice: applied
+    ])).master_sync
+    expect(result).toMatchObject({ applied: 1, ticket_errors: [] })
+    expect(await person(admin, 'P1')).toMatchObject({ phone: '111' })
+    expect(await person(admin, 'P2')).toMatchObject({ phone: '555' })
+    expect((await sunk()).at(-1)!.payload.original).toMatch(/does not fit/)
   })
 
   test('the scheduled refresh of a copy runs its sync rule after the copy', async ({ admin }) => {
