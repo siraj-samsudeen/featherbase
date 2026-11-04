@@ -34,6 +34,7 @@ import {
   ALL_COLUMNS,
   includesColumn,
   permittedColumns,
+  sameStoredValue,
   stripUnwritableFields,
   type ColumnSelection,
 } from './permissions'
@@ -631,9 +632,9 @@ async function assertAccessColumnsUnchanged(
 // already settled on the parent (a create-only grant carries no write tier).
 async function childWriteColumns(user: string, parentColumns: ColumnSelection, parentTable: string, childTable: string, parentColumn: string, action: 'write' | 'create', createdBy?: string): Promise<ColumnSelection> {
   if (parentColumns.has('*')) return new Set(ALL_COLUMNS)
-  // A basic-level parent grant reaches the line items' basic Columns, as it
-  // always did; a listed one reaches only the line-item Columns it lists.
-  const columns = new Set([...parentColumns.has('@basic') ? ['@basic'] : [], ...await childColumns(user, parentTable, childTable, parentColumn, action, createdBy)])
+  // A parent grant that reaches the grid lends its level to the line items;
+  // childColumns checks each grant's reach to this link.
+  const columns = new Set(await childColumns(user, parentTable, childTable, parentColumn, action, createdBy))
   // #608: what a new line item may hold is what create or edit access reaches.
   if (action === 'create') for (const column of await childColumns(user, parentTable, childTable, parentColumn, 'write', createdBy)) columns.add(column)
   return columns
@@ -676,6 +677,18 @@ async function saveChildren(
     where parent = ${parentRowId} and parenttype = ${parentMeta.name}
       and parentfield = ${input.columnName}`
   const stored = new Map(existing.map((r) => [String(r[childKey]), r as RowValues]))
+  // A grid outside the writer's grant may only come back unchanged: the same
+  // rows, each with its stored values. Then there is nothing to write.
+  const link = parentMeta.columns.find((column) => column.row_id === parentColumn)!
+  if (!includesColumn(parentWriteTiers, link)) {
+    const unchanged = input.rows.length === stored.size && input.rows.every((row) => {
+      const before = row[ROW_KEY] == null ? undefined : stored.get(String(row[ROW_KEY]))
+      return before && childMeta.columns.every((column) => !Object.hasOwn(row, column.column_name) ||
+        sameStoredValue(column.column_type, row[column.column_name], before[column.column_name]))
+    })
+    if (!unchanged) throw new AppError('PermissionError', `No write permission on column ${input.columnName}`)
+    return
+  }
   const keep = new Set<string>()
   const errors: Record<string, string> = {}
 
@@ -1261,7 +1274,8 @@ async function updateDoc(
       // #437: neither a role grant nor a write-share opens access columns.
       // Judged on the row the hooks and scripts leave behind — the one that
       // is written — against the stored row.
-      stripUnwritableFields(meta.columns.filter((column) => !column.read_only), writeTiers, row, existing as RowValues)
+      // A grid is judged row by row in saveChildren, against its stored rows.
+      stripUnwritableFields(meta.columns.filter((column) => !column.read_only && column.column_type !== 'Sub-table'), writeTiers, row, existing as RowValues)
       await assertAccessColumnsUnchanged(stx, meta, row, existing as RowValues, user, trusted, writeTiers)
       await assertMandatoryAccess(user, meta, row)
       await assertAttachedTarget(meta, row, existing as RowValues, user, trusted)

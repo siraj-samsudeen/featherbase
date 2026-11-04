@@ -5,7 +5,7 @@ import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableRelation } from './table-engine'
 import { getScopeMap, includesColumn, isPrivileged, permissionScope, permittedColumns } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
-import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, seesEveryColumn } from './row-readers'
+import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, childColumns, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 import { mandatoryWhere, needsMandatoryRowRead } from './mandatory-access'
 import { MAX_RELATED_DEPTH, MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
@@ -274,6 +274,17 @@ export async function scopedWhere(
             `${meta.name}.${spec.parentfield} is not a Sub-table column of ${spec.via} rows`,
           )
       }
+      // #917: a line-item Reference filters only through grids and line-item
+      // Columns this reader may read on every row; a hidden relationship must
+      // not shape the answer.
+      const grids: string[] = []
+      for (const link of meta.columns.filter((f) => f.column_type === 'Sub-table' && f.row_table === spec.via &&
+        (spec.parentfield === undefined || f.column_name === spec.parentfield))) {
+        if (!includesColumn(unrestricted, link)) continue
+        if (includesColumn(await childColumns(user, meta.name, spec.via, link.row_id, 'read', ''), viaCol)) grids.push(link.column_name)
+      }
+      if (!grids.length)
+        throw new AppError('PermissionError', `No read permission on ${spec.via}.${spec.column}`)
       // Depth-indexed alias: self-referential or repeated-table nesting
       // resolves by construction, not by lexical-scoping luck (#106 review).
       const v = sql(`v${relatedDepth}`)
@@ -291,7 +302,7 @@ export async function scopedWhere(
             : sql`exists (
                 select 1 from ${sql(await tableRelation(spec.via))} ${v}
                 where ${v}.parent = ${owner} and ${v}.parenttype = ${meta.name}
-                  and ${inTarget})`,
+                  and ${v}.parentfield in ${sql(grids)} and ${inTarget})`,
       }
     }
 

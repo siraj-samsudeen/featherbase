@@ -80,6 +80,57 @@ describe('creator-scoped Columns', () => {
   })
 })
 
+describe('line items outside a grant', () => {
+  async function order(admin: TestClient) {
+    await admin.post('/api/table_def', { name: 'Cg Person Ref', columns: [{ column_name: 'label', column_type: 'Data' }] })
+    const who = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Cg Person Ref', row: { label: 'Known' } })
+    await admin.post('/api/table_def', { name: 'Cg Line', kind: 'sub_table', columns: [
+      { column_name: 'qty', column_type: 'Int' }, { column_name: 'who', column_type: 'Reference', reference_table: 'Cg Person Ref' },
+    ] })
+    await admin.post('/api/table_def', { name: 'Cg Order', columns: [
+      { column_name: 'label', column_type: 'Data' }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Cg Line' },
+    ] })
+    const row = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Cg Order', row: { label: 'O-1', lines: [{ qty: 1, who: who.row_id }] } })
+    const parent = await admin.get<{ columns: { row_id: string; column_name: string }[] }>('/api/table/Table/Cg%20Order')
+    const child = await admin.get<{ columns: { row_id: string; column_name: string }[] }>('/api/table/Table/Cg%20Line')
+    const id = (columns: { row_id: string; column_name: string }[], name: string) => columns.find((c) => c.column_name === name)!.row_id
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Cg Reader' } })
+    await grantRole(admin, { table: 'Cg Person Ref', role: 'Cg Reader', can_read: true })
+    const read = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Permission', row: {
+      ref_table: 'Cg Order', role: 'Cg Reader', operation: 'read', column_rule: 'listed',
+      columns: [{ target_column: id(parent.columns, 'label') }, { target_column: id(parent.columns, 'lines') }] } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: 'Cg Line', role: 'Cg Reader', operation: 'read', column_rule: 'listed',
+      parent_permission: read.row_id, parent_column: id(parent.columns, 'lines'),
+      columns: [{ target_column: id(child.columns, 'qty') }] } })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: 'Cg Order', role: 'Cg Reader', operation: 'update', column_rule: 'listed',
+      columns: [{ target_column: id(parent.columns, 'label') }] } })
+    return { row: row.row_id, who: who.row_id }
+  }
+
+  test('a hidden line-item Reference cannot filter the rows', async ({ admin, createUser }) => {
+    const { who } = await order(admin)
+    const reader = await createUser({ roles: ['Cg Reader'] })
+    const filters = JSON.stringify([['row_id', 'related', { via: 'Cg Line', column: 'who', table: 'Cg Person Ref', filters: [['row_id', '=', who]] }]])
+    const response = await reader.fetch(`/api/table/Cg%20Order?filters=${encodeURIComponent(filters)}`)
+    expect(response.status).toBe(403)
+  })
+
+  test('a grid sent back unchanged does not block an edit; a changed one is refused', async ({ admin, createUser }) => {
+    const { row } = await order(admin)
+    const reader = await createUser({ roles: ['Cg Reader'] })
+    const current = await reader.get<{ updated_at: string; lines: Record<string, unknown>[] }>(`/api/table/Cg%20Order/${row}`)
+    const changed = await reader.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'Cg Order', row: {
+      row_id: row, updated_at: current.updated_at, label: 'O-1b', lines: [{ ...current.lines[0], qty: 9 }] } }) })
+    expect(changed.status).toBe(403)
+    const saved = await reader.post<{ label: string }>('/api/save_row', { table: 'Cg Order', row: {
+      row_id: row, updated_at: current.updated_at, label: 'O-1b', lines: current.lines } })
+    expect(saved).toMatchObject({ label: 'O-1b' })
+    expect((await admin.get<{ lines: { qty: number }[] }>(`/api/table/Cg%20Order/${row}`)).lines).toMatchObject([{ qty: 1 }])
+  })
+})
+
 describe('an unchanged value is not a change', () => {
   test.for([
     ['Currency', 10, '10.00'],
