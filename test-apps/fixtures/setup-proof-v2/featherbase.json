@@ -14,7 +14,7 @@
     }
   ],
   "roles": ["Setup Reader"],
-  "permissions": [{ "table": "setupproof.note", "role": "Setup Reader", "can_read": true }],
+  "permissions": [{ "table": "setupproof.note", "role": "Setup Reader", "operations": { "read": "*" } }],
   "roleDefaults": { "Setup Reader": ["Setup Staff", "Setup Other"] },
   "migrations": [{ "id": "code_only", "fromVersion": "1.0.0", "toVersion": "1.1.0", "operations": [] }],
   "settings": [

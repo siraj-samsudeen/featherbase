@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { deleteStored } from '../src/storage'
+import { grantRole } from './fixtures'
 
 // WEB-002/003: a logged-in web-form submitter becomes the document's
 // created_by — closing the portal loop (their own_rows_only portal now shows
@@ -19,10 +20,7 @@ async function setup(admin: TestClient) {
   })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   // The customer role holds NO create Permission — the web form is the only door.
-  await admin.post('/api/save_row', {
-    table: 'Permission',
-    row: { ref_table: DT, role: ROLE, own_rows_only: true, can_read: true },
-  })
+  await grantRole(admin, { table: DT, role: ROLE, own_rows_only: true, can_read: true })
   await admin.post('/api/save_row', {
     table: 'Web Form',
     row: {

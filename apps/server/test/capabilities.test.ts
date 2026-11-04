@@ -6,6 +6,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { VIEWER_ROLE } from '../src/sales-target'
+import { grantRole } from './fixtures'
 
 type Caps = { manage: boolean; report: boolean; admin: boolean; own_grant: boolean; tables: string[]; creatable: string[] }
 type Admin = TestClient
@@ -39,10 +40,7 @@ describe('#410 capabilities in whoami', () => {
 
   test('a person with a read grant sees exactly the tables they can read', async ({ admin, createUser }) => {
     await seedRoleAndTable(admin)
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: 'Shelf Note', role: 'Shelf Clerk', can_read: true },
-    })
+    await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_read: true })
     const clerk = await createUser({ email: 'clerk@example.com', roles: ['Shelf Clerk'] })
     expect(await capsOf(clerk)).toEqual({ manage: false, report: false, admin: true, own_grant: true, tables: [GLOSSARY, 'Shelf Note'], creatable: [] })
   })
@@ -55,22 +53,16 @@ describe('#410 capabilities in whoami', () => {
 
   test('a grant removed mid-session is reflected on the next call', async ({ admin, createUser }) => {
     await seedRoleAndTable(admin)
-    const perm = await admin.post<{ row_id: string }>('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: 'Shelf Note', role: 'Shelf Clerk', can_read: true },
-    })
+    const [permission] = await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_read: true })
     const clerk = await createUser({ email: 'clerk2@example.com', roles: ['Shelf Clerk'] })
     expect((await capsOf(clerk)).admin).toBe(true)
-    await admin.delete(`/api/table/Permission/${encodeURIComponent(perm.row_id)}`)
+    await admin.delete(`/api/table/Permission/${encodeURIComponent(permission)}`)
     expect(await capsOf(clerk)).toMatchObject({ admin: false, tables: [GLOSSARY] })
   })
 
   test('creatable names the Tables the person may add rows to', async ({ admin, createUser }) => {
     await seedRoleAndTable(admin)
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: 'Shelf Note', role: 'Shelf Clerk', can_read: true, can_create: true },
-    })
+    await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_read: true, can_create: true })
     const clerk = await createUser({ email: 'clerk3@example.com', roles: ['Shelf Clerk'] })
     expect(await capsOf(clerk)).toMatchObject({ tables: [GLOSSARY, 'Shelf Note'], creatable: ['Shelf Note'] })
   })
@@ -82,9 +74,9 @@ describe('#410 capabilities in whoami', () => {
       kind: 'sub_table',
       columns: [{ column_name: 'qty', column_type: 'Int', label: 'Qty' }],
     })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Shelf Line', role: 'Shelf Clerk', can_read: true } })
+    await grantRole(admin, { table: 'Shelf Line', role: 'Shelf Clerk', can_read: true })
     // A grant left behind for a Table that no longer exists.
-    await sql`insert into permission (row_id, ref_table, role, tier, can_read) values ('ghost-grant', 'Gone Table', 'Shelf Clerk', 'basic', true)`
+    await sql`insert into permission (row_id, ref_table, role, operation, scope_mode) values ('ghost-grant', 'Gone Table', 'Shelf Clerk', 'read', 'all')`
     const clerk = await createUser({ email: 'clerk4@example.com', roles: ['Shelf Clerk'] })
     expect(await capsOf(clerk)).toEqual({ manage: false, report: false, admin: false, own_grant: false, tables: [GLOSSARY], creatable: [] })
   })
@@ -92,12 +84,12 @@ describe('#410 capabilities in whoami', () => {
   test('a grant to the built-in All role lists the Table but does not earn the Admin shell', async ({ admin, createUser }) => {
     await seedRoleAndTable(admin)
     // Runtime apps write these straight to the table; `All` is implicit, not a Role row.
-    await sql`insert into permission (row_id, ref_table, role, tier, can_read) values ('all-grant', 'Shelf Note', 'All', 'basic', true)`
+    await sql`insert into permission (row_id, ref_table, role, operation, scope_mode) values ('all-grant', 'Shelf Note', 'All', 'read', 'all')`
     const viewer = await createUser({ email: 'viewer-all@example.com', roles: [VIEWER_ROLE] })
     expect(await capsOf(viewer)).toEqual({ manage: false, report: true, admin: false, own_grant: false, tables: [GLOSSARY, 'Shelf Note'], creatable: [] })
     // With a grant of their own, the same person earns the shell and still sees the All-granted Table.
     await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Back Office', role: 'Shelf Clerk', can_read: true } })
+    await grantRole(admin, { table: 'Back Office', role: 'Shelf Clerk', can_read: true })
     const clerk = await createUser({ email: 'clerk5@example.com', roles: ['Shelf Clerk'] })
     expect(await capsOf(clerk)).toMatchObject({ admin: true, tables: ['Back Office', GLOSSARY, 'Shelf Note'] })
   })
@@ -109,7 +101,7 @@ describe('#410 capabilities in whoami', () => {
     await admin.post('/api/save_row', { table: 'Share', row: { share_table: 'Shelf Note', share_name: row.row_id, person: guest.user, read: true } })
     expect(await capsOf(guest)).toMatchObject({ admin: true, own_grant: false, tables: [GLOSSARY] })
 
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Shelf Note', role: 'Shelf Clerk', can_create: true } })
+    await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_create: true })
     const writer = await createUser({ email: 'writer@example.com', roles: ['Shelf Clerk'] })
     expect(await capsOf(writer)).toMatchObject({ admin: true, own_grant: true, tables: [GLOSSARY], creatable: ['Shelf Note'] })
   })

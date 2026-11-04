@@ -12,6 +12,7 @@ import { parseInstanceAddresses } from '../src/instance-addresses'
 import { discoverPackages } from '../src/runtime-packages'
 import { landingAfterSignIn } from '../src/landing'
 import { sql } from '../src/db'
+import { grantRole } from './fixtures'
 
 type Caps = { manage: boolean; admin: boolean; own_grant: boolean; tables: string[] }
 
@@ -26,18 +27,16 @@ const capsOf = async (client: TestClient) => (await client.get<{ capabilities: C
 async function installAppWithReaderRole(admin: TestClient) {
   expect(await discoverPackages([DASH_STAND_IN])).toEqual([])
   await admin.post('/api/install_app', { name: 'feather_dash' })
-  await admin.post('/api/save_row', { table: 'Permission', row: {
-    ref_table: APP_TABLE, role: 'System Manager', can_read: true, can_create: true, can_write: true,
-  } })
+  await grantRole(admin, { table: APP_TABLE, role: 'System Manager', can_read: true, can_create: true, can_write: true })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: APP_TABLE, role: ROLE, can_read: true } })
+  await grantRole(admin, { table: APP_TABLE, role: ROLE, can_read: true })
 }
 
 /** A Table of the instance's own, with a role that reads it. */
 async function instanceTableWithRole(admin: TestClient, role: string) {
   await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: role } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Back Office', role, can_read: true } })
+  await grantRole(admin, { table: 'Back Office', role, can_read: true })
 }
 
 beforeEach(() => {
@@ -151,7 +150,7 @@ describe('signing in, a person who cannot use Admin lands in an app they can ope
     await install(admin, 'other', 'barproof')
     // Other tasks is open to everyone (All); a role of their own opens it to them too.
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Other Reader' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'other.task', role: 'Other Reader', can_read: true } })
+    await grantRole(admin, { table: 'other.task', role: 'Other Reader', can_read: true })
     const reader = await createUser({ email: 'two.apps.landing@example.com', roles: ['Bar Reader', 'Other Reader'] })
     expect(await landingOf(reader.user, 'localhost')).toEqual({ landing: '/barproof/' })
   })
@@ -308,7 +307,7 @@ describe("a client app whose artifact is not loaded after a restart", () => {
     expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/evolve-v1')])).toEqual([])
     await admin.post('/api/install_app', { name: 'evolve' })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Evolve Helper' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'evolve.item', role: 'Evolve Helper', can_read: true } })
+    await grantRole(admin, { table: 'evolve.item', role: 'Evolve Helper', can_read: true })
     await discoverPackages([])
     const clerk = await createUser({ email: 'artifact.gone.clerk@example.com', roles: ['Evolve Helper'] })
     expect((await capsOf(clerk)).admin).toBe(true)

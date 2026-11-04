@@ -3,7 +3,7 @@ import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableRelation } from './table-engine'
-import { getScopeMap, isPrivileged, permissionScope, permittedTiers } from './permissions'
+import { getScopeMap, includesColumn, isPrivileged, permissionScope, permittedColumns } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
@@ -100,13 +100,13 @@ const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 // column through the list API and read its values — list and detail
 // disagreeing about the same permission. Passing the permitted tiers closes
 // that for native and (via dispatch.ts) source-bound Tables alike.
-function columnSet(meta: TableMeta, readTiers?: Set<'basic' | 'restricted'>): Set<string> {
+function columnSet(meta: TableMeta, readable?: ReadonlySet<string>): Set<string> {
   const cols = new Set<string>(STANDARD_COLUMNS)
   for (const f of meta.columns)
     if (
       !NO_COLUMN_TYPES.has(f.column_type) &&
       !SENSITIVE_COLUMNS.has(f.column_name) &&
-      (!readTiers || readTiers.has(f.tier ?? 'basic'))
+      (!readable || includesColumn(readable, f))
     )
       cols.add(f.column_name)
   return cols
@@ -154,11 +154,19 @@ export async function scopedWhere(
       'ValidationError',
       `${table} is a Settings Table and has no list — open it directly by its name`,
     )
-  const cols = columnSet(meta, await permittedTiers(user, table, 'read'))
+  const cols = columnSet(meta, await permittedColumns(user, table, 'read'))
   const tbl = await tableRelation(table)
   // Callers always speak the logical row key (`row_id`); only the SQL we emit
   // uses the physical one, which differs for `Table` alone (see meta.ts).
   const phys = (field: string) => (field === ROW_KEY ? meta.row_key : field)
+  const unrestricted = await permittedColumns(user, table, 'read', '')
+  const creatorColumns = new Set(meta.columns.filter((column) =>
+    cols.has(column.column_name) && !includesColumn(unrestricted, column)).map((column) => column.column_name))
+  // Apply the Column's own scope before selecting, sorting or aggregating.
+  // An unrelated unrestricted Row grant must never expose this value.
+  const readExpression = (field: string) => creatorColumns.has(field)
+    ? sql`case when ${sql(tbl)}.created_by = ${user} then ${sql(phys(field))} else null end`
+    : sql`${sql(phys(field))}`
 
   const filters = [...callerFilters]
   // Extra WHERE fragments that can't be expressed as plain [field, op, value]
@@ -225,8 +233,10 @@ export async function scopedWhere(
     assertColumn(cols, field, 'filter')
     if (!OPS.includes(op as (typeof OPS)[number]))
       throw new AppError('ValidationError', `Unknown filter operator ${op}`)
-    if (op === 'related') return relatedCond(field, value)
-    return { frag: plainCond(field, op, value) }
+    const condition = op === 'related' ? await relatedCond(field, value) : { frag: plainCond(field, op, value) }
+    return { frag: creatorColumns.has(field)
+      ? sql`(${sql(tbl)}.created_by = ${user} and ${condition.frag})`
+      : condition.frag }
   }
 
   function plainCond(logicalField: string, op: string, value: unknown): ReturnType<typeof sql> {
@@ -352,7 +362,7 @@ export async function scopedWhere(
 
   const allConds = [...conds, ...extraConds]
   const where = allConds.length ? allConds.reduce((acc, c) => sql`${acc} and ${c}`) : sql`true`
-  return { meta, table: tbl, cols, where, phys }
+  return { meta, table: tbl, cols, where, phys, readExpression }
 }
 
 // One OR-branch per Table that can own rows of this child Table: 'all' scope
@@ -424,7 +434,14 @@ async function attachedRowScopeCond(
   const scopes = await getScopeMap(user)
   for (const target of targets) {
     const targetMeta = ROW_ATTACHED_TABLES.has(target) ? null : await getMeta(target).catch(() => null)
-    if (!targetMeta) continue
+    if (!targetMeta) {
+      // Runtime-app Tables are namespaced. Losing their metadata must not
+      // turn retained app history into platform-admin data. Legacy local
+      // Tables retain the existing administrator history-after-delete path.
+      if (!target.includes('.') && !ROW_ATTACHED_TABLES.has(target) && await isPrivileged(user))
+        branches.push(sql`${rel}.ref_table = ${target}`)
+      continue
+    }
     if (await isPrivileged(user, target)) {
       branches.push(sql`${rel}.ref_table = ${target}`)
       continue
@@ -434,20 +451,22 @@ async function attachedRowScopeCond(
         and (person = ${user} or service_account = ${user})))`)
     const scope = await permissionScope(user, target, 'read')
     if (scope === 'none') continue
-    if (SENSITIVE_HISTORY_TABLES.has(table) && !(await seesEveryColumn(user, targetMeta))) continue
+    const ownHistoryOnly = SENSITIVE_HISTORY_TABLES.has(table) && !(await seesEveryColumn(user, targetMeta))
+    if (ownHistoryOnly && !(await seesEveryColumn(user, targetMeta, user))) continue
     if (isBound(targetMeta)) {
       const narrowed = scopes.has(target)
         || targetMeta.columns.some((f) => f.column_type === 'Reference' && scopes.has(String(f.reference_table)))
-      if (scope === 'all' && !narrowed) branches.push(sql`${rel}.ref_table = ${target}`)
+      if (scope === 'all' && !narrowed && !ownHistoryOnly) branches.push(sql`${rel}.ref_table = ${target}`)
       continue
     }
     if (targetMeta.kind === 'settings') {
-      branches.push(sql`${rel}.ref_table = ${target}`)
+      if (!ownHistoryOnly) branches.push(sql`${rel}.ref_table = ${target}`)
       continue
     }
     const scoped = await scopedWhere(target, user, [])
+    const visible = ownHistoryOnly ? sql`${scoped.where} and created_by = ${user}` : scoped.where
     branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
-      select ${sql(scoped.meta.row_key)} from ${sql(scoped.table)} where ${scoped.where}))`)
+      select ${sql(scoped.meta.row_key)} from ${sql(scoped.table)} where ${visible}))`)
   }
   if (!branches.length) return { frag: sql`false` }
   return { frag: sql`(${branches.reduce((acc, b) => sql`${acc} or ${b}`)})` }
@@ -485,12 +504,13 @@ async function groupCountImpl(
 ): Promise<{ label: string; value: number }[]> {
   const boundMeta = await getMeta(table)
   if (isBound(boundMeta)) return boundGroupCount(boundMeta, field, filters, user)
-  const { cols, table: tbl, where, phys } = await scopedWhere(table, user, filters)
+  const { cols, table: tbl, where, readExpression } = await scopedWhere(table, user, filters)
   assertColumn(cols, field, 'group_by')
   const rows = await sql`
-    select ${sql(phys(field))}::text as label, count(*)::int as value
-    from ${sql(tbl)} where ${where}
-    group by ${sql(phys(field))}
+    select permission_group.group_value::text as label, count(*)::int as value
+    from ${sql(tbl)} cross join lateral (select ${readExpression(field)} as group_value) permission_group
+    where ${where}
+    group by permission_group.group_value
     order by value desc, label asc`
   return rows.map((r) => ({ label: (r.label as string) ?? '', value: r.value as number }))
 }
@@ -523,7 +543,7 @@ async function aggregateDocsImpl(
       )
     return { count: await boundCountDocs(boundMeta, filters, user), sum: null }
   }
-  const { meta, cols, table: tbl, where } = await scopedWhere(table, user, filters)
+  const { meta, cols, table: tbl, where, readExpression } = await scopedWhere(table, user, filters)
   if (!sumField) {
     const [row] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
     return { count: row.count as number, sum: null }
@@ -535,7 +555,7 @@ async function aggregateDocsImpl(
       sum: `${sumField} is not a summable column`,
     })
   const [row] = await sql`
-    select count(*)::int as count, coalesce(sum(${sql(sumField)}), 0)::text as sum
+    select count(*)::int as count, coalesce(sum(${readExpression(sumField)}), 0)::text as sum
     from ${sql(tbl)} where ${where}`
   return { count: row.count as number, sum: row.sum as string }
 }
@@ -579,7 +599,7 @@ async function summarizeDocsImpl(
       : []
     return { count, sums: {}, groups }
   }
-  const { meta, cols, table: tbl, where, phys } = await scopedWhere(table, user, filters)
+  const { meta, cols, table: tbl, where, readExpression } = await scopedWhere(table, user, filters)
   for (const f of sumFields) {
     assertColumn(cols, f, 'sum')
     const col = meta.columns.find((c) => c.column_name === f)
@@ -590,7 +610,7 @@ async function summarizeDocsImpl(
   }
   if (groupBy) assertColumn(cols, groupBy, 'group_by')
   const sumSelect = sumFields.reduce(
-    (acc, f, i) => sql`${acc}, coalesce(sum(${sql(phys(f))}), 0)::text as ${sql(`s${i}`)}`,
+    (acc, f, i) => sql`${acc}, coalesce(sum(${readExpression(f)}), 0)::text as ${sql(`s${i}`)}`,
     sql``,
   )
   const sumsOf = (row: Record<string, unknown>) =>
@@ -600,10 +620,11 @@ async function summarizeDocsImpl(
   const groups = groupBy
     ? (
         await sql`
-          select ${sql(phys(groupBy))}::text as value, count(*)::int as count ${sumSelect}
-          from ${sql(tbl)} where ${where}
-          group by ${sql(phys(groupBy))}
-          order by ${sql(phys(groupBy))} asc`
+          select permission_group.group_value::text as value, count(*)::int as count ${sumSelect}
+          from ${sql(tbl)} cross join lateral (select ${readExpression(groupBy)} as group_value) permission_group
+          where ${where}
+          group by permission_group.group_value
+          order by permission_group.group_value asc`
       ).map((r) => ({ value: (r.value as string | null) ?? null, count: r.count as number, sums: sumsOf(r) }))
     : []
   return { count: total.count as number, sums: sumsOf(total), groups }
@@ -617,16 +638,14 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
   // paging pushed down to the driver (spec EDS-5).
   const boundMeta = await getMeta(table)
   if (isBound(boundMeta)) return boundGetList(boundMeta, args, user)
-  const { meta, table: tbl, cols, where, phys } = await scopedWhere(table, user, args.filters ?? [])
+  const { meta, table: tbl, cols, where, readExpression } = await scopedWhere(table, user, args.filters ?? [])
 
   const fields = args.fields?.length ? args.fields : [ROW_KEY]
   for (const f of fields) assertColumn(cols, f, 'selected')
   // The wire format always names the key `row_id`; where the physical column
   // differs (`Table`), alias it back so callers see one shape.
   const selection = fields
-    .map((f) =>
-      phys(f) === f ? sql`${sql(f)}` : sql`${sql(phys(f))} as ${sql(f)}`,
-    )
+    .map((f) => sql`${readExpression(f)} as ${sql(f)}`)
     .reduce((acc, frag) => sql`${acc}, ${frag}`)
 
   let orderField = meta.sort_column || 'updated_at'
@@ -645,7 +664,7 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
   const rows = await sql`
     select ${selection} from ${sql(tbl)}
     where ${where}
-    order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}
+    order by ${readExpression(orderField)} ${orderDir === 'desc' ? sql`desc` : sql`asc`}
     limit ${limit} offset ${offset}`
   const [{ count }] = await sql`
     select count(*)::int as count from ${sql(tbl)} where ${where}`

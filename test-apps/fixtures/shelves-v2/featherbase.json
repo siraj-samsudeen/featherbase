@@ -44,7 +44,7 @@
     {
       "table": "shelves.assignment",
       "role": "All",
-      "can_read": true
+      "operations": { "read": "*" }
     }
   ],
   "glossary": {

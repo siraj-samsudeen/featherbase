@@ -1,45 +1,52 @@
 import { getMeta, type TableMeta } from './meta'
-import { filterReadFields, isSharedWith, permittedTiers } from './permissions'
+import { ALL_COLUMNS, filterReadFields, includesColumn, isPrivileged, isSharedWith, permissionGrants, permittedColumns, type ColumnSelection } from './permissions'
 
 type RowValues = Record<string, unknown>
-export type Tiers = Set<'basic' | 'restricted'>
-const allTiers = (): Tiers => new Set(['basic', 'restricted'])
 
-// #341: the tiers one reader holds on a row and on each of its sub-tables.
 export interface RowReader {
-  tiers: Tiers
-  childTiers: (childTable: string) => Promise<Tiers>
+  columns: ColumnSelection
+  childColumns: (childTable: string, parentColumn: string) => Promise<ColumnSelection>
 }
 
-export const FULL_READER: RowReader = { tiers: allTiers(), childTiers: async () => allTiers() }
+export const FULL_READER: RowReader = { columns: new Set(ALL_COLUMNS), childColumns: async () => new Set(ALL_COLUMNS) }
 
 // #340: what leaves the platform (a webhook's body, an email rule's text) is
 // read by nobody in particular, so it carries the basic tier only.
 export const OUTSIDE_READER: RowReader = {
-  tiers: new Set(['basic']),
-  childTiers: async () => new Set(['basic']),
+  columns: new Set(['@basic']),
+  childColumns: async () => new Set(['@basic']),
 }
 
-// #341: a child row is read through its parent, so the parent's grant
-// reaches its columns; a grant on the sub-table itself does too, because a
-// direct list of that sub-table already shows what it allows.
-export async function readerFor(user: string, table: string, action: 'read' | 'write'): Promise<RowReader> {
-  const tiers = await permittedTiers(user, table, action)
+export async function childColumns(user: string, table: string, childTable: string, parentColumn: string, action: 'read' | 'write' | 'create', createdBy?: string): Promise<ColumnSelection> {
+  if (await isPrivileged(user, table)) return new Set(ALL_COLUMNS)
+  const columns = await permittedColumns(user, childTable, action, createdBy)
+  for (const grant of await permissionGrants(user, table, action)) {
+    if (!grant.columns.includes(parentColumn)) continue
+    if (createdBy !== undefined && grant.scope === 'own_rows' && createdBy !== user) continue
+    for (const child of await permissionGrants(user, childTable, action, grant.id, parentColumn)) {
+      if (createdBy !== undefined && child.scope === 'own_rows' && createdBy !== user) continue
+      for (const column of child.columns) columns.add(column)
+    }
+  }
+  return columns
+}
+
+export async function readerFor(user: string, table: string, action: 'read' | 'write', createdBy?: string): Promise<RowReader> {
   return {
-    tiers,
-    childTiers: async (childTable) => new Set([...tiers, ...(await permittedTiers(user, childTable, action))]),
+    columns: await permittedColumns(user, table, action, createdBy),
+    childColumns: (childTable, parentColumn) => childColumns(user, table, childTable, parentColumn, action, createdBy),
   }
 }
 
 // #341: a loaded row as one reader may see it — columns above their tiers
 // dropped from the row and from every sub-table row it carries.
 export async function restrictRow(meta: TableMeta, row: RowValues, reader: RowReader): Promise<RowValues> {
-  const out = filterReadFields(meta.columns, reader.tiers, row)
+  const out = filterReadFields(meta.columns, reader.columns, row)
   for (const f of meta.columns) {
     if (f.column_type !== 'Sub-table' || !Array.isArray(out[f.column_name])) continue
     const childMeta = await getMeta(f.row_table!)
-    const tiers = await reader.childTiers(childMeta.name)
-    out[f.column_name] = (out[f.column_name] as RowValues[]).map((r) => filterReadFields(childMeta.columns, tiers, r))
+    const columns = await reader.childColumns(childMeta.name, f.row_id)
+    out[f.column_name] = (out[f.column_name] as RowValues[]).map((r) => filterReadFields(childMeta.columns, columns, r))
   }
   return out
 }
@@ -49,7 +56,7 @@ export async function restrictRow(meta: TableMeta, row: RowValues, reader: RowRe
 // when the row is opened, a share shows every column.
 export async function rowForCaller(table: string, row: RowValues, user: string): Promise<RowValues> {
   const shared = row.row_id != null && (await isSharedWith(user, table, String(row.row_id), 'read'))
-  return restrictRow(await getMeta(table), row, shared ? FULL_READER : await readerFor(user, table, 'read'))
+  return restrictRow(await getMeta(table), row, shared ? FULL_READER : await readerFor(user, table, 'read', String(row.created_by)))
 }
 
 // #342: Comment and Version rows are about one row each (ref_table,
@@ -63,7 +70,13 @@ export const ROW_ATTACHED_TABLES = new Set(['Comment', 'Version', 'File', 'Impor
 // #342: a Version's diff can carry any column of its row, so a reader whose
 // tiers stop short of a column the Table restricts reads its history only
 // through the row's activity, which filters each change.
-export async function seesEveryColumn(user: string, meta: TableMeta): Promise<boolean> {
-  if (!meta.columns.some((f) => f.tier === 'restricted')) return true
-  return (await permittedTiers(user, meta.name, 'read')).has('restricted')
+export async function seesEveryColumn(user: string, meta: TableMeta, createdBy = ''): Promise<boolean> {
+  const reader = await readerFor(user, meta.name, 'read', createdBy)
+  if (!meta.columns.every((column) => includesColumn(reader.columns, column))) return false
+  for (const column of meta.columns.filter((column) => column.column_type === 'Sub-table')) {
+    const child = await getMeta(column.row_table!)
+    const selected = await reader.childColumns(child.name, column.row_id)
+    if (!child.columns.every((column) => includesColumn(selected, column))) return false
+  }
+  return true
 }

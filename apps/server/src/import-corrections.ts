@@ -8,7 +8,7 @@ import { getDoc, saveDoc, saveSystemRow } from './document'
 import { holdBeforeRowLock } from './row-lock-order'
 import { tableRelation } from './table-engine'
 import { assertDocPermission } from './permissions'
-import { permittedTiers, isSharedWith, stripUnwritableFields } from './permissions'
+import { includesColumn, permittedColumns, isSharedWith, stripUnwritableFields } from './permissions'
 import { assertManagedUnchanged } from './managed-settings'
 import { registerCollectionAction } from './actions'
 
@@ -32,7 +32,7 @@ const same = (a: unknown, b: unknown, type: string) => isDeepStrictEqual(normali
  * history, including an initial import and an import that changed nothing. */
 export async function planImport(meta: TableMeta, current: Row, input: Row, user: string): Promise<ImportPlan> {
   const shared = await isSharedWith(user, meta.name, String(current.row_id), 'write')
-  const allowed = shared ? input : stripUnwritableFields(meta.columns.filter((column) => !column.read_only), await permittedTiers(user, meta.name, 'write'), input, current)
+  const allowed = shared ? input : stripUnwritableFields(meta.columns.filter((column) => !column.read_only), await permittedColumns(user, meta.name, 'write', String(current.created_by)), input, current)
   const values: Row = { ...input }
   const source_values: Row = {}
   const protected_values: Row = {}
@@ -142,7 +142,7 @@ export async function mayResolve(meta: TableMeta, row: Row, field: string, user:
   if (!column || column.read_only) return false
   if (await isSharedWith(user, meta.name, String(row.row_id), 'write')) return true
   try { await assertDocPermission(user, meta.name, 'write', String(row.created_by)) } catch (e) { if (e instanceof AppError) return false; throw e }
-  return (await permittedTiers(user, meta.name, 'write')).has(column.tier)
+  return includesColumn(await permittedColumns(user, meta.name, 'write', String(row.created_by)), column)
 }
 registerCollectionAction('import-conflicts', {
   effect: 'read', description: 'List readable import conflicts for this Table.',

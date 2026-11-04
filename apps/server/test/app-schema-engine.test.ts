@@ -59,7 +59,7 @@ describe('renameTable', () => {
     await shop()
     await sql`insert into comment (row_id, ref_table, ref_name, content) values ('c651', 'shop.supplier', 's1', 'checked')`
     await sql`insert into role (row_id) values ('Buyer') on conflict do nothing`
-    await sql`insert into permission (row_id, ref_table, role, can_read) values ('p651', 'shop.supplier', 'Buyer', true)`
+    await sql`insert into permission (row_id, ref_table, role, operation, scope_mode) values ('p651', 'shop.supplier', 'Buyer', 'read', 'all')`
     await renameTable('shop.supplier', 'shop.vendor', 'shop')
     expect(await sql`select ref_table from comment where row_id = 'c651'`).toEqual([{ ref_table: 'shop.vendor' }])
     expect(await sql`select ref_table from permission where row_id = 'p651'`).toEqual([{ ref_table: 'shop.vendor' }])

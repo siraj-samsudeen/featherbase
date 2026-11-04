@@ -12,7 +12,6 @@ import { saveDoc } from '../src/document'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
 import { importCustomizations } from '../src/customizations'
 import { getMeta, invalidateMeta } from '../src/meta'
-import { permittedTiers } from '../src/permissions'
 import { app } from '../src/index'
 
 const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
@@ -95,7 +94,7 @@ describe('Rejected runtime artifacts never become applications', () => {
     { name: 'action names another app despite a permission', error: 'Shared action Tables require declared permissions; other apps are not allowed',
       change: ({ manifest }) => {
         manifest.actions = { ...actions, tables: ['tasker.task'] }
-        manifest.permissions.push({ table: 'tasker.task', role: 'All', can_read: true })
+        manifest.permissions.push({ table: 'tasker.task', role: 'All', operations: { read: '*' } })
       } },
     { name: 'absolute server path', error: 'Package paths must be relative',
       change: ({ root, manifest }) => { manifest.server = resolve(root, 'server.mjs') } },
@@ -268,7 +267,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
         await writeFile(file, JSON.stringify({ ...manifest, name }))
         expect(await discoverPackages([directory])).toEqual([expect.objectContaining({ error: expect.stringContaining('reserved') })])
       }
-      await writeFile(file, JSON.stringify({ ...manifest, permissions: [{ table: 'other.task', role: 'Role that does not exist', can_read: true }] }))
+      await writeFile(file, JSON.stringify({ ...manifest, permissions: [{ table: 'other.task', role: 'Role that does not exist', operations: { read: '*' } }] }))
       expect(await discoverPackages([directory])).toEqual([])
       await expect(admin.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({ status: 417 })
       expect(await sql`select name from table_def where name = 'other.task'`).toHaveLength(0)
@@ -388,8 +387,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       const manifest = JSON.parse(await readFile(file, 'utf8'))
       manifest.permissions.push(
         // #437: a shared core Table both packages grant on (Tasker's Comment grant).
-        { table: 'Comment', role: 'All', can_read: true },
-        { table: 'Comment', role: 'All', tier: 'restricted', can_read: true },
+        { table: 'Comment', role: 'All', operations: { read: ['content'] } },
       )
       await writeFile(file, JSON.stringify(manifest))
       expect(await discoverPackages([resolve('../..', 'example-apps/tasker'), other])).toEqual([])
@@ -397,25 +395,25 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       await admin.post('/api/install_app', { name: 'other' })
       // Each package owns its own declaration of the shared grant.
       expect(await sql`
-        select owner_app, tier from permission
-        where ref_table = 'Comment' and owner_app in ('tasker', 'other')
-        order by owner_app, tier`
+        select owner_app from permission
+        where ref_table = 'Comment' and operation = 'read' and owner_app in ('tasker', 'other')
+        order by owner_app`
       ).toEqual([
-        { owner_app: 'other', tier: 'basic' },
-        { owner_app: 'other', tier: 'restricted' },
-        { owner_app: 'tasker', tier: 'basic' },
+        { owner_app: 'other' },
+        { owner_app: 'tasker' },
       ])
       const member = await createUser({ email: 'shared-grants@example.com', roles: [] })
       expect((await member.get<{ data: unknown[] }>('/api/table/Comment')).data).toBeInstanceOf(Array)
-      expect(await permittedTiers(member.user!, 'Comment', 'read')).toEqual(new Set(['basic', 'restricted']))
+      expect(await member.get('/api/table/Comment?fields=%5B%22ref_name%22%5D')).toMatchObject({ data: [] })
 
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
       expect((await member.get<{ data: unknown[] }>('/api/table/Comment')).data).toBeInstanceOf(Array)
-      expect(await permittedTiers(member.user!, 'Comment', 'read')).toEqual(new Set(['basic']))
+      expect(await member.get('/api/table/Comment?fields=%5B%22ref_name%22%5D')).toMatchObject({ data: [] })
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: true })
       await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: false })
       expect((await member.get<{ data: unknown[] }>('/api/table/Comment')).data).toBeInstanceOf(Array)
-      expect(await permittedTiers(member.user!, 'Comment', 'read')).toEqual(new Set(['basic', 'restricted']))
+      await expect(member.get('/api/table/Comment?fields=%5B%22ref_name%22%5D')).rejects.toMatchObject({ status: 417 })
+      expect(await member.get('/api/table/Comment?fields=%5B%22content%22%5D')).toMatchObject({ data: [] })
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
       await expect(member.get('/api/table/Comment')).rejects.toMatchObject({ status: 403 })
     } finally {
@@ -603,7 +601,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   const everyoneReadsPerson = () => sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`
   async function taskerGrants() {
     const [app] = await sql`select perms from installed_app where name = 'tasker'`
-    return sql`select ref_table from permission where row_id in ${sql(app.perms as string[])} order by 1`
+    return sql`select distinct ref_table from permission where row_id in ${sql(app.perms as string[])} order by 1`
   }
   async function editJson(file: string, change: (value: Record<string, any>) => void) {
     const value = JSON.parse(await readFile(file, 'utf8'))
@@ -620,7 +618,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
         await cp(currentTasker, to, { recursive: true, filter: file => !file.split('/').includes('node_modules') })
       const { version: from } = JSON.parse(await readFile(resolve(installed, 'package.json'), 'utf8')) as { version: string }
       const to = '99.0.0'
-      await editJson(resolve(installed, 'featherbase.json'), m => { m.permissions.push({ table: 'Person', role: 'All', can_read: true }) })
+      await editJson(resolve(installed, 'featherbase.json'), m => { m.permissions.push({ table: 'Person', role: 'All', operations: { read: '*' } }) })
       await editJson(resolve(next, 'featherbase.json'), m => { m.migrations.push({ id: 'withdraw_person_read_probe', fromVersion: from, toVersion: to, operations: [] }) })
       await editJson(resolve(next, 'package.json'), p => { p.version = to })
 
@@ -637,7 +635,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       expect(await everyoneReadsPerson()).toHaveLength(1)
 
       const plan = await admin.post<{ planId: string; permissions: unknown[] }>('/api/preview_app_upgrade', { name: 'tasker', version: to })
-      expect(plan.permissions).toEqual([{ withdraw: { table: 'Person', role: 'All', can_read: true } }])
+      expect(plan.permissions).toEqual([{ withdraw: { table: 'Person', role: 'All', operations: { read: '*' } } }])
       await admin.post('/api/upgrade_app', { name: 'tasker', version: to, planId: plan.planId })
       await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: to })
       expect(await admin.get('/api/runtime_app_versions')).toEqual([`tasker@${to}`])
@@ -731,7 +729,7 @@ describe("Dashboards reach an app's data only while it is on", () => {
       .toEqual({ data: [{ label: '5', value: 2 }] })
     // Every member holds 'All', which the app's manifest lets read; take that
     // read away and the same member can no longer count or chart the table.
-    await sql`update permission set can_read = false where ref_table = 'other.task' and role = 'All'`
+    await sql`delete from permission where ref_table = 'other.task' and role = 'All' and operation = 'read'`
     await expect(reader.post('/api/dashboard/count', { table: 'other.task' })).rejects.toMatchObject({ status: 403 })
     await expect(reader.post('/api/dashboard/chart', { table: 'other.task', group_by: 'quantity' })).rejects.toMatchObject({ status: 403 })
   })

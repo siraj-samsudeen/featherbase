@@ -49,6 +49,52 @@ describe('domain administration', () => {
     expect(await admin.get(contacts.listUrl({}))).toMatchObject({ total: 1 })
   })
 
+  test('a creator-only Column grant never borrows another grants unrestricted Row scope', async ({ admin, createUser }) => {
+    const contacts = await makeTable(admin, { name: 'Mixed Scope Contact', track_changes: true, columns: ['name', 'phone'] })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Mixed Contact Reader' } })
+    const meta = await getMeta(contacts.name)
+    for (const [operation, scope_mode, names] of [
+      ['create', 'all', ['name', 'phone']],
+      ['read', 'all', ['name']],
+      ['read', 'creator', ['phone']],
+    ] as const) {
+      await admin.post('/api/save_row', { table: 'Permission', row: {
+        ref_table: contacts.name, role: 'Mixed Contact Reader', operation, scope_mode,
+        columns: names.map((name) => ({ target_column: meta.columns.find((column) => column.column_name === name)!.row_id })),
+      } })
+    }
+    const reader = await createUser({ roles: ['Mixed Contact Reader'] })
+    const own = await reader.post<{ row_id: string }>('/api/save_row', {
+      table: contacts.name, row: { name: 'Own', phone: '999-own' },
+    })
+    const other = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: contacts.name, row: { name: 'Other', phone: '111-secret' },
+    })
+    expect(await reader.get(contacts.rowUrl(other.row_id))).not.toHaveProperty('phone')
+    expect(await reader.get(contacts.listUrl({ fields: ['row_id', 'name', 'phone'], order_by: 'name asc' })))
+      .toMatchObject({ total: 2, data: [
+        { row_id: other.row_id, name: 'Other', phone: null },
+        { row_id: own.row_id, name: 'Own', phone: '999-own' },
+      ] })
+    expect(await reader.get(contacts.listUrl({ filters: [['phone', '=', '111-secret']] })))
+      .toMatchObject({ total: 0, data: [] })
+    expect(await reader.get(contacts.listUrl({ fields: ['row_id'], order_by: 'phone asc' })))
+      .toMatchObject({ data: [{ row_id: own.row_id }, { row_id: other.row_id }] })
+    await grantRole(admin, { table: 'Version', role: 'Mixed Contact Reader', can_read: true })
+    for (const row of [own, other]) {
+      const current = await admin.get<Record<string, unknown>>(contacts.rowUrl(row.row_id))
+      await admin.post('/api/save_row', { table: contacts.name, row: { ...current, phone: 'changed-phone' } })
+    }
+    const history = tableRef('Version')
+    const listing = history.listUrl({ fields: ['row_id', 'ref_name'], filters: [['ref_table', '=', contacts.name]] })
+    const visible = await reader.get<{ data: { row_id: string; ref_name: string }[] }>(listing)
+    expect(visible.data.map((row) => row.ref_name)).toEqual([own.row_id])
+    expect((await reader.fetch(history.rowUrl(visible.data[0].row_id))).status).toBe(200)
+    const all = await admin.get<{ data: { row_id: string; ref_name: string }[] }>(listing)
+    const hidden = all.data.find((row) => row.ref_name === other.row_id)!
+    expect((await reader.fetch(history.rowUrl(hidden.row_id))).status).toBe(403)
+  })
+
   test.for(['request', 'hook'] as const)('an ungranted contact detail from %s rejects the entire correction', async (source, { admin, createUser }) => {
     registerApp({
       name: 'contactproof',

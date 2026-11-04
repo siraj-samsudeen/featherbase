@@ -5,6 +5,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { saveDoc } from '../src/document'
 import { createAssignment } from '../src/assign'
 import { onEvent } from '../src/realtime'
+import { grantRole } from './fixtures'
 
 // EML-006: assigning a document creates a ToDo for the assignee and a
 // notification.
@@ -111,16 +112,10 @@ describe('Assign a row to someone', () => {
   async function world(admin: TestClient) {
     await admin.post('/api/table_def', { name: 'Asg Req Doc', columns: [{ column_name: 'title', column_type: 'Data' }] })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Asg Req Reader' } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: 'Asg Req Doc', role: 'Asg Req Reader', tier: 'basic', can_read: true },
-    })
+    await grantRole(admin, { table: 'Asg Req Doc', role: 'Asg Req Reader', can_read: true })
     // Assigning writes the assignee's to-do, so a role that assigns also holds
     // create on the to-do list.
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: 'ToDo', role: 'Asg Req Reader', tier: 'basic', can_read: true, can_create: true, can_write: true },
-    })
+    await grantRole(admin, { table: 'ToDo', role: 'Asg Req Reader', can_read: true, can_create: true, can_write: true })
     return admin.post<{ row_id: string }>('/api/save_row', { table: 'Asg Req Doc', row: { title: 'work' } })
   }
 
@@ -131,10 +126,7 @@ describe('Assign a row to someone', () => {
     const doc = await world(admin)
     const reader = await createUser({ roles: ['Asg Req Reader'] })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Asg Req Assignee' } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: 'ToDo', role: 'Asg Req Assignee', tier: 'basic', can_read: true },
-    })
+    await grantRole(admin, { table: 'ToDo', role: 'Asg Req Assignee', can_read: true })
     const priya = await createUser({ roles: ['Asg Req Assignee'] })
     const res = await reader.fetch('/api/assign', {
       method: 'POST',

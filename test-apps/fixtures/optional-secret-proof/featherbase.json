@@ -14,7 +14,7 @@
     }
   ],
   "roles": ["Optional Reader"],
-  "permissions": [{ "table": "optproof.note", "role": "Optional Reader", "can_read": true }],
+  "permissions": [{ "table": "optproof.note", "role": "Optional Reader", "operations": { "read": "*" } }],
   "settings": [{ "name": "caption", "required": false }],
   "secrets": ["OPTPROOF_TOKEN", { "name": "OPTPROOF_EMBED_KEY", "optional": true }],
   "reads": {

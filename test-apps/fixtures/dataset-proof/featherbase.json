@@ -14,7 +14,7 @@
     }
   ],
   "roles": ["Dataset Reader"],
-  "permissions": [{ "table": "datasetproof.note", "role": "Dataset Reader", "can_read": true }],
+  "permissions": [{ "table": "datasetproof.note", "role": "Dataset Reader", "operations": { "read": "*" } }],
   "datasets": [
     {
       "name": "sales",

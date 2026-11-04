@@ -128,13 +128,23 @@ beforeAll(async () => {
     }),
   })
   USER = ((await person.json()) as { row_id: string }).row_id
-  await areq('/api/save_row', {
+  const columns = await sql`select row_id from column_def where parent = ${DT}`
+  const permission = await areq('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({
       table: 'Permission',
-      row: { ref_table: DT, role: ROLE, tier: 'basic', can_read: true },
+      row: { ref_table: DT, role: ROLE, operation: 'read', scope_mode: 'all',
+        columns: columns.map((column) => ({ target_column: column.row_id })) },
     }),
   })
+  expect(permission.status).toBe(201)
+  const grant = await permission.json() as { row_id: string }
+  const [grid] = await sql`select row_id from column_def where parent = ${DT} and column_name = 'items'`
+  const childColumns = await sql`select row_id from column_def where parent = ${CHILD}`
+  expect((await areq('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'Permission', row: {
+    ref_table: CHILD, role: ROLE, operation: 'read', scope_mode: 'all', parent_permission: grant.row_id,
+    parent_column: grid.row_id, columns: childColumns.map((column) => ({ target_column: column.row_id })),
+  } }) })).status).toBe(201)
   await areq('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({
@@ -174,6 +184,35 @@ describe('PERM-004: generated RLS for direct clients', () => {
     await as(USER)
     expect(await direct`select * from featherbase.rls_hidden`).toHaveLength(0)
     expect(await direct`select * from featherbase.person`).toHaveLength(0)
+  })
+
+  it('a creator-only grant cannot become unrestricted through a direct connection', async () => {
+    await sql`update permission set scope_mode = 'creator' where ref_table = ${DT}`
+    try {
+      await as(USER)
+      expect(await direct`select * from featherbase.rls_vault`).toEqual([])
+      expect(await direct`select * from featherbase.rls_vault_item`).toEqual([])
+    } finally { await sql`update permission set scope_mode = 'all' where ref_table = ${DT}` }
+  })
+
+  it('partial Column grants require the server read path', async () => {
+    const removed = await sql`delete from featherbase.permission_column
+      where parent in (select row_id from permission where ref_table = ${CHILD}) returning *`
+    try {
+      await as(USER)
+      expect(await direct`select * from featherbase.rls_vault_item`).toEqual([])
+    } finally {
+      for (const row of removed) await sql`insert into featherbase.permission_column ${sql(row)}`
+    }
+  })
+
+  it('an app Table cannot inherit the native Administrator bypass', async () => {
+    await sql`update table_def set owner_app = 'native_probe', physical_schema = 'featherbase', physical_relation = 'rls_vault' where name = ${DT}`
+    try {
+      await as('Administrator')
+      expect(await direct`select * from featherbase.rls_vault`).toEqual([])
+      expect(await direct`select * from featherbase.rls_vault_item`).toEqual([])
+    } finally { await sql`update table_def set owner_app = null, physical_schema = null, physical_relation = null where name = ${DT}` }
   })
 
   it('an unauthenticated session (Guest) sees nothing', async () => {

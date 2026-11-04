@@ -7,6 +7,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { grantRole } from './fixtures'
 
 interface Card {
   label: string | null
@@ -114,10 +115,7 @@ describe('GET /api/home_pages: link permission filtering', () => {
   }) => {
     await makeTable(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: ROLE, can_read: true },
-    })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true })
     await admin.post('/api/save_row', {
       table: 'Home Page',
       row: {

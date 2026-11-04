@@ -260,7 +260,7 @@ describe('#437: the security tables refuse non-privileged writes, whatever Permi
   test('a System Manager writes every security table', async ({ admin, createUser }) => {
     const manager = await createUser({ roles: ['System Manager'] })
     await manager.post('/api/save_row', { table: 'Role', row: { row_id: 'Managed 437' } })
-    await manager.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Managed 437', can_read: true } })
+    await grantRole(manager, { table: 'Person', role: 'Managed 437', can_read: true })
     await manager.post('/api/save_row', { table: 'Data Scope', row: { person: manager.user, allow_table: 'Person', for_value: manager.user } })
     await makeTable(admin, { name: 'Section Ownership', columns: ['store_code'] })
     await manager.post(tableRef('Section Ownership').url, { store_code: '1501' })

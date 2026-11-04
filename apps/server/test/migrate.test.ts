@@ -48,6 +48,62 @@ describe('migrate: one file', () => {
 })
 
 describe('migrate: a new database', () => {
+  it('legacy creator grants retain their dependent Column reach after migration', async () => {
+    const scratch = await scratchDatabase()
+    try {
+      const db = await import('../src/db')
+      await scratch.migrate.ensureLedger()
+      for (const file of allMigrations().filter((file) => file < '0006'))
+        await db.withTransaction(() => scratch.migrate.applyMigrationFile(file))
+      const { createTable, tableRelation } = await import('../src/table-engine')
+      await createTable({ name: 'Legacy Contact Note', kind: 'sub_table', columns: [
+        { column_name: 'note', column_type: 'Data' },
+        { column_name: 'private_note', column_type: 'Data', tier: 'restricted' },
+      ] })
+      await createTable({ name: 'Legacy Contact', columns: [
+        { column_name: 'name', column_type: 'Data' },
+        { column_name: 'phone', column_type: 'Data', tier: 'restricted' },
+        { column_name: 'notes', column_type: 'Sub-table', row_table: 'Legacy Contact Note' },
+      ] })
+      await db.sql`insert into role (row_id) values ('Legacy Reader'), ('Legacy Detail')`
+      await db.sql`insert into person (row_id, full_name, enabled) values ('psn_legacy', 'Legacy Person', true)`
+      await db.sql`insert into has_role (row_id, parent, parenttype, parentfield, role)
+        values ('legacy-held-1', 'psn_legacy', 'Person', 'roles', 'Legacy Reader'),
+          ('legacy-held-2', 'psn_legacy', 'Person', 'roles', 'Legacy Detail')`
+      await db.sql`insert into permission (row_id, ref_table, role, tier, own_rows_only, can_read, can_create)
+        values ('legacy-base', 'Legacy Contact', 'Legacy Reader', 'basic', true, true, true)`
+      await db.sql`insert into permission (row_id, ref_table, role, tier, can_read, can_write)
+        values ('legacy-detail', 'Legacy Contact', 'Legacy Detail', 'restricted', true, true)`
+      const relation = await tableRelation('Legacy Contact')
+      await db.sql`insert into ${db.sql(relation)} (row_id, created_by, name, phone)
+        values ('mine', 'psn_legacy', 'Mine', 'my-phone'), ('other', 'Administrator', 'Other', 'hidden-phone')`
+      await db.sql`insert into ${db.sql(await tableRelation('Legacy Contact Note'))}
+        (row_id, parent, parenttype, parentfield, note, private_note)
+        values ('legacy-note', 'mine', 'Legacy Contact', 'notes', 'visible', 'inherited')`
+      expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
+      const { app } = await import('../src/index')
+      const { issueSession } = await import('../src/auth')
+      const { token } = await issueSession('psn_legacy')
+      const headers = { Authorization: `Bearer ${token}` }
+      const list = await app.request('/api/table/Legacy%20Contact?fields=%5B%22name%22,%22phone%22%5D', { headers })
+      expect(list.status).toBe(200)
+      expect(await list.json()).toMatchObject({ total: 1, data: [{ name: 'Mine', phone: 'my-phone' }] })
+      expect((await app.request('/api/table/Legacy%20Contact/other', { headers })).status).toBe(403)
+      const own = await (await app.request('/api/table/Legacy%20Contact/mine', { headers })).json() as { updated_at: string }
+      expect(own).toMatchObject({ notes: [{ note: 'visible', private_note: 'inherited' }] })
+      const update = await app.request('/api/save_row', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'Legacy Contact', row: { row_id: 'mine', updated_at: own.updated_at, phone: 'not-an-update-grant' } }) })
+      expect(update.status).toBe(403)
+      const create = await app.request('/api/save_row', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'Legacy Contact', row: { name: 'New', phone: 'legacy-create-reach',
+          notes: [{ note: 'new', private_note: 'inherited-create' }] } }) })
+      expect(create.status).toBe(201)
+      expect(await create.json()).toMatchObject({ phone: 'legacy-create-reach', notes: [{ private_note: 'inherited-create' }] })
+    } finally {
+      await scratch.close()
+    }
+  }, 120_000)
+
   it('runs the baseline and the files after it, stamps the database, and a second run applies nothing', async () => {
     const scratch = await scratchDatabase()
     try {

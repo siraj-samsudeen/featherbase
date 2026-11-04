@@ -99,7 +99,7 @@ const bind = (client: TestClient, row: Record<string, unknown>) => client.post('
 describe('an app that is unavailable', () => {
   test('confers no bound role, and none of the grants that come with it', async ({ admin, createUser }) => {
     await install(admin)
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Identifier System', role: 'Setup Reader', can_read: true } })
+    await grantRole(admin, { table: 'Identifier System', role: 'Setup Reader', can_read: true })
     const staff = await createUser({ email: 'staff@example.test', roles: ['Setup Staff'] })
     expect(await getRoles(staff.user!)).toContain('Setup Reader')
     expect(await hasPermission(staff.user!, 'Identifier System', 'read')).toBe(true)
@@ -152,10 +152,7 @@ describe('only a System Manager writes app settings and bindings', () => {
   ] as const)('a person granted write on %s is still refused', async ([table, row], { admin, createUser }) => {
     await install(admin, { roles: [] })
     await role(admin, 'Setup Staff')
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: table, role: 'Setup Editor', can_read: true, can_write: true, can_create: true } }).catch(async () => {
-      await role(admin, 'Setup Editor')
-      await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: table, role: 'Setup Editor', can_read: true, can_write: true, can_create: true } })
-    })
+    await grantRole(admin, { table, role: 'Setup Editor', can_read: true, can_write: true, can_create: true })
     const editor = await createUser({ email: 'editor@example.test', roles: ['Setup Editor'] })
     await expectApiError(editor.post('/api/save_row', { table, row }), { status: 403, message: expect.stringMatching(new RegExp(`Only a System Manager can change ${table} rows`)) })
   })

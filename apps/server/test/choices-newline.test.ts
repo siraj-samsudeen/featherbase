@@ -80,13 +80,13 @@ describe('seeded `choices` never holds a literal backslash-n (#93)', () => {
   })
 
   test('the Choice columns #93 corrupted parse back to their full option sets', async () => {
-    // A regression pin on the three specific victims. `strpos` above would
+    // A regression pin on the surviving victims and the replacement scope list. `strpos` above would
     // catch these too; this states what the values are supposed to BE, so a
     // future truncation that loses options without adding a backslash still
     // fails here.
     const rows = await sql<{ parent: string; column_name: string; choices: string }[]>`
       select parent, column_name, choices from column_def
-       where (parent, column_name) in (('Table', 'kind'), ('Column', 'tier'), ('Permission', 'tier'))
+       where (parent, column_name) in (('Table', 'kind'), ('Column', 'tier'), ('Permission', 'scope_mode'))
        order by parent, column_name`
 
     const options = Object.fromEntries(
@@ -95,7 +95,7 @@ describe('seeded `choices` never holds a literal backslash-n (#93)', () => {
 
     expect(options).toEqual({
       'Column.tier': ['basic', 'restricted'],
-      'Permission.tier': ['basic', 'restricted'],
+      'Permission.scope_mode': ['all', 'creator'],
       'Table.kind': ['table', 'sub_table', 'settings'],
     })
   })

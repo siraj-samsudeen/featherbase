@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { grantRole } from './fixtures'
 
 // UI-017: document tags add/list/remove, gated by document read permission.
 //
@@ -69,10 +70,7 @@ describe('Tag a row freely', () => {
   async function world(admin: TestClient) {
     await setup(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Tag Srv Reader' } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: 'Tag Srv Reader', tier: 'basic', can_read: true },
-    })
+    await grantRole(admin, { table: DT, role: 'Tag Srv Reader', can_read: true })
   }
   const tagPath = `/api/tags/${encodeURIComponent(DT)}/t1`
 

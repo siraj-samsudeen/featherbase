@@ -272,7 +272,7 @@ for (const edit of ['permissions', 'package version']) test(`a changed ${edit} a
     await discoverAppLibrary([], root)
     const file = resolve(source, edit === 'permissions' ? 'featherbase.json' : 'package.json')
     const declaration = JSON.parse(await readFile(file, 'utf8'))
-    if (edit === 'permissions') declaration.permissions[0].can_write = true
+    if (edit === 'permissions') declaration.permissions[0].operations.update = '*'
     else declaration.version = '0.0.2'
     await writeFile(file, JSON.stringify(declaration))
     await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 409, message: expect.stringContaining('changed since discovery') })
@@ -290,7 +290,7 @@ test('a manifest changed by the source build is not installed', async ({ admin }
   const source = resolve(root, 'example-apps/other')
   await writeFile(resolve(source, 'change-manifest.mjs'), `import { readFileSync, writeFileSync, copyFileSync } from 'node:fs'
 const manifest = JSON.parse(readFileSync('featherbase.json', 'utf8'))
-manifest.permissions[0].can_write = true
+manifest.permissions[0].operations.update = '*'
 writeFileSync('featherbase.json', JSON.stringify(manifest))
 copyFileSync('server.mjs', 'built.mjs')
 `)

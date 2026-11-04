@@ -189,11 +189,26 @@ export async function grantRole(admin: TestClient, spec: GrantSpec): Promise<str
   const tables = Array.isArray(table) ? table : [table]
   const ids: string[] = []
   for (const ref_table of tables) {
-    const row = await admin.post<{ row_id: string }>('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table, role, ...perms },
-    })
-    ids.push(String(row.row_id))
+    for (const [flag, operation] of Object.entries({
+      can_read: 'read', can_write: 'update', can_create: 'create', can_delete: 'delete',
+      can_submit: 'submit', can_cancel: 'cancel', can_amend: 'amend',
+    })) {
+      if (!perms[flag]) continue
+      async function grant(target: string, parent_permission?: string, parent_column?: string): Promise<void> {
+        const meta = await admin.get<{ columns: { row_id: string; tier: string; column_type: string; row_table: string }[] }>(tableRef('Table').rowUrl(target))
+        const columns = ['read', 'update', 'create'].includes(operation)
+          ? meta.columns.filter((column) => perms.tier === 'restricted' || column.tier === 'basic') : []
+        const row = await admin.post<{ row_id: string }>('/api/save_row', {
+          table: 'Permission',
+          row: { ref_table: target, role, operation, parent_permission, parent_column, scope_mode: perms.own_rows_only ? 'creator' : 'all',
+            columns: columns.map((column) => ({ target_column: column.row_id })) },
+        })
+        ids.push(String(row.row_id))
+        for (const column of columns.filter((column) => column.column_type === 'Sub-table'))
+          await grant(column.row_table, row.row_id, column.row_id)
+      }
+      await grant(ref_table)
+    }
   }
   return ids
 }

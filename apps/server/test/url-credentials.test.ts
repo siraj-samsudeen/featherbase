@@ -8,6 +8,7 @@ import { test } from './pg-test'
 import { issueSession } from '../src/auth'
 import { setSessionHours } from './session-cookie-test-utils'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
+import { grantRole } from './fixtures'
 
 // #173 (follow-up to #150): a session JWT must never travel in a URL. Private
 // file links and the realtime WebSocket both used to carry
@@ -28,10 +29,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: READER_ROLE } })
-  await admin.post('/api/save_row', {
-    table: 'Permission',
-    row: { ref_table: DT, role: READER_ROLE, can_read: true },
-  })
+  await grantRole(admin, { table: DT, role: READER_ROLE, can_read: true })
   const docName = (
     await admin.post<{ row_id: string }>('/api/save_row', {
       table: DT,

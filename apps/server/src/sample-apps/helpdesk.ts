@@ -51,20 +51,20 @@ const helpdesk: AppManifest = {
   // can_write, so they cannot change a ticket once sent). The collab grants
   // cover tables with no "All"-role defaults.
   permissions: [
-    { table: 'HD Ticket', role: 'Support Agent', can_read: true, can_write: true, can_create: true },
-    { table: 'HD Ticket', role: 'Support Manager', can_read: true, can_write: true, can_create: true, can_delete: true },
-    { table: 'HD Ticket', role: 'Customer', own_rows_only: true, can_read: true, can_create: true },
-    { table: 'ToDo', role: 'Support Agent', can_read: true, can_write: true },
-    { table: 'ToDo', role: 'Support Manager', can_read: true, can_write: true },
+    { table: 'HD Ticket', role: 'Support Agent', operations: { read: '*', update: '*', create: '*' } },
+    { table: 'HD Ticket', role: 'Support Manager', operations: { read: '*', update: '*', create: '*', delete: true } },
+    { table: 'HD Ticket', role: 'Customer', scope_mode: 'creator', operations: { read: '*', create: '*' } },
+    { table: 'ToDo', role: 'Support Agent', operations: { read: '*', update: '*' } },
+    { table: 'ToDo', role: 'Support Manager', operations: { read: '*', update: '*' } },
     // Comment/File carry can_write so people can edit what they posted.
-    { table: 'Comment', role: 'Support Agent', can_read: true, can_write: true, can_create: true },
-    { table: 'Comment', role: 'Support Manager', can_read: true, can_write: true, can_create: true },
-    { table: 'Comment', role: 'Customer', can_read: true, can_write: true, can_create: true },
-    { table: 'File', role: 'Support Agent', can_read: true, can_write: true, can_create: true },
-    { table: 'File', role: 'Support Manager', can_read: true, can_write: true, can_create: true },
-    { table: 'File', role: 'Customer', can_read: true, can_write: true, can_create: true },
-    { table: 'Version', role: 'Support Agent', can_read: true },
-    { table: 'Version', role: 'Support Manager', can_read: true },
+    { table: 'Comment', role: 'Support Agent', operations: { read: '*', update: '*', create: '*' } },
+    { table: 'Comment', role: 'Support Manager', operations: { read: '*', update: '*', create: '*' } },
+    { table: 'Comment', role: 'Customer', operations: { read: '*', update: '*', create: '*' } },
+    { table: 'File', role: 'Support Agent', operations: { read: '*', update: '*', create: '*' } },
+    { table: 'File', role: 'Support Manager', operations: { read: '*', update: '*', create: '*' } },
+    { table: 'File', role: 'Customer', operations: { read: '*', update: '*', create: '*' } },
+    { table: 'Version', role: 'Support Agent', operations: { read: '*' } },
+    { table: 'Version', role: 'Support Manager', operations: { read: '*' } },
   ],
 
   fixtures: [

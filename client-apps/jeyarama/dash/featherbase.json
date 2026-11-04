@@ -713,107 +713,107 @@
     {
       "table": "feather_dash.store_rollout",
       "role": "Feather Dash Reader",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.store_rollout",
       "role": "Feather Dash Section Editor",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.store_rollout",
       "role": "Feather Dash Section Reviewer",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.store_floor",
       "role": "Feather Dash Section Editor",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.department",
       "role": "Feather Dash Section Editor",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.section",
       "role": "Feather Dash Section Editor",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.section_subcategory",
       "role": "Feather Dash Section Editor",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.display_location",
       "role": "Feather Dash Section Editor",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.job_assignment",
       "role": "Feather Dash Section Editor",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.section_alias",
       "role": "Feather Dash Section Editor",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.floor_alias",
       "role": "Feather Dash Section Editor",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.job_alias",
       "role": "Feather Dash Section Editor",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.store_floor",
       "role": "Feather Dash Section Reviewer",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.department",
       "role": "Feather Dash Section Reviewer",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.section",
       "role": "Feather Dash Section Reviewer",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.section_subcategory",
       "role": "Feather Dash Section Reviewer",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.display_location",
       "role": "Feather Dash Section Reviewer",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.job_assignment",
       "role": "Feather Dash Section Reviewer",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.section_alias",
       "role": "Feather Dash Section Reviewer",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.floor_alias",
       "role": "Feather Dash Section Reviewer",
-      "can_read": true
+      "operations": { "read": "*" }
     },
     {
       "table": "feather_dash.job_alias",
       "role": "Feather Dash Section Reviewer",
-      "can_read": true
+      "operations": { "read": "*" }
     }
   ],
   "reads": {

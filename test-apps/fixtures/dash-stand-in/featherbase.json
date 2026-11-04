@@ -14,5 +14,5 @@
       "columns": [{ "column_name": "body", "column_type": "Data" }]
     }
   ],
-  "permissions": [{ "table": "feather_dash.note", "role": "All", "can_read": true }]
+  "permissions": [{ "table": "feather_dash.note", "role": "All", "operations": { "read": "*" } }]
 }

@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { grantRole } from './fixtures'
 
 // PERM-005 regression: a Data Scope narrows lists by every Reference column
 // pointing at the restricted Table, but a row whose reference is UNSET must
@@ -27,10 +28,7 @@ async function setup(admin: TestClient) {
     ],
   })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-  await admin.post('/api/save_row', {
-    table: 'Permission',
-    row: { ref_table: DT, role: ROLE, can_read: true },
-  })
+  await grantRole(admin, { table: DT, role: ROLE, can_read: true })
   for (const [subject, customer] of [
     ['for A', CUST_A],
     ['for B', CUST_B],

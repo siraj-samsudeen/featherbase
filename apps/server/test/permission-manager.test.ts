@@ -28,7 +28,7 @@ describe('SET-003: permission manager endpoints', () => {
     expect(Array.isArray(body.perms)).toBe(true)
   })
 
-  test('POST upserts a single Permission row per role (no duplicates)', async ({ admin }) => {
+  test('POST keeps one contribution per enabled operation', async ({ admin }) => {
     await setup(admin)
     const post = (flags: Record<string, boolean>) =>
       admin.fetch(`/api/permissions/${encodeURIComponent(DT)}`, {
@@ -40,11 +40,22 @@ describe('SET-003: permission manager endpoints', () => {
     expect((await post({ can_read: true, can_write: false })).status).toBe(200)
 
     const rows = await sql`
-      select can_read, can_write from permission
-      where ref_table = ${DT} and role = ${ROLE} and tier = 'basic'`
+      select operation from permission
+      where ref_table = ${DT} and role = ${ROLE}`
     expect(rows).toHaveLength(1) // upsert, not insert
-    expect(rows[0].can_write).toBe(false)
-    expect(rows[0].can_read).toBe(true)
+    expect(rows[0].operation).toBe('read')
+  })
+
+  test('the simple matrix cannot replace a scoped grant with unrestricted access', async ({ admin }) => {
+    await setup(admin)
+    const grant = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, operation: 'read', scope_mode: 'creator',
+    } })
+    await expect(admin.post(`/api/permissions/${encodeURIComponent(DT)}`, {
+      role: ROLE, can_read: true, can_write: true,
+    })).rejects.toMatchObject({ status: 417 })
+    const rows = await sql`select row_id, operation, scope_mode from permission where ref_table = ${DT} and role = ${ROLE}`
+    expect(rows).toEqual([{ row_id: grant.row_id, operation: 'read', scope_mode: 'creator' }])
   })
 
   test('is gated to System Managers (non-SM gets 403 on read and write)', async ({

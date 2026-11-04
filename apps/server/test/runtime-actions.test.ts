@@ -269,7 +269,7 @@ describe('real package extensions retain transactional helper boundaries', () =>
         manifest.actions.operations.delete_shared = policy
         manifest.actions.operations.forget_failed_write = policy
         manifest.actions.tables.push('Shared Action Note')
-        manifest.permissions.push({ table: 'Shared Action Note', role: 'All', can_read: true, can_delete: true })
+        manifest.permissions.push({ table: 'Shared Action Note', role: 'All', operations: { read: '*', delete: true } })
         manifest.reads = { version: 1, operations: { preview: policy }, tables: ['actionproof.work'] }
         await writeFile(manifestPath, JSON.stringify(manifest))
         const serverPath = resolve(root, 'server.mjs')

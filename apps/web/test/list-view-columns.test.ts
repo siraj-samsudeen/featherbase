@@ -95,19 +95,19 @@ describe('switchColumn', () => {
   })
 })
 
-describe('a caller who may read only basic columns', () => {
+describe('a caller with an explicit readable Column selection', () => {
   const withRestrictedNotes = () =>
     sectionMapping({
-      readable_tiers: ['basic'],
-      columns: [...sectionMapping().columns.slice(0, 4), column('notes', { tier: 'restricted' })],
+      readable_columns: ['section', 'mch', 'floor', 'remarks'],
+      columns: [...sectionMapping().columns.slice(0, 4), column('notes', { tier: 'basic' })],
     })
 
-  it('never sees a restricted column, even one switched on', () => {
+  it('never sees an ungranted column, even one switched on', () => {
     const view = viewColumns(withRestrictedNotes(), { shownCols: ['notes'], hiddenCols: [] })
     expect(names(view)).not.toContain('notes')
   })
 
-  it('is not offered a restricted column', () => {
+  it('is not offered an ungranted column', () => {
     expect(names(dataColumns(withRestrictedNotes()))).toEqual(['section', 'mch', 'floor', 'remarks'])
   })
 })

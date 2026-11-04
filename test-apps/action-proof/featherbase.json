@@ -21,8 +21,8 @@
     ]}
   ],
   "permissions": [
-    {"table":"actionproof.work","role":"All","can_read":true,"can_create":true,"can_write":true,"can_delete":true,"own_rows_only":true},
-    {"table":"actionproof.destination","role":"All","can_read":true,"can_create":true,"can_write":true,"own_rows_only":true},
-    {"table":"Comment","role":"All","can_read":true,"can_create":true,"can_write":true,"own_rows_only":true}
+    {"table":"actionproof.work","role":"All","scope_mode":"creator","operations":{"read":"*","create":"*","update":"*","delete":true}},
+    {"table":"actionproof.destination","role":"All","scope_mode":"creator","operations":{"read":"*","create":"*","update":"*"}},
+    {"table":"Comment","role":"All","scope_mode":"creator","operations":{"read":"*","create":"*","update":"*"}}
   ]
 }

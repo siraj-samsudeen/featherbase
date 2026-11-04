@@ -18,7 +18,7 @@ import { getActiveWorkflow, stateField, rethrowWorkflowConflict, notifyApprovers
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
-import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, readerFor, restrictRow, seesEveryColumn, type Tiers } from './row-readers'
+import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, childColumns, readerFor, restrictRow, seesEveryColumn } from './row-readers'
 import { assertNotSystemWritten } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
@@ -30,9 +30,11 @@ import {
   getScopeMap,
   isPrivileged,
   isSharedWith,
-  insertTiers,
-  permittedTiers,
+  ALL_COLUMNS,
+  includesColumn,
+  permittedColumns,
   stripUnwritableFields,
+  type ColumnSelection,
 } from './permissions'
 import {
   assertBoundScope,
@@ -370,13 +372,14 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
   if (ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName))) throw refused()
   const refMeta = await getMeta(refTable).catch(() => null)
   if (!refMeta) throw refused()
+  let target: RowValues
   try {
-    await getDoc(refTable, refName, user)
+    target = await getDoc(refTable, refName, user)
   } catch (err) {
     if (err instanceof AppError && err.type !== 'NotFoundError') throw refused()
     throw err
   }
-  if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
+  if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta, String(target.created_by))))
     throw refused()
 }
 
@@ -508,7 +511,7 @@ async function assertAccessColumnsUnchanged(
   existing: RowValues | null,
   user: string,
   trusted: boolean,
-  writeTiers: Tiers,
+  writeTiers: ColumnSelection,
 ): Promise<void> {
   const changed: string[] = []
   for (const input of pickChildInputs(meta, values)) {
@@ -518,7 +521,8 @@ async function assertAccessColumnsUnchanged(
       continue
     }
     const childMeta = await getMeta(input.childTable)
-    const childTiers = await childWriteTiers(user, writeTiers, childMeta.name)
+    const parentColumn = meta.columns.find((column) => column.column_name === input.columnName)!.row_id
+    const childTiers = await childWriteColumns(user, writeTiers, meta.name, childMeta.name, parentColumn, 'write', String(existing.created_by))
     const cols = childMeta.columns.filter((f) => !NO_COLUMN_TYPES.has(f.column_type))
     const key = (r: RowValues) => JSON.stringify(cols.map((f) => (own(r, f.column_name) == null ? '' : String(r[f.column_name]))))
     const current = await tx`
@@ -587,16 +591,17 @@ async function assertAccessColumnsUnchanged(
 // reaches a restricted child column. Basic columns stay writable whatever the
 // tier grant says: whether this writer may save these child rows at all was
 // already settled on the parent (a create-only grant carries no write tier).
-async function childWriteTiers(user: string, parentWriteTiers: Tiers, childTable: string): Promise<Tiers> {
-  return new Set(['basic', ...parentWriteTiers, ...(await permittedTiers(user, childTable, 'write'))])
+async function childWriteColumns(user: string, parentColumns: ColumnSelection, parentTable: string, childTable: string, parentColumn: string, action: 'write' | 'create', createdBy?: string): Promise<ColumnSelection> {
+  if (parentColumns.has('*')) return new Set(ALL_COLUMNS)
+  return childColumns(user, parentTable, childTable, parentColumn, action, createdBy)
 }
 
 // Defaults may initialise a hidden column, but may not overwrite an existing
 // hidden value. Check supplied values before adding any defaults.
-function childFieldValues(childMeta: TableMeta, row: RowValues, mode: 'insert' | 'update', writeTiers: Tiers, stored?: RowValues): RowValues {
+function childFieldValues(childMeta: TableMeta, row: RowValues, mode: 'insert' | 'update', writeTiers: ColumnSelection, stored?: RowValues): RowValues {
   const supplied = stripUnwritableFields(childMeta.columns, writeTiers, pickFieldValues(childMeta, row), stored)
   const defaultsMeta = mode === 'insert' ? childMeta : {
-    ...childMeta, columns: childMeta.columns.filter((column) => writeTiers.has(column.tier)),
+    ...childMeta, columns: childMeta.columns.filter((column) => includesColumn(writeTiers, column)),
   }
   const values = applyDefaults(defaultsMeta, supplied)
   return validateValues(childMeta, values, mode)
@@ -608,11 +613,14 @@ async function saveChildren(
   parentRowId: string,
   input: { columnName: string; childTable: string; rows: RowValues[] },
   user: string,
-  parentWriteTiers: Tiers,
+  parentWriteTiers: ColumnSelection,
+  action: 'write' | 'create',
+  createdBy: string,
 ) {
   const childMeta = await getMeta(input.childTable)
   // Child columns are subject to the same atomic refusal as parent columns.
-  const writeTiers = await childWriteTiers(user, parentWriteTiers, childMeta.name)
+  const parentColumn = parentMeta.columns.find((column) => column.column_name === input.columnName)!.row_id
+  const writeTiers = await childWriteColumns(user, parentWriteTiers, parentMeta.name, childMeta.name, parentColumn, action, createdBy)
   const table = await tableRelation(childMeta.name)
   const childKey = childMeta.row_key
   const existing = await tx`
@@ -848,8 +856,8 @@ async function writeDoc(
     await assertUserPermissions(user, meta, values)
   }
   const writeTiers = opts.skipPermissions
-    ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
-    : await insertTiers(user, table)
+    ? new Set(ALL_COLUMNS)
+    : await permittedColumns(user, table, 'create', user)
   const fieldValues = validateValues(
     meta,
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
@@ -925,7 +933,7 @@ async function writeDoc(
       // #465 D5: a new row under a locked row's id would set its locked fields.
       await assertManagedUnchanged(stx, meta, String(rowId), null, inserted[0] as RowValues, user)
       for (const input of finalChildInputs)
-        await saveChildren(stx, meta, rowId, input, user, writeTiers)
+        await saveChildren(stx, meta, rowId, input, user, writeTiers, 'create', user)
       ctx.row = { ...(inserted[0] as RowValues) }
       await runHooks('after_insert', ctx)
       await runHooks('after_save', ctx)
@@ -981,7 +989,7 @@ async function saveBoundDoc(
   // PERM-005: Data Scopes judge the incoming Reference values exactly as on
   // a native insert.
   await assertUserPermissions(user, meta, values)
-  const writeTiers = await insertTiers(user, meta.name)
+  const writeTiers = await permittedColumns(user, meta.name, 'create', user)
   const fieldValues = validateValues(
     meta,
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
@@ -1041,7 +1049,7 @@ async function updateBoundDoc(
   // below, after hooks, as it will be written.
   await assertBoundScope(meta, user, 'write')
   await assertUserPermissions(user, meta, current)
-  const writeTiers = await permittedTiers(user, meta.name, 'write')
+  const writeTiers = await permittedColumns(user, meta.name, 'write', String(current.created_by ?? ''))
   const fieldValues = validateValues(
     meta,
     stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values), current),
@@ -1107,9 +1115,9 @@ async function updateDoc(
     )
   // A write-share grants full field access; otherwise honor tiers.
   const sharedWrite = await isSharedWith(user, meta.name, name, 'write')
-  const writeTiers = sharedWrite
-    ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
-    : await permittedTiers(user, meta.name, 'write')
+  let writeTiers = sharedWrite
+    ? new Set(ALL_COLUMNS)
+    : await permittedColumns(user, meta.name, 'write')
   const fieldValues = validateValues(
     meta,
     pickFieldValues(meta, values),
@@ -1151,6 +1159,7 @@ async function updateDoc(
       if (!sharedWrite) {
         await assertDocPermission(user, meta.name, 'write', String(existing.created_by))
         await assertUserPermissions(user, meta, existing as RowValues)
+        writeTiers = await permittedColumns(user, meta.name, 'write', String(existing.created_by))
       }
       const dbModified = (existing.updated_at as Date).getTime()
       const sentModified = new Date(expectedStamp(values.updated_at)).getTime()
@@ -1211,7 +1220,7 @@ async function updateDoc(
       // carries no Sub-table columns, so the key exists only if the payload
       // sent it or a hook set it.
       for (const input of pickChildInputs(meta, row))
-        await saveChildren(stx, meta, name, input, user, writeTiers)
+        await saveChildren(stx, meta, name, input, user, writeTiers, 'write', String(existing.created_by))
       await recordVersion(stx, meta, name, existing as RowValues, updated as RowValues, user)
       ctx.row = { ...(updated as RowValues) }
       await runHooks('after_save', ctx)
@@ -1692,8 +1701,8 @@ async function getDocImpl(
       await assertUserPermissions(user, meta, doc)
     }
     const tiers = boundShared
-      ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
-      : await permittedTiers(user, table, 'read')
+      ? new Set(ALL_COLUMNS)
+      : await permittedColumns(user, table, 'read', String(doc.created_by ?? ''))
     return { table, ...filterReadFields(meta.columns, tiers, doc) }
   }
   const [row] = await sql`
@@ -1710,7 +1719,7 @@ async function getDocImpl(
   }
   // A share grants full field visibility; otherwise honor tiers, on the row
   // and on its sub-table rows alike (#341).
-  const reader = shared ? FULL_READER : await readerFor(user, table, 'read')
+  const reader = shared ? FULL_READER : await readerFor(user, table, 'read', String(row.created_by))
   return restrictRow(meta, await loadChildren(meta, { table, ...(row as RowValues) }), reader)
 }
 
@@ -1732,7 +1741,7 @@ async function getSingle(meta: TableMeta, user: string): Promise<RowValues> {
     const raw = stored.has(f.column_name) ? (stored.get(f.column_name) ?? null) : (f.default_value ?? null)
     row[f.column_name] = coerceSingleValue(f.column_type, raw)
   }
-  const readTiers = await permittedTiers(user, meta.name, 'read')
+  const readTiers = await permittedColumns(user, meta.name, 'read', 'Administrator')
   return filterReadFields(meta.columns, readTiers, row)
 }
 
@@ -1766,7 +1775,7 @@ async function saveSingleImpl(
   await assertSecurityWriter(table, user)
   if (meta.kind !== 'settings') throw new AppError('ValidationError', `${table} is not a Settings Table`)
   await assertPermission(user, table, 'write')
-  const writeTiers = await permittedTiers(user, table, 'write')
+  const writeTiers = await permittedColumns(user, table, 'write', 'Administrator')
   const clean = validateValues(
     meta,
     stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values)),

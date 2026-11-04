@@ -15,7 +15,7 @@
     }
   ],
   "roles": ["Bar Reader"],
-  "permissions": [{ "table": "barproof.note", "role": "Bar Reader", "can_read": true }],
+  "permissions": [{ "table": "barproof.note", "role": "Bar Reader", "operations": { "read": "*" } }],
   "reads": {
     "version": 1,
     "tables": ["barproof.note"],

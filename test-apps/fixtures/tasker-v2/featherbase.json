@@ -24,9 +24,9 @@
       ]}
   ],
   "permissions": [
-    {"table": "tasker.project", "role": "All", "can_read": true, "can_write": true, "can_create": true, "can_delete": true},
-    {"table": "tasker.task", "role": "All", "can_read": true, "can_write": true, "can_create": true, "can_delete": true},
-    {"table": "Person", "role": "All", "can_read": true},
-    {"table": "Comment", "role": "All", "can_read": true, "can_write": true, "can_create": true}
+    {"table": "tasker.project", "role": "All", "operations": {"read":"*","update":"*","create":"*","delete":true}},
+    {"table": "tasker.task", "role": "All", "operations": {"read":"*","update":"*","create":"*","delete":true}},
+    {"table": "Person", "role": "All", "operations": {"read":"*"}},
+    {"table": "Comment", "role": "All", "operations": {"read":"*","update":"*","create":"*"}}
   ]
 }

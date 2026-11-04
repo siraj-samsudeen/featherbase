@@ -3,6 +3,7 @@ import fc from 'fast-check'
 import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../../src/db'
+import { grantRole } from '../fixtures'
 
 // Spec 0004 (import upsert) — the contract, rule, and invariant layers.
 // UPS-R1: the import boundary learns update (key_column, permissions,
@@ -149,10 +150,7 @@ describe('UPS-R1: the import boundary learns update', () => {
     await setup(admin)
     await seed(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: ROLE, can_read: true, can_create: true },
-    })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true, can_create: true })
     const user = await createUser({ roles: [ROLE] })
     const before = await rowsByZone(admin)
     const res = await user.fetch(PATH, {
@@ -183,10 +181,7 @@ describe('UPS-R1: the import boundary learns update', () => {
     await setup(admin)
     await seed(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: ROLE, can_read: true, can_write: true },
-    })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true, can_write: true })
     const user = await createUser({ roles: [ROLE] })
     const res = await user.fetch(PATH, {
       method: 'POST',
@@ -210,17 +205,7 @@ describe('UPS-R1: the import boundary learns update', () => {
   }) => {
     await setup(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: {
-        ref_table: DT,
-        role: ROLE,
-        can_read: true,
-        can_create: true,
-        can_write: true,
-        own_rows_only: true,
-      },
-    })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true, can_create: true, can_write: true, own_rows_only: true })
     const user = await createUser({ roles: [ROLE] })
     // One row the caller owns, one the admin owns.
     await user.fetch(PATH, {
