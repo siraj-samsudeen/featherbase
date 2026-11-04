@@ -4,7 +4,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, test, vi } from 'vitest'
-import { DrillPane, FieldGrid, GroupChip, LinkChip, PanePlace, PaneSection, resolvePanePlace, SplitWithPane, ViewToggle } from '@featherbase/shop-floor'
+import { DrillPane, FieldGrid, GroupChip, LinkChip, PanePlace, PaneSection, PathBar, RecentPaths, resolvePanePlace, SplitWithPane, ViewToggle } from '@featherbase/shop-floor'
 
 describe('ViewToggle', () => {
   test('marks the chosen view as pressed and reports a change', async () => {
@@ -187,5 +187,80 @@ describe('SplitWithPane', () => {
   test('without a pane, the content takes the whole width', () => {
     render(<SplitWithPane place="right" pane={null}><p>List</p></SplitWithPane>)
     expect(screen.queryByTestId('split-pane')).not.toBeInTheDocument()
+  })
+})
+
+describe('PathBar', () => {
+  const steps = [
+    { key: 'list', kindLabel: 'List', label: 'Bins' },
+    { key: 'filter', kindLabel: 'Filter', label: 'Aisle: 4' },
+    { key: 'row', label: 'North bay · B-104' },
+  ]
+  function bar(current: number, handlers: Partial<Record<'onStep' | 'onBack' | 'onForward' | 'onCopyLink', () => void>> = {}) {
+    render(<PathBar steps={steps} current={current} onStep={handlers.onStep ?? vi.fn()} onBack={handlers.onBack ?? vi.fn()}
+      onForward={handlers.onForward ?? vi.fn()} onCopyLink={handlers.onCopyLink ?? vi.fn()} recent={<span>Recent slot</span>} />)
+  }
+
+  test('marks the current step', () => {
+    bar(1)
+    const path = screen.getByRole('navigation', { name: 'Path' })
+    expect(path.querySelector('[aria-current="step"]')).toHaveTextContent('Filter Aisle: 4')
+  })
+
+  test('Back is disabled at the first step', () => {
+    bar(0)
+    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Forward' })).toBeEnabled()
+  })
+
+  test('Forward is disabled at the last step', () => {
+    bar(2)
+    expect(screen.getByRole('button', { name: 'Forward' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled()
+  })
+
+  test('clicking an earlier step reports its index', async () => {
+    const onStep = vi.fn()
+    const user = userEvent.setup()
+    bar(2, { onStep })
+    await user.click(screen.getByRole('button', { name: 'List Bins' }))
+    expect(onStep).toHaveBeenCalledWith(0)
+  })
+
+  test('Copy link reports it and says Copied in place', async () => {
+    const onCopyLink = vi.fn()
+    const user = userEvent.setup()
+    bar(2, { onCopyLink })
+    await user.click(screen.getByRole('button', { name: 'Copy link' }))
+    expect(onCopyLink).toHaveBeenCalledOnce()
+    expect(screen.getByRole('status')).toHaveTextContent('Copied')
+  })
+
+  test('holds the recent paths slot', () => {
+    bar(2)
+    expect(screen.getByText('Recent slot')).toBeInTheDocument()
+  })
+})
+
+describe('RecentPaths', () => {
+  const paths = Array.from({ length: 12 }, (_, i) => ({ key: `p${i}`, label: `Path ${i + 1}` }))
+
+  test('lists at most ten paths once opened', async () => {
+    const user = userEvent.setup()
+    render(<RecentPaths paths={paths} onPick={() => {}} />)
+    const toggle = screen.getByRole('button', { name: 'Recent paths' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await user.click(toggle)
+    expect(screen.getAllByRole('menuitem')).toHaveLength(10)
+  })
+
+  test('picking a path reports its key and closes the menu', async () => {
+    const onPick = vi.fn()
+    const user = userEvent.setup()
+    render(<RecentPaths paths={paths} onPick={onPick} />)
+    await user.click(screen.getByRole('button', { name: 'Recent paths' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Path 2' }))
+    expect(onPick).toHaveBeenCalledWith('p1')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 })
