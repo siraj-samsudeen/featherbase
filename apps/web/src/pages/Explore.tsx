@@ -150,7 +150,7 @@ export function ExploreView({
       </p>
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+          <span className="text-xs font-semibold text-ink-subtle">
             Find a table
           </span>
           <input
@@ -166,7 +166,7 @@ export function ExploreView({
           />
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+          <span className="text-xs font-semibold text-ink-subtle">
             Start from
           </span>
           <select
@@ -292,7 +292,7 @@ function StepPicker({
   const { options } = useStepOptions(table)
   return (
     <label className="flex flex-col gap-0.5">
-      <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+      <span className="text-xs font-semibold text-ink-subtle">
         {label}
       </span>
       <select

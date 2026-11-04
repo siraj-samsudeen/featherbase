@@ -29,8 +29,11 @@ export function PanePlace({ value, resolved, onChange, label = 'Pane place' }: {
 
 /**
  * Content with the drill pane beside it (right: about 40% wide, at least
- * 360px) or below it (bottom: at most half the window tall, scrolling).
- * Neither ever scrolls the page sideways. With no pane the content fills it all.
+ * 360px, as tall as the window) or below it (bottom: at most half the window
+ * tall). Either stays in sight while the page scrolls, and scrolls inside
+ * itself; neither ever scrolls the page sideways. With no pane the content
+ * fills it all. `data-pane` says where the pane is, so the page around can
+ * make room for one on the right.
  */
 export function SplitWithPane({ place, pane, children }: {
   place: ResolvedPanePlace
@@ -38,13 +41,15 @@ export function SplitWithPane({ place, pane, children }: {
   children: ReactNode
 }) {
   const right = place === 'right'
+  const shown = pane != null && pane !== false
   return (
-    <div data-testid="split-with-pane" className={`flex min-h-0 min-w-0 flex-1 ${right ? 'flex-row' : 'flex-col'}`}>
-      <div className="min-h-0 min-w-0 flex-1 overflow-auto">{children}</div>
-      {pane != null && pane !== false && (
+    <div data-testid="split-with-pane" data-pane={shown ? place : undefined}
+      className={`flex min-h-0 min-w-0 flex-1 ${right ? 'flex-row items-start gap-4' : 'flex-col'}`}>
+      <div className="min-h-0 min-w-0 flex-1 self-stretch overflow-auto">{children}</div>
+      {shown && (
         <div data-testid="split-pane" className={right
-          ? 'flex min-h-0 w-2/5 min-w-90 max-w-full shrink-0 flex-col'
-          : 'flex max-h-[50vh] min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto'}
+          ? 'sticky top-0 flex max-h-[calc(100dvh-5rem)] min-h-0 w-2/5 min-w-90 max-w-full shrink-0 flex-col overflow-y-auto bg-surface'
+          : 'sticky bottom-0 mt-4 flex max-h-[50vh] min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto bg-surface shadow-lg'}
         >{pane}</div>
       )}
     </div>

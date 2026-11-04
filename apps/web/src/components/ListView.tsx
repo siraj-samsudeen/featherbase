@@ -1495,7 +1495,7 @@ function InlineChildGrid({
   const currencyCols = cols.filter((c) => c.column_type === 'Currency')
   return (
     <div className="overflow-hidden rounded-[var(--radius-control)] border border-border bg-surface" data-testid={`inline-children-${field.column_name}`}>
-      <div className="border-b border-border px-3 py-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+      <div className="border-b border-border px-3 py-1 text-xs font-semibold text-ink-muted">
         {field.label ?? field.column_name} ({fmtCount(rows.length)})
       </div>
       <table className="w-full text-xs">
@@ -1607,7 +1607,7 @@ function StandardFilters({
         f.column_type === 'Reference' && f.reference_table ? (
           // #793: a link filters by picking a row by its name, not by typing its id.
           <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+            <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
             <span className="flex items-center gap-1">
@@ -1634,7 +1634,7 @@ function StandardFilters({
           </label>
         ) : f.column_type === 'Choice' ? (
           <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+            <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
             <select
@@ -1656,7 +1656,7 @@ function StandardFilters({
           </label>
         ) : (
           <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+            <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
             <input
@@ -1874,7 +1874,7 @@ function RecentStrip({
   if (rows.length === 0 && views.length === 0) return null
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="recent-strip">
-      <span className="text-xs font-semibold uppercase tracking-wider text-ink-subtle">
+      <span className="text-xs font-semibold text-ink-subtle">
         Recent
       </span>
       {rows.map((r) => (
@@ -2051,7 +2051,7 @@ function SavedViewsBar({
     <div className="mb-3" data-testid="saved-views-bar">
       {list.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-ink-subtle">
+          <span className="text-xs font-semibold text-ink-subtle">
             Views
           </span>
           {list.map((v) => {
@@ -2207,7 +2207,7 @@ function ExploreSplitButton({ table }: { table: string }) {
       </div>
       {open && (
         <div className={cardClasses('absolute right-0 z-10 mt-1 w-64 p-2')} data-testid="explore-split-panel">
-          <div className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+          <div className="px-2 pb-1 text-xs font-semibold text-ink-subtle">
             Chain into
           </div>
           {options.map((o) => {
