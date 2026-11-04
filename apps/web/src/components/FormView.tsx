@@ -325,6 +325,8 @@ export function FormView({
       )
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
+      // #898: its title goes too, so recents stop offering the row.
+      queryClient.setQueryData(['row-title', table, name], null)
       await refreshWaitingAfterSave(queryClient, table)
       navigate({ to: '/featherbase/admin/table/$table', params: { table }, search: { filters: undefined } })
     } catch (err) {

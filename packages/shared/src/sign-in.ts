@@ -18,3 +18,14 @@ export const SYSTEM_ACTOR_LABELS: Readonly<Record<string, string>> = {
   [signInActor('google')]: 'Google sign-in',
   [signInActor('password')]: 'Password sign-in',
 }
+
+// #835: who is waiting for access, as a filter on the standard Person list.
+// Enabled, not a built-in account, not merged away, and holding no role of
+// their own (`All` and `Guest` are implicit). The server's count for the menu
+// badge (waiting-for-access.ts) is the same cohort; a test holds them equal.
+export const WAITING_FOR_ACCESS_FILTERS: [string, string, unknown][] = [
+  ['enabled', '=', true],
+  ['built_in', '!=', true],
+  ['replaced_by', '=', null],
+  ['row_id', 'not related', { via: 'Has Role', column: 'role', table: 'Role', filters: [['row_id', 'not in', ['All', 'Guest']]] }],
+]

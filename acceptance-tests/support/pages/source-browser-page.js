@@ -28,6 +28,16 @@ class SourceBrowserPage {
     return (await this.row(table).locator('td').last().innerText()).trim();
   }
 
+  /** Chooses tables and their names ({ table: name }) and connects them. */
+  async connectNamed(schema, names) {
+    for (const [table, name] of Object.entries(names)) {
+      await this.choice(schema, table).check();
+      await this.row(table).getByRole('textbox', { name: `Name for ${schema}.${table}` }).fill(name);
+    }
+    await this.page.getByTestId('sb-reflect').click();
+    await this.page.getByTestId('sb-result').getByRole('link').first().waitFor();
+  }
+
   /** Connects the chosen table and returns the name of the Table it became. */
   async connect(schema, table) {
     await this.choice(schema, table).check();

@@ -972,8 +972,12 @@ async function writeDoc(
       const inserted = await tx`insert into ${tx(tbl)} ${tx(dbRow as unknown as Record<string, never>)} returning *`
       // #465 D5: a new row under a locked row's id would set its locked fields.
       await assertManagedUnchanged(stx, meta, String(rowId), null, inserted[0] as RowValues, user)
+      // #897: roles given at creation are a grant like any later one.
+      const accessBefore = await accessChildSummaries(stx, meta, String(rowId), finalChildInputs)
       for (const input of finalChildInputs)
         await saveChildren(stx, meta, rowId, input, user, writeTiers)
+      const accessChanges = await accessChildChanges(stx, meta, String(rowId), finalChildInputs, accessBefore)
+      await recordVersion(stx, meta, String(rowId), inserted[0] as RowValues, inserted[0] as RowValues, user, accessChanges, true)
       ctx.row = { ...(inserted[0] as RowValues) }
       await runHooks('after_insert', ctx)
       await runHooks('after_save', ctx)
@@ -1294,6 +1298,9 @@ async function recordVersion(
   after: RowValues,
   user: string,
   childChanges: [string, unknown, unknown][] = [],
+  // #897: the entry a row is created with. It alone does not keep the row
+  // from being deleted, and goes with it.
+  created = false,
 ) {
   if (!meta.track_changes || UNVERSIONED.has(meta.name)) return
   // #421: a Date column is a calendar day, which the driver hands back as UTC
@@ -1324,7 +1331,7 @@ async function recordVersion(
     position: 0,
     ref_table: meta.name,
     ref_name: name,
-    data: { changed } as unknown as string,
+    data: (created ? { changed, created } : { changed }) as unknown as string,
   })}`
 }
 
@@ -1544,6 +1551,7 @@ async function deleteDocImpl(
       // by refusing the delete while it has any (links are checked below).
       assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name))
     }
+    await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
     if ((existing.status as string) === 'submitted')
       throw new AppError(
         'ValidationError',
