@@ -24,6 +24,7 @@ import { PersonIdentifiers } from './PersonIdentifiers'
 import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
 import { ActionDisclosure } from './ActionDisclosure'
+import { RetireDialog, RetiredBadge, RetiredNotice, reactivateRow } from './RowRetirement'
 import { WorkflowActions } from './WorkflowActions'
 import { RelatedWorkspace } from './RelatedWorkspace'
 import { usePeek } from './Peek'
@@ -126,6 +127,9 @@ export function FormView({
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  // #859: the server said Retire is the way out of a refused delete.
+  const [deleteOffersRetire, setDeleteOffersRetire] = useState(false)
+  const [retiring, setRetiring] = useState(false)
   const [staleBanner, setStaleBanner] = useState(false)
   const [scriptError, setScriptError] = useState<string | null>(null)
   const [area, setArea] = useState('Work')
@@ -312,6 +316,7 @@ export function FormView({
   async function deleteRow() {
     setDeleteBusy(true)
     setDeleteError(null)
+    setDeleteOffersRetire(false)
     try {
       // Echo the stamp the form actually loaded. Source-bound rows with a
       // mapped revision require it, as do local rows owned by an installed
@@ -330,6 +335,7 @@ export function FormView({
       navigate({ to: '/featherbase/admin/table/$table', params: { table }, search: { filters: undefined } })
     } catch (err) {
       setDeleteError(err instanceof ApiError ? err.message : 'Delete failed')
+      setDeleteOffersRetire(err instanceof ApiError && err.fields?.retire === 'available')
       setDeleteBusy(false)
     }
   }
@@ -515,6 +521,7 @@ export function FormView({
               {status === 'submitted' ? 'Submitted' : status === 'cancelled' ? 'Cancelled' : 'Draft'}
             </span>
           )}
+          {!isNew && baseline.retired_at != null && <RetiredBadge />}
           {!isNew && <ActionDisclosure label="Record actions" open={recordActionsOpen} onOpenChange={setRecordActionsOpen}>
           {!isNew && (
             <RouterLink
@@ -568,6 +575,38 @@ export function FormView({
               </button>
             </span>
           )}
+          {/* #859: take the row out of use, keeping it and its history
+              (the delete right), or put it back (the write right). */}
+          {!isNew && access.data?.retire && !rowManaged && (
+            <button
+              onClick={() => {
+                setRecordActionsOpen(false)
+                setRetiring(true)
+              }}
+              data-testid="form-retire"
+              className={buttonClasses()}
+            >
+              {t('Retire')}
+            </button>
+          )}
+          {!isNew && access.data?.reactivate && !rowManaged && (
+            <button
+              onClick={async () => {
+                setRecordActionsOpen(false)
+                setBanner(null)
+                try {
+                  await reactivateRow(queryClient, table, name)
+                  setBanner('Done')
+                } catch (err) {
+                  setBanner(err instanceof ApiError ? err.message : 'Reactivate failed')
+                }
+              }}
+              data-testid="form-reactivate"
+              className={buttonClasses()}
+            >
+              {t('Reactivate')}
+            </button>
+          )}
           {/* TLC-J2.1: the row I am looking at is the row I can remove.
               Absent where rows are not deletable at all — a settings table's
               single row and a sub-table's rows (both refused by the server,
@@ -581,6 +620,7 @@ export function FormView({
               <button
                 onClick={() => {
                   setDeleteError(null)
+                  setDeleteOffersRetire(false)
                   setConfirmingDelete(true)
                 }}
                 data-testid="form-delete"
@@ -690,6 +730,19 @@ export function FormView({
               </p>
             )}
             <div className="flex justify-end gap-2">
+              {deleteOffersRetire && access.data?.retire && (
+                <button
+                  onClick={() => {
+                    setConfirmingDelete(false)
+                    setRetiring(true)
+                  }}
+                  disabled={deleteBusy}
+                  className={buttonClasses({ variant: 'primary' })}
+                  data-testid="delete-row-retire-instead"
+                >
+                  Retire instead
+                </button>
+              )}
               <button
                 autoFocus
                 onClick={() => setConfirmingDelete(false)}
@@ -711,6 +764,10 @@ export function FormView({
           </div>
         </div>
       )}
+      {retiring && (
+        <RetireDialog table={table} name={name} label={name} onClose={() => setRetiring(false)} />
+      )}
+      {!isNew && <RetiredNotice row={baseline} />}
       {banner && (
         <p
           className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-positive' : 'text-negative'}`}

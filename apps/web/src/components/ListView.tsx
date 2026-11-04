@@ -18,6 +18,7 @@ import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName, usePrincipalLabels } from '../lib/people'
 import { Button, DataCards, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp, ChevronDown } from '@featherbase/shop-floor'
+import { RetiredBadge, tableCanRetire } from './RowRetirement'
 import { GlossaryHelp } from './GlossaryHelp'
 import { fmtCount } from '@featherbase/shop-floor'
 import { failureMessage } from '../lib/import-run'
@@ -161,6 +162,11 @@ export function ListView({
   }, [colPickerOpen])
   const [conflictsOpen, setConflictsOpen] = useState(false)
   useEffect(() => setConflictsOpen(false), [table])
+  // #859: retired rows are left out unless the person asks to see them.
+  const [showRetired, setShowRetired] = useState(false)
+  useEffect(() => setShowRetired(false), [table])
+  const retirable = tableCanRetire(meta.data)
+  const withRetired = retirable && showRetired
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsUnsaved, setSettingsUnsaved] = useState(false)
   const settingsWrite = useRef(Promise.resolve())
@@ -323,13 +329,14 @@ export function ListView({
       : undefined)
 
   const list = useQuery({
-    queryKey: ['list', table, columns.map((c) => c.column_name), orderBy, start, filterKey],
+    queryKey: ['list', table, columns.map((c) => c.column_name), orderBy, start, filterKey, withRetired],
     enabled: Boolean(meta.data),
     placeholderData: keepPreviousData,
     queryFn: () =>
       listResource(table, {
         filters: queryFilters,
-        fields: listFields(columns),
+        fields: retirable ? [...listFields(columns), 'retired_at'] : listFields(columns),
+        with_retired: withRetired,
         order_by: orderBy,
         limit_start: start,
         limit_page_length: PAGE,
@@ -578,6 +585,20 @@ export function ListView({
           className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:basis-64 sm:justify-end"
           data-testid="list-toolbar"
         >
+          {retirable && (
+            <label className={buttonClasses({ className: 'cursor-pointer gap-2' })} data-testid="list-show-retired">
+              <input
+                type="checkbox"
+                checked={showRetired}
+                onChange={(e) => {
+                  setShowRetired(e.target.checked)
+                  setStart(0)
+                }}
+                data-testid="list-show-retired-toggle"
+              />
+              Show retired
+            </label>
+          )}
           <div className="relative">
             <button
               onClick={() => setColPickerOpen((o) => !o)}
@@ -1170,6 +1191,7 @@ function ListCell({
   const { t } = useI18n()
   if (first)
     return (
+      <>
       <Link
         to="/featherbase/admin/table/$table/row/$name"
         search={{ prefill: undefined }}
@@ -1196,6 +1218,8 @@ function ListCell({
             : cell(row[col.column_name], col.column_type, settings)
         )}
       </Link>
+      {row.retired_at != null && <RetiredBadge className="ml-2 align-middle" />}
+      </>
     )
   const value = row[col.column_name]
   return (

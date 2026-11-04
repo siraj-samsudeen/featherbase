@@ -210,9 +210,12 @@ export function listResource<T = Record<string, unknown>>(
     order_by?: string
     limit_start?: number
     limit_page_length?: number
+    /** #859: list retired rows too; the server leaves them out by default. */
+    with_retired?: boolean
   } = {},
 ) {
   const qs = new URLSearchParams()
+  if (params.with_retired) qs.set('with_retired', 'true')
   if (params.filters?.length) qs.set('filters', JSON.stringify(params.filters))
   if (params.fields?.length) qs.set('fields', JSON.stringify(params.fields))
   if (params.order_by) qs.set('order_by', params.order_by)

@@ -116,6 +116,7 @@ interface SheetPlan {
     rows_kept: number
     conflicts: number
     tracks_changes?: boolean | null
+    retired?: number
     valid: number
     updated: number
     inserted: number
@@ -339,6 +340,11 @@ function ImportPreviewFacts({ report }: {
         {fmtCount(report.fields_kept ?? 0)} {report.fields_kept === 1 ? 'value' : 'values'} retained ·{' '}
         {fmtCount(report.conflicts)} new {report.conflicts === 1 ? 'conflict' : 'conflicts'}
       </p>
+      {(report.retired ?? 0) > 0 && (
+        <p data-testid="iw-preview-retired">
+          {fmtCount(report.retired ?? 0)} matched {report.retired === 1 ? 'row is' : 'rows are'} retired and {report.retired === 1 ? 'stays' : 'stay'} retired
+        </p>
+      )}
       <p className="text-xs text-ink-muted">
         Rows keeping corrections may also have other values change. Counts describe mapped values; import automation still runs.
       </p>
@@ -1394,7 +1400,7 @@ export function ImportWizard() {
         if (i !== only) continue
         // #201: rehearse member by member, exactly as the import will send
         // them, so a reported row number is true against its own sheet.
-        const totals = { valid: 0, updated: 0, changed: 0, unchanged: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, rows_kept: 0, conflicts: 0, tracks_changes: null as boolean | null }
+        const totals = { valid: 0, updated: 0, changed: 0, unchanged: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, rows_kept: 0, conflicts: 0, retired: 0, tracks_changes: null as boolean | null }
         const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
         for (const { sheetIndex: m, rows, skipped, failed: duplicates } of targetParts(plan)) {
           const sheet = memberSheet(plan, m)
@@ -1417,6 +1423,7 @@ export function ImportWizard() {
           totals.unchanged += report.unchanged
           totals.rows_kept += report.rows_kept
           totals.conflicts += report.conflicts
+          totals.retired += report.retired
           totals.tracks_changes = report.tracks_changes
           totals.valid += report.valid
           totals.updated += report.updated
