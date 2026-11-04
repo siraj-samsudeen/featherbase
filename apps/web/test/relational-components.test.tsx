@@ -555,6 +555,17 @@ describe('UI Lab', () => {
     expect(screen.getByText(file)).toBeInTheDocument()
   })
 
+  test("the path bar example's Recent paths menu is clipped by nothing around it", async () => {
+    const user = userEvent.setup()
+    render(<Gallery />)
+    await user.type(screen.getByRole('searchbox', { name: 'Search components' }), 'path')
+    await user.click(screen.getByRole('button', { name: 'Recent paths' }))
+    const clipping: string[] = []
+    for (let el = screen.getByRole('menu', { name: 'Recent paths' }).parentElement; el; el = el.parentElement)
+      if (/\boverflow-(hidden|auto|x-auto|y-auto|clip)\b/.test(el.className)) clipping.push(el.className)
+    expect(clipping).toEqual([])
+  })
+
   test('section headings are sentence case, never all capitals', () => {
     render(<Gallery />)
     for (const heading of screen.getAllByRole('heading', { level: 2 })) expect(heading.className).not.toMatch(/\buppercase\b/)
