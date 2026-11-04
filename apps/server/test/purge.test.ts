@@ -64,8 +64,8 @@ describe('#859 delete permanently', () => {
     const { bu, store } = await setup(admin)
     expect(await purge(admin, bu, { ids: ['BU-T'], links: 'clear' })).toEqual({ deleted: 1, cleared: 2 })
     expect((await admin.get<Record<string, unknown>>(store.rowUrl('S-A'))).business_unit).toBeNull()
-    const [v] = await sql`select data from version where ref_table = ${STORE} and ref_name = 'S-A' and data ? 'link_cleared'`
-    expect(v.data).toMatchObject({ changed: [['business_unit', 'BU-T', null]] })
+    const versions = await sql`select data from version where ref_table = ${STORE} and ref_name = 'S-A'`
+    expect(versions.map((v) => v.data)).toContainEqual(expect.objectContaining({ changed: [['business_unit', 'BU-T', null]] }))
   })
 
   test('only a System Manager may, whatever their delete rights; the refusal changes nothing', async ({ admin, createUser }) => {
@@ -184,5 +184,39 @@ describe('#859 delete permanently, Codex review round 4', () => {
     }
     expect(await exists('pg_business_unit', 'BU-T')).toBe(true)
     expect((await sql.unsafe("select business_unit from featherbase.pg_store where row_id = 'S-A'"))[0].business_unit).toBe('BU-T')
+  })
+})
+
+describe('#859 delete permanently, Codex review round 5', () => {
+  test('a cleared link is saved through the holder\'s own update: what its hooks change is kept', async ({ admin }) => {
+    const { bu, store } = await setup(admin)
+    const note: TableController = {
+      table: STORE,
+      hooks: { before_save: ({ row }) => { if (row.business_unit == null) row.store_name = `${String(row.store_name)} (no unit)` } },
+    }
+    registerController(note)
+    try { await purge(admin, bu, { ids: ['BU-T'], links: 'clear' }) } finally { unregisterController(note) }
+    expect(await admin.get<Record<string, unknown>>(store.rowUrl('S-A'))).toMatchObject({ business_unit: null, store_name: 'Store A (no unit)' })
+  })
+
+  test('a line removed from a document that stays goes through that document\'s update, which may refuse', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    await makeTable(admin, { name: 'Pg Visit', kind: 'sub_table', columns: [{ column_name: 'unit', column_type: 'Reference', reference_table: BU }] })
+    const plan = await makeTable(admin, { name: 'Pg Plan', id_pattern: 'prompt', columns: ['title', { column_name: 'visits', column_type: 'Sub-table', row_table: 'Pg Visit' }] })
+    const before = await admin.post<{ updated_at: string }>(plan.url, { row_id: 'PL-1', title: 'Tour', visits: [{ unit: 'BU-T' }, { unit: 'BU-K' }] })
+    const needsTwo: TableController = {
+      table: 'Pg Plan',
+      hooks: { before_save: ({ row }) => { if (Array.isArray(row.visits) && row.visits.length < 2) throw new AppError('ValidationError', 'A tour needs two visits') } },
+    }
+    registerController(needsTwo)
+    try {
+      await expectApiError(purge(admin, bu, { ids: ['BU-T'] }), { status: 417, message: expect.stringContaining('two visits') })
+    } finally { unregisterController(needsTwo) }
+    expect(await exists('pg_business_unit', 'BU-T')).toBe(true)
+    await purge(admin, bu, { ids: ['BU-T'] })
+    const kept = await admin.get<{ visits: { unit: string }[]; updated_at: string }>(plan.rowUrl('PL-1'))
+    expect(kept.visits.map((v) => v.unit)).toEqual(['BU-K'])
+    // Its revision moved, so a form left open on it knows it changed.
+    expect(kept.updated_at).not.toBe(before.updated_at)
   })
 })
