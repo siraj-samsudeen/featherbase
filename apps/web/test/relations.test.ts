@@ -2,7 +2,7 @@
 // reads the server already scopes by permission — the row's own Reference
 // values, its counted backlinks, and the titles of the rows it points at.
 import { describe, expect, test } from 'vitest'
-import { backlinkGroups, forwardLinks, linkTitleState } from '../src/lib/relations'
+import { backlinkGroups, forwardLinks, linkTitleState, shownCode } from '../src/lib/relations'
 import type { ColumnDef, TableMeta } from '../src/lib/meta'
 import type { Connection } from '../src/lib/connections'
 
@@ -75,5 +75,31 @@ describe('backlinkGroups', () => {
   test('two links from the same table are told apart by their column', () => {
     const second: Connection = { ...plantsOfSite, column: 'backup_site', count: 1, filters: [['backup_site', '=', 's-1']] }
     expect(backlinkGroups([plantsOfSite, second]).map((g) => g.label)).toEqual(['Plant · site', 'Plant · backup_site'])
+  })
+})
+
+// D5: a link reads by the linked row's name; the code follows only when the
+// Table has a title column and its ids are codes people use.
+describe('shownCode', () => {
+  const PLANT = meta([column({ column_name: 'plant_name' }), column({ column_name: 'plant_code' })], { name: 'Plant', title_column: 'plant_name' })
+
+  test.each(['prompt', 'field:plant_code', 'PLANT-{plant_code}'])('an id named by %s is a code people use', (id_pattern) => {
+    expect(shownCode({ ...PLANT, id_pattern }, '1503', 'Enchakkal Supermarket')).toBe('1503')
+  })
+
+  test.each(['hash', 'integer', 'opaque:psn_', 'PL-.####'])('an id made up by %s never shows', (id_pattern) => {
+    expect(shownCode({ ...PLANT, id_pattern }, 'a1b2c3', 'Enchakkal Supermarket')).toBeUndefined()
+  })
+
+  test("a connected Table's ids are its source's keys, which people use", () => {
+    expect(shownCode({ ...PLANT, id_pattern: 'hash', data_source: 'erp' }, '1503', 'Enchakkal Supermarket')).toBe('1503')
+  })
+
+  test('a Table without a title column shows no code beside its stand-in title', () => {
+    expect(shownCode({ ...PLANT, title_column: null }, '1503', '1503 · Supermarket')).toBeUndefined()
+  })
+
+  test('a code the name already says is not repeated', () => {
+    expect(shownCode(PLANT, 'Kerala', 'Kerala')).toBeUndefined()
   })
 })
