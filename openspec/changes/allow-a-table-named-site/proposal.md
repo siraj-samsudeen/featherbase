@@ -23,7 +23,7 @@ Table "Site" and the host record are two separate things.
 
 ### Modified Capabilities
 
-- `tables-and-fields`: building a Table named Site succeeds.
+- `tables-and-fields`: "A table's name is its own" now says Site stays free; the refusal of platform storage names is unchanged.
 
 ## Impact
 

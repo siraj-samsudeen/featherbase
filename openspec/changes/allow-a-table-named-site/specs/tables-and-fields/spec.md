@@ -1,15 +1,25 @@
 # Tables and Fields
 
-## ADDED Requirements
+## MODIFIED Requirements
 
-### Requirement: A table can be called Site
+### Requirement: A table's name is its own, ignoring letter case and spacing
 
-Building a table named "Site" SHALL succeed. The platform keeps its own list
-of the sites an instance serves apart from the builder's tables, so the name
-is free to use and that list is left unchanged.
+Building a table SHALL be refused when its name matches an existing table's
+name, or storage the platform itself uses, once letter case and spacing are
+ignored. The list of sites an instance serves is kept apart from the
+builder's tables, so "Site" stays free for a table of the builder's own.
 
-#### Scenario: A Site table holds the builder's sites
+#### Scenario: Same name in different letters
 
-- **WHEN** a builder creates a table "Site" and adds the site "Enchakkal"
-- **THEN** the table shows "Enchakkal", and the platform's own list of sites
-  is unchanged
+- **WHEN** a builder creates "audit owned" while a table "Audit Owned"
+  already exists
+- **THEN** the new table is refused and the existing one is unchanged
+
+#### Scenario: A Site table holds the user's sites
+
+```gherkin
+Given no table is called "Site"
+When the user creates a table "Site" and adds the site "Enchakkal"
+Then the table shows "Enchakkal"
+And the list of sites the instance serves is unchanged
+```
