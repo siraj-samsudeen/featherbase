@@ -11,6 +11,45 @@ lists, filters and counts run against the source at that moment
 works, and the traps met on the way. Steps marked *(changing)* name the issue
 that will make them easier; update this guide when it lands.
 
+**For a client, write it as an app, not by hand.** Steps 2–5 done through the
+Admin UI or API exist only on that one instance. A client app's manifest
+(`client-apps/<client>/<app>/app.json`, installed with
+`POST /api/install_app {"manifest": …}`) declares the data source and, per
+table, everything below, so every instance gets the same setup (#808;
+`client-apps/jeyarama/stylehr/` is the worked example):
+
+```json
+"sources": [{ "name": "hr", "engine": "postgres", "url_env": "CLIENT_HR_URL",
+  "access": "read_only", "default_schema": "public", "table_allowlist": "public.person",
+  "reflect": { "schema": "public", "module": "HR", "tables": [
+    { "table": "person", "name": "Employee", "title_column": "first_name",
+      "list_columns": ["code", "first_name", "team_id"],
+      "leave_out_columns": ["date_of_birth", "religion"] } ] } }]
+```
+
+A table entry may also be a plain name, which keeps the defaults. Column names
+are the source's. Left-out columns are never connected. A column the table lacks,
+or a left-out column named as the title or a list column, stops the whole install
+and nothing is connected.
+
+**A source that declares no keys or links** (a warehouse copy in MotherDuck, a
+Postgres table without constraints) needs both said, or its rows are addressed
+by their first column and nothing links (#876). Add `"key"` (the column that
+identifies a row) and `"links"` (each column and the source table it points at,
+by that table's key) to the entry:
+
+```json
+{ "table": "employee", "name": "Employee", "key": "id",
+  "links": { "designation_id": "designation", "reported_to_id": "employee" } }
+```
+
+What an app declares must agree with what the source declares, so one set of
+entries works over the live database and its warehouse copy
+(`client-apps/jeyarama/stylehr` and `stylehr-warehouse`). A key is accepted only
+on a read-only data source. A link's target needs a key from its source or from
+the same install, so connect linked tables together. A contradiction, a missing
+column or a table the source does not have stops the install.
+
 ## 1. Before connecting: can Featherbase reach it?
 
 - Many vendor databases accept only whitelisted IP addresses. Check from the
@@ -71,7 +110,8 @@ into Featherbase Tables.
 
 Columns that look like secrets (passwords, API keys) are never connected. Personal
 and tax data is **not** caught by that rule: date of birth, religion, phone,
-social links, health-insurance numbers, PAN/TAN. Remove them right after
+social links, health-insurance numbers, PAN/TAN. In an app, name them in
+`leave_out_columns` and they are never connected. By hand, remove them right after
 connecting: read the Table's meta (`GET /api/table/<Table>:meta`), then send
 it back without those columns and with
 `remove_columns: [...]` (`PUT /api/table_def/<Table>`). A removed column is
@@ -85,8 +125,9 @@ when someone needs it.
 - **List columns.** Pick four to six useful columns. A source's first columns
   are often the key and audit fields (created on, updated by).
 
-Both are set by hand today (#796 makes reflect pick them; #792–#795 change how
-names, filters, the relationship map and forms show).
+Connecting picks both by rule (#796); an app's `title_column` and `list_columns`
+override it per table (#808). #792–#795 change how names, filters, the
+relationship map and forms show.
 
 ## 6. Questions that cross many tables
 

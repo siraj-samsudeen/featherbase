@@ -121,7 +121,7 @@ describe('Connecting Postgres tables: names and column types', () => {
       born: 'Date',
       meta: 'JSON',
       code: 'Data',
-      story: 'Text',
+      story: 'Data',
       initial: 'Data',
       small: 'Int',
       single: 'Float',

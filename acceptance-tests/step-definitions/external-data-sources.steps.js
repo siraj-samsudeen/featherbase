@@ -7,7 +7,8 @@
 const assert = require('node:assert/strict');
 const { Given, When, Then } = require('@cucumber/cucumber');
 const { expect } = require('playwright/test');
-const { externalSql, EXTERNAL_URL_ENV, EXTERNAL_READER, EXTERNAL_READER_PASSWORD } = require('../support/stack');
+const { externalSql, EXTERNAL_URL_ENV } = require('../support/stack');
+const { givenReaderSource, grantReader } = require('../support/outside-db');
 const { SourceBrowserPage } = require('../support/pages/source-browser-page');
 const { ListPage } = require('../support/pages/list-page');
 const { FormPage } = require('../support/pages/form-page');
@@ -34,25 +35,6 @@ Given('a data source whose login may only read that table and owns nothing', asy
   await givenReaderSource(this, SOURCE, SCHEMA, ['shop']);
 });
 
-// One reader login on the outside database: it may read these tables and
-// owns nothing. A role is shared by the whole cluster, so it is made again.
-async function givenReaderSource(world, source, schema, tables) {
-  const [exists] = await externalSql('select 1 from pg_roles where rolname = $1', [EXTERNAL_READER]);
-  if (!exists) await externalSql(`create role ${EXTERNAL_READER} login password '${EXTERNAL_READER_PASSWORD}'`);
-  else await externalSql(`alter role ${EXTERNAL_READER} login password '${EXTERNAL_READER_PASSWORD}'`);
-  await externalSql(`grant usage on schema ${schema} to ${EXTERNAL_READER}`);
-  for (const table of tables) await externalSql(`grant select on ${schema}.${table} to ${EXTERNAL_READER}`);
-  const [owned] = await externalSql(
-    `select count(*)::int as n from pg_class c join pg_roles r on r.oid = c.relowner where r.rolname = $1`, [EXTERNAL_READER]);
-  assert.equal(owned.n, 0, 'the reader login must own nothing');
-  await world.withApi(async (api) => {
-    await api.call('DELETE', `/api/table/Data%20Source/${source}`);
-    await api.call('POST', '/api/table/Data%20Source', {
-      row_id: source, engine: 'postgres', url_env: EXTERNAL_URL_ENV, default_schema: schema, access: 'read_only',
-    }, [201], `register the ${source} data source`);
-  });
-}
-
 // ---- Shelves and bins (#783) ----
 
 const SHELVES = 'shelf_fixture';
@@ -69,7 +51,53 @@ Given('a Postgres database of shelves and the bins on each shelf', async functio
   await externalSql(`insert into ${SHELVES}.shelf (id, aisle, label) values (7, 'West', 'Middle')`);
   await externalSql(`insert into ${SHELVES}.bin values ('b1', 7)`);
   this.bin = 'b1';
-  for (const name of ['Bin', 'Shelf']) await this.withApi((api) => api.removeTableIfPresent(name));
+  await this.withApi(async (api) => {
+    // An earlier scenario's app owns its Shelf table: uninstalling removes both.
+    await api.call('POST', '/api/uninstall_app', { name: SHELF_APP });
+    for (const name of ['Bin', 'Shelf']) await api.removeTableIfPresent(name);
+  });
+});
+
+// ---- An app that connects the shelves (#808) ----
+
+const SHELF_APP = 'shelf_browser';
+
+// The app brings its own data source over the shelves database; the reader
+// login is granted here, as the database's owner would.
+function shelfApp(name, settings) {
+  return {
+    name: SHELF_APP,
+    sources: [{
+      name: SHELF_SOURCE, engine: 'postgres', url_env: EXTERNAL_URL_ENV, default_schema: SHELVES,
+      access: 'read_only', table_allowlist: `${SHELVES}.shelf`,
+      reflect: { schema: SHELVES, module: 'Shelves', tables: [{ table: 'shelf', name, ...settings }] },
+    }],
+  };
+}
+
+Given('an app that connects its shelf table as {string}, titled by its {word} and listing only its {word}',
+  async function (name, title, listed) {
+    await grantReader(SHELVES, ['shelf', 'bin']);
+    this.app = shelfApp(name, { title_column: title, list_columns: [listed] });
+  });
+
+Given('an app that connects its shelf table as {string}, titled by its {word}, listing only its {word}, and leaving out its {word}',
+  async function (name, title, listed, leftOut) {
+    await grantReader(SHELVES, ['shelf', 'bin']);
+    this.app = shelfApp(name, { title_column: title, list_columns: [listed], leave_out_columns: [leftOut] });
+  });
+
+async function installShelfApp(world) {
+  return world.withApi(async (api) => {
+    await api.call('DELETE', `/api/table/Data%20Source/${world.app.sources[0].name}`);
+    const res = await api.call('POST', '/api/install_app', { manifest: world.app });
+    return { status: res.status(), body: await res.text() };
+  });
+}
+
+Given('the app is installed', async function () {
+  const { status, body } = await installShelfApp(this);
+  assert.equal(status, 201, `the app did not install: ${body}`);
 });
 
 Given('a data source for that database', async function () {
@@ -109,7 +137,78 @@ Given('the user may read bins but not shelves', async function () {
   await this.person('the user', [role]);
 });
 
+// ---- Crates on pallets: tables that declare no keys or links (#876) ----
+
+// Shaped like a warehouse copy: the same columns a database would key and
+// link, with neither declared.
+const CRATES = 'crate_fixture';
+const CRATE_SOURCE = 'crates';
+
+Given('a Postgres database of crates on pallets that declares no keys or links', async function () {
+  await externalSql(`drop schema if exists ${CRATES} cascade`);
+  await externalSql(`create schema ${CRATES}`);
+  await externalSql(`create table ${CRATES}.pallet (number bigint, title text)`);
+  await externalSql(`create table ${CRATES}.crate (contents text, number bigint, pallet_id bigint)`);
+  await grantReader(CRATES, ['pallet', 'crate']);
+  await this.withApi(async (api) => {
+    await api.call('POST', '/api/uninstall_app', { name: SHELF_APP });
+    for (const name of ['Crate', 'Pallet']) await api.removeTableIfPresent(name);
+  });
+});
+
+Given('a crate numbered {int} holding {string} on the pallet {string}', async function (number, contents, pallet) {
+  await externalSql(`insert into ${CRATES}.pallet values (1, $1)`, [pallet]);
+  await externalSql(`insert into ${CRATES}.crate values ($1, $2, 1)`, [contents, number]);
+});
+
+function crateApp(tables) {
+  return {
+    name: SHELF_APP,
+    sources: [{
+      name: CRATE_SOURCE, engine: 'postgres', url_env: EXTERNAL_URL_ENV, default_schema: CRATES,
+      access: 'read_only', table_allowlist: `${CRATES}.crate,${CRATES}.pallet`,
+      reflect: { schema: CRATES, module: 'Crates', tables },
+    }],
+  };
+}
+
+Given('an app that connects its crate table as {string}, identified by its {word}', async function (name, key) {
+  this.app = crateApp([{ table: 'crate', name, key }]);
+});
+
+// The crate comes first, so its link is made before the pallets are connected.
+Given('an app that connects its crate and pallet tables, identified by their numbers, with each crate\'s pallet linking to the pallets',
+  async function () {
+    this.app = crateApp([
+      { table: 'crate', name: 'Crate', key: 'number', links: { pallet_id: 'pallet' } },
+      { table: 'pallet', name: 'Pallet', key: 'number' },
+    ]);
+  });
+
+Given('an app that connects its crate table as {string}, identified by its {word}, with each crate\'s pallet linking to a table called {string}',
+  async function (name, key, target) {
+    this.app = crateApp([{ table: 'crate', name, key, links: { pallet_id: target } }]);
+  });
+
+Given('an app that connects its shelf table as {string}, identified by its {word}', async function (name, key) {
+  await grantReader(SHELVES, ['shelf', 'bin']);
+  this.app = shelfApp(name, { key });
+});
+
+Given('an app that connects its shelf table identified by its id and its bin table, with each bin\'s shelf linking to the shelves',
+  async function () {
+    await grantReader(SHELVES, ['shelf', 'bin']);
+    this.app = shelfApp('Shelf', { key: 'id' });
+    const source = this.app.sources[0];
+    source.table_allowlist = `${SHELVES}.shelf,${SHELVES}.bin`;
+    source.reflect.tables.push({ table: 'bin', name: 'Bin', links: { shelf_id: 'shelf' } });
+  });
+
 // ---- When ----
+
+When('the user installs the app', async function () {
+  this.installed = await installShelfApp(this);
+});
 
 When('the user browses the data source', async function () {
   this.sourceBrowser = new SourceBrowserPage(await this.actor());
@@ -158,6 +257,13 @@ When("the user opens that bin's relationship map", async function () {
   await page.getByTestId('map-forward-Shelf').waitFor();
 });
 
+When('the user opens crate {int}', async function (number) {
+  const page = await this.actor();
+  await page.goto(rowHref('Crate', String(number)));
+  await page.getByTestId('form-view').waitFor();
+  this.form = new FormPage(page);
+});
+
 // ---- Then ----
 
 Then('the shop table is offered for connecting', async function () {
@@ -202,6 +308,33 @@ Then("the user sees each shelf's label and aisle", async function () {
   for (const label of ['Label', 'Aisle']) assert.ok(shown.includes(label), `the list shows ${shown.join(', ')}, not ${label}`);
 });
 
+Then("the user sees each shelf's aisle", async function () {
+  const shown = await this.list.columnLabels();
+  assert.ok(shown.includes('Aisle'), `the list shows ${shown.join(', ')}, not Aisle`);
+});
+
+Then("the user does not see each shelf's label", async function () {
+  const shown = await this.list.columnLabels();
+  assert.ok(!shown.includes('Label'), `the list shows ${shown.join(', ')}`);
+});
+
+Then('the app is not installed', async function () {
+  assert.notEqual(this.installed.status, 201, 'the app installed');
+  const apps = await this.withApi(async (api) => (await api.call('GET', '/api/apps', undefined, [200], 'list apps')).json());
+  const listed = apps.installed.map((a) => a.name);
+  assert.ok(!listed.includes(SHELF_APP), 'the app is listed as installed');
+});
+
+Then('the user is told the shelf table has no column {string}', async function (column) {
+  assert.match(this.installed.body, new RegExp(`shelf[^"]*${column}|${column}[^"]*shelf`, 'i'),
+    `the refusal says: ${this.installed.body}`);
+});
+
+Then('no table called {string} is in Featherbase', async function (name) {
+  const status = await this.withApi(async (api) => (await api.call('GET', `/api/table/${encodeURIComponent(name)}:meta`)).status());
+  assert.equal(status, 404, `a table called ${name} exists`);
+});
+
 Then('the user does not see when each shelf was created', async function () {
   const shown = await this.list.columnLabels();
   assert.ok(!shown.some((l) => /created/i.test(l)), `the list shows ${shown.join(', ')}`);
@@ -232,4 +365,45 @@ Then('the user does not see {string}', async function (text) {
   const page = await this.actor();
   await page.waitForLoadState('networkidle');
   assert.ok(!(await page.locator('main').innerText()).includes(text), `"${text}" is shown`);
+});
+
+Then('the user sees the crate holds {string}', async function (contents) {
+  await this.form.field('Contents').getByText(contents, { exact: true }).waitFor({ timeout: 10_000 });
+});
+
+async function seesLinkAs(form, label, title) {
+  const value = form.field(label).locator('[data-value]');
+  await value.getByText(title, { exact: true }).waitFor({ timeout: 10_000 }).catch(async () => {
+    assert.fail(`the ${label} reads "${(await value.textContent())?.trim()}", not "${title}"`);
+  });
+  assert.ok((await form.valueOf(label)).link, `the ${label} is not a link`);
+}
+
+Then("the user sees the crate's pallet as {string}", async function (title) {
+  await seesLinkAs(this.form, 'Pallet', title);
+});
+
+Then("the user sees the bin's shelf as {string}", async function (title) {
+  await seesLinkAs(new FormPage(await this.actor()), 'Shelf', title);
+});
+
+Then('the user is told the shelf table is already identified by its {word}', async function (key) {
+  assert.match(this.installed.body, new RegExp(`shelf[^"]*identified by[^"]*\\b${key}\\b`, 'i'),
+    `the refusal says: ${this.installed.body}`);
+});
+
+Given('an app that connects its shelf and bin tables, with each bin\'s shelf linking to the bins', async function () {
+  await grantReader(SHELVES, ['shelf', 'bin']);
+  this.app = shelfApp('Shelf', {});
+  const source = this.app.sources[0];
+  source.table_allowlist = `${SHELVES}.shelf,${SHELVES}.bin`;
+  source.reflect.tables.push({ table: 'bin', name: 'Bin', links: { shelf_id: 'bin' } });
+});
+
+Then("the user is told the bin's shelf already links to the shelves", async function () {
+  assert.match(this.installed.body, /bin[^"]*shelf_id[^"]*already links to shelf\b/i, `the refusal says: ${this.installed.body}`);
+});
+
+Then('the user is told the source has no table {string}', async function (table) {
+  assert.match(this.installed.body, new RegExp(`no table[^"]*${table}`, 'i'), `the refusal says: ${this.installed.body}`);
 });

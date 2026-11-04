@@ -89,8 +89,9 @@ async function candidateFor(
 ): Promise<ReflectionCandidate> {
   // Warehouse tables (duckdb) declare no PK; fall back to the first column —
   // read-only browsing tolerates a non-unique row address (the form shows
-  // the first match), and no write path exists to misfire.
-  const pk = t.pk ?? (cfg.engine === 'duckdb' ? (t.columns[0]?.name ?? null) : null)
+  // the first match), and no write path exists to misfire. An app's declared
+  // key (#876) is already laid over t.pk by the time a table is connected.
+  const pk = keyOf(cfg, t, undefined)
   const bindKey = `${t.schema}\u0000${t.table}`
   const base: Omit<ReflectionCandidate, 'bindable' | 'reason'> = {
     schema: t.schema,
@@ -212,6 +213,134 @@ export async function assertBindingIsValid(def: {
     throw new AppError('ValidationError', `Invalid binding for ${def.name}`, errors)
 }
 
+// How an app says one connected table reads (#808). Column names are the
+// source's; anything unsaid keeps the connect defaults.
+export interface TableSettings {
+  leave_out_columns?: string[]
+  title_column?: string
+  list_columns?: string[]
+  // For sources that declare no keys or links, such as a warehouse (#876):
+  // the column that identifies a row, and for each column the source table
+  // it points at (by that table's key). Each must agree with what the source
+  // declares; it never overrides it.
+  key?: string
+  links?: Record<string, string>
+}
+
+// The column a table's rows are addressed by: the source's primary key, else
+// the app's declared key, else on duckdb the first column.
+function keyOf(cfg: SourceConfig, t: IntrospectedTable, s: TableSettings | undefined): string | null {
+  return t.pk ?? s?.key ?? (cfg.engine === 'duckdb' ? t.columns[0].name : null)
+}
+
+// What an app declares about a table's key and links, checked against the
+// source and laid over its introspection. `lookup` finds a link's target
+// table on the source and the settings the app gives it.
+function declaredKeysAndLinks(
+  cfg: SourceConfig,
+  tableName: string,
+  t: IntrospectedTable,
+  s: TableSettings,
+  lookup: (name: string, from: IntrospectedTable) => { t: IntrospectedTable; settings?: TableSettings } | null,
+): { errors: string[]; table: IntrospectedTable } {
+  const errors: string[] = []
+  const has = new Set(t.columns.map((c) => c.name))
+  const leaveOut = new Set(s.leave_out_columns ?? [])
+  if (s.key !== undefined) {
+    if (!has.has(s.key)) errors.push(`${tableName} has no column ${s.key} for its key`)
+    else if (leaveOut.has(s.key)) errors.push(`${tableName} leaves out ${s.key}, so it cannot be its key`)
+    else if (t.pk && t.pk !== s.key) errors.push(`${tableName} is already identified by its ${t.pk}, not ${s.key}`)
+    else if (!t.pk && t.columns.some((c) => c.is_pk))
+      errors.push(`${tableName} is identified by several columns together, so ${s.key} alone cannot be its key`)
+    // A declared key is the app's promise that the column is unique; only a
+    // source nothing is written to may rest on it.
+    else if (!t.pk && cfg.access !== 'read_only')
+      errors.push(`${tableName}'s key can be declared only on a read-only data source`)
+  }
+  const key = keyOf(cfg, t, s)
+  const references = new Map<string, { schema: string; table: string; column: string }>()
+  for (const [column, targetName] of Object.entries(s.links ?? {})) {
+    const own = t.columns.find((c) => c.name === column)
+    if (!own) { errors.push(`${tableName} has no column ${column} to link`); continue }
+    if (leaveOut.has(column)) { errors.push(`${tableName} leaves out ${column}, so it cannot link`); continue }
+    if (column === key) { errors.push(`${tableName}'s ${column} is its key, so it cannot link`); continue }
+    if (isSensitiveColumn(column)) { errors.push(`${tableName}'s ${column} is not a connected column, so it cannot link`); continue }
+    // A table the data source may not read is refused in the same words as a
+    // missing one, so a refusal never reveals that it exists.
+    const target = lookup(targetName, t)
+    let allowed = Boolean(target)
+    if (target) try { assertAllowed(cfg, target.t.schema, target.t.table) } catch { allowed = false }
+    if (!target || !allowed) {
+      errors.push(`${tableName}'s ${column} links to ${targetName}, but the source has no table ${targetName} it may read`)
+      continue
+    }
+    // Never the first-column fallback: a link must land on a key the source
+    // declares or this install declares, or it could not form again later.
+    const targetKey = target.t.pk ?? target.settings?.key ?? null
+    if (!targetKey) { errors.push(`${tableName}'s ${column} links to ${targetName}, which has no key to link to`); continue }
+    const edge = { schema: target.t.schema, table: target.t.table, column: targetKey }
+    const declared = own.references
+    if (declared && (declared.schema !== edge.schema || declared.table !== edge.table || declared.column !== edge.column))
+      errors.push(`${tableName}'s ${column} already links to ${declared.table}.${declared.column}, not ${targetName}`)
+    else references.set(column, edge)
+  }
+  return {
+    errors,
+    table: {
+      ...t,
+      pk: t.pk ?? s.key ?? null,
+      columns: t.columns.map((c) => ({
+        ...c,
+        is_pk: c.is_pk || (!t.pk && c.name === s.key),
+        references: references.get(c.name) ?? c.references ?? null,
+      })),
+    },
+  }
+}
+
+// The column that surfaces as updated_at, or null. A left-out column is never it.
+function modifiedColumn(cfg: SourceConfig, t: IntrospectedTable, leaveOut: Set<string>): string | null {
+  if (cfg.engine === 'csv-folder') return '_mtime'
+  return (
+    t.columns.find(
+      (c) =>
+        MODIFIED_CANDIDATES.includes(c.name.toLowerCase()) &&
+        c.column_type === 'Datetime' &&
+        !leaveOut.has(c.name),
+    )?.name ?? null
+  )
+}
+
+// Every column a table's settings name must be one it can offer: a misspelt
+// left-out column would otherwise show what it was meant to hide.
+function settingsErrors(
+  cfg: SourceConfig,
+  tableName: string,
+  t: IntrospectedTable,
+  pk: string | null,
+  s: TableSettings,
+): string[] {
+  const has = new Set(t.columns.map((c) => c.name))
+  const leaveOut = new Set(s.leave_out_columns ?? [])
+  const modified = modifiedColumn(cfg, t, leaveOut)
+  const errors: string[] = []
+  for (const c of leaveOut) {
+    if (!has.has(c)) errors.push(`${tableName} has no column ${c} to leave out`)
+    else if (c === pk) errors.push(`${tableName} cannot leave out its key ${c}`)
+  }
+  const shown = [
+    ...(s.title_column ? [[s.title_column, 'title'] as const] : []),
+    ...(s.list_columns ?? []).map((c) => [c, 'list'] as const),
+  ]
+  for (const [c, use] of shown) {
+    if (!has.has(c)) errors.push(`${tableName} has no column ${c} for its ${use}`)
+    else if (leaveOut.has(c)) errors.push(`${tableName} leaves out ${c}, so it cannot be in its ${use}`)
+    else if (c === pk || c === modified || isSensitiveColumn(c))
+      errors.push(`${tableName}'s ${c} is not a connected column, so it cannot be in its ${use}`)
+  }
+  return errors
+}
+
 interface ReflectResult {
   created: { table: string; name: string }[]
   skipped: { table: string; reason: string }[]
@@ -221,7 +350,15 @@ interface ReflectResult {
 export async function reflectTables(
   sourceName: string,
   // names: the Table name to use per source table, in place of the proposal.
-  opts: { schema?: string; tables: string[]; module?: string; prefix?: string; names?: Record<string, string> },
+  // settings: how each table reads (#808), keyed like names.
+  opts: {
+    schema?: string
+    tables: string[]
+    module?: string
+    prefix?: string
+    names?: Record<string, string>
+    settings?: Record<string, TableSettings>
+  },
 ): Promise<ReflectResult> {
   const cfg = await getSource(sourceName)
   const driver = getDriver(cfg)
@@ -248,12 +385,24 @@ export async function reflectTables(
     rows.map((r) => [`${r.external_schema ?? ''}\u0000${r.external_table ?? ''}`, r.name]),
   )
 
+  // A table's settings, by the name the request gave it or its bare name.
+  const settingsFor = (t: IntrospectedTable) =>
+    opts.settings?.[`${t.schema}.${t.table}`] ?? opts.settings?.[t.table]
+  // A link's target: schema-qualified, or a bare name in the linking table's
+  // schema, or a bare name found once anywhere on the source.
+  const lookup = (name: string, from: IntrospectedTable) => {
+    const t = byQualified.get(name) ?? byQualified.get(`${from.schema}.${name}`)
+      ?? (byBareName.get(name)?.length === 1 ? byBareName.get(name)![0] : undefined)
+    return t ? { t, settings: settingsFor(t) } : null
+  }
+
   const result: ReflectResult = { created: [], skipped: [] }
   // Every requested table is resolved, and the allow-list checked for each,
   // before any is created: one refused table refuses the whole request
   // instead of leaving the earlier ones connected (#518).
   // Entries keep request order, so skipped reasons come back in that order.
-  const resolved: { tableName: string; t?: IntrospectedTable; skip?: string }[] = []
+  const resolved: { tableName: string; t?: IntrospectedTable; skip?: string; settings?: TableSettings }[] = []
+  const settingErrors: Record<string, string> = {}
   for (const tableName of opts.tables) {
     let t = byQualified.get(tableName)
     if (!t) {
@@ -272,9 +421,19 @@ export async function reflectTables(
       continue
     }
     assertAllowed(cfg, t.schema, t.table)
-    resolved.push({ tableName, t })
+    const settings = settingsFor(t)
+    if (settings) {
+      const declared = declaredKeysAndLinks(cfg, tableName, t, settings, lookup)
+      const errors = [...declared.errors, ...settingsErrors(cfg, tableName, t, keyOf(cfg, t, settings), settings)]
+      if (errors.length) settingErrors[tableName] = errors.join('; ')
+      t = declared.table
+    }
+    resolved.push({ tableName, t, settings })
   }
-  for (const { tableName, t, skip } of resolved) {
+  const errorList = Object.values(settingErrors)
+  if (errorList.length)
+    throw new AppError('ValidationError', `Cannot connect: ${errorList.join('; ')}`, settingErrors)
+  for (const { tableName, t, skip, settings } of resolved) {
     if (!t) {
       result.skipped.push({ table: tableName, reason: skip! })
       continue
@@ -294,7 +453,7 @@ export async function reflectTables(
       continue
     }
     try {
-      const created = await buildBoundTable(cfg, t, candidate, opts)
+      const created = await buildBoundTable(cfg, t, candidate, opts, settings ?? {})
       result.created.push({ table: tableName, name: created })
       reflected.set(`${t.schema}\u0000${t.table}`, created)
     } catch (err) {
@@ -312,24 +471,25 @@ async function buildBoundTable(
   t: IntrospectedTable,
   candidate: ReflectionCandidate,
   opts: { module?: string; prefix?: string },
+  settings: TableSettings,
 ): Promise<string> {
   const pk = candidate.pk!
+  const leaveOut = new Set(settings.leave_out_columns ?? [])
   // The modified column surfaces as the standard updated_at; the pk surfaces
   // as name. Neither gets a column_def. On csv-folder the synthetic _mtime
   // plays the modified role.
-  const modified =
-    cfg.engine === 'csv-folder'
-      ? '_mtime'
-      : (t.columns.find(
-          (c) =>
-            MODIFIED_CANDIDATES.includes(c.name.toLowerCase()) && c.column_type === 'Datetime',
-        )?.name ?? null)
+  const modified = modifiedColumn(cfg, t, leaveOut)
   // Credential-named source columns are never reflected — the same names
   // the native path refuses to serialize (review finding 2). The runtime
-  // binding filter in dispatch.ts backstops any that slip in later.
-  const dataColumns = t.columns.filter(
-    (c) => c.name !== pk && c.name !== modified && !isSensitiveColumn(c.name),
-  )
+  // binding filter in dispatch.ts backstops any that slip in later. Columns
+  // an app leaves out (#808) are never connected either.
+  const listed = settings.list_columns
+  const dataColumns = t.columns
+    .filter((c) => c.name !== pk && c.name !== modified && !isSensitiveColumn(c.name) && !leaveOut.has(c.name))
+    // An app's list columns come first, in its order; the rest keep the source's.
+    .map((c, i) => ({ c, i, at: listed?.indexOf(c.name) ?? -1 }))
+    .sort((a, b) => (a.at < 0 ? Number.MAX_SAFE_INTEGER : a.at) - (b.at < 0 ? Number.MAX_SAFE_INTEGER : b.at) || a.i - b.i)
+    .map(({ c }) => c)
   const legalNames = sanitizeHeaders(dataColumns.map((c) => c.name))
   // FK-aware types (EDS-2): a column whose source FK lands on the bound pk
   // of a table ALREADY reflected from this source becomes a Reference to it.
@@ -351,7 +511,12 @@ async function buildBoundTable(
     const key = `${b.external_schema ?? ''}\u0000${b.external_table ?? ''}`
     if (!boundByRelation.has(key)) boundByRelation.set(key, b)
   }
-  const defaults = connectDefaults(dataColumns.map((c) => c.name))
+  const names = dataColumns.map((c) => c.name)
+  const picked = connectDefaults(names)
+  const defaults = {
+    title: settings.title_column ? names.indexOf(settings.title_column) : picked.title,
+    listed: listed ? new Set(listed.map((c) => names.indexOf(c))) : picked.listed,
+  }
   const columns = dataColumns.map((c, i) => {
     const target = c.references
       ? boundByRelation.get(`${c.references.schema}\u0000${c.references.table}`)

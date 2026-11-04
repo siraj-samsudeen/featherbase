@@ -1,0 +1,295 @@
+{
+  "name": "stylehr-warehouse",
+  "sources": [
+    {
+      "name": "stylehr-warehouse",
+      "engine": "duckdb",
+      "url_env": "STYLEHR_WAREHOUSE_URL",
+      "access": "read_only",
+      "default_schema": "bronze_stylehr.public",
+      "table_allowlist": "bronze_stylehr.public.store_store,bronze_stylehr.public.store_floor,bronze_stylehr.public.store_section,bronze_stylehr.public.store_floorsection,bronze_stylehr.public.employee_employee,bronze_stylehr.public.employee_employeedeploying,bronze_stylehr.public.employee_employeedeploying_sections,bronze_stylehr.public.employee_employeestoresandfirms,bronze_stylehr.public.employee_employeestoresandfirms_employee,bronze_stylehr.public.designation_designation,bronze_stylehr.public.department_department,bronze_stylehr.public.organization_organization,bronze_stylehr.public.firm_firm",
+      "reflect": {
+        "schema": "bronze_stylehr.public",
+        "module": "StyleHR",
+        "tables": [
+          {
+            "table": "store_store",
+            "name": "Store",
+            "key": "id",
+            "links": {
+              "firm_id": "firm_firm",
+              "organization_id": "organization_organization"
+            },
+            "title_column": "name",
+            "list_columns": [
+              "name",
+              "store_code",
+              "organization_id",
+              "city",
+              "is_active"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
+            ]
+          },
+          {
+            "table": "store_floor",
+            "name": "Floor",
+            "key": "id",
+            "links": {
+              "store_id": "store_store"
+            },
+            "title_column": "label",
+            "list_columns": [
+              "label",
+              "floor_number",
+              "store_id"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
+            ]
+          },
+          {
+            "table": "store_section",
+            "name": "Section",
+            "key": "id",
+            "links": {
+              "firm_id": "firm_firm",
+              "store_id": "store_store"
+            },
+            "title_column": "name",
+            "list_columns": [
+              "name",
+              "store_id",
+              "is_active"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
+            ]
+          },
+          {
+            "table": "store_floorsection",
+            "name": "Floor Section",
+            "key": "id",
+            "links": {
+              "floor_id": "store_floor",
+              "section_id": "store_section"
+            },
+            "list_columns": [
+              "floor_id",
+              "section_id",
+              "min_employee",
+              "max_employee"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
+            ]
+          },
+          {
+            "table": "employee_employee",
+            "name": "Employee",
+            "key": "id",
+            "links": {
+              "area_manager_id": "employee_employee",
+              "department_id": "department_department",
+              "designation_id": "designation_designation",
+              "introducer_id": "employee_employee",
+              "old_department_id": "department_department",
+              "onboarding_store_id": "store_store",
+              "reported_to_id": "employee_employee",
+              "unique_department_id": "department_department",
+              "unique_designation_id": "designation_designation"
+            },
+            "leave_out_columns": [
+              "date_of_birth",
+              "gender",
+              "marital_status",
+              "nationality",
+              "religion",
+              "profile_pic_large",
+              "profile_pic_medium",
+              "profile_pic_small",
+              "blood_group",
+              "languages_known",
+              "native_place",
+              "accommodation",
+              "food",
+              "transportation",
+              "nearest_police_station",
+              "mother_tongue",
+              "facebook_url",
+              "instagram_url",
+              "linkedin_url",
+              "twitter_url",
+              "youtube_url",
+              "abha_health_insurance_no",
+              "wedding_anniversary",
+              "native_state",
+              "listing_personal_phone",
+              "esi_epf_remarks",
+              "notes",
+              "termination_reason",
+              "favourited_by_id",
+              "is_favourite",
+              "_dlt_load_id",
+              "_dlt_id"
+            ],
+            "title_column": "first_name",
+            "list_columns": [
+              "employee_id",
+              "first_name",
+              "last_name",
+              "designation_id",
+              "reported_to_id",
+              "area_manager_id",
+              "date_of_joining"
+            ]
+          },
+          {
+            "table": "employee_employeedeploying",
+            "name": "Deployment",
+            "key": "id",
+            "links": {
+              "employee_id": "employee_employee",
+              "firm_id": "firm_firm",
+              "floor_id": "store_floor"
+            },
+            "list_columns": [
+              "employee_id",
+              "floor_id",
+              "from_date",
+              "to_date",
+              "is_active"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
+            ]
+          },
+          {
+            "table": "employee_employeedeploying_sections",
+            "name": "Deployment Section",
+            "key": "id",
+            "links": {
+              "employeedeploying_id": "employee_employeedeploying",
+              "floorsection_id": "store_floorsection"
+            },
+            "list_columns": [
+              "employeedeploying_id",
+              "floorsection_id"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
+            ]
+          },
+          {
+            "table": "employee_employeestoresandfirms",
+            "name": "Store Assignment",
+            "key": "id",
+            "links": {
+              "firm_id": "firm_firm",
+              "store_id": "store_store"
+            },
+            "list_columns": [
+              "store_id",
+              "firm_id",
+              "work_location"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
+            ]
+          },
+          {
+            "table": "employee_employeestoresandfirms_employee",
+            "name": "Store Assignment Member",
+            "key": "id",
+            "links": {
+              "employee_id": "employee_employee",
+              "employeestoresandfirms_id": "employee_employeestoresandfirms"
+            },
+            "list_columns": [
+              "employee_id",
+              "employeestoresandfirms_id"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
+            ]
+          },
+          {
+            "table": "designation_designation",
+            "name": "Designation",
+            "key": "id",
+            "links": {
+              "firm_id": "firm_firm",
+              "organization_id": "organization_organization"
+            },
+            "title_column": "name",
+            "list_columns": [
+              "name",
+              "organization_id"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
+            ]
+          },
+          {
+            "table": "department_department",
+            "name": "Department",
+            "key": "id",
+            "links": {
+              "firm_id": "firm_firm",
+              "parent_department_id": "department_department"
+            },
+            "title_column": "name",
+            "list_columns": [
+              "name",
+              "parent_department_id"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
+            ]
+          },
+          {
+            "table": "organization_organization",
+            "name": "Organisation",
+            "key": "id",
+            "title_column": "name",
+            "list_columns": [
+              "name",
+              "abbreviation"
+            ],
+            "leave_out_columns": [
+              "_dlt_load_id",
+              "_dlt_id"
+            ]
+          },
+          {
+            "table": "firm_firm",
+            "name": "Firm",
+            "key": "id",
+            "links": {
+              "organization_id": "organization_organization"
+            },
+            "leave_out_columns": [
+              "pan",
+              "tan",
+              "tds_circle_ao_code",
+              "_dlt_load_id",
+              "_dlt_id"
+            ],
+            "title_column": "name"
+          }
+        ]
+      }
+    }
+  ]
+}

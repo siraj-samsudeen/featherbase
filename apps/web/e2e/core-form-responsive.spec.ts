@@ -99,11 +99,11 @@ for (const width of [375, 1440]) {
     })
 
     await session.step('Work and Collaboration separate form fields from reachable attachments', async ({ page }) => {
-      await expect(page.getByTestId('form-section-0')).toBeVisible()
+      await expect(page.getByTestId('form-arranged')).toBeVisible()
       await expect(page.getByTestId('attachments-panel')).toBeHidden()
       await page.getByRole('tab', { name: 'Collaboration', exact: true }).click()
       await expect(page.getByTestId('attachments-panel')).toBeVisible()
-      await expect(page.getByTestId('form-section-0')).toBeHidden()
+      await expect(page.getByTestId('form-arranged')).toBeHidden()
       await contained(page, controls)
       await page.getByRole('tab', { name: 'Work', exact: true }).click()
       await expect(page.locator('[data-field=title]')).toHaveValue(`Northern ${width} crates`)
