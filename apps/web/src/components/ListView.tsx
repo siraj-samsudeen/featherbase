@@ -1205,6 +1205,9 @@ function ListCell({
   quiet?: boolean
 }) {
   const { t } = useI18n()
+  // #910: a link opens the linked row in the drill pane, over this list.
+  const navigation = useNavigation()
+  const nav = navigation?.step.screen === 'list' && navigation.step.table === table ? navigation : null
   if (first)
     return (
       <Link
@@ -1252,7 +1255,12 @@ function ListCell({
           to="/featherbase/admin/table/$table/row/$name"
           search={{ prefill: undefined }}
           params={{ table: col.reference_table, name: String(value) }}
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (!nav || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+            e.preventDefault()
+            nav.push({ ...nav.step, pane: { table: col.reference_table!, row: String(value) } })
+          }}
           className="text-action hover:underline"
         >
           <RowName table={col.reference_table} rowId={String(value)} />

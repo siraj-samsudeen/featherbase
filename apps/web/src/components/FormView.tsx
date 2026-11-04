@@ -28,7 +28,7 @@ import { ActivityTimeline } from './ActivityTimeline'
 import { ActionDisclosure } from './ActionDisclosure'
 import { WorkflowActions } from './WorkflowActions'
 import { RelatedWorkspace } from './RelatedWorkspace'
-import { usePeek } from './Peek'
+import { useNavigation } from '../lib/navigation'
 import { GlossaryHelp } from './GlossaryHelp'
 import { ReadingPresentation } from './ReadingPresentation'
 import { ChangeRecord } from './ChangeRecord'
@@ -1349,10 +1349,10 @@ export function LinkControl({
     clearTimeout(blurTimer.current)
     searchVersion.current++
   }, [])
-  const peek = usePeek()
+  // #910: a set reference is a place you can go — ◎ shows the row in the
+  // drill pane, ↗ navigates to its form. Hidden while searching.
+  const nav = useNavigation()
   const navigate = useNavigate()
-  // #100 pattern 1: a set reference is a place you can GO — ◎ peeks at the
-  // row in a slide-over, ↗ navigates to its form. Hidden while searching.
   // A filter has its own clear control and stays a filter: no peek or open.
   const hasValue = Boolean(value) && query === null && !forFilter
 
@@ -1443,15 +1443,15 @@ export function LinkControl({
       />
       {hasValue && (
         <span className="absolute inset-y-0 right-2 flex items-center gap-0.5">
-          {peek.available && (
+          {nav && (
             <button
               type="button"
               tabIndex={-1}
               onMouseDown={(e) => {
                 e.preventDefault()
-                peek.push({ kind: 'record', table: target, name: String(value) })
+                nav.push({ ...nav.step, pane: { table: target, row: String(value) } })
               }}
-              title={`Peek at ${target} ${String(value)}`}
+              title={`Show ${target} ${String(value)} in the pane`}
               data-testid={`link-peek-${field.column_name}`}
               className="rounded px-1 text-sm text-ink-subtle hover:text-action"
             >

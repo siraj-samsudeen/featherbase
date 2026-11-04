@@ -10,7 +10,7 @@ import { formatValue, type Settings } from '../lib/settings'
 import { RowTitle } from '../lib/row-titles'
 import { useIsSystemManager } from '../lib/session'
 import { useI18n } from '../lib/i18n'
-import { usePeek } from './Peek'
+import { useNavigation } from '../lib/navigation'
 import {
   buttonClasses, pillClasses,
   Braces, CalendarDays, ChevronDown, ChevronRight, Hash, Image, Link2, ToggleRight, Type, type LucideIcon,
@@ -246,7 +246,7 @@ export function ValueField({ field, value, meta, settings, columns }: {
   field: ColumnDef; value: unknown; meta: TableMeta; settings: Settings; columns: Columns
 }) {
   const { t } = useI18n()
-  const peek = usePeek()
+  const nav = useNavigation()
   const kind = kindOf(field, value)
   const Icon = KIND_ICON[kind]
   const id = useId()
@@ -258,10 +258,11 @@ export function ValueField({ field, value, meta, settings, columns }: {
   if (isEmpty(value)) shown = <span className="text-ink-subtle">—</span>
   else if (kind === 'link' && field.reference_table) {
     const target = field.reference_table
+    // #910: the linked row opens in the drill pane.
     const open = (e: MouseEvent) => {
-      if (!peek.available) return
+      if (!nav || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
       e.preventDefault()
-      peek.push({ kind: 'record', table: target, name: String(value) })
+      nav.push({ ...nav.step, pane: { table: target, row: String(value) } })
     }
     shown = (
       <RouterLink to="/featherbase/admin/table/$table/row/$name" params={{ table: target, name: String(value) }}

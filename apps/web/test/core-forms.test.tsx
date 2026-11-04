@@ -139,7 +139,8 @@ test('a linked row opens in the drill pane beside the form; its own link moves t
   expect(first).toHaveTextContent('Peek City')
 
   // Its own link: the country; the pane moves there.
-  fireEvent.click(await within(first).findByRole('button', { name: 'Indialand' }))
+  const pointsAt = (await within(first).findByRole('heading', { name: 'Points at' })).parentElement!
+  fireEvent.click(await within(pointsAt).findByRole('button', { name: 'Indialand' }))
   const second = await screen.findByRole('complementary', { name: 'Indialand' })
   expect(second).toHaveTextContent('Peek Country')
 

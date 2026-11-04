@@ -843,12 +843,14 @@ function TableFormPage() {
     <div data-testid="doc-page">
       <NavigationProvider value={nav}>
         <NavPathBar />
-        <FormView
-          key={`${table}/${name}/${prefill ?? ''}`}
-          table={table}
-          name={name}
-          prefill={parsedPrefill}
-        />
+        <PaneSplit>
+          <FormView
+            key={`${table}/${name}/${prefill ?? ''}`}
+            table={table}
+            name={name}
+            prefill={parsedPrefill}
+          />
+        </PaneSplit>
       </NavigationProvider>
     </div>
   )
