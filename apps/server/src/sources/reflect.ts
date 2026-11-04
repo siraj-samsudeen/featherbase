@@ -199,7 +199,8 @@ interface ReflectResult {
 // EDS-3: generate one bound Table per requested source table.
 export async function reflectTables(
   sourceName: string,
-  opts: { schema?: string; tables: string[]; module?: string; prefix?: string },
+  // names: the Table name to use per source table, in place of the proposal.
+  opts: { schema?: string; tables: string[]; module?: string; prefix?: string; names?: Record<string, string> },
 ): Promise<ReflectResult> {
   const cfg = await getSource(sourceName)
   const driver = getDriver(cfg)
@@ -257,7 +258,9 @@ export async function reflectTables(
       result.skipped.push({ table: tableName, reason: skip! })
       continue
     }
-    const candidate = await candidateFor(cfg, t, opts.prefix, reflected)
+    const proposed = await candidateFor(cfg, t, opts.prefix, reflected)
+    const chosen = opts.names?.[tableName] ?? opts.names?.[t.table]
+    const candidate = chosen ? { ...proposed, proposed_name: chosen } : proposed
     if (!candidate.bindable) {
       result.skipped.push({ table: tableName, reason: candidate.reason! })
       continue
@@ -335,7 +338,8 @@ async function buildBoundTable(
     return {
       column_name: legalNames[i],
       source_column: c.name,
-      label: prettifyLabel(c.name),
+      // A foreign key reads as what it points at: "Reported To", not "Reported To Id".
+      label: prettifyLabel(c.references ? c.name.replace(/_?id$/i, '') || c.name : c.name),
       column_type: isRef ? 'Reference' : c.column_type,
       ...(isRef ? { reference_table: target!.name } : {}),
       // Write-relevant only on engines with a write path; keeps forms honest

@@ -48,7 +48,7 @@ function loadTitle(ref: Ref): Promise<string | null> {
 }
 
 /** The row's display title, or null while loading / when it cannot be read. */
-function useRowTitle(table: string | undefined, rowId: string | undefined): string | null {
+export function useRowTitle(table: string | undefined, rowId: string | undefined): string | null {
   const q = useQuery({
     queryKey: ['row-title', table, rowId],
     enabled: Boolean(table && rowId),
