@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { opaqueId } from './opaque-id'
-import { DEFAULT_ID_PATTERN, tableSchemaToZod, zodFieldErrors } from 'shared'
+import { DEFAULT_ID_PATTERN, idFromColumn, namingColumn, tableSchemaToZod, zodFieldErrors, type RowCapabilities } from 'shared'
 import { assertMandatoryAccess, hasMandatoryRowAccess } from './mandatory-access'
 import { sql } from './db'
 import { AppError } from './errors'
@@ -128,8 +128,9 @@ async function resolveRowId(
   // file's own reference codes become row ids, verbatim, and the series is
   // NOT consumed for them (IMP-R6: the pattern is the promise, so unsupplied
   // rows simply continue the series). 'prompt' keeps its required-id error
-  // and 'field:' keeps naming from its declared column.
-  if (rule !== 'prompt' && !rule.startsWith('field:')) {
+  // and a column rule (#858) keeps naming from its declared column.
+  const naming = namingColumn(rule)
+  if (rule !== 'prompt' && !naming) {
     const supplied = String(values[ROW_KEY] ?? '').trim()
     if (supplied) return supplied
   }
@@ -142,14 +143,22 @@ async function resolveRowId(
       })
     return rowId
   }
-  if (rule.startsWith('field:')) {
-    const columnName = rule.slice('field:'.length)
-    const value = String(own(values, columnName) ?? '').trim()
-    if (!value)
-      throw new AppError('ValidationError', `Naming field ${columnName} is required`, {
-        [columnName]: `${columnName} is required for naming`,
+  if (naming) {
+    const { prefix, column } = naming
+    const value = String(own(values, column) ?? '').trim()
+    const rowId = idFromColumn(prefix, value)
+    if (!rowId)
+      throw new AppError('ValidationError', `Naming field ${column} is required`, {
+        [column]: `${column} is required for naming`,
       })
-    return value
+    // #858: a second row with the same value would take an id already in use;
+    // say which column clashes rather than "Duplicate value for row_id".
+    const [taken] = await tx`select 1 from ${tx(await tableRelation(meta.name))} where ${tx(meta.row_key)} = ${rowId}`
+    if (taken)
+      throw new AppError('ValidationError', `${meta.name} with ${column} ${value} already exists`, {
+        [column]: `${rowId} is already taken`,
+      })
+    return rowId
   }
   if (rule === 'integer') return nextInSeries(tx, meta, '', (n) => String(n))
   if (rule.includes('.#')) {
@@ -748,13 +757,21 @@ const ENGINE_MANAGED = new Set(['Table', 'Column'])
 // tier stripping do not run here, so a trigger can still reject at real
 // import time; the dry run catches everything schema-level.
 // The import action refuses source-bound Tables before it gets here.
-export async function checkRowForInsert(meta: TableMeta, values: RowValues): Promise<void> {
+// Returns the id the row will take, when known now, so the import check can
+// spot one repeated within the file.
+export async function checkRowForInsert(meta: TableMeta, values: RowValues): Promise<string> {
   validateValues(meta, applyDefaults(meta, pickFieldValues(meta, values)), 'insert')
   // #231: the real import inserts through saveDoc, so the dry run has to
   // apply the same required-children rule or it would pass rows the import
   // then refuses.
   assertRequiredChildren(meta, values, 'insert')
-  const rowId = String(values[ROW_KEY] ?? '').trim()
+  // #858: a column rule's id is known before the save; check it like a supplied one.
+  const naming = namingColumn(meta.id_pattern)
+  const rowId = naming ? (idFromColumn(naming.prefix, own(values, naming.column)) ?? '') : String(values[ROW_KEY] ?? '').trim()
+  if (naming && !rowId)
+    throw new AppError('ValidationError', `Naming field ${naming.column} is required`, {
+      [naming.column]: `${naming.column} is required for naming`,
+    })
   if (meta.id_pattern === 'prompt' && !rowId)
     throw new AppError('ValidationError', `${meta.name} requires a Row ID`, {
       [ROW_KEY]: 'Row ID is required',
@@ -765,6 +782,7 @@ export async function checkRowForInsert(meta: TableMeta, values: RowValues): Pro
       where ${sql(meta.row_key)} = ${rowId}`
     if (exists) throw new AppError('ConflictError', `${meta.name} ${rowId} already exists`)
   }
+  return rowId
 }
 
 // UPS-R1: the dry-run counterpart for rows an upsert will UPDATE — the same
@@ -1238,9 +1256,12 @@ async function updateDoc(
       // means "children untouched": the physical row spread into ctx.row
       // carries no Sub-table columns, so the key exists only if the payload
       // sent it or a hook set it.
-      for (const input of pickChildInputs(meta, row))
+      const childInputs = pickChildInputs(meta, row)
+      const accessBefore = await accessChildSummaries(stx, meta, name, childInputs)
+      for (const input of childInputs)
         await saveChildren(stx, meta, name, input, user, writeTiers)
-      await recordVersion(stx, meta, name, existing as RowValues, updated as RowValues, user)
+      const accessChanges = await accessChildChanges(stx, meta, name, childInputs, accessBefore)
+      await recordVersion(stx, meta, name, existing as RowValues, updated as RowValues, user, accessChanges)
       ctx.row = { ...(updated as RowValues) }
       await runHooks('after_save', ctx)
       await runHooks('on_update', ctx)
@@ -1272,6 +1293,7 @@ async function recordVersion(
   before: RowValues,
   after: RowValues,
   user: string,
+  childChanges: [string, unknown, unknown][] = [],
 ) {
   if (!meta.track_changes || UNVERSIONED.has(meta.name)) return
   // #421: a Date column is a calendar day, which the driver hands back as UTC
@@ -1285,6 +1307,7 @@ async function recordVersion(
     const a = norm(own(after, f.column_name), f.column_type)
     if (JSON.stringify(b) !== JSON.stringify(a)) changed.push([f.column_name, b, a])
   }
+  changed.push(...childChanges)
   if (!changed.length) return
   // #432: dated by the database's wall clock, like its Table, so a skewed
   // app clock never misdates history. clock_timestamp(), not now(): the
@@ -1303,6 +1326,48 @@ async function recordVersion(
     ref_name: name,
     data: { changed } as unknown as string,
   })}`
+}
+
+// #830: a Sub-table whose rows decide access (a Person's roles are Has Role
+// rows) is history an auditor needs, yet its rows are saved beside the parent
+// and never diffed as a column. Each such grid is summarised as its rows'
+// names in order ("System Manager, Sales Viewer"; null for none), before and
+// after the save, and a difference is recorded on the parent like any field.
+type ChildInput = ReturnType<typeof pickChildInputs>[number]
+
+async function accessChildSummaries(tx: typeof sql, meta: TableMeta, parent: string, inputs: ChildInput[]) {
+  // Untracked parents are left to recordVersion, which records nothing.
+  const out = new Map<string, string | null>()
+  for (const input of inputs) {
+    if (!(await isSecurityTable(input.childTable))) continue
+    const childMeta = await getMeta(input.childTable)
+    // A Sub-table has at least one column; its title, else its first one, names a row.
+    const column = childMeta.title_column ?? childMeta.columns.find((c) => !NO_COLUMN_TYPES.has(c.column_type))!.column_name
+    const rows = await tx`
+      select ${tx(column)}::text as name from ${tx(await tableRelation(childMeta.name))}
+      where parent = ${parent} and parenttype = ${meta.name} and parentfield = ${input.columnName}
+        and ${tx(column)} is not null
+      order by position`
+    out.set(input.columnName, rows.map((r) => r.name as string).join(', ') || null)
+  }
+  return out
+}
+
+async function accessChildChanges(
+  tx: typeof sql,
+  meta: TableMeta,
+  parent: string,
+  inputs: ChildInput[],
+  before: Map<string, string | null>,
+): Promise<[string, unknown, unknown][]> {
+  const after = await accessChildSummaries(tx, meta, parent, inputs)
+  const changes: [string, unknown, unknown][] = []
+  for (const [column, now] of after) {
+    // The same inputs were summarised before the save, so the key is there.
+    const was = before.get(column)
+    if (was !== now) changes.push([column, was, now])
+  }
+  return changes
 }
 
 // DOC-007: status transitions. draft -> submit -> submitted -> cancel ->
@@ -1696,6 +1761,72 @@ async function renameDocImpl(
 export function getDoc(...args: Parameters<typeof getDocImpl>) {
   return appOperation(() => getDocImpl(...args))
 }
+
+// UI advice only: do not run mutation hooks, locks or validation speculatively.
+// Read first through the normal path, including parent access, tiers and Data
+// Scopes. Never turn an unreadable/missing row into a capabilities response.
+export function rowCapabilities(table: string, name: string, user: string): Promise<RowCapabilities> {
+  return appOperation(async () => {
+    const readable = await getDoc(table, name, user)
+    const meta = await getMeta(table)
+    // A read share can bypass Data Scopes, but (unlike a write share) cannot
+    // authorize saving. Check mutations against the full row, not a read-tier
+    // projection that may omit a restricted Reference used by a Data Scope.
+    const row = meta.kind === 'settings' ? readable : isBound(meta)
+      ? await boundFetchDoc(meta, name)
+      : (await sql`select * from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${name}`)[0]
+    if (!row) throw new AppError('NotFoundError', `${table} ${name} not found`)
+    const allowed = async (check: () => Promise<void>): Promise<boolean> => {
+      try { await check(); return true } catch (err) {
+        if (err instanceof AppError && err.type === 'PermissionError') return false
+        throw err
+      }
+    }
+    const rowGrant = (action: 'write' | 'delete' | 'submit' | 'cancel' | 'amend') => allowed(async () => {
+      assertNotSystemWritten(meta, 'changed')
+      await assertSecurityWriter(table, user)
+      if (isBound(meta) && (action === 'write' || action === 'delete')) {
+        await writableContext(meta)
+        await assertBoundScope(meta, user, action)
+      } else if (meta.kind === 'settings' && action === 'write') {
+        await assertPermission(user, table, action)
+        return
+      } else if (action === 'write' && await isSharedWith(user, table, name, 'write')) {
+        return
+      } else {
+        await assertDocPermission(user, table, action, String(row.created_by))
+      }
+      if (action !== 'amend') await assertUserPermissions(user, meta, row)
+      if (action === 'delete' && ROW_ATTACHED_TABLES.has(table)) await assertAttachedRowReadable(table, row, user)
+    })
+    // Rename deliberately does NOT inherit update's write-share exception.
+    const rename = !isBound(meta) && meta.kind === 'table' && !ENGINE_MANAGED.has(table)
+      && !meta.id_pattern?.startsWith('opaque:') && await allowed(async () => {
+        assertNotSystemWritten(meta, 'renamed')
+        await assertSecurityWriter(table, user)
+        await assertDocPermission(user, table, 'write', String(row.created_by))
+        await assertUserPermissions(user, meta, row)
+      })
+    const createIn = (target: string) => allowed(async () => {
+      assertNotSystemWritten(await getMeta(target), 'created')
+      await assertSecurityWriter(target, user)
+      await assertPermission(user, target, 'create')
+    })
+    return {
+      write: !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && row.status !== 'cancelled' && await rowGrant('write'),
+      rename,
+      delete: meta.kind === 'table' && !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && await rowGrant('delete'),
+      submit: Boolean(meta.is_submittable) && row.status === 'draft' && await rowGrant('submit'),
+      cancel: Boolean(meta.is_submittable) && row.status === 'submitted' && await rowGrant('cancel'),
+      amend: Boolean(meta.is_submittable) && row.status === 'cancelled' && await rowGrant('amend'),
+      assign: await createIn('ToDo'),
+      tag: true, // tags, unlike ToDo/Comment/File creation, need only row read
+      comment: await createIn('Comment'),
+      upload: await createIn('File'),
+    }
+  })
+}
+
 async function getDocImpl(
   table: string,
   name: string,

@@ -135,6 +135,33 @@ describe('NAV-001: row connections', () => {
     expect(cnx.find((c) => c.table === ATT)).toMatchObject({ count: 0 })
   })
 
+  test('#800 Related offers only relationships with navigable owning lists', async ({ admin }) => {
+    await setup(admin)
+    await admin.post('/api/table_def', {
+      name: 'Cnx Unowned Line',
+      kind: 'sub_table',
+      columns: [{ column_name: 'employee', column_type: 'Reference', reference_table: EMP }],
+    })
+    await admin.post('/api/table_def', {
+      name: 'Cnx Settings',
+      kind: 'settings',
+      columns: [
+        { column_name: 'employee', column_type: 'Reference', reference_table: EMP },
+        { column_name: 'lines', column_type: 'Sub-table', row_table: LINE },
+      ],
+    })
+
+    // A settings reference cannot open a filtered list; an orphan child has
+    // no owning list. Neither may crowd out the real zero-count relations.
+    expect(await getConnections(admin, 'E-002')).toEqual([
+      { table: ATT, column: 'employee', via: null, count: 0, system_written: false,
+        filters: [['employee', '=', 'E-002']] },
+      { table: ORDER, column: 'employee', via: LINE, count: 0, system_written: false,
+        filters: [['row_id', 'related', { via: LINE, column: 'employee', table: EMP,
+          filters: [['row_id', '=', 'E-002']] }]] },
+    ])
+  })
+
   test('a missing row 404s like a plain GET', async ({ admin }) => {
     await setup(admin)
     await expect(

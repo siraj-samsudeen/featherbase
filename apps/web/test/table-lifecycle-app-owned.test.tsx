@@ -28,6 +28,7 @@ test('generic form deletes a fresh app-owned row using the revision it loaded', 
   expect(await screen.findByDisplayValue('Remove 37 crates')).toBeInTheDocument()
 
   const user = userEvent.setup()
+  await user.click(screen.getByRole('button', { name: 'Record actions' }))
   await user.click(screen.getByTestId('form-delete'))
   await user.click(screen.getByTestId('delete-row-confirm'))
 
@@ -55,6 +56,7 @@ test('generic form refuses a stale app-owned delete and preserves the newer row'
   expect(newerRevision.getTime()).toBeGreaterThan(loadedRevision.getTime())
 
   const user = userEvent.setup()
+  await user.click(screen.getByRole('button', { name: 'Record actions' }))
   await user.click(screen.getByTestId('form-delete'))
   await user.click(screen.getByTestId('delete-row-confirm'))
 

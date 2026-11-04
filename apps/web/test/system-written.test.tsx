@@ -3,6 +3,7 @@
 // disabled — and its form opens read-only. Driven by the table's meta, so an
 // ordinary platform table (Comment) keeps its controls.
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach } from 'vitest'
 import { logActivity } from 'server/src/audit'
 import { sql } from 'server/src/db'
@@ -34,9 +35,12 @@ test('the Activity Log list offers no way to write, even to the Administrator', 
   await screen.findByTestId('list-view')
   // The list itself still reads: the seeded row and the report view are there.
   expect(await screen.findByText('seeded for the read-only form')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'View: List' }))
   expect(screen.getByTestId('open-report')).toBeInTheDocument()
   // Permissions stay, so read access can still be granted.
+  await userEvent.click(screen.getByRole('button', { name: 'Table administration' }))
   expect(screen.getByTestId('open-permissions')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'List actions' })).not.toBeInTheDocument()
   for (const id of WRITE_CONTROLS) expect(screen.queryByTestId(id), id).toBeNull()
 })
 
@@ -51,6 +55,7 @@ test('an Activity Log row opens read-only, with no Save, Delete or Rename', asyn
   await renderApp(`/featherbase/admin/table/activity-log/row/${id}`, admin)
   const field = await screen.findByDisplayValue('seeded for the read-only form')
   await waitFor(() => expect(field).toBeDisabled())
+  await userEvent.click(screen.getByRole('button', { name: 'Record actions' }))
   for (const control of ['form-save', 'form-delete', 'form-rename'])
     expect(screen.queryByTestId(control), control).toBeNull()
 })

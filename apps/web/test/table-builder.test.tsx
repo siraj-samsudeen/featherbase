@@ -110,4 +110,24 @@ describe('Choose how each new row gets its id', () => {
     expect(screen.getByTestId('dt-naming-preview')).toHaveTextContent('EMP-001, EMP-002, EMP-003')
     expect(screen.getByTestId('dt-create')).toBeInTheDocument()
   })
+
+  test('#858: a prefix plus a column shows a sample id, and the new table names its rows that way', async ({ admin }) => {
+    const user = userEvent.setup()
+    await renderApp('/featherbase/admin/new-table', admin)
+    await screen.findByTestId('table-builder')
+
+    await user.type(screen.getByTestId('dt-name'), 'Tb Plant')
+    await user.click(screen.getByTestId('dt-paste-open'))
+    await user.click(screen.getByTestId('dt-paste-text'))
+    await user.paste('Plant Code, City')
+    await user.click(screen.getByTestId('dt-paste-build'))
+    await user.selectOptions(screen.getByTestId('dt-naming'), 'field:plant_code')
+    await user.type(screen.getByTestId('dt-naming-prefix'), 'PLANT-')
+    expect(screen.getByTestId('dt-naming-preview')).toHaveTextContent('Ids look like PLANT-‹Plant Code›')
+    await user.click(screen.getByTestId('dt-create'))
+
+    await screen.findByTestId('list-view', undefined, { timeout: 10_000 })
+    expect(await admin.get(`/api/table/${encodeURIComponent('Tb Plant')}:meta`)).toMatchObject({ id_pattern: 'PLANT-{plant_code}' })
+    expect(await admin.post('/api/save_row', { table: 'Tb Plant', row: { plant_code: '8151' } })).toMatchObject({ row_id: 'PLANT-8151' })
+  })
 })

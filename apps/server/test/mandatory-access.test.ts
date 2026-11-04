@@ -16,8 +16,11 @@ test('creator privacy hides a row from administrators, other members and their l
   const manager = await createUser({ roles: ['System Manager', 'Notebook Member'] })
   const row = await owner.post<Record<string, unknown>>('/api/save_row', { table: table.name, row: { title: 'Private draft', created_by: 'Administrator' } })
   expect(await owner.get(table.rowUrl(String(row.row_id)))).toMatchObject({ title: 'Private draft', created_by: owner.user })
+  const capabilities = `${table.rowUrl(String(row.row_id))}:capabilities`
+  expect(await owner.get(capabilities)).toMatchObject({ write: true })
   for (const other of [admin, peer, manager]) {
     await expect(other.get(table.rowUrl(String(row.row_id)))).rejects.toMatchObject({ status: 403 })
+    await expect(other.get(capabilities)).rejects.toMatchObject({ status: 403 })
     await expect(other.post('/api/save_row', { table: table.name, row: { row_id: row.row_id, updated_at: row.updated_at, title: 'Changed' } })).rejects.toMatchObject({ status: 403 })
   }
   expect(await peer.get(table.listUrl({ fields: ['row_id', 'title'] }))).toMatchObject({ total: 0, data: [] })

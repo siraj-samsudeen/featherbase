@@ -1,6 +1,7 @@
 import { tableSlug } from 'shared'
 import zlib from 'node:zlib'
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
+import { enableTableFeatures } from './fixtures-ui'
 
 // FILE-004: an image attachment shows a thumbnail; a non-image does not.
 
@@ -59,6 +60,7 @@ test.beforeAll(async ({ request }) => {
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
+  await enableTableFeatures(request, headers, DT, ['enable_files'])
   await request.delete(`/api/table/${encodeURIComponent(DT)}/${DOC}`, { headers })
   await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: DOC, title: 'x' } })
 })
@@ -78,7 +80,7 @@ test.afterEach(async ({ request }) => cleanupFiles(request))
 // DSL's verbs, so the whole attach/verify round trip stays in one named
 // step; session.visit carries the plain navigation.
 test('FILE-004: image attachment gets a thumbnail; text does not', async ({ session }) => {
-  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`).click('Collaboration')
   await session.step('an image attachment gets a decodable thumbnail; a text file does not', async ({ page }) => {
     await expect(page.getByTestId('attachments-panel')).toBeVisible()
 
