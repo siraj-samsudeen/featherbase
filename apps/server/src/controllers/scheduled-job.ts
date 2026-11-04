@@ -15,7 +15,8 @@ const controller: TableController = {
       if (!method) throw new AppError('ValidationError', 'method is required', { method: 'required' })
       if (method.startsWith('copy_refresh_')) {
         await assertSystemManager(user)
-        if (!COPY_CADENCES.includes(String(row.cadence ?? old?.cadence) as typeof COPY_CADENCES[number]))
+        // cadence is a required column, already merged with the saved row here.
+        if (!COPY_CADENCES.includes(String(row.cadence) as typeof COPY_CADENCES[number]))
           throw new AppError('ValidationError', 'Choose a copied-table refresh cadence', { cadence: 'Every 15 minutes, hourly, every 4 hours or daily' })
       }
       // #700, Codex round 3: a job's method is the code it runs, so it is
