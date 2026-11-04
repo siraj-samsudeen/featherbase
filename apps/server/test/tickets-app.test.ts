@@ -179,6 +179,23 @@ describe('Tickets independently installed product contract (#810)', () => {
     })
   }
 
+  test("the requester's own scope or recipient change is attributed in support history", async ({ admin, createUser }) => {
+    const w = await setup(admin, createUser)
+    let ticket = await approve(w.bala, await verify(w.verifier, await create(w.owner)))
+    ticket = (await act(w.owner, 'edit', { ...revision(ticket), details: { scope: 'Silver SAP, read only' } })).ticket
+    await refused(act(w.fulfiller, 'fulfill', { ...revision(ticket), reference: 'Stale approval' }))
+    const edits = (await detail(w.support, ticket)).privateEvents.filter((e: any) => e.operation === 'edit')
+    expect(edits).toHaveLength(1)
+    expect(edits[0].by).toBe(w.owner.user)
+    expect(edits[0].text).toContain('Gold sales, read only')
+    expect(edits[0].text).toContain('Silver SAP, read only')
+    // The requester still sees no support history of their own ticket.
+    expect((await detail(w.owner, ticket)).privateEvents).toBeUndefined()
+    // Generic reads reach only the requester's own edit, never verification or decisions.
+    const own = (await w.owner.get<any>(`/api/table/tickets.event?fields=${encodeURIComponent('["operation","by"]')}`)).data
+    expect(own).toEqual([{ operation: 'edit', by: w.owner.user }])
+  })
+
   test('inactive, unknown-region, restricted-resource and empty configuration fail closed; settings changes revoke old memberships', async ({ admin, createUser }) => {
     const w = await setup(admin, createUser)
     for (const [active, region, scope] of [[false, 'Kerala', 'Gold'], [true, 'Unknown', 'Gold'], [true, 'Kerala', 'Bronze Zakya']] as const) {
