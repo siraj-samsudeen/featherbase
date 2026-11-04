@@ -26,3 +26,27 @@ export function PanePlace({ value, resolved, onChange, label = 'Pane place' }: {
     { value: 'bottom', label: 'Bottom' },
   ]} />
 }
+
+/**
+ * Content with the drill pane beside it (right: about 40% wide, at least
+ * 360px) or below it (bottom: at most half the window tall, scrolling).
+ * Neither ever scrolls the page sideways. With no pane the content fills it all.
+ */
+export function SplitWithPane({ place, pane, children }: {
+  place: ResolvedPanePlace
+  pane: ReactNode
+  children: ReactNode
+}) {
+  const right = place === 'right'
+  return (
+    <div data-testid="split-with-pane" className={`flex min-h-0 min-w-0 flex-1 ${right ? 'flex-row' : 'flex-col'}`}>
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto">{children}</div>
+      {pane != null && pane !== false && (
+        <div data-testid="split-pane" className={right
+          ? 'flex min-h-0 w-2/5 min-w-90 max-w-full shrink-0 flex-col'
+          : 'flex max-h-[50vh] min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto'}
+        >{pane}</div>
+      )}
+    </div>
+  )
+}
