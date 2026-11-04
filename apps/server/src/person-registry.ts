@@ -85,6 +85,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   data_source_catalog: { '*': code },
   data_source_secret: { '*': code },
   table_copy: { '*': code },
+  copy_refresh_schedule: { '*': code },
   // #625: an app dataset's rows: warehouse figures, no person in them.
   app_dataset_row: { '*': code },
   dataset_miss: { '*': code },

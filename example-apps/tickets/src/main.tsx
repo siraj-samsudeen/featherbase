@@ -106,8 +106,10 @@ const short = (id: string) =>
       : id
 // Ticket types the instance configured (Tickets configuration Tables), with
 // their fields and the options their links and people offer this viewer.
-type ConfiguredField = { name: string; label: string; type: string; required: boolean; choices?: string[]; options?: { value: string; label: string }[] }
-type ConfiguredType = { key: string; label: string; states: string[]; done: string[]; fields: ConfiguredField[] }
+type ConfiguredField = { name: string; label: string; type: string; required: boolean; choices?: string[]; options?: { value: string; label: string }[]; asked_by_action?: boolean }
+type ConfiguredType = { key: string; label: string; states: string[]; done: string[]; fields: ConfiguredField[]; transitions?: boolean; details_visible_to?: 'everyone' | 'private'; enabled?: boolean }
+// #918: an action the viewer may take now, and what it asks them to record.
+type TicketAction = { action: string; next_state: string; fields: ConfiguredField[] }
 const configuredTypes: Record<string, ConfiguredType> = {}
 const learnTypes = (types: unknown) => {
   for (const type of Array.isArray(types) ? (types as (ConfiguredType & { builtin?: boolean })[]) : [])
@@ -162,13 +164,14 @@ function TypeSelect({
 }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)}>
+      {!kinds[value] && configuredTypes[value]?.enabled === false && <option value={value}>{configuredTypes[value].label}</option>}
       {!kinds[value] && !configuredTypes[value] && <option value={value}>{stateLabel(value)}</option>}
       {Object.entries(kinds).map(([key, name]) => (
         <option key={key} value={key}>
           {name}
         </option>
       ))}
-      {Object.values(configuredTypes).map((type) => (
+      {Object.values(configuredTypes).filter((type) => type.enabled !== false).map((type) => (
         <option key={type.key} value={type.key}>
           {type.label}
         </option>
@@ -180,16 +183,18 @@ function Structured({
   kind,
   values,
   change,
+  fields: asked,
 }: {
   kind: string
   values: RecordData
   change: (key: string, value: string) => void
+  fields?: ConfiguredField[]
 }) {
-  const configured = configuredTypes[kind]
+  const configured = asked ? { fields: asked } : configuredTypes[kind]
   if (configured)
     return (
       <div className="form-grid">
-        {configured.fields.map((field) => {
+        {configured.fields.filter((field) => asked || !field.asked_by_action).map((field) => {
           const value = String(values[field.name] ?? '')
           const title = field.required ? `${field.label} *` : field.label
           const set = (next: string) => change(field.name, next)
@@ -549,7 +554,7 @@ const assignee = (ticket: Ticket) =>
   ticket.assigned_to ? person(ticket.assigned_to) : 'Unassigned'
 // What this person can do on this ticket now: the same conditions that enable
 // each action's form in the tabs below.
-type TicketAction = { key: string; label: string; tab: string; target: string }
+type HeaderAction = { key: string; label: string; tab: string; target: string; transition?: TicketAction }
 function availableActions(now: {
   support: boolean
   capabilities: Session['capabilities']
@@ -558,15 +563,24 @@ function availableActions(now: {
   state: string
   canDecide: boolean
   editable: boolean
-}): TicketAction[] {
-  if (!now.support) return []
-  const workflow = (key: string, label: string): TicketAction => ({
+  // #918: the moves this ticket's type allows the viewer now (null when the
+  // type declares none); the server decides which, for requesters too.
+  transitions: TicketAction[] | null
+}): HeaderAction[] {
+  const actions: HeaderAction[] = (now.transitions ?? []).map((transition) => ({
+    key: `transition:${transition.action}`,
+    label: transition.action,
+    tab: 'Workflow',
+    target: 'action-transition',
+    transition,
+  }))
+  if (!now.support) return actions
+  const workflow = (key: string, label: string): HeaderAction => ({
     key,
     label,
     tab: 'Workflow',
     target: `action-${key}`,
   })
-  const actions: TicketAction[] = []
   if (now.access) {
     if (now.capabilities.verify && !now.resolved)
       actions.push(workflow('verify', 'Record verification'))
@@ -574,7 +588,7 @@ function availableActions(now: {
       actions.push(workflow('decide', 'Decide'))
     if (now.capabilities.fulfill && now.state === 'approved')
       actions.push(workflow('fulfill', 'Record fulfillment'))
-  } else
+  } else if (!now.transitions)
     actions.push(
       now.resolved
         ? workflow('reopen', 'Reopen ticket')
@@ -594,8 +608,8 @@ function TicketActions({
   actions,
   choose,
 }: {
-  actions: TicketAction[]
-  choose: (action: TicketAction) => void
+  actions: HeaderAction[]
+  choose: (action: HeaderAction) => void
 }) {
   if (!actions.length) return null
   return (
@@ -611,6 +625,73 @@ function TicketActions({
         </button>
       ))}
     </div>
+  )
+}
+// #918: the actions this ticket's type lets the viewer take now. The server
+// decides which; each asks for its own fields before it is taken.
+function TypeActions({ actions, state, mutate, busy, open, setOpen }: {
+  actions: TicketAction[]; state: string; mutate: Mutate; busy: boolean
+  // #941: which move's form is open, held by the ticket so its header can open one.
+  open: string; setOpen: (action: string) => void
+}) {
+  const [values, setValues] = useState<RecordData>({})
+  useEffect(() => { setValues({}) }, [state, open])
+  const chosen = actions.find((a) => a.action === open)
+  const take = (action: TicketAction, recorded: RecordData) =>
+    mutate('transition', { action: action.action, ...(action.fields.length ? { values: recorded } : {}) })
+  return (
+    <section className="card ticket-actions">
+      <h3>Next step</h3>
+      {actions.length ? (
+        <div className="actions">
+          {actions.map((a) => (
+            <button key={a.action} type="button" className={open === a.action ? 'primary' : 'secondary'} disabled={busy}
+              onClick={() => (a.fields.length ? setOpen(a.action) : void take(a, {}))}>
+              {a.action}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="fine">No action is open to you while this ticket is {state}.</p>
+      )}
+      {chosen && (
+        <form id="action-transition" onSubmit={async (e) => { e.preventDefault(); if (await take(chosen, values)) setOpen('') }}>
+          <fieldset disabled={busy}>
+            <p className="fine">{chosen.action} moves this ticket to {chosen.next_state}.</p>
+            <Structured kind="__action__" values={values} change={(key, value) => setValues((v) => ({ ...v, [key]: value }))}
+              fields={chosen.fields.map((f) => ({ ...f, required: true }))} />
+            <div className="actions">
+              <button type="button" onClick={() => setOpen('')}>Cancel</button>
+              <button className="primary">{chosen.action}</button>
+            </div>
+          </fieldset>
+        </form>
+      )}
+    </section>
+  )
+}
+// #918: the requester or support corrects the request's wording; the
+// earlier wording stays in the ticket's history.
+function Reword({ original, mutate, busy }: { original: string; mutate: Mutate; busy: boolean }) {
+  const [open, setOpen] = useState(false)
+  if (!open) return <button className="secondary" type="button" onClick={() => setOpen(true)}>Correct the wording</button>
+  return (
+    <form className="card" onSubmit={async (e) => {
+      e.preventDefault()
+      const text = String(new FormData(e.currentTarget).get('original') ?? '')
+      if (await mutate('edit', { original: text })) setOpen(false)
+    }}>
+      <fieldset disabled={busy}>
+        <Label title="Original message">
+          <textarea name="original" required rows={4} defaultValue={original} />
+        </Label>
+        <p className="fine">The earlier wording is kept in the ticket's history.</p>
+        <div className="actions">
+          <button type="button" onClick={() => setOpen(false)}>Cancel</button>
+          <button className="primary">Save wording</button>
+        </div>
+      </fieldset>
+    </form>
   )
 }
 function CaseFile({
@@ -661,7 +742,10 @@ function CaseFile({
     state,
     canDecide,
     editable: Boolean(detail.details),
+    transitions: configured?.transitions ? ((detail.actions as TicketAction[] | undefined) ?? []) : null,
   })
+  const [typeOpen, setTypeOpen] = useState('')
+  useEffect(() => setTypeOpen(''), [ticket.ticket_state, ticket.row_id])
   const [focus, setFocus] = useState<{ target: string; at: number } | null>(null)
   useEffect(() => {
     if (!focus) return
@@ -698,6 +782,10 @@ function CaseFile({
         <TicketActions
           actions={actions}
           choose={(chosen) => {
+            const move = chosen.transition
+            // A move that asks for nothing is taken at once, as in the Workflow tab.
+            if (move && !move.fields.length) return void mutate('transition', { action: move.action })
+            if (move) setTypeOpen(move.action)
             setTab(chosen.tab)
             if (chosen.key === 'edit') setEditing(true)
             setFocus({ target: chosen.target, at: Date.now() })
@@ -729,12 +817,27 @@ function CaseFile({
             {detail.details ? (
               <>
                 <div className="section-label">
-                  Private · requester & support
+                  {configured?.details_visible_to === 'everyone'
+                    ? 'Visible to everyone who can see this ticket'
+                    : 'Private · requester & support'}
                 </div>
                 <h3>Original message</h3>
                 <p className="request-body">
                   {display(detail.details.original)}
                 </p>
+                {(support || ticket.owner === (typeof session.user === 'string' ? session.user : session.user.row_id)) && (
+                  <Reword original={String(detail.details.original ?? '')} mutate={mutate} busy={busy} />
+                )}
+                {Array.isArray(detail.originalHistory) && detail.originalHistory.length > 0 && (
+                  <details className="fine">
+                    <summary>Earlier wording ({(detail.originalHistory as RecordData[]).length})</summary>
+                    {(detail.originalHistory as RecordData[]).map((h, i) => (
+                      <p key={i}>
+                        “{String(h.text)}” · replaced by {person(h.replaced_by)} · {time(h.replaced_at)}
+                      </p>
+                    ))}
+                  </details>
+                )}
                 <h3>Request details</h3>
                 <Facts
                   values={
@@ -812,7 +915,7 @@ function CaseFile({
                               setDraft((d) => ({ ...d, [key]: value }))
                             }
                           />
-                          {configuredTypes[kind] && kind === ticket.kind && (
+                          {configuredTypes[kind] && kind === ticket.kind && !configuredTypes[kind].transitions && (
                             <Label title="State">
                               <select name="state" defaultValue={ticket.ticket_state}>
                                 {configuredTypes[kind].states.map((option) => (
@@ -1013,6 +1116,8 @@ function CaseFile({
                   </div>
                 )}
               </>
+            ) : configured?.transitions ? (
+              <TypeActions actions={(detail.actions as TicketAction[] | undefined) ?? []} state={ticket.ticket_state} mutate={mutate} busy={busy} open={typeOpen} setOpen={setTypeOpen} />
             ) : (
               <>
                 <section className="card">
@@ -1144,12 +1249,20 @@ function CaseFile({
           <>
             <div className="section-label">Public history</div>
             <History events={detail.events ?? []} privacy="Public" />
+            {!support && detail.privateEvents && (
+              <>
+                <div className="section-label">Ticket history</div>
+                <History events={detail.privateEvents} privacy="Everyone who can see this ticket" />
+              </>
+            )}
             {support && (
               <>
-                <div className="section-label">Support-only history</div>
+                <div className="section-label">
+                  {configured?.details_visible_to === 'everyone' ? 'Ticket history' : 'Support-only history'}
+                </div>
                 <History
                   events={detail.privateEvents ?? []}
-                  privacy="Support only"
+                  privacy={configured?.details_visible_to === 'everyone' ? 'Everyone who can see this ticket' : 'Support only'}
                 />
                 <ActionForm
                   title="Add internal note"
@@ -1342,7 +1455,7 @@ function App() {
   const typeKeys = [
     ...new Set([
       ...Object.keys(kinds).filter((key) => typeCounts.has(key)),
-      ...Object.keys(configuredTypes),
+      ...Object.values(configuredTypes).filter((type) => type.enabled !== false).map((type) => type.key),
       ...[...typeCounts.keys()].sort(),
       ...(kind ? [kind] : []),
     ]),
