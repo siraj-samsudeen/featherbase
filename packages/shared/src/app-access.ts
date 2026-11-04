@@ -31,6 +31,9 @@ export type AppOperationDeclaration = {
 } | { policy: Extract<AppAccessPolicy, { kind: 'person_scope' }> })
 export interface AppScopeFacts {
   get(table: string, rowId: string): Promise<Readonly<Record<string, unknown>>>
+  /** Equality filters over declared Columns only. Exceeding the bound refuses
+   * the operation rather than authorizing against a truncated membership set. */
+  find(table: string, match: Readonly<Record<string, string | number | boolean | null>>, limit: number): Promise<readonly Readonly<Record<string, unknown>>[]>
 }
 export interface AppScopeResolutionContext {
   readonly user: string

@@ -153,21 +153,41 @@ async function withFacts<T>(app: string, declarations: AppFactDeclaration[], fn:
   let open = true
   let pending: Promise<unknown> | undefined
   let failed = false
-  const facts: AppScopeFacts = Object.freeze({ async get(table: string, rowId: string) {
+  async function read<R>(table: string, query: (columns: string[], relation: string, key: string) => Promise<R>): Promise<R> {
     if (!open || pending) { failed = true; refuseAppAccess('facts') }
     const work = (async () => {
       const declaration = declarations.find(d => d.table === table)
-      if (!declaration || typeof rowId !== 'string' || !rowId) refuseAppAccess('facts')
+      if (!declaration) refuseAppAccess('facts')
       const meta = await getMeta(table)
       if (meta.owner_app !== app || meta.system || meta.data_source || meta.kind !== 'table') refuseAppAccess('facts')
-      const [row] = await sql`select ${sql([...new Set([meta.row_key, ...declaration.columns])])}
-        from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${rowId} for update`
-      if (!row) refuseAppAccess()
-      return freezeJson(JSON.parse(JSON.stringify(row))) as Readonly<Record<string, unknown>>
+      return query([...new Set([meta.row_key, ...declaration.columns])], await tableRelation(table), meta.row_key)
     })()
     pending = work
     try { return await work } catch (error) { failed = true; throw error } finally { pending = undefined }
-  } })
+  }
+  const facts: AppScopeFacts = Object.freeze({
+    get: (table: string, rowId: string) => read(table, async (columns, relation, key) => {
+      if (typeof rowId !== 'string' || !rowId) refuseAppAccess('facts')
+      const [row] = await sql`select ${sql(columns)} from ${sql(relation)} where ${sql(key)} = ${rowId} for update`
+      if (!row) refuseAppAccess()
+      return freezeJson(JSON.parse(JSON.stringify(row))) as Readonly<Record<string, unknown>>
+    }),
+    find: (table: string, match: Readonly<Record<string, string | number | boolean | null>>, limit: number) =>
+      read(table, async (columns, relation, key) => {
+        if (!Number.isInteger(limit) || limit < 1 || limit > 1000 || !match ||
+          typeof match !== 'object' || Array.isArray(match)) refuseAppAccess('facts')
+        let where = sql`true`
+        for (const [column, value] of Object.entries(match)) {
+          if (!columns.includes(column) || !(value === null || typeof value === 'string' ||
+            typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value)))) refuseAppAccess('facts')
+          where = sql`${where} and ${sql(column)} is not distinct from ${value}`
+        }
+        const rows = await sql`select ${sql(columns)} from ${sql(relation)} where ${where}
+          order by ${sql(key)} limit ${limit + 1} for update`
+        if (rows.length > limit) refuseAppAccess('facts')
+        return freezeJson(JSON.parse(JSON.stringify(rows))) as readonly Readonly<Record<string, unknown>>[]
+      }),
+  })
   try { return await fn(facts) }
   finally {
     open = false
@@ -215,6 +235,21 @@ export function withAppAuthorization<T>(request: AccessRequest,
         const policy = declaration.policy
         if ('scope' in declaration && declaration.scope.kind === 'resolver' && !resolver) refuseAppAccess('configuration')
         if (declaration.authorization.kind === 'product' && !authorizer) refuseAppAccess('configuration')
+        await currentAccess(request, declaration)
+        // Protect the complete fact sets, including absent Rows, before any
+        // fact Row locks. PostgreSQL writers participate even when they do not
+        // use this capability. One order across resolver and authorizer avoids
+        // lock upgrades between the two phases. These low-volume authority
+        // operations serialize per fact Table until the transaction finishes.
+        const factTables = new Set([
+          ...('scope' in declaration && declaration.scope.kind === 'resolver' ? declaration.scope.facts : []),
+          ...(declaration.authorization.kind === 'product' ? declaration.authorization.facts : []),
+        ].map(fact => fact.table))
+        for (const table of [...factTables].sort()) {
+          const meta = await getMeta(table)
+          if (meta.owner_app !== request.app || meta.system || meta.data_source || meta.kind !== 'table') refuseAppAccess('facts')
+          await sql`lock table ${sql(await tableRelation(table))} in share row exclusive mode`
+        }
         if (request.idempotencyKey) await sql`select pg_advisory_xact_lock(hashtextextended(${JSON.stringify([request.user, request.app, request.operation, request.idempotencyKey])}, 296))`
         const allowed = await currentAccess(request, declaration)
         if (request.kind === 'discovery') {

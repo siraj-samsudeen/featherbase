@@ -11,6 +11,11 @@ export const scopeResolvers = {
     if (payload.mutateClaim) {
       try { requestedStoreCodes.push('B') } catch {}
     }
+    if (payload.match) {
+      const rows = await facts.find('scopeproof.object', payload.match, payload.limit)
+      if (faults.afterSetRead) await faults.afterSetRead()
+      return { storeCodes: rows.flatMap(row => row.stores) }
+    }
     if (payload.line) {
       const line = await facts.get('scopeproof.line', payload.line)
       if (line.parent_id !== payload.id) reject()

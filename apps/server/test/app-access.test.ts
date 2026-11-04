@@ -35,6 +35,37 @@ async function setup(admin: TestClient, createUser: CreateUserFn, roles = ['Scop
 }
 
 describe('fresh app roles and store access', () => {
+  test('membership set reads expose only declared facts without truncating a footprint', async ({ admin, createUser }) => {
+    const copy = await mkdtemp(resolve('test/.scope-facts-'))
+    try {
+      await cp(directory, copy, { recursive: true })
+      const serverPath = resolve(copy, 'server.mjs')
+      const original = await readFile(serverPath, 'utf8')
+      await writeFile(serverPath, original.replace('export const scopeResolvers =', 'const originalScopeResolvers =') + `
+export const scopeResolvers = {
+  ...originalScopeResolvers,
+  async object({ facts, payload }) {
+    const rows = await facts.find('scopeproof.object', payload.match, payload.limit)
+    if (rows.some(row => Object.hasOwn(row, 'secret'))) throw new Error('Undeclared fact leaked')
+    return { storeCodes: rows.flatMap(row => row.stores), productScope: { count: rows.length } }
+  },
+}
+`)
+      const { user } = await setup(admin, createUser, ['Scope Planner'], ['A'], copy)
+      for (const [row_id, stores] of [['member-a', ['A']], ['member-b', ['B']]] as const)
+        await admin.post('/api/save_row', { table: 'scopeproof.object', row: { row_id, stores, secret: 'hidden' } })
+      expect(await user.post(read + 'object', { payload: { match: { row_id: 'member-a' }, limit: 2 } }))
+        .toEqual({ result: { stores: ['A'], marker: 37 } })
+      // A set wider than the declared bound is refused, not truncated to A.
+      for (const payload of [
+        { match: {}, limit: 1 }, { match: { secret: 'hidden' }, limit: 2 },
+        { match: {}, limit: 0 }, { match: {}, limit: 1001 },
+      ]) expect((await user.fetch(read + 'object', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload }),
+      })).status).toBe(403)
+    } finally { await rm(copy, { recursive: true, force: true }) }
+  })
+
   for (const phase of ['resolver', 'authorizer']) {
     for (const [behavior, mode, rowId] of [
       ['empty fact identity', 'caught', ''],

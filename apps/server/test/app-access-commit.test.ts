@@ -58,7 +58,9 @@ prove('scope locks, product locks and duplicate waits never retain pre-wait gran
         operation = outcome(mode === 'object'
           ? runPackageRead('scopeproof', 'object', { payload: { id: 'draft', storeCodes: ['A'] } }, user)
           : runPackageAction('scopeproof', 'product', mode === 'product-first' ? { ...request, idempotencyKey: 'new' } : request, user))
-        const wait = mode === 'duplicate' ? 'advisory' : 'transactionid'
+        // An UPDATE blocks the set lock; SELECT FOR UPDATE still blocks the
+        // subsequent Row lock without changing the membership set.
+        const wait = mode === 'duplicate' ? 'advisory' : mode === 'object' ? 'relation' : 'transactionid'
         await expect.poll(async () => Number((await sql`select count(*) as n from pg_stat_activity
           where datname = current_database() and wait_event = ${wait}`)[0].n)).toBeGreaterThanOrEqual(1)
         if (mode !== 'object') await revoke()
@@ -67,6 +69,34 @@ prove('scope locks, product locks and duplicate waits never retain pre-wait gran
         expect(await sql`select idempotency_key from runtime_action_result where app = 'scopeproof'`).toEqual([{ idempotency_key: 'original' }])
         if (mode !== 'object') await grant()
       } finally { unlock(); await Promise.allSettled([holder, operation]) }
+    }
+    // A new membership must not appear between a set read and its action.
+    // The INSERT uses another real connection, not a sandbox savepoint.
+    await sql`update scopeproof.object set stores = '["A"]' where row_id = 'draft'`
+    const digest = availableRuntimeVersions().find(p => p.name === 'scopeproof')!.digest
+    const module = await import(`${pathToFileURL(resolve('../..', 'test-apps/scope-proof/server.mjs')).href}?artifact=${digest}`)
+    let release!: () => void
+    let readSet!: () => void
+    const ready = new Promise<void>(resolve => { readSet = resolve })
+    const gate = new Promise<void>(resolve => { release = resolve })
+    module.faults.afterSetRead = async () => { readSet(); await gate }
+    const pending = outcome(runPackageRead('scopeproof', 'object', { payload: { match: {}, limit: 10 } }, user))
+    let inserted: ReturnType<typeof outcome> | undefined
+    try {
+      await ready
+      inserted = outcome(sql`insert into scopeproof.object (row_id, stores) values ('new-membership', '["B"]')`)
+      await expect.poll(async () => Number((await sql`select count(*) as n from pg_stat_activity
+        where datname = current_database() and wait_event = 'relation'`)[0].n)).toBeGreaterThanOrEqual(1)
+      release()
+      expect(await pending).toEqual({ value: { result: { stores: ['A'], marker: 37 } } })
+      expect(await inserted).not.toHaveProperty('error')
+      delete module.faults.afterSetRead
+      expect(await outcome(runPackageRead('scopeproof', 'object', { payload: { match: {}, limit: 10 } }, user)))
+        .toMatchObject({ error: { type: 'PermissionError' } })
+    } finally {
+      release()
+      delete module.faults.afterSetRead
+      await Promise.allSettled([pending, inserted])
     }
   } finally {
     await revoke()
