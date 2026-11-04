@@ -1,11 +1,32 @@
 // Feather Dash's report page (rendered by main.tsx).
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { accessFacts, read } from './api'
-import { MEASURE_LINE, TOTALS_NOTE, noAccessHelp, type NoAccessHelp, headingTitle, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
+import { MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingTitle, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
 import type { Heading, Report, ReportRow, Totals } from './report'
 
 /** The store the bar's picker keeps in the address (`?store=`). */
 const storeInAddress = () => new URLSearchParams(window.location.search).get('store') ?? undefined
+
+/** The month the bar's month picker keeps in the address (`?month=`, #750): this month unless it says last. */
+const monthInAddress = (): MonthChoice => {
+  const month = new URLSearchParams(window.location.search).get('month')
+  return isMonthChoice(month) ? month : 'this'
+}
+
+/** The bar's month choices, announced as `featherbase:bar-change` and by Back/Forward. */
+function listenForMonth(onMonth: (month: string) => void): () => void {
+  const fromBar = (event: Event) => {
+    const { key, value } = (event as CustomEvent<{ key: string; value: string }>).detail ?? {}
+    if (key === 'month' && value) onMonth(value)
+  }
+  const fromHistory = () => onMonth(monthInAddress())
+  window.addEventListener('featherbase:bar-change', fromBar)
+  window.addEventListener('popstate', fromHistory)
+  return () => {
+    window.removeEventListener('featherbase:bar-change', fromBar)
+    window.removeEventListener('popstate', fromHistory)
+  }
+}
 
 /** The bar's store choices, announced as `featherbase:bar-change` and by Back/Forward. */
 function listenForStore(onStore: (store: string) => void): () => void {
@@ -25,6 +46,9 @@ function listenForStore(onStore: (store: string) => void): () => void {
 export function FeatherDash() {
   // undefined until the first store is known: the reads wait for it (one call per read per load).
   const [store, setStore] = useState<{ value: string | undefined } | undefined>(undefined)
+  const [month, setMonth] = useState<MonthChoice>(monthInAddress)
+  // The choosers read the store and month now chosen, not the render's.
+  const chosen = useRef<{ store?: string; month: MonthChoice }>({ month })
   const [attempt, setAttempt] = useState(0)
   const [state, setState] = useState<LoadState<Report>>({ embed: undefined, report: undefined, frameFailed: false, diveReady: false })
   const frame = useRef<HTMLIFrameElement>(null)
@@ -35,7 +59,11 @@ export function FeatherDash() {
     read(name, name === 'embed_session' ? { ...payload, app_origin: location.origin } : payload), setState), [])
   // Choosing a store: the store on show, repeated, changes nothing (round 9); another store drops
   // the previous store's answers at once (round 8), and its effect below opens it.
-  const choose = useMemo(() => storeChooser(loader, value => setStore({ value })), [loader])
+  const choose = useMemo(() => storeChooser(loader, value => { chosen.current.store = value; setStore({ value }) }, () => chosen.current.month), [loader])
+  // Choosing a month (#750) works the same way: the month on show, repeated, changes nothing.
+  const chooseMonth = useMemo(() => monthChooser(loader, () => chosen.current.store,
+    value => { chosen.current.month = value; setMonth(value) }, chosen.current.month), [loader])
+  useEffect(() => listenForMonth(chooseMonth), [chooseMonth])
   // A store in the address is checked against the reader's stores before anything is read.
   // A store named in the address is checked first and never replaced by the default; a check
   // that runs past STORE_CHECK_TIMEOUT_MS offers Try again, which checks again.
@@ -55,9 +83,9 @@ export function FeatherDash() {
   }, [checkAttempt])
   useEffect(() => {
     if (!store) return
-    loader.open(store.value)
+    loader.open(store.value, month)
     return () => loader.close()
-  }, [loader, store, attempt])
+  }, [loader, store, month, attempt])
   // The Dive's ready message (B7), checked against its origin and its own frame by the loader.
   useEffect(() => {
     const onMessage = (event: MessageEvent) => loader.message(event, frame.current?.contentWindow)
@@ -66,7 +94,7 @@ export function FeatherDash() {
   }, [loader])
   const tryAgain = useCallback(() => (checkFailed ? setCheckAttempt : setAttempt)((n) => n + 1), [checkFailed])
   // Only a state of the store now chosen is drawn, whatever reached it (round 8).
-  const shown = visibleState(state, store?.value)
+  const shown = visibleState(state, store?.value, month)
   const { report } = shown
   const view = checkFailed && !store ? { kind: 'failed' as const } : pageView(shown)
   const frameAttempt = loader.current()
@@ -100,10 +128,10 @@ export function FeatherDash() {
           />
         </div>
       )}
-      {view.kind === 'quick' && report?.ok && <QuickView report={report.value} tooLarge={view.why === 'too_large'} />}
+      {view.kind === 'quick' && report?.ok && <QuickView report={report.value} why={view.why} />}
       {view.kind === 'empty' && (
         <Notice testid={`empty-${view.why}`}>
-          {view.why === 'no_data_yet' && "This month's figures haven't arrived yet. They usually arrive by early morning."}
+          {view.why === 'no_data_yet' && notArrivedLine(month)}
           {view.why === 'no_sections' && 'This store has no sections set up yet, so there is nothing to show.'}
           {view.why === 'not_built' && 'The figures are being prepared. Try again in a few minutes.'}
         </Notice>
@@ -209,7 +237,14 @@ function TotalFigures({ t }: { t: Totals }) {
   )
 }
 
-function QuickView({ report, tooLarge = false }: { report: Report; tooLarge?: boolean }) {
+/** Why the quick view stands in for the Dive, said above its table. */
+function quickLabel(why: 'too_large' | 'month_unsupported' | undefined): string {
+  if (why === 'too_large') return 'This store is too large for the interactive report yet. Showing the cached table.'
+  if (why === 'month_unsupported') return "The interactive report can't show last month yet. Showing the cached table."
+  return "Cached · the full report couldn't open"
+}
+
+function QuickView({ report, why }: { report: Report; why?: 'too_large' | 'month_unsupported' }) {
   const [showQuiet, setShowQuiet] = useState(false)
   // Whether the table is wider than its box (the swipe cue), and whether more of it lies to the
   // right of what is in view (the edge fade); both re-checked on scroll and resize.
@@ -235,12 +270,12 @@ function QuickView({ report, tooLarge = false }: { report: Report; tooLarge?: bo
       <header className="fd-quick-head">
         <h2 className="fd-title">Quick view</h2>
         <p className="fd-muted" data-testid="quick-label">
-          {tooLarge ? 'This store is too large for the interactive report yet. Showing the cached table.' : "Cached · the full report couldn't open"}
+          {quickLabel(why)}
         </p>
         <p className="fd-muted" data-testid="data-line">{dataLine(report)}</p>
-        {!report.targets_available && <p className="fd-muted">Targets for this month aren't available yet; sales are shown.</p>}
+        {!report.targets_available && <p className="fd-muted">Targets for {monthWords(report.month)} aren't available yet; sales are shown.</p>}
       </header>
-      {body === 'nothing' && <p data-testid="quick-nothing">Nothing recorded this month for your section yet.</p>}
+      {body === 'nothing' && <p data-testid="quick-nothing">{report.month === 'last' ? 'Nothing was recorded last month for your section.' : 'Nothing recorded this month for your section yet.'}</p>}
       {body === 'table' && overflows && <p className="fd-muted fd-small" data-testid="scroll-hint">Swipe the table sideways to see Gap and Achieved.</p>}
       {body === 'table' && (
         <div className={`fd-table-box${moreRight ? ' fd-more-right' : ''}`} ref={box} onScroll={measure}>
@@ -279,7 +314,7 @@ function QuickView({ report, tooLarge = false }: { report: Report; tooLarge?: bo
         </button>
       )}
       {body === 'table' && <p className="fd-muted fd-small" data-testid="totals-note">{TOTALS_NOTE}</p>}
-      {body === 'table' && blanks > 0 && <p className="fd-muted fd-small" data-testid="blank-note">{blankNote(blanks)}</p>}
+      {body === 'table' && blanks > 0 && <p className="fd-muted fd-small" data-testid="blank-note">{blankNote(blanks, report.month)}</p>}
     </section>
   )
 }
