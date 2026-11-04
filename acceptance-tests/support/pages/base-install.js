@@ -336,19 +336,19 @@ class BaseInstall {
   }
   async manageDashIdentifier() {
     await this.applySettings({ 'App Setting': [{ row_id: 'feather_dash.dive_id', value: 'acceptance-report' }] });
-    await this.call('POST', '/api/save_row', { table: 'App Setting', row: { row_id: 'feather_dash.dive_version', value: 'initial-version' } }, [201]);
+    await this.call('POST', '/api/save_row', { table: 'App Setting', row: { row_id: 'feather_dash.embed_service_account', value: 'initial-account' } }, [201]);
   }
-  async editableVersion() {
-    await this.open(`${ADMIN}/table/app-setting/row/feather_dash.dive_version`);
+  async editableAccount() {
+    await this.open(`${ADMIN}/table/app-setting/row/feather_dash.embed_service_account`);
     const input = this.page.getByLabel('Value', { exact: true });
     assert.equal(await input.isEnabled(), true);
-    await input.fill('acceptance-version');
+    await input.fill('acceptance-account');
     const saved = this.page.waitForResponse(response => response.url().endsWith('/api/save_row') && response.request().method() === 'POST');
     await this.page.getByRole('button', { name: 'Save', exact: true }).click();
     const response = await saved;
     assert.ok(response.ok(), await response.text());
-    const row = await this.api.row('App Setting', 'feather_dash.dive_version');
-    assert.equal(row.value, 'acceptance-version');
+    const row = await this.api.row('App Setting', 'feather_dash.embed_service_account');
+    assert.equal(row.value, 'acceptance-account');
   }
   async lockedIdentifier() {
     await this.open(`${ADMIN}/table/app-setting/row/feather_dash.dive_id`);

@@ -58,7 +58,7 @@ export const EMBED_ORIGIN = (readVariable('MOTHERDUCK_EMBED_ORIGIN') ?? 'https:/
 
 // The shared experiment inputs live in the sibling data-warehouse checkout;
 // SALES_TARGET_SHARED_ENV names the gitignored .env.local that holds the
-// test passwords, DIVE_ID, DIVE_VERSION and SERVICE_ACCOUNT.
+// test passwords, DIVE_ID and SERVICE_ACCOUNT.
 export const DEFAULT_SHARED_ENV =
   '/home/user/data-warehouse/experiments/issue_3755/shared/.env.local'
 
@@ -80,7 +80,6 @@ export function readSharedEnv(path = sharedEnvPath()): Record<string, string> {
 interface EmbedConfig {
   apiBase: string
   diveId: string
-  version: number
   serviceAccount: string
 }
 
@@ -88,11 +87,10 @@ interface EmbedConfig {
 // .env.local second (this experiment). The token is NEVER read from a file.
 export function embedConfig(): EmbedConfig {
   const shared = readSharedEnv()
-  const pick = (key: 'DIVE_ID' | 'DIVE_VERSION' | 'SERVICE_ACCOUNT') => readVariable(key) ?? shared[key] ?? ''
+  const pick = (key: 'DIVE_ID' | 'SERVICE_ACCOUNT') => readVariable(key) ?? shared[key] ?? ''
   return {
     apiBase: (readVariable('MOTHERDUCK_API_BASE') ?? 'https://api.motherduck.com').replace(/\/+$/, ''),
     diveId: pick('DIVE_ID'),
-    version: Number(pick('DIVE_VERSION') || 0),
     serviceAccount: pick('SERVICE_ACCOUNT'),
   }
 }
@@ -503,7 +501,7 @@ export function initialStateFor(a: Assignment, period: Period = currentPeriod())
 
 type EmbedResult =
   | { ok: true; session: string; status: number }
-  // 'not_configured': DIVE_ID/DIVE_VERSION/SERVICE_ACCOUNT or the token are
+  // 'not_configured': DIVE_ID/SERVICE_ACCOUNT or the token are
   // simply absent — a deployment choice, not a failure (#3783/#286).
   // 'unreachable': the embed API was configured but the request itself
   // failed (network error, or answered but refused) — an operational
@@ -523,11 +521,11 @@ export async function createEmbedSession(
 ): Promise<EmbedResult> {
   const token = readVariable('MOTHERDUCK_TOKEN')
   if (!token) return { ok: false, status: 0, error: 'MOTHERDUCK_TOKEN is not set on the server', kind: 'not_configured' }
-  if (!cfg.diveId || !cfg.version || !cfg.serviceAccount)
+  if (!cfg.diveId || !cfg.serviceAccount)
     return {
       ok: false,
       status: 0,
-      error: 'DIVE_ID, DIVE_VERSION and SERVICE_ACCOUNT must be configured',
+      error: 'DIVE_ID and SERVICE_ACCOUNT must be configured',
       kind: 'not_configured',
     }
   let res: Response
@@ -535,7 +533,8 @@ export async function createEmbedSession(
     res = await (embedFetch ?? fetch)(`${cfg.apiBase}/v1/dives/${encodeURIComponent(cfg.diveId)}/embed-session`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ username: cfg.serviceAccount, version: cfg.version, initial_state: initialState }),
+      // No version: MotherDuck opens the Dive's latest saved version (#937).
+      body: JSON.stringify({ username: cfg.serviceAccount, initial_state: initialState }),
     })
   } catch (err) {
     // Configured but unreachable — the embed API refused the TCP/TLS
