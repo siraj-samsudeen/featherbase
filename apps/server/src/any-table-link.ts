@@ -12,7 +12,7 @@ export function allowedTables(choices: string | null | undefined): string[] {
 /** Only a stored Table's rows can be linked to: never a Sub-table's rows, a
  *  settings Table or a Table kept in a connected database (#881 Q2, Q3). */
 export function linkableTable(def: { kind?: unknown; data_source?: unknown }): boolean {
-  return (def.kind ?? 'table') === 'table' && !def.data_source
+  return def.kind === 'table' && !def.data_source
 }
 
 export interface AnyTableLinkColumn { parent: string; column_name: string; table_column: string }

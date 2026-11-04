@@ -134,4 +134,46 @@ describe('a column that links to a row of any Table', () => {
     expect((await admin.fetch(`/api/table_def/${encodeURIComponent(OTHER)}`, { method: 'DELETE' })).status).toBe(200)
     expect(await admin.get(row(`${DECISION} Any`, linked.row_id))).toMatchObject({ shapes_table: null, shapes: null })
   })
+
+  test('a link added to an existing Table, and the Tables a link can never name', async ({ admin }) => {
+    await setup(admin)
+    await makeTable(admin, { name: 'Atl Line', kind: 'sub_table', columns: ['note'] })
+    await makeTable(admin, { name: 'Atl Later', columns: ['title'] })
+    const meta = await admin.get<{ columns: Record<string, unknown>[] }>(`${url('Atl Later')}:meta`)
+    await admin.put(`/api/table_def/${encodeURIComponent('Atl Later')}`, { columns: [...meta.columns, ...shapes('').slice(1)] })
+    const save = (values: Record<string, unknown>) => admin.post<Record<string, unknown>>('/api/save_row', { table: 'Atl Later', row: values })
+    expect(await save({ shapes_table: PLANT, shapes: '8151' })).toMatchObject({ shapes: '8151' })
+    await expect(save({ shapes_table: '', shapes: '8151' }))
+      .rejects.toMatchObject({ status: 417, fields: { shapes: 'Choose its Table first' } })
+    await expect(save({ shapes_table: 'Atl Line', shapes: '8151' }))
+      .rejects.toMatchObject({ status: 417, fields: { shapes: 'Atl Line cannot be linked to' } })
+    // The Table column here is a link to Table, so it can't name a missing one.
+    await expect(save({ shapes_table: 'Atl Nowhere', shapes: '8151' })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('a link column takes its Table only from a plain link to Table', async ({ admin }) => {
+    await expect(makeTable(admin, { name: 'Atl Bad 4', columns: [
+      { column_name: 'shapes_table', column_type: 'Reference', reference_table: 'Table' },
+      { column_name: 'shapes', column_type: 'Data', table_column: 'shapes_table' },
+    ] })).rejects.toMatchObject({ status: 417, fields: { shapes: 'Only a link column without a target Table can take its Table from another column' } })
+    await expect(makeTable(admin, { name: 'Atl Bad 5', columns: [
+      { column_name: 'shapes', column_type: 'Reference', table_column: 'shapes' },
+    ] })).rejects.toMatchObject({ status: 417, fields: { shapes: 'shapes must be a link to Table in this Table' } })
+  })
+
+  test("a link held in a Sub-table's row names the row that owns it", async ({ admin }) => {
+    await setup(admin)
+    await makeTable(admin, { name: 'Atl Step', kind: 'sub_table', columns: shapes() })
+    await makeTable(admin, { name: 'Atl Plan', columns: [{ column_name: 'steps', column_type: 'Sub-table', row_table: 'Atl Step' }] })
+    const plan = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Atl Plan', row: { steps: [{ title: 'Close', shapes_table: PLANT, shapes: '8151' }] } })
+    await expect(admin.delete(row(PLANT, '8151')))
+      .rejects.toThrow(`Cannot delete ${PLANT} 8151: it is linked from Atl Plan ${plan.row_id}`)
+  })
+
+  test('a Table holding links can itself be deleted', async ({ admin }) => {
+    await setup(admin)
+    await decide(admin, { shapes_table: PLANT, shapes: '8151' })
+    expect((await admin.fetch(`/api/table_def/${encodeURIComponent(DECISION)}`, { method: 'DELETE' })).status).toBe(200)
+    await admin.delete(row(PLANT, '8151'))
+  })
 })
