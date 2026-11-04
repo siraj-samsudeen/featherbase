@@ -218,10 +218,25 @@ describe('SplitWithPane', () => {
     expect(screen.getByTestId('split-pane').className).not.toMatch(/\bsticky\b/)
   })
 
-  test("a pane at the bottom docks to the window's foot: the split is as tall as the window, the content scrolling above the pane", () => {
-    render(<SplitWithPane place="bottom" pane={<p>Pane</p>}><p>List</p></SplitWithPane>)
-    expect(screen.getByTestId('split-with-pane').className).toMatch(/\bh-\[calc\(100dvh/)
-    expect(screen.getByText('List').parentElement!.className).toMatch(/\boverflow-auto\b/)
+  test('a pane at the bottom docks to the foot of its scrolling frame, under what sits above it, the content scrolling above the pane', () => {
+    const proto = Element.prototype as unknown as Record<'getBoundingClientRect', (this: Element) => unknown>
+    const rect = proto.getBoundingClientRect
+    // The frame shows 0–800; the split starts at 120, under a path bar.
+    proto.getBoundingClientRect = function (this: Element) {
+      if ((this as HTMLElement).dataset?.testid === 'frame') return { top: 0, bottom: 800, height: 800 } as DOMRect
+      if ((this as HTMLElement).dataset?.testid === 'split-with-pane') return { top: 120, bottom: 920, height: 800 } as DOMRect
+      return { top: 0, bottom: 0, height: 0 } as DOMRect
+    }
+    const client = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')!
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get(this: HTMLElement) { return this.dataset.testid === 'frame' ? 800 : 0 } })
+    try {
+      render(<div data-testid="frame" style={{ overflowY: 'auto' }}><SplitWithPane place="bottom" pane={<p>Pane</p>}><p>List</p></SplitWithPane></div>)
+      expect(screen.getByTestId('split-with-pane').style.height).toBe('680px')
+      expect(screen.getByText('List').parentElement!.className).toMatch(/\boverflow-auto\b/)
+    } finally {
+      proto.getBoundingClientRect = rect
+      Object.defineProperty(HTMLElement.prototype, 'clientHeight', client)
+    }
   })
 
   test('opening a pane at the bottom brings it into view', () => {
