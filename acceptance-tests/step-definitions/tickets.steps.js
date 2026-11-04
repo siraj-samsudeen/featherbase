@@ -103,6 +103,11 @@ steps(When, [
 ]);
 
 steps(Then, [
+  ["support sees the requester by the name Anjali's own session shows, not by her person id", async t => {
+    const own = (await t.read('session', {}, 'Anjali')).user.full_name;
+    assert.ok(own && own !== t.ids.Anjali);
+    assert.equal((await t.open('Support')).names[t.ticket.owner], own);
+  }],
   ['the user receives a ticket reference', t => { assert.equal(typeof t.ticket.row_id, 'string'); assert.ok(t.ticket.row_id.length > 0); }],
   ['the request remains available after signing out and back in', async t => { await t.world.signOutAndBackIn('Anjali'); assert.equal((await t.open('Anjali')).ticket.row_id, t.ticket.row_id); }],
   ['the ticket retains that recipient and requested scope', t => t.includes(t.details.email, t.details.scope)],

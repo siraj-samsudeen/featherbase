@@ -196,6 +196,28 @@ describe('Tickets independently installed product contract (#810)', () => {
     expect(own).toEqual([{ operation: 'edit', by: w.owner.user }])
   })
 
+  test('people are shown by name: requester, assignee, verifier, approver and history', async ({ admin, createUser }) => {
+    const w = await setup(admin, createUser)
+    expect((await read(w.owner, 'session')).user).toEqual({ row_id: w.owner.user, full_name: 'anjali' })
+    let ticket = await create(w.owner)
+    ticket = (await act(w.support, 'edit', { ...revision(ticket), assigned_to: w.support.user, public_update: 'Checking' })).ticket
+    ticket = await approve(w.bala, await verify(w.verifier, ticket))
+    const queue = await read(w.support, 'queue')
+    expect(queue.names).toMatchObject({ [w.owner.user]: 'anjali', [w.support.user]: 'triager' })
+    const seen = await detail(w.support, ticket)
+    expect(seen.names).toMatchObject({ [w.owner.user]: 'anjali', [w.support.user]: 'triager', [w.verifier.user]: 'verifier', [w.bala.user]: 'bala' })
+    // Another requester sees the names on what they may see, never an opaque id for a person who acted.
+    const shared = await detail(w.other, ticket)
+    expect(shared.names).toMatchObject({ [w.owner.user]: 'anjali', [w.support.user]: 'triager' })
+    expect(shared.names[w.verifier.user]).toBeUndefined()
+    // Support can choose an assignee by name from the people configured for Tickets.
+    const people = (await read(w.support, 'session')).people as { row_id: string; full_name: string }[]
+    expect(people).toEqual(expect.arrayContaining([{ row_id: w.bala.user, full_name: 'bala' }]))
+    expect((await read(w.owner, 'session')).people).toBeUndefined()
+    // Names come only from the platform, for the person acting: no generic write can set one.
+    await refused(w.other.post('/api/table/tickets.person', { row_id: w.other.user, full_name: 'bala' }))
+  })
+
   test("after the requester's own scope change only re-approval is needed; a recipient change needs verification", async ({ admin, createUser }) => {
     const w = await setup(admin, createUser)
     let ticket = await approve(w.bala, await verify(w.verifier, await create(w.owner)))

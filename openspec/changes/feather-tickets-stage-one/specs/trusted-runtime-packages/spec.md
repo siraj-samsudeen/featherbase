@@ -21,3 +21,14 @@ Given Anjali's missing-invoice ticket has a recorded mismatch
 When Administrator attempts to delete its evidence using the current revision
 Then deletion is refused and the evidence remains attributed in support history
 ```
+
+### Requirement: An app's actions and reads know their caller's own name
+An **App**'s action and read context SHALL carry the caller's own display name (full name, else `@username`), the name the caller's session already shows them. It SHALL never carry another person's name or contact data, and SHALL need no Person read permission.
+
+#### Scenario: Tickets records the name of the person acting
+
+```gherkin
+Given the user is signed in as Anjali
+When the user submits "Please check the Palakkad totals" as a free-text request
+Then support sees the requester by the name Anjali's own session shows, not by her person id
+```
