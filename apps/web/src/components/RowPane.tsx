@@ -164,14 +164,11 @@ function PointsAt({ links, nav, onOpen }: { links: ForwardLink[]; nav: Navigatio
       <dl className="grid grid-cols-[minmax(5rem,max-content)_minmax(0,1fr)] items-center gap-x-4 gap-y-2 text-sm">
         {links.map((link) => {
           const column = overList ? filterColumn(listMeta.data, link) : undefined
-          // The filter goes on the path before the row it was read from:
-          // "Sites › Region: Kerala › Enchakkal", as if narrowed first.
+          // The filter is a new step after the row it was read from, which
+          // stays in the pane: "Sites › Enchakkal › Region: Kerala".
           const filter = column && (() => {
             const kept = (step.filters ?? []).filter((f) => f[0] !== column.column_name)
-            const filtered: NavStep = { ...step, filters: [...kept, [column.column_name, '=', link.row_id]] }
-            const { pane: _, ...listOnly } = filtered
-            const before = { steps: nav.path.steps.slice(0, nav.path.at), at: nav.path.at - 1 }
-            nav.reshape(push(push(before, listOnly), filtered))
+            nav.push({ ...step, filters: [...kept, [column.column_name, '=', link.row_id]] })
           })
           return (
             <div key={link.column} className="contents">

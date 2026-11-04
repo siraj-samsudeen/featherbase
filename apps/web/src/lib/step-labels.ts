@@ -64,11 +64,16 @@ export function useStepLabels(steps: NavStep[]): string[] {
   const names = useRowNames(list)
   const nameOf = new Map<string, RowName>(list.map((r, i) => [keyOf(r), names[i]]))
   const name = (r: Ref) => rowNameText(nameOf.get(keyOf(r)) ?? { state: 'loading' })
-  return steps.map((step) => {
+  const filterLabel = (step: NavStep) => step.filters!.map((f) => filterText(step.table, metaOf(step.table), f, name)).join(', ')
+  return steps.map((step, i) => {
     const kind = stepKind(step)
+    // A filter added with a row in the pane is named by the filter, not again by the row.
+    const before = steps[i - 1]
+    if (step.filters?.length && before?.pane && step.pane && before.pane.table === step.pane.table && before.pane.row === step.pane.row
+      && JSON.stringify(before.filters ?? []) !== JSON.stringify(step.filters)) return filterLabel(step)
     if (kind === 'pane' || kind === 'group') return name({ table: step.pane!.table, row_id: step.pane!.row })
     if (kind === 'row') return name({ table: step.table, row_id: step.row! })
-    if (kind === 'filter') return step.filters!.map((f) => filterText(step.table, metaOf(step.table), f, name)).join(', ')
+    if (kind === 'filter') return filterLabel(step)
     return step.table
   })
 }

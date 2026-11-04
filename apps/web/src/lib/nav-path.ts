@@ -159,13 +159,34 @@ function readStep(v: unknown): NavStep | null {
 const normalise = (step: NavStep): NavStep => readStep(JSON.parse(JSON.stringify(step))) ?? step
 const sameStep = (a: NavStep, b: NavStep) => JSON.stringify(normalise(a)) === JSON.stringify(normalise(b))
 
+// What a step is named after: the row it shows (in the pane, else the row
+// page's own) or the list, under its filters. Two steps in a row that show
+// the same would read the same on the path.
+export function stepShows(step: NavStep): string {
+  const row = step.pane ? [step.pane.table, step.pane.row] : step.screen === 'row' ? [step.table, step.row] : [step.table]
+  return JSON.stringify([row, step.filters ?? []])
+}
+
 // ---------- moving along the path ----------
 
 export function push(path: NavPath, step: NavStep): NavPath {
   const current = path.steps[path.at]
   if (current && sameStep(current, step)) return path
-  const steps = [...path.steps.slice(0, path.at + 1), normalise(step)].slice(-MAX_STEPS)
+  // A step that shows what the current one shows (a group opened on the
+  // page's own row, the page centred on the row in its pane) takes its place.
+  const keep = current && stepShows(current) === stepShows(step) ? path.at : path.at + 1
+  const steps = [...path.steps.slice(0, keep), normalise(step)].slice(-MAX_STEPS)
   return { steps, at: steps.length - 1 }
+}
+
+/** Changes the current step in place; one that comes to show what the step
+ *  before it shows (its pane closed) merges into that step. */
+export function replace(path: NavPath, step: NavStep): NavPath {
+  const steps = path.steps.map((s, i) => (i === path.at ? step : s))
+  const before = steps[path.at - 1]
+  if (before && stepShows(before) === stepShows(step))
+    return { steps: [...steps.slice(0, path.at - 1), step, ...steps.slice(path.at + 1)], at: path.at - 1 }
+  return { steps, at: path.at }
 }
 
 export function go(path: NavPath, i: number): NavPath {
@@ -244,12 +265,17 @@ export function rememberPath(list: NavPath[], path: NavPath): NavPath[] {
 // a walk that carries on from the newest one remembered replaces it, so one
 // walk is one recent path, not one per step.
 export function rememberWalk(list: NavPath[], path: NavPath): NavPath[] {
-  if (path.steps.length < 2) return list
   const steps = path.steps.slice(0, path.at + 1)
-  const newest = list[0]
-  const extends_ = newest && newest.steps.length <= steps.length
-    && newest.steps.every((s, i) => sameStep(s, steps[i]))
-  return rememberPath(extends_ ? list.slice(1) : list, path)
+  if (steps.length < 2) return list
+  // Steps are compared by what they show, so a walk whose step only opened
+  // another group or layout is still the same walk.
+  const walkOf = (p: NavPath) => p.steps.slice(0, p.at + 1).map(stepShows)
+  const shown = steps.map(stepShows)
+  const startsWith = (long: string[], short: string[]) => short.length <= long.length && short.every((s, i) => s === long[i])
+  // Back along a walk already remembered: nothing new.
+  if (list.some((p) => startsWith(walkOf(p), shown) && walkOf(p).length > shown.length)) return list
+  // The newest version of a walk replaces every shorter one it goes on from.
+  return rememberPath(list.filter((p) => !startsWith(shown, walkOf(p))), { steps, at: steps.length - 1 })
 }
 
 // Stored recent paths, each as an encoded string or a parsed object; the

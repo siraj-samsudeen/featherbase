@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { rowHref, tableHref } from 'shared'
-import { EMPTY_PATH, decodePath, encodePath, go as goTo, push as pushStep, type NavPath, type NavStep } from './nav-path'
+import { EMPTY_PATH, decodePath, encodePath, go as goTo, push as pushStep, replace as replaceAt, type NavPath, type NavStep } from './nav-path'
 
 // #910 D1: where the user is on their walk between related rows. The list
 // and row pages keep the path in their address (`?path=`), so every drill and
@@ -45,9 +45,6 @@ export function NavigationProvider({ value, children }: { value: Navigation; chi
 export function sameScreen(a: NavStep, b: NavStep): boolean {
   return a.screen === b.screen && a.table === b.table && (a.screen !== 'row' || a.row === b.row)
 }
-
-const replaceAt = (path: NavPath, step: NavStep): NavPath =>
-  ({ steps: path.steps.map((s, i) => (i === path.at ? step : s)), at: path.at })
 
 /** The page address that shows a path's current step. */
 export function pathHref(path: NavPath): string {
