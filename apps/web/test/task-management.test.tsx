@@ -13,13 +13,17 @@ import { peopleWithTaskResponsibility, TaskManagementPage } from '../../../examp
 import { Markdown } from '../../../example-apps/tasker/src/Markdown'
 import { getSessionUser, listResource } from '../../../example-apps/tasker/src/api'
 import { setSession } from '../src/lib/api'
-import { test as base, expect } from './pg-test'
+import { test as base, committedTest as committedBase, expect } from './pg-test'
 import { taskerClient } from '../../server/test/tasker-client'
 import { patchDoc } from '../../server/test/fixtures'
 
 const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(taskerClient(admin)),
   createUser: async ({ createUser }, use) => use(async options => taskerClient(await createUser({ ...options, roles: [...new Set([...(options?.roles ?? []), 'Tasker Member'])] }))),
+})
+const committedTest = committedBase.extend<{ admin: TestClient; createUser: CreateUserFn }>({
+  admin: async ({ admin }, use) => use(taskerClient(admin)),
+  createUser: async ({ createUser }, use) => use(async options => taskerClient(await createUser(options))),
 })
 
 const APP = 'tasker'
@@ -558,7 +562,7 @@ test.for([true, false])('late preference rejection preserves a newer successful 
   }
 })
 
-test.for(['reverse writes', 'stale read'])('preference cache matches persisted truth after %s', async (race, { admin }) => {
+committedTest.for(['reverse writes', 'stale read'])('preference cache matches persisted truth after %s', async (race, { admin }) => {
   await install()
   const bridgedFetch = globalThis.fetch
   let release!: () => void
@@ -643,7 +647,7 @@ test('a lost preference response refetches the committed value instead of rollin
   }
 })
 
-test('lightweight_project_entry: a project accepts rapid unassigned task entry', async ({ admin }) => {
+committedTest('lightweight_project_entry: a project accepts rapid unassigned task entry', async ({ admin }) => {
   await install()
   try {
     renderTasker(admin)
@@ -918,7 +922,7 @@ test('personal_destination_assigns_owner: Inbox work moved to Personal tasks ass
   }
 })
 
-test('personal_worklist_flow: My Focus is ordered, private, and does not duplicate assigned work', async ({ admin, createUser }) => {
+committedTest('personal_worklist_flow: My Focus is ordered, private, and does not duplicate assigned work', async ({ admin, createUser }) => {
   await install()
   try {
     const assigned = (await admin.post('/api/save_row', {
@@ -1240,7 +1244,7 @@ test('take_membership: Take persists responsibility into My Work, not the Person
   } finally { location.hash = ''; await uninstallApp(APP).catch(() => {}) }
 })
 
-test('task_correction_flow: save and cancel correct the title and permit an empty description', async ({ admin }) => {
+committedTest('task_correction_flow: save and cancel correct the title and permit an empty description', async ({ admin }) => {
   await install()
   try {
     const task = await admin.post<Record<string, unknown>>('/api/save_row', {
@@ -1353,7 +1357,7 @@ test('task_detail_flow: one task switches among three detail modes with comments
 // "Switch layouts without losing the task" (tasker-use-task-details). The UI
 // names the layouts Inspector (side panel), Focus (full page) and Compact
 // (summary).
-test('switching side panel → full page → summary keeps the same task open, and after a reload tasks open in the summary', async ({ admin }) => {
+committedTest('switching side panel → full page → summary keeps the same task open, and after a reload tasks open in the summary', async ({ admin }) => {
   await install()
   try {
     await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Recount the shoe aisle', description: 'Two bins disagree.' } })
@@ -1623,6 +1627,9 @@ describe('Saved views stay within their list', () => {
         id: 'pop-up', name: 'Pop-up store work', scope: { kind: 'all' },
         setup: { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [gone.row_id] } },
       }, {
+        id: 'pop-up-board', name: 'Pop-up store board', scope: { kind: 'project', projectId: gone.row_id },
+        setup: { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [] } },
+      }, {
         id: 'former-owner', name: 'Former colleague personal list', scope: { kind: 'personal', owner: 'former@example.test' },
         setup: { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [] } },
       }, {
@@ -1634,6 +1641,7 @@ describe('Saved views stay within their list', () => {
 
       await user.click(await screen.findByRole('button', { name: /Views/ }))
       expect(await screen.findByText('One or more projects are unavailable')).toBeInTheDocument()
+      expect(screen.getByText('Project unavailable')).toBeInTheDocument()
       expect(screen.getByText('Person unavailable')).toBeInTheDocument()
       expect(screen.getByText('One or more people are unavailable')).toBeInTheDocument()
       await user.click(screen.getByRole('button', { name: /Pop-up store work/ }))

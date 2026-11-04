@@ -202,6 +202,10 @@ test('readable-label migration recognizes the MotherDuck platform list without o
 
 test('readable-label migration requires exact old platform choices', async ({ admin }) => {
   await sql`update column_def set choice_labels = null where parent in ('Sign In Method', 'Data Source', 'Table', 'Email Rule', 'Server Script', 'Webhook')`
+  // Exercise the pre-MotherDuck choices explicitly: the fully migrated test
+  // database now has the five-engine list added after readable labels.
+  await sql`update column_def set choices = E'postgres\nmysql\nduckdb\ncsv-folder'
+    where parent = 'Data Source' and column_name = 'engine'`
   await sql`update column_def set choices = 'changed' where parent = 'Data Source' and column_name = 'access'`
   await sql`update column_def set choice_labels = ${sql.json({ password: 'Our password' })} where parent = 'Sign In Method' and column_name = 'kind'`
   const app = await makeTable(admin, { name: 'Readable App Data', columns: [{ column_name: 'kind', column_type: 'Choice', choices: 'password\ngoogle\ndelegated_password', label: 'kind' }] })

@@ -46,6 +46,7 @@ const COVERAGE: Record<string, string> = {
   '/featherbase/admin/home/$name': 'visible Home Pages',
   '/featherbase/admin/all-tables': 'page catalogue',
   '/featherbase/admin/source/$name': 'manager readable Data Sources',
+  '/featherbase/admin/source/$name/copy': 'requires a selected warehouse database, schema and table',
   '/featherbase/admin/dashboard/$name': 'scoped readable Dashboards',
   '/featherbase/admin/table/$table/naming': 'requires a selected Table',
   '/featherbase/admin/table/$table/permissions': 'requires a selected Table',

@@ -209,7 +209,10 @@ registerCollectionAction('import-revert', {
         // a later import of the same value updates the field again.
         await actionTransaction(async () => {
           const previous = await latestVersion(table, r.touched.row_id)
-          const saved = await saveDoc(table, values, user.row_id, 'upsert')
+          // Before-values come only from the system-written Version record,
+          // not request args. Undo must restore managed columns as well.
+          const managedValues = Object.fromEntries(meta.columns.filter(c => c.read_only && Object.hasOwn(values, c.column_name)).map(c => [c.column_name, values[c.column_name]]))
+          const saved = await saveDoc(table, values, user.row_id, 'upsert', { managedValues })
           await annotateHistory(meta, saved, user.row_id, previous, { import_revert: runId })
         })
         restored++

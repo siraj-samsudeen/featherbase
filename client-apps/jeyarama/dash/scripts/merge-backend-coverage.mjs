@@ -46,7 +46,7 @@ for (const name of ['text', 'json', 'json-summary']) reports.create(name).execut
 const summary = merged.getCoverageSummary()
 // ADR 0017: fresh CI run 41391014265, without removing any measured source.
 // Tighten these maximum uncovered counts as coverage improves.
-const maximumUncovered = { statements: 2, functions: 2, branches: 17, lines: 0 }
+const maximumUncovered = { statements: 2, functions: 2, branches: 16, lines: 0 }
 let failed = false
 for (const metric of ['statements', 'functions', 'branches', 'lines']) {
   const { covered, total, pct } = summary[metric]

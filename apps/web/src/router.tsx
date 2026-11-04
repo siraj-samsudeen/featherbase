@@ -5,6 +5,7 @@ import {
   createRootRoute,
   createRoute,
   redirect,
+  useRouterState,
   useParams,
   useRouter,
 } from '@tanstack/react-router'
@@ -16,9 +17,10 @@ import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { AdminLayout } from './pages/AdminLayout'
 import { ManageOnly } from './pages/RestrictedShell'
-import { EmptyState, buttonClasses, fmtDate } from '@featherbase/shop-floor'
+import { EmptyState, Notice, buttonClasses, fmtDate } from '@featherbase/shop-floor'
 import { useCapabilities } from './lib/session'
-import { ApiError, getToken, landingPath, loginHref } from './lib/api'
+import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
+import { useQuery } from '@tanstack/react-query'
 import { crossesFramePolicy } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
@@ -53,6 +55,12 @@ import { ColumnEditor } from './pages/ColumnEditor'
 import { TableMerge } from './pages/TableMerge'
 import { AllTablesPage } from './pages/AllTables'
 import SourceBrowser from './pages/SourceBrowser'
+import ConnectSource from './pages/ConnectSource'
+import WarehouseSource from './pages/WarehouseSource'
+import { WarehouseBrowser } from './pages/WarehouseBrowser'
+import { CopySetup } from './pages/CopySetup'
+import { CopyBar } from './components/CopyBar'
+import type { BrowseContext } from './lib/warehouse'
 import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { RelationMap } from './pages/RelationMap'
@@ -245,10 +253,17 @@ const adminRoute = createRoute({
   beforeLoad: ({ location }) => {
     if (!getToken()) throw redirect({ href: loginHref(location.href) })
   },
-  component: AdminLayout,
+  component: AdminRouteLayout,
   // Verifier, round 2 on #495: a path no Admin page matches.
   notFoundComponent: AdminPageNotFound,
 })
+
+function AdminRouteLayout() {
+  const wide = useRouterState({ select: (state) => state.matches.some((match) =>
+    match.routeId === sourceBrowserRoute.id || match.routeId === copySetupRoute.id,
+  ) })
+  return <AdminLayout wide={wide} />
+}
 
 /** An Admin path that is neither a known page nor an existing Table: said
  *  plainly, with the way back. Never the Table loader's own error. */
@@ -425,6 +440,8 @@ function TableListPage() {
   const parsed = parseFilters(filters)
   return (
     <div data-testid="table-page">
+      {/* #772: a table copied from a data source shows where from, and Copy again. */}
+      <CopyBar key={`copy-${table}`} table={table} />
       <ListView
         key={table}
         table={table}
@@ -712,19 +729,71 @@ const allTablesRoute = createRoute({
 const sourceBrowserRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'source/$name',
-  // #796: `connect=<schema.table>` opens with that table loaded and chosen.
-  validateSearch: (search: Record<string, unknown>) => ({
+  // #772: a MotherDuck source's browser keeps its place in the address.
+  // #796: `connect=<schema.table>` opens a non-MotherDuck source with that table loaded and chosen.
+  validateSearch: (search: Record<string, unknown>): BrowseContext & { connect?: string } => ({
     connect: searchString(search.connect),
+    database: searchString(search.database),
+    schema: searchString(search.schema),
+    table: searchString(search.table),
+    tableSchema: searchString(search.tableSchema),
+    tab: searchString(search.tab),
+    query: searchString(search.query),
+    columnQuery: searchString(search.columnQuery),
+    databaseQuery: searchString(search.databaseQuery),
+    schemaQuery: searchString(search.schemaQuery),
   }),
   component: SourceBrowserPage,
 })
 
 function SourceBrowserPage() {
   const { name } = sourceBrowserRoute.useParams()
-  const { connect } = sourceBrowserRoute.useSearch()
+  const { connect, ...context } = sourceBrowserRoute.useSearch()
+  const source = useQuery({
+    queryKey: ['data-source', name],
+    queryFn: () => api.get<{ engine: string }>(`/api/table/Data%20Source/${encodeURIComponent(name)}`),
+  })
+  if (source.isPending) return null
+  if (source.error)
+    return (
+      <div data-testid="table-page">
+        <div data-testid="source-refused" className="max-w-3xl">
+          <Notice tone="negative">
+            {source.error instanceof ApiError && source.error.status === 403
+              ? 'Only a System Manager can open a data source.'
+              : 'This data source cannot be opened.'}
+          </Notice>
+        </div>
+      </div>
+    )
   return (
-    <div data-testid="table-page">
-      <SourceBrowser key={`${name}\u0000${connect ?? ''}`} name={name} connect={connect} />
+    <div data-testid="table-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {source.data?.engine === 'motherduck'
+        ? <WarehouseBrowser key={name} name={name} {...context} />
+        : <SourceBrowser key={`${name}\u0000${connect ?? ''}`} name={name} connect={connect} />}
+    </div>
+  )
+}
+
+// #772 part 2: set up the copy of one warehouse table (static segments).
+const copySetupRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'source/$name/copy',
+  validateSearch: (search: Record<string, unknown>) => ({
+    database: searchString(search.database),
+    schema: searchString(search.schema),
+    table: searchString(search.table),
+    returnTo: searchString(search.returnTo),
+  }),
+  component: CopySetupPage,
+})
+
+function CopySetupPage() {
+  const { name } = copySetupRoute.useParams()
+  const { database, schema, table, returnTo } = copySetupRoute.useSearch()
+  return (
+    <div data-testid="table-page" className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <CopySetup key={`${name}/${database}/${schema}/${table}`} name={name} database={database ?? ''} schema={schema ?? ''} table={table ?? ''} returnTo={returnTo} />
     </div>
   )
 }
@@ -815,6 +884,15 @@ function TableFormPage() {
   // remounts the form instead of retaining the previous form's values.
   // Parsing is memoized so the object isn't rebuilt every render.
   const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
+  // #772: Data Source's New page is the guided connect page; a MotherDuck
+  // source's page shows its token by last four only (any other source keeps the form).
+  if (table === 'Data Source') {
+    return (
+      <div data-testid="doc-page">
+        {name === 'new' ? <ConnectSource /> : <WarehouseSource key={name} name={name} />}
+      </div>
+    )
+  }
   return (
     <div data-testid="doc-page">
       <FormView
@@ -839,6 +917,7 @@ function NewRowPage() {
   const { table } = useTableAddress()
   const { prefill } = newRowRoute.useSearch()
   const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
+  if (table === 'Data Source') return <div data-testid="doc-page"><ConnectSource /></div>
   return <div data-testid="doc-page"><FormView key={`${table}/new/${prefill ?? ''}`} table={table} name="" isNew prefill={parsedPrefill} /></div>
 }
 
@@ -920,5 +999,5 @@ export const routeTree = rootRoute.addChildren([
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

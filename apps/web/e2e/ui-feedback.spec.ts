@@ -78,6 +78,10 @@ test('source preview distinguishes bound, selected, wrong-schema and wrong-key F
     target('public', 'warehouses', 'Warehouse'), target('public', 'legacy', 'Legacy Latest'),
   ]
   let failLoad = false
+  // Source routing reads metadata before the separately mocked introspection.
+  await page.route('**/api/table/Data%20Source/preview', (route) => route.fulfill({
+    json: { name: 'preview', engine: 'postgres', access: 'read_only' },
+  }))
   await page.route('**/api/table/Data%20Source/preview:introspect*', (route) => failLoad
     ? route.fulfill({ status: 500, json: { error: { type: 'TestFailure', message: 'Preview unavailable' } } })
     : route.fulfill({ json: { source: 'preview', engine: 'postgres', access: 'read_only', tables } }))
