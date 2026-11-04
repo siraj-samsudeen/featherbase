@@ -90,7 +90,8 @@ export function TreeOutline({ nodes, expanded, onToggle, selected, onActivate, r
   function render(list: TreeNode[], level: number, parent?: string): ReactNode {
     return list.map((node) => {
       if (node.heading) return (
-        <li key={node.id} role="none" className="px-2 pt-3 pb-1 text-sm text-ink-muted first:pt-0">{node.label}</li>
+        <li key={node.id} role="none" style={{ paddingInlineStart: `${(level - 1) * 1.25}rem` }}
+          className="pt-3 pr-2 pb-1 text-sm text-ink-muted first:pt-0">{node.label}</li>
       )
       const line = lines.find((l) => l.node.id === node.id) ?? { node, parent, level }
       const open = expanded.has(node.id)

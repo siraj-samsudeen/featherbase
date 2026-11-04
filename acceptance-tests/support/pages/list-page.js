@@ -1,5 +1,7 @@
 'use strict';
 
+const { expect } = require('playwright/test');
+
 // A table's list, with its "Show columns" menu and what changes the list
 // for everyone.
 
@@ -153,6 +155,8 @@ class ListPage {
   /** What the list is showing: its address, its rows and its filters. */
   async snapshot() {
     await this.rows().first().waitFor({ timeout: 10_000 });
+    // Settled: every linked row's name has arrived (an ellipsis stands in until then).
+    await expect.poll(async () => (await this.rowTexts()).some((t) => t.includes('…')), { timeout: 10_000 }).toBe(false);
     return { at: new URL(this.page.url()).pathname, rows: await this.rowTexts(), filters: await this.filterWords() };
   }
 

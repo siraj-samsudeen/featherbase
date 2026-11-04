@@ -66,7 +66,7 @@ interface Walker {
 }
 
 /** The lines under an open row: what it links to, then who links to it. */
-function rowChildren(w: Walker, id: string, table: string, row: string, ctx: Ctx, opts: { forward: boolean }): { children: TreeNode[]; loading: boolean } {
+function rowChildren(w: Walker, id: string, table: string, row: string, ctx: Ctx, opts: RowOpts): { children: TreeNode[]; loading: boolean } {
   const meta = w.get<TableMeta>(metaQuery(table))
   const doc = opts.forward ? w.get<Row>(docQuery(table, row)) : {}
   const cnx = w.get<{ connections: Connection[] }>(connectionsQuery(table, row))
@@ -75,12 +75,14 @@ function rowChildren(w: Walker, id: string, table: string, row: string, ctx: Ctx
     return { children: [], loading: !gone }
   }
   const children: TreeNode[] = []
-  const links = opts.forward ? forwardLinks(meta, doc) : []
+  // A row listed under a group already sits under the row it links back to.
+  const links = opts.forward ? forwardLinks(meta, doc).filter((l) => l.column !== opts.backLink) : []
   if (links.length) {
     children.push({ id: lineId(id, 'h:to'), label: 'Links to', heading: true })
     for (const link of links) children.push(linkedLine(w, lineId(id, `f:${link.column}`), link.table, link.row_id, ctx))
   }
-  const groups = backlinkGroups(cnx.connections)
+  const groups = backlinkGroups(cnx.connections, (c) =>
+    w.get<TableMeta>(metaQuery(c.via ?? c.table))?.columns.find((x) => x.column_name === c.column)?.label ?? c.column)
   if (groups.length) {
     children.push({ id: lineId(id, 'h:from'), label: 'Linked from', heading: true })
     for (const g of groups) children.push(groupLine(w, lineId(id, `g:${g.key}`), g, table, row, ctx))
@@ -89,6 +91,8 @@ function rowChildren(w: Walker, id: string, table: string, row: string, ctx: Ctx
 }
 
 interface Ctx { expanded: Set<string>; showAll: Set<string>; onShowAll: (id: string) => void }
+/** forward: list what the row links to; backLink: the link column to leave out. */
+interface RowOpts { forward: boolean; backLink?: string }
 
 /** A row this one links to: named by the title lookup; unreadable, it is a bare line. */
 function linkedLine(w: Walker, id: string, table: string, row: string, ctx: Ctx): TreeNode {
@@ -99,7 +103,7 @@ function linkedLine(w: Walker, id: string, table: string, row: string, ctx: Ctx)
   return rowLine(w, id, { table, row, label: title, code: meta ? shownCode(meta, row, title) : undefined }, ctx)
 }
 
-function rowLine(w: Walker, id: string, root: TreeRoot, ctx: Ctx, opts = { forward: true }): TreeNode {
+function rowLine(w: Walker, id: string, root: TreeRoot, ctx: Ctx, opts: RowOpts = { forward: true }): TreeNode {
   w.open.set(id, { table: root.table, row: root.row })
   const node: TreeNode = { id, label: root.label, code: root.code, kind: root.table, hasChildren: true }
   if (!ctx.expanded.has(id)) return node
@@ -121,7 +125,8 @@ function groupLine(w: Walker, id: string, g: BacklinkGroup, table: string, row: 
   const children = rows.data.map((r) => {
     const rowId = String(r.row_id)
     const label = rowDisplayTitle(meta, r, rowId)
-    return rowLine(w, lineId(id, `r:${rowId}`), { table: g.connection.table, row: rowId, label, code: shownCode(meta, rowId, label) }, ctx)
+    return rowLine(w, lineId(id, `r:${rowId}`), { table: g.connection.table, row: rowId, label, code: shownCode(meta, rowId, label) }, ctx,
+      { forward: true, backLink: g.connection.via ? undefined : g.connection.column })
   })
   return { ...node, children, more: { shown: rows.data.length, total: rows.total, onShowAll: () => ctx.onShowAll(id) } }
 }
