@@ -10,7 +10,7 @@ const rows = tableRef(DT)
 const capabilities = (id: string) => `${rows.rowUrl(id)}:capabilities`
 const readerCapabilities = {
   write: false, rename: false, delete: false, submit: false, cancel: false,
-  amend: false, retire: false, reactivate: false, assign: false, tag: true, comment: false, upload: false,
+  amend: false, retire: false, reactivate: false, purge: false, assign: false, tag: true, comment: false, upload: false,
 }
 
 describe('#800 row action capabilities', () => {
