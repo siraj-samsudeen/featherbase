@@ -63,7 +63,7 @@ export async function principalNames(ids: unknown, viewer: string): Promise<Reco
 export async function personByEmail(address: string, viewer: string): Promise<string | null> {
   let scoped
   try {
-    scoped = await scopedWhere('Person', viewer, [['built_in', '=', false]])
+    scoped = await scopedWhere('Person', viewer, [])
   } catch (error) {
     if (error instanceof AppError && error.type === 'PermissionError') return null
     throw error
@@ -72,7 +72,7 @@ export async function personByEmail(address: string, viewer: string): Promise<st
   const [row] = await sql`
     select p.row_id from (
       select row_id, replaced_by, ${scoped.readExpression('email')} as email
-      from ${sql(scoped.table)} where ${scoped.where}
+      from ${sql(scoped.table)} where ${scoped.where} and not coalesce(built_in, false)
     ) p
     where p.replaced_by is null and lower(trim(p.email)) = lower(${address.trim()})
     order by p.row_id
@@ -94,7 +94,7 @@ interface PickedPerson {
  *  when there is no username. Reads Person as the viewer (scopedWhere), so a
  *  person found is a person they may read. */
 export async function pickPeople(q: string, viewer: string, limit = 10): Promise<PickedPerson[]> {
-  const { table, where, cols, readExpression } = await scopedWhere('Person', viewer, [['built_in', '=', false]])
+  const { table, where, cols, readExpression } = await scopedWhere('Person', viewer, [])
   // Only the columns this viewer may read are shown or searched.
   const col = (c: string) => (cols.has(c) ? sql`p.${sql(c)}` : sql`null::text`)
   const selected = (c: string) => cols.has(c) ? readExpression(c) : sql`null::text`
@@ -105,7 +105,7 @@ export async function pickPeople(q: string, viewer: string, limit = 10): Promise
        where i.person_id = p.row_id and upper_inf(i.valid)) as code
     from (select row_id, replaced_by, ${selected('full_name')} as full_name,
       ${selected('username')} as username, ${selected('email')} as email
-      from ${sql(table)} where ${where}) p
+      from ${sql(table)} where ${where} and not coalesce(built_in, false)) p
     where p.replaced_by is null
       and (${q.trim() === ''}::boolean or ${col('full_name')} ilike ${like} or ${col('username')} ilike ${like}
         or ${col('email')} ilike ${like}

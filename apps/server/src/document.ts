@@ -1985,7 +1985,11 @@ async function saveSingleImpl(
     // An unchanged value of a Column outside the grant is not a change.
     clean = validateValues(
       meta,
-      stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values), before),
+      // What the reader was shown: stored values, else each Column's default.
+      stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values), {
+        ...Object.fromEntries(meta.columns.filter((c) => c.default_value != null).map((c) => [c.column_name, c.default_value])),
+        ...before,
+      }),
       'update',
     )
     for (const [field, value] of Object.entries(clean)) {

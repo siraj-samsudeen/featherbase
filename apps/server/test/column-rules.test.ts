@@ -144,6 +144,37 @@ describe('line items outside a grant', () => {
   })
 })
 
+describe('listed grants on platform Tables', () => {
+  test('a person picker reader granted only names still finds people', async ({ admin, createUser }) => {
+    const person = await admin.get<{ columns: { row_id: string; column_name: string }[] }>('/api/table/Table/Person')
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Name Reader' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Name Reader', operation: 'read', column_rule: 'listed',
+      columns: [{ target_column: person.columns.find((c) => c.column_name === 'full_name')!.row_id }] } })
+    const target = await createUser({ roles: [], fullName: 'Listed Lakshmi' })
+    void target
+    const reader = await createUser({ roles: ['Name Reader'] })
+    const { people } = await reader.get<{ people: { label: string }[] }>('/api/people/pick?q=Lakshmi')
+    expect(people.map((p) => p.label)).toContain('Listed Lakshmi')
+  })
+
+  test('an unchanged default Settings value does not block a permitted change', async ({ admin, createUser }) => {
+    await admin.post('/api/table_def', { name: 'Cr Settings', kind: 'settings', columns: [
+      { column_name: 'greeting', column_type: 'Data' }, { column_name: 'region', column_type: 'Data', default_value: 'South' },
+    ] })
+    const settings = await admin.get<{ columns: { row_id: string; column_name: string }[] }>('/api/table/Table/Cr%20Settings')
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Greeter' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Cr Settings', role: 'Greeter', operation: 'read', column_rule: 'every' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Cr Settings', role: 'Greeter', operation: 'update', column_rule: 'listed',
+      columns: [{ target_column: settings.columns.find((c) => c.column_name === 'greeting')!.row_id }] } })
+    const greeter = await createUser({ roles: ['Greeter'] })
+    const shown = await greeter.get<Record<string, unknown>>('/api/table/Cr%20Settings/Cr%20Settings')
+    expect(shown).toMatchObject({ region: 'South' })
+    await greeter.post('/api/save_row', { table: 'Cr Settings', row: { ...shown, greeting: 'Vanakkam' } })
+    await expect(greeter.post('/api/save_row', { table: 'Cr Settings', row: { ...shown, greeting: 'Hello', region: 'North' } }))
+      .rejects.toMatchObject({ status: 403 })
+  })
+})
+
 describe('an unchanged value is not a change', () => {
   test.for([
     ['Currency', 10, '10.00'],
