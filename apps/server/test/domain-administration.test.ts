@@ -7,6 +7,37 @@ import { eventVisibleTo } from '../src/realtime'
 const employee = tableRef('contactproof.employee')
 
 describe('domain administration', () => {
+  test('an ungranted contact detail rejects the entire correction', async ({ admin, createUser }) => {
+    registerApp({
+      name: 'contactproof',
+      tables: [{ name: employee.name, id_pattern: 'prompt', columns: [
+        { column_name: 'phone', column_type: 'Data' },
+        { column_name: 'employee_number', column_type: 'Data', tier: 'restricted' },
+      ] }],
+      fixtures: [{ table: employee.name, rows: [
+        { row_id: 'priya', phone: 'demo-phone-priya', employee_number: 'DEMO-003' },
+      ] }],
+    })
+    await installApp('contactproof')
+    try {
+      await grantRole(admin, { role: 'Contact Editor', table: employee.name, can_read: true, can_write: true })
+      await grantRole(admin, { role: 'Contact Auditor', table: employee.name, tier: 'restricted', can_read: true })
+      // The identifier is readable, but the only write grant covers phone.
+      const editor = await createUser({ roles: ['Contact Editor', 'Contact Auditor'] })
+      const before = await editor.get<Record<string, unknown>>(employee.rowUrl('priya'))
+      expect(before.employee_number).toBe('DEMO-003')
+      await expectApiError(editor.post('/api/save_row', {
+        table: employee.name,
+        row: { row_id: 'priya', updated_at: before.updated_at, phone: 'changed', employee_number: 'FORBIDDEN' },
+      }), { status: 403 })
+      expect(await editor.get(employee.rowUrl('priya'))).toMatchObject({
+        phone: 'demo-phone-priya', employee_number: 'DEMO-003', updated_at: before.updated_at,
+      })
+    } finally {
+      suspendRuntimeApp('contactproof')
+    }
+  })
+
   test('platform administrators read app contacts only through their domain grants', async ({ admin, createUser }) => {
     registerApp({
       name: 'contactproof',
