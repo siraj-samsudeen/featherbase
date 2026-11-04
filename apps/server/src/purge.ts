@@ -54,7 +54,10 @@ export interface PurgePlan {
 
 /** Why a Table's rows cannot be deleted permanently, or null when they can. */
 export function purgeRefusal(meta: TableMeta): string | null {
-  if (!canRetire(meta) || meta.system || isBound(meta))
+  // A Table with an access policy holds private work, whose deletion record
+  // could not stay readable once its row is gone (mandatory access needs the
+  // row); its rows keep their own lifecycle.
+  if (!canRetire(meta) || meta.system || isBound(meta) || meta.access_policy)
     return `${meta.name} rows cannot be deleted permanently`
   return null
 }
@@ -296,14 +299,22 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
       const col = docMeta.columns.find((c) => c.column_name === field)!
       const lineMeta = await getMeta(col.row_table!)
       const kept = await db`select * from ${db(await tableRelation(lineMeta.name))} where parent = ${docId} and parenttype = ${docMeta.name} and parentfield = ${field} order by position`
-      return kept.map((l) => Object.fromEntries([[ROW_KEY, l[ROW_KEY]], ...lineMeta.columns.filter((c) => !['Sub-table', 'Section Break', 'Column Break'].includes(c.column_type)).map((c) => [c.column_name, l[c.column_name]])]))
+      // Stored values in the save API's own shape: a Date column is its day,
+      // a Datetime its instant, as text (the driver hands back Date objects).
+      const wire = (type: string, v: unknown) => v instanceof Date ? (type === 'Date' ? v.toISOString().slice(0, 10) : v.toISOString()) : v
+      return kept.map((l) => Object.fromEntries([[ROW_KEY, l[ROW_KEY]], ...lineMeta.columns.filter((c) => !['Sub-table', 'Section Break', 'Column Break'].includes(c.column_type)).map((c) => [c.column_name, wire(c.column_type, l[c.column_name])])]))
     }
 
     for (const g of plan.groups.filter((x) => x.action === 'clear')) {
       const meta = await getMeta(g.table)
       const [col] = await db`select reference_table from column_def where parent = ${g.table} and column_name = ${g.column}`
       const pointedAt = removedIds.get(String(col.reference_table)) ?? []
-      const holders = (await db`select * from ${db(await tableRelation(g.table))} where ${db(g.column)} = any(${pointedAt})`) as Row[]
+      const all = (await db`select * from ${db(await tableRelation(g.table))} where ${db(g.column)} = any(${pointedAt})`) as Row[]
+      // A row being deleted itself (or a line of one) keeps its link to the
+      // end, so its deletion record holds the row as it was.
+      const holders = all.filter((h) => g.lines
+        ? !owned.has(`${h.parenttype}/${h.parent}`) && !removedIds.get(g.table)?.includes(String(h[ROW_KEY]))
+        : !owned.has(`${g.table}/${h[meta.row_key]}`))
       for (const h of holders) {
         if (g.lines) {
           await saveSurviving(String(h.parenttype), String(h.parent), async (_doc, docMeta) => ({
