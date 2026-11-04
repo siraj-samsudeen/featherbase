@@ -8,6 +8,7 @@ import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
+import { allowedTables, anyTableLinkHolder, linkableTable, repointAnyTableLinks } from './any-table-link'
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, seriesKey, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
@@ -287,12 +288,18 @@ async function validateLinks(
   fieldValues: RowValues,
   user: string,
   prefix = '',
+  old?: RowValues,
 ) {
   const errors: Record<string, string> = {}
   for (const f of meta.columns) {
     if (f.column_type !== 'Reference') continue
     const value = own(fieldValues, f.column_name)
     if (value == null || value === '') continue
+    if (f.table_column) {
+      const problem = await anyTableLinkProblem(tx, f, fieldValues, user, old)
+      if (problem) errors[prefix + f.column_name] = problem
+      continue
+    }
     const target = f.reference_table
     if (!target) continue
     // select *: early migrations save rows before table_def has data_source.
@@ -324,6 +331,35 @@ async function validateLinks(
   }
   if (Object.keys(errors).length)
     throw new AppError('ValidationError', `Invalid links for ${meta.name}`, errors)
+}
+
+// #881: a link to a row of any Table. Its Table comes from the row's own Table
+// column, must be one the column allows and one whose rows can be linked to,
+// and the row must exist. A new or changed link must also be to a row the
+// person saving can read: nobody links what they cannot see.
+async function anyTableLinkProblem(tx: typeof sql, f: TableMeta['columns'][number], row: RowValues, user: string, old?: RowValues): Promise<string | null> {
+  const value = String(own(row, f.column_name))
+  const table = own(row, f.table_column!)
+  if (table == null || table === '') return 'Choose its Table first'
+  const target = String(table)
+  const allowed = allowedTables(f.choices)
+  if (allowed.length && !allowed.includes(target)) return `${target} is not one of the Tables this column links to`
+  const [def] = await tx`select kind, data_source from table_def where name = ${target}`
+  if (!def || !linkableTable(def)) return `${target} cannot be linked to`
+  const targetMeta = await getMeta(target)
+  const [found] = await tx`select 1 from ${tx(await tableRelation(target))}
+    where ${tx(targetMeta.row_key)} = ${value} for key share`
+  if (!found) return `${target} ${value} does not exist`
+  const unchanged = old != null && String(own(old, f.column_name) ?? '') === value && String(own(old, f.table_column!) ?? '') === target
+  if (!unchanged) {
+    try {
+      await getDoc(target, value, user)
+    } catch (err) {
+      if (err instanceof AppError && (err.type === 'PermissionError' || err.type === 'NotFoundError')) return `${target} ${value} does not exist`
+      throw err
+    }
+  }
+  return null
 }
 
 async function lockCoreDocumentTargets(tx: typeof sql, meta: TableMeta, row: RowValues, user: string, old?: RowValues) {
@@ -1253,7 +1289,7 @@ async function updateDoc(
         updated_by: user,
       }
       await lockCoreDocumentTargets(stx, meta, { ...existing, ...dbRow }, user, existing as RowValues)
-      await validateLinks(stx, meta, dbRow, user)
+      await validateLinks(stx, meta, dbRow, user, '', existing as RowValues)
       attemptedRow = dbRow
       const [updated] = await tx`
         update ${tx(table)} set ${tx(dbRow)} where ${tx(meta.row_key)} = ${name} returning *`
@@ -1587,6 +1623,9 @@ async function deleteDocImpl(
         )
       }
     }
+    // #881: and so does a link to a row of any Table naming this row.
+    const anyHolder = await anyTableLinkHolder(stx, table, name)
+    if (anyHolder) throw new AppError('ValidationError', `Cannot delete ${table} ${name}: it is linked from ${anyHolder}`)
 
     const ctx: HookContext = {
       row: existing as RowValues,
@@ -1765,6 +1804,8 @@ async function renameDocImpl(
         where ${tx(col)} = ${oldName}`
     }
 
+    // #881: every link to it from a link to a row of any Table.
+    await repointAnyTableLinks(stx, table, oldName, target)
     // #509: and every record that names the row by id in plain text.
     await repointRowActivity(stx, table, oldName, target)
   })

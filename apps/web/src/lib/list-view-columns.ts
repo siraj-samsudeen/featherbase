@@ -17,6 +17,8 @@ export interface ListColumn {
   label: string
   column_type: string
   reference_table?: string | null
+  /** #881: a link to a row of any Table names the column holding its Table. */
+  table_column?: string | null
   choice_labels?: Record<string, string> | null
 }
 
@@ -28,6 +30,7 @@ function toListColumn(c: ColumnDef): ListColumn {
     label: c.label ?? c.column_name,
     column_type: c.column_type,
     reference_table: c.reference_table ?? null,
+    ...(c.table_column ? { table_column: c.table_column } : {}),
     choice_labels: c.choice_labels,
   }
 }
@@ -80,7 +83,9 @@ export function viewColumns(meta: TableMeta, arrangement: ColumnArrangement): Li
 /** The fields to fetch for these columns: always the row's id, which keys,
  *  selects and links each row even when it is not a column. */
 export function listFields(columns: ListColumn[]): string[] {
-  return ['row_id', ...columns.map((c) => c.column_name).filter((n) => n !== 'row_id')]
+  // #881: a link to a row of any Table needs its Table to read as a link.
+  const names = columns.flatMap((c) => (c.table_column ? [c.column_name, c.table_column] : [c.column_name]))
+  return ['row_id', ...new Set(names.filter((n) => n !== 'row_id'))]
 }
 
 /** Switches one column on or off in this person's view. Switching on takes
