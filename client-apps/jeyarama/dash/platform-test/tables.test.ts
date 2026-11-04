@@ -121,6 +121,17 @@ describe('employment on save', () => {
       { status: 417, message: expect.stringMatching(/already belongs to another person/) })
   })
 
+  test('a partial update is checked against the stored dates', async ({ admin, createUser }) => {
+    await install(admin)
+    const one = await employee(admin, createUser, '206')
+    const first = await save(admin, 'employment', { employee: one.row_id, legal_company: 'DEMO-CO', employee_number: 'DEMO-0206', joined_on: '2024-10-09', left_on: '2026-01-22' })
+    await save(admin, 'employment', { employee: one.row_id, legal_company: 'DEMO-CO', employee_number: 'DEMO-0206', joined_on: '2026-02-04' })
+    const edited = await save(admin, 'employment', { row_id: first.row_id, updated_at: first.updated_at, leaving_reason: 'Resigned' })
+    expect(edited.leaving_reason).toBe('Resigned')
+    await expectApiError(save(admin, 'employment', { row_id: first.row_id, updated_at: edited.updated_at, left_on: '2024-01-01' }),
+      { status: 417, message: expect.stringMatching(/left_on must come after joined_on/) })
+  })
+
   test('an end on or before the start is refused', async ({ admin, createUser }) => {
     await install(admin)
     const one = await employee(admin, createUser, '205')
