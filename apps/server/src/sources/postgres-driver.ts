@@ -429,7 +429,9 @@ function mapPgType(dataType: string, maxLength: number | null): string {
       return 'Data'
     case 'character varying':
     case 'character':
-      return maxLength != null && maxLength <= 140 ? 'Data' : 'Text'
+      // A declared length is one-line text however long the limit (#795): a
+      // varchar(255) name is still a name. Only unbounded text is long text.
+      return maxLength != null ? 'Data' : 'Text'
     default:
       return 'Text'
   }

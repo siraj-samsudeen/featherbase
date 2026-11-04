@@ -14,8 +14,10 @@ import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type Column
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
-import { useIsSystemManager } from '../lib/session'
 import { Attachments } from './Attachments'
+import {
+  ArrangeBar, BookkeepingLine, FieldGroupView, UnlinkedNote, ValueField, arrangeFields, unlinkedSourceTable, useFormArrangement,
+} from './FormArrangement'
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
 import { Comments } from './Comments'
@@ -81,6 +83,10 @@ export function FormView({
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { t } = useI18n()
+  const formSettings = useSettings()
+  // #795: how this person arranges this Table's rows. A Table its builder
+  // laid out in sections keeps that order until they pick another.
+  const arrangement = useFormArrangement(table, Boolean(meta.data?.columns.some((c) => c.column_type === 'Section Break')))
 
   const doc = useQuery({
     queryKey: ['doc', table, name],
@@ -340,7 +346,7 @@ export function FormView({
     fireHandler('before_save', valuesRef.current)
     // UI-009/META-013: the client validates with the SAME metadata-generated
     // zod schema the server uses — invalid forms never reach the network.
-    const schema = tableSchemaToZod(m.columns)
+    const schema = tableSchemaToZod(m.columns, { sourceLimitsLength: Boolean(m.data_source) })
     const json = parseTypedJson(m.columns, valuesRef.current, typedJson.current)
     const result = schema.safeParse(json.values)
     const fieldErrors = { ...(result.success ? {} : zodFieldErrors(result.error)), ...json.errors }
@@ -412,32 +418,70 @@ export function FormView({
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 
+  // One field: on a row the user can only read, its value shown by type
+  // (#795); otherwise the control that edits it.
+  const control = (stored: ColumnDef) => {
+    const { field: f, value } = editingOverride
+      ? overrideControl(stored, values, overrideTarget.data)
+      : { field: stored, value: values[stored.column_name] }
+    return rowsReadOnly && !isNew ? (
+      <ValueField key={f.column_name} field={f} value={value} meta={m} settings={formSettings} columns={arrangement.columns} />
+    ) : (
+      <FieldControl key={f.column_name}
+        field={rowsReadOnly || (submittable && status !== 'draft') || managedFields.has(f.column_name) ? { ...f, read_only: true } : f}
+        managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
+        value={value} error={errors[f.column_name]} errors={errors}
+        onChange={(v) => {
+          setField(f.column_name, v)
+          if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
+        }}
+        meta={m} values={values} setField={setField}
+      />
+    )
+  }
+
   const work = <div className="flex flex-col gap-6 lg:flex-row">
-    <div className="min-w-0 max-w-3xl flex-1">
-      {sections.map((fields, si) => (
-        <div key={si} data-testid={`form-section-${si}`}
-          className={cardClasses('mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2')}>
-          {fields.map((stored) => {
-            const { field: f, value } = editingOverride
-              ? overrideControl(stored, values, overrideTarget.data)
-              : { field: stored, value: values[stored.column_name] }
-            return f.column_type === 'Column Break' ? (
-              <div key={f.column_name} className="hidden md:block" />
+    <div className={`min-w-0 flex-1 ${arrangement.columns === 1 && !isNew ? 'max-w-2xl' : 'max-w-3xl'}`}>
+      {!isNew && (
+        <ArrangeBar mode={arrangement.mode} columns={arrangement.columns}
+          onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
+      )}
+      {!isNew && !arrangement.ready ? (
+        <p className="text-sm text-ink-subtle">Loading…</p>
+      ) : !isNew && arrangement.mode !== 'source' ? (() => {
+        const { groups, bookkeeping } = arrangeFields(
+          sections.flat(), baseline as Row, m, arrangement.mode, rowsReadOnly)
+        return (
+          <div className={cardClasses('mb-4 p-5')} data-testid="form-arranged" data-arrangement={arrangement.mode}>
+            {groups.map((g) => (
+              <FieldGroupView key={`${arrangement.mode}-${g.key}`} group={g} columns={arrangement.columns}>{control}</FieldGroupView>
+            ))}
+            {rowsReadOnly ? (
+              <BookkeepingLine fields={bookkeeping} values={values} settings={formSettings} />
             ) : (
-              <FieldControl key={f.column_name}
-                field={rowsReadOnly || (submittable && status !== 'draft') || managedFields.has(f.column_name) ? { ...f, read_only: true } : f}
-                managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
-                value={value} error={errors[f.column_name]} errors={errors}
-                onChange={(v) => {
-                  setField(f.column_name, v)
-                  if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
-                }}
-                meta={m} values={values} setField={setField}
-              />
-            )
-          })}
+              <FieldGroupView group={{ key: 'bookkeeping', fields: bookkeeping }} columns={arrangement.columns}>{control}</FieldGroupView>
+            )}
+          </div>
+        )
+      })() : (
+        <div data-arrangement={isNew ? undefined : 'source'}>
+          {sections.map((fields, si) => (
+            <div
+              key={si}
+              data-testid={`form-section-${si}`}
+              className={cardClasses(`mb-4 grid grid-cols-1 gap-4 p-5 ${arrangement.columns === 2 || isNew ? 'md:grid-cols-2' : ''}`)}
+            >
+              {fields.map((f) =>
+                f.column_type === 'Column Break' ? (
+                  arrangement.columns === 2 || isNew ? <div key={f.column_name} className="hidden md:block" /> : null
+                ) : (
+                  control(f)
+                ),
+              )}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
     {!isNew && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
       {/* person-identities: the one platform Table whose rows sign in. */}
@@ -836,14 +880,7 @@ const ROW_ID_FIELD = {
   description: 'Rows in this table take the ID you type here. It must not already be in use.',
 } as ColumnDef
 
-// The source table a column points at when no connected table binds it yet:
-// the foreign key was recorded when the table was connected, and the column
-// becomes a link as soon as its target is connected (#796).
-export function unlinkedSourceTable(field: ColumnDef, meta: TableMeta): { table: string; key: string } | null {
-  if (!meta.data_source || !field.source_fk_table || field.column_type === 'Reference') return null
-  const schema = field.source_fk_schema ?? ''
-  return { table: field.source_fk_table, key: schema ? `${schema}.${field.source_fk_table}` : field.source_fk_table }
-}
+export { unlinkedSourceTable }
 
 function FieldControl({
   field,
@@ -912,27 +949,9 @@ function FieldControl({
   ) : null
   // #796: a column whose source foreign key has no connected table to link
   // to says so, and offers a System Manager the table to connect.
-  const canConnect = useIsSystemManager()
   const unlinkedTarget = unlinkedSourceTable(field, meta)
   const unlinkedId = `${controlId}-unlinked`
-  const unlinkedNote = unlinkedTarget ? (
-    <p id={unlinkedId} className="mt-1 text-xs text-ink-subtle" data-testid={`unlinked-${field.column_name}`}>
-      The {unlinkedTarget.table} table is not connected yet, so this isn’t a link.
-      {canConnect && (
-        <>
-          {' '}
-          <RouterLink
-            to="/featherbase/admin/source/$name"
-            params={{ name: meta.data_source! }}
-            search={{ connect: unlinkedTarget.key }}
-            className="text-action hover:underline"
-          >
-            Connect the {unlinkedTarget.table} table
-          </RouterLink>
-        </>
-      )}
-    </p>
-  ) : null
+  const unlinkedNote = <UnlinkedNote id={unlinkedId} field={field} meta={meta} />
   const describedBy = [hintText ? hintId : null, managedHint ? managedId : null, unlinkedTarget ? unlinkedId : null]
     .filter(Boolean)
     .join(' ')
@@ -948,7 +967,7 @@ function FieldControl({
 
   const wide = ['Text', 'Long Text', 'JSON', 'Sub-table'].includes(field.column_type)
   const wrap = (control: React.ReactNode) => (
-    <div className={`min-w-0 ${wide ? 'md:col-span-2' : ''}`}>
+    <div className={`min-w-0 ${wide ? 'md:col-span-2' : ''}`} data-form-field={field.column_name} data-label={field.label ?? field.column_name}>
       {label}
       {control}
       {hint}

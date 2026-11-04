@@ -70,7 +70,7 @@ function validateValues(
   values: RowValues,
   mode: 'insert' | 'update',
 ): RowValues {
-  const schema = tableSchemaToZod(meta.columns)
+  const schema = tableSchemaToZod(meta.columns, { sourceLimitsLength: Boolean(meta.data_source) })
   const result = (mode === 'update' ? schema.partial() : schema).safeParse(values)
   if (!result.success)
     throw new AppError(
