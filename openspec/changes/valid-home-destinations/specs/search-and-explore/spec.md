@@ -80,7 +80,7 @@ And the inaccessible visit remains in personal activity as unavailable without c
 
 ### Requirement: Resume the same destination after a rename
 
-A known destination identifies the visited Table's lifetime independently of its name, established when a visit is recorded under the user's current access. Such visits SHALL follow actual Table renames and native row-ID renames and show the current readable title; a different Table or native row reusing the former name or ID MUST NOT become the earlier visit's destination. Source-bound rows SHALL use the existing authorized source read at their recorded current ID: a missing or inaccessible record is unavailable, but replacement under the same external ID cannot be distinguished and source-side key renames are not inferred.
+Known destinations, captured under current access, SHALL follow their original Table and native row through actual renames, show current readable titles, and never attach to a replacement Table or native row. Source-bound rows SHALL use authorized reads at the recorded ID; missing or denied records are unavailable. Same-ID external replacement cannot be distinguished, and source-side key renames are not inferred.
 
 #### Scenario: A renamed Table opens under its current name
 
@@ -138,7 +138,7 @@ Then the original row is offered with its current readable title "Central depot"
 
 ### Requirement: Destination changes do not rewrite recorded history
 
-Existing recorded visit values SHALL remain unchanged through migration, rename, deletion and destination resolution. Current destination bindings SHALL remain separate from original recorded names, IDs, labels, authors and times; older unbound visits MUST NOT be physically backfilled with inferred bindings.
+Original visit names, IDs, labels, authors and times SHALL remain unchanged. Bindings stay separate. Only an actual locked rename MAY capture verified metadata for eligible NULL-destination visits after pre-event birth and current-access checks; inferred backfill and revival of refused claims are forbidden. Recently opened summaries SHALL project authorized current names and addresses without changing stored history.
 
 #### Scenario: Renames change navigation without changing the recorded visit
 
@@ -178,7 +178,7 @@ And it neither claims Plant was deleted nor reveals its current title or destina
 
 ### Requirement: Older visits never guess a replacement destination
 
-An older visit without a known destination SHALL resolve only at read time against the live Table bearing its recorded name whose known creation time is strictly earlier than the event time, and only when any named native row is established as the same earlier row. Source-bound rows use the same authorized current-ID lookup as new source visits, without promising replacement detection. Equal, later or unknown required creation times are insufficient; unresolved visits SHALL remain unavailable and past renames MUST NOT be guessed.
+Unbound visits SHALL resolve at read time only if the named live Table predates the visit and any native row also demonstrably predates it. Equal, later or unknown birth times are insufficient. Source rows use authorized current-ID reads, not replacement detection. Unresolved visits remain unavailable; past renames MUST NOT be guessed. Actual rename-time capture follows the separate immutable-history requirement.
 
 #### Scenario: An older visit to a still-existing row remains usable
 

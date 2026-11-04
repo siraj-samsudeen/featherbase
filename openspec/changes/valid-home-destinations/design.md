@@ -40,11 +40,11 @@ Use consistent locking for bind/rename/delete: acquire the target definition loc
 
 Rejected: only refresh row titles (does not follow native primary-key renames), or guess old/new IDs from matching titles. No change to the public rename operation or its permissions is needed. Source-bound rows use their existing authorized source-read path at the recorded ID, never a source identity column or inferred source-side key rename. Their signed binding carries the Table identity and original source ID, not a native row pointer. Every replay reads the current record and rechecks access; missing or denied records are unavailable. Same-ID external replacement may therefore open the current record, for both signed and legacy visits: this is best-effort current-ID recall, not evidence of row continuity. Siraj explicitly chose this simpler behavior on 04-Nov-2026.
 
-### 3. Legacy resolution is read-only and deliberately incomplete
+### 3. Legacy resolution never guesses a past rename
 
 For NULL destination metadata, parse the original kind/key/path consistently, look up the named live Table, and require its original creation time to be strictly earlier than the event's recorded occurrence. For native row references also require the current row's original creation time to be strictly earlier. Timestamp equality, missing/invalid birth timestamps, old names after an untraceable rename, or a newer same-name replacement are unknown—not deleted and not a guessed match. Do not use best-effort access-log text as an identity ledger.
 
-Do not UPDATE or physically backfill any old `user_event` row, even when a live target can be established. A legacy event can be resolved again on each read. NULL remains NULL. This means an old event may become unavailable after a subsequent rename if it never had a stable binding; this irreversible historical limit is intentional. A newly recorded visit thereafter is bound normally.
+Ordinary reads and migration never backfill old events. At an actual locked Table rename, before DDL, reuse these same live birth/access/route checks to capture separate destination metadata for eligible NULL-destination events. Native rows reuse the existing navigation-pointer capture under the same transaction; no audit ledger or guessed historical rename is introduced. Explicitly unavailable new events remain unavailable. Every original event field stays unchanged. This narrow rename-time capture preserves #871's existing unbound recently-opened behavior; untraceable past renames still remain unavailable. The manager approved this reconciliation on 04-Nov-2026.
 
 Rejected: migration-time backfill, name similarity, or unconditional name reuse. A client-supplied visit timestamp is not evidence sufficient to attach an already-bound event to another Table generation.
 
@@ -62,7 +62,7 @@ Reject a UI-only lookup or permission-free metadata check: it cannot authorize r
 
 ### 5. Home is a validated projection, not another cache reconciler
 
-Keep `/api/events/summary` and `replaceServerEntries`'s #769 cache/journal semantics intact. Add a bounded caller-scoped Home-resume projection (proposed `POST /api/home_resume`) that resolves the server trail and a bounded set of local recent candidates. Local entries are hints, not authority: match persisted events where possible; otherwise validate the captured navigation reference or apply the same conservative birth-time and access checks. Never let an unbound cached candidate override a rejected bound server identity for that visit. Limit body size/candidate count; fetch enough older candidates within the existing history scan bound to choose the latest usable row/view/search.
+Keep `/api/events/summary` and `replaceServerEntries`'s #769 cache/journal semantics intact. Summary reads project a bound renamed Table's current name/address only after current authorization; original stored values and visit timestamps stay untouched. Add a bounded caller-scoped Home-resume projection (proposed `POST /api/home_resume`) that resolves the server trail and a bounded set of local recent candidates. Local entries are hints, not authority: match persisted events where possible; otherwise validate the captured navigation reference or apply the same conservative birth-time and access checks. Never let an unbound cached candidate override a rejected bound server identity for that visit. Limit body size/candidate count; fetch enough older candidates within the existing history scan bound to choose the latest usable row/view/search.
 
 `ResumeStrip` renders only the projection's available entries. Loading and failed validation expose no cached destination tiles; no local `recentActions` fallback or title-query fallback can re-add a rejected destination. Home-query invalidation covers local visit changes, event acknowledgement, session changes, relevant live data/metadata changes, and returning to Home; clear prior-user/previous-validation rendering while a required recheck is outstanding. Ordinary page/search candidates keep existing behavior only when their route/access is independently valid; searches refill the command bar, not a stored URL. Do not broaden #769's sidebar/command-bar failed-summary fallback.
 
@@ -78,7 +78,7 @@ Rejected: filter the saved history itself, merge a filtered summary back through
 - Cached validation may outlive access/data changes → revalidation/invalidation and ordinary route authorization; no claim that a browser can predict a permission change before receiving new server state.
 - Validation adds latency → batched, bounded reads, grouped by target; pending/failed Home checks omit tiles rather than exposing an unverified fallback.
 - Outside sources do not promise detectable delete/recreate generations or key-rename history → do not invent continuity or issue external writes. Existing source access rules still apply.
-- New metadata is not old testimony → only new events gain bindings; retention remains the existing policy, with navigation row metadata reclaimed only when no retained event refers to it and it is retired.
+- New metadata is not old testimony → new visits and verified live rename-time captures gain bindings, never speculative backfill; retention remains the existing policy, with navigation row metadata reclaimed only when no retained event refers to it and it is retired.
 
 ## Migration Plan
 

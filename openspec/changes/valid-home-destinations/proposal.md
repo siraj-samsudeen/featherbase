@@ -9,7 +9,7 @@ Home pages offer Tables and rows that no longer exist, and personal activity sti
 - Actual native row-ID renames carry navigation-only references through the existing rename transaction; reusing an old Table name or native row ID does not revive an earlier destination. External rows use authorized current-ID reads without promising replacement detection or inferred key renames.
 - Personal activity retains historical entries, showing deleted Table names struck through without a destination link.
 - Preserve event history and the authoritative-history reconciliation contract from #769. Do not infer renames from similar names or send callers destinations they cannot access.
-- Resolve legacy events only at read time when the named live Table demonstrably predates the event (and a referenced native row belongs to that earlier lifetime; external rows use authorized current-ID reads). Unknown identity is unavailable, not an assertion of deletion. No physical backfill of event history.
+- Resolve legacy events at read time when the named live Table demonstrably predates the event (and a referenced native row belongs to that earlier lifetime; external rows use authorized current-ID reads). An actual locked Table rename may capture separate verified destination metadata for eligible legacy visits so recently opened entries follow the current address; original history fields remain untouched. Unknown identity is unavailable, not an assertion of deletion. No speculative historical backfill.
 
 ## Capabilities
 
