@@ -22,6 +22,15 @@ const col = (over: Partial<{ column_name: string; label: string | null; column_t
 })
 
 describe('stepOptions', () => {
+  test('offers the destination of an outgoing Reference', () => {
+    const columns = [{ ...col({ column_name: 'worker', column_type: 'Reference' }), reference_table: 'Worker' }]
+    expect(stepOptions({ columns }, [])).toContainEqual({
+      key: 'reference:Worker:worker',
+      label: expect.stringContaining('Worker'),
+      step: { mode: 'reference', table: 'Worker', column: 'worker' },
+    })
+  })
+
   test('builds child, backlink, and via-backlink steps from meta + backlinks', () => {
     const options = stepOptions(
       {
@@ -78,9 +87,24 @@ describe('parseChain', () => {
     expect(parseChain(JSON.stringify(chain))).toEqual(chain)
   })
 
-  test('truncates to the two-step pane limit', () => {
+  test('truncates to the four-edge path limit', () => {
     const step = { mode: 'backlink', table: 'A', column: 'b' }
-    expect(parseChain(JSON.stringify([step, step, step]))).toEqual([step, step])
+    expect(parseChain(JSON.stringify(Array(5).fill(step)))).toEqual(Array(4).fill(step))
+  })
+
+  test('retains a five-Table mixed-direction journey', () => {
+    const chain = [
+      { mode: 'backlink', table: 'FloorSection', column: 'section' },
+      { mode: 'backlink', table: 'AssignmentSection', column: 'floor_section' },
+      { mode: 'reference', table: 'Assignment', column: 'assignment' },
+      { mode: 'reference', table: 'Worker', column: 'worker' },
+    ]
+    expect(parseChain(JSON.stringify(chain))).toEqual(chain)
+  })
+
+  test('preserves only the valid prefix before a malformed fourth edge', () => {
+    const step = { mode: 'backlink', table: 'A', column: 'b' }
+    expect(parseChain(JSON.stringify([step, step, step, null, step]))).toEqual([step, step, step])
   })
 
   test('malformed JSON is ignored, not thrown', () => {

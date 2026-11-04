@@ -88,7 +88,7 @@ export type SourceFilter = {
   // Internal, authorized direct Reference membership. Only PostgreSQL can
   // receive this shape; the dispatcher rejects other engines/boundaries.
   op: 'related'
-  value: { binding: Binding; filters: SourceFilter[] }
+  value: { binding: Binding; filters: SourceFilter[]; projection?: string }
 }
 
 export interface ListSpec {

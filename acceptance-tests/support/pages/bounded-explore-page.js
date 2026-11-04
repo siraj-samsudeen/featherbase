@@ -1,0 +1,181 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const { AfterAll } = require('@cucumber/cucumber');
+const { externalSql, isolatedEnvironment, restartAcceptance } = require('../stack');
+
+let connectedInstalled = false;
+const schemas = new Set();
+
+class BoundedExplorePage {
+  constructor(page, connected = false) {
+    this.page = page;
+    this.connected = connected;
+    const prefix = connected ? 'Bounded Connected ' : 'Bounded Native ';
+    this.tables = ['Section', 'FloorSection', 'AssignmentSection', 'Assignment', 'Worker'].map(t => prefix + t);
+  }
+
+  async install(api) {
+    const [section, floor, junction, assignment, worker] = this.tables;
+    const definitions = [
+      [section, 'section', []],
+      [worker, 'worker', []],
+      [assignment, 'assignment', [['worker', worker]]],
+      [floor, 'floor_section', [['section', section]]],
+      [junction, 'assignment_section', [['floor_section', floor], ['assignment', assignment]]],
+    ];
+    if (this.connected && !connectedInstalled) {
+      // The acceptance harness owns this disposable sibling, never the platform DB.
+      await externalSql(`create schema if not exists bounded_781;
+        create table bounded_781.section (code text primary key, label text);
+        create table bounded_781.worker (code text primary key, label text);
+        create table bounded_781.assignment (code text primary key, label text, worker text);
+        create table bounded_781.floor_section (code text primary key, label text, section text);
+        create table bounded_781.assignment_section (code text primary key, label text, floor_section text, assignment text);
+        insert into bounded_781.section values ('north','North'),('south','South');
+        insert into bounded_781.worker values ('w-a','Invented Amber'),('w-b','Invented Birch'),('w-c','Invented Cedar'),('w-x','Unreachable Control');
+        insert into bounded_781.assignment values ('a-a','Assignment A','w-a'),('a-b','Assignment B','w-b'),('a-c','Assignment C','w-c'),('a-x','Unlinked Assignment','w-x');
+        insert into bounded_781.floor_section select 'f-' || lpad(n::text,3,'0'), 'Floor ' || n, case when n = 121 then 'south' else 'north' end from generate_series(1,121) n;
+        insert into bounded_781.assignment_section select 'j-' || lpad(n::text,3,'0'), 'Junction ' || n, 'f-' || lpad(n::text,3,'0'), case when n = 121 then 'a-c' when n = 2 then 'a-b' else 'a-a' end from generate_series(1,121) n;`);
+      schemas.add('bounded_781');
+      const url = new URL(isolatedEnvironment().DATABASE_URL);
+      url.pathname += '_ext';
+      await restartAcceptance({ ISSUE781_ACCEPTANCE_SOURCE_URL: url.toString() });
+      await api.call('POST', '/api/table/Data%20Source', {
+        row_id: 'bounded-781', engine: 'postgres', access: 'read_only', url_env: 'ISSUE781_ACCEPTANCE_SOURCE_URL',
+      }, [201]);
+      connectedInstalled = true;
+    }
+    const existing = await api.call('GET', `/api/table/${encodeURIComponent(section)}:meta`, undefined, [200, 404]);
+    if (existing.status() === 200) return;
+    for (const [name, relation, references] of definitions) {
+      await api.call('POST', '/api/table_def', {
+        name, title_column: 'label', id_pattern: 'prompt',
+        ...(this.connected ? { data_source: 'bounded-781', external_schema: 'bounded_781', external_table: relation, external_pk: 'code' } : {}),
+        columns: [{ column_name: 'label', column_type: 'Data', in_list_view: true },
+          ...references.map(([column_name, reference_table]) => ({ column_name, column_type: 'Reference', reference_table }))],
+      }, [200, 201]);
+    }
+    if (this.connected) return;
+    for (const [table, rows] of [
+      [section, [{ row_id: 'north', label: 'North' }, { row_id: 'south', label: 'South' }]],
+      [worker, [{ row_id: 'w-a', label: 'Invented Amber' }, { row_id: 'w-b', label: 'Invented Birch' }, { row_id: 'w-c', label: 'Invented Cedar' }, { row_id: 'w-x', label: 'Unreachable Control' }]],
+      [assignment, ['a', 'b', 'c', 'x'].map(id => ({ row_id: `a-${id}`, label: `Assignment ${id}`, worker: `w-${id}` }))],
+      [floor, [{ row_id: 'f-n', label: 'North floor', section: 'north' }, { row_id: 'f-s', label: 'South floor', section: 'south' }]],
+      [junction, [['j-1', 'f-n', 'a-a'], ['j-2', 'f-n', 'a-a'], ['j-3', 'f-n', 'a-b'], ['j-4', 'f-s', 'a-c']].map(([row_id, floor_section, assignment]) => ({ row_id, label: row_id, floor_section, assignment }))],
+    ]) for (const row of rows) await api.call('POST', '/api/save_row', { table, row }, [200, 201]);
+  }
+
+  async open() {
+    await this.page.goto('/featherbase/admin/explore');
+    await this.page.getByTestId('explore-root').selectOption(this.tables[0]);
+    const keys = [
+      `backlink:${this.tables[1]}:section`, `backlink:${this.tables[2]}:floor_section`,
+      `reference:${this.tables[3]}:assignment`, `reference:${this.tables[4]}:worker`,
+    ];
+    for (let i = 0; i < keys.length; i++)
+      await this.page.getByTestId(`explore-step${i + 2}`).selectOption(keys[i]);
+  }
+
+  async expectWorkers(ids = ['w-a', 'w-b', 'w-c']) {
+    const pane = this.page.getByTestId('explore-pane5');
+    // All endpoint rows fit on one page: fmtShowing renders exactly the total.
+    await pane.getByTestId('explore-pane5-count').filter({ hasText: new RegExp(`^${ids.length}$`) }).waitFor();
+    const rows = pane.getByTestId('explore-row');
+    const shownIds = await Promise.all((await rows.all()).map(row => row.locator('span').first().textContent()));
+    assert.deepEqual(shownIds.sort(), [...ids].sort());
+    const labels = { 'w-a': 'Invented Amber', 'w-b': 'Invented Birch', 'w-c': 'Invented Cedar' };
+    for (const id of ids) {
+      const row = rows.filter({ has: this.page.getByText(id, { exact: true }) });
+      await row.getByText(labels[id], { exact: true }).waitFor();
+    }
+    assert.equal(await pane.getByText('w-x', { exact: true }).count(), 0);
+    assert.equal(await pane.getByText('Unreachable Control').count(), 0);
+  }
+
+  async expectBounded() {
+    assert.equal(await this.page.getByTestId('explore-step6').count(), 0);
+    const chain = [
+      { mode: 'backlink', table: this.tables[1], column: 'section' },
+      { mode: 'backlink', table: this.tables[2], column: 'floor_section' },
+      { mode: 'reference', table: this.tables[3], column: 'assignment' },
+      { mode: 'reference', table: this.tables[4], column: 'worker' },
+    ];
+    const journeyUrl = `/featherbase/admin/explore?${new URLSearchParams({ root: this.tables[0], chain: JSON.stringify(chain) })}`;
+    // A fresh document must restore the same four-edge path, not local React state.
+    await this.page.goto(journeyUrl);
+    await this.expectWorkers();
+    await this.page.reload();
+    await this.expectWorkers();
+    for (let i = 0; i < chain.length; i++)
+      assert.equal(await this.page.getByTestId(`explore-step${i + 2}`).inputValue(), `${chain[i].mode}:${chain[i].table}:${chain[i].column}`);
+
+    // Clearing the second edge removes its pane and every later pane/picker.
+    await this.page.getByTestId('explore-step3').selectOption('');
+    await this.page.getByTestId('explore-pane3').waitFor({ state: 'hidden' });
+    for (const stage of [4, 5]) {
+      assert.equal(await this.page.getByTestId(`explore-pane${stage}`).count(), 0);
+      assert.equal(await this.page.getByTestId(`explore-step${stage}`).count(), 0);
+    }
+    await this.page.getByTestId('explore-pane2').waitFor();
+
+    // A shape-valid but retired fourth Reference preserves precisely three edges.
+    const stale = [...chain.slice(0, 3), { ...chain[3], column: 'retired_worker_reference' }];
+    await this.page.goto(`/featherbase/admin/explore?${new URLSearchParams({ root: this.tables[0], chain: JSON.stringify(stale) })}`);
+    await this.page.getByTestId('explore-pane4-count').filter({ hasText: /^3$/ }).waitFor();
+    assert.equal(await this.page.getByTestId('explore-step5').inputValue(), '');
+    assert.equal(await this.page.getByTestId('explore-pane5').count(), 0);
+    await this.page.goto(journeyUrl);
+    await this.expectWorkers();
+  }
+
+  async narrowThenRelease() {
+    await this.open();
+    await this.page.getByTestId('explore-pane1').getByTestId('explore-row').filter({ has: this.page.getByText('North', { exact: true }) }).click();
+    await this.expectWorkers(['w-a', 'w-b']);
+    // Select an intermediate row before releasing North: its chip must clear too.
+    const row = this.page.getByTestId('explore-pane4').getByTestId('explore-row').first();
+    await row.click();
+    await this.page.getByRole('button', { name: 'Release north', exact: true }).click();
+    await this.expectWorkers();
+    assert.equal(await this.page.getByTestId('explore-chip').count(), 0);
+  }
+
+  async expectPeekPreservesJourney() {
+    const before = this.page.url();
+    await this.page.getByTestId('explore-pane5').getByTestId('explore-row').first().click();
+    const panel = this.page.getByTestId('peek-panel-0');
+    await panel.waitFor();
+    await panel.getByTestId('peek-close').click();
+    await panel.waitFor({ state: 'hidden' });
+    assert.equal(this.page.url(), before);
+    await this.expectWorkers();
+  }
+
+  async expectUnreadable(api) {
+    // Explicit denied Table; selecting an upstream ID cannot bypass it.
+    const role = 'Bounded 781 endpoint reader';
+    await api.call('POST', '/api/save_row', { table: 'Role', row: { row_id: role } }, [200, 201]);
+    await api.call('POST', '/api/save_row', { table: 'Permission', row: { ref_table: this.tables[4], role, can_read: true } }, [200, 201]);
+    const email = 'bounded-781-denied@example.com';
+    const password = 'invented-781-reader-pass';
+    await api.createPerson(email, password, [role]);
+    const { request } = require('playwright');
+    const { API_URL } = require('../stack');
+    const client = await request.newContext({ baseURL: API_URL });
+    try {
+      const login = await client.post('/api/login', { data: { usr: email, pwd: password } });
+      assert.equal(login.status(), 200);
+      const { token } = await login.json();
+      const filters = [['row_id', 'related', { table: this.tables[3], reference: 'worker', filters: [['row_id', 'in', ['a-a']]] }]];
+      const result = await client.get(`/api/table/${encodeURIComponent(this.tables[4])}?${new URLSearchParams({ filters: JSON.stringify(filters) })}`, { headers: { Authorization: `Bearer ${token}` } });
+      assert.equal(result.status(), 403);
+    } finally { await client.dispose(); }
+  }
+}
+
+AfterAll(async function () {
+  for (const schema of schemas) await externalSql(`drop schema ${schema} cascade`);
+});
+
+module.exports = { BoundedExplorePage };

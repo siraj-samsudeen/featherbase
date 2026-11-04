@@ -4,7 +4,7 @@ import { api, listResource } from '../lib/api'
 import { listColumns, useMeta } from '../lib/meta'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { stepKey, useStepOptions, type Step } from '../lib/explore-steps'
-import { adminPageTitle } from 'shared'
+import { MAX_RELATED_DEPTH, adminPageTitle } from 'shared'
 import { usePeek } from '../components/Peek'
 import { cardClasses, inputClasses, pillClasses, touchTargetClasses } from '@featherbase/shop-floor'
 import { fmtCount, fmtShowing } from '@featherbase/shop-floor'
@@ -14,7 +14,7 @@ type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
 
 // Relational navigation (#100, pattern 4): Tableau's filter actions with
-// Miller-column geometry. Three live panes chained over reference links —
+// Miller-column geometry. Up to five live panes chained over reference links —
 // clicking rows IS the filter: everything downstream narrows instantly,
 // counts and sums included. Selections accumulate; chips release them.
 //
@@ -36,6 +36,16 @@ function chainFilters(
   upstreamSelection: Set<string>,
   upstreamFilters: Filter[],
 ): Filter[] {
+  if (step.mode === 'reference')
+    return [[
+      'row_id',
+      'related',
+      {
+        table: upstreamTable,
+        reference: step.column,
+        filters: upstreamSelection.size ? [['row_id', 'in', [...upstreamSelection]]] : upstreamFilters,
+      },
+    ]]
   if (upstreamSelection.size) {
     const names = [...upstreamSelection]
     if (step.mode === 'child')
@@ -93,50 +103,48 @@ export function ExploreView({
     return (tables.data?.tables ?? []).filter((t) => words.every((w) => t.toLowerCase().includes(w)))
   }, [tables.data, rootSearch])
 
-  const [step2, setStep2] = useState<Step | null>(null)
-  const [step3, setStep3] = useState<Step | null>(null)
-  const [sel1, setSel1] = useState<Set<string>>(() => new Set(initialSelect))
-  const [sel2, setSel2] = useState<Set<string>>(new Set())
+  const [steps, setSteps] = useState<Step[]>([])
+  const [selections, setSelections] = useState<Set<string>[]>(() => [new Set(initialSelect)])
 
   // A deep-linked chain applies stage by stage, each step resolved against
   // the options the pickers themselves would offer — a stale URL naming a
   // dropped column degrades to the panes that still resolve, never a blank
   // page. `pending` drains front-first; a miss discards the rest.
-  const [pending, setPending] = useState<Step[]>(initialChain)
-  const rootOptions = useStepOptions(pending.length && !step2 ? root : undefined)
-  const step2Options = useStepOptions(pending.length && step2 ? step2.table : undefined)
+  const [pending, setPending] = useState<Step[]>(() => initialChain.slice(0, MAX_RELATED_DEPTH))
+  const nextTable = steps.length ? steps[steps.length - 1].table : root
+  const nextOptions = useStepOptions(pending.length ? nextTable : undefined)
   useEffect(() => {
     if (!pending.length) return
-    const stage = step2 ? step2Options : rootOptions
-    if (!stage.ready) return
-    const hit = stage.options.find((o) => o.key === stepKey(pending[0]))
+    if (!nextOptions.ready) return
+    const hit = nextOptions.options.find((o) => o.key === stepKey(pending[0]))
     if (!hit) return setPending([])
-    if (step2) {
-      setStep3(hit.step)
-      setPending([])
-    } else {
-      setStep2(hit.step)
-      setPending(pending.slice(1))
-    }
-  }, [pending, step2, rootOptions, step2Options])
+    setSteps([...steps, hit.step])
+    setPending(pending.slice(1))
+  }, [pending, steps, nextOptions])
 
   function changeRoot(next: string) {
-    setStep2(null)
-    setStep3(null)
-    setSel1(new Set())
-    setSel2(new Set())
+    setPending([])
+    setSteps([])
+    setSelections([])
     onRootChange(next)
   }
-  function changeStep2(s: Step | null) {
-    setStep2(s)
-    setStep3(null)
-    setSel2(new Set())
+  function changeStep(index: number, step: Step | null) {
+    setPending([])
+    setSteps([...steps.slice(0, index), ...(step ? [step] : [])])
+    setSelections(selections.slice(0, index + 1))
+  }
+  function changeSelection(index: number, name: string) {
+    setSelections((current) => [
+      ...Array.from({ length: index }, (_, i) => current[i] ?? new Set<string>()),
+      toggle(current[index] ?? new Set<string>(), name),
+    ])
   }
 
-  const pane1Filters: Filter[] = []
-  const pane2Filters = root && step2 ? chainFilters(step2, root, sel1, pane1Filters) : null
-  const pane3Filters =
-    step2 && step3 && pane2Filters ? chainFilters(step3, step2.table, sel2, pane2Filters) : null
+  const paneTables = root ? [root, ...steps.map((step) => step.table)] : []
+  const paneFilters: Filter[][] = [[]]
+  steps.forEach((step, index) => {
+    paneFilters.push(chainFilters(step, paneTables[index], selections[index] ?? new Set<string>(), paneFilters[index]))
+  })
 
   return (
     <div data-testid="explore-view">
@@ -186,73 +194,37 @@ export function ExploreView({
             ))}
           </select>
         </label>
-        {root && (
+        {paneTables.slice(0, MAX_RELATED_DEPTH).map((table, index) => (
           <StepPicker
+            key={index}
             label="Then"
-            table={root}
-            value={step2}
-            onChange={changeStep2}
-            testid="explore-step2"
+            table={table}
+            value={steps[index] ?? null}
+            onChange={(step) => changeStep(index, step)}
+            testid={`explore-step${index + 2}`}
           />
-        )}
-        {step2 && (
-          <StepPicker
-            label="Then"
-            table={step2.table}
-            value={step3}
-            onChange={setStep3}
-            testid="explore-step3"
-          />
-        )}
+        ))}
       </div>
       {root && (
         <Chips
-          groups={[
-            // Any root-selection change invalidates the pane-2 selection —
-            // whether it came from a row click or a chip ✕ (#106 review:
-            // a stale sel2 kept driving pane 3 after its row vanished).
-            {
-              label: root,
-              names: sel1,
-              clear: (n) => {
-                setSel1(toggle(sel1, n))
-                setSel2(new Set())
-              },
-            },
-            { label: step2?.table ?? '', names: sel2, clear: (n) => setSel2(toggle(sel2, n)) },
-          ]}
+          groups={paneTables.map((table, index) => ({
+            label: table,
+            names: selections[index] ?? new Set<string>(),
+            clear: (name) => changeSelection(index, name),
+          }))}
         />
       )}
       <div className="grid items-start gap-3 lg:grid-cols-3">
-        {root && (
+        {paneTables.map((table, index) => (
           <Pane
-            table={root}
-            filters={pane1Filters}
-            selected={sel1}
-            onToggle={step2 ? (n) => {
-              setSel1(toggle(sel1, n))
-              setSel2(new Set())
-            } : undefined}
-            testid="explore-pane1"
+            key={index}
+            table={table}
+            filters={paneFilters[index]}
+            selected={selections[index] ?? new Set<string>()}
+            onToggle={index < steps.length ? (name) => changeSelection(index, name) : undefined}
+            testid={`explore-pane${index + 1}`}
           />
-        )}
-        {step2 && pane2Filters && (
-          <Pane
-            table={step2.table}
-            filters={pane2Filters}
-            selected={sel2}
-            onToggle={step3 ? (n) => setSel2(toggle(sel2, n)) : undefined}
-            testid="explore-pane2"
-          />
-        )}
-        {step3 && pane3Filters && (
-          <Pane
-            table={step3.table}
-            filters={pane3Filters}
-            selected={new Set<string>()}
-            testid="explore-pane3"
-          />
-        )}
+        ))}
       </div>
       {!root && (
         <p className="mt-6 text-sm text-ink-subtle" data-testid="explore-empty">
@@ -271,8 +243,8 @@ function toggle(set: Set<string>, name: string): Set<string> {
   return next
 }
 
-// The chain-step dropdown for one pane: the upstream table's children plus
-// its backlinks — DIRECT (Reference column on the next table) and VIA a
+// The chain-step dropdown for one pane: children, outgoing References and
+// backlinks — DIRECT (Reference column on the next table) and VIA a
 // sub-table (the next table contains rows pointing here), both served by
 // the 'related' filter.
 function StepPicker({

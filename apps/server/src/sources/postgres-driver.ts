@@ -85,9 +85,9 @@ function buildWhere(filters: SourceFilter[], startAt = 1): { text: string; value
     const col = quoteIdent(f.column)
     switch (f.op) {
       case 'related': {
-        const { binding, filters: targetFilters } = f.value
+        const { binding, filters: targetFilters, projection } = f.value
         const target = buildWhere(targetFilters, n)
-        parts.push(`${col} in (select ${quoteIdent(binding.pk)} from ${relation(binding)} where ${target.text})`)
+        parts.push(`${col} in (select ${quoteIdent(projection ?? binding.pk)} from ${relation(binding)} where ${target.text})`)
         values.push(...target.values)
         n += target.values.length
         break

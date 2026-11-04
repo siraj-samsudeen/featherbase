@@ -1,11 +1,12 @@
 import { AppError } from './errors'
 
 export type Filter = [string, string, unknown]
-export const MAX_RELATED_DEPTH = 3
+export { MAX_RELATED_DEPTH } from 'shared'
 export const MAX_RELATED_HOPS = 16
 
 interface RelatedSpec {
   table: string
+  reference?: string
   via?: string
   column?: string
   parentfield?: string
@@ -20,6 +21,10 @@ export function parseRelatedSpec(value: unknown): RelatedSpec {
   const v = value as Record<string, unknown>
   if (typeof v.table !== 'string' || !v.table)
     throw bad(`'related' filter needs a target { table }`)
+  if (v.reference !== undefined && (typeof v.reference !== 'string' || !v.reference))
+    throw bad(`'related' reference must be a Reference column name`)
+  if (v.reference !== undefined && (v.via !== undefined || v.column !== undefined || v.parentfield !== undefined))
+    throw bad(`'related' reference cannot be combined with via, column or parentfield`)
   if (v.via !== undefined && (typeof v.via !== 'string' || !v.via))
     throw bad(`'related' via must be a sub-table name`)
   if (v.column !== undefined && (typeof v.column !== 'string' || !v.column))
@@ -36,6 +41,7 @@ export function parseRelatedSpec(value: unknown): RelatedSpec {
     throw bad(`'related' filters must be an array of [field, operator, value]`)
   return {
     table: v.table,
+    reference: v.reference as string | undefined,
     via: v.via as string | undefined,
     column: v.column as string | undefined,
     parentfield: v.parentfield as string | undefined,
