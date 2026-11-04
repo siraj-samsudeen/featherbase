@@ -4,7 +4,7 @@
 
 ### Requirement: See who is waiting for access
 
-A System Manager SHALL be able to see everyone who signed in but holds no role yet as the standard Person list, newest first, and open any of them to give them roles. The list SHALL sort, filter, choose columns and select rows like any other list. Each person's full email address SHALL show, so someone without a name is still identifiable. A person created without a name SHALL start with the part of their address before the @. The menu SHALL show how many are waiting, and that count SHALL be the same people the list shows.
+A System Manager SHALL see everyone who signed in but holds no role yet as the standard Person list, newest first, and open any of them to give them roles. Each person's full email address SHALL show. A person created without a name SHALL start with the part of their address before the @. The menu SHALL show how many are waiting, counting the same people the list shows.
 
 #### Scenario: A new starter shows up
 
