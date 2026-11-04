@@ -16,7 +16,7 @@ import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { AdminLayout } from './pages/AdminLayout'
 import { ManageOnly } from './pages/RestrictedShell'
-import { EmptyState, buttonClasses } from '@featherbase/shop-floor'
+import { EmptyState, buttonClasses, fmtDate } from '@featherbase/shop-floor'
 import { useCapabilities } from './lib/session'
 import { ApiError, getToken, landingPath, loginHref } from './lib/api'
 import { crossesFramePolicy } from './lib/document-path'
@@ -132,6 +132,18 @@ function tablePage(Page: ComponentType) {
 function TableAddressError({ error }: { error: unknown }) {
   if (error instanceof ApiError && error.status === 404 && /^Table .* not found$/.test(error.message))
     return <AdminPageNotFound />
+  // #871: an old address of a renamed Table says where it went.
+  const moved = error instanceof ApiError && error.status === 404 ? /^Table (.+) was renamed to (.+) by (.+) on (\S+)$/.exec(error.message) : null
+  if (moved)
+    return (
+      <div data-testid="table-renamed">
+        <EmptyState
+          title={`${moved[1]} is now called ${moved[2]}`}
+          body={`Renamed by ${moved[3]} on ${fmtDate(moved[4])}. Its rows and history are under the new name.`}
+          action={<Link to="/featherbase/admin/table/$table" params={{ table: moved[2] }} search={{ filters: undefined }} className={buttonClasses()}>Open {moved[2]}</Link>}
+        />
+      </div>
+    )
   return <p role="alert" className="p-4 text-negative">{error instanceof Error ? error.message : 'Could not open this Table'}</p>
 }
 
