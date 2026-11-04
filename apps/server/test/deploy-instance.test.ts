@@ -352,6 +352,9 @@ describe('a live server working while the deploy runs (#943)', () => {
   test('the deploy lock is taken outside any other app operation, with a wait Postgres accepts', async () => {
     await expect(appOperation(() => instanceDeployOperation(async () => 1, 1))).rejects.toThrow(/cannot run inside another app operation/)
     await expect(instanceDeployOperation(async () => 1, -1)).rejects.toThrow(/lock_timeout/)
+    // Inside a deploy, an install may nest; inside a data operation it may not.
+    await expect(instanceDeployOperation(() => appOperation(async () => 'nested', true), 1)).resolves.toBe('nested')
+    await expect(appOperation(() => appOperation(async () => 1, true))).rejects.toThrow(/cannot run inside a data operation/)
     await expect(instanceDeployOperation(async () => 'ran', 1)).resolves.toBe('ran')
   })
 })
