@@ -151,6 +151,26 @@ test('a linked row opens in the drill pane beside the form; its own link moves t
   expect(field('label')).toHaveValue('Main Street')
 })
 
+test("a link field's pane and open buttons never name the linked row's id", async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: 'Hint Parent',
+    columns: [{ column_name: 'label', column_type: 'Data', label: 'Label' }],
+  })
+  await admin.post('/api/table_def', {
+    name: 'Hint Child',
+    columns: [
+      { column_name: 'label', column_type: 'Data', label: 'Label' },
+      { column_name: 'mother', column_type: 'Reference', label: 'Parent', reference_table: 'Hint Parent' },
+    ],
+  })
+  const parent = await admin.post<Saved>('/api/save_row', { table: 'Hint Parent', row: { label: 'Mother' } })
+  const child = await admin.post<Saved>('/api/save_row', { table: 'Hint Child', row: { label: 'Kid', mother: parent.row_id } })
+  await renderApp(`/featherbase/admin/table/hint-child/row/${child.row_id}`, admin)
+  const buttons = [await screen.findByTestId('link-pane-mother', {}, { timeout: 8000 }), screen.getByTestId('link-open-mother')]
+  expect(buttons.map((b) => [b.getAttribute('title'), b.getAttribute('aria-label')].join(' '))
+    .filter((said) => said.includes(parent.row_id))).toEqual([])
+})
+
 test('a linked row in the drill pane: Open row page goes to that row\'s own form', async ({ admin }) => {
   await admin.post('/api/table_def', {
     name: 'Peek Parent',
