@@ -5,7 +5,7 @@
 // included) and Data Scope apply, exactly as a list read does.
 import { sql } from './db'
 import { AppError } from './errors'
-import { scopedWhere } from './query'
+import { hideRetired, scopedWhere } from './query'
 import { getMeta } from './meta'
 import { assertPermission, getRoles } from './permissions'
 
@@ -91,7 +91,9 @@ interface PickedPerson {
  *  when there is no username. Reads Person as the viewer (scopedWhere), so a
  *  person found is a person they may read. */
 export async function pickPeople(q: string, viewer: string, limit = 10): Promise<PickedPerson[]> {
-  const { table, where, cols } = await scopedWhere('Person', viewer, [['built_in', '=', false]])
+  // #859: a retired person is not offered either (names of people already
+  // chosen resolve through the names lookup, which is unaffected).
+  const { table, where, cols } = await scopedWhere('Person', viewer, hideRetired(await getMeta('Person'), [['built_in', '=', false]]))
   // Only the columns this viewer may read are shown or searched.
   const col = (c: string) => (cols.has(c) ? sql`p.${sql(c)}` : sql`null::text`)
   const like = `%${q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`

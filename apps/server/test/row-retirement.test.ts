@@ -246,3 +246,16 @@ describe('#859 reactivating is editing (Codex review round 2)', () => {
     expect(after.retired_at).toBeNull()
   })
 })
+
+describe('#859 the Person picker leaves retired people out (Codex review round 3)', () => {
+  test('a retired person is not offered; reactivated, they are again', async ({ admin }) => {
+    const { makePerson } = await import('./fixtures')
+    const id = await makePerson({ full_name: 'Rt Retiree Person', email: 'rt-retiree@example.com' })
+    const pick = async () => (await admin.get<{ people: { row_id: string }[] }>('/api/people/pick?q=Rt%20Retiree')).people.map((p) => p.row_id)
+    expect(await pick()).toEqual([id])
+    await admin.post(`/api/table/Person/${id}:retire`, { reason: 'Left before go-live' })
+    expect(await pick()).toEqual([])
+    await admin.post(`/api/table/Person/${id}:reactivate`, {})
+    expect(await pick()).toEqual([id])
+  })
+})
