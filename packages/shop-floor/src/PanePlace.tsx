@@ -30,7 +30,7 @@ export function PanePlace({ value, resolved, onChange, label = 'Pane place' }: {
 /**
  * Content with the drill pane beside it (right: about 40% wide, at least
  * 360px, as tall as the window) or below it (bottom: docked at the foot of
- * the window, at most half its height). A pane on the right stays in sight
+ * the window, half its height, so the content above keeps its size as the pane fills). A pane on the right stays in sight
  * while the page scrolls. With a pane at the bottom the split takes the
  * window's height, the content scrolling on its own above the pane, never
  * under it; opening one scrolls the split into view so the pane shows. Either
@@ -48,7 +48,10 @@ export function SplitWithPane({ place, pane, children }: {
   const docked = shown && !right
   const split = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (docked) split.current?.scrollIntoView?.({ block: 'end' })
+    if (!docked) return
+    // The line the pane shows stays in sight in the shorter content above it.
+    split.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' })
+    split.current?.scrollIntoView?.({ block: 'end' })
   }, [docked])
   return (
     <div ref={split} data-testid="split-with-pane" data-pane={shown ? place : undefined}
@@ -57,7 +60,7 @@ export function SplitWithPane({ place, pane, children }: {
       {shown && (
         <div data-testid="split-pane" className={right
           ? 'sticky top-0 flex max-h-[calc(100dvh-5rem)] min-h-0 w-2/5 min-w-90 max-w-full shrink-0 flex-col overflow-y-auto bg-surface'
-          : 'flex max-h-1/2 min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto bg-surface shadow-[0_-4px_12px_-8px_rgb(0_0_0/0.25)]'}
+          : 'flex h-1/2 min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto bg-surface shadow-[0_-4px_12px_-8px_rgb(0_0_0/0.25)]'}
         >{pane}</div>
       )}
     </div>
