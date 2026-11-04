@@ -508,6 +508,9 @@ export function ListView({
         `/api/table/${encodeURIComponent(table)}:bulk-delete`,
         { rows: [...selected] },
       )
+      // #898: the deleted rows' titles go, so recents stop offering them.
+      const failed = new Set((result.failed ?? []).map((f) => f.row_id))
+      for (const id of selected) if (!failed.has(id)) queryClient.setQueryData(['row-title', table, id], null)
       await reportPartial('deleted', result.deleted, result.failed ?? [])
     } catch (err) {
       setBulkError(err instanceof ApiError ? refusal(err) : 'Bulk delete failed')
