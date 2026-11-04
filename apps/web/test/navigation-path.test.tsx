@@ -48,6 +48,28 @@ test("the browser's back button returns to the step before", async ({ admin }) =
   expect(current()).toHaveTextContent(SITE)
 })
 
+test("the path's Back is the browser's back, so a new step after it leaves no stray history behind", async ({ admin }) => {
+  await seedSites(admin)
+  const { router } = await renderApp(tableHref(SITE), admin)
+  const history = (router as unknown as { history: { back: () => void; canGoBack: () => boolean } }).history
+  await screen.findByRole('navigation', { name: 'Path' })
+  await addRegionFilter()
+  await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(2))
+  fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+  await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(3))
+  // Back went back through history: there is nothing before the list.
+  expect(history.canGoBack()).toBe(false)
+  fireEvent.change(await screen.findByTestId('filter-field'), { target: { value: 'region' } })
+  fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'TN' } })
+  fireEvent.click(screen.getByTestId('filter-add'))
+  await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(1))
+  history.back()
+  await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(3))
+  expect(current()).toHaveTextContent(SITE)
+  // The abandoned Kerala step is not waiting behind it.
+  expect(history.canGoBack()).toBe(false)
+})
+
 test('choosing an earlier step brings back its filters', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(tableHref(SITE), admin)
