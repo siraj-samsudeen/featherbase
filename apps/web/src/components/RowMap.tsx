@@ -74,7 +74,7 @@ export function RowMap({ table, name }: { table: string; name: string }) {
 
   const m = meta.data!
   const d = doc.data!
-  const centreTitle = centre.state === 'read' ? centre.title : rowNameText(centre, name)
+  const centreTitle = centre.state === 'read' ? centre.title : rowNameText(centre)
 
   const forward: ForwardNode[] = []
   if (m.kind === 'sub_table' && typeof d.parenttype === 'string' && typeof d.parent === 'string')
