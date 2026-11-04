@@ -52,7 +52,7 @@ Then the ticket retains the source, requested data and refresh need
 ```
 
 ### Requirement: Classify without rewriting the original
-Support staff SHALL be able to classify a ticket and complete its structured details while the original submitted message remains unchanged.
+Support staff SHALL be able to classify a ticket and complete its structured details while the original submitted message remains unchanged. Only an explicit correction by the requester or support SHALL change its wording (#918), and the earlier wording SHALL be kept with who replaced it and when, for whoever reads the request.
 
 #### Scenario: A free-text request becomes an access request
 
