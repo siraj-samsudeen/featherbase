@@ -71,7 +71,7 @@ test('Focus here re-centres the map on the row in the pane', async ({ admin }) =
   await openMap(admin, 'Rm Order', 'ord-1')
   fireEvent.click(await screen.findByTestId('map-forward-Rm Customer'))
   const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
-  fireEvent.click(within(pane).getByRole('button', { name: 'Focus here' }))
+  fireEvent.click(await within(pane).findByRole('button', { name: 'Focus here' }))
   await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores'))
   expect(await screen.findByTestId('map-group-Rm Order')).toHaveTextContent('2')
   expect(screen.getByRole('tab', { name: 'Map' })).toHaveAttribute('aria-selected', 'true')

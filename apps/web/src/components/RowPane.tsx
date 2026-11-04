@@ -94,16 +94,21 @@ function RowPane({ nav, pane, place, placeChoice, onFocus }: {
   }) : []
   const open = pane.group ? groups.find((g) => g.key === groupKey(pane.group!)) : undefined
 
+  // A row the viewer cannot read offers no way to it (checklist 22), not even
+  // while that is still being found out.
+  const unreadable = name.state === 'unreadable' || doc.isError
+  const readable = doc.isSuccess && !unreadable
+
   return (
     <DrillPane kind={table} title={title} place={place} onClose={close}
-      actions={<>
+      actions={readable ? <>
         {onFocus && !(step.screen === 'row' && step.table === table && step.row === row) &&
           <button type="button" onClick={() => onFocus(pane)} className={buttonClasses({ variant: 'quiet' })}>Focus here</button>}
         <HrefLink href={pageHref} className={buttonClasses({ variant: 'quiet' })}>Open row page</HrefLink>
         <HrefLink href={pageHref} className={buttonClasses({ variant: 'quiet' })}>Edit</HrefLink>
-      </>}>
+      </> : null}>
       <div className="flex flex-wrap items-center gap-2">{placeChoice}</div>
-      {name.state === 'unreadable' || doc.isError ? (
+      {unreadable ? (
         <p className="text-sm text-ink-muted">You can't see this row.</p>
       ) : !meta.data || !doc.data ? (
         <p className="text-sm text-ink-subtle">Loading…</p>
