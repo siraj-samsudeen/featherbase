@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, adminAuth, type APIRequestContext } from './fixtures'
 
 const DT = 'Set4 Item'
@@ -45,17 +46,17 @@ test.afterAll(async ({ request }) => {
 // grouping, and changing a setting re-renders without any per-Table code.
 test('SET-004: date format and currency render globally', async ({ session, request }) => {
   await session
-    .visit(`/admin/${encodeURIComponent(DT)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     .within('[data-testid="cell-due"]', (cell) => cell.assertExactText('09-Mar-2026'))
     .within('[data-testid="cell-amount"]', (cell) => cell.assertExactText('₹12,34,567.50'))
-    .visit(`/admin/${encodeURIComponent(DT)}/set4-doc`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/set4-doc`)
     .assertHas('[data-testid="form-view"]')
     .within('[data-testid="preview-due"]', (preview) => preview.assertExactText('09-Mar-2026'))
     .within('[data-testid="preview-amount"]', (preview) => preview.assertExactText('₹12,34,567.50'))
 
   await setSettings(request, { currency: 'USD' })
   await session
-    .visit(`/admin/${encodeURIComponent(DT)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     .within('[data-testid="cell-amount"]', (cell) => cell.assertExactText('$1,234,567.50'))
 
   // Precision may show fewer decimals than the currency's ISO 4217 minor unit, never more (#4332).

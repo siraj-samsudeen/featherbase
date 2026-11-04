@@ -20,6 +20,11 @@ import { logAccess, logActivity } from './audit'
 import { queueEmail } from './email'
 import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
 import { runAsSystemActor } from './system-actor'
+import { callerDocuments } from './runtime-actions'
+import { admittedToTable } from './mandatory-access'
+import { getMeta } from './meta'
+import { tableRelation } from './table-engine'
+import { getSystemSettings } from './settings'
 
 const distinct = (values: string[]) => new Set(values).size === values.length
 const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
@@ -35,6 +40,7 @@ const jobSchema = z.object({
   identifiers: z.array(z.string().regex(IDENTIFIER_SYSTEM_KEY)).refine(distinct).optional(),
   // The app's own datasets the job reads.
   datasets: z.array(identifier).refine(distinct).optional(),
+  documents: z.object({ owner_table: z.string(), tables: z.array(z.string()).min(1).refine(distinct) }).strict().optional(),
   // The app's optional secrets the job uses (#666).
   needs: z.array(secretName).refine(distinct).optional(),
 }).strict()
@@ -57,6 +63,7 @@ export function validateAppJobs(app: string, manifest: {
   server?: string
   datasets?: readonly { name: string }[]
   secrets?: unknown
+  tables?: readonly { name: string; system?: boolean; data_source?: string | null; kind?: string; access_policy?: { shared_column?: string; inherit_column?: string } | null }[]
 }, declaredSecrets: Set<string>): void {
   const jobs = manifest.jobs ?? []
   if (!jobs.length) return
@@ -69,6 +76,19 @@ export function validateAppJobs(app: string, manifest: {
       if (!datasets.has(dataset)) throw new Error(`The job ${job.name} reads the dataset ${dataset}, which the app does not declare in its datasets`)
     for (const secret of job.needs ?? [])
       if (!declaredSecrets.has(secret)) throw new Error(`The job ${job.name} needs the secret ${secret}, which the app does not declare in its secrets`)
+    if (job.documents) {
+      const declared = job.documents
+      const owned = new Map((manifest.tables ?? []).map(table => [table.name, table]))
+      if (!declared.tables.includes(declared.owner_table)) throw new Error('A document job must declare its owner Table')
+      for (const name of declared.tables) {
+        const table = owned.get(name)
+        if (!name.startsWith(`${app}.`) || !table || table.system || table.data_source || (table.kind && table.kind !== 'table'))
+          throw new Error('A document job may name only its app’s declared stored Tables')
+      }
+      const owner = owned.get(declared.owner_table)!
+      if (!owner.access_policy?.shared_column || owner.access_policy.inherit_column)
+        throw new Error('A document job owner Table must declare creator privacy')
+    }
     const method = appJobMethod(app, job.name)
     const registrant = jobRegistrant(method)
     if (registrant && registrant !== app)
@@ -124,12 +144,14 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
     // one on its way out (withSecretsKept) and would otherwise be retried,
     // repeating what the job was allowed to do (Codex round 1 on #701).
     let refusedGrant: string | undefined
+    let refusedMethod: string | undefined
     // Recorded, then final; the first refusal is what the run ends with. Only
     // platform words go in: a grant's name or a fixed phrase, never anything
     // the app passed.
     const refuseAccess = async (what: string, recorded: string): Promise<never> => {
       refusedGrant ??= `The job ${actor} has not declared ${what}`
-      await logAccess(actor, 'app_access_denied', { method: `${actor}:${recorded}`.slice(0, 140), required: true })
+      refusedMethod ??= `${actor}:${recorded}`.slice(0, 140)
+      await logAccess(actor, 'app_access_denied', { method: refusedMethod, required: true })
       throw new FinalJobFailure(refusedGrant)
     }
     const need = async <T>(grant: AppJobGrant, fn: () => Promise<T>): Promise<T> => {
@@ -155,7 +177,54 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
       const line = String(text)
       return holdsSecret(ready.kept.values, line) ? WITHHELD_MESSAGE : line
     }
+    let documentScopeOpen = true
+    let pendingOwners: Promise<void> | undefined
+    let documentFailure: unknown
+    const forEachOwner: RuntimeJobContext['documents']['forEachOwner'] = callback => {
+      if (!job.documents) {
+        const refused = refuseAccess('document access', 'documents')
+        void refused.catch(() => {})
+        return refused
+      }
+      if (!documentScopeOpen || pendingOwners || typeof callback !== 'function') {
+        documentFailure = new AppError('ValidationError', 'Document owner scopes must be awaited sequentially inside the job')
+        const refused = Promise.reject(documentFailure)
+        void refused.catch(() => {})
+        return refused
+      }
+      const declaration = job.documents
+      const work = (async () => {
+        const meta = await getMeta(declaration.owner_table)
+        if (meta.owner_app !== app || !meta.access_policy?.shared_column || meta.access_policy.inherit_column)
+          throw new AppError('PermissionError', 'The document owner Table is unavailable')
+        const owners = await sql`select distinct created_by from ${sql(await tableRelation(meta.name))} order by created_by`
+        for (const owner of owners) await withTransaction(async () => {
+          const user = String(owner.created_by)
+          const [person] = await sql`select enabled, replaced_by from person where row_id = ${user} for update`
+          if (!person?.enabled || person.replaced_by || !(await admittedToTable(user, meta.name))) return
+          const access = callerDocuments(app, [...declaration.tables], user)
+          let ownerScopeOpen = true
+          const documents = Object.freeze(Object.fromEntries(Object.entries(access.documents).map(([name, operation]) => [
+            name, async (table: string, ...args: unknown[]) => {
+              if (!ownerScopeOpen) throw new AppError('ValidationError', 'The document owner scope has closed')
+              if (!declaration.tables.includes(table)) return refuseAccess('the Table it asked for', 'document_table')
+              return (operation as (...args: unknown[]) => Promise<unknown>)(table, ...args)
+            },
+          ]))) as unknown as typeof access.documents
+          try { await callback(Object.freeze({ user, documents })) }
+          finally { ownerScopeOpen = false; await access.close() }
+        })
+      })().catch(error => { documentFailure = error; throw error }).finally(() => { pendingOwners = undefined })
+      pendingOwners = work
+      // Observe rejection even when an app forgets to await the returned
+      // scope; closing the handler still fails and rolls back its writes.
+      void work.catch(() => {})
+      return work
+    }
+    const timeZone = (await getSystemSettings()).time_zone
     const context: RuntimeJobContext = Object.freeze({
+      now: new Date().toISOString(), timeZone,
+      documents: Object.freeze({ forEachOwner }),
       job: Object.freeze({ name: actor, run: ctx.job.row_id, trigger: ctx.job.trigger }),
       settings: ready.settings,
       secrets: ready.secrets,
@@ -187,9 +256,29 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
       refuse: (reason: string) => ctx.refuse(kept(reason)),
     })
     try {
-      await withSecretsKept(ready.kept, async () => { await handler(context) })
+      const run = async () => {
+        try { await withSecretsKept(ready.kept, async () => { await handler(context) }) }
+        finally {
+          documentScopeOpen = false
+          if (pendingOwners) {
+            await pendingOwners.catch(() => {})
+            documentFailure ??= new AppError('ValidationError', 'Job returned without awaiting its document owner scope')
+          }
+        }
+        if (documentFailure) throw documentFailure
+        if (refusedGrant) throw new FinalJobFailure(refusedGrant)
+      }
+      // Keep the job open until every owner scope has closed: an unawaited
+      // callback cannot commit a write after the job has already succeeded.
+      if (job.documents) await withTransaction(run)
+      else await run()
     } catch (error) {
-      if (refusedGrant) throw new FinalJobFailure(refusedGrant)
+      if (refusedGrant) {
+        // The owner transaction rolled back its writes, including the first
+        // denial entry. Keep the refusal in the run's outer audit scope.
+        if (job.documents) await logAccess(actor, 'app_access_denied', { method: refusedMethod, required: true })
+        throw new FinalJobFailure(refusedGrant)
+      }
       throw error
     }
     // A handler that caught the refusal and carried on still fails, for good.
@@ -287,8 +376,8 @@ async function emailSystemManagers(actor: string, message: Readonly<{ subject: s
 // ------------------------------------------------------------- upgrades
 
 export type JobPlanStep =
-  | { add: { name: string; cadence: string; description: string; grants: AppJobGrant[] } }
-  | { change: { name: string; cadence?: string; description?: string; grants?: AppJobGrant[] } }
+  | { add: { name: string; cadence: string; description: string; grants: AppJobGrant[]; documents?: JobDeclaration['documents'] } }
+  | { change: { name: string; cadence?: string; description?: string; grants?: AppJobGrant[]; documents?: JobDeclaration['documents'] | null } }
   | { remove: { name: string } }
 
 /** What an upgrade does to the app's jobs. A job the upgrade keeps may lose
@@ -300,7 +389,7 @@ export function planJobChanges(app: string, prior: JobDeclaration[], target: Job
   for (const job of target) {
     const before = prior.find((p) => p.name === job.name)
     if (!before) {
-      steps.push({ add: { name: job.name, cadence: job.cadence, description: job.description, grants: [...jobGrants(job)] } })
+      steps.push({ add: { name: job.name, cadence: job.cadence, description: job.description, grants: [...jobGrants(job)], ...(job.documents ? { documents: job.documents } : {}) } })
       continue
     }
     // Grants, identifier systems, datasets and optional secrets are all
@@ -312,14 +401,17 @@ export function planJobChanges(app: string, prior: JobDeclaration[], target: Job
       ...gained(job.identifiers, before.identifiers),
       ...gained(job.datasets, before.datasets).map((d) => `the dataset ${d}`),
       ...gained(job.needs, before.needs).map((n) => `the secret ${n}`),
+      ...gained(job.documents?.tables, before.documents?.tables).map(name => `the Table ${name}`),
+      ...(job.documents && job.documents.owner_table !== before.documents?.owner_table ? ['a different document owner Table'] : []),
     ]
     if (wider.length)
       throw new AppError('ValidationError', `The job ${appJobMethod(app, job.name)} would gain ${wider.join(', ')}; ` +
         'a job cannot gain access in an upgrade')
-    const change: { name: string; cadence?: string; description?: string; grants?: AppJobGrant[] } = { name: job.name }
+    const change: { name: string; cadence?: string; description?: string; grants?: AppJobGrant[]; documents?: JobDeclaration['documents'] | null } = { name: job.name }
     if (job.cadence !== before.cadence) change.cadence = job.cadence
     if (job.description !== before.description) change.description = job.description
     if (jobGrants(before).size !== jobGrants(job).size) change.grants = [...jobGrants(job)]
+    if (JSON.stringify(before.documents ?? null) !== JSON.stringify(job.documents ?? null)) change.documents = job.documents ?? null
     if (Object.keys(change).length > 1) steps.push({ change })
   }
   for (const job of prior)

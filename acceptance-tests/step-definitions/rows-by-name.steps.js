@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const { Given, When, Then } = require('@cucumber/cucumber');
 const { ListPage } = require('../support/pages/list-page');
 const { RelationMapPage } = require('../support/pages/relation-map-page');
+const { tableHref } = require('../support/addresses');
 
 // The tables "orders from the customers … and …" creates.
 const CUSTOMERS = 'Pick Customer';
@@ -72,7 +73,7 @@ When('the user opens the orders list and clicks the customer of the order {strin
 When('the user opens a link to the orders list filtered to the item {string}', async function (item) {
   const page = await this.actor();
   const filters = JSON.stringify([['item', '=', item]]);
-  await page.goto(`/featherbase/admin/${encodeURIComponent(ORDERS)}?filters=${encodeURIComponent(filters)}`);
+  await page.goto(`${tableHref(ORDERS)}?filters=${encodeURIComponent(filters)}`);
   await new ListPage(page).headers().first().waitFor();
 });
 

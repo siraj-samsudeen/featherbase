@@ -2,7 +2,7 @@
 // two forms: /featherbase sending a visitor on, the Admin home for someone who
 // sees no Home Page, a new row opened with prefilled values (and an address
 // whose prefill is not an object), a yes/no on a public web form, and a yes/no
-// in an embedded list. Real server throughout.
+// in a native related rows list. Real server throughout.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
@@ -22,9 +22,9 @@ test('/featherbase sends a signed-out visitor to sign in, and a signed-in one to
 })
 
 for (const path of [
-  '/featherbase/portal/Orders',
-  '/featherbase/portal/Orders/one',
-  '/featherbase/print/Orders/one',
+  '/featherbase/portal/orders',
+  '/featherbase/portal/orders/one',
+  '/featherbase/print/orders/one',
   '/featherbase/account/sign-in-methods',
 ]) {
   test(`signed-out deep link ${path} keeps its destination through the login guard`, async () => {
@@ -62,10 +62,10 @@ test('a new row opened with prefilled values starts with them; a prefill that is
   await noteTable(admin)
   // The router writes the search value as JSON, so the prefill string is quoted once more.
   const prefill = (v: unknown) => enc(JSON.stringify(JSON.stringify(v)))
-  const first = await renderApp(`/featherbase/admin/${enc('Rfg Visit')}/new?prefill=${prefill({ store: 'ATK' })}`, admin)
+  const first = await renderApp(`/featherbase/admin/table/rfg-visit/new?prefill=${prefill({ store: 'ATK' })}`, admin)
   await waitFor(() => expect(field('store')).toHaveValue('ATK'), { timeout: 8000 })
   first.unmount()
-  await renderApp(`/featherbase/admin/${enc('Rfg Visit')}/new?prefill=${prefill(['ATK'])}`, admin)
+  await renderApp(`/featherbase/admin/table/rfg-visit/new?prefill=${prefill(['ATK'])}`, admin)
   await waitFor(() => expect(field('store')).toBeInTheDocument(), { timeout: 8000 })
   expect(field('store')).toHaveValue('')
 })
@@ -95,7 +95,7 @@ test('a public web form takes a yes/no', async ({ admin }) => {
   expect(row).toMatchObject({ full_name: 'Ada', newsletter: true })
 })
 
-test('a yes/no in an embedded list reads ✓ or ✗', async ({ admin }) => {
+test('a yes/no in the native related rows list reads ✓ or ✗', async ({ admin }) => {
   await admin.post('/api/table_def', { name: 'Rfg Store', columns: [{ column_name: 'label', column_type: 'Data', in_list_view: true }] })
   await admin.post('/api/table_def', {
     name: 'Rfg Audit',
@@ -107,9 +107,12 @@ test('a yes/no in an embedded list reads ✓ or ✗', async ({ admin }) => {
   const store = (await admin.post('/api/save_row', { table: 'Rfg Store', row: { label: 'ATK' } })) as { row_id: string }
   await admin.post('/api/save_row', { table: 'Rfg Audit', row: { store: store.row_id, passed: true } })
   await admin.post('/api/save_row', { table: 'Rfg Audit', row: { store: store.row_id, passed: false } })
-  await renderApp(`/featherbase/admin/${enc('Rfg Store')}/${store.row_id}`, admin)
-  await userEvent.click(await screen.findByTestId('related-tab-Rfg Audit', {}, { timeout: 10_000 }))
-  const embedded = await screen.findByTestId('embedded-list')
+  await renderApp(`/featherbase/admin/table/rfg-store/row/${store.row_id}`, admin)
+  await userEvent.click(await screen.findByRole('tab', { name: 'Related' }))
+  const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
+  await userEvent.click(within(relationships).getByRole('button', { name: /^Rfg Audit · store\s*2$/ }))
+  const related = await screen.findByRole('region', { name: 'Related rows' })
+  const embedded = await within(related).findByTestId('list-view')
   await waitFor(() => expect(embedded.querySelectorAll('tbody tr')).toHaveLength(2))
   expect([...embedded.querySelectorAll('tbody tr')].map((r) => r.textContent).join(' ')).toMatch(/✓[\s\S]*✗|✗[\s\S]*✓/)
 })

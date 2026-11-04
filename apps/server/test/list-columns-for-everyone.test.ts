@@ -44,9 +44,8 @@ async function setup(admin: TestClient) {
 }
 
 async function override(admin: TestClient, column: string, property: string, value: string) {
-  await admin.post('/api/save_row', {
-    table: 'Metadata Override',
-    row: { row_id: `${DT}-${column}-${property}`, table_name: DT, column_name: column, property, value },
+  await admin.post('/api/table/Metadata%20Override', {
+    row_id: `${DT}-${column}-${property}`, table_name: DT, column_name: column, property, value,
   })
 }
 

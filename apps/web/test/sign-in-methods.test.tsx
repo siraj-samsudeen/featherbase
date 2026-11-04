@@ -3,9 +3,10 @@
 import { vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
+import { configureDelegated, inviteGoogleRaw, linkDelegated } from 'server/test/identity-fixtures'
 import { VIEWER_ROLE } from 'server/src/sales-target'
 import { test, expect, renderApp } from './pg-test'
+import { rowHref } from 'shared'
 
 // A Team Leader holds the Sales Target Viewer role (#410): their sign-in
 // methods are an account page outside the Admin screens (#489).
@@ -45,7 +46,7 @@ test('says how a Google link went', async ({ admin, createUser }) => {
 test('on a Person form a System Manager links a service, invites Google and unlinks', async ({ admin, createUser }) => {
   await configureDelegated()
   const tl = await createUser({ email: 'tl.panel@example.com' })
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
   const link = await within(panel).findByTestId('link-delegated-form')
   await userEvent.type(within(link).getByLabelText('Record number at the service'), 'RR-4242')
@@ -54,6 +55,7 @@ test('on a Person form a System Manager links a service, invites Google and unli
   await waitFor(() => expect(panel).toHaveTextContent('RR-4242'))
 
   const invite = within(panel).getByTestId('invite-google-form')
+  await userEvent.clear(within(invite).getByLabelText('Google address to invite'))
   await userEvent.type(within(invite).getByLabelText('Google address to invite'), 'tl.panel@gmail.com')
   await userEvent.click(within(invite).getByRole('button'))
   await waitFor(() => expect(panel).toHaveTextContent('invited: tl.panel@gmail.com'))
@@ -72,7 +74,7 @@ test('a person without the System Manager role sees no admin panel on a Person f
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Person Reader' } })
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Person Reader', can_read: true } })
   const plain = await createUser({ email: 'plain.panel@example.com', roles: ['Person Reader'] })
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(plain.user!)}`, plain)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(plain.user!)}`, plain)
   await screen.findByTestId('session-user')
   expect(screen.queryByTestId('user-sign-in-methods')).not.toBeInTheDocument()
 })
@@ -90,7 +92,7 @@ test('a refused link keeps the form; a link on a turned-off method is labelled',
   const taken = await createUser({ email: 'tl.taken@example.com' })
   await linkDelegated(taken.user!, 'tl_taken', { subject: 'RR-5000' })
   const tl = await createUser({ email: 'tl.form@example.com' })
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
   const link = await within(panel).findByTestId('link-delegated-form')
   await userEvent.type(within(link).getByLabelText('Record number at the service'), 'RR-5000')
@@ -106,7 +108,7 @@ test('a link on a turned-off method is still named on the Person form', async ({
   await linkDelegated(tl.user!, 'tl_off')
   const { sql } = await import('server/src/db')
   await sql`update sign_in_method set enabled = false where row_id = 'stylehr'`
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
   await waitFor(() => expect(panel).toHaveTextContent('StyleHR (turned off)'))
 })
@@ -116,16 +118,18 @@ test('a link on a turned-off method is still named on the Person form', async ({
 test('inviting emails the address unless the box is cleared', async ({ admin, createUser }) => {
   const { sql } = await import('server/src/db')
   const tl = await createUser({ email: 'tl.mail@example.com' })
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
   // The panel re-renders after each invite, so the form is found afresh.
   const panel = () => screen.getByTestId('user-sign-in-methods')
   const form = () => within(panel()).getByTestId('invite-google-form')
   await screen.findByTestId('invite-google-form')
   let invite = form()
   expect(within(invite).getByLabelText('Email an invitation to this address')).toBeChecked()
+  // #833: the field starts with the Person's own address; this invite is another.
+  await userEvent.clear(within(invite).getByLabelText('Google address to invite'))
   await userEvent.type(within(invite).getByLabelText('Google address to invite'), 'tl.mail@gmail.com')
   await userEvent.click(within(invite).getByRole('button'))
-  expect(await within(panel()).findByTestId('user-method-notice')).toHaveTextContent('Invitation emailed to tl.mail@gmail.com')
+  expect(await within(panel()).findByTestId('user-method-notice')).toHaveTextContent('Invitation saved to the Email Sink for tl.mail@gmail.com')
   expect(await sql`select 1 from email_sink where mail_to = 'tl.mail@gmail.com'`).toHaveLength(1)
 
   await waitFor(() => expect(panel()).toHaveTextContent('invited: tl.mail@gmail.com'))
@@ -148,9 +152,10 @@ test('a failed invitation email is shown, and the invite is still made', async (
   const quiet = vi.spyOn(console, 'error').mockImplementation(() => {})
   try {
     const tl = await createUser({ email: 'tl.fail@example.com' })
-    await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
+    await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
     const panel = await screen.findByTestId('user-sign-in-methods')
     const invite = await within(panel).findByTestId('invite-google-form')
+    await userEvent.clear(within(invite).getByLabelText('Google address to invite'))
     await userEvent.type(within(invite).getByLabelText('Google address to invite'), 'tl.fail@gmail.com')
     await userEvent.click(within(invite).getByRole('button'))
     expect(await within(panel).findByTestId('user-method-error')).toHaveTextContent(
@@ -169,13 +174,50 @@ test('a pending invite can be resent, but not again within ten minutes', async (
   await admin.post(`/api/people/${encodeURIComponent(tl.user!)}/identities`, {
     method: 'google', email: 'tl.resend@gmail.com', send_invitation_email: false,
   })
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
   const row = (await within(panel).findByText(/invited: tl.resend@gmail.com/)).closest('li') as HTMLElement
   await userEvent.click(within(row).getByRole('button', { name: 'Resend invitation' }))
-  expect(await within(panel).findByTestId('user-method-notice')).toHaveTextContent('Invitation emailed to tl.resend@gmail.com')
-  await waitFor(() => expect(row).toHaveTextContent('invitation emailed'))
+  expect(await within(panel).findByTestId('user-method-notice')).toHaveTextContent('Invitation saved to the Email Sink for tl.resend@gmail.com')
+  await waitFor(() => expect(row).toHaveTextContent('invitation saved to the Email Sink'))
   await userEvent.click(within(row).getByRole('button', { name: 'Resend invitation' }))
   expect(await within(panel).findByTestId('user-method-error')).toHaveTextContent('10 minutes')
   expect(await sql`select 1 from email_sink where mail_to = 'tl.resend@gmail.com'`).toHaveLength(1)
+})
+
+// #837: a claimed Google invite leads with the address, says when and how it
+// was linked and last used, and keeps Google's account number under Details.
+test('a linked Google account reads as its address, when and how it was linked, and last used', async ({ admin, createUser }) => {
+  const { sql } = await import('server/src/db')
+  const tl = await createUser({ email: 'tl.google@example.com' })
+  const claimed = await inviteGoogleRaw(tl.user!, 'tl.google@gmail.com')
+  await sql`update sign_in_identity set subject = '104116711844961612173', email = 'tl.google@gmail.com', pending_email = null,
+    linked_by = 'first-sign-in', linked_at = '2026-11-03T06:41:00Z', last_used_at = '2026-11-03T07:05:00Z' where id = ${claimed}`
+  await renderApp(rowHref('Person', tl.user!), admin)
+  const row = await screen.findByTestId(`user-method-${claimed}`)
+  await waitFor(() => expect(within(row).getByTestId('identity-head')).toHaveTextContent(/^Google · tl\.google@gmail\.com$/))
+  expect(within(row).getByTestId('identity-linked')).toHaveTextContent(
+    'linked 03-Nov-2026 12:11 IST at first sign-in · last signed in 03-Nov-2026 12:35 IST',
+  )
+  const details = within(row).getByTestId('identity-details')
+  expect(details).not.toHaveAttribute('open')
+  expect(details).toHaveTextContent('Google account number: 104116711844961612173')
+
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  await userEvent.click(within(row).getByRole('button', { name: 'Unlink' }))
+  expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/^Unlink tl\.google@gmail\.com\? This Google account will no longer sign in as .+\.$/))
+  confirm.mockRestore()
+})
+
+test('a link an administrator made names them, and an unused one says so', async ({ admin, createUser }) => {
+  const { sql } = await import('server/src/db')
+  const tl = await createUser({ email: 'tl.byadmin@example.com' })
+  const linked = await inviteGoogleRaw(tl.user!, 'tl.byadmin@gmail.com')
+  await sql`update sign_in_identity set subject = 'g-byadmin', email = 'tl.byadmin@gmail.com', pending_email = null,
+    linked_by = 'Administrator', linked_at = '2026-11-03T06:41:00Z', last_used_at = null where id = ${linked}`
+  await renderApp(rowHref('Person', tl.user!), admin)
+  const row = await screen.findByTestId(`user-method-${linked}`)
+  await waitFor(() =>
+    expect(within(row).getByTestId('identity-linked')).toHaveTextContent('linked 03-Nov-2026 12:11 IST by Administrator · not signed in with it yet'),
+  )
 })

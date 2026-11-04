@@ -2,7 +2,7 @@ import type { ReadingPresentation as Presentation } from 'shared'
 import type { TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { useI18n } from '../lib/i18n'
-import { cardClasses } from './ui'
+import { cardClasses } from '@featherbase/shop-floor'
 
 /** The same reading surface for any configured read-only Table. Never parse body HTML. */
 export function ReadingPresentation({ presentation, meta, values }: {

@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth } from './fixtures'
 import { createFormRow, ensureFormTables, ensureTable, FORM_DT as DT } from './fixtures-ui'
 
@@ -36,7 +37,7 @@ test.beforeAll(async ({ request }) => {
 // `session.visit`/`assertHas` carry navigation and the plain checks around it.
 test('UI-007: child grid add/edit/delete/reorder round-trips through save', async ({ session, request }) => {
   await session
-    .visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`)
     .assertHas('[data-testid="table-items"] tbody tr', { count: 3 })
 
   await session.step('edit, delete, add and reorder rows in the child grid', async ({ page }) => {
@@ -68,7 +69,7 @@ test('UI-007: child grid add/edit/delete/reorder round-trips through save', asyn
 })
 
 test('UI-008: Section and Column Breaks produce grouped sections in metadata order', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(SEC_DT)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(SEC_DT))}`)
   await session.step('open a fresh form and inspect its two sections', async ({ page }) => {
     await page.getByTestId('list-new').click()
     await expect(page.getByTestId('form-view')).toBeVisible()
@@ -86,7 +87,7 @@ test('UI-008: Section and Column Breaks produce grouped sections in metadata ord
 
 test('UI-016: breadcrumbs navigate and the title bar tracks saved state', async ({ session }) => {
   await session
-    .visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${docName}`)
     .assertHas('[data-testid="breadcrumbs"]', { text: 'Admin' })
     .assertHas('[data-testid="breadcrumbs"]', { text: DT })
     .assertHas('[data-testid="form-status"]', { text: 'Saved' })

@@ -27,7 +27,7 @@ test('list: an admin sees a freshly created ticket', async ({ admin }) => {
     table: 'HD Ticket',
     row: { subject: 'Rendered by the generic ListView' },
   })
-  await renderApp('/featherbase/admin/HD%20Ticket', admin)
+  await renderApp('/featherbase/admin/table/hd-ticket', admin)
   // #792: the list leads with the ticket's subject, its title, as the link to it.
   const link = await screen.findByRole('link', { name: 'Rendered by the generic ListView' })
   expect(link.getAttribute('href')).toContain(doc.row_id)
@@ -61,7 +61,7 @@ test('list: a customer with no tickets sees an empty, permission-scoped list', a
   const mine = await customer.post<{ row_id: string }>('/api/web_form/new-ticket', {
     values: { subject: 'My own ticket, scoped visible' },
   })
-  await renderApp('/featherbase/admin/HD%20Ticket', customer)
+  await renderApp('/featherbase/admin/table/hd-ticket', customer)
   // #792: the list leads with each ticket's subject, its title.
   expect(await screen.findByText('My own ticket, scoped visible')).toBeInTheDocument()
   expect(screen.queryByText('Someone else’s ticket')).not.toBeInTheDocument()
@@ -72,7 +72,7 @@ test('form: create a ticket through the UI (Session DSL) — real save, real ser
   admin,
 }) => {
   await installHelpdesk()
-  const { session } = await renderSession('/featherbase/admin/HD%20Ticket/new', admin)
+  const { session } = await renderSession('/featherbase/admin/table/hd-ticket/new', admin)
   await session
     .fillIn('Subject', 'Filed from a component test')
     .selectOption('Priority', 'High')
@@ -86,7 +86,7 @@ test('form: a dirty form with an empty required subject shows the field error', 
   await installHelpdesk()
   // A pristine form's Save is disabled (dirty-tracking), so make it dirty
   // via another field and leave the required subject empty.
-  const { session } = await renderSession('/featherbase/admin/HD%20Ticket/new', admin)
+  const { session } = await renderSession('/featherbase/admin/table/hd-ticket/new', admin)
   await session
     .fillIn('Description', 'details without a subject')
     .clickButton('Save')
@@ -100,7 +100,7 @@ test('workflow: Start from the ticket form moves the bound status field', async 
     table: 'HD Ticket',
     row: { subject: 'Workflow via the UI' },
   })
-  const { session } = await renderSession(`/featherbase/admin/HD%20Ticket/${doc.row_id}`, admin)
+  const { session } = await renderSession(`/featherbase/admin/table/hd-ticket/row/${doc.row_id}`, admin)
   await session.assertText(doc.row_id).clickButton('Start')
   // 'In Progress' sits in the status <select>'s options from the first
   // render, so a bare assertText would pass before the transition even

@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import type { Page } from '@playwright/test'
 import { anonymousTest as test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
@@ -7,7 +8,7 @@ import { deleteTableIfExists } from './cleanup'
 //
 // The rule this file exists to hold (TLC-H2): after the entry point, the
 // journey NEVER navigates by URL. Every step is reached by clicking the thing
-// a user would click. A spec that types `/admin/<Table>/new` asserts that the
+// a user would click. A spec that types `/featherbase/admin/table/<slug>/new` asserts that the
 // form works and says nothing about whether anyone could have opened it —
 // which is exactly how #247 survived 60 spec files and 117 page.goto calls.
 //
@@ -32,7 +33,7 @@ test('TLC-J1 / TLC-R1 / TLC-I1: declare a table, then reach its first row by cli
 
   // J1.1 — build the table through the builder, as a user does. This is the
   // journey's one and only navigation by address.
-  await session.visit('/admin/new-table').assertHas('[data-testid="table-builder"]')
+  await session.visit('/featherbase/admin/new-table').assertHas('[data-testid="table-builder"]')
   await session.step('J1.1: name the table and declare one column', async ({ page }: { page: Page }) => {
     await page.getByTestId('dt-name').fill(NOTE)
     const row = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]').first()
@@ -44,16 +45,20 @@ test('TLC-J1 / TLC-R1 / TLC-I1: declare a table, then reach its first row by cli
 
   // J1.1 — the round trip closes on the TABLE, not on the builder.
   await session
-    .assertPath(`/featherbase/admin/${ENC}`)
+    .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`)
     .assertHas('[data-testid="list-view"]')
     .assertHas('[data-testid="list-total"]', { text: '0 total' })
 
-  // J1.2 — the create affordance is in the toolbar, beside the other actions
-  // (positive complement: Report and Import rendered too, so this asserts New
-  // JOINED a toolbar that exists, not that some toolbar exists).
+  // J1.2 — the create affordance is in the toolbar; Report and Import are
+  // reachable through its disclosures (positive complement: both actions
+  // render when opened, not just an otherwise-empty toolbar).
   await session
+    .clickButton('View: List')
     .assertHas('[data-testid="open-report"]')
+    .clickButton('View: List')
+    .clickButton('List actions')
     .assertHas('[data-testid="open-import"]')
+    .clickButton('List actions')
     .assertHas('[data-testid="list-new"]')
 
   // J1.2 — and the empty table offers the same way forward inline, which is
@@ -65,7 +70,7 @@ test('TLC-J1 / TLC-R1 / TLC-I1: declare a table, then reach its first row by cli
     await page.getByTestId('list-new').click()
   })
   await session
-    .assertPath(`/featherbase/admin/${ENC}/new`)
+    .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/new`)
     .assertHas('[data-testid="form-view"]')
     .assertHas('[data-field="body"]')
 
@@ -77,7 +82,7 @@ test('TLC-J1 / TLC-R1 / TLC-I1: declare a table, then reach its first row by cli
     await page.getByTestId('form-save').click()
   })
   await session.assertHas('[data-testid="form-status"]', { text: 'Saved' })
-  await session.refutePath(`/featherbase/admin/${ENC}/new`)
+  await session.refutePath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/new`)
 
   // J1.5 — back to the list through the breadcrumb, which is the way back a
   // user has. The row is there and the total moved.
@@ -85,7 +90,7 @@ test('TLC-J1 / TLC-R1 / TLC-I1: declare a table, then reach its first row by cli
     await page.getByTestId('breadcrumbs').getByText(NOTE).click()
   })
   await session
-    .assertPath(`/featherbase/admin/${ENC}`)
+    .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`)
     .assertHas('[data-testid="list-total"]', { text: '1 total' })
     .assertHas('[data-testid="list-rows"]', { text: 'the first note' })
 
@@ -103,7 +108,7 @@ test('TLC-R1.settings: a settings table opens its single row and offers no creat
   // create and the affordance is ABSENT rather than disabled — the same
   // metadata gating DEL-R1 uses for the delete button.
   await session
-    .visit('/admin/System Settings')
+    .visit('/featherbase/admin/table/system-settings')
     .assertHas('[data-testid="form-view"]')
     .refuteHas('[data-testid="list-new"]')
 })
@@ -135,7 +140,7 @@ test('TLC-R1.sub_table: a child table reached directly offers no create affordan
 
   await signIn(session)
   await session
-    .visit(`/admin/${encodeURIComponent(SUB)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(SUB))}`)
     .assertHas('[data-testid="list-view"]')
     .refuteHas('[data-testid="list-new"]')
     .refuteHas('[data-testid="list-empty-new"]')
@@ -175,10 +180,11 @@ test('TLC-J2 / TLC-R3 / TLC-R4: delete a row from its own form, behind a confirm
 
   await signIn(session)
 
-  // J2.1 — the row I am looking at is the row I can remove; Delete sits
-  // beside Rename, not in a list I have to navigate back to.
+  // J2.1 — the row I am looking at is the row I can remove; Record actions
+  // contains Delete and Rename, without navigating back to a list.
   await session
-    .visit(`/admin/${ENC}/note-2`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/row/note-2`)
+    .clickButton('Record actions')
     .assertHas('[data-testid="form-rename"]')
     .assertHas('[data-testid="form-delete"]')
 
@@ -196,16 +202,16 @@ test('TLC-J2 / TLC-R3 / TLC-R4: delete a row from its own form, behind a confirm
   })
   await session
     .refuteHas('[data-testid="delete-row-dialog"]')
-    .assertPath(`/featherbase/admin/${ENC}/note-2`)
+    .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/row/note-2`)
     .assertHas('[data-testid="form-view"]')
 
   // J2.3 — confirm: landed on the list, the row gone, the total moved.
-  await session.clickButton('Delete').assertHas('[data-testid="delete-row-dialog"]')
+  await session.clickButton('Record actions').clickButton('Delete').assertHas('[data-testid="delete-row-dialog"]')
   await session.step('J2.3: confirm the deletion', async ({ page }: { page: Page }) => {
     await page.getByTestId('delete-row-confirm').click()
   })
   await session
-    .assertPath(`/featherbase/admin/${ENC}`)
+    .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`)
     .assertHas('[data-testid="list-total"]', { text: '1 total' })
   await session.step('J2.3: the row is gone from the list', async ({ page }: { page: Page }) => {
     await expect(page.getByTestId('list-rows')).not.toContainText('a mistake')
@@ -214,7 +220,8 @@ test('TLC-J2 / TLC-R3 / TLC-R4: delete a row from its own form, behind a confirm
   // Branch at J2.3 — something references it: the refusal is reported IN the
   // dialog, naming the holder, and the row survives (TLC-R3.referenced).
   await session
-    .visit(`/admin/${ENC}/note-1`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/row/note-1`)
+    .clickButton('Record actions')
     .clickButton('Delete')
     .assertHas('[data-testid="delete-row-dialog"]')
   await session.step('J2.3 branch: confirm a deletion the server will refuse', async ({ page }: { page: Page }) => {
@@ -222,7 +229,7 @@ test('TLC-J2 / TLC-R3 / TLC-R4: delete a row from its own form, behind a confirm
   })
   await session
     .assertHas('[data-testid="delete-row-error"]', { text: 'ref-1' })
-    .assertPath(`/featherbase/admin/${ENC}/note-1`)
+    .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/row/note-1`)
 
   await deleteTableIfExists(request, token, REF)
   await deleteTableIfExists(request, token, NOTE)

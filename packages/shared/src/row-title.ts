@@ -38,6 +38,13 @@ export function rowDisplayTitle(meta: TitleMeta, row: Record<string, unknown>, r
     const v = String(row[titleColumn] ?? '').trim()
     if (v) return cap(v)
   }
+  // Settings on one Table otherwise all read as the Table's name. Use only
+  // readable, visible columns: row-title callers may pass a scoped metadata set.
+  if (meta.name === 'Metadata Override'
+    && ['table_name', 'column_name', 'property'].every(name => meta.columns.some(c => c.column_name === name && !c.hidden))
+    && row.table_name && row.property) {
+    return cap([row.table_name, row.column_name || 'Whole Table', row.property].join(SEPARATOR))
+  }
   const values = meta.columns
     .filter((c) => VALUE_TYPES.has(c.column_type) && !c.hidden && c.column_name !== 'row_id')
     .map((c) => String(row[c.column_name] ?? '').trim())
