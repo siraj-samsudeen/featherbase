@@ -10,7 +10,7 @@ import { sql } from '../src/db'
 import { overrideVariable } from '../src/env'
 import { invalidateSources } from '../src/sources/registry'
 import { discoverPackages } from '../src/runtime-packages'
-import { decideColumn, normalize } from '../src/master-sync'
+import { decideColumn, isNotFitting, normalize, toMaster } from '../src/master-sync'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
 import { makeTable } from './fixtures'
 import { runOneJob } from '../src/jobs'
@@ -42,6 +42,18 @@ describe('the three-way rule for one column', () => {
     expect(normalize('7.000000000', 'Float')).toBe(normalize(7, 'Float'))
     expect(normalize('1', 'Check')).toBe(normalize(true, 'Check'))
     expect(normalize('2026-11-04', 'Date')).toBe(normalize(new Date('2026-11-04T00:00:00Z'), 'Date'))
+    expect(normalize('2026-11-04T10:00:00Z', 'Datetime')).toBe(normalize(new Date('2026-11-04T10:00:00.000Z'), 'Datetime'))
+  })
+
+  it('stores a source value as the master column does, or says it does not fit', () => {
+    expect(toMaster(1, 'Check')).toBe(true)
+    expect(toMaster('0', 'Check')).toBe(false)
+    expect(isNotFitting(toMaster('maybe', 'Check'))).toBe(true)
+    expect(toMaster('7.000000000', 'Int')).toBe(7)
+    expect(isNotFitting(toMaster('7.5', 'Int'))).toBe(true)
+    expect(toMaster(new Date('2026-11-04T10:00:00Z'), 'Datetime')).toBe('2026-11-04T10:00:00.000Z')
+    expect(toMaster(new Date('2026-11-04T00:00:00Z'), 'Date')).toBe('2026-11-04')
+    expect(toMaster(42, 'Data')).toBe('42')
     expect(normalize('')).toBeNull()
     expect(normalize(undefined)).toBeNull()
     expect(normalize(7)).toBe('7')

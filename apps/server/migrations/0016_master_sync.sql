@@ -26,6 +26,7 @@ create table if not exists featherbase.master_sync_difference (
   column_name varchar(140),
   source_value text,
   featherbase_value text,
+  ticket_app varchar(140) not null,
   ticket_payload jsonb not null,
   ticket varchar(140),
   ticket_error text,

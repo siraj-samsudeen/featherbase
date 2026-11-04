@@ -52,7 +52,7 @@ export const masterSyncRuleSchema = z.object({
 }).strict()
 export type MasterSyncRule = z.infer<typeof masterSyncRuleSchema>
 
-export type DifferenceKind = 'source_changed' | 'edited_here' | 'conflict' | 'differs_at_link' | 'unlinked' | 'gone' | 'missing_master' | 'ambiguous_link'
+export type DifferenceKind = 'source_changed' | 'edited_here' | 'conflict' | 'differs_at_link' | 'unlinked' | 'gone' | 'missing_master' | 'ambiguous_link' | 'cannot_apply'
 export type ColumnDecision = { apply: true } | { apply: false; raise?: DifferenceKind }
 
 type Value = string | null
@@ -65,14 +65,31 @@ export function normalize(value: unknown, columnType?: string): Value {
     return Number.isFinite(n) ? String(n) : String(value)
   }
   if (columnType === 'Check') return ['1', 'true', 't', 'yes'].includes(String(value).toLowerCase()) ? 'true' : 'false'
-  if (columnType === 'Date') {
+  if (columnType === 'Date' || columnType === 'Datetime') {
     const d = value instanceof Date ? value : new Date(String(value))
-    return Number.isNaN(d.getTime()) ? String(value) : d.toISOString().slice(0, 10)
+    if (Number.isNaN(d.getTime())) return String(value)
+    return columnType === 'Date' ? d.toISOString().slice(0, 10) : d.toISOString()
   }
   if (value instanceof Date) return value.toISOString()
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
 }
+
+const NOT_FITTING = Symbol('not fitting')
+/** The source value as the master column stores it; NOT_FITTING when it cannot be. */
+export function toMaster(value: unknown, columnType?: string): unknown {
+  const n = normalize(value, columnType)
+  if (n === null) return null
+  if (columnType === 'Int' || columnType === 'Float' || columnType === 'Currency') {
+    const number = Number(n)
+    if (!Number.isFinite(number) || (columnType === 'Int' && !Number.isInteger(number))) return NOT_FITTING
+    return number
+  }
+  if (columnType === 'Check') return typeof value === 'boolean' || ['true', 'false', '0', '1'].includes(String(value).toLowerCase()) ? n === 'true' : NOT_FITTING
+  if (columnType === 'Date' || columnType === 'Datetime') return Number.isNaN(new Date(n).getTime()) ? NOT_FITTING : n
+  return n
+}
+export const isNotFitting = (value: unknown) => value === NOT_FITTING
 
 /**
  * The three-way rule for one column. `snapshot` is undefined on a row's first
@@ -131,7 +148,11 @@ export async function setMasterSync(user: SessionUser, copied: string, input: un
   for (const field of [rule.link.system_column, rule.link.key_column, rule.link.master_column, ...(rule.link.kind_column ? [rule.link.kind_column] : [])])
     column(link, field, 'a link column', true)
   if (!!rule.link.kind_column !== (rule.link.kind !== undefined)) throw new AppError('ValidationError', 'A link kind needs both kind_column and kind')
-  if (rule.inactive) column(master, rule.inactive.column, 'the inactive column')
+  if (rule.inactive) {
+    const inactive = column(master, rule.inactive.column, 'the inactive column')
+    if (inactive?.read_only) throw new AppError('ValidationError', `${master.name}.${rule.inactive.column} is read-only`)
+    if (isNotFitting(toMaster(rule.inactive.value, inactive?.column_type))) throw new AppError('ValidationError', `The inactive value does not fit ${master.name}.${rule.inactive.column}`)
+  }
   await actionTransaction(async () => {
     // Serialized with runs. A rule that matches rows differently starts again
     // from Featherbase: the last values seen belong to the old matching.
@@ -166,6 +187,7 @@ const KIND_TEXT: Record<DifferenceKind, string> = {
   gone: 'This row is no longer in the source. Nothing was deleted; decide what to do with the Featherbase row.',
   missing_master: 'A link points at a Featherbase row that does not exist. Fix the link.',
   ambiguous_link: 'This source key is linked to more than one Featherbase row. Keep one link.',
+  cannot_apply: 'The source changed a value the source owns, but the new value does not fit the Featherbase column. Nothing was applied.',
 }
 
 interface Difference {
@@ -253,7 +275,7 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
         if (!rule.inactive) differences.push({ kind: 'gone', source_key: key, master_row: target, column_name: null, source_value: null, featherbase_value: null })
         else {
           const type = master.columns.find(c => c.column_name === rule.inactive!.column)?.column_type
-          if (normalize(current[rule.inactive.column], type) !== normalize(rule.inactive.value, type)) values[rule.inactive.column] = rule.inactive.value
+          if (normalize(current[rule.inactive.column], type) !== normalize(rule.inactive.value, type)) values[rule.inactive.column] = toMaster(rule.inactive.value, type)
         }
       } else {
         const snapshot = snapshots.get(key)
@@ -265,7 +287,10 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
           const featherbase = normalize(current[field], type)
           sourceNow[field] = source
           const decision = decideColumn(spec.owner, seenBefore === undefined || !Object.hasOwn(seenBefore, field) ? undefined : seenBefore[field], source, featherbase)
-          if (decision.apply) values[field] = row[spec.source] ?? null
+          const stored = decision.apply ? toMaster(row[spec.source], type) : undefined
+          if (decision.apply && isNotFitting(stored))
+            differences.push({ kind: 'cannot_apply', source_key: key, master_row: target, column_name: field, source_value: source, featherbase_value: featherbase })
+          else if (decision.apply) values[field] = stored
           else if (decision.raise) differences.push({ kind: decision.raise, source_key: key, master_row: target, column_name: field, source_value: source, featherbase_value: featherbase })
         }
         // The snapshot is always the source as last seen.
@@ -287,9 +312,9 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
       ? fingerprintOf(copied, rule.master_table, rule.source_system, d.kind, d.source_key, d.master_row)
       : fingerprintOf(copied, rule.master_table, rule.source_system, 'value', d.source_key, d.master_row, d.column_name, d.source_value, d.featherbase_value)
     const inserted = await sql`insert into featherbase.master_sync_difference
-      (copied_table, fingerprint, kind, source_key, master_row, column_name, source_value, featherbase_value, ticket_payload, run_id)
+      (copied_table, fingerprint, kind, source_key, master_row, column_name, source_value, featherbase_value, ticket_app, ticket_payload, run_id)
       values (${copied}, ${fingerprint}, ${d.kind}, ${d.source_key}, ${d.master_row}, ${d.column_name}, ${d.source_value}, ${d.featherbase_value},
-        ${sql.json(ticketPayload(rule, master, d))}, ${runId})
+        ${rule.tickets.app}, ${sql.json(ticketPayload(rule, master, d))}, ${runId})
       on conflict (copied_table, fingerprint) do nothing returning fingerprint`
     if (inserted.length) result.raised++
     else result.already_raised++
@@ -314,13 +339,13 @@ function ticketPayload(rule: MasterSyncRule, master: TableMeta, d: Difference) {
 
 /** Each recorded difference without a ticket yet; safe to repeat (idempotent). */
 async function raiseTickets(actor: string, copied: string): Promise<{ tickets: string[]; ticket_errors: string[] }> {
-  const pending = await sql`select fingerprint, ticket_payload from featherbase.master_sync_difference
+  const pending = await sql`select fingerprint, ticket_app, ticket_payload from featherbase.master_sync_difference
     where copied_table = ${copied} and ticket is null order by raised_at, fingerprint`
-  const rule = await masterSyncRule(copied)
   const tickets: string[] = [], ticket_errors: string[] = []
   for (const d of pending) {
     try {
-      const app = rule?.tickets.app ?? 'tickets'
+      // The app chosen when the difference was recorded, so a retry is never sent elsewhere.
+      const app = String(d.ticket_app)
       // Platform work on the app's behalf names its installed version, not the caller's client.
       const [installed] = await sql`select package_version from installed_app where name = ${app}`
       const answer = await runAsSystemActor(actor, () => withAppIdentity(app, String(installed?.package_version ?? ''), () => runPackageAction(app, 'create',
