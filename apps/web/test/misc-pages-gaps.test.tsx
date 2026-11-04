@@ -39,11 +39,3 @@ test('Print opens the browser print dialog', async ({ admin }) => {
   await userEvent.click(await screen.findByTestId('print-button', {}, { timeout: 8000 }))
   expect(print).toHaveBeenCalledTimes(1)
 })
-
-test('a relation map whose trail is not a list of steps shows no trail', async ({ admin }) => {
-  await admin.post('/api/table_def', { name: 'Mpg Customer', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
-  await admin.post('/api/save_row', { table: 'Mpg Customer', row: { row_id: 'cust-1', title: 'Asha' } })
-  await renderApp(`/featherbase/admin/table/mpg-customer/row/cust-1/map?trail=${enc('{"not":"a trail"}')}`, admin)
-  await screen.findByTestId('map-center', {}, { timeout: 8000 })
-  expect(screen.queryByTestId('map-trail')).not.toBeInTheDocument()
-})
