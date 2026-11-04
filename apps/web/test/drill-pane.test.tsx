@@ -10,7 +10,9 @@ import { PLANT, REGION, SITE, seedSites } from './relational-fixture'
 
 configure({ asyncUtilTimeout: 10_000 })
 
-const pane = (name: string | RegExp) => screen.findByRole('complementary', { name })
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** The pane on the row named `name`, which its code may follow ("Enchakkal · ENK"). */
+const pane = (name: string) => screen.findByRole('complementary', { name: new RegExp(`^${escape(name)}( · .+)?$`) })
 const listed = () => within(screen.getByTestId('list-rows')).getAllByTestId('row-check').length
 const pathSteps = () => within(screen.getByRole('navigation', { name: 'Path' })).getAllByRole('button')
 
@@ -36,7 +38,7 @@ test("selecting a row shows it in the pane, named with its table", async ({ admi
 
 test('the pane lists what the row points at, with Go there and Filter', async ({ admin }) => {
   const { pane } = await openEnchakkal(admin)
-  const pointsAt = within(pane).getByRole('heading', { name: 'Points at' }).parentElement!
+  const pointsAt = (await within(pane).findByRole('heading', { name: 'Points at' })).parentElement!
   await waitFor(() => expect(within(pointsAt).getByRole('button', { name: 'Kerala · KL' })).toBeInTheDocument())
   expect(within(pointsAt).getByRole('button', { name: 'Go there' })).toBeInTheDocument()
   expect(within(pointsAt).getByRole('button', { name: 'Filter' })).toBeInTheDocument()
@@ -119,7 +121,7 @@ test('Open row page and Edit are separate ways to the row', async ({ admin }) =>
 
 test('the fields read formatted: dates, rupees, links by name', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
-  fireEvent.click(within(site).getByRole('button', { name: 'Fields' }))
+  fireEvent.click(await within(site).findByRole('button', { name: 'Fields' }))
   await waitFor(() => expect(site).toHaveTextContent('05-Feb-2019'))
   expect(site).toHaveTextContent('₹12,45,000.00')
   expect(within(site).getAllByRole('button', { name: 'Kerala · KL' }).length).toBeGreaterThan(0)
@@ -127,7 +129,7 @@ test('the fields read formatted: dates, rupees, links by name', async ({ admin }
 
 test('empty fields fold under a count and a long note offers Show more', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
-  fireEvent.click(within(site).getByRole('button', { name: 'Fields' }))
+  fireEvent.click(await within(site).findByRole('button', { name: 'Fields' }))
   expect(await within(site).findByText('2 empty fields')).toBeInTheDocument()
   expect(within(site).getByRole('button', { name: 'Show more' })).toBeInTheDocument()
 })
@@ -145,26 +147,24 @@ test("the pane's place is the person's choice, kept in their settings", async ({
 test('Escape closes the pane and the list stays', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
   fireEvent.keyDown(site, { key: 'Escape' })
-  await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Enchakkal' })).not.toBeInTheDocument())
+  await waitFor(() => expect(screen.queryByRole('complementary', { name: /^Enchakkal/ })).not.toBeInTheDocument())
   expect(listed()).toBe(3)
 })
 
 // Checklist 22: the same rule as #839's picker check.
-test("a viewer who can't read one plant sees a count of 2 and its name nowhere", async ({ admin, createUser }) => {
+test("a viewer who can't read Enchakkal's other plants sees a count of 2 and their names nowhere", async ({ admin, createUser }) => {
   await seedSites(admin)
   const viewer = await createUserWithRole(admin, createUser, { role: 'Nv Viewer', table: [SITE, REGION], can_read: true })
   await grantRole(admin, { role: 'Nv Viewer', table: PLANT, can_read: true, can_create: true, own_rows_only: true })
   for (const [row_id, plant_name] of [['1701', 'Enchakkal Bakery'], ['1702', 'Enchakkal Pharmacy']])
     await viewer.post('/api/save_row', { table: PLANT, row: { row_id, plant_name, site: 'ENK' } })
-  await admin.post('/api/save_row', { table: PLANT, row: { row_id: '1505', plant_name: 'Enchakkal Jewellery', site: 'MDU' } })
-  await admin.post('/api/save_row', { table: PLANT, row: { row_id: '1504', plant_name: 'Enchakkal Textiles', site: 'MDU' } })
   await renderApp(tableHref(SITE), viewer)
   await select('Enchakkal')
   const site = await pane('Enchakkal')
   fireEvent.click(await within(site).findByRole('button', { name: `${PLANT} 2` }))
   await waitFor(() => expect(within(within(site).getByRole('table')).getAllByRole('row')).toHaveLength(3))
-  expect(document.body).not.toHaveTextContent('Enchakkal Supermarket')
-  expect(document.body).not.toHaveTextContent('1503')
+  for (const unseen of ['Enchakkal Supermarket', 'Enchakkal Textiles', 'Enchakkal Jewellery', '1503', '1504', '1505'])
+    expect(document.body).not.toHaveTextContent(unseen)
 })
 
 test("a link to a row the viewer can't read shows no name, no id and no action", async ({ admin, createUser }) => {
@@ -173,9 +173,36 @@ test("a link to a row the viewer can't read shows no name, no id and no action",
   await renderApp(tableHref(SITE), viewer)
   await select('Enchakkal')
   const site = await pane('Enchakkal')
-  const pointsAt = within(site).getByRole('heading', { name: 'Points at' }).parentElement!
+  const pointsAt = (await within(site).findByRole('heading', { name: 'Points at' })).parentElement!
   expect(await within(pointsAt).findByText('Not visible to you')).toBeInTheDocument()
   expect(pointsAt).not.toHaveTextContent('Kerala')
   expect(pointsAt).not.toHaveTextContent('KL')
   expect(within(pointsAt).queryByRole('button', { name: 'Go there' })).not.toBeInTheDocument()
+})
+
+test('two links from the same table stay separate groups, each with its own count', async ({ admin }) => {
+  await seedSites(admin)
+  const meta = await admin.get<{ columns: Record<string, unknown>[] }>(`/api/table/${encodeURIComponent(PLANT)}:meta`)
+  await admin.put(`/api/table_def/${encodeURIComponent(PLANT)}`, {
+    ...meta, columns: [...meta.columns, { column_name: 'backup_site', column_type: 'Reference', reference_table: SITE, label: 'Backup site' }],
+  })
+  await renderApp(tableHref(SITE), admin)
+  await select('Enchakkal')
+  const site = await pane('Enchakkal')
+  expect(await within(site).findByRole('button', { name: `${PLANT} · Site 3` })).toBeInTheDocument()
+  // A group with no rows stays listed.
+  expect(within(site).getByRole('button', { name: `${PLANT} · Backup site 0` })).toBeInTheDocument()
+})
+
+test('a new row from a group opened as a list starts linked to the row', async ({ admin }) => {
+  const { pane: site, view } = await openEnchakkal(admin)
+  fireEvent.click(await within(site).findByRole('button', { name: `${PLANT} 3` }))
+  fireEvent.click(await within(site).findByRole('link', { name: 'Open as list' }))
+  await waitFor(() => expect(view.router.state.location.pathname).toBe(tableHref(PLANT)))
+  // The router writes a JSON string param quoted, once more.
+  const prefill = () => {
+    const raw: unknown = JSON.parse(new URL(screen.getByTestId('list-new').getAttribute('href')!, 'http://x').searchParams.get('prefill') ?? 'null')
+    return typeof raw === 'string' ? JSON.parse(raw) : raw
+  }
+  await waitFor(() => expect(prefill()).toEqual({ site: 'ENK' }))
 })

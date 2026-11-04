@@ -430,3 +430,10 @@ describe('UI Lab', () => {
     for (const heading of screen.getAllByRole('heading', { level: 2 })) expect(heading.className).not.toMatch(/\buppercase\b/)
   })
 })
+
+describe('GroupChip with no rows', () => {
+  test('a group of 0 stays listed, quieter', () => {
+    render(<GroupChip label="Shelf" count={0} onSelect={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Shelf 0' })).toHaveAttribute('data-empty')
+  })
+})
