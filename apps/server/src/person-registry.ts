@@ -81,6 +81,10 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   dashboard: { label: text, config: text },
   data_scope: { person: id, service_account: id, allow_table: code, for_value: on('allow_table') },
   data_source: { '*': code, last_error: text },
+  // #772: a pasted token's ciphertext and a database's kept table list; never a person.
+  data_source_catalog: { '*': code },
+  data_source_secret: { '*': code },
+  table_copy: { '*': code },
   // #625: an app dataset's rows: warehouse figures, no person in them.
   app_dataset_row: { '*': code },
   dataset_miss: { '*': code },

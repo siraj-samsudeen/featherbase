@@ -557,7 +557,7 @@ export function FormView({
             <RouterLink
               to="/featherbase/admin/source/$name"
               params={{ name }}
-              search={{ connect: undefined }}
+              search={{ database: undefined, schema: undefined, connect: undefined }}
               data-testid="form-source-browser"
               className={buttonClasses()}
             >

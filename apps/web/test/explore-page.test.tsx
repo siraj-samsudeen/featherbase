@@ -69,6 +69,7 @@ for (const activation of ['click', 'Enter', ' '] as const) {
     const pane1 = await screen.findByTestId('explore-pane1')
     fireEvent.click(within(pane1).getByText('Acme'))
     await waitFor(() => expect(screen.getByTestId('explore-pane2-count')).toHaveTextContent('2'))
+    await waitFor(() => expect(screen.getByTestId('explore-pane2-sum')).toHaveTextContent('150'))
     const row = within(screen.getByTestId('explore-pane2')).getAllByTestId('explore-row')[0]
     fireEvent.keyDown(row, { key: 'ArrowRight' })
     noPane()

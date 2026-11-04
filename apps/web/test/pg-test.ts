@@ -18,8 +18,7 @@
 // database.
 
 import { afterAll, beforeAll } from 'vitest'
-import { app } from 'server/src/index'
-import { test as sandboxed, isSandboxOpen } from 'server/test/pg-test-shared'
+import { test as sandboxed, committedTest as independent, isTestDatabaseOpen, sandboxRequest } from 'server/test/pg-test-shared'
 import type { TestClient } from 'feather-testing-postgres'
 import {
   renderApp as baseRenderApp,
@@ -44,7 +43,7 @@ beforeAll(() => {
     const path = /^https?:\/\//.test(url) ? new URL(url).pathname + new URL(url).search : url
     if (!BRIDGED_PREFIXES.some((p) => path === p || path.startsWith(p + '/') || path.startsWith(p + '?')))
       return original(input as RequestInfo, init)
-    if (!isSandboxOpen())
+    if (!isTestDatabaseOpen())
       throw new TypeError(`fetch bridge: no test sandbox is open, so ${path} was refused rather than run against the real database`)
 
     // The page's AbortSignal belongs to jsdom; Node's Request rejects it (#417).
@@ -52,7 +51,7 @@ beforeAll(() => {
     // wait while the server finishes the request. Model exactly that.
     const { signal, ...rest } = init ?? {}
     if (signal?.aborted) throw abortError()
-    const work = Promise.resolve(app.request(path, rest))
+    const work = sandboxRequest(path, rest)
     const tracked = work.then(
       () => {},
       () => {},
@@ -90,18 +89,21 @@ async function drainInFlight(): Promise<void> {
 // `settled` depends on `db`, so Vitest tears it down first: after afterEach
 // has unmounted the app and cleared localStorage, and BEFORE the sandbox
 // rolls back.
+async function settledRequests({ db: _db }: { db: unknown }, use: () => Promise<void>) {
+  try { await use() }
+  finally {
+    // The recents queue is module state that outlives the test. With the
+    // session already cleared it is discarded (fail-closed), never posted
+    // into the next test's sandbox under its credentials.
+    flushPendingEvents()
+    await drainInFlight()
+  }
+}
 export const test = sandboxed.extend<{ settled: void }>({
-  settled: [
-    async ({ db: _db }, use) => {
-      await use()
-      // The recents queue is module state that outlives the test. With the
-      // session already cleared it is discarded (fail-closed), never posted
-      // into the next test's sandbox under its credentials.
-      flushPendingEvents()
-      await drainInFlight()
-    },
-    { auto: true },
-  ],
+  settled: [settledRequests, { auto: true }],
+})
+export const committedTest = independent.extend<{ settled: void }>({
+  settled: [settledRequests, { auto: true }],
 })
 
 type Opts = Omit<RenderAppOptions, 'routeTree' | 'token'>

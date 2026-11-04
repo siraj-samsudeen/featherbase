@@ -96,20 +96,23 @@ export async function annotateHistory(meta: TableMeta, row: Row, user: string, p
   return String(event.row_id)
 }
 
-export async function saveImportedRow(meta: TableMeta, input: Row, user: string, runId: string, update: boolean): Promise<{ saved: Row; version?: string }> {
+export async function saveImportedRow(meta: TableMeta, input: Row, user: string, runId: string, update: boolean, managedColumns: readonly string[] = []): Promise<{ saved: Row; version?: string; changed: boolean }> {
   return actionTransaction(async () => {
     // #693: the same pre-row locks, in the same order, as the saveDoc below.
     await holdBeforeRowLock(sql, meta, user, { ...input }, !update)
     let plan: ImportPlan | undefined
+    let before: Row | undefined
     if (update) {
       const [current] = await sql`select * from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = ${String(input.row_id)} for update`
       if (!current) throw new AppError('NotFoundError', 'The imported row no longer exists')
+      before = current
       await assertManagedUnchanged(sql, meta, String(input.row_id), current, { ...current, ...input }, user)
       // SaveDoc performs the complete write gate; preview/list use getDoc.
       plan = await planImport(meta, { ...current, row_id: current[meta.row_key] }, input, user)
     }
     const previous = await latestVersion(meta.name, String(input.row_id))
-    const saved = await saveDoc(meta.name, plan?.values ?? input, user, update ? 'upsert' : 'insert')
+    const managedValues = Object.fromEntries(managedColumns.filter(field => Object.hasOwn(input, field)).map(field => [field, input[field]]))
+    const saved = await saveDoc(meta.name, plan?.values ?? input, user, update ? 'upsert' : 'insert', { managedValues })
     for (const [field, kept] of Object.entries(plan?.protected_values ?? {})) {
       const column = meta.columns.find(c => c.column_name === field)!
       if (!same(saved[field], kept, column.column_type)) throw new AppError('ValidationError', 'An automation changed a protected import field')
@@ -136,7 +139,7 @@ export async function saveImportedRow(meta: TableMeta, input: Row, user: string,
       const observation = await saveSystemRow('Import Source', { ref_table: meta.name, ref_name: saved.row_id, values: sources, run_id: runId }, user)
       await sql`update featherbase.import_source set created_at = clock_timestamp() where row_id = ${String(observation.row_id)}`
     }
-    return { saved, version }
+    return { saved, version, changed: !before || meta.columns.some(c => !same(before![c.column_name], saved[c.column_name], c.column_type)) }
   })
 }
 

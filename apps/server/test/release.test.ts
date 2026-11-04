@@ -8,6 +8,7 @@ import { sql } from '../src/db'
 import { main } from '../src/release'
 import { runMain } from './command-io'
 import { test } from './pg-test'
+import { committedTest } from './pg-test-shared'
 
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -40,11 +41,18 @@ describe('release', () => {
     expect(r.stderr).toMatch(/^health: FAILING \(error\) Scheduled job: check_sla: The last run failed\. Fix: /m)
   })
 
-  test('health checks that cannot run are a warning, and the release still succeeds', async () => {
+  // A release holds its lock on one connection and runs health queries on
+  // the pool. A shared-session sandbox cannot model a caught query failure
+  // on an independent connection: it aborts the sandbox transaction instead.
+  committedTest('health checks that cannot run are a warning, and the release still succeeds', async () => {
     await sql.unsafe('alter table featherbase.job_execution rename to job_execution_moved')
-    const r = await runMain(main, [])
-    expect(r.code).toBe(0)
-    expect(r.stderr).toBe('health: the checks could not run: relation "featherbase.job_execution" does not exist\n')
+    try {
+      const r = await runMain(main, [])
+      expect(r.code).toBe(0)
+      expect(r.stderr).toBe('health: the checks could not run: relation "featherbase.job_execution" does not exist\n')
+    } finally {
+      await sql.unsafe('alter table featherbase.job_execution_moved rename to job_execution')
+    }
   })
 
   test('a release that does not declare its environment stops before migrating', async () => {
