@@ -4,7 +4,9 @@
 // "2026-10-23T00:00:00.000Z → 2026-10-24T00:00:00.000Z".
 process.env.TZ = 'Asia/Kolkata'
 
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 
@@ -35,20 +37,53 @@ async function editedRow(admin: Admin) {
 }
 
 async function diffLines(admin: Admin, rowId: string) {
-  await renderApp(`/featherbase/admin/${ENC}/${rowId}`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(decodeURIComponent(ENC))}/row/${rowId}`, admin)
+  await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
   const timeline = await screen.findByTestId('activity-timeline', {}, { timeout: 10_000 })
   const diff = await within(timeline).findByTestId('activity-diff')
   return diff
 }
 
+test('a changed column uses its metadata display label', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: T, columns: [
+    { column_name: 'client_id', label: 'OAuth client ID', column_type: 'Data' },
+  ] })
+  const row = await admin.post<{ row_id: string; updated_at: string }>('/api/save_row', {
+    table: T, row: { client_id: 'old-client' },
+  })
+  await admin.post('/api/save_row', { table: T, row: { ...row, client_id: 'new-client' } })
+  const diff = await diffLines(admin, row.row_id)
+  await waitFor(() => expect(diff).toHaveTextContent('OAuth client ID: old-client → new-client'))
+  expect(diff).not.toHaveTextContent('client_id:')
+})
+
+test('long unbroken change values remain fully readable with wrapping', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: T, columns: [
+    { column_name: 'client_id', label: 'Client ID', column_type: 'Data' },
+  ] })
+  const before = `old${'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'.repeat(3)}.apps.googleusercontent.com`
+  const after = `new${'abcdefghijklmnopqrstuvwxyz9876543210'.repeat(3)}.apps.googleusercontent.com`
+  const row = await admin.post<{ row_id: string; updated_at: string }>('/api/save_row', {
+    table: T, row: { client_id: before },
+  })
+  await admin.post('/api/save_row', { table: T, row: { ...row, client_id: after } })
+  const diff = await diffLines(admin, row.row_id)
+  await waitFor(() => expect(diff).toHaveTextContent(`Client ID: ${before} → ${after}`))
+  for (const value of [before, after]) {
+    const shown = within(diff).getByText(value, { exact: true })
+    expect(shown.textContent).toBe(value)
+    expect(shown).not.toHaveClass('whitespace-nowrap')
+    expect(shown).toHaveClass('[overflow-wrap:anywhere]')
+    expect(shown).not.toHaveClass('truncate', 'line-clamp-1', 'overflow-hidden')
+  }
+})
+
 test('a Date change reads as the days, and money the Indian way', async ({ admin }) => {
   const rowId = await editedRow(admin)
   const diff = await diffLines(admin, rowId)
-  await waitFor(() => expect(diff).toHaveTextContent('effective_from: 23-Oct-2026 → 24-Oct-2026'))
-  expect(diff).toHaveTextContent('budget: ₹1,000.00 → ₹12,34,567.00')
+  await waitFor(() => expect(diff).toHaveTextContent('Effective from: 23-Oct-2026 → 24-Oct-2026'))
+  expect(diff).toHaveTextContent('Budget: ₹1,000.00 → ₹12,34,567.00')
   expect(diff.textContent).not.toMatch(/T00:00:00/)
-  // A value never breaks at its hyphens in the narrow timeline column.
-  expect(within(diff).getByText('23-Oct-2026')).toHaveClass('whitespace-nowrap')
   // The edit's own time keeps its zone on the same line.
   expect(screen.getByTestId('activity-time')).toHaveTextContent(/^\d{2}-[A-Z][a-z]{2}-\d{4} \d{2}:\d{2} IST$/)
   expect(screen.getByTestId('activity-time')).toHaveClass('whitespace-nowrap')
@@ -65,11 +100,12 @@ test('#637: an edit and a comment read on the viewer\'s own clock, naming its zo
   const before = process.env.TZ
   process.env.TZ = 'UTC'
   try {
-    await renderApp(`/featherbase/admin/${ENC}/${rowId}`, admin)
+    await renderApp(`/featherbase/admin/table/${tableSlug(decodeURIComponent(ENC))}/row/${rowId}`, admin)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
     const timeline = await screen.findByTestId('activity-timeline', {}, { timeout: 10_000 })
     await waitFor(() => expect(within(timeline).getAllByTestId('activity-time').map((t) => t.textContent)).toContain('03-Nov-2026 07:25 UTC'))
     expect(within(timeline).getAllByTestId('activity-time').map((t) => t.textContent)).toContain('03-Nov-2026 07:40 UTC')
-    expect(await screen.findByTestId('comment-time')).toHaveTextContent(/^03-Nov-2026 07:40 UTC$/)
+    expect(within(timeline).getByText('Keys handed over')).toBeVisible()
   } finally {
     process.env.TZ = before
   }
@@ -84,7 +120,7 @@ test('nested JSON history shows both saved values and allows long values to wrap
   const row = await admin.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: T, row: { extra: before } })
   await admin.post('/api/save_row', { table: T, row: { ...row, extra: after } })
   const diff = await diffLines(admin, row.row_id)
-  await waitFor(() => expect(diff).toHaveTextContent(`extra: ${JSON.stringify(before)} → ${JSON.stringify(after)}`))
+  await waitFor(() => expect(diff).toHaveTextContent(`Extra: ${JSON.stringify(before)} → ${JSON.stringify(after)}`))
   expect(diff).not.toHaveTextContent('[object Object]')
   for (const value of [before, after]) {
     const shown = within(diff).getByText(JSON.stringify(value))
@@ -100,7 +136,7 @@ test('a Date change recorded as a UTC timestamp before #421 also reads as the da
        set data = ${sql.json({ changed: [['effective_from', '2026-10-23T00:00:00.000Z', '2026-10-24T00:00:00.000Z']] })}
      where ref_table = ${T} and ref_name = ${rowId}`
   const diff = await diffLines(admin, rowId)
-  await waitFor(() => expect(diff).toHaveTextContent('effective_from: 23-Oct-2026 → 24-Oct-2026'))
+  await waitFor(() => expect(diff).toHaveTextContent('Effective from: 23-Oct-2026 → 24-Oct-2026'))
 })
 
 test('a Datetime change reads on the viewer\'s clock, and an empty side reads ∅', async ({ admin }) => {
@@ -110,7 +146,7 @@ test('a Datetime change reads on the viewer\'s clock, and an empty side reads �
        set data = ${sql.json({ changed: [['handed_over', null, '2026-10-22T20:30:00.000Z']] })}
      where ref_table = ${T} and ref_name = ${rowId}`
   const diff = await diffLines(admin, rowId)
-  await waitFor(() => expect(diff).toHaveTextContent('handed_over: ∅ → 23-Oct-2026 02:00'))
+  await waitFor(() => expect(diff).toHaveTextContent('Handed over: ∅ → 23-Oct-2026 02:00'))
 })
 
 // A Settings Table records its history as stored text, so a checkbox is '1'/'0'; both are truthy
@@ -124,11 +160,12 @@ test('a Settings checkbox switched off reads ✓ → ✗', async ({ admin }) => 
   })
   await admin.post('/api/save_row', { table: S, row: { open_sundays: true } })
   await admin.post('/api/save_row', { table: S, row: { open_sundays: false } })
-  await renderApp(`/featherbase/admin/${encodeURIComponent(S)}`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(S)}`, admin)
+  await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
   const timeline = await screen.findByTestId('activity-timeline', {}, { timeout: 10_000 })
   await waitFor(() => {
     const diffs = within(timeline).getAllByTestId('activity-diff')
-    expect(diffs.at(-1)).toHaveTextContent('open_sundays: ✓ → ✗')
+    expect(diffs.at(-1)).toHaveTextContent('Open Sundays: ✓ → ✗')
   })
 })
 
@@ -147,7 +184,8 @@ test('import and resolution history says who imported and which decision the per
   await admin.post(`${path}:import`, { key_column: 'title', rows: [{ title: 'North wing', city: 'East', phone: '222' }], context: { run_id: 'timeline-next' } })
   const { conflicts } = await admin.get<{ conflicts: { id: string }[] }>(`${path}:import-conflicts`)
   await admin.post(`${path}:resolve-import-conflict`, { conflict_id: conflicts[0].id, decision: 'keep' })
-  await renderApp(`/featherbase/admin/${ENC}/${rowId}`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(decodeURIComponent(ENC))}/row/${rowId}`, admin)
+  await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
   const timeline = await screen.findByTestId('activity-timeline', {}, { timeout: 8000 })
   await waitFor(() => expect(timeline).toHaveTextContent('Administrator imported'))
   expect(timeline).toHaveTextContent('timeline-next')

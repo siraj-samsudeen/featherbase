@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 const DT = 'Wf Ui Task'
@@ -50,7 +51,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 
 test('WF-002: Approve button transitions state and records the audit trail', async ({ session }) => {
   await session
-    .visit(`/admin/${encodeURIComponent(DT)}/${DOC}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`)
     .within('[data-testid="workflow-state"]', (state) => state.assertExactText('Draft'))
     .clickButton('Approve')
     .within('[data-testid="workflow-state"]', (state) => state.assertExactText('Approved'))

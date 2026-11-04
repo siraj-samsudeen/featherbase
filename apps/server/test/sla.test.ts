@@ -123,9 +123,10 @@ describe('SLA: deadline stamping + escalation', () => {
     expect(ok.sla_status).toBe('On Track') // fulfilled state — never escalated
 
     const mails = await sql`
-      select recipient from email_queue
+      select recipient, body from email_queue
       where ref_table = ${DT} and reference_name = ${String(doc.row_id)}`
     expect(mails.map((m) => m.recipient)).toContain(MGR_EMAIL)
+    expect(mails[0].body).toContain(`/featherbase/admin/table/sla-ticket/row/${encodeURIComponent(String(doc.row_id))}`)
     // person-identities: a holder without an email is skipped, not mailed at
     // their user id.
     expect(mails.map((m) => m.recipient)).not.toContain('psn_slamgrnoemail')

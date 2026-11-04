@@ -15,8 +15,8 @@ import {
   cardClasses,
   pillClasses,
   type DataColumn,
-} from '../components/ui'
-import { fmtInstantIST } from '../lib/inr'
+} from '@featherbase/shop-floor'
+import { fmtInstantIST } from '@featherbase/shop-floor'
 
 interface Token {
   id: string

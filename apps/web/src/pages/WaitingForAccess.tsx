@@ -2,8 +2,8 @@ import { Link } from '@tanstack/react-router'
 import { useQuery, type QueryClient } from '@tanstack/react-query'
 import { adminPageTitle } from 'shared'
 import { api } from '../lib/api'
-import { fmtInstantIST } from '../lib/inr'
-import { DataList, type DataColumn } from '../components/ui'
+import { fmtInstantIST } from '@featherbase/shop-floor'
+import { DataList, type DataColumn } from '@featherbase/shop-floor'
 
 // #429: people a sign-in rule let in who hold no role yet, and see only the
 // no-access page. Opening one goes to their Person form to give roles.
@@ -37,7 +37,7 @@ const columns: DataColumn<WaitingPerson>[] = [
     phone: 'title',
     cell: (p) => (
       <Link
-        to="/featherbase/admin/$table/$name"
+        to="/featherbase/admin/table/$table/row/$name"
         params={{ table: 'Person', name: p.person }}
         search={{ prefill: undefined }}
         className="text-action hover:underline"

@@ -4,7 +4,7 @@ import { ApiError, api, listResource } from '../lib/api'
 import { TopBar } from '../components/TopBar'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 import { NO_COLUMN_TYPES, useMeta, type ColumnDef } from '../lib/meta'
-import { cardClasses } from '../components/ui'
+import { cardClasses } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 

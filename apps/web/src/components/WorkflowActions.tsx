@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
-import { buttonClasses, pillClasses } from './ui'
+import { buttonClasses, pillClasses } from '@featherbase/shop-floor'
 
 interface WorkflowStatus {
   workflow: string | null

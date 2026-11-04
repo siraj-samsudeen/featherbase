@@ -26,7 +26,7 @@ async function seedNote(admin: Admin) {
 }
 
 async function openNote(admin: Admin, rowId: string) {
-  await renderApp(`/featherbase/admin/${enc('Core Note')}/${rowId}`, admin)
+  await renderApp(`/featherbase/admin/table/core-note/row/${rowId}`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('title')).toHaveValue('first'))
 }
@@ -45,7 +45,7 @@ test('Open or create a row: opening a row shows its saved values in the form', a
 
 test('Open or create a row: a new row opens blank and ready for input', async ({ admin }) => {
   await seedNote(admin)
-  await renderApp(`/featherbase/admin/${enc('Core Note')}/new`, admin)
+  await renderApp(`/featherbase/admin/table/core-note/new`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('title')).toBeInTheDocument())
   expect(field('title')).toHaveValue('')
@@ -128,7 +128,7 @@ test('Peek at a linked row: a chain of links opens in panels over the page, and 
     row: { label: 'Main Street', city: city.row_id },
   })
 
-  await renderApp(`/featherbase/admin/${enc('Peek Shop')}/${shop.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/peek-shop/row/${shop.row_id}`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('label')).toHaveValue('Main Street'))
 
@@ -173,7 +173,7 @@ test('Peek at a linked row: the open-as-full-page control navigates to that row\
     table: 'Peek Child',
     row: { label: 'Kid', mother: parent.row_id },
   })
-  await renderApp(`/featherbase/admin/${enc('Peek Child')}/${child.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/peek-child/row/${child.row_id}`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('label')).toHaveValue('Kid'))
 
@@ -201,7 +201,7 @@ test('Pick a linked row by typing: matching rows are offered, picking one fills 
     ],
   })
   const order = await admin.post<Saved>('/api/save_row', { table: 'Pick Order', row: { label: 'o1' } })
-  await renderApp(`/featherbase/admin/${enc('Pick Order')}/${order.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/pick-order/row/${order.row_id}`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('label')).toHaveValue('o1'))
 
@@ -246,7 +246,7 @@ async function seedAllTypes(admin: Admin) {
 
 test('Each field gets a control that fits its type', async ({ admin }) => {
   const row = await seedAllTypes(admin)
-  await renderApp(`/featherbase/admin/${enc('Types Form')}/${row.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/types-form/row/${row.row_id}`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('title')).toHaveValue('t'))
 
@@ -263,7 +263,7 @@ test('Each field gets a control that fits its type', async ({ admin }) => {
 
 test('Read-only and hidden fields: a read-only field cannot be edited, and a hidden field is not shown', async ({ admin }) => {
   const row = await seedAllTypes(admin)
-  await renderApp(`/featherbase/admin/${enc('Types Form')}/${row.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/types-form/row/${row.row_id}`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('title')).toHaveValue('t'))
 
@@ -283,7 +283,7 @@ async function seedPromptNamed(admin: Admin) {
 
 test('A typed-in name is asked for on the new-row form: typing it and saving creates the row under that name', async ({ admin }) => {
   await seedPromptNamed(admin)
-  await renderApp(`/featherbase/admin/${enc('Core Shelf')}/new`, admin)
+  await renderApp(`/featherbase/admin/table/core-shelf/new`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   const rowId = await screen.findByRole('textbox', { name: /Row ID/ })
   expect(rowId).toHaveAttribute('aria-required', 'true')
@@ -305,7 +305,7 @@ test('A typed-in name is asked for on the new-row form: typing it and saving cre
 
 test('A typed-in name is asked for on the new-row form: leaving it blank calls out the name and saves nothing', async ({ admin }) => {
   await seedPromptNamed(admin)
-  await renderApp(`/featherbase/admin/${enc('Core Shelf')}/new`, admin)
+  await renderApp(`/featherbase/admin/table/core-shelf/new`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('aisle')).toBeInTheDocument())
 
@@ -321,7 +321,7 @@ test('A typed-in name is asked for on the new-row form: leaving it blank calls o
 test('A typed-in name is asked for on the new-row form: a name already in use is refused and the existing row is untouched', async ({ admin }) => {
   await seedPromptNamed(admin)
   await admin.post('/api/save_row', { table: 'Core Shelf', row: { row_id: 'shelf-a1', aisle: 'A' } })
-  await renderApp(`/featherbase/admin/${enc('Core Shelf')}/new`, admin)
+  await renderApp(`/featherbase/admin/table/core-shelf/new`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   const rowId = await screen.findByRole('textbox', { name: /Row ID/ })
 
@@ -339,7 +339,7 @@ test('A typed-in name is asked for on the new-row form: a name already in use is
 
 test('A new row on a Table that names its own rows asks for no name', async ({ admin }) => {
   await seedNote(admin)
-  await renderApp(`/featherbase/admin/${enc('Core Note')}/new`, admin)
+  await renderApp(`/featherbase/admin/table/core-note/new`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('title')).toBeInTheDocument())
   expect(screen.queryByRole('textbox', { name: /Row ID/ })).toBeNull()
@@ -347,7 +347,7 @@ test('A new row on a Table that names its own rows asks for no name', async ({ a
 
 test('A typed-in name is asked for on the new-row form: spaces around the typed name are dropped', async ({ admin }) => {
   await seedPromptNamed(admin)
-  await renderApp(`/featherbase/admin/${enc('Core Shelf')}/new`, admin)
+  await renderApp(`/featherbase/admin/table/core-shelf/new`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   fireEvent.change(await screen.findByRole('textbox', { name: /Row ID/ }), { target: { value: '  shelf-b2 ' } })
   screen.getByTestId('form-save').click()
@@ -358,7 +358,7 @@ test('A typed-in name is asked for on the new-row form: spaces around the typed 
 test('An existing row of a Table whose rows are named by their creator opens with no name field', async ({ admin }) => {
   await seedPromptNamed(admin)
   await admin.post('/api/save_row', { table: 'Core Shelf', row: { row_id: 'shelf-c3', aisle: 'C' } })
-  await renderApp(`/featherbase/admin/${enc('Core Shelf')}/shelf-c3`, admin)
+  await renderApp(`/featherbase/admin/table/core-shelf/row/shelf-c3`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('aisle')).toHaveValue('C'))
   expect(screen.queryByRole('textbox', { name: /Row ID/ })).toBeNull()

@@ -26,7 +26,7 @@ describe('signOut', () => {
     const owner = 'history-incomplete-sign-out'
     setSession('still-valid-token', { row_id: owner, email: null, full_name: null })
     connectEventSink({ currentUser: () => getSessionUser()?.row_id ?? null, post: () => {}, beacon: () => {} })
-    const visit = { kind: 'list' as const, key: 'list:Person?', label: 'Person', path: '/featherbase/admin/Person' }
+    const visit = { kind: 'list' as const, key: 'list:Person?', label: 'Person', path: '/featherbase/admin/table/person' }
     recordAction(owner, visit, 1_800_000_000_000)
     flushPendingEvents()
     answer(503, { error: { type: 'ServiceUnavailableError', message: 'Try again' } })

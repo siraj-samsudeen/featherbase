@@ -14,6 +14,7 @@
 // fallback, and the switch back — because a catalog that reaches one and not
 // another is exactly the bug worth catching.
 
+import { tableSlug } from 'shared'
 import { screen, waitFor } from '@testing-library/react'
 import type { QueryClient } from '@tanstack/react-query'
 import { test, expect, renderApp } from './pg-test'
@@ -53,7 +54,7 @@ async function seed(admin: Admin) {
  * could be overtaken by that first, older answer.
  */
 async function mountForm(admin: Admin) {
-  const { queryClient } = await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/new`, admin)
+  const { queryClient } = await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/new`, admin)
   await screen.findByTestId('form-view')
   await waitFor(() =>
     expect(queryClient.getQueryData(['whoami'])).toMatchObject({ language: 'en' }),

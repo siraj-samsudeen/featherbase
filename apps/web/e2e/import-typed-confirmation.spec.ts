@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
@@ -57,7 +58,7 @@ test(`UPS-H1: updating ${N} rows demands the number typed back`, async ({ sessio
     // Import → the guard appears instead of the run; nothing was written.
     await page.getByTestId('iw-import').click()
     const guard = page.getByTestId('iw-confirm-updates')
-    await expect(guard).toContainText(`update ${N} existing rows`)
+    await expect(guard).toContainText(`change ${N} existing rows`)
   })
 
   const anyRow = (await (
@@ -78,7 +79,7 @@ test(`UPS-H1: updating ${N} rows demands the number typed back`, async ({ sessio
     await page.getByTestId('iw-confirm-go').click()
 
     // The run proceeds normally (single sheet → the ratified auto-navigation).
-    await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}`))
+    await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`))
   })
 
   const after = (await (

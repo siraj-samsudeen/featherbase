@@ -1,0 +1,23 @@
+{
+  "name": "@featherbase/shop-floor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./src/styles.css",
+    "./theme": "./src/theme.ts",
+    "./format": "./src/format.ts"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "tailwindcss": "^4.0.0"
+  },
+  "dependencies": {
+    "lucide-react": "1.50.0",
+    "shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0"
+  }
+}

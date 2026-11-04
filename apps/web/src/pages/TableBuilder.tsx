@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { LIST_COLUMNS_ON_CREATE, coerceRows, idPatternFor, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
+import { DEFAULT_ID_PATTERN, LIST_COLUMNS_ON_CREATE, coerceRows, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
 import { ApiError, api } from '../lib/api'
 import { NamingControl } from '../components/NamingControl'
 import { ColumnCards } from '../components/ColumnCards'
@@ -22,8 +22,8 @@ import {
   parseWorkbook,
 } from '../lib/parse-file'
 import { sendImportRun } from '../lib/import-run'
-import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, touchRowClasses, touchTargetClasses } from '../components/ui'
-import { fmtCount, fmtDate, fmtDay } from '../lib/inr'
+import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, touchRowClasses, touchTargetClasses } from '@featherbase/shop-floor'
+import { fmtCount, fmtDate, fmtDay } from '@featherbase/shop-floor'
 
 // #738: a grid tick's label is its thumb-sized target at phone width, under a
 // mouse too (a touch screen gets that from the base stylesheet).
@@ -135,7 +135,7 @@ export function TableBuilder() {
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
-  // null = follow the Table name (ZONE-.###); a string = the user chose.
+  // null = the default, plain numbers 1, 2, 3 (#855); a string = the user chose.
   const [namingOverride, setNamingOverride] = useState<string | null>(null)
   // #74: user tables get a real module (default "Custom"). Omitting it used
   // to let the server default the table into 'Core', mis-filing it among the
@@ -242,7 +242,7 @@ export function TableBuilder() {
 
   // Before a name is typed there is no prefix to derive, but the control should
   // still open on "series" — that is the default we want for imports.
-  const idPattern = namingOverride ?? (name.trim() ? idPatternFor(name) : '.###')
+  const idPattern = namingOverride ?? DEFAULT_ID_PATTERN
 
   async function loadFile(file: File) {
     setError(null)
@@ -363,7 +363,7 @@ export function TableBuilder() {
       // #80: the new table auto-appears on its module's home page — refresh
       // the sidebar so that happens without a reload.
       await queryClient.invalidateQueries({ queryKey: ['home-pages'] })
-      navigate({ to: '/featherbase/admin/$table', params: { table: name }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/table/$table', params: { table: name }, search: { filters: undefined } })
     } catch (err) {
       setProgress(null)
       if (err instanceof ApiError && err.fields) {

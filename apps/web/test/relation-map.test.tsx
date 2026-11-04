@@ -26,20 +26,20 @@ async function seed(admin: Parameters<typeof renderApp>[1]) {
 
 test('the map shows what a row points to and what points back, with a count', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/map/${enc('Rm Order')}/ord-1`, admin)
+  await renderApp(`/featherbase/admin/table/rm-order/row/ord-1/map`, admin)
   await screen.findByTestId('relation-map')
   expect(await screen.findByTestId('map-forward-Rm Customer')).toHaveTextContent('cust-1')
   // Nothing points back at an order, so no collection is drawn for it.
   expect(screen.queryByTestId('map-group-Rm Order')).not.toBeInTheDocument()
 
-  await renderApp(`/featherbase/admin/map/${enc('Rm Customer')}/cust-1`, admin)
+  await renderApp(`/featherbase/admin/table/rm-customer/row/cust-1/map`, admin)
   const back = await screen.findByTestId('map-group-Rm Order')
   expect(back).toHaveTextContent('2')
 })
 
 async function hopOrderToCustomerToOtherOrder(admin: Parameters<typeof renderApp>[1]) {
   await seed(admin)
-  const view = await renderApp(`/featherbase/admin/map/${enc('Rm Order')}/ord-1`, admin)
+  const view = await renderApp(`/featherbase/admin/table/rm-order/row/ord-1/map`, admin)
   // order -> its customer
   fireEvent.click(await screen.findByTestId('map-forward-Rm Customer'))
   await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores'))
@@ -76,7 +76,7 @@ test('the trail leads back to the original order in one click', async ({ admin }
 test('a copied single-encoded trail restores titles and a removed stop safely falls back to its id', async ({ admin }) => {
   await seed(admin)
   const trail = JSON.stringify([['Rm Order', 'removed-order'], ['Rm Customer', 'cust-1']])
-  const { router } = await renderApp(`/featherbase/admin/map/${enc('Rm Order')}/ord-2?trail=${enc(trail)}`, admin)
+  const { router } = await renderApp(`/featherbase/admin/table/rm-order/row/ord-2/map?trail=${enc(trail)}`, admin)
   await waitFor(() => expect(screen.getByTestId('map-trail-1')).toHaveTextContent('Asha Stores'))
   const { location } = router.state as { location: { searchStr: string } }
   expect(JSON.parse(new URLSearchParams(location.searchStr).get('trail')!)).toEqual(JSON.parse(trail))
@@ -93,7 +93,7 @@ test('the narrow layout exposes every backlink count and its rows through button
     columns: [{ column_name: 'customer', column_type: 'Reference', reference_table: 'Rm Customer' }],
   })
   await admin.post('/api/save_row', { table: 'Rm Note', row: { row_id: 'note-1', customer: 'cust-1' } })
-  await renderApp(`/featherbase/admin/map/${enc('Rm Customer')}/cust-1`, admin)
+  await renderApp(`/featherbase/admin/table/rm-customer/row/cust-1/map`, admin)
   const narrow = within(await screen.findByTestId('map-narrow'))
   const orders = await narrow.findByTestId('map-narrow-group-Rm Order')
   expect(orders).toHaveTextContent('2')
@@ -108,13 +108,13 @@ test('the narrow layout exposes every backlink count and its rows through button
 
 test('the narrow layout keeps a single link walkable and an empty map understandable', async ({ admin }) => {
   await seed(admin)
-  const linked = await renderApp(`/featherbase/admin/map/${enc('Rm Order')}/ord-1`, admin)
+  const linked = await renderApp(`/featherbase/admin/table/rm-order/row/ord-1/map`, admin)
   fireEvent.click(await screen.findByTestId('map-narrow-forward-Rm Customer'))
   await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores'))
   linked.unmount()
   await admin.post('/api/table_def', { name: 'Rm Alone', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Rm Alone', row: { row_id: 'alone-1', title: 'Unconnected row' } })
-  await renderApp(`/featherbase/admin/map/${enc('Rm Alone')}/alone-1`, admin)
+  await renderApp(`/featherbase/admin/table/rm-alone/row/alone-1/map`, admin)
   await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('alone-1'))
   expect(within(screen.getByTestId('map-narrow')).getByText('No related rows')).toBeInTheDocument()
   expect(screen.getByTestId('map-open-form')).toBeInTheDocument()
@@ -151,7 +151,7 @@ test('a sub-table shows as a collection of its rows, and a row of it points back
     return response
   })
   try {
-    await renderApp(`/featherbase/admin/map/${enc('Rm Invoice')}/inv-1`, admin)
+    await renderApp(`/featherbase/admin/table/rm-invoice/row/inv-1/map`, admin)
     const lines = await screen.findByTestId('map-group-Rm Line')
     expect(lines).toHaveTextContent('2')
     fireEvent.click(lines)
@@ -173,7 +173,7 @@ test('a sub-table shows as a collection of its rows, and a row of it points back
 
 test('a map deep link to a missing row says what could not be loaded', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/map/${enc('Rm Order')}/gone`, admin)
+  await renderApp(`/featherbase/admin/table/rm-order/row/gone/map`, admin)
   expect(await screen.findByText('Cannot load Rm Order gone')).toBeInTheDocument()
   expect(screen.queryByTestId('relation-map')).not.toBeInTheDocument()
 })

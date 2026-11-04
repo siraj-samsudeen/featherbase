@@ -4,8 +4,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminPageTitle } from 'shared'
 import { api } from '../lib/api'
 import { GLOSSARY_QUERY_KEY, GLOSSARY_TABLE, groupTerms, termAnchor, termMatches, useGlossary, type GlossaryTerm } from '../lib/glossary'
-import { Button, Card, EmptyState, Notice, SearchInput, Skeleton, StatusPill, buttonClasses, labelClasses } from '../components/ui'
-import { BookOpen, Pencil, Plus } from '../components/ui/icons'
+import { Button, Card, EmptyState, Notice, SearchInput, Skeleton, StatusPill, buttonClasses, labelClasses } from '@featherbase/shop-floor'
+import { BookOpen, Pencil, Plus } from '@featherbase/shop-floor'
 
 // #629: the glossary. Everyone signed in reads it: the words this instance's
 // apps use, grouped by app, then the instance's own. An editor (a write grant
@@ -26,7 +26,7 @@ function TermCard({ term, canEdit }: { term: GlossaryTerm; canEdit: boolean }) {
           {term.editedHere && <StatusPill tone="neutral">Edited here</StatusPill>}
           {canEdit && (
             <Link
-              to="/featherbase/admin/$table/$name"
+              to="/featherbase/admin/table/$table/row/$name"
               params={{ table: GLOSSARY_TABLE, name: term.id }}
               search={{ prefill: undefined }}
               aria-label={`Edit ${term.term}`}
@@ -81,7 +81,7 @@ function TermCard({ term, canEdit }: { term: GlossaryTerm; canEdit: boolean }) {
                 {term.describes.map((d) => (
                   <Link
                     key={`${d.table}.${d.column ?? ''}`}
-                    to="/featherbase/admin/$table"
+                    to="/featherbase/admin/table/$table"
                     params={{ table: d.table }}
                     search={{ filters: undefined }}
                     className="inline-flex min-h-8 items-center text-action underline underline-offset-2 [overflow-wrap:anywhere] max-sm:min-h-11"
@@ -119,8 +119,8 @@ export function GlossaryPage() {
         </div>
         {data?.canAdd && (
           <Link
-            to="/featherbase/admin/$table/$name"
-            params={{ table: GLOSSARY_TABLE, name: 'new' }}
+            to="/featherbase/admin/table/$table/new"
+            params={{ table: GLOSSARY_TABLE }}
             search={{ prefill: undefined }}
             className={buttonClasses({ variant: 'primary' })}
             data-testid="glossary-add"

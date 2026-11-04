@@ -41,11 +41,17 @@ export interface TableMeta {
   sort_column: string
   sort_order: string
   track_changes: boolean
+  enable_assignments?: boolean
+  enable_tags?: boolean
+  enable_files?: boolean
+  enable_discussion?: boolean
   description: string | null
   custom: boolean
   // #74: platform tables created by the migration chain — grouped under the
   // sidebar's collapsed System section, never hidden.
   system: boolean
+  // #651: the installed app that owns this Table, if any.
+  owner_app?: string | null
   // #432: the platform alone writes this Table's rows (Activity Log, Version,
   // Background Job, …). Lists and forms show it read-only for everyone.
   system_written?: boolean

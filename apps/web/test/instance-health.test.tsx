@@ -63,7 +63,7 @@ test('history: each change of state, with the activity around it one step away (
   expect(entries[1]).toHaveTextContent('Passing from 20-Oct-2026 10:00 IST to 22-Oct-2026 14:30 IST')
   const link = within(entries[0]).getByRole('link', { name: 'Activity around this change' })
   const url = new URL(link.getAttribute('href')!, 'http://x')
-  expect(url.pathname).toBe('/featherbase/admin/Activity%20Log')
+  expect(url.pathname).toBe('/featherbase/admin/table/activity-log')
   expect(JSON.parse(url.searchParams.get('filters')!)).toEqual([
     ['created_at', '>=', '2026-10-22T08:00:00.000Z'],
     ['created_at', '<=', '2026-10-22T09:15:00.000Z'],

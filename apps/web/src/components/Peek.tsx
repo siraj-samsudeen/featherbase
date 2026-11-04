@@ -14,8 +14,8 @@ import { NO_COLUMN_TYPES, listColumns, useMeta, type ColumnDef } from '../lib/me
 import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Filter } from '../lib/connections'
 import { Indicator } from './ListView'
-import { iconButtonClasses, labelClasses, pillClasses } from './ui'
-import { fmtCount } from '../lib/inr'
+import { iconButtonClasses, labelClasses, pillClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 import { useI18n } from '../lib/i18n'
 
 type Row = Record<string, unknown>
@@ -110,13 +110,13 @@ function PeekPanel({
     onClose()
     if (frame.kind === 'record')
       navigate({
-        to: '/featherbase/admin/$table/$name',
+        to: '/featherbase/admin/table/$table/row/$name',
         params: { table: frame.table, name: frame.name },
         search: { prefill: undefined },
       })
     else
       navigate({
-        to: '/featherbase/admin/$table',
+        to: '/featherbase/admin/table/$table',
         params: { table: frame.table },
         search: { filters: frame.filters.length ? JSON.stringify(frame.filters) : undefined },
       })

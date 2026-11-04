@@ -24,7 +24,7 @@ async function seedDoc(admin: Admin, table: string) {
 
 test('Keyboard shortcuts: Ctrl+K puts the cursor in the search bar', async ({ admin }) => {
   await seedDoc(admin, 'Kb Search')
-  await renderApp(`/featherbase/admin/${enc('Kb Search')}`, admin)
+  await renderApp(`/featherbase/admin/table/kb-search`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   const bar = screen.getByLabelText('Search or type a command')
   expect(bar).not.toHaveFocus()
@@ -34,7 +34,7 @@ test('Keyboard shortcuts: Ctrl+K puts the cursor in the search bar', async ({ ad
 
 test('Keyboard shortcuts: Ctrl+S saves the form that is open', async ({ admin }) => {
   const row = await seedDoc(admin, 'Kb Save')
-  await renderApp(`/featherbase/admin/${enc('Kb Save')}/${row.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/kb-save/row/${row.row_id}`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   const title = () => document.querySelector<HTMLInputElement>('[data-field=title]') as HTMLInputElement
   await waitFor(() => expect(title()).toHaveValue('orig'))
@@ -49,7 +49,7 @@ test('Keyboard shortcuts: Ctrl+S saves the form that is open', async ({ admin })
 
 test('Keyboard shortcuts: g then d goes to the Admin home, but not while typing in a field', async ({ admin }) => {
   const row = await seedDoc(admin, 'Kb Home')
-  const app = await renderApp(`/featherbase/admin/${enc('Kb Home')}/${row.row_id}`, admin)
+  const app = await renderApp(`/featherbase/admin/table/kb-home/row/${row.row_id}`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   const title = await waitFor(() => {
     const el = document.querySelector<HTMLInputElement>('[data-field=title]')
@@ -60,19 +60,19 @@ test('Keyboard shortcuts: g then d goes to the Admin home, but not while typing 
   // Typing "gd" inside a field is just typing.
   press({ key: 'g' }, title)
   press({ key: 'd' }, title)
-  expect(here(app)).toContain('Kb Home')
+  expect(here(app)).toBe(`/featherbase/admin/table/kb-home/row/${enc(row.row_id)}`)
 
   press({ key: 'g' }, document.body)
   press({ key: 'd' }, document.body)
-  await waitFor(() => expect(here(app)).not.toContain('Kb Home'))
+  await waitFor(() => expect(here(app)).not.toContain('/featherbase/admin/table/kb-home'))
 })
 
 test('Keyboard shortcuts: Ctrl+B starts a new row of the Table being looked at', async ({ admin }) => {
   await seedDoc(admin, 'Kb New')
-  const app = await renderApp(`/featherbase/admin/${enc('Kb New')}`, admin)
+  const app = await renderApp(`/featherbase/admin/table/kb-new`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   press({ key: 'b', ctrlKey: true })
-  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Kb New/new'))
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/table/kb-new/new'))
 })
 
 // #515: Ctrl+B on an Admin page that is not a Table (here the list of all

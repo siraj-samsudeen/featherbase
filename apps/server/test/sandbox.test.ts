@@ -27,7 +27,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
   }) => {
     await createProbeTable(admin)
     const doc = await seed(DT, { title: 'first', qty: 3 })
-    expect(doc.row_id).toMatch(/^[0-9a-f]{10}$/)
+    expect(doc.row_id).toMatch(/^[1-9][0-9]*$/) // #855: new Tables number rows 1, 2, 3
     const listed = await admin.get<{ data: { row_id: string }[] }>(
       `/api/table/${encodeURIComponent(DT)}`,
     )
@@ -40,7 +40,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
   }) => {
     await createProbeTable(admin)
     const doc = await seed(DT, { title: 'first', qty: 3 })
-    expect(doc.row_id).toMatch(/^[0-9a-f]{10}$/)
+    expect(doc.row_id).toMatch(/^[1-9][0-9]*$/) // #855: new Tables number rows 1, 2, 3
     const listed = await admin.get<{ data: { row_id: string }[] }>(
       `/api/table/${encodeURIComponent(DT)}`,
     )
@@ -57,7 +57,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     await expect(seed(DT, { qty: 1 })).rejects.toMatchObject({ status: 417 })
     // ...and the sandbox connection is still usable afterwards.
     const doc = await seed(DT, { title: 'after failure', qty: 2 })
-    expect(doc.row_id).toMatch(/^[0-9a-f]{10}$/)
+    expect(doc.row_id).toMatch(/^[1-9][0-9]*$/) // #855: new Tables number rows 1, 2, 3
     // An app closing its delegated client must not close the sandbox's
     // borrowed connection (or commit the outer test transaction).
     await sql.end()

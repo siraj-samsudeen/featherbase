@@ -3,12 +3,13 @@
 // tapping a card opens the run and Back returns to the list. The merged web
 // coverage report (ADR 0012) showed this list taken by no test — e2e and
 // checklist-binding.test.tsx open runs directly by URL.
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 import { dayLabel } from '../src/components/ChecklistView'
-import { timelineDayKey } from '../src/lib/inr'
+import { timelineDayKey } from '@featherbase/shop-floor'
 
 const T = 'Cr Opening'
 const ENC = encodeURIComponent(T)
@@ -49,7 +50,7 @@ test('runs are grouped by day, newest first, and a card opens its run', async ({
   await save({ run_title: 'Yesterday opening', run_date: day(1), progress: '1/3' })
   await save({ run_title: 'Today opening', run_date: day(0), stage: 'Open', progress: '0/2', steps: [{ item_label: 'Unlock the shutter' }] })
 
-  await renderApp(`/featherbase/admin/${ENC}/view/checklist`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(decodeURIComponent(ENC))}/view/checklist`, admin)
   const view = await screen.findByTestId('checklist-view', {}, { timeout: 10_000 })
   await waitFor(() => expect(within(view).getAllByTestId('checklist-run-card')).toHaveLength(4))
   expect(view).toHaveTextContent('4 runs')
@@ -71,7 +72,7 @@ test('runs are grouped by day, newest first, and a card opens its run', async ({
 
 test('a checklist with no runs yet says so', async ({ admin }) => {
   await seedTables(admin)
-  await renderApp(`/featherbase/admin/${ENC}/view/checklist`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(decodeURIComponent(ENC))}/view/checklist`, admin)
   const view = await screen.findByTestId('checklist-view', {}, { timeout: 10_000 })
   expect(await within(view).findByText('No runs yet.')).toBeInTheDocument()
   expect(view).toHaveTextContent('0 runs')
@@ -93,7 +94,7 @@ test('runs on the same date are ordered by latest update rather than title', asy
     // while two runs on the same date must use update time as the tie-break.
     await sql`update featherbase.cr_opening set updated_at = ${updated} where row_id = ${saved.row_id}`
   }
-  await renderApp(`/featherbase/admin/${ENC}/view/checklist`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(decodeURIComponent(ENC))}/view/checklist`, admin)
   await waitFor(() => expect(screen.getAllByTestId('checklist-run-card')).toHaveLength(5))
   expect(screen.getAllByTestId('checklist-run-card').map((card) => card.textContent)).toEqual([
     'Later calendar day', 'Z newer update', 'A older update',
@@ -121,7 +122,7 @@ test('a checklist without date or summary columns lists only titles in update or
     })
     await sql`update featherbase.cr_minimal set updated_at = ${updated} where row_id = ${saved.row_id}`
   }
-  await renderApp('/featherbase/admin/Cr%20Minimal/view/checklist', admin)
+  await renderApp('/featherbase/admin/table/cr-minimal/view/checklist', admin)
   await waitFor(() => expect(screen.getAllByTestId('checklist-run-card')).toHaveLength(3))
   expect(screen.getAllByTestId('checklist-run-card').map((card) => card.textContent)).toEqual([
     'Z newest run', 'M middle run', 'A older run',
@@ -134,7 +135,7 @@ test('an empty run displays zero progress without a completed bar', async ({ adm
   const saved = await admin.post<{ row_id: string }>('/api/save_row', {
     table: T, row: { run_title: 'Awaiting steps', progress: '0/0', steps: [] },
   })
-  await renderApp(`/featherbase/admin/${ENC}/view/checklist?run=${encodeURIComponent(saved.row_id)}`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(decodeURIComponent(ENC))}/view/checklist?run=${encodeURIComponent(saved.row_id)}`, admin)
   const view = await screen.findByTestId('checklist-run-view')
   expect(within(view).getByTestId('checklist-progress')).toHaveTextContent('0/0')
   expect(within(view).getByText('This run has no items.')).toBeInTheDocument()

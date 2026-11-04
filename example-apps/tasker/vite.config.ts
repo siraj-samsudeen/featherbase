@@ -15,6 +15,7 @@ import { transform } from 'esbuild'
 if (process.env.VITE_COVERAGE === 'true') process.env.NODE_ENV = 'development'
 
 export default defineConfig({
+  resolve: { dedupe: ['react', 'react-dom'] },
   base: './',
   plugins: [react(), tailwindcss(),
     // Runtime pages are served from dist, not by the platform's Vite server.

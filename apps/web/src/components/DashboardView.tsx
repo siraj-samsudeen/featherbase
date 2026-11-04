@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api'
-import { cardClasses } from './ui'
-import { fmtAsStored, fmtCount } from '../lib/inr'
+import { cardClasses } from '@featherbase/shop-floor'
+import { fmtAsStored, fmtCount } from '@featherbase/shop-floor'
 
 // UI-026: renders a saved Dashboard — number cards and bar charts computed on
 // demand from live data through the permission-scoped dashboard endpoints.
