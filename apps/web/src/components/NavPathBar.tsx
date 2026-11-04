@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { PathBar, RecentPaths } from '@featherbase/shop-floor'
-import { back, encodePath, forward, type NavPath } from '../lib/nav-path'
+import { encodePath, type NavPath } from '../lib/nav-path'
 import { useNavigation } from '../lib/navigation'
 import { useNavigationSettings } from '../lib/nav-settings'
 import { useStepLabels } from '../lib/step-labels'
@@ -27,8 +27,8 @@ export function NavPathBar() {
       steps={path.steps.map((_, i) => ({ key: String(i), label: labels[i] }))}
       current={path.at}
       onStep={nav.go}
-      onBack={() => nav.open(back(path))}
-      onForward={() => nav.open(forward(path))}
+      onBack={() => nav.go(path.at - 1)}
+      onForward={() => nav.go(path.at + 1)}
       onCopyLink={() => void navigator.clipboard?.writeText(new URL(nav.href(path), window.location.origin).href).catch(() => {})}
       recent={<RecentWalks paths={settings.recent} onPick={nav.open} />}
     />

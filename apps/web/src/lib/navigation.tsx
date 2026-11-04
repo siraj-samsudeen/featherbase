@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { rowHref, tableHref } from 'shared'
 import { EMPTY_PATH, decodePath, encodePath, go as goTo, push as pushStep, replace as replaceAt, stepShows, type NavPath, type NavStep } from './nav-path'
 
@@ -62,6 +62,9 @@ export function pathHref(path: NavPath): string {
  * `here` is the page itself: when the address carries no path, or one whose
  * current step is another page, the walk starts here.
  */
+/** The whole path the path's Back is moving to through history, until it arrives. */
+let arriving: NavPath | null = null
+
 export function useAddressNavigation(here: NavStep, raw: unknown): Navigation {
   const navigate = useNavigate()
   const decoded = useMemo(() => decodePath(raw), [raw])
@@ -71,10 +74,25 @@ export function useAddressNavigation(here: NavStep, raw: unknown): Navigation {
     return pushStep(EMPTY_PATH, here)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decoded, hereKey])
-  const show = useCallback((next: NavPath, replace = false) => {
+  // How many history entries before this one belong to this walk, one per
+  // step: the path's Back then moves back through them, so the browser's back
+  // and forward keep walking exactly the path's steps. A walk opened from a
+  // link or a recent path starts at 0 and has none behind it.
+  const router = useRouter()
+  const depth = useRouterState({ select: (s) => (s.location.state as { navDepth?: number }).navDepth ?? 0 })
+  const show = useCallback((next: NavPath, replace = false, from = depth) => {
     if (next === path) return
-    void navigate({ href: pathHref(next), replace })
-  }, [navigate, path])
+    const navDepth = replace ? from : from + 1
+    void navigate({ href: pathHref(next), replace, state: ((was: object) => ({ ...was, navDepth })) as never })
+  }, [navigate, path, depth])
+  useEffect(() => {
+    const whole = arriving
+    if (!whole) return
+    arriving = null
+    if (whole.at === path.at && stepShows(whole.steps[whole.at]) === stepShows(path.steps[path.at]) && encodePath(whole) !== encodePath(path))
+      void navigate({ href: pathHref(whole), replace: true, state: ((was: object) => ({ ...was, navDepth: depth })) as never })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path])
   // What the tree unfolded since the current step was taken: it belongs to
   // that step on screen only, until the user moves to another step.
   const [unfolded, setUnfolded] = useState<{ path: NavPath; expanded: string[] } | null>(null)
@@ -91,20 +109,28 @@ export function useAddressNavigation(here: NavStep, raw: unknown): Navigation {
       // this history entry; anything else is a new one.
       push: (next) => show(pushStep(path, carry(next)), stepShows(stored) === stepShows(next)),
       replace: (next) => show(replaceAt(path, next), true),
-      go: (index) => show(goTo(path, index)),
-      open: (next) => show(next),
+      go: (index) => {
+        const steps = path.at - index
+        if (steps > 0 && steps <= depth) {
+          // That entry's address ends at its own step; on arrival it is
+          // rewritten with the whole path, so the steps after it stay.
+          arriving = goTo(path, index)
+          router.history.go(-steps)
+        } else show(goTo(path, index))
+      },
+      open: (next) => show(next, false, -1),
       reshape: (next) => show(next, true),
       advanceTo: (next) => {
         void (async () => {
-          if (next.at > 0) await navigate({ href: pathHref({ steps: next.steps, at: next.at - 1 }), replace: true })
-          await navigate({ href: pathHref(next) })
+          if (next.at > 0) await navigate({ href: pathHref({ steps: next.steps, at: next.at - 1 }), replace: true, state: ((was: object) => ({ ...was, navDepth: depth })) as never })
+          await navigate({ href: pathHref(next), state: ((was: object) => ({ ...was, navDepth: depth + 1 })) as never })
         })()
       },
       href: pathHref,
       addressed: true,
       setExpanded: (expanded) => setUnfolded({ path, expanded }),
     }
-  }, [path, show, live])
+  }, [path, show, live, depth, router, navigate])
 }
 
 /** A navigation held in memory, for a screen with no address of its own. */
