@@ -12,7 +12,8 @@ const { givenReaderSource } = require('../support/outside-db');
 const { SourceBrowserPage } = require('../support/pages/source-browser-page');
 const { ListPage } = require('../support/pages/list-page');
 const { FormPage } = require('../support/pages/form-page');
-const { tableHref, rowHref, mapHref } = require('../support/addresses');
+const { tableHref, rowHref } = require('../support/addresses');
+const { RelationMapPage } = require('../support/pages/relation-map-page');
 
 const SCHEMA = 'shop_fixture';
 const SOURCE = 'shops';
@@ -135,9 +136,9 @@ When('the user opens a bin and takes the offer to connect the shelf table', asyn
 });
 
 When("the user opens that bin's relationship map", async function () {
-  const page = await this.actor();
-  await page.goto(mapHref('Bin', this.bin));
-  await page.getByTestId('map-forward-Shelf').waitFor();
+  const map = new RelationMapPage(await this.actor());
+  await map.open('Bin', this.bin);
+  await map.linkedRow('Shelf').waitFor();
 });
 
 // ---- Then ----

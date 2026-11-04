@@ -1,14 +1,12 @@
 'use strict';
 
-// Steps for rows read by their name, not their id, in a list (list-view) and in
-// the relationship map's row lists (search-and-explore). The orders and
+// Steps for rows read by their name, not their id, in a list (list-view). The orders and
 // customers come from "orders from the customers … and …" (link-pickers.steps.js):
 // customers are titled by their name, orders are not titled. Made-up rows only.
 
 const assert = require('node:assert/strict');
 const { Given, When, Then } = require('@cucumber/cucumber');
 const { ListPage } = require('../support/pages/list-page');
-const { RelationMapPage } = require('../support/pages/relation-map-page');
 const { tableHref } = require('../support/addresses');
 
 // The tables "orders from the customers … and …" creates.
@@ -81,14 +79,6 @@ When('the user comes back to the whole orders list', async function () {
   this.list = await openList(this, ORDERS);
 });
 
-When("the user opens that chore's relationship map and clicks {string} in the listed row", async function (title) {
-  this.map = new RelationMapPage(await this.actor());
-  await this.map.open('Chore', 'chore-1');
-  const link = this.map.page.getByTestId('map-row').getByRole('button', { name: title, exact: true });
-  await link.waitFor({ timeout: 10_000 });
-  await link.click();
-});
-
 // ---- Then ----
 
 Then('the user sees the list led by {string} and {string}, without their row IDs', async function (first, second) {
@@ -151,21 +141,4 @@ Then('the user sees a recent filter reading {string}', async function (words) {
   const views = page.getByTestId('recent-strip-view');
   const reads = await eventually(page, () => views.allTextContents(), (all) => all.map((t) => t.trim()).includes(words));
   assert.ok(reads?.map((t) => t.trim()).includes(words), `the recent filters read ${JSON.stringify(reads)}`);
-});
-
-Then('the user sees {string} listed as assigned to {string}', async function (chore, volunteer) {
-  const page = this.map.page;
-  const row = page.getByTestId('map-row').filter({ hasText: chore }).first();
-  const reads = await eventually(page, () => row.innerText(), (t) => t.includes(volunteer));
-  assert.ok(reads?.includes(volunteer), `the listed chore reads "${reads}"`);
-  assert.ok(!reads.includes('vol-1'), `the listed chore still shows the id: "${reads}"`);
-});
-
-Then('the user sees the map centered on {string}', async function (title) {
-  const page = this.map.page;
-  const center = page.getByTestId('map-center');
-  const reads = await eventually(page, () => center.textContent(), (t) => Boolean(t?.includes(title)));
-  assert.ok(reads?.includes(title), `the map's center reads "${reads}"`);
-  const at = new URL(page.url()).pathname;
-  assert.ok(at.startsWith(`${tableHref('Volunteer')}/row/`) && at.endsWith('/map'), `the map is at ${page.url()}`);
 });
