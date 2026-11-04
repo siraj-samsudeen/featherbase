@@ -7,17 +7,17 @@
 
 ## 2. Shared components and UI Lab (before any page uses them)
 
-- [ ] 2.1 `shop-floor`: DrillPane frame, PathBar, LinkChip (go there, filter), GroupChip (count),
+- [x] 2.1 `shop-floor`: DrillPane frame, PathBar, LinkChip (go there, filter), GroupChip (count),
       FieldGrid (two columns, empty fields folded, long text clamped), TreeOutline, PanePlace
       toggle, CompactToggle; unit tests for each
-- [ ] 2.2 UI Lab examples for each, searchable; sentence-case section headings
-- [ ] 2.3 Shared title: name first, code after (D5), with tests
+- [x] 2.2 UI Lab examples for each, searchable; sentence-case section headings
+- [x] 2.3 Shared title: name first, code after (D5), with tests
 
 ## 3. Acceptance tests first (fail before the pages)
 
-- [ ] 3.1 Step definitions and page objects for every scenario of `specs/relational-navigation`
+- [x] 3.1 Step definitions and page objects for every scenario of `specs/relational-navigation`
       and `specs/list-view`, and the modified search-and-explore scenarios
-- [ ] 3.2 Retire the peek, Related tab and map-page steps and page objects
+- [x] 3.2 Retire the peek, Related tab and map-page steps and page objects
 
 ## 4. Navigation state
 
@@ -41,7 +41,7 @@
 
 ## 6. Check and hand off
 
-- [ ] 6.1 Code review of the permission path (item 22) and URL parsing
+- [x] 6.1 Code review of the permission path (item 22) and URL parsing
 - [ ] 6.2 Headless verifier over #910's 22 items, #800's and #795's acceptance points and the UI
       Lab, at 1280 and 900, light and dark; spec-vs-built table with screenshots; fix every gap
 - [ ] 6.3 PRs with green CI (#857 refreshed, then #910 on top); sync and archive after owner review
