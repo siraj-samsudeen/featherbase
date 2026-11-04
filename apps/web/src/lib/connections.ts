@@ -44,10 +44,9 @@ export function useBacklinks(table: string, enabled = true) {
   })
 }
 
-// The display label for a connection/backlink group. The via-sub-table case
-// reads "Purchase Order · via PO Line"; a second Reference column into the
-// same table disambiguates as "Employee · reports_to".
+// Include the Reference column even on the first path so multiple direct or
+// via-sub-table relationships to the same Table remain distinguishable.
 export function connectionLabel(c: { table: string; column: string; via: string | null }): string {
-  if (c.via) return `${c.table} · via ${c.via}`
-  return c.table
+  if (c.via) return `${c.table} · via ${c.via} / ${c.column}`
+  return `${c.table} · ${c.column}`
 }

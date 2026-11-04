@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { opaqueId } from './opaque-id'
-import { DEFAULT_ID_PATTERN, idFromColumn, namingColumn, tableSchemaToZod, zodFieldErrors } from 'shared'
+import { DEFAULT_ID_PATTERN, idFromColumn, namingColumn, tableSchemaToZod, zodFieldErrors, type RowCapabilities } from 'shared'
 import { assertMandatoryAccess, hasMandatoryRowAccess } from './mandatory-access'
 import { sql } from './db'
 import { AppError } from './errors'
@@ -1761,6 +1761,72 @@ async function renameDocImpl(
 export function getDoc(...args: Parameters<typeof getDocImpl>) {
   return appOperation(() => getDocImpl(...args))
 }
+
+// UI advice only: do not run mutation hooks, locks or validation speculatively.
+// Read first through the normal path, including parent access, tiers and Data
+// Scopes. Never turn an unreadable/missing row into a capabilities response.
+export function rowCapabilities(table: string, name: string, user: string): Promise<RowCapabilities> {
+  return appOperation(async () => {
+    const readable = await getDoc(table, name, user)
+    const meta = await getMeta(table)
+    // A read share can bypass Data Scopes, but (unlike a write share) cannot
+    // authorize saving. Check mutations against the full row, not a read-tier
+    // projection that may omit a restricted Reference used by a Data Scope.
+    const row = meta.kind === 'settings' ? readable : isBound(meta)
+      ? await boundFetchDoc(meta, name)
+      : (await sql`select * from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${name}`)[0]
+    if (!row) throw new AppError('NotFoundError', `${table} ${name} not found`)
+    const allowed = async (check: () => Promise<void>): Promise<boolean> => {
+      try { await check(); return true } catch (err) {
+        if (err instanceof AppError && err.type === 'PermissionError') return false
+        throw err
+      }
+    }
+    const rowGrant = (action: 'write' | 'delete' | 'submit' | 'cancel' | 'amend') => allowed(async () => {
+      assertNotSystemWritten(meta, 'changed')
+      await assertSecurityWriter(table, user)
+      if (isBound(meta) && (action === 'write' || action === 'delete')) {
+        await writableContext(meta)
+        await assertBoundScope(meta, user, action)
+      } else if (meta.kind === 'settings' && action === 'write') {
+        await assertPermission(user, table, action)
+        return
+      } else if (action === 'write' && await isSharedWith(user, table, name, 'write')) {
+        return
+      } else {
+        await assertDocPermission(user, table, action, String(row.created_by))
+      }
+      if (action !== 'amend') await assertUserPermissions(user, meta, row)
+      if (action === 'delete' && ROW_ATTACHED_TABLES.has(table)) await assertAttachedRowReadable(table, row, user)
+    })
+    // Rename deliberately does NOT inherit update's write-share exception.
+    const rename = !isBound(meta) && meta.kind === 'table' && !ENGINE_MANAGED.has(table)
+      && !meta.id_pattern?.startsWith('opaque:') && await allowed(async () => {
+        assertNotSystemWritten(meta, 'renamed')
+        await assertSecurityWriter(table, user)
+        await assertDocPermission(user, table, 'write', String(row.created_by))
+        await assertUserPermissions(user, meta, row)
+      })
+    const createIn = (target: string) => allowed(async () => {
+      assertNotSystemWritten(await getMeta(target), 'created')
+      await assertSecurityWriter(target, user)
+      await assertPermission(user, target, 'create')
+    })
+    return {
+      write: !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && row.status !== 'cancelled' && await rowGrant('write'),
+      rename,
+      delete: meta.kind === 'table' && !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && await rowGrant('delete'),
+      submit: Boolean(meta.is_submittable) && row.status === 'draft' && await rowGrant('submit'),
+      cancel: Boolean(meta.is_submittable) && row.status === 'submitted' && await rowGrant('cancel'),
+      amend: Boolean(meta.is_submittable) && row.status === 'cancelled' && await rowGrant('amend'),
+      assign: await createIn('ToDo'),
+      tag: true, // tags, unlike ToDo/Comment/File creation, need only row read
+      comment: await createIn('Comment'),
+      upload: await createIn('File'),
+    }
+  })
+}
+
 async function getDocImpl(
   table: string,
   name: string,

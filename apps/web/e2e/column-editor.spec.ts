@@ -48,6 +48,7 @@ test('a misspelled column is renamed, and its rows come with it', async ({ sessi
   const token = await adminToken(request)
   await session
     .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
+    .clickButton('Table administration')
     .clickLink('Edit columns')
     .assertHas('[data-testid="column-editor"]')
     .assertHas('[data-testid="ce-row-glor"]')

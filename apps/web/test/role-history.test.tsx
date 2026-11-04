@@ -1,5 +1,7 @@
 // #830: a Person's Activity shows who gave or removed their roles, and when.
 import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { rowHref } from 'shared'
 import { sql } from 'server/src/db'
 import { saveDoc } from 'server/src/document'
 import { test, expect, renderApp } from './pg-test'
@@ -21,13 +23,14 @@ test('#830: a Person\'s Activity shows a role granted and a role removed, by who
     table: 'Person',
     row: { row_id: p.row_id, updated_at: granted.updated_at, roles: granted.roles.filter((r) => r.role === 'Rh Clerk') },
   })
-  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(p.row_id)}`, admin)
+  await renderApp(rowHref('Person', p.row_id), admin)
+  await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
   const timeline = await screen.findByTestId('activity-timeline', {}, { timeout: 10_000 })
-  // Activity names a field by its column, as for every other change (#421).
+  // Activity uses the metadata label, as for every other change (#421, #825).
   await waitFor(() => {
     const diffs = within(timeline).getAllByTestId('activity-diff').map((d) => d.textContent)
-    expect(diffs).toContainEqual(expect.stringContaining('roles: Rh Clerk → Rh Clerk, Rh Auditor'))
-    expect(diffs).toContainEqual(expect.stringContaining('roles: Rh Clerk, Rh Auditor → Rh Clerk'))
+    expect(diffs).toContainEqual(expect.stringContaining('Roles: Rh Clerk → Rh Clerk, Rh Auditor'))
+    expect(diffs).toContainEqual(expect.stringContaining('Roles: Rh Clerk, Rh Auditor → Rh Clerk'))
   })
   expect(timeline).toHaveTextContent('Administrator')
 })

@@ -186,7 +186,7 @@ test('A past search comes back in the empty bar: arrow keys choose it and Enter 
   bar.focus()
   const recents = await screen.findByTestId('awesomebar-recents')
   const items = within(recents).getAllByRole('option')
-  const at = items.findIndex((b) => b.textContent?.includes('Zebrafinch') && !b.textContent?.includes('-widget'))
+  const at = items.findIndex((b) => b.textContent?.includes('Zebrafinch') && within(b).queryByRole('img', { name: 'Search' }))
   expect(at).toBeGreaterThanOrEqual(0)
   // ArrowUp from the top wraps to the bottom; ArrowDown walks forward again.
   fireEvent.keyDown(bar, { key: 'ArrowUp' })
