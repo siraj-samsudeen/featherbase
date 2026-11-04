@@ -24,7 +24,7 @@ test('history excludes pre-run-id logs without hiding a current revertable impor
   })
   await renderApp('/featherbase/admin/import?table=Iwv%20Shelf', admin)
   const history = await screen.findByTestId('iw-run-history')
-  expect(history).toHaveTextContent('current.csv — 0 updated · 1 added · 0 failed')
+  expect(history).toHaveTextContent('current.csv — 0 processed matches · 1 added · 0 failed')
   expect(history).not.toHaveTextContent('legacy.csv')
   const user = userEvent.setup()
   await user.click(within(history).getByTestId('iw-revert-open-h0'))

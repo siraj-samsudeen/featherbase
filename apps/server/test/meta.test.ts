@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { getMeta, invalidateMeta } from '../src/meta'
+import { getMeta, invalidateMeta, resolveTableName } from '../src/meta'
 import { grantRole, makeTable } from './fixtures'
 
 const DT = 'Meta Test Note'
@@ -75,6 +75,14 @@ describe('META-001: table/column storage and Meta loader', () => {
       status: 404,
       type: 'NotFoundError',
     })
+  })
+
+  test('leaves an unknown address unresolved when deletion history is unavailable', async () => {
+    // Mid-upgrade resolution must preserve the input for the metadata loader.
+    // Exercise this boundary directly: the sandbox's outer transaction is
+    // aborted by a missing relation, unlike separate pooled HTTP reads.
+    await sql`alter table featherbase.access_log rename to unavailable_audit`
+    expect(await resolveTableName('Never Created')).toBe('Never Created')
   })
 })
 

@@ -37,7 +37,7 @@ describe('API-001/API-002: generic REST resource', () => {
       `/api/table/${encodeURIComponent(DT)}`,
       { title: 'proj-a', stars: 1 },
     )
-    expect(created.row_id).toMatch(/^[0-9a-f]{10}$/)
+    expect(created.row_id).toMatch(/^[1-9][0-9]*$/) // #855: new Tables number rows 1, 2, 3
 
     // READ one
     const one = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`)

@@ -355,7 +355,7 @@ test("the person's name in the Account menu is not a control", async ({ admin })
 
 test.for([
   ['the Sales Target page', '/featherbase/sales-target'],
-  ['the Portal', '/featherbase/portal/Person'],
+  ['the Portal', '/featherbase/portal/person'],
   ['the Admin screens', '/featherbase/admin'],
 ] as const)('%s has no Sign-in methods or Log out outside the Account menu', async ([, path], { admin }) => {
   await renderApp(path, admin)
@@ -536,7 +536,7 @@ test('Escape closes the Account menu and returns focus to the avatar', async ({ 
 })
 
 test("Tab from the Admin command bar reaches its recents instead of closing them", async ({ admin }) => {
-  recordAction('Administrator', { kind: 'list', key: 'list:Person?', label: 'Person', path: '/featherbase/admin/Person' })
+  recordAction('Administrator', { kind: 'list', key: 'list:Person?', label: 'Person', path: '/featherbase/admin/table/person' })
   await renderApp('/featherbase/admin', admin)
   const input = await screen.findByRole('textbox', { name: 'Search or type a command' })
   await userEvent.click(input)

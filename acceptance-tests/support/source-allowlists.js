@@ -6,7 +6,7 @@ const { mkdtemp, rm } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
 const { default: postgres } = require('postgres');
-const { isolatedEnvironment, acceptanceSql, restartAcceptance } = require('./stack');
+const { isolatedEnvironment, acceptanceDatabaseUrl, acceptanceSql, restartAcceptance } = require('./stack');
 
 // Save/read/connect use the public API. Only Given setup installs legacy text
 // directly, since today's save validation must not admit yesterday's bad rows.
@@ -75,7 +75,7 @@ class SourceAllowlists {
     const control = new URL(isolatedEnvironment().DATABASE_URL);
     assert.ok(['localhost', '127.0.0.1', '[::1]'].includes(control.hostname),
       'Legacy source fixtures may only use local Postgres');
-    assert.equal(control.pathname, '/featherbase_acceptance_e2e', 'Only the disposable acceptance control is permitted');
+    assert.equal(control.pathname, new URL(acceptanceDatabaseUrl()).pathname, 'Only the selected disposable acceptance control is permitted');
     this.databaseName = `issue780_allowlist_${randomUUID().replaceAll('-', '')}`;
     this.assertOwnedDatabase();
     const adminUrl = new URL(control);

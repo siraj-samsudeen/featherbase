@@ -482,3 +482,38 @@ describe('linked identity validation and lifecycle through the public APIs', () 
     expect(await sql`select operation from activity_log where "user" in (${person}, 'psn_missing') and operation like 'disabled_as_leaver%'`).toEqual([])
   })
 })
+
+// #833: the Person's Sign-in methods card starts a Google invite from the
+// Person's own address, explains an expected Google sign-in, and says where an
+// invitation went: "emailed" only when an SMTP server is set.
+describe('#833: what the Sign-in methods card is told', () => {
+  const read = (admin: TestClient, person: string) =>
+    admin.get<{ email: string | null; expects_google_sign_in: boolean; mail_transport: string }>(`/api/people/${person}/identities`)
+  const smtp = process.env.SMTP_HOST
+  const port = process.env.SMTP_PORT
+  afterEach(() => {
+    for (const [k, v] of [['SMTP_HOST', smtp], ['SMTP_PORT', port]] as const) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+  })
+
+  test('the Person\'s address and expected Google sign-in come with their sign-in methods', async ({ admin }) => {
+    const person = await makePerson({ email: 'card.guest@gmail.com', expects_google_sign_in: true })
+    expect(await read(admin, person)).toMatchObject({ email: 'card.guest@gmail.com', expects_google_sign_in: true })
+    const none = await makePerson()
+    expect(await read(admin, none)).toMatchObject({ email: null, expects_google_sign_in: false })
+  })
+
+  test('mail goes to the Email Sink with no SMTP server, and through SMTP when one is set, even a broken one', async ({ admin }) => {
+    const person = await makePerson({ email: 'card.mail@gmail.com' })
+    delete process.env.SMTP_HOST
+    expect((await read(admin, person)).mail_transport).toBe('email_sink')
+    process.env.SMTP_HOST = 'smtp.example.test'
+    expect((await read(admin, person)).mail_transport).toBe('smtp')
+    // A broken setting still counts as SMTP: the send itself then fails and
+    // says so, rather than the card claiming the Email Sink.
+    process.env.SMTP_PORT = 'not-a-port'
+    expect((await read(admin, person)).mail_transport).toBe('smtp')
+  })
+})

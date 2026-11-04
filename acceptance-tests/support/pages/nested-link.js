@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
+const { rowHref } = require('../../../packages/shared/src/app-routes.ts');
 
 // #832: a link inside a grid of nested rows (a person's roles) is picked
 // from the linked Table's rows, as a link field on the form is.
@@ -21,7 +22,7 @@ class NestedLink {
 
   async addRole(person) {
     this.person = person;
-    await this.page.goto(`/featherbase/admin/Person/${encodeURIComponent(person)}`);
+    await this.page.goto(rowHref('Person', person));
     await this.page.getByTestId('form-view').waitFor();
     await this.page.getByTestId('add-row-roles').click();
     this.cell = this.page.getByTestId('table-roles').locator('[data-childfield="role"]').last();

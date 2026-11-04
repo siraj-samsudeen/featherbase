@@ -81,6 +81,14 @@ class Api {
     return res;
   }
 
+  /** Explicit setup for scenarios whose administrator must enter Tasker.
+   * Installation alone never grants access to member-only app data. */
+  async admitTaskerAdministrator() {
+    const admin = await this.row('Person', SYSTEM_MANAGER.user);
+    if (!admin.roles.some(entry => entry.role === 'Tasker Member'))
+      await this.saveRow('Person', { ...admin, roles: [...admin.roles, { role: 'Tasker Member' }] });
+  }
+
   /** Deletes a table left by an earlier scenario, so a create starts fresh. */
   async removeTableIfPresent(name) {
     const enc = encodeURIComponent(name);

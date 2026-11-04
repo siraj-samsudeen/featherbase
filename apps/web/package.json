@@ -21,7 +21,8 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "shared": "workspace:*",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "@featherbase/shop-floor": "workspace:*"
   },
   "devDependencies": {
     "@duckdb/node-api": "1.5.6-r.2",

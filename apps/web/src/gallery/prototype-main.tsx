@@ -4,6 +4,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { setSession } from '../lib/api'
 import { paintSavedTheme } from '../lib/theme'
 import { createPrototypeRouter } from './PrototypeApp'
+import { RelatedWorkspacePrototype } from './RelatedWorkspacePrototype'
 import { PrototypeLibrary } from './PrototypeLibrary'
 import '../index.css'
 
@@ -17,7 +18,8 @@ if (handshake.headers.get('x-featherbase-synthetic') !== 'true') {
 setSession('synthetic-ui-lab', { row_id: 'Administrator', full_name: 'Synthetic designer', email: null })
 paintSavedTheme()
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-const router = createPrototypeRouter(<PrototypeLibrary />)
+const relatedExample = new URLSearchParams(window.location.search).get('example') === 'related'
+const router = createPrototypeRouter(relatedExample ? <RelatedWorkspacePrototype /> : <PrototypeLibrary />)
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>,
 )

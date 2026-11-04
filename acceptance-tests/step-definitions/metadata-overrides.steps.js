@@ -77,7 +77,7 @@ Then('the customization is refused with the permitted {string} properties', func
   // An independent baseline pins the existing allowlists; not expectations derived from production.
   const expected = target === 'column'
     ? ['label', 'hidden', 'reqd', 'read_only', 'in_list_view', 'default_value', 'choices']
-    : ['label', 'title_column', 'search_columns', 'sort_column', 'sort_direction'];
+    : ['label', 'title_column', 'search_columns', 'sort_column', 'sort_direction', 'enable_assignments', 'enable_tags', 'enable_files', 'enable_discussion'];
   assert.deepEqual(this.overrides.permittedNames(), expected);
 });
 When('the user saves a category uniqueness customization with text {string}', async function (value) {

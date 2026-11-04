@@ -1,3 +1,4 @@
+import { admitTasker } from '../../server/test/tasker-client'
 import { resolve } from 'node:path'
 import { beforeEach, afterEach, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
@@ -39,8 +40,9 @@ test('public credential exchanges and logout do not bootstrap with an expired sa
 test('generic core form can read and save a versioned runtime row', async ({ admin }) => {
   await discoverPackages([resolve('../..', 'example-apps/tasker')])
   await admin.post('/api/install_app', { name: 'tasker' })
+  await admitTasker(admin)
   const row = await saveDoc('tasker.project', { project_name: 'Southern 37 cartons', description: '**Keep** this text' }, 'Administrator', 'insert')
-  await renderApp(`/featherbase/admin/tasker.project/${row.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/tasker.project/row/${row.row_id}`, admin)
   expect(await screen.findByDisplayValue('Southern 37 cartons')).toBeInTheDocument()
   const user = userEvent.setup()
   const name = screen.getByDisplayValue('Southern 37 cartons')
@@ -59,7 +61,7 @@ test('generic client pins v1 across real upgrade and re-resolves only on a new s
   await discoverPackages([prior])
   await admin.post('/api/install_app', { name: 'tasker' })
   const row = await saveDoc('tasker.project', { project_name: 'Do not relabel old editor' }, 'Administrator', 'insert')
-  await renderApp(`/featherbase/admin/tasker.project/${row.row_id}`, admin)
+  await renderApp(`/featherbase/admin/table/tasker.project/row/${row.row_id}`, admin)
   expect(await screen.findByDisplayValue('Do not relabel old editor')).toBeInTheDocument()
   await Promise.all([api.get('/api/table/tasker.project'), api.get(`/api/table/tasker.project/${row.row_id}`)])
   expect(bootstraps()).toBe(1)

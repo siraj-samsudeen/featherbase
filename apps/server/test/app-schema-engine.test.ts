@@ -36,6 +36,25 @@ async function ledgerOff() {
 }
 
 describe('renameTable', () => {
+  shopTest('#855: the renamed Table carries on its row count', async () => {
+    await shop()
+    await sql`insert into series (name, current) values ('table:shop.supplier:', 41), ('table:shop.supplier:SUP-', 7)`
+    await renameTable('shop.supplier', 'shop.vendor', 'shop')
+    expect(await sql`select name, current from series where name like 'table:shop.%' order by name`).toEqual([
+      { name: 'table:shop.vendor:', current: 41 },
+      { name: 'table:shop.vendor:SUP-', current: 7 },
+    ])
+  })
+
+  shopTest('#855: a rename onto the name of a deleted Table takes over its counts', async () => {
+    await shop()
+    await sql`insert into series (name, current) values ('table:shop.supplier:', 41), ('table:shop.vendor:', 9)`
+    await renameTable('shop.supplier', 'shop.vendor', 'shop')
+    expect(await sql`select name, current from series where name like 'table:shop.%' order by name`).toEqual([
+      { name: 'table:shop.vendor:', current: 41 },
+    ])
+  })
+
   shopTest('rows are kept under the new name', async () => {
     await shop()
     await renameTable('shop.supplier', 'shop.vendor', 'shop')

@@ -5,6 +5,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { test, expect, renderApp } from './pg-test'
+import { tableHref } from 'shared'
 
 type Admin = Parameters<typeof renderApp>[1]
 const enc = encodeURIComponent
@@ -33,7 +34,7 @@ const listed = () => within(screen.getByTestId('list-rows')).queryAllByTestId('r
 
 test("a form's link searches and shows the target's title column", async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/${enc(ORDER)}/o-3`, admin)
+  await renderApp(`${tableHref(ORDER)}/row/o-3`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   const box = () => document.querySelector<HTMLInputElement>('[data-field=customer]') as HTMLInputElement
   await waitFor(() => expect(box()).toHaveValue('Initech'))
@@ -49,7 +50,7 @@ test("a form's link searches and shows the target's title column", async ({ admi
 
 test("a link column's quick filter picks a row by name, offers no new row, and clears in one click", async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/${enc(ORDER)}`, admin)
+  await renderApp(`${tableHref(ORDER)}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 10_000 })
   await waitFor(() => expect(listed()).toBe(3))
 
@@ -71,7 +72,7 @@ test("a link column's quick filter picks a row by name, offers no new row, and c
 
 test('a quick link filter drops typing that picked nothing and carries no peek or open', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/${enc(ORDER)}`, admin)
+  await renderApp(`${tableHref(ORDER)}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 10_000 })
   await waitFor(() => expect(listed()).toBe(3))
   fireEvent.focus(screen.getByTestId('std-filter-customer'))

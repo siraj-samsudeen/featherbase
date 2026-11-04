@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { tableSlug } from '../../packages/shared/src/app-routes'
 import type { CommandDestinations } from 'shared'
 import { initialLabRows, labTables, labScenarios, type LabScenario } from './src/gallery/fixtures'
 
@@ -92,14 +93,23 @@ function syntheticApi(): Plugin {
           if (request.method === 'GET' && /^\/api\/workflow\/(Lab Project|Lab Task)\/[\w-]+$/.test(path)) return send({ workflow: null })
           if (request.method === 'GET' && /^\/api\/tags\/(Lab Project|Lab Task)\/[\w-]+$/.test(path)) return send({ tags: [] })
           if (request.method === 'GET' && /^\/api\/activity\/(Lab Project|Lab Task)\/[\w-]+$/.test(path)) return send({ comments: [], versions: [] })
-          const meta = labTables.find((t) => path === `/api/table/${t.name}:meta`)
+          const meta = labTables.find((t) => path === `/api/table/${t.name}:meta` || path === `/api/table/${tableSlug(t.name)}:meta`)
           if (request.method === 'GET' && meta) return send(meta)
           if (request.method === 'GET' && path === '/api/table/Table') return send({ data: labTables.map((t) => ({ row_id: t.name, module: 'UI Lab', system: false })), total: labTables.length })
           if (request.method === 'GET' && ['/api/table/Client Script', '/api/table/File', '/api/table/ToDo'].includes(path)) return send({ data: [], total: 0 })
           const match = /^\/api\/table\/(Lab Project|Lab Task)(?:\/([^/:]+))?(?::([a-z_]+))?$/.exec(path)
           if (match) {
             const [, table, id, action] = match
-            if (request.method === 'GET' && action === 'connections') return send({ connections: [] })
+            // Explicit synthetic read contracts only; these do not prove permissions.
+            if (request.method === 'GET' && action === 'capabilities') return send({
+              write: scenario !== 'permission-limited', rename: false, delete: false,
+              submit: false, cancel: false, amend: false, assign: false, tag: false, comment: false, upload: false,
+            })
+            if (request.method === 'GET' && action === 'connections') return send({ connections: table === 'Lab Project' && scenario !== 'permission-limited'
+              ? ['project', 'review_project'].map((column) => ({ table: 'Lab Task', column, via: null,
+                count: scenario === 'empty' ? 0 : rows['Lab Task'].filter((row) => row[column] === id).length,
+                filters: [[column, '=', id]],
+              })) : [] })
             if (request.method === 'GET' && !action) {
               if (scenario === 'error') return refuse('Synthetic load failed. Choose another scenario to retry.', 503)
               if (scenario === 'permission-limited') return refuse('Simulated permission restriction — not a security test', 403)
