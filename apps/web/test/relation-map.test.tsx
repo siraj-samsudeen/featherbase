@@ -3,6 +3,7 @@
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
+import { tableHref } from 'shared'
 
 configure({ asyncUtilTimeout: 10_000 })
 const enc = encodeURIComponent
@@ -42,7 +43,7 @@ test('the map shows what a row points to and what points back, with a count', as
 // SPEC: The relationship map lists its center row until a collection is opened (#794).
 test('with nothing opened the center row is listed, and opening a collection lists its rows instead', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/map/${enc('Rm Customer')}/cust-1`, admin)
+  await renderApp(`${tableHref('Rm Customer')}/row/cust-1/map`, admin)
   const self = await screen.findByTestId('map-self-row')
   await waitFor(() => expect(within(self).getByTestId('map-row')).toHaveTextContent('Asha Stores'))
   fireEvent.click(await screen.findByTestId('map-group-Rm Order'))

@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const { Given, When, Then } = require('@cucumber/cucumber');
 const { ListPage } = require('../support/pages/list-page');
 const { LinkPicker } = require('../support/pages/link-picker');
+const { tableHref } = require('../support/addresses');
 
 const CUSTOMERS = 'Pick Customer';
 const ORDERS = 'Pick Order';
@@ -68,7 +69,7 @@ Given('orders from the customers {string} and {string}', async function (first, 
 async function openFilteredOrders(world, customer) {
   const page = await world.actor();
   const filters = JSON.stringify([['customer', '=', world.customers[customer]]]);
-  await page.goto(`/featherbase/admin/${encodeURIComponent(ORDERS)}?filters=${encodeURIComponent(filters)}`);
+  await page.goto(`${tableHref(ORDERS)}?filters=${encodeURIComponent(filters)}`);
   await new ListPage(page).headers().first().waitFor();
   return page;
 }
@@ -107,7 +108,7 @@ When('the user clears the quick customer filter', async function () {
 
 When("the user types {string} into a new order's customer and picks {string}", async function (text, name) {
   const page = await this.actor();
-  await page.goto(`/featherbase/admin/${encodeURIComponent(ORDERS)}/new`);
+  await page.goto(`${tableHref(ORDERS)}/new`);
   await page.getByTestId('form-view').waitFor();
   const field = formCustomerField(page);
   await field.type(text);
