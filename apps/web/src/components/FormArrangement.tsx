@@ -98,22 +98,22 @@ export function ArrangeBar({ mode, columns, onMode, onColumns }: {
 }) {
   const on = 'border-action bg-action-tint text-action'
   return (
-    // One line however narrow the form: beside the pane it scrolls sideways.
-    <div className="mb-3 flex flex-nowrap items-center gap-1.5 overflow-x-auto text-sm whitespace-nowrap" data-testid="arrange-bar">
-      <span role="group" aria-label="Arrange by" className="flex shrink-0 items-center gap-1.5">
-        <span aria-hidden className="mr-1 text-xs text-ink-subtle">Arrange by</span>
+    // In a narrow form (beside the pane) the controls wrap whole, never cut.
+    <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm" data-testid="arrange-bar">
+      <span role="group" aria-label="Arrange by" className="flex flex-wrap items-center gap-1.5">
+        <span aria-hidden className="mr-1 whitespace-nowrap text-xs text-ink-subtle">Arrange by</span>
         {ARRANGEMENTS.map(([m, label]) => (
           <button key={m} type="button" onClick={() => onMode(m)} aria-pressed={mode === m}
-            className={buttonClasses({ className: `px-2.5 py-1 text-xs ${mode === m ? on : ''}` })}
+            className={buttonClasses({ className: `whitespace-nowrap px-2.5 py-1 text-xs ${mode === m ? on : ''}` })}
             data-testid={`arrange-${m}`}>{label}</button>
         ))}
       </span>
-      <span role="group" aria-label="Columns" className="ml-3 flex shrink-0 items-center gap-1.5">
-        <span aria-hidden className="mr-1 text-xs text-ink-subtle">Columns</span>
+      <span role="group" aria-label="Columns" className="flex shrink-0 items-center gap-1.5">
+        <span aria-hidden className="mr-1 whitespace-nowrap text-xs text-ink-subtle">Columns</span>
         {([1, 2] as const).map((c) => (
           <button key={c} type="button" onClick={() => onColumns(c)} aria-pressed={columns === c}
             aria-label={c === 1 ? 'One column' : 'Two columns'}
-            className={buttonClasses({ className: `min-w-11 px-2.5 py-1 text-xs ${columns === c ? on : ''}` })}
+            className={buttonClasses({ className: `min-w-11 whitespace-nowrap px-2.5 py-1 text-xs ${columns === c ? on : ''}` })}
             data-testid={`arrange-columns-${c}`}>{c}</button>
         ))}
       </span>
