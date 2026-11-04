@@ -133,3 +133,56 @@ describe('#859 delete permanently', () => {
     await expectApiError(admin.post(`/api/table/Table:purge`, { ids: ['Role'], reason: 'x', confirm: true }), { status: 417 })
   })
 })
+
+describe('#859 delete permanently, Codex review round 4', () => {
+  test('a private row is never previewed or deleted, even by a System Manager', async ({ admin, createUser }) => {
+    const notebook = await makeTable(admin, {
+      name: 'Pg Private Notebook',
+      access_policy: { version: 1, roles: ['Pg Notebook Member'], shared_column: 'shared' },
+      columns: ['title', 'shared:Check'],
+    })
+    const { grantRole } = await import('./fixtures')
+    await grantRole(admin, { table: notebook.name, role: 'Pg Notebook Member', can_read: true, can_create: true, can_write: true })
+    const owner = await createUser({ roles: ['Pg Notebook Member'] })
+    const row = await owner.post<{ row_id: string }>('/api/save_row', { table: notebook.name, row: { title: 'Private draft' } })
+    await expectApiError(preview(admin, notebook, [row.row_id]), { status: 403 })
+    await expectApiError(purge(admin, notebook, { ids: [row.row_id] }), { status: 403 })
+    expect(await sql.unsafe('select 1 from featherbase.pg_private_notebook where row_id = $1', [row.row_id])).toHaveLength(1)
+  })
+
+  test('a reference to a line of a removed document is found too', async ({ admin }) => {
+    await makeTable(admin, { name: 'Pg Line', kind: 'sub_table', columns: ['label'] })
+    const order = await makeTable(admin, { name: 'Pg Order', id_pattern: 'prompt', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Pg Line' }] })
+    const pick = await makeTable(admin, { name: 'Pg Pick', columns: [{ column_name: 'line', column_type: 'Reference', reference_table: 'Pg Line' }] })
+    const saved = await admin.post<{ lines: { row_id: string }[] }>(order.url, { row_id: 'O-1', lines: [{ label: 'first' }] })
+    const p = await admin.post<{ row_id: string }>(pick.url, { line: saved.lines[0].row_id })
+    const plan = await preview(admin, order, ['O-1'])
+    expect(plan.groups).toEqual([expect.objectContaining({ table: 'Pg Pick', count: 1, action: 'delete' })])
+    await purge(admin, order, { ids: ['O-1'] })
+    expect(await sql.unsafe('select 1 from featherbase.pg_pick where row_id = $1', [p.row_id])).toHaveLength(0)
+    expect(await sql.unsafe('select 1 from featherbase.pg_line where parent = $1', ['O-1'])).toHaveLength(0)
+  })
+
+  test('the row limit counts every row, the asked-for ones included', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    const rows = Array.from({ length: 1001 }, (_, i) => ({ row_id: `BU-M${i}`, bu_name: `Many ${i}` }))
+    const run = await admin.post<{ run_id: string }>(`${bu.url}:import`, { rows })
+    await expectApiError(admin.get(`${bu.url}:purge_preview?run_id=${run.run_id}`), { status: 417, message: expect.stringContaining('more than 1000') })
+  }, 60_000)
+
+  test('clearing a link runs the holder\'s save hooks, and a refusal rolls everything back', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    const keepLinked: TableController = {
+      table: STORE,
+      hooks: { before_save: ({ row }) => { if (row.business_unit == null) throw new AppError('ValidationError', 'A store needs its business unit') } },
+    }
+    registerController(keepLinked)
+    try {
+      await expectApiError(purge(admin, bu, { ids: ['BU-T'], links: 'clear' }), { status: 417, message: expect.stringContaining('needs its business unit') })
+    } finally {
+      unregisterController(keepLinked)
+    }
+    expect(await exists('pg_business_unit', 'BU-T')).toBe(true)
+    expect((await sql.unsafe("select business_unit from featherbase.pg_store where row_id = 'S-A'"))[0].business_unit).toBe('BU-T')
+  })
+})
