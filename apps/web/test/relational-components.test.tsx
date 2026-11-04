@@ -263,6 +263,18 @@ describe('SplitWithPane', () => {
     expect(screen.getByRole('button', { name: 'North bay' })).toHaveFocus()
   })
 
+  test('closing the pane finds the same control again when the page was drawn anew meanwhile', () => {
+    const content = <div><button type="button">Aisle 4</button><button type="button">North bay</button></div>
+    const drill = <DrillPane kind="Bin" title="North bay" place="right" onClose={() => {}}><p>Fields</p></DrillPane>
+    const { rerender } = render(<SplitWithPane key="a" place="right" pane={null}>{content}</SplitWithPane>)
+    screen.getByRole('button', { name: 'North bay' }).focus()
+    rerender(<SplitWithPane key="a" place="right" pane={drill}>{content}</SplitWithPane>)
+    // The page is drawn anew (its address changed), pane still open.
+    rerender(<SplitWithPane key="b" place="right" pane={drill}>{content}</SplitWithPane>)
+    rerender(<SplitWithPane key="b" place="right" pane={null}>{content}</SplitWithPane>)
+    expect(screen.getByRole('button', { name: 'North bay' })).toHaveFocus()
+  })
+
   test('says where its pane is, so the page around it can make room', () => {
     render(<SplitWithPane place="right" pane={<p>Pane</p>}><p>List</p></SplitWithPane>)
     expect(screen.getByTestId('split-with-pane')).toHaveAttribute('data-pane', 'right')
