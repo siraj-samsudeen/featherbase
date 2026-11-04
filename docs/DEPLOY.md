@@ -65,6 +65,7 @@ variable.
 | `WEB_ORIGINS` | no | no | `http://localhost:5173,http://127.0.0.1:5173` | comma-separated CORS allowlist; needed only when the SPA is served from another origin |
 | `INSTANCE_ADDRESSES` | **yes**, outside development and test | no |  | a JSON array saying what each web address of this instance opens (`admin` or an app) and which one emailed links use. See [Instance addresses](#instance-addresses). Unset (development and test only), the server falls back to the request, trusting the first `x-forwarded-proto` hop |
 | `JWT_SECRET` | **yes**, outside development and test | yes | `dev-secret-change-me` | session and token signing. Must differ between environments, or one environment's sessions are valid on another (must differ across environments) |
+| `SECRET_STORE_KEY` | no | yes | a fixed development key (development and test only) | the master key that encrypts tokens pasted in the app, such as a MotherDuck source's (ADR 0018). Outside development and test it must be set, and at least 32 characters, before a pasted token can be saved or read. Changing it means pasting each token again (must differ across environments) |
 | `FILE_URL_SECRET` | no | yes | `JWT_SECRET` | signs the short-lived URLs of private files (must differ across environments) |
 | `ADMIN_PASSWORD` | no | yes |  | provisions a null Administrator password hash; missing or blank leaves production password login locked. Never rotates an existing hash (see [Rotating credentials](#rotating-credentials)) |
 | `GOOGLE_CLIENT_SECRET` | **yes**, while a Google sign-in method is enabled with a client id | yes |  | the Google OAuth client secret; the client id and allowed domains live on the Google sign-in method (must match across environments) |
@@ -91,6 +92,7 @@ variable.
 | `RATE_LIMIT_MAX` | no | no | `100000` | per-user API requests per window, unless the person has their own limit |
 | `DELEGATED_LOGIN_TEST_MODE` | **never in production**: development, test and staging only | no |  | `trust-any-password` lets a linked account sign in by its employee code without a password, to try a rollout as any linked Team Leader. Any other value is ignored |
 | `ALLOW_MOCK_OAUTH` | **never outside development and test** | no |  | `1` turns on the mock Google provider, which mints a session for any typed email from a pre-auth endpoint. For development and the test suites |
+| `MOTHERDUCK_STANDIN` | **never outside development and test** | no |  | a folder holding a local stand-in for MotherDuck (its account listing and database files); set, every pasted-token MotherDuck source talks to it instead of MotherDuck. For the test suites |
 | `PREVIEW_LOGIN_KEY` | **never in production**: development, test and staging only | yes |  | preview deployments: the one-link sign-in's secret, 32+ characters. See [PREVIEW.md](PREVIEW.md) |
 | `PREVIEW_LOGIN_USER` | **never in production**: development, test and staging only | no |  | preview deployments: the account the link signs in as (never Administrator) |
 | `PREVIEW_USER_NAME` | no | no |  | preview deployments: the full name the pre-deploy step gives the preview person (default `Preview Visitor`) |

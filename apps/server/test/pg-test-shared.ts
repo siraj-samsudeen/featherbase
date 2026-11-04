@@ -20,18 +20,52 @@ import { resetRateLimit } from '../src/rate-limit'
 import { issueSession } from '../src/auth'
 import { saveDoc } from '../src/document'
 import { createPgTest } from 'feather-testing-postgres'
+import { withCommittedDatabase } from './committed-database'
 
 // Whether a test's sandbox transaction is open right now. Outside one, the
 // app's `sql` is the real pool and every write COMMITS — so the web binding's
 // fetch bridge refuses requests that arrive then (#426).
 let sandboxOpen = false
-export function isSandboxOpen(): boolean {
-  return sandboxOpen
+let committedOpen = false
+const independent = new Set<Promise<unknown>>()
+export function isTestDatabaseOpen(): boolean {
+  return sandboxOpen || committedOpen
+}
+
+// Requests in this harness share ONE SQL connection, unlike production HTTP
+// requests. Own their sequencing here, for both TestClient and the web bridge.
+// Never use this dispatcher for independent-connection concurrency proofs.
+let pending = Promise.resolve()
+function inSandbox<T>(work: () => Promise<T>): Promise<T> {
+  if (committedOpen) {
+    const result = Promise.resolve().then(work)
+    independent.add(result)
+    void result.then(() => independent.delete(result), () => independent.delete(result))
+    return result
+  }
+  if (!sandboxOpen) return Promise.reject(new Error('No test sandbox is open'))
+  const result = pending.then(() => {
+    if (!sandboxOpen) throw new Error('The test sandbox has closed')
+    return work()
+  })
+  pending = result.then(() => {}, () => {})
+  return result
+}
+
+export function sandboxRequest(path: string, init?: RequestInit): Promise<Response> {
+  return inSandbox(async () => app.request(path, init))
+}
+
+/** Also use before direct fixture SQL while a rendered UI has requests open. */
+export async function settleSandboxRequests(): Promise<void> {
+  let tail: Promise<void>
+  do { tail = pending; await tail } while (tail !== pending)
+  while (independent.size) await Promise.allSettled([...independent])
 }
 
 export const test = createPgTest(
   {
-    app,
+    app: { request: sandboxRequest },
     sql,
     setDelegate: (tx) => {
       sandboxOpen = tx !== null
@@ -46,8 +80,8 @@ export const test = createPgTest(
       invalidateSources()
       resetRateLimit()
     },
-    mintToken: async (user) => (await issueSession(user)).token,
-    insertUser: async ({ email, fullName, roles }) => {
+    mintToken: (user) => inSandbox(async () => (await issueSession(user)).token),
+    insertUser: ({ email, fullName, roles }) => inSandbox(async () => {
       // person-rename: a person's id is minted (`psn_…`); the address is
       // contact data. Tests use the returned id (`client.user`).
       const doc = await saveDoc(
@@ -62,7 +96,27 @@ export const test = createPgTest(
         'insert',
       )
       return String(doc.row_id)
-    },
+    }),
   },
   { defaultRoles: ['All'] },
-)
+).extend<{ requestsSettled: void }>({
+  requestsSettled: [async ({ db: _db }, use) => {
+    try { await use() }
+    finally { await settleSandboxRequests() }
+  }, { auto: true }],
+})
+
+// Opt in only for cases whose observable contract requires overlapping HTTP
+// requests. Setup and cleanup commit on the real pool, never on a delegate.
+export const committedTest = test.extend({
+  db: [async ({}, use) => {
+    await withCommittedDatabase(async () => {
+      committedOpen = true
+      try { await use(sql) }
+      finally {
+        await settleSandboxRequests()
+        committedOpen = false
+      }
+    })
+  }, { auto: true }],
+})

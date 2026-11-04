@@ -41,7 +41,7 @@ const FIELDS = {
   'feather_dash.department': ['row_id', 'store', 'department_key', 'name'],
   'feather_dash.section': ['row_id', 'store', 'section_name', 'floor', 'department', 'team_leaders_allowed'],
   'feather_dash.section_subcategory': ['row_id', 'store', 'subcategory', 'section', 'starts_on', 'ends_on'],
-  'feather_dash.job_assignment': ['row_id', 'person', 'job', 'store', 'floor', 'department', 'section', 'reports_to', 'acting', 'starts_on', 'ends_on'],
+  'feather_dash.job_assignment': ['row_id', 'person', 'job', 'store', 'floor', 'department', 'section', 'reports_to', 'acting', 'assignment_type', 'percentage', 'starts_on', 'ends_on'],
   'feather_dash.section_alias': ['row_id', 'store', 'source', 'alias', 'section'],
   [LEGACY_TABLES.assignments]: ['row_id', 'employee', 'plant_code', 'store_label', 'material_group'],
   [LEGACY_TABLES.employeeSections]: ['row_id', 'store_code', 'employee_code', 'subcategory', 'section_name'],

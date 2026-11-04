@@ -4,10 +4,12 @@ import { randomUUID } from 'node:crypto'
 import { expect, it } from 'vitest'
 import { app } from '../src/index'
 import { issueSession } from '../src/auth'
+import { sql } from '../src/db'
 
 it('concurrent creates for one setting admit one adjustment', async () => {
   const table = `Override Race ${randomUUID().slice(0, 8)}`
-  const { token } = await issueSession('Administrator')
+  const session = await issueSession('Administrator')
+  const { token } = session
   const send = (path: string, body?: unknown, method = 'POST') => app.request(path, {
     method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -25,5 +27,6 @@ it('concurrent creates for one setting admit one adjustment', async () => {
   } finally {
     expect((await send(`/api/table_def/${encodeURIComponent(table)}`, undefined, 'DELETE')).status).toBe(200)
     await send('/api/logout', {})
+    await sql`delete from featherbase.revoked_session where jti = ${session.user.sign_in!.session_id}`
   }
 }, 30_000)

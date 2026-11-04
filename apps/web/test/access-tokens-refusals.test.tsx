@@ -31,6 +31,7 @@ test('a service account name that is not a slug is refused; a role ticked then u
   await user.click(await screen.findByRole('tab', { name: 'Service accounts' }, { timeout: 10_000 }))
   await user.click(screen.getByTestId('sa-create-open'))
   await user.type(await screen.findByTestId('sa-name', {}, { timeout: 10_000 }), 'Nightly Export')
+  await waitFor(() => expect(screen.getByTestId('sa-create')).toBeEnabled())
   await user.click(screen.getByTestId('sa-create'))
   expect(await screen.findByTestId('sa-error')).toHaveTextContent('Service account names are lowercase slugs like "svc-rama-installer"')
 
