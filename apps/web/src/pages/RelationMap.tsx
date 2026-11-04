@@ -5,7 +5,7 @@ import { api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, listColumns, metaQuery, useMeta, type ColumnDef } from '../lib/meta'
 import { listFields } from '../lib/list-view-columns'
 import { formatValue, useSettings } from '../lib/settings'
-import { connectionLabel, useConnections, type Connection } from '../lib/connections'
+import { useConnections, type Connection } from '../lib/connections'
 import { useStepOptions } from '../lib/explore-steps'
 import { buttonClasses, cardClasses } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
@@ -113,7 +113,8 @@ export function RelationMap({
       })
   for (const c of cnx.data?.connections ?? [])
     groups.push({
-      kind: 'cnx', label: connectionLabel(c), table: c.table, count: c.count, cnx: c,
+      // The Table it comes from; the link that joins it reads in words below.
+      kind: 'cnx', label: c.table, table: c.table, count: c.count, cnx: c,
       via: `via ${linkWords(
         holderMetas[holders.indexOf(c.via ?? c.table)]?.data?.columns.find((col) => col.column_name === c.column)
           ?? { column_name: c.column },
