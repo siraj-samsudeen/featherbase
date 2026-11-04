@@ -160,6 +160,17 @@ describe('choosing another store on the rendered page', () => {
     await unmount()
   })
 
+  // #950 checklist 7: the top of the page goes to the figures; the cached table says what it is in one line.
+  it('says why the cached table shows and how fresh it is in one line, under no title of its own', async () => {
+    const { container, unmount } = await openOn9901({ embed: { too_large: true } })
+    const quick = container.querySelector('[data-testid=quick-view]')!
+    expect(quick.querySelector('h1, h2, h3')).toBeNull()
+    const label = quick.querySelector('[data-testid=quick-label]')!
+    expect(label.parentElement).toBe(quick.querySelector('[data-testid=data-line]')!.parentElement)
+    expect(label.parentElement?.tagName).toBe('P')
+    await unmount()
+  })
+
   // #750: the bar's month picker.
   it('opens last month when the bar chooses it, and never draws this month under it', async () => {
     const { act, container, unmount } = await openOn9901()
