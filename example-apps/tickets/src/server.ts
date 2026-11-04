@@ -367,6 +367,11 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const types = await configuredTypes(ctx)
     const category = p.kind === undefined ? String(ticket.kind) : kind(ctx, p.kind, types)
     const type = types.get(category)
+    // A ticket whose type has actions moves only through them, and keeps that
+    // type: reclassifying it would let a state change skip them.
+    const currentType = types.get(String(ticket.kind))
+    if (currentType?.transitions.length && category !== ticket.kind) ctx.reject(`${currentType.label} keeps its type; it moves only through its actions`)
+    if (p.state !== undefined && (type?.transitions.length || currentType?.transitions.length)) ctx.reject(`${(currentType ?? type)!.label} moves only through its actions`)
     // Details stay where they were raised: never moved between open and private.
     if (category !== ticket.kind && (type?.visibility === 'everyone') !== where.open)
       ctx.reject(where.open ? 'This ticket\'s details are visible to everyone; choose a type whose details are too' : 'This ticket\'s details are private; choose a type whose details are private too')
@@ -382,7 +387,6 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
       : p.details === undefined ? structured : { ...structured, ...details(ctx, p.details) }
     // Only a configured type moves between states directly, and only among its own.
     if (p.state !== undefined && (!type || !type.states.includes(String(p.state)))) ctx.reject('Choose one of this type\'s states')
-    if (p.state !== undefined && type?.transitions.length) ctx.reject(`${type.label} moves only through its actions`)
     // Never turn an access decision into an ordinary-resolution bypass.
     if (ticket.kind === 'access' && category !== 'access') ctx.reject('An access request must keep its access gates')
     const recipientChanged = next.email !== structured.email

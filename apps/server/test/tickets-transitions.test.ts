@@ -134,7 +134,9 @@ describe('Tickets: transitions per ticket type (#918)', () => {
     }
     // Changing a ticket between an open and a private type is refused: details never move.
     await save(admin, 'tickets.ticket_type', { type_key: 'open_issue', label: 'Open issue', enabled: true, states: 'Open' })
-    await refused(act(w.support, 'edit', { ...revision(ticket), kind: 'open_issue' }), /private/)
+    await save(admin, 'tickets.ticket_type', { type_key: 'private_issue', label: 'Private issue', enabled: true, states: 'Open', details_visible_to: 'private' })
+    const plain = (await act(w.raiser, 'create', { title: 'p', original: 'o', kind: 'private_issue', details: {} })).ticket as Ticket
+    await refused(act(w.support, 'edit', { ...revision(plain), kind: 'open_issue' }), /private/)
     await refused(save(admin, 'tickets.ticket_type', { type_key: 'odd_visibility', label: 'Odd', states: 'Open', details_visible_to: 'some' }))
   })
 
@@ -221,6 +223,10 @@ describe('Tickets: transitions per ticket type (#918)', () => {
     await refused(act(w.support, 'resolve', { ...revision(ticket), state: 'Closed', reason: 'r', reference: 'x' }), /actions/)
     await refused(act(w.support, 'edit', { ...revision(ticket), details: { fix_what: 'x' } }), /recorded by an action/)
     await refused(save(w.support, 'tickets.ticket', { ...ticket, ticket_state: 'Closed' }))
+    // Reclassifying to a type without actions cannot be used to skip them (Codex review).
+    await save(admin, 'tickets.ticket_type', { type_key: 'plain_issue', label: 'Plain issue', enabled: true, states: 'Raised\nClosed', done_states: 'Closed' })
+    await refused(act(w.support, 'edit', { ...revision(ticket), kind: 'plain_issue', state: 'Closed' }), /actions/)
+    await refused(act(w.support, 'edit', { ...revision(ticket), kind: 'plain_issue' }), /keeps its type/)
     // Support may still triage: reassign and edit the intake fields.
     const edited = (await act(w.support, 'edit', { ...revision(ticket), assigned_to: w.support.user, details: { current_value: '78/499' } })).ticket as Ticket
     expect(edited.ticket_state).toBe('Raised')
