@@ -15,6 +15,7 @@ import {
   go,
   push,
   rememberPath,
+  rememberWalk,
   stepKind,
   stepRefs,
   type NavPath,
@@ -214,6 +215,19 @@ describe('recent paths', () => {
     for (let i = 0; i < MAX_RECENT + 4; i++) list = rememberPath(list, walk(listStep(i)))
     expect(list).toHaveLength(MAX_RECENT)
     expect(list[0]).toEqual(walk(listStep(MAX_RECENT + 3)))
+  })
+
+  it('a walk that goes on replaces the shorter walk it extends', () => {
+    expect(rememberWalk([a], b)).toEqual([b])
+  })
+
+  it('a walk that branches off keeps the walk it left', () => {
+    const c = walk(sites, { ...sites, filters: [['state', '=', 'TN']] })
+    expect(rememberWalk([b], c)).toEqual([c, b])
+  })
+
+  it('a path of one step is not a walk worth remembering', () => {
+    expect(rememberWalk([b], a)).toEqual([b])
   })
 
   it('decodes stored paths, dropping the malformed ones', () => {
