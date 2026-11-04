@@ -1,6 +1,7 @@
 import { tableSlug } from 'shared'
 import { test, expect, adminAuth, adminToken, bearer } from './fixtures'
 import { ensureListTableA, LIST_DT_A as DT_A } from './fixtures-ui'
+import { urlFilters } from './nav-url'
 
 // Owns its fixture rather than borrowing listview.spec's: this spec sorts
 // before listview.spec alphabetically, so under an isolated fresh DB
@@ -27,7 +28,7 @@ test('UI-003: filters narrow results, persist in the URL across reload, and are 
     await page.getByTestId('filter-op').selectOption('>=')
     await page.getByTestId('filter-value').fill('25')
     await page.getByTestId('filter-add').click()
-    expect(page.url()).toContain('filters=')
+    await expect.poll(() => urlFilters(page.url())).toContainEqual(['qty', '>=', '25'])
   })
   await session
     .assertHas('[data-testid="list-total"]', { text: '5 total' })
