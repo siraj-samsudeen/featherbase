@@ -7,6 +7,7 @@ import { AppError } from './errors'
 import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
+import { mayPurge } from './purge'
 import { RETIRE_INSTEAD, assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { RESERVED_COLUMNS, canRetire, seriesKey, tableName, tableRelation } from './table-engine'
@@ -1937,10 +1938,17 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
       if (ROW_ATTACHED_TABLES.has(table)) await assertAttachedRowReadable(table, row, user)
     })
     const retirable = canRetire(meta)
+    const rowIsManaged = async (id: string) => {
+      try { await assertRowNotManaged(sql, meta, id, user); return false } catch (err) {
+        if (err instanceof AppError) return true
+        throw err
+      }
+    }
     return {
       write: !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && row.status !== 'cancelled' && await rowGrant('write'),
       retire: retirable && row.retired_at == null && await retirement('delete'),
       reactivate: retirable && row.retired_at != null && await retirement('write'),
+      purge: !(await rowIsManaged(name)) && await mayPurge(user, meta),
       rename,
       delete: meta.kind === 'table' && !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && await rowGrant('delete'),
       submit: Boolean(meta.is_submittable) && row.status === 'draft' && await rowGrant('submit'),

@@ -10,6 +10,8 @@ export interface RowCapabilities {
   /** #859: retire needs the delete right; reactivate the write right. */
   retire: boolean
   reactivate: boolean
+  /** #859: a System Manager may delete the row permanently, with its history. */
+  purge: boolean
   assign: boolean
   tag: boolean
   comment: boolean
