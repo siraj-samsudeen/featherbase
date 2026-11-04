@@ -355,7 +355,7 @@ async function anyTableLinkProblem(tx: typeof sql, f: TableMeta['columns'][numbe
     try {
       await getDoc(target, value, user)
     } catch (err) {
-      if (err instanceof AppError && (err.type === 'PermissionError' || err.type === 'NotFoundError')) return `${target} ${value} does not exist`
+      if (err instanceof AppError) return `${target} ${value} does not exist`
       throw err
     }
   }

@@ -176,4 +176,16 @@ describe('a column that links to a row of any Table', () => {
     expect((await admin.fetch(`/api/table_def/${encodeURIComponent(DECISION)}`, { method: 'DELETE' })).status).toBe(200)
     await admin.delete(row(PLANT, '8151'))
   })
+
+  test('a link set later, on a row saved without one, is checked the same', async ({ admin }) => {
+    await setup(admin)
+    const empty = await decide(admin, {})
+    const patch = async (values: Record<string, unknown>) => {
+      const loaded = await admin.get<{ updated_at: string }>(row(DECISION, empty.row_id))
+      return admin.fetch(row(DECISION, empty.row_id), { method: 'PATCH', body: JSON.stringify({ ...values, updated_at: loaded.updated_at }) })
+    }
+    expect((await patch({ shapes_table: PLANT, shapes: 'PKN-GOLD' })).status).toBe(417)
+    expect((await patch({ shapes_table: PLANT, shapes: '8151' })).status).toBe(200)
+    expect(await admin.get(row(DECISION, empty.row_id))).toMatchObject({ shapes_table: PLANT, shapes: '8151' })
+  })
 })
