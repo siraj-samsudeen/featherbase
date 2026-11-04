@@ -33,7 +33,7 @@ test('a System Manager sees the count, the list and opens the Person form', asyn
 
   const page = await screen.findByTestId('waiting-for-access')
   // The standard list, under the page's own name, with the full address.
-  expect(within(page).getByRole('heading', { level: 1 })).toHaveTextContent('Waiting for access')
+  expect(await within(page).findByRole('heading', { level: 1 })).toHaveTextContent('Waiting for access')
   expect(within(page).getByTestId('list-view')).toBeInTheDocument()
   await waitFor(() => expect(within(page).getByTestId('list-total')).toHaveTextContent('2 total'))
   expect(page).toHaveTextContent('waiting.person@staff.example.com')

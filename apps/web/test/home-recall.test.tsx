@@ -10,13 +10,15 @@
 // (offered), pinned (chips replace the card), reloaded (chips survive), and
 // a chip click (navigates). One claim each.
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRootRoute, createRouter, RouterContextProvider } from '@tanstack/react-router'
 import { ResumeStrip, RoutineCard } from '../src/components/HomeRecall'
 import { clearSession, setSession } from '../src/lib/api'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
+import { bridgeRealtime } from './realtime-bridge'
 
 const DAY = 86_400_000
 type Client = Parameters<typeof renderApp>[1]
@@ -53,10 +55,63 @@ async function openHome(as: Client) {
   return rendered
 }
 
+test('a live Table deletion hides recalled destinations until rechecked, then offers the older usable row', async ({ createUser }) => {
+  const user = await createUser({ roles: ['System Manager'] })
+  for (const name of ['Live Earlier', 'Live Deleted']) {
+    await user.post('/api/table_def', { name, title_column: 'title', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await user.post(`/api/table/${encodeURIComponent(name)}`, { row_id: 'north', title: `${name} depot` })
+    const read = await user.fetch(`/api/table/${encodeURIComponent(name)}/north`, { headers: { 'X-Navigation-Visit': '1' } })
+    await user.post('/api/events', { events: [{ kind: 'row', key: `row:${name}/north`, label: 'north', sub: name,
+      path: `/featherbase/admin/table/${name === 'Live Earlier' ? 'live-earlier' : 'live-deleted'}/row/north`,
+      claim: read.headers.get('X-Navigation-Claim') }] })
+  }
+  const stop = bridgeRealtime()
+  const original = globalThis.fetch
+  let hold = false
+  const releases: Array<() => void> = []
+  const reads = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (hold && /^\/api\/(home_resume|activity_feed)(\?|$)/.test(String(input)))
+      await new Promise<void>(resolve => releases.push(resolve))
+    return original(input, init)
+  })
+  try {
+    await openHome(user)
+    await waitFor(() => expect(document.documentElement.dataset.realtimeChannels).toContain('navigation'))
+    const feed = await screen.findByTestId('activity-feed')
+    await waitFor(() => expect(screen.getByTestId('resume-tile-row')).toHaveTextContent('Live Deleted depot'))
+    await waitFor(() => expect(feed).toHaveTextContent('Live Deleted depot'))
+    hold = true
+    await act(async () => { await user.delete('/api/table_def/Live%20Deleted') })
+    // The notification removes the old target even before its delayed HTTP recheck completes.
+    expect(screen.queryByTestId('resume-tile-row')).toBeNull()
+    expect(within(feed).queryAllByTestId('feed-object')).toHaveLength(0)
+    await waitFor(() => expect(releases.length).toBeGreaterThan(0))
+    expect(screen.queryByTestId('resume-tile-row')).toBeNull()
+    hold = false
+    await act(async () => { releases.splice(0).forEach(release => release()) })
+    await waitFor(() => expect(screen.getByTestId('resume-tile-row')).toHaveTextContent('Live Earlier depot'))
+    await waitFor(() => expect(feed).toHaveTextContent('Table deleted'))
+    const deleted = within(feed).getAllByTestId('feed-item').find(row => row.textContent?.includes('Table deleted'))!
+    expect(within(deleted).getByText('Live Deleted', { exact: true })).toHaveClass('line-through')
+    expect(within(deleted).queryByRole('button')).toBeNull()
+    expect(deleted.querySelector('a,[tabindex]')).toBeNull()
+    expect(within(feed).getByRole('button', { name: 'Live Earlier depot' })).toBeInTheDocument()
+  } finally {
+    hold = false
+    releases.splice(0).forEach(release => release())
+    cleanup()
+    reads.mockRestore()
+    stop()
+    vi.unstubAllGlobals()
+  }
+})
+
 test('signing out hides the previous person’s recalled destinations and routine', async ({ admin }) => {
   await admin.post('/api/events', { events: habit(5) })
+  await admin.post('/api/table_def', { name: 'Private Work', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  const read = await admin.fetch('/api/table/Private%20Work:meta', { headers: { 'X-Navigation-Visit': '1' } })
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
-  recordAction(admin.user!, { kind: 'list', key: 'list:Private Work', label: 'Private Work', path: '/featherbase/admin/table/private-work' })
+  recordAction(admin.user!, { kind: 'list', key: 'list:Private Work?', label: 'Private Work', path: '/featherbase/admin/table/private-work', claim: read.headers.get('X-Navigation-Claim')! })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createRouter({ routeTree: createRootRoute() })
   const content = () => <QueryClientProvider client={client}><RouterContextProvider router={router}>
@@ -155,7 +210,8 @@ test('"Not now" puts the routine away, and it stays away on the next visit', asy
 test('the Last view tile opens the list it names', async ({ createUser }) => {
   const user = await createUser({ roles: ['System Manager'] })
   const { recordAction } = await import('../src/lib/recents')
-  recordAction(user.user!, { kind: 'list', key: 'list:Person?', label: 'Person', path: '/featherbase/admin/table/person' })
+  const read = await user.fetch('/api/table/Person:meta', { headers: { 'X-Navigation-Visit': '1' } })
+  recordAction(user.user!, { kind: 'list', key: 'list:Person?', label: 'Person', path: '/featherbase/admin/table/person', claim: read.headers.get('X-Navigation-Claim')! })
   const { router } = await openHome(user)
   ;(await screen.findByTestId('resume-tile-view')).click()
   await waitFor(() =>
@@ -198,7 +254,8 @@ test('after opening a row, then a list, then running a search, the home page has
   await waitFor(() => expect(here(app)).toBe('/featherbase/admin/table/hr-shelf/row/shelf-quokka'))
 
   await app.router.navigate({ to: '/featherbase/admin' })
-  const strip = await screen.findByTestId('resume-strip', {}, { timeout: 8000 })
+  await screen.findByTestId('resume-tile-row', {}, { timeout: 8000 })
+  const strip = screen.getByTestId('resume-strip')
   expect(within(strip).getByTestId('resume-tile-row')).toHaveTextContent('Quokka shelf')
   expect(within(strip).getByTestId('resume-tile-view')).toHaveTextContent('Hr Aisle')
   expect(within(strip).getByTestId('resume-tile-search')).toHaveTextContent('Quokka')

@@ -68,7 +68,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, navigation?: { claim?: string }): Promise<T> {
   const token = getToken()
   // Pin before metadata/data reads. Refetch and 409 must never relabel an old
   // form as new code; only a new login or page reload obtains another snapshot.
@@ -93,6 +93,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...(versions.length ? { 'X-Featherbase-App-Version': versions.join(', ') } : {}),
     },
   })
+  if (navigation) navigation.claim = res.headers.get('X-Navigation-Claim') ?? undefined
   if (res.status === 401) {
     clearSession()
     // Already on the login screen there is nothing to redirect to — a hard
@@ -136,6 +137,11 @@ export async function signOut(): Promise<boolean> {
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
+  getNavigation: async <T>(path: string) => {
+    const navigation: { claim?: string } = {}
+    const data = await request<T>(path, { headers: { 'X-Navigation-Visit': '1' } }, navigation)
+    return { data, claim: navigation.claim }
+  },
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
   upload: <T>(body: FormData) => request<T>('/api/upload_file', { method: 'POST', body }),

@@ -350,6 +350,8 @@ export async function getMeta(name: string): Promise<TableMeta> {
   }
   const columns = await sql<ColumnDef[]>`
     select * from column_def where parent = ${name} order by position, column_name`
+  // Internal navigation identity never enters effective/editable metadata.
+  delete dt.navigation_identity
   const meta = {
     ...(dt as unknown as Omit<TableMeta, 'columns' | 'row_key'>),
     enable_assignments: false,

@@ -10,7 +10,8 @@ import { RowTitle } from '../lib/row-titles'
 import { useRowCapabilities } from '../lib/row-capabilities'
 import { useWhoAmI } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
-import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
+import { useNavigationVisit } from '../lib/recents'
+import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, metaQuery, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
@@ -82,11 +83,12 @@ export function FormView({
   const navigate = useNavigate()
   const { t } = useI18n()
 
+  const docPath = `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`
+  const visit = useNavigationVisit(docPath)
   const doc = useQuery({
-    queryKey: ['doc', table, name],
+    queryKey: visit ? ['doc', table, name, visit.key] : ['doc', table, name],
     enabled: Boolean(meta.data) && !isNew,
-    queryFn: () =>
-      api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
+    queryFn: () => visit ? visit.read<Row>() : api.get<Row>(docPath),
   })
   const access = useRowCapabilities(table, name, !isNew && doc.isSuccess, doc.data?.updated_at)
   const session = useWhoAmI()
@@ -376,9 +378,9 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
       if (editingOverride) {
-        await queryClient.invalidateQueries({ queryKey: ['meta', String(saved.table_name)] })
+        await queryClient.invalidateQueries({ queryKey: metaQuery(String(saved.table_name)).queryKey.slice(0, 3) })
         if (typeof baseline.table_name === 'string' && baseline.table_name !== saved.table_name)
-          await queryClient.invalidateQueries({ queryKey: ['meta', baseline.table_name] })
+          await queryClient.invalidateQueries({ queryKey: metaQuery(baseline.table_name).queryKey.slice(0, 3) })
       }
       await refreshWaitingAfterSave(queryClient, table)
       // #414: a person's name is cached per id for the heading, breadcrumb

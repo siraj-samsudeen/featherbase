@@ -105,6 +105,7 @@ const clients = new Set<Client>()
 // permission eavesdropping over the socket.
 export async function canSubscribe(user: SessionUser, channel: string): Promise<boolean> {
   if (channel.startsWith('user:')) return channel === `user:${user.row_id}`
+  if (channel === 'navigation') return true
   // #101 Phase 4 (PR #104 review): the team-feed invalidation ping. Gated
   // like the feed endpoint itself (System Manager), and published with NO
   // payload — the data always flows through /api/activity_feed.
@@ -155,6 +156,22 @@ export function publishDocEvent(
   // permission on this particular Table, and the feed data itself always
   // flows through the role-gated /api/activity_feed.
   publish('feed', 'changed')
+  publishNavigationChange()
+}
+
+let navigationRefresh: ReturnType<typeof setTimeout> | undefined
+
+// Hide stale destinations immediately, but resolve at most one projection
+// per burst instead of up to 500 refetches for a bulk mutation. Both signals
+// are payload-free: no Table/row existence or title is disclosed.
+export function publishNavigationChange(): void {
+  if (navigationRefresh) return
+  publish('navigation', 'invalidated')
+  navigationRefresh = setTimeout(() => {
+    navigationRefresh = undefined
+    publish('navigation', 'changed')
+  }, 250)
+  navigationRefresh.unref()
 }
 
 export function publishUserEvent(user: string, event: string, payload?: unknown): void {

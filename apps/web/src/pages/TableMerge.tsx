@@ -20,7 +20,7 @@ import { Link } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { coerceRows, sanitizeColumnName } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
-import { type TableMeta } from '../lib/meta'
+import { metaQuery, type TableMeta } from '../lib/meta'
 import { sendImportRun, type ImportFailure } from '../lib/import-run'
 import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
@@ -71,11 +71,11 @@ export function TableMerge({ table: source }: { table: string }) {
     queryFn: () => listResource<{ row_id: string }>('Table', { limit_page_length: 500 }),
   })
   const sourceMeta = useQuery({
-    queryKey: ['meta', source],
+    queryKey: metaQuery(source).queryKey,
     queryFn: () => api.get<TableMeta>(`/api/table/${encodeURIComponent(source)}:meta`),
   })
   const targetMeta = useQuery({
-    queryKey: ['meta', target],
+    queryKey: metaQuery(target).queryKey,
     enabled: Boolean(target),
     queryFn: () => api.get<TableMeta>(`/api/table/${encodeURIComponent(target)}:meta`),
   })

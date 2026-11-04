@@ -1,12 +1,32 @@
 // Per-user warm history cache, reconciled with the server on app load.
 
-import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle, choiceLabel } from 'shared'
+import { createContext, useContext } from 'react'
+import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle, choiceLabel, tableSlug } from 'shared'
 import type { ColumnDef } from './meta'
+
+/** The route's own read records its authorized visit before exposing data. */
+export const NavigationVisitContext = createContext<{
+  key: string
+  table: string
+  path: string
+  read: <T>() => Promise<T>
+} | null>(null)
+
+export function useNavigationVisit(path: string) {
+  const visit = useContext(NavigationVisitContext)
+  // The boundary reads a slug; descendants operate on the resolved name.
+  // Only the Table spelling changes: the resource kind and row remain exact.
+  const slugPath = (value: string) => value.replace(/^(\/api\/table\/)([^/]+?)(:meta$|\/)/,
+    (_, prefix, table, suffix) => `${prefix}${encodeURIComponent(tableSlug(decodeURIComponent(table)))}${suffix}`)
+  return visit && slugPath(visit.path) === slugPath(path) ? visit : null
+}
 
 export type RecentKind = 'row' | 'list' | 'page' | 'search'
 
 export interface RecentAction {
   kind: RecentKind
+  /** Server-attested authorized visit; never a grant to open the target. */
+  claim?: string
   /** Dedup identity — revisiting bumps the entry, never duplicates it. */
   key: string
   label: string
@@ -77,6 +97,7 @@ export function recordAction(user: string, action: RecentAction, now = Date.now(
   remember(journal.entries, action, now)
   unconfirmed.set(user, journal)
   enqueueServerEvent(user, action, now)
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('navigation-history-updated'))
 }
 
 // ---- #101 Phase 3: server mirror -------------------------------------------
@@ -191,6 +212,7 @@ function enqueueServerEvent(owner: string, action: RecentAction, at: number): vo
       label: action.label,
       sub: action.sub,
       path: action.path,
+      claim: action.claim,
       at,
     },
   })
@@ -372,7 +394,8 @@ export function actionForLocation(
   // the slug as its label/key, nor interpret a fixed page as a Table.
   if (segs[0] !== 'table' || !segs[1] || !canonicalTable) return null
   const table = canonicalTable
-  const filtersJson = typeof search.filters === 'string' ? search.filters : undefined
+  const filtersJson = typeof search.filters === 'string' ? search.filters
+    : Array.isArray(search.filters) ? JSON.stringify(search.filters) : undefined
   const query = Object.entries(search)
     .filter(([, value]) => value !== undefined && value !== null)
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(typeof value === 'string' ? value : JSON.stringify(value))}`)

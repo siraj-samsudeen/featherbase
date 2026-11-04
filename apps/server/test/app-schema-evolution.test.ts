@@ -53,7 +53,9 @@ async function seed(admin: Client) {
 // part of the schema), indexes, constraints, read policies and grants.
 async function schema() {
   return {
-    tables: await sql`select to_jsonb(t) - 'created_at' - 'updated_at' as definition from table_def t where name like 'evolve.%' order by name`,
+    // Lifetime UUIDs, like timestamps, differ across independent installs;
+    // they are not authored schema. Rename continuity is tested in #873.
+    tables: await sql`select to_jsonb(t) - 'created_at' - 'updated_at' - 'navigation_identity' as definition from table_def t where name like 'evolve.%' order by name`,
     columns: await sql`select to_jsonb(c) - 'row_id' - 'created_at' - 'updated_at' as definition
       from column_def c where parent like 'evolve.%' order by parent, position`,
     stored: await sql`select table_name, column_name, data_type, character_maximum_length, is_nullable, column_default

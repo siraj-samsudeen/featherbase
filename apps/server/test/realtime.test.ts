@@ -27,6 +27,22 @@ function collect(): { events: RealtimeEvent[]; stop: () => void } {
 }
 
 describe('realtime event bus', () => {
+  test('a bulk mutation hides stale navigation immediately and coalesces its refresh', async () => {
+    // Let any prior mutation's bounded refresh finish before this burst.
+    await new Promise(resolve => setTimeout(resolve, 300))
+    const { events, stop } = collect()
+    try {
+      for (let i = 0; i < 500; i++) publishDocEvent('Task', `TASK-${i}`, 'updated')
+      expect(events.filter(e => e.channel === 'navigation')).toEqual([
+        { channel: 'navigation', event: 'invalidated', payload: undefined },
+      ])
+      await expect.poll(() => events.filter(e => e.channel === 'navigation')).toEqual([
+        { channel: 'navigation', event: 'invalidated', payload: undefined },
+        { channel: 'navigation', event: 'changed', payload: undefined },
+      ])
+    } finally { stop() }
+  })
+
   test('publishDocEvent emits both list and doc channel events', () => {
     const { events, stop } = collect()
     publishDocEvent('Task', 'TASK-1', 'created')
@@ -130,11 +146,11 @@ describe('subscription acknowledgment', () => {
       await frame('ready')
       // 'user:Guest' is somebody else's personal channel — refused, and so
       // absent from the ack: the ack reports what is live, not what was asked.
-      socket.send(JSON.stringify({ subscribe: ['list:User', 'user:Guest'] }))
+      socket.send(JSON.stringify({ subscribe: ['list:User', 'navigation', 'user:Guest'] }))
       expect(await frame('subscribed')).toEqual({
         channel: 'system',
         event: 'subscribed',
-        payload: { channels: ['list:User'] },
+        payload: { channels: ['list:User', 'navigation'] },
       })
     } finally {
       socket.terminate()

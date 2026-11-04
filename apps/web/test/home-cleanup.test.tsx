@@ -26,10 +26,15 @@ async function seedMerch(admin: Client) {
   })
 }
 
-function rememberRow(user: string, at: number) {
-  recordAction(user, {
+async function rememberRow(admin: Client, at: number) {
+  const read = await admin.fetch(`/api/table/${encodeURIComponent(MERCH)}/${encodeURIComponent(MERCH_ROW)}`, { headers: { 'X-Navigation-Visit': '1' } })
+  expect(read.status).toBe(200)
+  const claim = read.headers.get('X-Navigation-Claim')!
+  expect(claim).toBeTruthy()
+  recordAction(admin.user!, {
     kind: 'row', key: `row:${MERCH}/${MERCH_ROW}`, label: MERCH_ROW, sub: MERCH,
     path: `/featherbase/admin/table/${encodeURIComponent(tableSlug(MERCH))}/row/${encodeURIComponent(MERCH_ROW)}`,
+    claim,
   }, at)
 }
 
@@ -51,7 +56,7 @@ test('Last view shows an old slug-labelled page by its catalog title, on Home an
 
 test('Last row reads as the row, with its Table beneath — not its internal id', async ({ admin }) => {
   await seedMerch(admin)
-  rememberRow('Administrator', Date.now() - 1000)
+  await rememberRow(admin, Date.now() - 1000)
   await renderApp('/featherbase/admin', admin)
   const tile = await screen.findByTestId('resume-tile-row')
   await waitFor(() => expect(within(tile).getByTestId('resume-tile-title')).toHaveTextContent('1517 · Kurti Z'))
@@ -94,8 +99,11 @@ test('My activity: under a day heading, the kind icon, "You opened …", repeats
 
 test('My activity titles an opened row from its values', async ({ admin }) => {
   await seedMerch(admin)
+  const read = await admin.fetch(`/api/table/${encodeURIComponent(MERCH)}/${encodeURIComponent(MERCH_ROW)}`, { headers: { 'X-Navigation-Visit': '1' } })
+  expect(read.status).toBe(200)
   await admin.post('/api/events', {
-    events: [{ kind: 'row', key: `row:${MERCH}/${MERCH_ROW}`, label: MERCH_ROW, sub: MERCH, path: `/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(MERCH)))}/row/${MERCH_ROW}` }],
+    events: [{ kind: 'row', key: `row:${MERCH}/${MERCH_ROW}`, label: MERCH_ROW, sub: MERCH,
+      path: `/featherbase/admin/table/${encodeURIComponent(tableSlug(MERCH))}/row/${encodeURIComponent(MERCH_ROW)}`, claim: read.headers.get('X-Navigation-Claim') }],
   })
   await renderApp('/featherbase/admin', admin)
   const feed = await screen.findByTestId('activity-feed')

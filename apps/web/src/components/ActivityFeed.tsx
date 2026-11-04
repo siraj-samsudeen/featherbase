@@ -24,6 +24,7 @@ interface FeedItem {
   at: string
   /** Back-to-back repeats collapsed into this row (server-side); 1 = single. */
   count?: number
+  destination_state?: 'available' | 'deleted_table' | 'unavailable'
 }
 
 // #101 Phase 4: the homepage activity feed. Two tabs with a deliberate
@@ -76,16 +77,24 @@ export function ActivityFeed() {
   // Live invalidation: 'feed' is the payload-free team ping (the server only
   // grants that channel to System Managers); 'feed_mine' arrives on the
   // caller's own channel when one of their event batches lands.
+  const [navigationPending, setNavigationPending] = useState(false)
   const user = getSessionUser()
   useRealtime(
-    [...(isSystemManager ? ['feed'] : []), ...(user ? [`user:${user.row_id}`] : [])],
+    [...(isSystemManager ? ['feed'] : []), ...(user ? [`user:${user.row_id}`, 'navigation'] : [])],
     (e) => {
+      if (e.channel === 'navigation' && e.event === 'invalidated') {
+        setNavigationPending(true)
+        void queryClient.cancelQueries({ queryKey: ['activity-feed', 'mine'] })
+        return
+      }
+      if (e.channel === 'feed' && scope === 'mine') return
       if (e.event === 'changed' || e.event === 'feed_mine')
         void queryClient.invalidateQueries({ queryKey: ['activity-feed'] })
+      if (e.channel === 'navigation') setNavigationPending(false)
     },
   )
 
-  const items = feed.data?.items ?? []
+  const items = scope === 'mine' && (navigationPending || feed.isFetching || feed.isError) ? [] : feed.data?.items ?? []
 
   return (
     <div className={cardClasses('overflow-hidden')} data-testid="activity-feed">
@@ -142,12 +151,13 @@ export function ActivityFeed() {
                   </button>
                 ) : (
                   (item.title ?? item.label) && (
-                    <span className="min-w-[4ch] truncate font-medium" data-testid="feed-object">{item.title ?? item.label}</span>
+                    <span className={`min-w-[4ch] truncate font-medium ${item.destination_state === 'deleted_table' && item.kind === 'list' ? 'line-through' : ''}`} data-testid="feed-object">{item.title ?? item.label}</span>
                   )
                 )}
                 {item.sub && (
-                  <span className="hidden min-w-0 shrink-[4] truncate text-xs text-ink-subtle sm:inline">{item.sub}</span>
+                  <span className={`hidden min-w-0 shrink-[4] truncate text-xs text-ink-subtle sm:inline ${item.destination_state === 'deleted_table' ? 'line-through' : ''}`}>{item.sub}</span>
                 )}
+                {item.destination_state === 'deleted_table' && <span className="shrink-0 text-xs text-ink-subtle">(Table deleted)</span>}
                 {(item.count ?? 1) > 1 && (
                   <span className="shrink-0 text-xs text-ink-subtle" data-testid="feed-count">
                     · {item.count}×

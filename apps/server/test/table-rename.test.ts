@@ -78,15 +78,21 @@ describe('#871: renaming a custom Table', () => {
     expect(await admin.get(`${url(OLD)}:meta`)).toMatchObject({ name: OLD })
   })
 
-  test('recently opened entries follow the Table to its new name and address', async ({ admin }) => {
+  test('recently opened entries follow the Table to its new name and address', async ({ admin, createUser }) => {
     await plants(admin)
-    await admin.post('/api/events', { events: [
+    const reader = await createUser({ roles: ['System Manager'] })
+    await reader.post('/api/events', { events: [
       { kind: 'list', key: `list:${OLD}?`, label: OLD, path: '/featherbase/admin/table/trn-sap-plant' },
       { kind: 'row', key: `row:${OLD}/PLANT-8151`, label: 'Chennai', sub: OLD, path: '/featherbase/admin/table/trn-sap-plant/row/PLANT-8151' },
       { kind: 'list', key: 'list:Trn SAP Plants?', label: 'Trn SAP Plants', path: '/featherbase/admin/table/trn-sap-plants' },
     ] })
+    // Existing pre-claim history is NULL, unlike a new refused visit. Its
+    // original testimony stays intact while actual rename captures metadata.
+    await sql`update user_event set destination = null`
+    const original = await sql`select to_jsonb(e) - 'destination' as original from user_event e order by row_id`
     await rename(admin, OLD, NEW)
-    const { entries } = await admin.get<{ entries: { key: string; label: string; sub?: string; path: string }[] }>('/api/events/summary')
+    expect(await sql`select to_jsonb(e) - 'destination' as original from user_event e order by row_id`).toEqual(original)
+    const { entries } = await reader.get<{ entries: { key: string; label: string; sub?: string; path: string }[] }>('/api/events/summary')
     const pick = (e: { key: string; label: string; sub?: string | null; path: string }) => ({ key: e.key, label: e.label, sub: e.sub ?? null, path: e.path })
     expect(entries.map(pick)).toEqual(expect.arrayContaining([
       { key: `list:${NEW}?`, label: NEW, sub: null, path: '/featherbase/admin/table/trn-plant' },
@@ -95,6 +101,23 @@ describe('#871: renaming a custom Table', () => {
       { key: 'list:Trn SAP Plants?', label: 'Trn SAP Plants', sub: null, path: '/featherbase/admin/table/trn-sap-plants' },
     ]))
     expect(entries.map((e) => e.key)).not.toContain(`list:${OLD}?`)
+    await sql`delete from has_role where parent = ${reader.user!}`
+    expect(JSON.stringify(await reader.get('/api/events/summary'))).not.toContain(NEW)
+    expect((await reader.post<{ entries: unknown[] }>('/api/home_resume', {})).entries).toEqual([])
+  })
+
+  test.for(['refused', 'before-table', 'before-row'])('rename cannot certify an ineligible %s visit', async (reason, { admin }) => {
+    await plants(admin)
+    if (reason === 'before-row')
+      await sql`update table_def set created_at = now() - interval '2 days' where name = ${OLD}`
+    await admin.post('/api/events', { events: [{ kind: 'row', key: `row:${OLD}/PLANT-8151`,
+      label: 'Chennai', sub: OLD, path: '/featherbase/admin/table/trn-sap-plant/row/PLANT-8151',
+      ...(reason !== 'refused' ? { at: Date.now() - 86_400_000 } : {}) }] })
+    if (reason !== 'refused') await sql`update user_event set destination = null`
+    const original = await sql`select * from user_event`
+    await rename(admin, OLD, NEW)
+    expect(await sql`select * from user_event`).toEqual(original)
+    expect((await admin.post<{ entries: unknown[] }>('/api/home_resume', {})).entries).toEqual([])
   })
 
   test('only a System Manager renames, and only to a free, valid name', async ({ admin, createUser }) => {

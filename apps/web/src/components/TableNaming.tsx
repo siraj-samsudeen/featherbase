@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { seriesPrefix } from 'shared'
 import { ApiError, api } from '../lib/api'
-import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, metaQuery, useMeta } from '../lib/meta'
 import { NamingControl } from './NamingControl'
 import { buttonClasses, cardClasses, labelClasses } from '@featherbase/shop-floor'
 
@@ -27,7 +27,7 @@ export function TableNaming({ table }: { table: string }) {
       await api.put(`/api/table_def/${encodeURIComponent(table)}/id_pattern`, {
         id_pattern: pattern,
       })
-      await queryClient.invalidateQueries({ queryKey: ['meta', table] })
+      await queryClient.invalidateQueries({ queryKey: metaQuery(table).queryKey.slice(0, 3) })
       setSaved(true)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to save')

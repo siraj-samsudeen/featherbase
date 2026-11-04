@@ -4,7 +4,7 @@ import { Link as RouterLink } from '@tanstack/react-router'
 import { choiceLabel } from 'shared'
 import { ApiError, api, getToken, listResource } from '../lib/api'
 import { useI18n } from '../lib/i18n'
-import { isRowsReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
+import { isRowsReadOnly, metaQuery, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { buttonClasses, cardClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
 import { fmtCount, fmtDate, timelineDayKey } from '@featherbase/shop-floor'
 
@@ -106,7 +106,7 @@ function useChecklistShape(meta: TableMeta | undefined): {
   // so the cache is shared and a Table already on screen costs no fetch.
   const children = useQueries({
     queries: subCols.map((sub) => ({
-      queryKey: ['meta', sub.row_table!],
+      queryKey: metaQuery(sub.row_table!).queryKey,
       queryFn: () =>
         api.get<TableMeta>(`/api/table/${encodeURIComponent(sub.row_table!)}:meta`),
       staleTime: 60_000,

@@ -215,6 +215,54 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
+  test('#873 a failing real Table-rename upgrade rolls back navigation; retry preserves both destinations and testimony', async ({ admin }) => {
+    const source = resolve('../..', 'test-apps/other')
+    const { directory, manifest } = await targetPackage()
+    manifest.entryTable = 'other.depot'
+    manifest.tables[0].name = 'other.depot'
+    manifest.permissions[0].table = 'other.depot'
+    manifest.migrations[0].operations = [
+      { kind: 'renameTable', from: 'other.task', to: 'other.depot' },
+      { kind: 'addColumn', table: 'other.depot', column: manifest.tables[0].columns.at(-1) },
+    ]
+    await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(manifest))
+    await writeFile(resolve(directory, 'server.mjs'), (await readFile(resolve(directory, 'server.mjs'), 'utf8')).replaceAll('other.task', 'other.depot'))
+    try {
+      await discoverPackages([source])
+      await admin.post('/api/install_app', { name: 'other' })
+      await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'north', quantity: 17 } })
+      const events = []
+      for (const row of [undefined, 'north']) {
+        const read = await admin.fetch(`/api/table/other.task${row ? `/${row}` : ':meta'}`, { headers: { 'X-Navigation-Visit': '1' } })
+        expect(read.status).toBe(200)
+        events.push({ kind: row ? 'row' : 'list', key: row ? 'row:other.task/north' : 'list:other.task?',
+          label: row ?? 'other.task', path: `/featherbase/admin/other.task${row ? `/${row}` : ''}`, claim: read.headers.get('X-Navigation-Claim') })
+      }
+      await admin.post('/api/events', { events })
+      const testimony = await sql`select * from user_event order by row_id`
+      const identity = await sql`select navigation_identity from table_def where name = 'other.task'`
+      await discoverPackages([source, directory])
+      await loadInstalledApps()
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+      await sql`alter table other.task add column notes text`
+      const body = { name: 'other', version: '2.0.0', planId: plan.planId }
+      await expect(admin.post('/api/upgrade_app', body)).rejects.toMatchObject({ status: 417 })
+      expect(await sql`select navigation_identity from table_def where name = 'other.task'`).toEqual(identity)
+      expect(await sql`select name from table_def where name = 'other.depot'`).toEqual([])
+      const resume = () => admin.post<{ entries: { path: string }[] }>('/api/home_resume', {})
+      expect((await resume()).entries.map(e => e.path).sort()).toEqual(['/featherbase/admin/table/other.task', '/featherbase/admin/table/other.task/row/north'])
+      await sql`alter table other.task drop column notes`
+      await admin.post('/api/upgrade_app', body)
+      await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
+      // An old client cannot regain access through the Home projection.
+      expect((await resume()).entries).toEqual([])
+      const refreshed = await admin.fetch('/api/home_resume', { method: 'POST', body: '{}', headers: { 'X-Featherbase-App-Version': 'other@2.0.0' } })
+      expect(refreshed.status).toBe(200)
+      expect(((await refreshed.json()) as { entries: { path: string }[] }).entries.map(e => e.path).sort()).toEqual(['/featherbase/admin/table/other.depot', '/featherbase/admin/table/other.depot/row/north'])
+      expect(await sql`select * from user_event order by row_id`).toEqual(testimony)
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   test('second DDL failure rolls back first addition and ledger; retry runs exactly once', async ({ admin }) => {
     const source = resolve('../..', 'test-apps/other')
     const { directory, manifest } = await targetPackage()

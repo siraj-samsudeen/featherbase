@@ -22,7 +22,8 @@ function syntheticApi(): Plugin {
       server.middlewares.use(async (request, response, next) => {
         response.setHeader('Content-Security-Policy', "connect-src 'self'; form-action 'self'")
         const url = new URL(request.url ?? '/', 'http://prototype.invalid')
-        const path = decodeURIComponent(url.pathname)
+        const path = decodeURIComponent(url.pathname).replace(/^(\/api\/table\/)([^/:]+)/,
+          (_, prefix, spelling) => `${prefix}${labTables.find((table) => tableSlug(table.name) === spelling)?.name ?? spelling}`)
         if (request.headers.accept?.includes('text/html') && path.startsWith('/featherbase/')) {
           request.url = '/prototype.html'
           return next()

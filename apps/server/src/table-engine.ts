@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { DEFAULT_ID_PATTERN, namingColumn, prettifyLabel, renameNamingColumn, tableSlug } from 'shared'
-import { inAppTransaction, sql, type TxSql } from './db'
+import { inAppTransaction, sql, whenTransactionEnds, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
@@ -11,6 +11,7 @@ import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation, resolvedRelation, tableName } from './platform-schema'
 import { readingPresentationSchema } from 'shared'
+import { publishNavigationChange } from './realtime'
 
 export { tableName }
 
@@ -839,6 +840,8 @@ export async function createTable(
     }
   })
   invalidateMeta(def.name)
+  if (inAppTransaction()) whenTransactionEnds(publishNavigationChange)
+  else publishNavigationChange()
   return getMeta(def.name)
 }
 
@@ -899,6 +902,7 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
 
   const physical = quoteRelation(await tableRelation(meta.name))
   const files = await sql.begin(async (tx) => {
+    await tx`select name from table_def where name = ${meta.name} for update`
     const removedFiles: { file_url: string | null }[] = []
     // This Table's own child rows; the child Table definition is not
     // cascaded — it may serve other parents (DEL-R2). Collect actual deleted
@@ -907,16 +911,25 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
       if (f.column_type !== 'Sub-table') continue
       const children = await tx<{ row_id: string }[]>`
         delete from ${tx(await storedRelation(f.row_table!))} where parenttype = ${meta.name} returning row_id`
+      if (children.length) await tx`update navigation_row_target set retired = true
+        where table_identity = (select navigation_identity from table_def where name = ${f.row_table!})
+          and row_id in ${tx(children.map(r => r.row_id))} and not retired`
       if (children.length) removedFiles.push(...await tx<{ file_url: string | null }[]>`
         delete from file where ref_table = ${f.row_table!} and ref_name in ${tx(children.map((r) => r.row_id))}
         returning file_url`)
     }
     removedFiles.push(...await tx<{ file_url: string | null }[]>`
       delete from file where ref_table = ${meta.name} returning file_url`)
-    for (const p of pointers)
-      await tx`
+    for (const p of pointers) {
+      const removed = await tx<{ row_id: string }[]>`
         delete from ${tx(await storedRelation(p.parent))}
-        where ${tx(p.column_name)} = ${meta.name}`
+        where ${tx(p.column_name)} = ${meta.name} returning row_id`
+      if (removed.length) await tx`update navigation_row_target set retired = true
+        where table_identity = (select navigation_identity from table_def where name = ${p.parent})
+          and row_id in ${tx(removed.map(r => r.row_id))} and not retired`
+    }
+    await tx`update navigation_row_target set retired = true
+      where table_identity = (select navigation_identity from table_def where name = ${meta.name}) and not retired`
     await tx`delete from column_def where parent = ${meta.name}`
     await tx`delete from table_def where name = ${meta.name}`
     // DEL-R6/BV1: a bound Table sheds its binding, never its source's
@@ -928,6 +941,8 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
     return removedFiles
   })
   invalidateMeta(meta.name)
+  if (inAppTransaction()) whenTransactionEnds(publishNavigationChange)
+  else publishNavigationChange()
   // DEL-R7: bytes are removed best-effort after commit — a survivor is disk
   // garbage, not a leak. Only managed URLs qualify; another File row may
   // still own these bytes. Failure here cannot undo the committed deletion.
@@ -1000,6 +1015,9 @@ export async function renameColumn(
   const hasStorage = pgType(column.column_type) !== null && meta.kind !== 'settings'
 
   await sql.begin(async (tx) => {
+    // Match navigation capture's definition -> relation ordering; ALTER
+    // must not hold the relation while waiting for the definition it reads.
+    await tx`select name from table_def where name = ${meta.name} for update`
     if (hasStorage)
       await tx.unsafe(`alter table ${relation} rename column ${quoteIdent(from)} to ${quoteIdent(target)}`)
     await tx`update column_def set column_name = ${target}
@@ -1132,8 +1150,8 @@ export async function renameCustomTable(from: string, input: string, user: strin
   return moveTable(meta, to, tableName(to), user)
 }
 
-// Every live pointer at a Table moves with it, history included: unlike a
-// deletion, a rename keeps what history says, under the name the Table now has.
+// Live pointers move with the Table; navigation projects its new address
+// without rewriting the original visit testimony.
 async function moveTable(meta: TableMeta, to: string, relationName: string, user: string): Promise<TableMeta> {
   const from = meta.name
   const [schemaName, fromRelation] = resolvedRelation(meta).split('.')
@@ -1160,6 +1178,10 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
   const relation = `${schema}.${quoteIdent(relationName)}`
   await sql.begin(async (tx) => {
     await assertTableAddressAvailable(tx, to, from)
+    await tx`select name from table_def where name = ${from} for update`
+    await tx`set constraints featherbase.table_navigation_identity_unique deferred`
+    const { captureLegacyNavigationForRename } = await import('./navigation-targets')
+    await captureLegacyNavigationForRename(from, tx)
     if (!sameRelation) {
       await tx.unsafe(`alter table ${quoteRelation(`${schemaName}.${fromRelation}`)} rename to ${quoteIdent(relationName)}`)
       // Names Postgres built from the relation (its primary key, and on 18 its
@@ -1189,6 +1211,7 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
     await tx`insert into table_def ${tx({ ...row, name: to, ...(meta.owner_app ? { physical_relation: relationName } : {}), updated_at: new Date() } as unknown as Record<string, never>)}`
     await tx`update column_def set parent = ${to} where parent = ${from}`
     await tx`delete from table_def where name = ${from}`
+    await tx`set constraints featherbase.table_navigation_identity_unique immediate`
     await tx`update column_def set reference_table = ${to} where reference_table = ${from}`
     await tx`update column_def set row_table = ${to} where row_table = ${from}`
     // #855: the renamed Table carries on its own counts. Counts left by a
@@ -1205,15 +1228,6 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
       await tx.unsafe(`update ${table} set ${quoteIdent(column)} = $1 where ${quoteIdent(column)} = $2`, [to, from])
     await renameInGlossary(tx, from, { table: from }, { table: to })
     await tx`update home_page_link set label = ${to} where link_to = ${to} and label = ${from}`
-    // Recently opened: the entries keep pointing at the Table under its new name.
-    for (const kind of ['row:', 'list:'])
-      await tx`update user_event set ref_key = ${kind + to} || substr(ref_key, ${kind.length + from.length + 1}),
-                 label = case when label = ${from} then ${to} else label end,
-                 sub_label = case when sub_label = ${from} then ${to} else sub_label end
-               where starts_with(ref_key, ${kind + from}) and substr(ref_key, ${kind.length + from.length + 1}, 1) in ('/', '?')`
-    const [oldPath, newPath] = [`/featherbase/admin/table/${tableSlug(from)}`, `/featherbase/admin/table/${tableSlug(to)}`]
-    await tx`update user_event set path = ${newPath} || substr(path, ${oldPath.length + 1})
-             where path = ${oldPath} or starts_with(path, ${oldPath + '/'}) or starts_with(path, ${oldPath + '?'})`
     if (meta.owner_app)
       await tx`update installed_app set tables = (
           select jsonb_agg(case when value = to_jsonb(${from}::text) then to_jsonb(${to}::text) else value end order by ordinality)
@@ -1224,6 +1238,8 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
     await logAccess(user, 'rename_table', { table: from, row_id: to, required: true }, tx)
   })
   invalidateMeta()
+  if (inAppTransaction()) whenTransactionEnds(publishNavigationChange)
+  else publishNavigationChange()
   return getMeta(to)
 }
 

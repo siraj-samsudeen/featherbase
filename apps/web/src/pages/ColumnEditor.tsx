@@ -21,7 +21,7 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
-import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
+import { COLUMN_TYPES, NO_COLUMN_TYPES, metaQuery, type TableMeta } from '../lib/meta'
 import { RESERVED, SNAKE, TARGET_REQUIRED_TYPES, slugify } from '../lib/column-rules'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
 
@@ -66,7 +66,7 @@ function RenameRow({ table, column }: { table: string; column: { column_name: st
       }),
     onSuccess: async () => {
       setOpen(false)
-      await queryClient.invalidateQueries({ queryKey: ['meta', table] })
+      await queryClient.invalidateQueries({ queryKey: metaQuery(table).queryKey.slice(0, 3) })
       await queryClient.invalidateQueries({ queryKey: ['import-targets'] })
     },
   })
@@ -130,7 +130,7 @@ export function ColumnEditor({ table }: { table: string }) {
   const [inListSaving, setInListSaving] = useState<{ column: string; inList: boolean } | null>(null)
 
   const meta = useQuery({
-    queryKey: ['meta', table],
+    queryKey: metaQuery(table).queryKey,
     queryFn: () => api.get<TableMeta>(`/api/table/${encodeURIComponent(table)}:meta`),
   })
 
@@ -143,7 +143,7 @@ export function ColumnEditor({ table }: { table: string }) {
         columns,
       }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['meta', table] })
+      await queryClient.invalidateQueries({ queryKey: metaQuery(table).queryKey.slice(0, 3) })
       await queryClient.invalidateQueries({ queryKey: ['import-targets'] })
     },
   })

@@ -1,14 +1,15 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import { api, getSessionUser } from '../lib/api'
+import { api, getSessionUser, getToken } from '../lib/api'
 import { ago, displayEntry, recentActions, type RecentEntry } from '../lib/recents'
 import { EntryLabel } from '../lib/row-titles'
 import { buttonClasses, cardClasses } from '@featherbase/shop-floor'
+import { useRealtime } from '../lib/realtime'
 
 // #101 Phase 5: the Home Page's first job becomes resuming. ResumeStrip
-// offers the last row / list / search as one-click tiles (instant, straight
-// from the localStorage buffer). RoutineCard asks the server whether a
+// offers the newest usable row / list / search as server-validated tiles.
+// RoutineCard asks the server whether a
 // routine holds — destinations opened on many distinct days — and offers to
 // pin it; the pin is stored per user and rendered as a chip row from then on.
 
@@ -39,8 +40,41 @@ function signatureOf(targets: WorkspaceTarget[]): string {
 export function ResumeStrip() {
   const router = useRouter()
   const user = getSessionUser()
+  const client = useQueryClient()
+  const [revision, setRevision] = useState(0)
+  const [navigationPending, setNavigationPending] = useState(false)
+  useEffect(() => {
+    const refresh = () => setRevision(v => v + 1)
+    window.addEventListener('navigation-history-updated', refresh)
+    return () => window.removeEventListener('navigation-history-updated', refresh)
+  }, [])
+  const projection = useQuery({
+    queryKey: ['home-resume', getToken(), revision],
+    enabled: Boolean(user),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    queryFn: () => api.post<{ entries: RecentEntry[] }>('/api/home_resume', {
+      hints: user ? recentActions(user.row_id, 40).map(e => ({ ...e, at: e.visits.at(-1) })) : [],
+    }),
+  })
+  useRealtime(user ? [`user:${user.row_id}`, 'navigation'] : [], event => {
+    // The shared socket forwards all channels watched by any component.
+    // Team-feed writes and unrelated row subscriptions are not Home changes.
+    const subscribed = event.channel === 'system' && event.event === 'subscribed'
+      && (event.payload as { channels?: string[] } | undefined)?.channels?.includes('navigation')
+    if (event.channel !== 'navigation' && !subscribed
+      && !(event.channel === `user:${user?.row_id}` && event.event === 'feed_mine')) return
+    if (event.event === 'invalidated') {
+      setNavigationPending(true)
+      void client.cancelQueries({ queryKey: ['home-resume'] })
+    } else {
+      void client.invalidateQueries({ queryKey: ['home-resume'] })
+      if (event.channel === 'navigation' || subscribed) setNavigationPending(false)
+    }
+  })
   if (!user) return null
-  const entries = recentActions(user.row_id, 40)
+  // Never flash a cached destination while a required recheck is outstanding.
+  const entries = !navigationPending && !projection.isFetching && !projection.isError ? projection.data?.entries ?? [] : []
   const lastRow = entries.find((e) => e.kind === 'row')
   const lastView = entries.find((e) => e.kind === 'list' || e.kind === 'page')
   const lastSearch = entries.find((e) => e.kind === 'search')
@@ -91,7 +125,7 @@ export function ResumeStrip() {
                 {t.head}
               </div>
               <div className="mt-0.5 truncate text-sm font-medium text-ink" data-testid="resume-tile-title">
-                <EntryLabel entry={t.entry} />
+                {t.entry.label}
               </div>
               <div className="mt-0.5 truncate text-xs text-ink-muted" data-testid="resume-tile-sub">
                 {shown.sub ? `${shown.sub} · ` : ''}

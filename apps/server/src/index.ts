@@ -69,6 +69,7 @@ import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
 import { recordAppAccessRefusal } from './app-access'
 import { eventSummary, listKeyHasFilter, whoLabels, recordEvents, routineSuggestion, validateEventBatch } from './events'
+import { captureNavigation, homeResume, resolveNavigation, type NavigationEvent } from './navigation-targets'
 import { rowTitles, validateRowTitleRequest } from './row-titles'
 import { createSavedView, deleteSavedView, listSavedViews, setSavedViewShared } from './saved-views'
 import { runApiScript } from './server-scripts'
@@ -932,6 +933,13 @@ app.post('/api/events', async (c) => {
   return c.json({ inserted: timestamps.length, timestamps })
 })
 
+app.post('/api/home_resume', async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || !Array.isArray(body.hints ?? [])) throw new AppError('ValidationError', 'Expected bounded hints')
+  const hints = body.hints?.length ? validateEventBatch({ events: body.hints }) : []
+  return c.json({ entries: await homeResume(who(c), hints.map(e => ({ ...e, at: e.at ?? Date.now() }))) })
+})
+
 app.get('/api/events/summary', async (c) => {
   return c.json({ entries: await eventSummary(who(c)) })
 })
@@ -996,8 +1004,9 @@ app.get('/api/activity_feed', async (c) => {
   if (scope === 'mine') {
     const rows = await sql`
       with marked as (
-        select kind, ref_key, label, sub_label, path, occurred_at, row_id,
+        select kind, ref_key, label, sub_label, path, occurred_at, row_id, destination,
                case when lag(kind) over w = kind and lag(ref_key) over w is not distinct from ref_key
+                    and lag(destination) over w is not distinct from destination
                     then 0 else 1 end as starts
         from user_event where created_by = ${user}
         window w as (order by occurred_at desc, row_id desc)
@@ -1005,7 +1014,7 @@ app.get('/api/activity_feed', async (c) => {
         select *, sum(starts) over (order by occurred_at desc, row_id desc rows unbounded preceding) as run
         from marked
       )
-      select r.kind, r.ref_key, r.label, r.sub_label, r.path, r.occurred_at, n.count
+      select r.kind, r.ref_key, r.label, r.sub_label, r.path, r.occurred_at, r.destination, n.count
       from runs r
       join (select run, count(*)::int as count from runs where run <= ${limit} group by run) n using (run)
       where r.starts = 1
@@ -1020,28 +1029,22 @@ app.get('/api/activity_feed', async (c) => {
       path: (r.path as string | null) ?? '',
       at: new Date(r.occurred_at as string).toISOString(),
       count: Number(r.count),
+      destination: r.destination as NavigationEvent['destination'],
     }))
-    // A row event is keyed `row:<Table>/<id>` and carries the Table as sub.
-    const rowRef = (i: (typeof items)[number]) =>
-      i.kind === 'row' && i.sub && i.ref_key === `row:${i.sub}/${i.label}` ? { table: i.sub, row_id: i.label } : {}
-    const titleOf = await feedRowTitles(user, items.map(rowRef))
     return c.json({
-      items: items.map(({ ref_key, ...i }) => {
-        const base = { who_name: whoName, ...(me?.role ? { who_role: me.role } : {}), path: i.path, at: i.at, count: i.count }
-        // #440: a fixed admin page is a page, titled — not a slug-named list.
-        const pageTitle = adminPathTitle(i.path)
-        if (pageTitle && (i.kind === 'list' || i.kind === 'page')) return { ...base, kind: 'page', label: pageTitle }
-        const ref = rowRef({ ...i, ref_key })
-        const title = titleOf(ref.table, ref.row_id)
+      items: await Promise.all(items.map(async ({ ref_key, destination, ...i }) => {
+        const resolved = await resolveNavigation(user, { ...i, key: ref_key, at: Date.parse(i.at), destination })
+        const base = { who_name: whoName, ...(me?.role ? { who_role: me.role } : {}), path: resolved.path, at: i.at, count: i.count }
         return {
           ...base,
-          kind: i.kind,
-          label: i.label,
-          ...(title ? { title } : {}),
-          sub: i.sub,
+          kind: adminPathTitle(i.path) ? 'page' : i.kind,
+          label: i.kind === 'row' && resolved.state === 'available' ? i.label : resolved.label,
+          ...(i.kind === 'row' && resolved.state === 'available' ? { title: resolved.label } : {}),
+          sub: resolved.sub,
+          destination_state: resolved.state,
           ...(i.kind === 'list' ? { filtered: listKeyHasFilter(ref_key) } : {}),
         }
-      }),
+      })),
     })
   }
 
@@ -2217,12 +2220,19 @@ app.get('/api/table/:table', async (c) => {
 
   if (suffix === 'actions') return c.json(listActions())
   if (suffix === 'meta') {
+    // Refuse missing/inaccessible metadata before opening the locking read.
+    // captureNavigation repeats authorization while holding the definition.
     const meta = await getMeta(table)
     await assertPermission(user.row_id, meta.name, 'read')
-    // #738: the caller's readable levels ride beside the cached meta, never
-    // inside it — the meta object is shared by every caller.
-    const readable = await permittedTiers(user.row_id, meta.name, 'read')
-    return c.json({ ...meta, readable_tiers: [...readable], storage_identity: await tableStorageIdentity(meta) })
+    return withTransaction(async () => {
+      const claim = c.req.header('X-Navigation-Visit') === '1' ? await captureNavigation(user.row_id, table) : null
+      const meta = await getMeta(table)
+      // #738: the caller's readable levels ride beside the cached meta, never
+      // inside it — the meta object is shared by every caller.
+      const readable = await permittedTiers(user.row_id, meta.name, 'read')
+      if (claim) c.header('X-Navigation-Claim', claim)
+      return c.json({ ...meta, readable_tiers: [...readable], storage_identity: await tableStorageIdentity(meta) })
+    })
   }
   if (suffix === 'count') {
     const filters = c.req.query('filters')
@@ -2282,7 +2292,13 @@ app.get('/api/table/:table/:name', async (c) => {
       throw new AppError('NotFoundError', `No readable row action ":${suffix}"`)
     return c.json(await action.handler({ table, name, args: c.req.query(), user }))
   }
-  return c.json(await getDoc(table, name, user.row_id))
+  if (c.req.header('X-Navigation-Visit') !== '1') return c.json(await getDoc(table, name, user.row_id))
+  return withTransaction(async () => {
+    const claim = await captureNavigation(user.row_id, table, name)
+    const doc = await getDoc(table, name, user.row_id)
+    if (claim) c.header('X-Navigation-Claim', claim)
+    return c.json(doc)
+  })
 })
 
 // A suffix here must name a registered write-effect row action — plain

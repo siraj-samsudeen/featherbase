@@ -144,12 +144,49 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 // only) or a testid-addressed command-bar/sidebar/strip walk with keyboard
 // input, so each test stays as one named step describing the whole trail;
 // session.visit carries the plain navigations around it.
+test('#873: a displayed Table visit survives an immediate document navigation', async ({ session, page }) => {
+  let release!: () => void
+  let captured!: () => void
+  const held = new Promise<void>((resolve) => { release = resolve })
+  const read = new Promise<void>((resolve) => { captured = resolve })
+  await page.route('**/api/table/recents-dt:meta', async (route) => {
+    if (route.request().headers()['x-navigation-visit'] !== '1') return route.continue()
+    const response = await route.fetch()
+    captured()
+    await held
+    await route.fulfill({ response })
+  })
+  const filters = encodeURIComponent(JSON.stringify([['note', '=', 'searchable'], ['row_id', '=', DOC]]))
+  try {
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}?filters=${filters}`)
+    await read
+    await expect(page.getByTestId('list-view')).toBeHidden()
+    release()
+    await expect(page.getByTestId('list-rows')).toContainText(DOC_TITLE)
+    // A hard navigation destroys the old document and all pending callbacks.
+    await page.goto('/admin')
+    await page.getByTestId('awesomebar').locator('input').click()
+    const recent = page.getByTestId('awesomebar-recent').first()
+    await expect(recent).toContainText(DT)
+    await expect(recent).toContainText('Note = searchable')
+    await recent.click()
+    // Canonical Table routes serialize a validated JSON string with outer
+    // JSON quotes; assert that exact spelling and the original filter value.
+    await expect(page).toHaveURL((url) => url.pathname.endsWith('/table/recents-dt')
+      && url.searchParams.get('filters') === JSON.stringify(decodeURIComponent(filters)))
+    await expect(page.getByTestId('list-rows')).toContainText(DOC_TITLE)
+  } finally {
+    release()
+  }
+})
+
 test('#101: an empty command bar lists recent visits and replays them', async ({ session }) => {
   // Build a trail: a filtered list, then a row.
   const filters = encodeURIComponent(JSON.stringify([['note', '=', 'searchable']]))
   await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}?filters=${filters}`)
   await session.step('build a trail, then replay it from the empty command bar', async ({ page }) => {
     await expect(page.getByTestId('table-page')).toBeVisible()
+    await expect(page.getByTestId('list-rows')).toContainText(DOC_TITLE)
     await page.goto(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`)
     await expect(page.getByTestId('form-view')).toBeVisible()
     await page.goto('/admin')
@@ -167,6 +204,7 @@ test('#101: an empty command bar lists recent visits and replays them', async ({
     await recents.nth(1).click()
     await expect(page).toHaveURL(/filters=/)
     await expect(page.getByTestId('table-page')).toBeVisible()
+    await expect(page.getByTestId('list-rows')).toContainText(DOC_TITLE)
 
     await page.goto('/admin')
 

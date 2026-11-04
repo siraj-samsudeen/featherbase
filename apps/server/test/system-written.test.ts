@@ -327,6 +327,7 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/open_admin': 'sign-in: mints a hand-off to the Admin address (#489)',
     'POST /api/sales_target/embed_session': 'sign-in',
     'POST /api/events': 'internal writer: the caller\'s own usage events',
+    'POST /api/home_resume': 'read: caller-authorized destination projection; never changes event history',
     'POST /api/saved_views': 'saved views',
     'POST /api/saved_views/:name/share': 'saved views',
     'DELETE /api/saved_views/:name': 'saved views',

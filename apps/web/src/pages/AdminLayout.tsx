@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, type CommandDestinations, type CommandPageDestination } from 'shared'
@@ -14,6 +14,7 @@ import {
   recentSearches,
   uniqueByDisplay,
   recordAction,
+  NavigationVisitContext,
   type RecentEntry,
   type ServerRecentEntry,
 } from '../lib/recents'
@@ -134,33 +135,45 @@ function AdminShell({ wide }: { wide: boolean }) {
   const navigationKey = (location.state as { __TSR_key?: string; key?: string } | undefined)?.__TSR_key
     ?? (location.state as { key?: string } | undefined)?.key
     ?? location.href
+  const visit = useMemo(() => {
+    const tableSegment = /^\/featherbase\/admin\/table\/([^/]+)/.exec(location.pathname)?.[1]
+    const action = actionForLocation(location.pathname, location.search as Record<string, unknown>,
+      tableSegment ? decodeURIComponent(tableSegment) : undefined, location.href)
+    const table = action?.kind === 'list' ? action.label : action?.kind === 'row' ? action.sub : undefined
+    if (!user || !action || !table) return null
+    const owner = user.row_id
+    const rowId = action.kind === 'row' ? action.label : undefined
+    const path = `/api/table/${encodeURIComponent(table)}${rowId ? `/${encodeURIComponent(rowId)}` : ':meta'}`
+    let recorded = false
+    return {
+      // A revisit needs a fresh read even when a previous route is cached.
+      key: crypto.randomUUID(),
+      table,
+      path,
+      read: async <T,>() => {
+        const { data, claim } = await api.getNavigation<T>(path)
+        const meta = rowId ? await queryClient.fetchQuery(metaQuery(table)) : data as TableMeta
+        if (!recorded && getSessionUser()?.row_id === owner) {
+          recorded = true
+          const resolved = actionForLocation(location.pathname, location.search as Record<string, unknown>, meta.name, location.href, meta.columns, t)
+          if (resolved) recordAction(owner, { ...resolved, claim })
+        }
+        return data
+      },
+    }
+  }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const recordedNavigation = useRef<string | null>(null)
   useEffect(() => {
     if (!user) return
     const id = `${user.row_id}\u0000${navigationKey}`
     if (recordedNavigation.current === id) return
     recordedNavigation.current = id
-    const search = location.search as Record<string, unknown>
-    const action = actionForLocation(location.pathname, search)
-    // A list or row names a Table; it is remembered only once that Table's
-    // metadata has loaded. A path that is not a Table (`/admin/people`) 404s
-    // and is never offered back.
+    const action = actionForLocation(location.pathname, location.search as Record<string, unknown>)
+    if (!action) return
     // The same rule for a page only a System Manager can open: anyone else is
     // sent home, so the page is never offered back to them (#476).
-    if (action?.kind === 'page' && adminPageNeedsManage(action.key.slice('page:'.length)) && !canManage) return
-    const tableSegment = /^\/featherbase\/admin\/table\/([^/]+)/.exec(location.pathname)?.[1]
-    if (!tableSegment) {
-      if (action) recordAction(user.row_id, action)
-      return
-    }
-    const owner = user.row_id
-    queryClient.fetchQuery(metaQuery(decodeURIComponent(tableSegment))).then(
-      (meta) => {
-        const resolved = actionForLocation(location.pathname, search, meta.name, location.href, meta.columns, t)
-        if (resolved) recordAction(owner, resolved)
-      },
-      () => {},
-    )
+    if (action.kind === 'page' && adminPageNeedsManage(action.key.slice('page:'.length)) && !canManage) return
+    if (action.kind !== 'list' && action.kind !== 'row') recordAction(user.row_id, action)
   }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const [barFocused, setBarFocused] = useState(false)
   const [selection, setSelection] = useState<{ query: string; id: string } | null>(null)
@@ -257,7 +270,9 @@ function AdminShell({ wide }: { wide: boolean }) {
       const match = router.state.matches.find((m) => 'table' in m.params && m.status === 'success')
       const table = (match?.params as { table?: string } | undefined)?.table
       if (!table) return null
-      const state = queryClient.getQueryState<TableMeta>(metaQuery(table).queryKey)
+      const key = metaQuery(table).queryKey
+      const state = queryClient.getQueryState<TableMeta>(visit
+        ? [...key.slice(0, 3), visit.table, ...(visit.path.endsWith(':meta') ? [visit.key] : [])] : key)
       if (state?.error instanceof ApiError && state.error.status < 500) return null
       return state?.data?.name ?? null
     }
@@ -300,7 +315,7 @@ function AdminShell({ wide }: { wide: boolean }) {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [navigate, router, queryClient])
+  }, [navigate, router, queryClient, visit])
 
   // #101 Phase 5: the "Last search" resume tile hands its query to the
   // command bar — prefilled and focused, ready to re-run.
@@ -888,7 +903,9 @@ function AdminShell({ wide }: { wide: boolean }) {
         {/* Page canvas */}
         <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:p-6${wide ? ' flex flex-col' : ''}`}>
           <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : 'mx-auto max-w-5xl'}>
-            <Outlet />
+            <NavigationVisitContext.Provider value={visit}>
+              <Outlet />
+            </NavigationVisitContext.Provider>
           </div>
         </main>
       </div>
