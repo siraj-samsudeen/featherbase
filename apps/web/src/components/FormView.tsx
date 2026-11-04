@@ -594,6 +594,7 @@ export function FormView({
               onClick={async () => {
                 setRecordActionsOpen(false)
                 setBanner(null)
+                suppressStaleUntil.current = Date.now() + 2000
                 try {
                   await reactivateRow(queryClient, table, name)
                   setBanner('Done')
@@ -765,7 +766,14 @@ export function FormView({
         </div>
       )}
       {retiring && (
-        <RetireDialog table={table} name={name} label={name} onClose={() => setRetiring(false)} />
+        <RetireDialog
+          table={table}
+          name={name}
+          label={name}
+          // The person's own retire is not someone else's change (RT-002).
+          onSubmit={() => { suppressStaleUntil.current = Date.now() + 2000 }}
+          onClose={() => setRetiring(false)}
+        />
       )}
       {!isNew && <RetiredNotice row={baseline} />}
       {banner && (

@@ -175,3 +175,51 @@ describe('#859 a refused delete offers to retire', () => {
     })
   })
 })
+
+describe('#859 retirement respects the row a comment hangs on (Codex review)', () => {
+  test('broad Comment rights cannot retire a comment on a row the caller cannot open', async ({ admin, createUser }) => {
+    await makeTable(admin, { name: 'Rt Note', columns: ['subject'] })
+    const agent = await createUserWithRole(admin, createUser, {
+      role: 'Rt Note Agent', table: 'Rt Note', can_read: true, can_write: true, can_create: true, own_rows_only: true,
+    }, { email: 'rt-agent@example.com' })
+    await grantRoleOnComment(admin)
+    const theirs = await admin.post<{ row_id: string }>('/api/table/Rt%20Note', { subject: 'Not yours' })
+    const comment = await admin.post<{ row_id: string }>('/api/table/Comment', { ref_table: 'Rt Note', ref_name: theirs.row_id, content: 'private' })
+    await expectApiError(agent.post(`/api/table/Comment/${comment.row_id}:retire`, { reason: 'hide it' }), { status: 403 })
+    const [row] = await sql`select retired_at from comment where row_id = ${comment.row_id}`
+    expect(row.retired_at).toBeNull()
+  })
+})
+
+async function grantRoleOnComment(admin: TestClient) {
+  const { grantRole } = await import('./fixtures')
+  await grantRole(admin, { role: 'Rt Note Agent', table: 'Comment', can_read: true, can_write: true, can_create: true, can_delete: true })
+}
+
+describe('#859 migration 0018', () => {
+  test('refuses a Table already using a retirement name for its own data, and changes nothing', async ({ admin }) => {
+    const { up } = await import('../migrations/0018_row_retirement')
+    const t = await makeTable(admin, { name: 'Rt Legacy', columns: ['title'] })
+    const relation = await tableRelationOf(t.name)
+    await sql.unsafe(`alter table ${relation} drop column retired_at, drop column retired_by, drop column retired_reason, add column retired_at text`)
+    await expect(up()).rejects.toThrow(/Rt Legacy\.retired_at/)
+    const cols = await sql`select column_name from information_schema.columns where table_name = 'rt_legacy' and column_name like 'retired%'`
+    expect(cols.map((c) => c.column_name)).toEqual(['retired_at'])
+  })
+
+  test('adds the columns to a Table made before it, and reruns cleanly', async ({ admin }) => {
+    const { up } = await import('../migrations/0018_row_retirement')
+    const t = await makeTable(admin, { name: 'Rt Older', columns: ['title'] })
+    const relation = await tableRelationOf(t.name)
+    await sql.unsafe(`alter table ${relation} drop column retired_at, drop column retired_by, drop column retired_reason`)
+    await up()
+    await up()
+    const cols = await sql`select column_name from information_schema.columns where table_name = 'rt_older' and column_name like 'retired%' order by 1`
+    expect(cols.map((c) => c.column_name)).toEqual(['retired_at', 'retired_by', 'retired_reason'])
+  })
+})
+
+async function tableRelationOf(name: string) {
+  const { tableRelation, quoteRelation } = await import('../src/table-engine')
+  return quoteRelation(await tableRelation(name))
+}

@@ -1715,15 +1715,21 @@ async function setRetirement(
     if (reason.length > MAX_RETIRED_REASON)
       throw new AppError('ValidationError', `A reason is at most ${MAX_RETIRED_REASON} characters`, { retired_reason: 'Too long' })
   }
+  // Only someone who may open the row may retire or reactivate it: the read
+  // path's own checks (mandatory access, shares, a comment's or file's row).
+  await getDoc(table, name, user)
   const tbl = await tableRelation(table)
-  await afterCommitOf(() => sql.begin(async (tx) => {
+  let previous: RowValues = {}
+  const [saved] = await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     await holdBeforeRowLock(stx, meta, user, { [meta.row_key]: name })
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${name} not found`)
+    previous = existing as RowValues
     await assertDocPermission(user, table, retire ? 'delete' : 'write', String(existing.created_by))
     await assertUserPermissions(user, meta, existing as RowValues)
+    if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, existing as RowValues, user)
     await assertRowNotManaged(stx, meta, name, user)
     if (retire && existing.retired_at != null)
       throw new AppError('ValidationError', `${table} ${name} is already retired`)
@@ -1731,10 +1737,10 @@ async function setRetirement(
       throw new AppError('ValidationError', `${table} ${name} is not retired`)
     // The database's clock, as for history (#432).
     const [{ at }] = await tx<{ at: Date }[]>`select clock_timestamp() as at`
-    await tx`
+    const [updated] = await tx`
       update ${tx(tbl)} set retired_at = ${retire ? at : null}, retired_by = ${retire ? user : null},
         retired_reason = ${reason}, updated_at = ${at}, updated_by = ${user}
-      where ${tx(meta.row_key)} = ${name}`
+      where ${tx(meta.row_key)} = ${name} returning *`
     await tx`insert into version ${tx({
       [ROW_KEY]: hashRowId(),
       created_by: user,
@@ -1747,7 +1753,20 @@ async function setRetirement(
       ref_name: name,
       data: { changed: [], retirement: retire ? { action: 'retired', reason } : { action: 'reactivated' } } as unknown as string,
     })}`
+    // The update half of the trigger chain, as a save runs it (AGENTS.md
+    // invariant 2). No field changes, so validation hooks have nothing to judge.
+    const ctx: HookContext = { row: { ...(updated as RowValues) }, old: existing as RowValues, meta, user, isNew: false, tx: stx }
+    await runHooks('after_save', ctx)
+    await runHooks('on_update', ctx)
+    await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
+    return [updated]
   }))
+  const result = await loadChildren(meta, { table: meta.name, ...(saved as RowValues) })
+  await afterDocumentCommit(async () => {
+    await evaluateEmailRules('on_save', meta.name, result, previous)
+    await evaluateWebhooks('on_update', meta.name, result)
+    await runHooks('after_commit', { row: result, old: previous, meta, user, isNew: false, tx: sql })
+  })
   return getDoc(table, name, user)
 }
 
@@ -1896,6 +1915,7 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
       await assertSecurityWriter(table, user)
       await assertDocPermission(user, table, action, String(row.created_by))
       await assertUserPermissions(user, meta, row)
+      if (ROW_ATTACHED_TABLES.has(table)) await assertAttachedRowReadable(table, row, user)
     })
     const retirable = canRetire(meta)
     return {

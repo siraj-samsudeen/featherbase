@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { canRetire } from 'shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { StatusPill, buttonClasses, cardClasses, fmtInstant, inputClasses, labelClasses } from '@featherbase/shop-floor'
 import { ApiError, api } from '../lib/api'
@@ -10,11 +11,8 @@ import { PrincipalName } from '../lib/people'
 
 type Row = Record<string, unknown>
 
-/** Whether a Table's rows can be retired, as the server decides (canRetire):
- *  a plain Table storing its own rows, not one of the engine's own. */
-export function tableCanRetire(meta: { name: string; kind: string; data_source?: string | null; system_written?: boolean } | undefined): boolean {
-  return Boolean(meta) && meta!.kind === 'table' && !meta!.data_source && !meta!.system_written && meta!.name !== 'Table' && meta!.name !== 'Column'
-}
+/** Whether a Table's rows can be retired: the server's own rule. */
+export const tableCanRetire = canRetire
 
 const rowUrl = (table: string, name: string) =>
   `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`
@@ -46,7 +44,7 @@ export function RetiredNotice({ row }: { row: Row }) {
 }
 
 /** Asks for the reason, then retires the row. */
-export function RetireDialog({ table, name, label, onClose }: { table: string; name: string; label: string; onClose: () => void }) {
+export function RetireDialog({ table, name, label, onClose, onSubmit }: { table: string; name: string; label: string; onClose: () => void; onSubmit?: () => void }) {
   const queryClient = useQueryClient()
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -57,6 +55,7 @@ export function RetireDialog({ table, name, label, onClose }: { table: string; n
     if (!ready) return
     setBusy(true)
     setError(null)
+    onSubmit?.()
     try {
       await api.post(`${rowUrl(table, name)}:retire`, { reason: reason.trim() })
       await refreshAfterRetirement(queryClient, table, name)

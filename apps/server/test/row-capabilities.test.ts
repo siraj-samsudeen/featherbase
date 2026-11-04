@@ -124,7 +124,7 @@ describe('#800 row action capabilities', () => {
     const row = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'Fresh grants' } })
     expect(await user.get(capabilities(row.row_id))).toEqual(readerCapabilities)
     const [grant] = await grantRole(admin, { role: 'Cap800 Changing', table: DT, tier: 'basic', can_write: true, can_delete: true })
-    expect(await user.get(capabilities(row.row_id))).toEqual({ ...readerCapabilities, write: true, rename: true, delete: true })
+    expect(await user.get(capabilities(row.row_id))).toEqual({ ...readerCapabilities, write: true, rename: true, delete: true, retire: true })
     await admin.delete(tableRef('Permission').rowUrl(grant))
     expect(await user.get(capabilities(row.row_id))).toEqual(readerCapabilities)
   })

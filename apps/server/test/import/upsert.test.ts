@@ -311,7 +311,7 @@ describe('UPS-R1: the import boundary learns update', () => {
     expect(await admin.post(PATH, { key_column: 'zone', rows, dry_run: true })).toEqual({
       dry_run: true, valid: 2, updated: 1, inserted: 1, failed: [],
       actions: ['update', 'insert'], fields_updated: 1, fields_kept: 0, tracks_changes: true,
-      changed: 1, unchanged: 0, rows_kept: 0, conflicts: 0,
+      changed: 1, unchanged: 0, rows_kept: 0, conflicts: 0, retired: 0,
     })
     expect(await importState()).toEqual(before)
   })
@@ -331,7 +331,7 @@ describe('UPS-R1: the import boundary learns update', () => {
     expect(await admin.post(PATH, { ...body, dry_run: true })).toEqual({
       dry_run: true, valid: 2, updated: 1, inserted: 1, failed,
       actions: ['update', 'fail', 'fail', 'insert'], fields_updated: 1, fields_kept: 0,
-      changed: 1, unchanged: 0, rows_kept: 0, conflicts: 0,
+      changed: 1, unchanged: 0, rows_kept: 0, conflicts: 0, retired: 0,
       tracks_changes: true,
     })
     expect(await importState()).toEqual(before)

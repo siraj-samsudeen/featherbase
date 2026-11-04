@@ -232,9 +232,15 @@ export async function classifyColumns(db: Sql | TxSql = sql): Promise<Classifica
       push(explicit[column], 'declared')
       continue
     }
-    // History columns on every relation: who created and last changed a row.
-    if (column === 'created_by' || column === 'updated_by') {
+    // History columns on every relation: who created and last changed a row,
+    // and (#859) who retired it.
+    if (column === 'created_by' || column === 'updated_by' || column === 'retired_by') {
       push(id, 'history')
+      continue
+    }
+    // #859: why a row was retired, in the retiring person's words.
+    if (column === 'retired_reason') {
+      push(text, 'standard column')
       continue
     }
     if (column === 'row_id' || column === 'status' || column === 'parentfield' || column === 'parenttype') {

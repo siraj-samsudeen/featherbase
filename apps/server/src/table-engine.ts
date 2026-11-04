@@ -10,7 +10,7 @@ import { deleteStored } from './storage'
 import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, platformRelation, resolvedRelation, tableName } from './platform-schema'
-import { readingPresentationSchema } from 'shared'
+import { canRetire, readingPresentationSchema } from 'shared'
 
 export { tableName }
 
@@ -37,11 +37,8 @@ export const RETIREMENT_COLUMNS = ['retired_at', 'retired_by', 'retired_reason']
 // Names no builder's column may take: the standard columns and the retirement ones.
 export const RESERVED_COLUMNS: readonly string[] = [...STANDARD_COLUMNS, ...RETIREMENT_COLUMNS]
 
-/** Whether a Table's rows can be retired: it stores its own rows, is a plain
- *  collection, and is not one of the engine's own Tables (ADR 0019). */
-export function canRetire(meta: Pick<TableMeta, 'name' | 'kind' | 'data_source' | 'system_written'>): boolean {
-  return meta.kind === 'table' && !meta.data_source && !meta.system_written && meta.name !== 'Table' && meta.name !== 'Column'
-}
+/** Whether a Table's rows can be retired (ADR 0019); one rule, in shared. */
+export { canRetire }
 
 // META-002: how each column type maps to a Postgres column type.
 // Layout columns and Sub-table columns produce no column at all.
