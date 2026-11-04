@@ -1,0 +1,207 @@
+// #927: keep a master Table in step with a copied warehouse table. The
+// three-way rule is checked exhaustively as a function, then end to end on a
+// stand-in warehouse with synthetic rows (never real data).
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { rmSync } from 'node:fs'
+import { resolve } from 'node:path'
+import type { TestClient } from 'feather-testing-postgres'
+import { test } from './pg-test'
+import { sql } from '../src/db'
+import { overrideVariable } from '../src/env'
+import { invalidateSources } from '../src/sources/registry'
+import { discoverPackages } from '../src/runtime-packages'
+import { decideColumn, normalize } from '../src/master-sync'
+import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
+import { makeTable } from './fixtures'
+import { runOneJob } from '../src/jobs'
+
+describe('the three-way rule for one column', () => {
+  // snapshot = last source value seen, source = now, featherbase = now.
+  const cases: [string, 'source' | 'featherbase', string | undefined, string | null, string | null, ReturnType<typeof decideColumn>][] = [
+    ['nothing changed', 'source', 'A', 'A', 'A', { apply: false }],
+    ['nothing changed (ours)', 'featherbase', 'A', 'A', 'A', { apply: false }],
+    ['source changed, ours unchanged: source-owned is applied', 'source', 'A', 'B', 'A', { apply: true }],
+    ['source changed, ours unchanged: Featherbase-owned asks', 'featherbase', 'A', 'B', 'A', { apply: false, raise: 'source_changed' }],
+    ['ours changed, source unchanged: source-owned asks to fix the source', 'source', 'A', 'A', 'C', { apply: false, raise: 'edited_here' }],
+    ['ours changed, source unchanged: Featherbase-owned is ours', 'featherbase', 'A', 'A', 'C', { apply: false }],
+    ['both changed differently: a conflict, source-owned', 'source', 'A', 'B', 'C', { apply: false, raise: 'conflict' }],
+    ['both changed differently: a conflict, Featherbase-owned', 'featherbase', 'A', 'B', 'C', { apply: false, raise: 'conflict' }],
+    ['both changed to the same value: nothing to do', 'source', 'A', 'B', 'B', { apply: false }],
+    ['the source emptied a source-owned value: applied', 'source', 'A', null, 'A', { apply: true }],
+    ['the source filled a value it did not have: applied', 'source', null, 'B', null, { apply: true }],
+    ['first sync after linking, agreeing', 'source', undefined, 'A', 'A', { apply: false }],
+    ['first sync, ours empty: the source fills it', 'source', undefined, 'A', null, { apply: true }],
+    ['first sync, disagreeing on a source-owned value: asks, applies nothing', 'source', undefined, 'A', 'C', { apply: false, raise: 'differs_at_link' }],
+    ['first sync, disagreeing on ours: ours is kept', 'featherbase', undefined, 'A', 'C', { apply: false }],
+  ]
+  for (const [title, owner, snapshot, source, featherbase, expected] of cases)
+    it(title, () => expect(decideColumn(owner, snapshot, source, featherbase)).toEqual(expected))
+
+  it('compares one spelling per value', () => {
+    expect(normalize('')).toBeNull()
+    expect(normalize(undefined)).toBeNull()
+    expect(normalize(7)).toBe('7')
+    expect(normalize(true)).toBe('true')
+    expect(normalize(new Date('2026-11-04T00:00:00Z'))).toBe('2026-11-04T00:00:00.000Z')
+  })
+})
+
+let dir: string
+beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir) })
+afterAll(() => { invalidateSources(); overrideVariable('MOTHERDUCK_STANDIN', undefined); rmSync(dir, { recursive: true, force: true }) })
+
+const SOURCES = '/api/table/Data%20Source'
+const COPY = '/api/table/Sync%20Staff%20Copy'
+type Row = Record<string, any>
+
+async function world(admin: TestClient, source: string) {
+  await changeStandin(dir, 'sales', [
+    `create or replace table ${source} (emp_id varchar, name varchar, phone varchar, role varchar)`,
+    `insert into ${source} values ('E1', 'Asha', '111', 'Cashier'), ('E2', 'Bala', '222', 'Packer'), ('E3', 'Chitra', '333', 'Cashier'), ('E4', 'Dev', '444', 'Guard')`,
+  ])
+  await admin.post(`${SOURCES}:motherduck_connect`, { name: `ms-${source.replaceAll("_", "-")}`, token: STANDIN_TOKENS.reader, databases: ['sales'] })
+  await admin.post(`${SOURCES}/ms-${source.replaceAll("_", "-")}:refresh_tables`, { database: 'sales' })
+  await admin.post(`${SOURCES}/ms-${source.replaceAll("_", "-")}:copy_create`, { database: 'sales', schema: 'main', table: source, name: 'Sync Staff Copy', key: 'emp_id',
+    columns: ['emp_id', 'name', 'phone', 'role'].map(c => ({ source: c, column_name: c })) })
+  // The master Table, its Source Link Table, and the people already linked.
+  await makeTable(admin, { name: 'Sync Person', id_pattern: 'prompt', columns: ['full_name', 'phone', 'floor_role', 'employment_status'] })
+  await makeTable(admin, { name: 'Sync Source Link', columns: ['source_system', 'key_kind', 'source_key', 'person'] })
+  for (const [id, name, phone, role] of [['P1', 'Asha', '111', 'Cashier'], ['P2', 'Bala', '222', 'Packer'], ['P3', 'Chitra', '333', 'Cashier']])
+    await admin.post('/api/save_row', { table: 'Sync Person', row: { row_id: id, full_name: name, phone, floor_role: role, employment_status: 'Active' } })
+  for (const [key, person] of [['E1', 'P1'], ['E2', 'P2'], ['E3', 'P3']])
+    await admin.post('/api/save_row', { table: 'Sync Source Link', row: { source_system: 'StyleHR', key_kind: 'Employee ID', source_key: key, person } })
+  // A link from another system with the same key must never be used.
+  await admin.post('/api/save_row', { table: 'Sync Source Link', row: { source_system: 'SAP', key_kind: 'Employee ID', source_key: 'E4', person: 'P1' } })
+  await discoverPackages([resolve('../..', 'test-apps/ticket-sink')])
+  await admin.post('/api/install_app', { name: 'ticketsink' })
+  const rule = {
+    master_table: 'Sync Person', source_system: 'StyleHR',
+    link: { table: 'Sync Source Link', system_column: 'source_system', key_column: 'source_key', master_column: 'person', kind_column: 'key_kind', kind: 'Employee ID' },
+    columns: { full_name: { source: 'name', owner: 'source' }, phone: { source: 'phone', owner: 'source' }, floor_role: { source: 'role', owner: 'featherbase' } },
+    inactive: { column: 'employment_status', value: 'Inactive' },
+    tickets: { app: 'ticketsink', type: 'source_change', source_system: 'StyleHR' },
+  }
+  await admin.post(`${COPY}:set_master_sync`, { rule })
+  return { source, rule }
+}
+const run = (admin: TestClient) => admin.post<Row>(`${COPY}:master_sync_run`, {})
+const person = (admin: TestClient, id: string) => admin.get<Row>(`/api/table/Sync%20Person/${id}`)
+const edit = async (admin: TestClient, id: string, values: Row) =>
+  admin.post('/api/save_row', { table: 'Sync Person', row: { row_id: id, updated_at: (await person(admin, id)).updated_at, ...values } })
+const sunk = async () => (await sql`select title, kind, payload from ticketsink.ticket order by created_at, row_id`).map(r => ({ ...r, payload: JSON.parse(String(r.payload)) }))
+async function sourceChanges(admin: TestClient, source: string, statements: string[]) {
+  await changeStandin(dir, 'sales', statements.map(s => s.replaceAll('$T', source)))
+  await admin.post(`${SOURCES}/ms-${source.replaceAll("_", "-")}:refresh_tables`, { database: 'sales' })
+  await admin.post(`${COPY}:copy_again`, {})
+}
+
+describe('Master sync (#927)', () => {
+  test('a first run agrees, and only the new source row is raised: never auto-linked', async ({ admin }) => {
+    await world(admin, 'staff_first')
+    const first = await run(admin)
+    expect(first).toMatchObject({ linked: 3, applied: 0, unchanged: 3, raised: 1, ticket_errors: [] })
+    const tickets = await sunk()
+    expect(tickets.map(t => t.payload.details.record_key)).toEqual(['E4'])
+    expect(tickets[0]).toMatchObject({ kind: 'source_change', payload: { details: { source_system: 'StyleHR' } } })
+    expect(tickets[0].payload.original).toMatch(/no link/)
+    // A re-run raises nothing again.
+    expect(await run(admin)).toMatchObject({ raised: 0, already_raised: 1, tickets: [] })
+    expect(await sunk()).toHaveLength(1)
+  })
+
+  test('each three-way case: applied with provenance, kept, or raised once', async ({ admin }) => {
+    const { source } = await world(admin, 'staff_cases')
+    await run(admin)
+    // Featherbase edits: Asha's phone (source-owned), Bala's floor role (ours), Chitra's name (both change).
+    await edit(admin, 'P1', { phone: '999' })
+    await edit(admin, 'P2', { floor_role: 'Supervisor' })
+    await edit(admin, 'P3', { full_name: 'Chitra K' })
+    await sourceChanges(admin, source, [
+      `update $T set name = 'Asha R' where emp_id = 'E1'`,     // source-owned, ours unchanged → applied
+      `update $T set role = 'Billing' where emp_id = 'E3'`,    // Featherbase-owned, ours unchanged → ticket
+      `update $T set name = 'Chitra S' where emp_id = 'E3'`,   // both changed → conflict
+    ])
+    const result = await run(admin)
+    expect(result).toMatchObject({ applied: 1, ticket_errors: [] })
+    expect(await person(admin, 'P1')).toMatchObject({ full_name: 'Asha R', phone: '999' })
+    expect(await person(admin, 'P2')).toMatchObject({ floor_role: 'Supervisor' })
+    expect(await person(admin, 'P3')).toMatchObject({ full_name: 'Chitra K', floor_role: 'Cashier' })
+    const raised = (await sunk()).slice(1).map(t => [t.payload.details.record_key, t.payload.details.field, t.payload.details.action])
+    expect(raised).toEqual(expect.arrayContaining([
+      ['P1', 'Phone', expect.stringMatching(/edited in Featherbase/)],
+      ['P3', 'Floor Role', expect.stringMatching(/source changed a value Featherbase owns/)],
+      ['P3', 'Full Name', expect.stringMatching(/Both the source and Featherbase changed/)],
+    ]))
+    expect(raised).toHaveLength(3)
+    // The applied change says it came from StyleHR, for a later outbound feed to skip.
+    const [version] = await sql`select data from version where ref_table = 'Sync Person' and ref_name = 'P1' order by created_at desc limit 1`
+    expect(version.data).toMatchObject({ synced_from: 'StyleHR', sync_copied_table: 'Sync Staff Copy' })
+    // Run again with nothing new: the same unresolved differences raise nothing.
+    const again = await run(admin)
+    expect(again).toMatchObject({ applied: 0, raised: 0 })
+    expect((await sunk()).length).toBe(4)
+    // A different value is a new difference.
+    await edit(admin, 'P1', { phone: '998' })
+    expect(await run(admin)).toMatchObject({ raised: 1 })
+  })
+
+  test('a row gone from the source marks the master row inactive and deletes nothing; without an inactive column it asks', async ({ admin }) => {
+    const { source, rule } = await world(admin, 'staff_gone')
+    await run(admin)
+    await sourceChanges(admin, source, [`delete from $T where emp_id in ('E2', 'E3')`])
+    expect(await run(admin)).toMatchObject({ applied: 2 })
+    expect(await person(admin, 'P2')).toMatchObject({ employment_status: 'Inactive', full_name: 'Bala' })
+    expect(await run(admin)).toMatchObject({ applied: 0, raised: 0 })
+    await admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, inactive: undefined } })
+    await edit(admin, 'P3', { employment_status: 'Active' })
+    const asked = await run(admin)
+    expect(asked.raised).toBe(2)
+    expect((await sunk()).filter(t => /no longer in the source/.test(t.payload.original)).map(t => t.payload.details.record_key).sort()).toEqual(['P2', 'P3'])
+    expect(await person(admin, 'P3')).toMatchObject({ employment_status: 'Active' })
+  })
+
+  test('a link made later starts from Featherbase: an empty value is filled, a disagreement is asked', async ({ admin }) => {
+    await world(admin, 'staff_late')
+    await run(admin)
+    await admin.post('/api/save_row', { table: 'Sync Person', row: { row_id: 'P4', full_name: 'Devan', employment_status: 'Active' } })
+    await admin.post('/api/save_row', { table: 'Sync Source Link', row: { source_system: 'StyleHR', key_kind: 'Employee ID', source_key: 'E4', person: 'P4' } })
+    const result = await run(admin)
+    expect(result).toMatchObject({ applied: 1, raised: 1 })
+    expect(await person(admin, 'P4')).toMatchObject({ full_name: 'Devan', phone: '444', floor_role: null })
+    expect((await sunk()).at(-1)!.payload.details).toMatchObject({ record_key: 'P4', field: 'Full Name', current_value: 'Devan', expected_value: 'Dev' })
+  })
+
+  test('the scheduled refresh of a copy runs its sync rule after the copy', async ({ admin }) => {
+    const { source } = await world(admin, 'staff_scheduled')
+    await run(admin)
+    await changeStandin(dir, 'sales', [`update ${source} set phone = '112' where emp_id = 'E1'`])
+    invalidateSources(`ms-${source.replaceAll('_', '-')}`)
+    await sql`delete from background_job`
+    const schedule = await admin.post<{ method: string }>(`${COPY}:set_copy_schedule`, { enabled: true, cadence: 'hourly' })
+    await sql`update background_job set run_at = now() where method = ${schedule.method}`
+    expect(await runOneJob()).toBe(true)
+    const [execution] = await sql`select outcome, result from job_execution where method = ${schedule.method}`
+    expect(execution.outcome).toBe('success')
+    expect(String(execution.result)).toContain('master sync: 1 applied')
+    expect(await person(admin, 'P1')).toMatchObject({ phone: '112' })
+  })
+
+  test('a ticket that cannot be raised is kept and raised on the next run; only a System Manager sets or runs a rule', async ({ admin, createUser }) => {
+    const { rule } = await world(admin, 'staff_retry')
+    await admin.post('/api/set_app_enabled', { name: 'ticketsink', enabled: false })
+    const failed = await run(admin)
+    expect(failed.raised).toBe(1)
+    expect(failed.ticket_errors).toHaveLength(1)
+    await admin.post('/api/set_app_enabled', { name: 'ticketsink', enabled: true })
+    const retried = await run(admin)
+    expect(retried).toMatchObject({ raised: 0, ticket_errors: [] })
+    expect(retried.tickets).toHaveLength(1)
+    expect(await sunk()).toHaveLength(1)
+    const clerk = await createUser({ roles: ['All'] })
+    await expect(clerk.post(`${COPY}:master_sync_run`, {})).rejects.toMatchObject({ status: 403 })
+    await expect(clerk.post(`${COPY}:set_master_sync`, { rule })).rejects.toMatchObject({ status: 403 })
+    await expect(admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, columns: { nope: { source: 'name', owner: 'source' } } } })).rejects.toMatchObject({ status: 417 })
+    await expect(admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, columns: { full_name: { source: 'name', owner: 'everyone' } } } })).rejects.toMatchObject({ status: 417 })
+    await expect(admin.post('/api/table/Sync%20Person:set_master_sync', { rule })).rejects.toMatchObject({ status: 404 })
+  })
+})
