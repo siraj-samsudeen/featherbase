@@ -14,6 +14,18 @@ const merchMap = {
   ],
 }
 
+test('metadata adjustments are distinguished by their target and setting', () => {
+  const meta = { name: 'Metadata Override', columns: [
+    { column_name: 'table_name', column_type: 'Reference' },
+    { column_name: 'column_name', column_type: 'Data' },
+    { column_name: 'property', column_type: 'Data' },
+  ] }
+  const row = { table_name: 'Shelf', column_name: 'floor', property: 'hidden' }
+  expect(rowDisplayTitle(meta, row, 'hash')).toBe('Shelf · floor · hidden')
+  expect(rowDisplayTitle(meta, { ...row, column_name: null }, 'hash')).toBe('Shelf · Whole Table · hidden')
+  expect(rowDisplayTitle({ ...meta, columns: meta.columns.filter(c => c.column_name !== 'property') }, row, 'hash')).not.toContain('hidden')
+})
+
 test('a Table with a title column shows that column', () => {
   const meta = { ...merchMap, title_column: 'section_name' }
   expect(rowDisplayTitle(meta, { store_code: '1517', mch_subcategory: 'Tops', section_name: '  Kurti  ' }, '1517|040802006')).toBe('Kurti')

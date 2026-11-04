@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { anonymousTest as test, test as signedInTest, expect, ADMIN_PWD, adminAuth } from './fixtures'
 
 test('a lost connection during sign-in explains the failure and allows another attempt', async ({ session, page }) => {
@@ -66,7 +67,7 @@ test('UI-001: full login flow into the Admin shell', async ({ session }) => {
     await page.getByTestId('table-nav').getByText('Person', { exact: true }).click()
   })
   await session
-    .assertPath('/featherbase/admin/Person')
+    .assertPath('/featherbase/admin/table/person')
     .assertHas('[data-testid="table-page"]', { text: 'Person' })
 
   // Deep link survives reload (token persisted)
@@ -93,7 +94,7 @@ signedInTest('a cached list remains usable when settings and recent-history read
   } })
   expect(made.status()).toBe(201)
   expect((await request.post('/api/save_row', { headers, data: { table, row: { title: 'Locally cached row' } } })).status()).toBe(201)
-  await session.visit(`/featherbase/admin/${encodeURIComponent(table)}`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}`)
     .assertHas('[data-testid="list-rows"]', { text: 'Locally cached row' })
     .step('open the account page, then return with the connection lost', async () => {
       await page.getByTestId('session-user').click()

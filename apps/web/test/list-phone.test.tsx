@@ -4,6 +4,7 @@
 // failed states — still works on the cards. Real ListView in jsdom against
 // the in-process server, inside a rolled-back Postgres transaction.
 
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { afterEach, beforeEach, vi } from 'vitest'
@@ -46,7 +47,7 @@ async function seedTickets(admin: Admin, name: string, count = 3) {
 }
 
 async function openList(admin: Admin, name: string) {
-  await renderApp(`/featherbase/admin/${enc(name)}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(name))}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
 }
 
@@ -62,7 +63,7 @@ test('On a phone each row is a card: its title opens the row, its status is in w
   const first = cards().find((c) => within(c).queryByText('row-01'))!
   expect(within(first).getByRole('link', { name: 'row-01' })).toHaveAttribute(
     'href',
-    expect.stringMatching(/^\/featherbase\/admin\/Lp%20Cards\/.+/),
+    expect.stringMatching(/^\/featherbase\/admin\/table\/lp-cards\/row\/.+/),
   )
   expect(within(first).getByText('Open')).toBeInTheDocument()
   // A figure carries its column's label beside it, as the table's header would.
@@ -163,7 +164,7 @@ test('On a phone a card titled by a person shows their name, linking to the row'
   await openList(admin, 'Lp Owned')
   await waitFor(() => expect(cards()).toHaveLength(1))
   const link = await within(cards()[0]).findByRole('link', { name: 'Meena Raman' })
-  expect(link).toHaveAttribute('href', expect.stringMatching(/^\/featherbase\/admin\/Lp%20Owned\/.+/))
+  expect(link).toHaveAttribute('href', expect.stringMatching(/^\/featherbase\/admin\/table\/lp-owned\/row\/.+/))
   expect(within(cards()[0]).queryByText('psn_lpcardownerlpcardown')).toBeNull()
   // The card's checkbox is named by the person too, never the opaque id.
   expect(await within(cards()[0]).findByRole('checkbox', { name: 'Select Meena Raman' })).toBeInTheDocument()

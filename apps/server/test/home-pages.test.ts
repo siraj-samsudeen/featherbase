@@ -359,11 +359,11 @@ describe('System membership comes from the current catalogue', () => {
     await admin.post('/api/save_row', {
       table: 'Permission', row: { ref_table: 'Person', role: ROLE, can_read: true },
     })
-    await admin.post('/api/save_row', {
-      table: 'Metadata Override', row: { row_id: 'hp-sign-in-label', table_name: 'Sign In Method', property: 'label', value: 'Sign-in providers' },
+    await admin.post('/api/table/Metadata%20Override', {
+      row_id: 'hp-sign-in-label', table_name: 'Sign In Method', property: 'label', value: 'Sign-in providers',
     })
-    await admin.post('/api/save_row', {
-      table: 'Metadata Override', row: { row_id: 'hp-person-label', table_name: 'Person', property: 'label', value: 'People' },
+    await admin.post('/api/table/Metadata%20Override', {
+      row_id: 'hp-person-label', table_name: 'Person', property: 'label', value: 'People',
     })
     const reader = await createUser({ roles: [ROLE] })
     const system = (await pages(reader)).find((p) => p.row_id === 'system')!

@@ -43,7 +43,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
         await expect(page.getByRole('button', { name: mode, exact: true })).toHaveAttribute('aria-pressed', 'true')
         await expect.poll(async () => (await api('/api/user_settings/tasker.preferences')).settings.mode).toBe(mode.toLowerCase())
         const region = page.getByRole('region', { name: 'Task detail content' })
-        await expect(region.getByRole('combobox', { name: 'Task state' })).toHaveValue(source.task_state)
+        await expect(region.getByRole('combobox', { name: 'Task state', exact: true })).toHaveValue(source.task_state)
         await expect(region.getByRole('textbox', { name: 'Description', exact: true })).toHaveCount(0)
         await capture(`${size}-${mode.toLowerCase()}-${content}`, `${mode} ${content} read state: workflow visible, no unrequested textarea or Save; context preserved on close`)
       }
@@ -56,7 +56,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   await page.getByRole('button', { name: 'Focus', exact: true }).click()
   const detail = page.getByRole('region', { name: 'Task detail content' })
   await detail.getByRole('button', { name: 'Take it', exact: true }).click()
-  await expect(detail.getByRole('combobox', { name: 'Task responsibility' })).toHaveValue('Administrator')
+  await expect(detail.getByRole('combobox', { name: 'Task responsibility', exact: true })).toHaveValue('Administrator')
   const taken = await api(`/api/table/tasker.task/${task.row_id}`)
   assert.equal(taken.assigned_to, 'Administrator')
   assert.equal(taken.task_state, 'Not started')
@@ -90,8 +90,8 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   await detail.getByRole('button', { name: 'Save task' }).click()
   await expect(detail.getByRole('heading', { name: 'Corrected Take observation' })).toBeVisible()
   for (const state of ['In progress', 'Blocked', 'On hold', 'Done', 'Cancelled', 'Not started']) {
-    await detail.getByRole('combobox', { name: 'Task state' }).selectOption(state)
-    await expect(detail.getByRole('combobox', { name: 'Task state' })).toHaveValue(state)
+    await detail.getByRole('combobox', { name: 'Task state', exact: true }).selectOption(state)
+    await expect(detail.getByRole('combobox', { name: 'Task state', exact: true })).toHaveValue(state)
     const row = await api(`/api/table/tasker.task/${task.row_id}`)
     assert.equal(row.task_state, state)
     assert.equal(row.is_done, state === 'Done')
@@ -205,6 +205,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   await page.getByRole('link', { name: 'Close', exact: true }).click()
   const accident = await api('/api/save_row', { table: 'tasker.task', row: { task_title: 'Delete accidental proof' } }, 201)
   await page.goto(`${origin}/tasker/`)
+  await page.getByRole('button', { name: /^Inbox/ }).click()
   await page.getByRole('button', { name: 'Add to My Focus: Delete accidental proof' }).click()
   await page.getByRole('button', { name: /^My Work/ }).click()
   await page.getByRole('link', { name: 'Delete accidental proof' }).click()
@@ -313,6 +314,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   const scopedPersonal = await api('/api/save_row', { table: 'tasker.task', row: {
     task_title: 'Boundary personal evidence', personal_tasks_owner: 'Administrator',
   } }, 201)
+  const sharedBoundary = await api('/api/save_row', { table: 'tasker.task', row: { task_title: 'Boundary shared evidence', project: projectId } }, 201)
   const scopedProject = await api('/api/save_row', { table: 'tasker.task', row: {
     task_title: 'Boundary project evidence', project: projectId,
   } }, 201)
@@ -320,7 +322,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   const boundaries = [
     { nav: /^Inbox/, name: 'Inbox boundary', included: matching.task_title, excluded: scopedProject.task_title },
     { nav: /^My Work/, name: 'Work boundary', included: 'Corrected Take observation', excluded: ordinary.task_title },
-    { nav: 'Together', name: 'Together boundary', included: matching.task_title, excluded: null },
+    { nav: 'Together', name: 'Together boundary', included: sharedBoundary.task_title, excluded: matching.task_title },
     { nav: /^Personal tasks/, name: 'Personal boundary', included: scopedPersonal.task_title, excluded: matching.task_title },
     { nav: 'Blank context proof', name: 'Project boundary', included: scopedProject.task_title, excluded: matching.task_title },
   ]
@@ -369,9 +371,11 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   await expect.poll(async () => (await api('/api/user_settings/Task%20Management%20Focus')).settings.task_ids).toEqual([ordinary.row_id])
   assert.deepEqual(await api(`/api/table/tasker.task/${matching.row_id}`), matching)
   await page.getByRole('button', { name: `Remove from My Focus: ${ordinary.task_title}`, exact: true }).click()
-  await page.getByRole('button', { name: 'Together', exact: true }).click()
   for (const id of originalFocus) {
     const row = await api(`/api/table/tasker.task/${id}`)
+    await page.goto(`${origin}/tasker/#task=${encodeURIComponent(id)}`)
+    await page.getByRole('link', { name: 'Close', exact: true }).click()
+    await page.getByRole('button', { name: row.shared ? 'Together' : row.personal_tasks_owner ? /^Personal tasks/ : /^Inbox/, exact: row.shared }).click()
     await page.getByRole('button', { name: `Add to My Focus: ${row.task_title}`, exact: true }).click()
   }
   await expect.poll(async () => (await api('/api/user_settings/Task%20Management%20Focus')).settings.task_ids).toEqual(originalFocus)
@@ -405,8 +409,11 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   await expect(detail).toContainText('Recorded with evidence')
   await detail.getByRole('combobox', { name: 'Task responsibility', exact: true }).selectOption('Administrator')
   await expect(detail.getByRole('combobox', { name: 'Task responsibility', exact: true })).toHaveValue('Administrator')
-  await detail.getByRole('combobox', { name: 'Task destination', exact: true }).selectOption('personal:Administrator')
-  await expect(detail.getByRole('combobox', { name: 'Task destination', exact: true })).toHaveValue('personal:Administrator')
+  await expect(detail.getByRole('combobox', { name: 'Task destination', exact: true }).getByRole('option', { name: /Personal:/ })).toHaveCount(0)
+  const projectTaskId = (await api(`/api/table/tasker.task?filters=${encodeURIComponent(JSON.stringify([['task_title', '=', 'Created in project']]))}`)).data[0].row_id
+  const projectTask = await api(`/api/table/tasker.task/${projectTaskId}`)
+  assert.equal(projectTask.project, projectId)
+  assert.equal(projectTask.shared, true)
   await detail.getByRole('button', { name: 'Mark Done', exact: true }).click()
   await expect(detail.getByRole('combobox', { name: 'Task state', exact: true })).toHaveValue('Done')
   await detail.getByRole('button', { name: 'Undo Done', exact: true }).click()

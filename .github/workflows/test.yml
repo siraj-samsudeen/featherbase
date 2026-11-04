@@ -161,6 +161,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # A high or critical advisory in a production dependency of the pnpm
+      # workspace fails the PR that brings it in (#734). It reads the lockfile,
+      # so a new advisory can also fail an unrelated PR until the package is
+      # bumped. The apps' own npm lockfiles are not covered.
+      - name: No high or critical advisories in production dependencies
+        run: pnpm check:audit
+
       # The repository-pinned OpenSpec validates both main capabilities and
       # active changes strictly.
       - name: Validate behavior specifications

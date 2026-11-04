@@ -9,6 +9,8 @@ import postgres from 'postgres'
 import { test } from './pg-test'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { invalidateSources } from '../src/sources/registry'
+import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
 
 const SCHEMA = 'ext_names'
 const URL_ENV = 'EXT_NAMES_URL'
@@ -95,6 +97,18 @@ describe('connected tables read as names', () => {
     expect(await admin.post('/api/row_titles', { rows: [{ table: 'Bin', row_id: 'b1' }] }))
       .toEqual({ titles: [{ table: 'Bin', row_id: 'b1', title: '7' }] })
   })
+
+  test.for([['label', 'Top'], ['retired_column', 'Top']] as const)(
+    "a connected row's title column %s is used only when it is read",
+    async ([titleColumn, title], { admin }) => {
+      await reflectBoth(admin)
+      await sql`insert into metadata_override (row_id, table_name, property, value)
+        values ('shelf-title', 'Shelf', 'title_column', ${titleColumn})`
+      invalidateMeta('Shelf')
+      expect(await admin.post('/api/row_titles', { rows: [{ table: 'Shelf', row_id: '7' }] }))
+        .toEqual({ titles: [{ table: 'Shelf', row_id: '7', title }] })
+    },
+  )
 
   test('a missing connected row has no title', async ({ admin }) => {
     await reflectBoth(admin)

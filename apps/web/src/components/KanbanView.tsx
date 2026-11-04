@@ -4,9 +4,9 @@ import { Link as RouterLink } from '@tanstack/react-router'
 import { choiceLabel } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { useMeta } from '../lib/meta'
+import { buttonClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
+import { fmtCount } from '@featherbase/shop-floor'
 import { useI18n } from '../lib/i18n'
-import { buttonClasses, inputClasses, pillClasses } from './ui'
-import { fmtCount } from '../lib/inr'
 
 type Row = Record<string, unknown>
 
@@ -120,7 +120,7 @@ export function KanbanView({
             </select>
           </label>
           <RouterLink
-            to="/featherbase/admin/$table"
+            to="/featherbase/admin/table/$table"
             params={{ table }}
             search={{ filters: undefined }}
             className={buttonClasses()}
@@ -163,7 +163,7 @@ export function KanbanView({
                   }`}
                 >
                   <RouterLink
-                    to="/featherbase/admin/$table/$name"
+                    to="/featherbase/admin/table/$table/row/$name"
                     search={{ prefill: undefined }}
                     params={{ table, name: String(row.row_id) }}
                     className="font-medium text-action hover:underline"

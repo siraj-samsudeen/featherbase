@@ -10,10 +10,11 @@ import { assertNotSystemWritten } from './system-written'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
-import { createTable, deleteTable, renameColumn, setIdPattern, tableStorageIdentity, updateTable } from './table-engine'
+import { createTable, deleteTable, renameColumn, renameCustomTable, setIdPattern, tableStorageIdentity, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
+import { hasMandatoryRowAccess, mandatoryReferencesWhere } from './mandatory-access'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, renameAccessToken, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
 import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
@@ -22,7 +23,7 @@ import { createServiceAccount, listServiceAccounts, renameServiceAccount, setSer
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
-import { personByEmail, pickPeople, principalNames } from './people-directory'
+import { personByEmail, pickPeople, principalNames, tableMembers } from './people-directory'
 import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
@@ -59,7 +60,7 @@ import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker, stopWorker, syncScheduledJobs } from './jobs'
 import { attachRealtime, closeSessionSockets, publishDocEvent, publishUserEvent } from './realtime'
 import { createAssignment } from './assign'
-import { queueEmail, sendTestEmail } from './email'
+import { mailTransport, queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
 import { MIN_PASSWORD_LENGTH, requestPasswordReset, resetPassword } from './password-reset'
 import { renderWebPage } from './website'
@@ -80,7 +81,7 @@ import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uni
 import { packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { discoverAppLibrary, appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { documentActivity } from './document-activity'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -371,8 +372,9 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   // FILE-003: private files require either a valid signed URL (minted after a
   // permission check) or a session that can read the linked row. A user
   // without read on that row gets a 403.
-  if (isPrivate) {
-    const signed = verifyFileSignature(fileUrl, c.req.query('expires'), c.req.query('signature'))
+  const protectedRow = row.ref_table && row.ref_name && await hasMandatoryRowAccess(String(row.ref_table), String(row.ref_name))
+  if (isPrivate || protectedRow) {
+    const signed = !protectedRow && verifyFileSignature(fileUrl, c.req.query('expires'), c.req.query('signature'))
     if (!signed) {
       // #137/#173: the credential is the Authorization header, or the HttpOnly
       // `sid` cookie the browser already sends on a same-origin <img>/<a>
@@ -1047,10 +1049,11 @@ app.get('/api/activity_feed', async (c) => {
     throw new AppError('PermissionError', 'The team feed requires the System Manager role')
   // Changes and sign-ins as one ordered stream; a run is one person doing the
   // same kind of thing to the same target back to back.
+  const privateChanges = await mandatoryReferencesWhere(user, 'ref_table', 'ref_name')
   const rows = await sql`
     with stream as (
       select created_by as who, 'change'::text as kind, ref_table as sub, ref_name as label, created_at as at, row_id::text as id
-      from version
+      from version where ${privateChanges.frag}
       union all
       select "user", 'login', null, null, created_at, row_id::text
       from activity_log where operation = 'login'
@@ -1088,7 +1091,7 @@ app.get('/api/activity_feed', async (c) => {
           kind: 'change',
           label,
           sub,
-          path: sub && label ? `/featherbase/admin/${sub}/${label}` : '',
+          path: sub && label ? rowHref(sub, label) : '',
           at: new Date(r.at as string).toISOString(),
           count: Number(r.count),
         }
@@ -1178,12 +1181,21 @@ app.post('/api/set_password', async (c) => {
 app.get('/api/people/:id/identities', async (c) => {
   await assertSystemManager(who(c))
   const user = c.req.param('id')
-  const [row] = await sql`select (password_hash is not null) as has_password from person where row_id = ${user}`
+  const [row] = await sql`select (password_hash is not null) as has_password, email, expects_google_sign_in from person where row_id = ${user}`
   if (!row) throw new AppError('NotFoundError', `Person ${user} not found`)
   // Every method row, turned off or not, so an identity on a disabled method
   // still shows its name on the Person form.
   const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
-  return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
+  return c.json({
+    identities: await listIdentities(user, { includeEnded: true }),
+    has_password: row.has_password === true,
+    methods,
+    // #833: the Person's own address starts a Google invite, the panel explains
+    // an expected Google sign-in, and says where an invitation went.
+    email: row.email ?? null,
+    expects_google_sign_in: row.expects_google_sign_in === true,
+    mail_transport: mailTransport(),
+  })
 })
 
 // #667: why a person sees nothing from an app's datasets: the provider's
@@ -1281,6 +1293,8 @@ app.post('/api/people/names', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown }
   return c.json({ names: await principalNames(body.ids, who(c)) })
 })
+
+app.get('/api/table_members/:table', async (c) => c.json({ data: await tableMembers(c.req.param('table'), who(c)) }))
 
 app.get('/api/people/pick', async (c) => {
   return c.json({ people: await pickPeople(c.req.query('q') ?? '', who(c), Number(c.req.query('limit') ?? 10)) })
@@ -1583,6 +1597,14 @@ app.post('/api/table_def/:name/rename_column', async (c) => {
   return c.json(await renameColumn(c.req.param('name'), body.from, body.to, who(c)))
 })
 
+// #871: rename a custom Table, carrying everything that names it.
+app.post('/api/table_def/:name/rename', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json()) as { to?: unknown }
+  if (typeof body.to !== 'string') throw new AppError('ValidationError', 'Expected { to }')
+  return c.json(await renameCustomTable(await resolveTableName(c.req.param('name')), body.to, who(c)))
+})
+
 app.put('/api/table_def/:name', async (c) => {
   await assertSystemManager(who(c))
   const body = (await c.req.json()) as Record<string, unknown> & { drop_columns?: boolean; remove_columns?: unknown }
@@ -1699,6 +1721,10 @@ app.get('/api/signed_url', async (c) => {
     select row_id, ref_table, ref_name from file where file_url = ${fileUrl}`
   if (!row) throw new AppError('NotFoundError', `File not found: ${fileUrl}`)
   const user = who(c)
+  if (row.ref_table && row.ref_name && await hasMandatoryRowAccess(String(row.ref_table), String(row.ref_name))) {
+    await getDoc(String(row.ref_table), String(row.ref_name), user)
+    return c.json({ signed_url: fileUrl })
+  }
   if (fileUrl.startsWith('/private/files/')) {
     if (row.ref_table && row.ref_name)
       await getDoc(row.ref_table as string, row.ref_name as string, user)

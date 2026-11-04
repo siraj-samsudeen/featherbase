@@ -5,6 +5,7 @@ import postgres from 'postgres'
 import { invalidateSources } from 'server/src/sources/registry'
 import { EXTERNAL_DATABASE_URL } from 'server/test/external-database'
 import { test, expect, renderApp } from './pg-test'
+import { tableHref } from 'shared'
 
 // #796: a column whose source foreign key points at a table not connected yet
 // says so beside its value; a System Manager is offered that table, and the
@@ -38,7 +39,7 @@ async function crateAlone(admin: { post: <T>(p: string, b: unknown) => Promise<T
 test("a System Manager is told the rack table isn't connected and the offer opens it chosen", async ({ admin }) => {
   await crateAlone(admin)
   const user = userEvent.setup()
-  const { router } = await renderApp('/featherbase/admin/Crate/5', admin)
+  const { router } = await renderApp(`${tableHref('Crate')}/row/5`, admin)
   const note = await screen.findByTestId('unlinked-rack_id', undefined, { timeout: 8000 })
   expect(note).toHaveTextContent('The rack table is not connected yet')
   // The note describes the field, so a screen reader hears it with the value.
@@ -70,7 +71,7 @@ test('someone who may only read crates is told, but not offered to connect', asy
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Crate Reader' } })
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Crate', role: 'Crate Reader', can_read: true } })
   const reader = await createUser({ email: 'crate-reader@example.test', roles: ['Crate Reader'] })
-  await renderApp('/featherbase/admin/Crate/5', reader)
+  await renderApp(`${tableHref('Crate')}/row/5`, reader)
   const note = await screen.findByTestId('unlinked-rack_id', undefined, { timeout: 8000 })
   expect(note).toHaveTextContent('The rack table is not connected yet')
   expect(within(note).queryByRole('link')).not.toBeInTheDocument()

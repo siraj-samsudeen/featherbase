@@ -148,7 +148,7 @@ to any action.
 
 Before inventing a control, browse `/gallery.html` on the development server.
 Search by name/purpose; each working specimen names its source. Import shared
-controls from `apps/web/src/components/ui`, with `src/index.css` and the native
+controls from `@featherbase/shop-floor` (`packages/shop-floor/src`), with `src/index.css` and the native
 query/router/theme providers. `TabBar` is phone navigation; `ContentTabs` is
 full-content section navigation. `Breadcrumbs` accepts context-preserving links.
 `SearchableList` searches an entire supplied collection, not a loaded page of
@@ -297,6 +297,7 @@ pnpm test                        # workspace suites (prepare app fixtures first)
 pnpm smoke                       # server + web smoke tests against running stack
 pnpm --filter server typecheck   # also: pnpm --filter web typecheck
 pnpm check:specs                 # OpenSpec specifications and active changes
+pnpm check:audit                 # no high or critical advisory in production dependencies
 ```
 
 ## Source map

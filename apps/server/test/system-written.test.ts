@@ -153,6 +153,7 @@ describe('#432: every privileged principal is refused on an audit table', () => 
           client.post('/api/save_row', { table: 'Custom Field', row: { row_id: 'Activity Log-forged_flag', dt: AL, column_name: 'forged_flag', column_type: 'Check' } }),
           REFUSED,
         )
+        await expectApiError(client.post(`/api/table_def/${ENC}/rename`, { to: 'Forged Log' }), REFUSED)
         await expectApiError(client.delete(`/api/table_def/${ENC}`), REFUSED)
         const after = await admin.get<{ columns: { column_name: string }[]; id_pattern: string }>(`/api/table/${ENC}:meta`)
         expect(after.columns.map((c) => c.column_name)).not.toContain('forged_note')
@@ -269,7 +270,7 @@ describe('#432: every write entry point is covered', () => {
 
   // Every exported function of the document engine is either a reader, the
   // trusted internal writer, or a public writer that refuses audit tables.
-  const READERS = ['assertUserPermissions', 'checkRowForInsert', 'duplicateValueFields', 'getDoc', 'validateRowForUpdate']
+  const READERS = ['assertUserPermissions', 'checkRowForInsert', 'duplicateValueFields', 'getDoc', 'rowCapabilities', 'validateRowForUpdate']
   const TRUSTED = ['saveSystemRow']
   const PUBLIC_WRITERS: Record<string, (id: string) => Promise<unknown>> = {
     saveDoc: () => documentModule.saveDoc(AL, { user: 'Administrator', operation: 'forged' }),
@@ -309,6 +310,7 @@ describe('#432: every write entry point is covered', () => {
     'PUT /api/table_def/:name': 'structure',
     'PUT /api/table_def/:name/id_pattern': 'structure',
     'POST /api/table_def/:name/rename_column': 'structure',
+    'POST /api/table_def/:name/rename': 'structure',
     'DELETE /api/table_def/:name': 'structure',
     'POST /api/import_customizations': 'structure — custom fields go through the guarded save',
     'POST /api/reapply_custom_fields': 'structure — re-applies existing custom fields only',
@@ -422,7 +424,7 @@ describe('#432: configurable automation never reaches a system-written table', (
 
   test('Server Scripts, Metadata Overrides, Workflows and Custom Fields cannot target an audit table', async ({ admin }) => {
     await expectApiError(admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'forge', script_type: 'Document Event', ref_table: AL, event: 'validate', script: 'doc.x = 1', enabled: true } }), REFUSED)
-    await expectApiError(admin.post('/api/save_row', { table: 'Metadata Override', row: { row_id: 'mo-forge', table_name: AL, column_name: 'operation', property: 'hidden', value: '1' } }), REFUSED)
+    await expectApiError(admin.post('/api/table/Metadata%20Override', { row_id: 'mo-forge', table_name: AL, column_name: 'operation', property: 'hidden', value: '1' }), REFUSED)
     await expectApiError(admin.post('/api/save_row', { table: 'Workflow', row: { row_id: 'forge-wf', ref_table: AL, is_active: true, states: [{ state: 'Open', target_status: 'draft' }] } }), REFUSED)
     expect((await admin.get<{ columns: { column_name: string }[] }>(`/api/table/${ENC}:meta`)).columns.map((c) => c.column_name)).not.toContain('workflow_state')
   })

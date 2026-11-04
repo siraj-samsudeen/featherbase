@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { anonymousTest as test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
@@ -91,7 +92,7 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
 
   // J1.7 — lands on the new Table's list: all eight zones, ids in the series
   await session
-    .assertPath(`/featherbase/admin/${encodeURIComponent(DT)}`)
+    .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     .assertHas('[data-testid="list-rows"]', { text: 'Alpha' })
     .assertHas('[data-testid="list-rows"]', { text: 'Hotel' })
 
@@ -118,14 +119,14 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
   expect(count.count).toBe(8)
 
   // R6: the pattern is the promise, not the number — verify the id shape.
-  // #114: an untouched inferred pattern follows the final Table name.
+  // #855: an untouched naming choice numbers the new Table's rows 1, 2, 3.
   const rows = (await (
     await request.get(`/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id","zone_name"]')}`, {
       headers,
     })
   ).json()) as { data: { row_id: string }[] }
   expect(rows.data).toHaveLength(8)
-  for (const r of rows.data) expect(r.row_id).toMatch(/^JOURNEY-ZONES-\d+$/)
+  expect(rows.data.map((r) => r.row_id).sort((a, b) => Number(a) - Number(b))).toEqual(['1', '2', '3', '4', '5', '6', '7', '8'])
 
   // J1.9 — one Import Log entry: zones.csv, 8 inserted, 0 failed, created.
   const log = (await (
