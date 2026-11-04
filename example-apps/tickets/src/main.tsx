@@ -97,12 +97,25 @@ const short = (id: string) =>
     : id.length > 24
       ? `${id.slice(0, 8)}…${id.slice(-4)}`
       : id
+// #912: people are shown by name. The reads return the names of the people
+// they mention; an id with no known name is never shown as-is.
+const knownNames: Record<string, string> = {}
+const learnNames = (names: unknown) => {
+  if (names && typeof names === 'object') Object.assign(knownNames, names)
+}
+const isPersonId = (value: string) => value === 'Administrator' || /^(psn|sa)_[a-z0-9]{8,}$/.test(value)
+const person = (id: unknown): string =>
+  typeof id !== 'string' || !id
+    ? '—'
+    : (knownNames[id] ?? (isPersonId(id) ? 'Unnamed person' : id))
 const display = (value: unknown): string =>
   value == null
     ? '—'
     : typeof value === 'object'
-      ? JSON.stringify(value, null, 2)
-      : String(value)
+      ? JSON.stringify(value, (_key, item) => typeof item === 'string' && knownNames[item] ? knownNames[item] : item, 2)
+      : typeof value === 'string'
+        ? person(value)
+        : String(value)
 const time = (value: unknown) =>
   typeof value === 'string' && !Number.isNaN(Date.parse(value))
     ? new Date(value).toLocaleString()
@@ -204,7 +217,7 @@ function History({
           </h4>
           {event.text != null && <EventBody value={event.text} />}
           <small>
-            {display(event.actor ?? event.by ?? event.owner)} ·{' '}
+            {person(event.actor ?? event.by ?? event.owner)} ·{' '}
             {time(event.at ?? event.created_at ?? event.creation)}
           </small>
           <Facts
@@ -455,8 +468,8 @@ function CaseFile({
       </div>
       <h2>{ticket.title}</h2>
       <div className="detail-sub">
-        <span className="avatar">{ticket.owner.slice(0, 1).toUpperCase()}</span>
-        <span title={ticket.owner}>{short(ticket.owner)}</span>
+        <span className="avatar">{person(ticket.owner).slice(0, 1).toUpperCase()}</span>
+        <span>{person(ticket.owner)}</span>
         <span>· {kinds[ticket.kind] ?? stateLabel(ticket.kind)}</span>
       </div>
       <div className="card public-progress">
@@ -464,7 +477,7 @@ function CaseFile({
         <p>{ticket.public_update || 'No public update yet.'}</p>
         <small>
           Assigned to{' '}
-          {ticket.assigned_to ? short(ticket.assigned_to) : 'unassigned'} ·
+          {ticket.assigned_to ? person(ticket.assigned_to) : 'unassigned'} ·
           Updated {time(ticket.updated_at)}
         </small>
       </div>
@@ -551,12 +564,17 @@ function CaseFile({
                               setDraft((d) => ({ ...d, [key]: value }))
                             }
                           />
-                          <Field
-                            name="assigned_to"
-                            title="Assign to user ID"
-                            value={ticket.assigned_to}
-                            required={false}
-                          />
+                          <Label title="Assign to">
+                            <select name="assigned_to" defaultValue={ticket.assigned_to ?? ''}>
+                              <option value="">Unassigned</option>
+                              {ticket.assigned_to && !(session.people ?? []).some((p) => p.row_id === ticket.assigned_to) && (
+                                <option value={ticket.assigned_to}>{person(ticket.assigned_to)}</option>
+                              )}
+                              {(session.people ?? []).map((p) => (
+                                <option key={p.row_id} value={p.row_id}>{p.full_name}</option>
+                              ))}
+                            </select>
+                          </Label>
                           <Label title="Public progress update">
                             <textarea
                               name="public_update"
@@ -910,8 +928,8 @@ function App() {
     : ''
   const identity =
     session && typeof session.user === 'object'
-      ? (session.user.full_name ?? session.user.email ?? short(userId))
-      : short(userId)
+      ? (session.user.full_name ?? person(userId))
+      : person(userId)
   const report = (e: unknown) =>
     setError(
       e instanceof Error
@@ -939,6 +957,7 @@ function App() {
       })
         .then((result) => {
           if (sequence === queueSequence.current) {
+            learnNames((result as { names?: unknown }).names)
             setTickets(result.tickets)
             setSelected((id) => id || result.tickets[0]?.row_id || '')
           }
@@ -964,7 +983,10 @@ function App() {
     setDetailLoading(true)
     read<Detail>('detail', { row_id: selected })
       .then((value) => {
-        if (sequence === detailSequence.current) setDetail(value)
+        if (sequence === detailSequence.current) {
+          learnNames(value.names)
+          setDetail(value)
+        }
       })
       .catch((e) => {
         if (sequence === detailSequence.current) report(e)
@@ -1227,7 +1249,7 @@ function App() {
                   <div className="ticket-title">{ticket.title}</div>
                   <div className="ticket-meta">
                     <span>{kinds[ticket.kind] ?? stateLabel(ticket.kind)}</span>
-                    <span>{short(ticket.owner)}</span>
+                    <span>{person(ticket.owner)}</span>
                   </div>
                   {ticket.public_update && (
                     <p className="ticket-update">{ticket.public_update}</p>

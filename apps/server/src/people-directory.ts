@@ -19,6 +19,15 @@ export function displayName(r: Record<string, unknown>): string {
   return String(r.full_name ?? '').trim() || (r.username ? `@${String(r.username)}` : UNNAMED)
 }
 
+/** #912: the caller's own name, which their session already shows them
+ *  (whoami), so no Person read permission is involved. */
+export async function ownDisplayName(user: string): Promise<string> {
+  const [person] = await sql`select * from person where row_id = ${user}`
+  if (person) return displayName(person)
+  const [account] = await sql`select label from service_account where row_id = ${user}`
+  return account ? String(account.label) : UNNAMED
+}
+
 /** Display names for principal ids, as `viewer` may see them. A person the
  *  viewer may not read, or an id that names nobody, maps to null — the
  *  caller shows a neutral placeholder, never the opaque id. A service

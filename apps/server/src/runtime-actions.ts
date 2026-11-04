@@ -1,4 +1,4 @@
-import { tableMembers } from './people-directory'
+import { ownDisplayName, tableMembers } from './people-directory'
 import { z } from 'zod'
 import type { ActionRow, AppAuthorizationContext, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler } from 'shared'
 import { inAppTransaction, sql } from './db'
@@ -164,7 +164,7 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
       // Serialized inside the guard (Codex round 2 on #670): a getter on the
       // result is the app's code running, and may log or throw a secret.
       const json = await withSecretsKept(kept, async () => {
-        try { return canonicalJson(await handler(Object.freeze({ user, payload: normalized, authorization, settings, secrets, documents: context.documents, reject }))) }
+        try { return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), payload: normalized, authorization, settings, secrets, documents: context.documents, reject }))) }
         finally { await context.close() }
       })
       assertNoSecret(kept, JSON.parse(json))
@@ -259,7 +259,7 @@ async function runRead(app: string, name: string, user: string, handler: Runtime
     places: authorization.places, outbound: !inAppTransaction(), deferWrite, provenance })
   const json = await withSecretsKept(kept, async () => {
     try {
-      return canonicalJson(await handler(Object.freeze({ user, payload, authorization, settings, secrets, reject, documents, datasets, recordView })))
+      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), payload, authorization, settings, secrets, reject, documents, datasets, recordView })))
     } finally { await close() }
   })
   assertNoSecret(kept, JSON.parse(json))

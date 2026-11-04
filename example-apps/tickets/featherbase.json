@@ -14,7 +14,7 @@
     {"name": "approval_routes", "required": false},
     {"name": "restricted_resources", "required": false}
   ],
-  "actions": {"version": 2, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.progress"], "operations": {
+  "actions": {"version": 2, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.progress", "tickets.person"], "operations": {
     "create": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "edit": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "verify": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
@@ -26,7 +26,7 @@
     "resolve": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "reopen": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
   }},
-  "reads": {"version": 1, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.progress"], "operations": {
+  "reads": {"version": 1, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.progress", "tickets.person"], "operations": {
     "session": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "queue": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "detail": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
@@ -54,6 +54,9 @@
       {"column_name": "by", "label": "Actor", "column_type": "Data"},
       {"column_name": "at", "label": "Time", "column_type": "Data"}
     ]},
+    {"name": "tickets.person", "label": "Person name", "module": "Tickets", "title_column": "full_name", "columns": [
+      {"column_name": "full_name", "label": "Name", "column_type": "Data", "reqd": true}
+    ]},
     {"name": "tickets.progress", "label": "Public progress", "module": "Tickets", "id_pattern": "FTP-.########", "columns": [
       {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket"},
       {"column_name": "text", "label": "Update", "column_type": "Text"},
@@ -67,6 +70,7 @@
     {"table": "tickets.request", "role": "Tickets Support", "can_read": true, "can_write": true, "can_create": true},
     {"table": "tickets.event", "role": "All", "own_rows_only": true, "can_read": true, "can_create": true},
     {"table": "tickets.event", "role": "Tickets Support", "can_read": true, "can_create": true},
-    {"table": "tickets.progress", "role": "All", "can_read": true, "can_create": true}
+    {"table": "tickets.progress", "role": "All", "can_read": true, "can_create": true},
+    {"table": "tickets.person", "role": "All", "can_read": true, "can_write": true, "can_create": true}
   ]
 }

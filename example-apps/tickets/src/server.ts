@@ -12,6 +12,7 @@ interface ListArgs {
 }
 interface ReadContext {
   user: string
+  userName: string
   payload: unknown
   settings: Readonly<Record<string, string>>
   reject(message: string, fields?: Record<string, string>): never
@@ -39,10 +40,12 @@ function validate(table: string, ctx: Validation) {
   const allowed = writes.getStore()
   if (!allowed || allowed.user !== ctx.user) ctx.reject('Use an authorized Tickets action')
   if ((table === 'event' || table === 'progress') && !ctx.isNew) ctx.reject('History is append-only')
+  // Each person writes only their own name, which the platform supplies.
+  if (table === 'person' && ctx.row.row_id !== ctx.user) ctx.reject('A person may record only their own name')
   if (table === 'request' && ctx.old && ctx.row.original !== ctx.old.original) ctx.reject('The original request is immutable')
   if (ctx.old && ctx.row.owner !== ctx.old.owner) ctx.reject('The requester is immutable')
 }
-export const validators = Object.fromEntries(['ticket', 'request', 'event', 'progress'].map(table =>
+export const validators = Object.fromEntries(['ticket', 'request', 'event', 'progress', 'person'].map(table =>
   [`tickets.${table}`, (ctx: Validation) => validate(table, ctx)]))
 export const destructiveGuards = Object.fromEntries(Object.keys(validators).map(table =>
   [table, (ctx: Validation) => ctx.reject('Tickets references and history cannot be renamed or deleted')]))
@@ -133,6 +136,27 @@ function workflow(request: Row, events: Row[]) {
   const verification = decoded.filter(e => e.operation === 'verify' && e.verification_key === request.verification_key).at(-1)
   const approval = decoded.filter(e => e.operation === 'decide' && e.approval_key === request.approval_key).at(-1)
   return { verification, approval }
+}
+// Names of the people who acted in Tickets, as each of them last appeared.
+async function remember(ctx: Context) {
+  const [row] = await ctx.documents.list('tickets.person', { fields: ['row_id', 'full_name', 'updated_at'], filters: [['row_id', '=', ctx.user]], limit_page_length: 1 })
+  if (!row) await ctx.documents.create('tickets.person', { row_id: ctx.user, full_name: ctx.userName })
+  else if (row.full_name !== ctx.userName) await ctx.documents.update('tickets.person', { row_id: ctx.user, updated_at: row.updated_at, full_name: ctx.userName })
+}
+function idsIn(value: unknown, out: Set<string>) {
+  if (typeof value === 'string') out.add(value)
+  else if (Array.isArray(value)) for (const item of value) idsIn(item, out)
+  else if (value && typeof value === 'object') for (const [key, item] of Object.entries(value))
+    if (['owner', 'by', 'assigned_to'].includes(key)) idsIn(item, out)
+    else if (key === 'text' && typeof item === 'string') idsIn(parse(item), out)
+    else if (item && typeof item === 'object') idsIn(item, out)
+}
+async function names(ctx: ReadContext, ...values: unknown[]): Promise<Record<string, string>> {
+  const ids = new Set<string>()
+  for (const value of values) idsIn(value, ids)
+  if (!ids.size) return {}
+  const rows = await all(ctx, 'tickets.person', ['row_id', 'full_name'], [['row_id', 'in', [...ids]]])
+  return Object.fromEntries(rows.map(row => [String(row.row_id), String(row.full_name)]))
 }
 async function history(ctx: ReadContext, ticket: Row) {
   return all(ctx, 'tickets.event', eventFields, [['ticket', '=', ticket.row_id]])
@@ -276,13 +300,23 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
   },
 }
 export const actions = Object.fromEntries(Object.entries(handlers).map(([operation, handler]) =>
-  [operation, (ctx: Context) => writes.run({ user: ctx.user, operation }, () => handler(ctx))]))
+  [operation, (ctx: Context) => writes.run({ user: ctx.user, operation }, async () => { await remember(ctx); return handler(ctx) })]))
 export const reads = {
   async session(ctx: ReadContext) {
     input(ctx, [])
-    return { answer: { user: ctx.user, capabilities: capabilities(ctx), connections: {
+    const can = capabilities(ctx)
+    const answer: Row = { user: { row_id: ctx.user, full_name: ctx.userName }, capabilities: can, connections: {
       employee: 'unconfigured', email: 'unconfigured', investigation: 'unconfigured',
-    } } }
+    } }
+    if (can.support) {
+      // The people configured for Tickets whose names are known, for assignment.
+      const staff = new Set([...['support_users', 'verification_admins', 'fulfillment_admins'].flatMap(key => members(configured(ctx, key))),
+        ...Object.values(routes(ctx)).flat()])
+      const known = await names(ctx, [...staff])
+      answer.people = Object.entries(known).map(([row_id, full_name]) => ({ row_id, full_name }))
+        .sort((a, b) => a.full_name.localeCompare(b.full_name))
+    }
+    return { answer }
   },
   async queue(ctx: ReadContext) {
     const p = input(ctx, ['search', 'kind', 'state', 'assigned_to'])
@@ -293,7 +327,8 @@ export const reads = {
       const words = text(ctx, p.search, 'Search').toLowerCase().split(/\s+/)
       tickets = tickets.filter(ticket => words.every(word => `${ticket.row_id} ${ticket.title} ${ticket.public_update ?? ''}`.toLowerCase().includes(word)))
     }
-    return { answer: { tickets, count: tickets.length, hasMore: false } }
+    return { answer: { tickets, count: tickets.length, hasMore: false,
+      names: await names(ctx, tickets.map(ticket => ({ owner: ticket.owner, assigned_to: ticket.assigned_to }))) } }
   },
   async detail(ctx: ReadContext) {
     const p = input(ctx, ['row_id'])
@@ -314,6 +349,8 @@ export const reads = {
           !restricted(ctx, parse(request.details_json)) && (routes(ctx)[String(state.verification?.region)]?.includes(ctx.user) ?? false) }
       }
     }
+    answer.names = await names(ctx, { owner: ticket.owner, assigned_to: ticket.assigned_to }, answer.events, answer.privateEvents ?? [],
+      answer.verification ?? {}, answer.approval ?? {})
     return { answer }
   },
 }

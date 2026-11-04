@@ -12,6 +12,7 @@ export type Session = {
   user: string | { row_id: string; full_name?: string; email?: string }
   capabilities: { support: boolean; verify: boolean; fulfill: boolean }
   connections: unknown
+  people?: { row_id: string; full_name: string }[]
 }
 export type RecordData = Record<string, unknown>
 export type Detail = {
@@ -22,6 +23,7 @@ export type Detail = {
   verification?: RecordData
   approval?: RecordData
   capabilities?: Record<string, boolean>
+  names?: Record<string, string>
   [key: string]: unknown
 }
 export class ApiError extends Error {

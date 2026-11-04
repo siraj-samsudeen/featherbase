@@ -12,6 +12,9 @@ export interface ActionListArgs {
 // Structural package API: no core exception, SQL handle or identity override.
 export interface RuntimeActionContext {
   readonly user: string
+  /** #912: the caller's own display name (full name, else @username), as
+   *  they see it themselves. Never another person's name or address. */
+  readonly userName: string
   readonly payload: unknown
   readonly authorization: AppAuthorizationContext
   /** #620: the app's declared settings that hold a value on this instance. */
