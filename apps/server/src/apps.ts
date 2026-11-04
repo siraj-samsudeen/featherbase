@@ -134,6 +134,10 @@ export function getAvailableApps(): string[] {
   return [...available.keys()]
 }
 
+export function appDeclaresRole(app: string, role: string): boolean {
+  return activeApps.has(app) && (available.get(app)?.roles ?? []).includes(role)
+}
+
 // A fixture row's identity in the install ledger: enough to delete exactly
 // that row on uninstall, nothing more.
 interface FixtureRef {

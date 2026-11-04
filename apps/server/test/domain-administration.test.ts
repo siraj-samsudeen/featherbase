@@ -6,6 +6,7 @@ import { eventVisibleTo } from '../src/realtime'
 import { getMeta } from '../src/meta'
 import { saveSystemRow } from '../src/document'
 import { sql } from '../src/db'
+import { provisionApp } from '../src/app-lifecycle'
 
 const employee = tableRef('contactproof.employee')
 
@@ -156,7 +157,7 @@ describe('domain administration', () => {
       expect(await reader.get(employee.listUrl({ fields: ['row_id', 'phone'] })))
         .toMatchObject({ total: 1, data: [{ row_id: 'priya', phone: 'permitted' }] })
       if (mode === 'named') {
-        const directoryReader = await createUser({ roles: ['Contact Directory'] })
+        const directoryReader = await provisionApp('contactproof', () => createUser({ roles: ['Contact Directory'] }))
         await saveSystemRow('Role Assignment', { app: 'contactproof', person: directoryReader.user,
           role: 'Scoped Contact Reader', scope: scope.row_id }, 'provisioning')
         expect(await directoryReader.get(employee.listUrl({ fields: ['row_id', 'phone'], order_by: 'phone asc' })))

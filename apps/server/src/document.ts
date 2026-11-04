@@ -11,6 +11,7 @@ import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } fro
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
 import { holdBeforeRowLock } from './row-lock-order'
+import { captureJobAuthority, checkJobAuthority, captureAccessAuthority, checkAccessAuthority } from './administration-authority'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
 import { applySla } from './sla'
@@ -884,6 +885,8 @@ async function writeDoc(
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
       await holdBeforeRowLock(stx, meta, user, { ...values }, true)
+      const authorityBefore = await captureJobAuthority(meta, user)
+      const accessBefore = await captureAccessAuthority(meta, user)
       const rowId = await resolveRowId(stx, meta, values)
       const now = new Date()
       const row: RowValues = {
@@ -944,6 +947,8 @@ async function writeDoc(
       await runHooks('after_save', ctx)
       await runHooks('on_update', ctx)
       await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
+      await checkJobAuthority(authorityBefore)
+      await checkAccessAuthority(accessBefore)
       return inserted
     })
     .catch((err) => mapDbError(meta, err, attemptedRow.ref_table)))
@@ -1155,6 +1160,8 @@ async function updateDoc(
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
       await holdBeforeRowLock(stx, meta, user, { ...values, [meta.row_key]: name })
+      const authorityBefore = await captureJobAuthority(meta, user)
+      const accessBefore = await captureAccessAuthority(meta, user)
       const [existing] = await tx`
         select * from ${tx(table)} where ${tx(meta.row_key)} = ${name} for update`
       if (!existing)
@@ -1236,6 +1243,8 @@ async function updateDoc(
       await runHooks('after_save', ctx)
       await runHooks('on_update', ctx)
       await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
+      await checkJobAuthority(authorityBefore)
+      await checkAccessAuthority(accessBefore)
       return updated
     })
     .catch((err) => mapDbError(meta, err, attemptedRow.ref_table)))
@@ -1316,6 +1325,8 @@ async function setStatus(
   const [saved] = await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     await holdBeforeRowLock(stx, meta, user, { [meta.row_key]: name })
+    const authorityBefore = await captureJobAuthority(meta, user)
+    const accessBefore = await captureAccessAuthority(meta, user)
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
@@ -1353,6 +1364,8 @@ async function setStatus(
     }
     await runHooks('on_update', ctx)
     await runHooks(event, ctx)
+    await checkJobAuthority(authorityBefore)
+    await checkAccessAuthority(accessBefore)
     return [updated]
   }))
   const result = await loadChildren(meta, { table, ...(saved as RowValues) })
@@ -1449,6 +1462,8 @@ async function deleteDocImpl(
   await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     await holdBeforeRowLock(stx, meta, user, { [meta.row_key]: name })
+    const authorityBefore = await captureJobAuthority(meta, user)
+    const accessBefore = await captureAccessAuthority(meta, user)
     const [existing] = await tx`
       select * from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
@@ -1520,6 +1535,8 @@ async function deleteDocImpl(
         where parent = ${name} and parenttype = ${table}`
     }
     await tx`delete from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name}`
+    await checkJobAuthority(authorityBefore)
+    await checkAccessAuthority(accessBefore)
   }))
   // Post-commit: caches keyed on this row (e.g. a Data Source's pool and
   // the meta of Tables bound to it) may only be dropped once the delete is
@@ -1637,6 +1654,8 @@ async function renameDocImpl(
     const tbl = await tableRelation(table)
     await holdManagedSet(tx as unknown as typeof sql, null)
     await holdBeforeRowLock(tx as unknown as typeof sql, meta, user, { [meta.row_key]: oldName })
+    const authorityBefore = await captureJobAuthority(meta, user)
+    const accessBefore = await captureAccessAuthority(meta, user)
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${oldName} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${oldName} not found`)
@@ -1680,6 +1699,8 @@ async function renameDocImpl(
 
     // #509: and every record that names the row by id in plain text.
     await repointRowActivity(stx, table, oldName, target)
+    await checkJobAuthority(authorityBefore)
+    await checkAccessAuthority(accessBefore)
   })
   return getDoc(table, target, user)
 }

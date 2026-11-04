@@ -10,6 +10,23 @@ export async function up() {
     { column_name: 'mode', column_type: 'Choice', choices: 'all\ncreator\nself\nnamed\ndirect_reports\nsubtree', reqd: true },
     { column_name: 'tuples', column_type: 'JSON' },
   ] })
+  await createTable({ name: 'Authority', system: true, columns: [
+    { column_name: 'app', column_type: 'Data', reqd: true },
+    { column_name: 'scope', column_type: 'Reference', reference_table: 'Scope', reqd: true },
+    { column_name: 'holder_role', column_type: 'Reference', reference_table: 'Role', reqd: true },
+    { column_name: 'office_job', column_type: 'Data' },
+    { column_name: 'enabled', column_type: 'Check', default: '1' },
+  ] })
+  await createTable({ name: 'Delegation Boundary', system: true, columns: [
+    { column_name: 'app', column_type: 'Data', reqd: true },
+    { column_name: 'authority', column_type: 'Reference', reference_table: 'Authority', reqd: true },
+    { column_name: 'required_role', column_type: 'Reference', reference_table: 'Role', reqd: true },
+    { column_name: 'action', column_type: 'Choice', choices: 'grant\nrevoke', reqd: true },
+    { column_name: 'target_role', column_type: 'Reference', reference_table: 'Role', reqd: true },
+    { column_name: 'max_scope', column_type: 'Reference', reference_table: 'Scope', reqd: true },
+    { column_name: 'recipient_scope', column_type: 'Reference', reference_table: 'Scope', reqd: true },
+    { column_name: 'allow_further_delegation', column_type: 'Check', default: '0' },
+  ] })
   await createTable({ name: 'Role Assignment', system: true, columns: [
     { column_name: 'app', column_type: 'Data', reqd: true },
     { column_name: 'person', column_type: 'Reference', reference_table: 'Person' },
@@ -18,10 +35,18 @@ export async function up() {
     { column_name: 'scope', column_type: 'Reference', reference_table: 'Scope', reqd: true },
     { column_name: 'starts_on', column_type: 'Date' },
     { column_name: 'ends_on', column_type: 'Date' },
+    { column_name: 'grantor', column_type: 'Data' },
+    { column_name: 'authority', column_type: 'Reference', reference_table: 'Authority' },
+    { column_name: 'delegation_boundary', column_type: 'Reference', reference_table: 'Delegation Boundary' },
+    { column_name: 'parent_assignment', column_type: 'Reference', reference_table: 'Role Assignment' },
+    { column_name: 'allow_further_delegation', column_type: 'Check', default: '0' },
+    { column_name: 'revoked_at', column_type: 'Datetime' },
+    { column_name: 'revoked_by', column_type: 'Data' },
   ] })
-  await sql`update table_def set system_written = true where name in ('Scope', 'Role Assignment')`
-  invalidateMeta('Scope')
-  invalidateMeta('Role Assignment')
+  for (const table of ['Scope', 'Authority', 'Delegation Boundary', 'Role Assignment']) {
+    await sql`update table_def set system_written = true where name = ${table}`
+    invalidateMeta(table)
+  }
   await sql`alter table featherbase.role_assignment
     add constraint role_assignment_principal check ((person is not null) <> (service_account is not null)),
     add constraint role_assignment_period check (starts_on is null or ends_on is null or starts_on < ends_on),

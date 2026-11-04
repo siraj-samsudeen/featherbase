@@ -19,6 +19,7 @@ import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAcce
 import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
+import { grantAdministration, revokeAdministration } from './administration-authority'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
@@ -869,6 +870,9 @@ const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').row_id
 
 // #3755: personalised sales-target report (identity + embed-session minting).
 app.route('/api/sales_target', salesTargetRoutes)
+
+app.post('/api/administration/grant', async (c) => c.json(await grantAdministration(who(c), await c.req.json()), 201))
+app.post('/api/administration/revoke', async (c) => c.json(await revokeAdministration(who(c), await c.req.json())))
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')

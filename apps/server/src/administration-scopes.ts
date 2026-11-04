@@ -4,6 +4,7 @@ import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { activeApps } from './app-lifecycle'
 import type { TableMeta } from './meta'
+import { effectiveAssignments } from './administration-authority'
 
 const name = z.string().min(1)
 export const administrationDeclaration = z.object({
@@ -14,21 +15,31 @@ export const administrationDeclaration = z.object({
     reportsTo: name.optional(),
     dimensions: z.record(name, z.array(name).min(1)),
   }).strict(),
+  jobs: z.object({ column: name, capabilities: z.array(z.object({
+    job: name, role: name, dimensions: z.array(name).min(1),
+  }).strict()) }).strict().optional(),
 }).strict()
 export type AdministrationDeclaration = z.infer<typeof administrationDeclaration>
 const declarations = new Map<string, AdministrationDeclaration>()
+
+export const administrationAccessTables = new Set(['Permission', 'Role', 'Person', 'Service Account', 'App Role Binding'])
+
+export function administrationApps(): string[] {
+  return [...declarations.keys()].filter(app => activeApps.has(app)).sort()
+}
+
+export function administrationFor(app: string): AdministrationDeclaration | undefined {
+  return activeApps.has(app) ? declarations.get(app) : undefined
+}
 
 export function registerAdministration(app: string, declaration?: AdministrationDeclaration) {
   if (declaration) declarations.set(app, administrationDeclaration.parse(declaration))
   else declarations.delete(app)
 }
 
-/** Before a target Row lock, hold authority and the entire membership set.
- * Real table locks also cover inserts and trusted SQL writers. */
-export async function holdAdministrationSources(db: typeof sql, meta: TableMeta): Promise<void> {
-  if (!meta.owner_app || !activeApps.has(meta.owner_app)) return
-  const declaration = declarations.get(meta.owner_app)
-  if (!declaration?.targets[meta.name]) return
+export async function administrationSources(app: string): Promise<Set<string>> {
+  const declaration = administrationFor(app)
+  if (!declaration) return new Set()
   const tables = new Set([declaration.memberships.table])
   for (const paths of Object.values(declaration.memberships.dimensions)) {
     for (const path of paths) {
@@ -37,13 +48,32 @@ export async function holdAdministrationSources(db: typeof sql, meta: TableMeta)
         const column = (await getMeta(table)).columns.find(column => column.column_name === name)
         if (column?.column_type !== 'Reference' || !column.reference_table) break
         table = column.reference_table
-        if ((await getMeta(table)).owner_app !== meta.owner_app) break
+        if ((await getMeta(table)).owner_app !== app) break
         tables.add(table)
       }
     }
   }
+  return tables
+}
+
+/** Before a target Row lock, hold authority and the entire membership set.
+ * Real table locks also cover inserts and trusted SQL writers. */
+export async function holdAdministrationSources(db: typeof sql, meta: TableMeta): Promise<void> {
+  const tables = new Set<string>()
+  const apps = administrationAccessTables.has(meta.name) ? administrationApps() : meta.owner_app ? [meta.owner_app] : []
+  let needed = false
+  for (const app of apps) {
+    const declaration = administrationFor(app)
+    if (!declaration) continue
+    const sources = await administrationSources(app)
+    if (!administrationAccessTables.has(meta.name) && !declaration.targets[meta.name] && !sources.has(meta.name)) continue
+    needed = true
+    for (const source of sources) tables.add(source)
+  }
+  if (!needed) return
   const relations = ['featherbase.role_assignment', 'featherbase.scope', 'featherbase.permission',
     'featherbase.permission_column', 'featherbase.has_role', 'featherbase.app_role_binding',
+    'featherbase.authority', 'featherbase.delegation_boundary',
     ...await Promise.all([...tables].map(tableRelation))]
   for (const relation of [...new Set(relations)].sort())
     await db`lock table ${db(relation)} in share row exclusive mode`
@@ -59,16 +89,8 @@ export async function scopedRoles(user: string, table: string): Promise<Map<stri
   const result = new Map<string, AssignmentScope[]>()
   const meta = await getMeta(table)
   if (!meta.owner_app || !activeApps.has(meta.owner_app)) return result
-  const rows = await sql`select a.role, a.app, s.mode, s.tuples from featherbase.role_assignment a
-    join featherbase.scope s on s.row_id = a.scope and s.app = a.app
-    join installed_app app on app.name = a.app and app.enabled and not app.activation_pending
-    where a.app = ${meta.owner_app} and (a.person = ${user} or a.service_account = ${user})
-      and (a.starts_on is null or a.starts_on <= (now() at time zone 'Asia/Kolkata')::date)
-      and (a.ends_on is null or a.ends_on > (now() at time zone 'Asia/Kolkata')::date)
-      and a.role not in ('Administrator', 'System Manager', 'All', 'Guest')`
-  for (const row of rows) result.set(String(row.role), [...(result.get(String(row.role)) ?? []), {
-    app: String(row.app), mode: String(row.mode), tuples: row.tuples,
-  }])
+  for (const assignment of await effectiveAssignments(meta.owner_app, user))
+    result.set(assignment.role, [...(result.get(assignment.role) ?? []), assignment.scope])
   return result
 }
 
@@ -95,6 +117,53 @@ async function factPath(app: string, table: string, alias: string, path: string[
   const from = sql`${sql(await tableRelation(target.name))} as ${sql(next)} where ${sql(next)}.${sql(target.row_key)} = ${value}`
   return { frag: path.length === 1 ? value : sql`(select ${nested.frag} from ${from})`,
     valid: sql`(${value} is null or exists (select 1 from ${from} and (${nested.valid})))` }
+}
+
+export async function jobAssignments(app: string, includeFuture = false) {
+  const declaration = administrationFor(app)
+  if (!declaration?.jobs) return []
+  const membership = declaration.memberships
+  const meta = await getMeta(membership.table)
+  if (meta.owner_app !== app || meta.system || meta.data_source || meta.kind !== 'table') return []
+  const person = meta.columns.find(column => column.column_name === membership.person)
+  if (person?.column_type !== 'Reference' || person.reference_table !== 'Person') return []
+  if (!meta.columns.some(column => column.column_name === declaration.jobs!.column)) return []
+  let valid = sql`true`
+  let dimensions = sql`'{}'::jsonb`
+  for (const [dimension, paths] of Object.entries(membership.dimensions)) {
+    const resolved = await Promise.all(paths.map(path => factPath(app, membership.table, 'membership', path.split('.'))))
+    if (resolved.some(result => result.invalid)) return []
+    let value = resolved[0].frag
+    for (const result of resolved) valid = sql`${valid} and (${result.valid})`
+    for (const other of resolved.slice(1)) {
+      valid = sql`${valid} and (${value} is null or ${other.frag} is null or ${value} = ${other.frag})`
+      value = sql`coalesce(${value}, ${other.frag})`
+    }
+    dimensions = sql`${dimensions} || jsonb_build_object(${dimension}::text, ${value})`
+  }
+  for (const [column, start] of [[membership.startsOn, true], [membership.endsOn, false]] as const) {
+    if (!column) continue
+    if (!meta.columns.some(c => c.column_name === column && c.column_type === 'Date')) return []
+    if (start && includeFuture) continue
+    const date = sql`membership.${sql(column)}`
+    valid = start ? sql`${valid} and (${date} is null or ${date} <= (now() at time zone 'Asia/Kolkata')::date)`
+      : sql`${valid} and (${date} is null or ${date} > (now() at time zone 'Asia/Kolkata')::date)`
+  }
+  const rows = await sql`select to_jsonb(membership) as row, (${dimensions}) as dimensions
+    from ${sql(await tableRelation(membership.table))} membership where ${valid}`
+  return rows.flatMap(({ row, dimensions }) => declaration.jobs!.capabilities.flatMap(capability => {
+    if (row[declaration.jobs!.column] !== capability.job || !row[membership.person]) return []
+    const tuple: Record<string, string> = {}
+    for (const dimension of capability.dimensions) {
+      if (typeof dimensions[dimension] !== 'string' || !dimensions[dimension]) return []
+      tuple[dimension] = dimensions[dimension]
+    }
+    return [{ id: `${membership.table}:${row[meta.row_key]}:${capability.role}`, role: capability.role,
+      person: String(row[membership.person]), job: capability.job,
+      startsOn: membership.startsOn ? row[membership.startsOn] : null,
+      endsOn: membership.endsOn ? row[membership.endsOn] : null,
+      scope: { app, mode: 'named', tuples: [tuple] } satisfies AssignmentScope, allowFurther: false }]
+  }))
 }
 
 export async function assignmentPredicate(user: string, table: string, scope: AssignmentScope, row?: ScopeRow): Promise<{ frag: Expression }> {

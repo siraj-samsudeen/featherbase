@@ -10,6 +10,9 @@ import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { logActivity } from './audit'
 import { newServiceAccountId } from './opaque-id'
+import { getMeta } from './meta'
+import { holdBeforeRowLock } from './row-lock-order'
+import { captureAccessAuthority, checkAccessAuthority } from './administration-authority'
 
 const SERVICE_ACCOUNT_TABLE = 'Service Account'
 
@@ -72,6 +75,9 @@ export async function createServiceAccount(label: string, roles: string[], actor
   const wanted = await cleanRoles(roles)
   const id = newServiceAccountId()
   await withTransaction(async () => {
+    const meta = await getMeta(SERVICE_ACCOUNT_TABLE)
+    await holdBeforeRowLock(sql, meta, actor, { row_id: id }, true)
+    const accessBefore = await captureAccessAuthority(meta, actor)
     const now = new Date()
     await sql`insert into service_account ${sql({
       row_id: id,
@@ -85,6 +91,7 @@ export async function createServiceAccount(label: string, roles: string[], actor
       position: 0,
     } as unknown as Record<string, never>)}`
     await writeRoles(id, wanted, actor)
+    await checkAccessAuthority(accessBefore)
   }).catch((err) => {
     // Lost a race to the same name: the unique index decides.
     if ((err as { code?: string; constraint_name?: string })?.code === '23505')
@@ -147,9 +154,13 @@ export async function setServiceAccountEnabled(id: string, enabled: boolean, act
 export async function setServiceAccountRoles(id: string, roles: string[], actor: string): Promise<ServiceAccount> {
   const wanted = await cleanRoles(roles)
   await withTransaction(async () => {
+    const meta = await getMeta(SERVICE_ACCOUNT_TABLE)
+    await holdBeforeRowLock(sql, meta, actor, { row_id: id })
+    const accessBefore = await captureAccessAuthority(meta, actor)
     await lockAccount(id)
     await writeRoles(id, wanted, actor)
     await sql`update service_account set updated_at = now(), updated_by = ${actor} where row_id = ${id}`
+    await checkAccessAuthority(accessBefore)
   })
   await logActivity(actor, `service_account_roles ${id}: ${wanted.join(', ') || '(none)'}`.slice(0, 140))
   return getServiceAccount(id)

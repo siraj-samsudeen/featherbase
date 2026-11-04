@@ -52,7 +52,7 @@ export const OPEN_ROLES: readonly string[] = ['All', 'Guest']
 // PERM-002/003/009: role-based Table permissions from Permission rows.
 // Administrator (and System Manager holders) bypass all checks so a fresh
 // Table with no Permission rows is still manageable.
-type PermAction =
+export type PermAction =
   | 'read'
   | 'write'
   | 'create'
@@ -60,6 +60,7 @@ type PermAction =
   | 'submit'
   | 'cancel'
   | 'amend'
+  | 'approve'
   | 'read_identifiers'
 
 // PERM-007: an own_rows_only grant applies only to rows the user created.
@@ -68,6 +69,7 @@ type PermScope = 'all' | 'own_rows' | 'scoped' | 'none'
 
 export interface PermissionGrant {
   id: string
+  role: string
   scope: 'all' | 'own_rows'
   columns: string[]
   assignments?: AssignmentScope[]
@@ -99,7 +101,7 @@ export async function permissionGrants(user: string, table: string, action: Perm
       if (!prerequisite) return
       if (prerequisite.scope === 'own_rows') scope = 'own_rows'
     }
-    return { id, scope, columns: row.columns as string[], prerequisite,
+    return { id, role: String(row.role), scope, columns: row.columns as string[], prerequisite,
       assignments: roles.includes(String(row.role)) ? undefined : assignments.get(String(row.role)) }
   }
   function contributions(grant: PermissionGrant): PermissionGrant[] {
