@@ -25,6 +25,20 @@ And it shows a group of 3 plants that point at Enchakkal
 And the list of sites stays as it was
 ```
 
+### Requirement: A link reads by its name, with its code where that helps
+
+Every link to another row, in a list, the drill pane, the tree or the path, SHALL read by that
+row's name. Where the row is known by a code people use, the code follows the name; an id the
+system made up never shows.
+
+#### Scenario: Enchakkal's supermarket reads with its plant code
+
+```gherkin
+Given the plant Enchakkal Supermarket has the plant code 1503
+When the user opens the list of profit centres
+Then each profit centre's plant reads "Enchakkal Supermarket · 1503"
+```
+
 ### Requirement: Following a link opens the linked row in the drill pane
 
 Clicking a linked row's name, in a list or on a row page, SHALL show that row in the drill pane
@@ -53,10 +67,23 @@ Then the drill pane shows Enchakkal Supermarket and what points at it
 And the list of sites stays as it was
 ```
 
+### Requirement: A group lists its rows like the table's own list
+
+A group in the drill pane SHALL list its rows with the columns of that table's list, and the user
+can switch it to the compact layout as on the list itself.
+
+#### Scenario: Enchakkal's plants with their columns
+
+```gherkin
+Given the user has Enchakkal open in the drill pane
+When the user opens its group of plants
+Then the 3 plants show with the columns of the list of plants
+```
+
 ### Requirement: A group can be opened as its own list
 
-A group in the drill pane SHALL list its rows, and the user SHALL be able to open the group as a
-full list of that table, narrowed to the rows that point at the row in the pane.
+The user SHALL be able to open a group in the drill pane as a full list of that table, narrowed to
+the rows that point at the row in the pane.
 
 #### Scenario: Enchakkal's plants as a list
 
@@ -86,13 +113,15 @@ The drill pane SHALL show the row's fields read-only, grouped as on its form, wi
 name. Empty fields are folded away under a count and long text is shortened until the user asks
 for more. Editing happens on the row's form.
 
+The fields follow the arrangement the user chose for the row's form.
+
 #### Scenario: Enchakkal's fields at a glance
 
 ```gherkin
 Given the site Enchakkal has a long note and two empty fields
 When the user reads Enchakkal's fields in the drill pane
 Then the note is shortened with a way to read all of it
-And the two empty fields are folded away under "2 empty fields"
+And the two empty fields are folded away under a count
 And the user can open Enchakkal's form to edit it
 ```
 
@@ -101,7 +130,7 @@ And the user can open Enchakkal's form to edit it
 Every drill and every filter SHALL become a step on a path, named after the rows and values it
 shows. Choosing an earlier step SHALL bring back what was on screen at that step.
 
-#### Scenario: Back to the site from a cost centre
+#### Scenario: Back to the site from its supermarket
 
 ```gherkin
 Given the user narrowed the list of sites to Kerala, selected Enchakkal and drilled to Enchakkal Supermarket
@@ -127,7 +156,7 @@ And going forward shows Enchakkal Supermarket again
 ### Requirement: A step can be shared as a link
 
 Every step SHALL have its own link. Opening the link SHALL show the same rows, filters and open
-groups, each named as the person opening it is allowed to read it.
+groups.
 
 #### Scenario: A colleague opens the supermarket step
 
@@ -153,8 +182,7 @@ And choosing it brings back Enchakkal Supermarket in the drill pane
 
 ### Requirement: The drill pane's place is the user's choice
 
-The drill pane SHALL find a sensible place for the window's size, and the user SHALL be able to
-fix where it sits; that choice is remembered for them.
+The user SHALL be able to fix where the drill pane sits, and that choice is remembered for them.
 
 #### Scenario: The pane stays where the user put it
 
@@ -192,10 +220,10 @@ When the user switches to the form and back to the tree
 Then Enchakkal's plants are still expanded
 ```
 
-### Requirement: The map shows a row without moving away from it
+### Requirement: The map and the tree show a row without moving away from it
 
-Clicking a row on the map SHALL show it in the drill pane while the map stays centred where it
-was; the user can choose to centre the map on that row instead.
+Clicking a row on the map or the tree SHALL show it in the drill pane while the view stays centred
+where it was; the user can choose to centre the view on that row instead.
 
 #### Scenario: Kerala in the pane, Enchakkal in the middle
 
@@ -207,18 +235,40 @@ And the map is still centred on Enchakkal
 And choosing to centre on Kerala redraws the map around Kerala
 ```
 
+#### Scenario: A cost centre from the tree
+
+```gherkin
+Given the user unfolded Enchakkal's tree down to the cost centre EKL-Marketing
+When the user clicks EKL-Marketing on the tree
+Then EKL-Marketing shows in the drill pane
+And the tree is still centred on Enchakkal
+```
+
 ### Requirement: The tree unfolds links in both directions
 
 The tree SHALL show what the row links to above it and the groups that link to it below, each
-unfolding in place several levels deep. A large group shows its first rows and offers the rest.
+unfolding in place several levels deep.
 
 #### Scenario: From the site down to a cost centre
 
 ```gherkin
+Given Enchakkal Supermarket is one of Enchakkal's plants
+When the user unfolds Enchakkal's plants, then Enchakkal Supermarket's profit centres, then EKL - Retail (All)
+Then the cost centres of EKL - Retail (All) show beneath it
+And the region Kerala shows above Enchakkal
+```
+
+### Requirement: A large group on the tree shows its first rows
+
+A large group on the tree SHALL show its first rows and offer the rest, so unfolding it never
+floods the view.
+
+#### Scenario: The first 20 of 40 profit centres
+
+```gherkin
 Given Enchakkal Supermarket has 40 profit centres
-When the user unfolds Enchakkal's plants, then Enchakkal Supermarket's profit centres
+When the user unfolds them on the tree
 Then the first 20 profit centres show, with a way to show all 40
-And unfolding one profit centre shows its cost centres beneath it
 ```
 
 ### Requirement: Rows the user cannot read stay unnamed

@@ -1,6 +1,6 @@
 ## Context
 
-Issue #910 replaces four ways of looking at related rows (the peek slide-over, the row page's
+Issues #910, #800 and #795 are delivered together. #910 replaces four ways of looking at related rows (the peek slide-over, the row page's
 Related tab, the relationship-map page and its row lists) with one drill pane, a path, and
 Form · Map · Tree tabs on the row page. The agreed prototype is in `reference/`; the issue's
 22-item checklist is the UI contract. Builds on #792 / PR #839, which made lists, filters and the
@@ -90,6 +90,32 @@ its address are removed, with no redirect (pre-release rule).
 
 - *Rejected: keeping peek for links on the form.* Two ways in is what the owner asked to end
   (checklist item 16).
+
+### D5. One rule for a row's name and code: name first, the code only when people use it
+
+A link reads as the linked row's title; when the table has a title column and the row id is a
+code people use (set by a column, a source's key or the person creating it, never a generated
+id), the code follows: "Enchakkal Supermarket · 1503". The shared title for a table without a
+title column flips the same way ("Kurti Z · 1517", was "1517 · Kurti Z"), so every screen agrees.
+A list's own title cell stays the name alone; its code has its own column.
+
+- *Rejected: code first, as the prototype and today's shared title do.* The owner's standing rule
+  is name first.
+- *Rejected: a per-table "show code" setting.* More metadata for a rule that holds everywhere.
+
+### D6. New pieces go into the shared library and the UI Lab first; pages only compose them
+
+Delivered together with #800 (focused detail tabs) and #795 (arranging a row's fields), at the
+owner's request, so all three read as one design. Presentational pieces with no metadata (drill
+pane frame, path bar, link chip with its go-there and filter actions, counted group chip, field
+grid, tree outline, pane-place toggle) go into `packages/shop-floor` and get a UI Lab example
+before any page uses them. Metadata-aware wiring stays in `apps/web`: the pane's fields come from
+#795's arrangement, and Form · Map · Tree are tabs in #800's record tab set.
+
+- *Rejected: page-local markup, extracted later.* That is how the four surfaces this change
+  replaces drifted apart.
+- *Rejected: moving #795's metadata-aware field views into `shop-floor`.* The library stays free
+  of Table metadata; only the grid layout moves.
 
 ## Risks / Trade-offs
 
