@@ -20,7 +20,7 @@ builder's own.
 
 ```gherkin
 Given no table is called "Site"
-When the user creates a table "Site" and adds the site "Enchakkal"
-Then the table shows "Enchakkal"
+When the user creates a table "Site" and adds the site "Riverside"
+Then the table shows "Riverside"
 And the platform's record of its web addresses is unchanged
 ```
