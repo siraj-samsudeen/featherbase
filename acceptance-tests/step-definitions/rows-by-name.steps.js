@@ -133,7 +133,7 @@ Then('the user sees the customer of the order {string} read by its id {string}',
 
 Then('the user sees the customer {string}', async function (name) {
   const page = await this.actor();
-  await page.waitForURL((url) => url.pathname.includes(`/admin/${encodeURIComponent(CUSTOMERS)}/`), { timeout: 10_000 });
+  await page.waitForURL((url) => url.pathname.startsWith(`${tableHref(CUSTOMERS)}/row/`), { timeout: 10_000 });
   const field = page.getByTestId('form-view').getByLabel('Customer Name', { exact: true });
   const reads = await eventually(page, () => field.inputValue(), (v) => v === name);
   assert.equal(reads, name);
@@ -166,5 +166,6 @@ Then('the user sees the map centered on {string}', async function (title) {
   const center = page.getByTestId('map-center');
   const reads = await eventually(page, () => center.textContent(), (t) => Boolean(t?.includes(title)));
   assert.ok(reads?.includes(title), `the map's center reads "${reads}"`);
-  assert.ok(page.url().includes('/map/Volunteer/'), `the map is at ${page.url()}`);
+  const at = new URL(page.url()).pathname;
+  assert.ok(at.startsWith(`${tableHref('Volunteer')}/row/`) && at.endsWith('/map'), `the map is at ${page.url()}`);
 });

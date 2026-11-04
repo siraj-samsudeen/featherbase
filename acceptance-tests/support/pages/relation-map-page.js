@@ -1,5 +1,7 @@
 'use strict';
 
+const { mapHref } = require('../addresses');
+
 // The relationship map: one row at the center, what it links to, and the
 // collections that link back to it.
 
@@ -9,7 +11,7 @@ class RelationMapPage {
   }
 
   async open(table, rowId) {
-    await this.page.goto(`${tableHref(table)}/row/${encodeURIComponent(rowId)}/map`);
+    await this.page.goto(mapHref(table, rowId));
     await this.page.getByTestId('map-center').waitFor();
   }
 
