@@ -21,8 +21,12 @@ export function text(value: unknown): string {
   return value == null ? '' : String(value).trim()
 }
 
-/** The calendar day of a Date column's value, or '' for none. */
+/**
+ * The calendar day of a Date column's value, or '' for none. A save rule sees an update's
+ * unchanged columns as the database client returns them: a Date at UTC midnight.
+ */
 export function day(value: unknown): string {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? '' : value.toISOString().slice(0, 10)
   const match = /^(\d{4}-\d{2}-\d{2})/.exec(text(value))
   return match ? match[1] : ''
 }
