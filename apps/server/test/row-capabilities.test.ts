@@ -10,7 +10,7 @@ const rows = tableRef(DT)
 const capabilities = (id: string) => `${rows.rowUrl(id)}:capabilities`
 const readerCapabilities = {
   write: false, rename: false, delete: false, submit: false, cancel: false,
-  amend: false, assign: false, tag: true, comment: false, upload: false,
+  amend: false, retire: false, reactivate: false, assign: false, tag: true, comment: false, upload: false,
 }
 
 describe('#800 row action capabilities', () => {
@@ -69,7 +69,7 @@ describe('#800 row action capabilities', () => {
     const own = await user.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'Mine' } })
     const other = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'Not mine' } })
     expect(await user.get(capabilities(own.row_id))).toEqual({
-      ...readerCapabilities, write: true, rename: true, delete: true, submit: true,
+      ...readerCapabilities, write: true, rename: true, delete: true, submit: true, retire: true,
     })
     expect(await user.get(capabilities(other.row_id))).toEqual(readerCapabilities)
     await expectApiError(user.post(`${rows.rowUrl(other.row_id)}:rename`, { new_name: 'cap800-stolen' }), { status: 403 })

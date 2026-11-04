@@ -279,6 +279,8 @@ describe('#432: every write entry point is covered', () => {
     submitDoc: (id) => documentModule.submitDoc(AL, id),
     cancelDoc: (id) => documentModule.cancelDoc(AL, id),
     amendDoc: (id) => documentModule.amendDoc(AL, id),
+    retireDoc: (id) => documentModule.retireDoc(AL, id, 'forged'),
+    reactivateDoc: (id) => documentModule.reactivateDoc(AL, id),
     saveSingle: () => documentModule.saveSingle(AL, {}),
   }
 
