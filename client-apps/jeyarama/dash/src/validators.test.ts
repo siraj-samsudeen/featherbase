@@ -20,7 +20,7 @@ const STORE_TABLES: [string, Row][] = [
   ['feather_dash.section', { section_name: 'Sarees', team_leaders_allowed: 1 }],
   ['feather_dash.section_subcategory', { subcategory: '010101001', section: 's1', starts_on: '2026-08-01' }],
   ['feather_dash.display_location', { subcategory: '010101001', location_name: 'Billing counter', starts_on: '2026-08-01' }],
-  ['feather_dash.job_assignment', { person: 'psn_101', job: 'Store Manager', starts_on: '2026-08-01' }],
+  ['feather_dash.job_assignment', { person: 'psn_101', job: 'Store Manager', assignment_type: 'Primary', percentage: 100, starts_on: '2026-08-01' }],
   ['feather_dash.section_alias', { source: 'hr', alias: 'Saree', section: 's1' }],
   ['feather_dash.floor_alias', { source: 'hr', alias: 'GF', floor: 'f1' }],
 ]
@@ -119,11 +119,13 @@ describe('display_location', () => {
 })
 
 describe('job_assignment', () => {
-  const base = { person: 'psn_101', store: '9901', starts_on: '2026-08-01' }
+  const base = { person: 'psn_101', store: '9901', assignment_type: 'Primary', percentage: 100, starts_on: '2026-08-01' }
 
   it.each([
+    ['Director', {}],
+    ['Chief Operating Officer', {}],
     ['Store Manager', {}],
-    ['Cluster Manager', {}],
+    ['Cluster Manager', { cluster: 'CL-NORTH' }],
     ['Floor Manager', { floor: 'f1' }],
     ['Department Manager', { department: 'd1' }],
     ['Team Leader', { section: 's1' }],
@@ -140,7 +142,14 @@ describe('job_assignment', () => {
     ['Floor Manager', { floor: 'f1', section: 's1' }, /Floor Manager names no section/],
     ['Team Leader', { section: 's1', department: 'd1' }, /Team Leader names no department/],
     ['Store Manager', { floor: 'f1' }, /Store Manager names no floor/],
-    ['Cluster Manager', { section: 's1' }, /Cluster Manager names no section/],
+    ['Cluster Manager', { cluster: 'CL-NORTH', section: 's1' }, /Cluster Manager names no section/],
+    ['Cluster Manager', {}, /Cluster Manager needs the cluster/],
+    ['Cluster Manager', { cluster: ' CL-NORTH' }, /no spaces/],
+    ['Store Manager', { cluster: 'CL-NORTH' }, /Store Manager names no cluster/],
+    ['Store Manager', { assignment_type: 'Deputation' }, /Primary, Secondary or a Temporary deployment/],
+    ['Store Manager', { percentage: 0 }, /more than 0 and at most 100/],
+    ['Store Manager', { percentage: 120 }, /more than 0 and at most 100/],
+    ['Store Manager', { percentage: null }, /more than 0 and at most 100/],
   ])('refuses a %s of the wrong shape (%o)', (job, place, message) => {
     expect(() => save('feather_dash.job_assignment', { ...base, job, ...place })).toThrow(message)
   })
