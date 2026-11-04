@@ -631,7 +631,15 @@ async function assertAccessColumnsUnchanged(
 // already settled on the parent (a create-only grant carries no write tier).
 async function childWriteColumns(user: string, parentColumns: ColumnSelection, parentTable: string, childTable: string, parentColumn: string, action: 'write' | 'create', createdBy?: string): Promise<ColumnSelection> {
   if (parentColumns.has('*')) return new Set(ALL_COLUMNS)
-  return childColumns(user, parentTable, childTable, parentColumn, action, createdBy)
+  const columns = new Set(['@basic', ...await childColumns(user, parentTable, childTable, parentColumn, action, createdBy)])
+  // #608: what a new line item may hold is what create or edit access reaches.
+  if (action === 'create') for (const column of await childColumns(user, parentTable, childTable, parentColumn, 'write', createdBy)) columns.add(column)
+  return columns
+}
+
+// #608: a new row keeps every Column its creator's create or edit grant reaches.
+async function insertColumns(user: string, table: string): Promise<ColumnSelection> {
+  return new Set([...await permittedColumns(user, table, 'create', user), ...await permittedColumns(user, table, 'write', user)])
 }
 
 // Defaults may initialise a hidden column, but may not overwrite an existing
@@ -904,7 +912,7 @@ async function writeDoc(
   }
   const writeTiers = opts.skipPermissions
     ? new Set(ALL_COLUMNS)
-    : await permittedColumns(user, table, 'create', user)
+    : await insertColumns(user, table)
   const fieldValues = validateValues(
     meta,
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
@@ -1041,7 +1049,7 @@ async function saveBoundDoc(
   // PERM-005: Data Scopes judge the incoming Reference values exactly as on
   // a native insert.
   await assertUserPermissions(user, meta, values)
-  const writeTiers = await permittedColumns(user, meta.name, 'create', user)
+  const writeTiers = await insertColumns(user, meta.name)
   const fieldValues = validateValues(
     meta,
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
@@ -1949,11 +1957,7 @@ async function saveSingleImpl(
   if (meta.kind !== 'settings') throw new AppError('ValidationError', `${table} is not a Settings Table`)
   await assertPermission(user, table, 'write')
   const writeTiers = await permittedColumns(user, table, 'write', 'Administrator')
-  const clean = validateValues(
-    meta,
-    stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values)),
-    'update',
-  )
+  let clean: RowValues = {}
   // #465: one transaction, and a version like any other row's save, so a
   // settings change has history. Compared as stored text, both sides.
   await sql.begin(async (tx) => {
@@ -1962,6 +1966,12 @@ async function saveSingleImpl(
       (await stx`select field, value from single_value where table_name = ${table}`).map((r) => [r.field as string, r.value as string | null]))
     await holdManagedSet(stx, table)
     const before = await stored()
+    // An unchanged value of a Column outside the grant is not a change.
+    clean = validateValues(
+      meta,
+      stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values), before),
+      'update',
+    )
     for (const [field, value] of Object.entries(clean)) {
       const text = value == null ? null : typeof value === 'boolean' ? (value ? '1' : '0') : typeof value === 'object' && !(value instanceof Date) ? JSON.stringify(value) : String(value)
       await stx`

@@ -34,12 +34,14 @@ const controller: TableController = {
       }
       if (row.parent_permission) {
         const [parent] = await tx`select ref_table, operation, column_rule from permission where row_id = ${String(row.parent_permission)}`
-        // Only a listed parent selects its line items one link at a time.
-        const [link] = parent?.column_rule === 'listed' ? await tx`select 1 from column_def c
-          join featherbase.permission_column pc on pc.target_column = c.row_id
+        // The parent must reach the link: listed, or by its level.
+        const [link] = parent ? await tx`select 1 from column_def c
           where c.parent = ${parent.ref_table} and c.row_id = ${String(row.parent_column ?? '')}
           and c.column_type = 'Sub-table' and c.row_table = ${String(row.ref_table)}
-          and pc.parent = ${String(row.parent_permission)} limit 1` : []
+          and (${parent.column_rule === 'every'} or (${parent.column_rule === 'basic'} and coalesce(c.tier, 'basic') = 'basic')
+            or exists (select 1 from featherbase.permission_column pc
+              where pc.target_column = c.row_id and pc.parent = ${String(row.parent_permission)}))
+          limit 1` : []
         if (!link || parent.operation !== row.operation)
           throw new AppError('ValidationError', 'An inherited permission must name a selected parent Column and the same operation')
       } else if (row.parent_column) {

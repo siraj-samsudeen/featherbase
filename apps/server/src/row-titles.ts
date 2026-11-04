@@ -48,7 +48,7 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
     const scoped = await scopedWhere(table, user, [['row_id', 'in', [...ids]]])
       .catch((err: unknown) => (err instanceof AppError ? null : Promise.reject(err)))
     if (!scoped) continue
-    const { meta, table: relation, where, cols } = scoped
+    const { meta, table: relation, where, cols, creatorColumns } = scoped
     const rows = await sql`select * from ${sql(relation)} where ${where}`
     // Only the columns this caller may read take part in the title.
     const readable = { ...meta, columns: meta.columns.filter((c) => cols.has(c.column_name)) }
@@ -64,8 +64,12 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
     const names = principalTitle
       ? await principalNames(rows.map((row) => String(row[principalTitle.column_name] ?? '')).filter(Boolean), user)
       : {}
-    for (const row of rows) {
-      const rowId = String(row[meta.row_key])
+    for (const stored of rows) {
+      // A Column reached only through a creator-scoped grant is read only on
+      // the caller's own rows, here as in every list.
+      const row = stored.created_by === user ? stored
+        : Object.fromEntries(Object.entries(stored).filter(([name]) => !creatorColumns.has(name)))
+      const rowId = String(stored[meta.row_key])
       const principal = principalTitle && row[principalTitle.column_name]
       const titled = principal && principalTitle
         ? { ...row, [principalTitle.column_name]: names[String(principal)] ?? 'Unnamed person' }

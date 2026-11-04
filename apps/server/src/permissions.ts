@@ -332,8 +332,35 @@ export function filterReadFields(
 
 // An ordinary column outside the grant rejects the whole correction. Silently
 // discarding it would report success after saving only part of the request.
+/** Whether a submitted value is the stored one, whatever form each arrived
+ *  in: Currency is stored as text, a Date may come back as a Date, Check as
+ *  '1', and an empty field as '' or null. */
+export function sameStoredValue(columnType: string | undefined, submitted: unknown, stored: unknown): boolean {
+  const empty = (value: unknown) => value === undefined || value === null || value === ''
+  if (empty(submitted) || empty(stored)) return empty(submitted) && empty(stored)
+  if (isDeepStrictEqual(submitted, stored)) return true
+  switch (columnType) {
+    case 'Int': case 'Float': case 'Currency': case 'Percent':
+      return Number(submitted) === Number(stored) && !Number.isNaN(Number(stored))
+    case 'Check': {
+      const flag = (value: unknown) => value === true || value === 1 || value === '1' || value === 'true'
+      return flag(submitted) === flag(stored)
+    }
+    case 'Date': case 'Datetime': case 'Time': {
+      const at = (value: unknown) => (value instanceof Date ? value : new Date(String(value))).getTime()
+      return !Number.isNaN(at(submitted)) && at(submitted) === at(stored)
+    }
+    case 'JSON': {
+      const parse = (value: unknown) => { try { return typeof value === 'string' ? JSON.parse(value) : value } catch { return value } }
+      return isDeepStrictEqual(parse(submitted), parse(stored))
+    }
+    default:
+      return typeof submitted !== 'object' && typeof stored !== 'object' && String(submitted) === String(stored)
+  }
+}
+
 export function stripUnwritableFields(
-  columns: { row_id: string; column_name: string; tier: 'basic' | 'restricted' }[],
+  columns: { row_id: string; column_name: string; tier: 'basic' | 'restricted'; column_type?: string }[],
   selection: ReadonlySet<string>,
   values: Record<string, unknown>,
   stored?: Record<string, unknown>,
@@ -343,7 +370,8 @@ export function stripUnwritableFields(
   for (const column of columns) {
     const name = column.column_name
     if (!Object.hasOwn(values, name) || includesColumn(selection, column)) continue
-    if (!stored || !isDeepStrictEqual(values[name] ?? null, stored[name] ?? null))
+    // With nothing stored (a new row), only an empty value is "no change".
+    if (!sameStoredValue(column.column_type, values[name], stored?.[name]))
       throw new AppError('PermissionError', `No write permission on column ${name}`)
     delete allowed[name]
   }

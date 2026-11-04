@@ -74,12 +74,23 @@ describe('migrate: a new database', () => {
         values ('legacy-base', 'Legacy Contact', 'Legacy Reader', 'basic', true, true, true)`
       await db.sql`insert into permission (row_id, ref_table, role, tier, can_read, can_write)
         values ('legacy-detail', 'Legacy Contact', 'Legacy Detail', 'restricted', true, true)`
+      // A restricted grant on the line items alone, reached through the parent.
+      await db.sql`insert into role (row_id) values ('Legacy Note Detail')`
+      await db.sql`insert into person (row_id, full_name, enabled) values ('psn_lines', 'Lines Person', true)`
+      await db.sql`insert into has_role (row_id, parent, parenttype, parentfield, role)
+        values ('legacy-held-3', 'psn_lines', 'Person', 'roles', 'Legacy Reader'),
+          ('legacy-held-4', 'psn_lines', 'Person', 'roles', 'Legacy Note Detail')`
+      await db.sql`insert into permission (row_id, ref_table, role, tier, can_read)
+        values ('legacy-note-detail', 'Legacy Contact Note', 'Legacy Note Detail', 'restricted', true)`
       const relation = await tableRelation('Legacy Contact')
       await db.sql`insert into ${db.sql(relation)} (row_id, created_by, name, phone)
         values ('mine', 'psn_legacy', 'Mine', 'my-phone'), ('other', 'Administrator', 'Other', 'hidden-phone')`
+      await db.sql`insert into ${db.sql(relation)} (row_id, created_by, name, phone)
+        values ('lines-own', 'psn_lines', 'Lines', 'lines-phone')`
       await db.sql`insert into ${db.sql(await tableRelation('Legacy Contact Note'))}
         (row_id, parent, parenttype, parentfield, note, private_note)
-        values ('legacy-note', 'mine', 'Legacy Contact', 'notes', 'visible', 'inherited')`
+        values ('legacy-note', 'mine', 'Legacy Contact', 'notes', 'visible', 'inherited'),
+          ('lines-note', 'lines-own', 'Legacy Contact', 'notes', 'shown', 'line-detail')`
       expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
       const { app } = await import('../src/index')
       const { issueSession } = await import('../src/auth')
@@ -99,6 +110,10 @@ describe('migrate: a new database', () => {
           notes: [{ note: 'new', private_note: 'inherited-create' }] } }) })
       expect(create.status).toBe(201)
       expect(await create.json()).toMatchObject({ phone: 'legacy-create-reach', notes: [{ private_note: 'inherited-create' }] })
+      const lines = { Authorization: `Bearer ${(await issueSession('psn_lines')).token}` }
+      const linesRow = await (await app.request('/api/table/Legacy%20Contact/lines-own', { headers: lines })).json()
+      expect(linesRow).toMatchObject({ name: 'Lines', notes: [{ note: 'shown', private_note: 'line-detail' }] })
+      expect(linesRow).not.toHaveProperty('phone')
     } finally {
       await scratch.close()
     }

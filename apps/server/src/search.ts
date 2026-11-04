@@ -63,14 +63,14 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
       throw error
     })
     if (!scoped) continue
-    const { meta, table, where, cols } = scoped
+    const { meta, table, where, cols, readExpression } = scoped
     const title = meta.title_column && cols.has(meta.title_column) ? meta.title_column : null
     // The wire key is always `row_id`; `Table` alone stores it as `name`.
     const key = sql(meta.row_key)
     const rows = title
       ? await sql`
-          select ${key} as row_id, ${sql(title)} as title from ${sql(table)}
-          where ${where} and (${key} ilike ${like} or ${sql(title)} ilike ${like})
+          select ${key} as row_id, ${readExpression(title)} as title from ${sql(table)}
+          where ${where} and (${key} ilike ${like} or ${readExpression(title)} ilike ${like})
           limit ${PER_TABLE}`
       : await sql`
           select ${key} as row_id, ${key} as title from ${sql(table)}

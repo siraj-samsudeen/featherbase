@@ -326,7 +326,7 @@ export async function scopedWhere(
 
   const allConds = [...conds, ...extraConds]
   const where = allConds.length ? allConds.reduce((acc, c) => sql`${acc} and ${c}`) : sql`true`
-  return { meta, table: tbl, cols, where, phys, readExpression }
+  return { meta, table: tbl, cols, where, phys, readExpression, creatorColumns }
 }
 
 // One OR-branch per Table that can own rows of this child Table: 'all' scope

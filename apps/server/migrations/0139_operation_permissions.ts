@@ -77,6 +77,29 @@ export async function up() {
       if (old[flag] || (base.operation === 'create' && old.can_write)) await convert(old, base.operation, 'every', base.id)
     }
   }
+  // A restricted row on a line-item Table widened those line items' Columns
+  // wherever the parent row was reached; it needed no basic grant of its own
+  // Table. Keep that as a line-item grant under each basic parent grant of
+  // the same operation that reaches the link, with the restricted row's role.
+  const links = await sql`select c.row_id, c.parent, c.row_table, coalesce(c.tier, 'basic') as tier
+    from column_def c where c.column_type = 'Sub-table'`
+  for (const old of previous.filter((row) => row.tier === 'restricted')) {
+    for (const link of links.filter((link) => link.row_table === old.ref_table)) {
+      for (const base of bases.filter((base) => base.old.ref_table === link.parent && COLUMN_OPERATIONS.includes(base.operation))) {
+        const flag = flags[base.operation as keyof typeof flags]
+        if (!(old[flag] || (base.operation === 'create' && old.can_write))) continue
+        const id = randomUUID()
+        replacements.get(String(old.row_id))!.push(id)
+        await sql`insert into permission ${sql({
+          row_id: id, created_by: old.created_by, created_at: old.created_at,
+          updated_by: old.updated_by, updated_at: old.updated_at,
+          ref_table: old.ref_table, role: old.role, owner_app: old.owner_app, operation: base.operation,
+          scope_mode: old.own_rows_only ? 'creator' : 'all', column_rule: 'every',
+          parent_permission: base.id, parent_column: link.row_id,
+        })}`
+      }
+    }
+  }
   // The install ledger owns every contribution made by an app, including
   // the additional operation Rows produced from its old multi-flag Row.
   for (const app of await sql`select name, perms, manifest from installed_app`) {

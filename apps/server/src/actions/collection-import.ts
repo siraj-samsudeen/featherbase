@@ -288,8 +288,12 @@ registerCollectionAction('import', {
         try {
           for (const match of matches) {
             if (match.action !== 'update') continue
-            // getDoc includes own-row, reference-scope and attached-row gates.
-            await getDoc(table, match.row_id!, user.row_id)
+            // getDoc includes own-row, reference-scope and attached-row gates,
+            // and drops the Columns this caller may not read on that row: a
+            // key matched on a hidden value would disclose it.
+            const readable = await getDoc(table, match.row_id!, user.row_id)
+            if (column !== ROW_KEY && !Object.hasOwn(readable, column))
+              throw new AppError('PermissionError', `No read permission on column ${column}`)
           }
         } catch (err) {
           if (err instanceof AppError && err.type === 'PermissionError') continue
