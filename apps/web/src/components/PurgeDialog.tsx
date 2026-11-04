@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { canRetire } from 'shared'
 import { Notice, buttonClasses, cardClasses, fmtCount, inputClasses, labelClasses } from '@featherbase/shop-floor'
 import { ApiError, api } from '../lib/api'
+import { useMeta } from '../lib/meta'
 
 // #859 (design decisions 9-14): a System Manager deletes rows permanently,
 // with their history. The server works out what goes and what points at it;
@@ -44,6 +45,28 @@ function RowLink({ row }: { row: PurgeRow }) {
 
 const plural = (n: number, one: string, many: string) => `${fmtCount(n)} ${n === 1 ? one : many}`
 
+/** One group of rows pointing at what is deleted, its link column by its label. */
+function GroupLine({ g }: { g: PurgeGroup }) {
+  const meta = useMeta(g.table)
+  const label = meta.data?.columns.find((c) => c.column_name === g.column)?.label || g.column
+  return (
+    <li data-testid="purge-group" data-action={g.action}>
+      <div>
+        <span className="font-medium text-ink">{g.table}</span>{g.lines ? ' (lines)' : ''}: {fmtCount(g.count)}{' '}
+        <span className={g.action === 'blocked' ? 'text-negative' : 'text-ink-muted'} data-testid="purge-group-action">
+          {g.action === 'delete' ? '— will be deleted' : g.action === 'clear' ? `— ${label} will be cleared` : `— cannot be deleted or unlinked here: ${g.why}`}
+        </span>
+      </div>
+      {g.rows.length > 0 && (
+        <div className="flex flex-wrap gap-x-3">
+          {g.rows.map((r) => <RowLink key={`${r.table}/${r.row_id}`} row={r} />)}
+          {g.count > g.rows.length && <span className="text-ink-muted">and {fmtCount(g.count - g.rows.length)} more</span>}
+        </div>
+      )}
+    </li>
+  )
+}
+
 export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
   table: string
   ids?: string[]
@@ -74,6 +97,8 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
       const result = await api.post<{ deleted: number; cleared: number }>(`/api/table/${encodeURIComponent(table)}:purge`, {
         ...(runId ? { run_id: runId } : { ids }), links, reason: reason.trim(), confirm: true,
       })
+      // #898: a deleted row's title goes, so recents stop offering it.
+      for (const r of plan.data?.rows ?? []) queryClient.setQueryData(['row-title', r.table, r.row_id], null)
       const touched = new Set([table, ...(plan.data?.rows ?? []).map((r) => r.table), ...(plan.data?.groups ?? []).map((g) => g.table)])
       await Promise.all([...touched].flatMap((t) => [
         queryClient.invalidateQueries({ queryKey: ['list', t] }),
@@ -91,6 +116,7 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
   const asked = data ? data.rows.filter((r) => r.table === table) : []
   const removedWith = data ? data.rows.length - asked.length : 0
   const own = data?.activity
+  const rowWord = asked.length === 1 ? 'row' : 'rows'
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40"
@@ -115,7 +141,7 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
         {data && (
           <>
             <p className="mb-2 text-sm text-ink" data-testid="purge-summary">
-              {plural(asked.length, `${table} row`, `${table} rows`)} will be deleted with everything recorded on {asked.length === 1 ? 'it' : 'them'}
+              {fmtCount(asked.length)} {table} {rowWord} will be deleted with everything recorded on {asked.length === 1 ? 'it' : 'them'}
               {own && (own.comments || own.versions || own.files || own.shares)
                 ? `: ${[own.comments && plural(own.comments, 'comment', 'comments'), own.versions && plural(own.versions, 'history entry', 'history entries'), own.files && plural(own.files, 'attachment', 'attachments'), own.shares && plural(own.shares, 'share', 'shares')].filter(Boolean).join(', ')}`
                 : ''}
@@ -140,22 +166,9 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
                   </label>
                 </fieldset>
                 <ul className="space-y-2 text-sm">
-                  {data.groups.map((g) => (
-                    <li key={`${g.table}.${g.column}`} data-testid="purge-group" data-action={g.action}>
-                      <div>
-                        <span className="font-medium text-ink">{g.table}</span>{g.lines ? ' (lines)' : ''}: {fmtCount(g.count)}{' '}
-                        <span className={g.action === 'blocked' ? 'text-negative' : 'text-ink-muted'} data-testid="purge-group-action">
-                          {g.action === 'delete' ? '— will be deleted' : g.action === 'clear' ? `— ${g.column} will be cleared` : `— cannot be deleted or unlinked here: ${g.why}`}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-x-3">
-                        {g.rows.map((r) => <RowLink key={`${r.table}/${r.row_id}`} row={r} />)}
-                        {g.count > g.rows.length && <span className="text-ink-muted">and {fmtCount(g.count - g.rows.length)} more</span>}
-                      </div>
-                    </li>
-                  ))}
+                  {data.groups.map((g) => <GroupLine key={`${g.table}.${g.column}`} g={g} />)}
                 </ul>
-                {removedWith > 0 && <p className="mt-1 text-xs text-ink-muted">{plural(removedWith, 'row', 'rows')} in all go with {asked.length === 1 ? 'it' : 'them'}.</p>}
+                {removedWith > 0 && <p className="mt-1 text-xs text-ink-muted">{plural(removedWith, 'row', 'rows')} in all {removedWith === 1 ? 'goes' : 'go'} with {asked.length === 1 ? 'it' : 'them'}.</p>}
               </section>
             )}
             {data.blocked && (

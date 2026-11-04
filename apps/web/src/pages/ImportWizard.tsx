@@ -692,6 +692,7 @@ function RunHistory({ table }: { table: string }) {
   const meta = useMeta(table)
   const canPurge = isSystemManager && tableCanPurge(meta.data)
   const [purgeRun, setPurgeRun] = useState<string | null>(null)
+  const [purgedRuns, setPurgedRuns] = useState<Set<string>>(new Set())
   const runs = useQuery({
     queryKey: ['iw-run-history', table],
     staleTime: 10_000,
@@ -742,6 +743,7 @@ function RunHistory({ table }: { table: string }) {
           runId={purgeRun}
           onClose={() => setPurgeRun(null)}
           onDone={() => {
+            setPurgedRuns((s) => new Set([...s, purgeRun]))
             setPurgeRun(null)
             void runs.refetch()
           }}
@@ -758,12 +760,14 @@ function RunHistory({ table }: { table: string }) {
             {r.file_name ?? 'API import'} — {fmtCount(r.updated)} processed matches · {fmtCount(r.inserted)} added · {fmtCount(r.failed)}{' '}
             failed
           </span>
-          {r.reverted_at ? (
+          {purgedRuns.has(r.run_id) ? (
+            <span className="text-xs text-ink-subtle" data-testid={`iw-run-purged-${idx}`}>its added rows were deleted permanently</span>
+          ) : r.reverted_at ? (
             <span className="text-xs text-ink-subtle">reverted</span>
           ) : (
             <RevertControl i={`h${idx}`} table={table} runId={r.run_id} />
           )}
-          {canPurge && r.inserted > 0 && (
+          {canPurge && r.inserted > 0 && !purgedRuns.has(r.run_id) && (
             <button
               className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
               onClick={() => setPurgeRun(r.run_id)}

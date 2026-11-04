@@ -727,7 +727,7 @@ export function FormView({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-row-title"
-            className={cardClasses('w-full max-w-md p-4')}
+            className={cardClasses('w-full max-w-lg p-4')}
             data-testid="delete-row-dialog"
             onClick={(e) => e.stopPropagation()}
           >
@@ -735,7 +735,7 @@ export function FormView({
               id="delete-row-title"
               className="mb-2 text-base font-semibold text-ink"
             >
-              Delete {table} {name}?
+              Delete {table}: <RowTitle table={table} rowId={name} />?
             </h2>
             <p className="mb-3 text-sm text-ink-muted">
               This cannot be undone.
@@ -745,7 +745,7 @@ export function FormView({
                 {deleteError}
               </p>
             )}
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2 [&>button]:whitespace-nowrap">
               {deleteError && access.data?.purge && (
                 <button
                   onClick={() => {
@@ -781,14 +781,15 @@ export function FormView({
               >
                 Cancel
               </button>
-              <button
+              {/* After a refusal, Delete would only be refused again. */}
+              {!deleteError && <button
                 onClick={deleteRow}
                 disabled={deleteBusy}
                 className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint disabled:opacity-40' })}
                 data-testid="delete-row-confirm"
               >
                 {deleteBusy ? 'Deleting…' : 'Delete'}
-              </button>
+              </button>}
             </div>
           </div>
         </div>
