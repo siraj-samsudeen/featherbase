@@ -631,7 +631,9 @@ async function assertAccessColumnsUnchanged(
 // already settled on the parent (a create-only grant carries no write tier).
 async function childWriteColumns(user: string, parentColumns: ColumnSelection, parentTable: string, childTable: string, parentColumn: string, action: 'write' | 'create', createdBy?: string): Promise<ColumnSelection> {
   if (parentColumns.has('*')) return new Set(ALL_COLUMNS)
-  const columns = new Set(['@basic', ...await childColumns(user, parentTable, childTable, parentColumn, action, createdBy)])
+  // A basic-level parent grant reaches the line items' basic Columns, as it
+  // always did; a listed one reaches only the line-item Columns it lists.
+  const columns = new Set([...parentColumns.has('@basic') ? ['@basic'] : [], ...await childColumns(user, parentTable, childTable, parentColumn, action, createdBy)])
   // #608: what a new line item may hold is what create or edit access reaches.
   if (action === 'create') for (const column of await childColumns(user, parentTable, childTable, parentColumn, 'write', createdBy)) columns.add(column)
   return columns

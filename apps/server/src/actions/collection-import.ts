@@ -273,6 +273,11 @@ registerCollectionAction('import', {
         if (column !== ROW_KEY && !meta.columns.some((c) => c.column_name === column))
           throw new AppError('ValidationError', `${meta.name} has no column ${column}`)
       const readColumns = await permittedColumns(user.row_id, table, 'read')
+      // A Column read only on the caller's own rows, beside rows read in
+      // full, is never offered: whether a guess matched a hidden value would
+      // otherwise show in the answer.
+      const readEverywhere = await permittedColumns(user.row_id, table, 'read', '')
+      const ownRowsOnly = (await permissionScope(user.row_id, table, 'read')) === 'own_rows'
       const writeColumns = await permittedColumns(user.row_id, table, 'write')
       // The row key is not a metadata Column: any grant of the action reaches it.
       const reaches = (selection: ReadonlySet<string>, definition: (typeof meta.columns)[number] | undefined) =>
@@ -282,6 +287,7 @@ registerCollectionAction('import', {
         const definition = meta.columns.find((c) => c.column_name === column)
         if (definition && (definition.read_only || ['Section Break', 'Column Break', 'Sub-table'].includes(definition.column_type))) continue
         if (!reaches(readColumns, definition)) continue
+        if (!ownRowsOnly && !reaches(readEverywhere, definition)) continue
         const matches = await resolveRows(meta, rows, column)
         // A single blank, duplicate or ambiguous key invalidates the column.
         if (matches.some((r) => r.action === 'fail')) continue

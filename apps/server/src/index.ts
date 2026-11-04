@@ -1795,7 +1795,10 @@ app.get('/api/permissions/:table', async (c) => {
   await assertSystemManager(who(c))
   const table = c.req.param('table')
   const roles = (await sql`select row_id from role order by row_id`).map((r) => r.row_id as string)
-  const rows = await sql`select role, operation from permission where ref_table = ${table} and parent_permission is null`
+  // The basic Rows the matrix edits; a contribution that depends on another
+  // grant is not a tick of its own.
+  const rows = await sql`select role, operation from permission where ref_table = ${table}
+    and parent_permission is null and requires_permission is null`
   const perms = roles.map((role) => ({ role, ...Object.fromEntries(Object.entries(MATRIX_OPERATIONS)
     .map(([flag, operation]) => [flag, rows.some((row) => row.role === role && row.operation === operation)])) }))
   return c.json({ table, roles, perms })
@@ -1819,7 +1822,18 @@ app.post('/api/permissions/:table', async (c) => {
     for (const [flag, operation] of Object.entries(MATRIX_OPERATIONS)) {
       const contributions = existing.filter((row) => row.operation === operation)
       if (!body[flag]) {
-        for (const row of contributions) await deleteDoc('Permission', String(row.row_id), user)
+        for (const row of contributions) {
+          // Revoking the basic grant also ends what depends on it, as clearing
+          // the old flag left its restricted Row reaching nothing.
+          const dependents = await sql`with recursive dependent(row_id, depth) as (
+              select row_id, 1 from permission where requires_permission = ${String(row.row_id)} or parent_permission = ${String(row.row_id)}
+              union
+              select p.row_id, d.depth + 1 from permission p join dependent d
+                on p.requires_permission = d.row_id or p.parent_permission = d.row_id where d.depth < 16)
+            select row_id, max(depth) as depth from dependent group by row_id order by max(depth) desc`
+          for (const dependent of dependents) await deleteDoc('Permission', String(dependent.row_id), user)
+          await deleteDoc('Permission', String(row.row_id), user)
+        }
       } else if (!contributions.length) {
         const saved = await saveDoc('Permission', {
           ref_table: table, role: body.role, operation, scope_mode: shape?.scope_mode ?? 'all', column_rule: 'basic',
