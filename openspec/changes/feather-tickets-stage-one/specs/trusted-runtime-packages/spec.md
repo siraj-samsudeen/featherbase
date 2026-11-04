@@ -36,23 +36,29 @@ Then support sees the requester by the name Anjali's own session shows, not by h
 ### Requirement: An install or enable takes effect without a restart
 An **App** installed or enabled by another process while the server runs SHALL start serving on its next request when this server holds its exact package, with no restart. When it cannot run here, its refusals and the Apps screen SHALL state the plain reason and what to do, and SHALL still be audited and fail closed.
 
-#### Scenario: Tickets installed from the command line works at once
+#### Scenario: Tickets turned on by another process works at once
 
-- **GIVEN** the server is running and Tickets is not installed
-- **WHEN** an administrator runs `featherbase advanced apps install-app tickets`
-- **THEN** a requester's next Tickets request succeeds, with no restart
+```gherkin
+Given Tickets was turned off and then turned on again by another process while the server ran
+When Anjali opens Tickets
+Then Tickets answers without a restart
+```
 
 #### Scenario: A changed app under the same version says why
 
-- **GIVEN** Tickets 0.1.0 is installed and the server holds a changed Tickets 0.1.0
-- **WHEN** a requester opens Tickets
-- **THEN** the refusal says its files (or featherbase.json) changed under the same version, and to re-pin it on a development database or give it a new version
+```gherkin
+Given the installed Tickets 0.1.0 records a different build than the one this server holds
+When Anjali opens Tickets
+Then the refusal says its files changed under the same version and how to fix it
+```
 
 ### Requirement: An administrator may let an app read named instance Tables
 An administrator SHALL be able to list instance Tables in an app's declared `linked_tables` setting. That app's actions and reads SHALL then read those Tables, and never write them, as the caller with the caller's own permissions. Tables owned by another app, system Tables and data sources SHALL stay refused.
 
-#### Scenario: Tickets reads the instance's Source System Table as the requester
+#### Scenario: Tickets reads a linked instance Table as the requester
 
-- **GIVEN** an administrator lists "Source System" in Tickets' `linked_tables` setting
-- **WHEN** a requester who may read Source System opens the Data Quality Issue form
-- **THEN** its Source system field offers the Source System rows, and a requester who may not read them is offered none
+```gherkin
+Given an administrator lists a Source System Table that only Pat may read in Tickets' linked_tables setting
+When Pat and Anjali open the Data Quality Issue form
+Then Pat's Source system field offers its rows and Anjali's offers none
+```
