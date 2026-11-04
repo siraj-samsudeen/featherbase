@@ -4,7 +4,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, test, vi } from 'vitest'
-import { DrillPane, FieldGrid, GroupChip, LinkChip, PanePlace, PaneSection, PathBar, RecentPaths, resolvePanePlace, SplitWithPane, ViewToggle } from '@featherbase/shop-floor'
+import { DrillPane, FieldGrid, GroupChip, LinkChip, PanePlace, PaneSection, PathBar, RecentPaths, resolvePanePlace, SplitWithPane, TreeOutline, ViewToggle, type TreeNode } from '@featherbase/shop-floor'
 
 describe('ViewToggle', () => {
   test('marks the chosen view as pressed and reports a change', async () => {
@@ -262,5 +262,130 @@ describe('RecentPaths', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Path 2' }))
     expect(onPick).toHaveBeenCalledWith('p1')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+})
+
+describe('TreeOutline', () => {
+  const nodes: TreeNode[] = [
+    { id: 'h-to', label: 'Links to', heading: true },
+    { id: 'aisle', label: 'Aisle 4', kind: 'Aisle' },
+    { id: 'centre', label: 'North bay', code: 'B-104', kind: 'Bin' },
+    { id: 'h-from', label: 'Linked from', heading: true },
+    { id: 'shelves', label: 'Shelf', group: true, count: 40, children: [
+      { id: 's1', label: 'Top shelf', code: 'S-1', hasChildren: true },
+      { id: 's2', label: 'Middle shelf', code: 'S-2' },
+    ], more: { shown: 20, total: 40, onShowAll: vi.fn() } },
+  ]
+  function Tree({ onToggle = vi.fn(), onActivate = vi.fn(), open = [] as string[] }) {
+    const [expanded, setExpanded] = useState(new Set(open))
+    return <TreeOutline label="Around North bay" nodes={nodes} expanded={expanded} selected="centre" onActivate={onActivate}
+      renderActions={(node) => node.id === 'centre' ? <button type="button">Focus here</button> : null}
+      onToggle={(id) => {
+        onToggle(id)
+        setExpanded((was) => { const next = new Set(was); if (next.has(id)) next.delete(id); else next.add(id); return next })
+      }} />
+  }
+  const item = (name: string) => screen.getByRole('treeitem', { name })
+
+  test('headings are captions, not lines of the tree', () => {
+    render(<Tree />)
+    expect(screen.getByText('Links to')).toBeInTheDocument()
+    expect(screen.queryByRole('treeitem', { name: 'Links to' })).not.toBeInTheDocument()
+  })
+
+  test('a line reads name · code with its level', () => {
+    render(<Tree open={['shelves']} />)
+    expect(item('Top shelf · S-1')).toHaveAttribute('aria-level', '2')
+  })
+
+  test('a group line shows its count and whether it is open', () => {
+    render(<Tree />)
+    expect(item('Shelf 40')).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  test('only the selected line is in the tab order', () => {
+    render(<Tree />)
+    expect(screen.getAllByRole('treeitem').filter((el) => el.tabIndex === 0)).toEqual([item('North bay · B-104')])
+  })
+
+  test('Down moves to the next line, past a heading', async () => {
+    const user = userEvent.setup()
+    render(<Tree />)
+    item('North bay · B-104').focus()
+    await user.keyboard('{ArrowDown}')
+    expect(item('Shelf 40')).toHaveFocus()
+  })
+
+  test('Up moves to the previous line', async () => {
+    const user = userEvent.setup()
+    render(<Tree />)
+    item('North bay · B-104').focus()
+    await user.keyboard('{ArrowUp}')
+    expect(item('Aisle 4')).toHaveFocus()
+  })
+
+  test('Right on a closed line asks to open it', async () => {
+    const onToggle = vi.fn()
+    const user = userEvent.setup()
+    render(<Tree onToggle={onToggle} />)
+    item('Shelf 40').focus()
+    await user.keyboard('{ArrowRight}')
+    expect(onToggle).toHaveBeenCalledWith('shelves')
+  })
+
+  test('Right on an open line enters its first child', async () => {
+    const user = userEvent.setup()
+    render(<Tree open={['shelves']} />)
+    item('Shelf 40').focus()
+    await user.keyboard('{ArrowRight}')
+    expect(item('Top shelf · S-1')).toHaveFocus()
+  })
+
+  test('Left on a child goes to its parent', async () => {
+    const user = userEvent.setup()
+    render(<Tree open={['shelves']} />)
+    item('Middle shelf · S-2').focus()
+    await user.keyboard('{ArrowLeft}')
+    expect(item('Shelf 40')).toHaveFocus()
+  })
+
+  test('Left on an open line closes it', async () => {
+    const onToggle = vi.fn()
+    const user = userEvent.setup()
+    render(<Tree open={['shelves']} onToggle={onToggle} />)
+    item('Shelf 40').focus()
+    await user.keyboard('{ArrowLeft}')
+    expect(onToggle).toHaveBeenCalledWith('shelves')
+  })
+
+  test('Enter activates the focused line', async () => {
+    const onActivate = vi.fn()
+    const user = userEvent.setup()
+    render(<Tree onActivate={onActivate} />)
+    item('Aisle 4').focus()
+    await user.keyboard('{Enter}')
+    expect(onActivate).toHaveBeenCalledWith('aisle')
+  })
+
+  test('clicking a line activates it', async () => {
+    const onActivate = vi.fn()
+    const user = userEvent.setup()
+    render(<Tree onActivate={onActivate} />)
+    await user.click(screen.getByText('Aisle 4'))
+    expect(onActivate).toHaveBeenCalledWith('aisle')
+  })
+
+  test('a capped group offers to show all its rows', async () => {
+    const user = userEvent.setup()
+    render(<Tree open={['shelves']} />)
+    expect(screen.getByText(/first 20/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'show all 40' }))
+    expect(nodes[4].more!.onShowAll).toHaveBeenCalledOnce()
+  })
+
+  test('the selected line carries its actions', () => {
+    render(<Tree />)
+    expect(screen.getByRole('button', { name: 'Focus here' })).toBeInTheDocument()
+    expect(item('North bay · B-104')).toHaveAttribute('aria-selected', 'true')
   })
 })
