@@ -151,6 +151,11 @@ test('the searchable catalog opens a preview and keeps its filters and selection
   expect(screen.getByRole('searchbox', { name: 'Tables' })).toHaveValue('STORES')
   expect(screen.getByRole('combobox', { name: 'Schema' })).toHaveValue('main')
   expect(screen.getByTestId('browser-database')).toHaveValue('sales')
+  await changeStandin(dir, 'sales', ['create table stores_new as select * from stores'])
+  expect(screen.getByRole('table', { name: 'Warehouse tables' })).not.toHaveTextContent('stores_new')
+  await user.click(screen.getByTestId('browser-refresh'))
+  await waitFor(() => expect(screen.getByRole('table', { name: 'Warehouse tables' })).toHaveTextContent('stores_new'), WAIT)
+  expect(screen.getByRole('searchbox', { name: 'Tables' })).toHaveValue('STORES')
 })
 
 test('the browser reopens on the schema this person last had open', async ({ admin }) => {
@@ -196,6 +201,21 @@ test('mapping search finds every source column and preserves real input edits an
   expect(screen.getByTestId('copy-key')).toHaveValue('code')
   expect(screen.getByRole('checkbox', { name: 'Keep code' })).toBeDisabled()
   await waitFor(() => expect(screen.getByTestId('copy-create')).toBeEnabled(), WAIT)
+  await user.clear(screen.getByTestId('copy-name'))
+  await user.type(screen.getByTestId('copy-name'), 'Data Source')
+  await user.click(screen.getByTestId('copy-create'))
+  expect(await screen.findByText('Table Data Source already exists', {}, WAIT)).toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: 'Name for name' })).toHaveValue('store_name')
+  expect(screen.getByRole('checkbox', { name: 'Keep city' })).not.toBeChecked()
+  await user.clear(screen.getByTestId('copy-name'))
+  await user.type(screen.getByTestId('copy-name'), 'Mapped Warehouse Stores')
+  await user.click(screen.getByTestId('copy-create'))
+  await waitFor(() => expect(screen.getByTestId('list-rows')).toHaveTextContent('Harbour Road'), WAIT)
+  expect(screen.queryByTestId('copy-setup')).not.toBeInTheDocument()
+  expect(await admin.get('/api/table/Mapped%20Warehouse%20Stores/S001')).toMatchObject({ row_id: 'S001', store_name: 'Harbour Road', state_code: '32' })
+  const copied = await admin.get<{ columns: { column_name: string; label: string; description?: string }[] }>('/api/table/Mapped%20Warehouse%20Stores:meta')
+  expect(copied.columns).toEqual(expect.arrayContaining([expect.objectContaining({ column_name: 'store_name', label: 'Store title', description: 'Trading name' })]))
+  expect(copied.columns.map(c => c.column_name)).not.toContain('city')
 })
 
 test('mapping search reaches the last of 80 columns and updates its source identity, not its filtered index', async ({ admin }) => {
@@ -230,4 +250,93 @@ test('someone who is not a System Manager sees no Data sources group', async ({ 
   await renderApp('/featherbase/admin', clerk)
   await screen.findByTestId('sidebar-group-data', {}, WAIT)
   expect(screen.queryByTestId('sidebar-group-sources')).not.toBeInTheDocument()
+})
+
+test('Copy again refreshes corrected native rows through source changes', async ({ admin }) => {
+  await changeStandin(dir, 'sales', ['create table copybar_stores as select * from stores'])
+  await connect(admin, 'web-wh-copybar')
+  await admin.post('/api/table/Data%20Source/web-wh-copybar:copy_create', {
+    database: 'sales', schema: 'main', table: 'copybar_stores', name: 'Copybar Store', key: 'code',
+    columns: ['name', 'state_code', 'code'].map(source => ({ source, column_name: source })),
+  })
+  const rowPath = '/api/table/Copybar%20Store/S002'
+  const row = await admin.get<{ updated_at: string }>(rowPath)
+  await admin.post('/api/save_row', { table: 'Copybar Store', row: { row_id: 'S002', updated_at: row.updated_at, state_code: 'Owner correction' } })
+  const user = userEvent.setup()
+  await renderApp('/featherbase/admin/table/copybar-store', admin)
+  const bar = await screen.findByTestId('copy-bar', {}, WAIT)
+  expect(bar).toHaveTextContent('Copied from web-wh-copybar · sales.main.copybar_stores · matched on code')
+  expect(bar).toHaveTextContent('last copied')
+  await waitFor(() => expect(screen.getByTestId('list-rows')).toHaveTextContent('Owner correction'), WAIT)
+
+  await changeStandin(dir, 'sales', [
+    `update copybar_stores set name = 'Hill Street renamed', state_code = '34' where code = 'S002'`,
+    `delete from copybar_stores where code = 'S003'`,
+    `insert into copybar_stores values ('S004', 'New Quay', 'Port Town', '07')`,
+  ])
+  await admin.post('/api/table/Data%20Source/web-wh-copybar:refresh_tables', { database: 'sales' })
+  await user.click(within(bar).getByRole('button', { name: 'Copy again' }))
+  const result = await screen.findByTestId('copy-result', {}, WAIT)
+  expect(result).toHaveTextContent('Copied: 1 added · 2 updated')
+  expect(result).toHaveTextContent('1 conflict where the source changed a value someone corrected (see Import conflicts)')
+  expect(result).toHaveTextContent('1 deleted at source')
+  await waitFor(() => {
+    expect(screen.getByTestId('list-rows')).toHaveTextContent('Hill Street renamed')
+    expect(screen.getByTestId('list-rows')).toHaveTextContent('New Quay')
+    expect(screen.getByTestId('list-rows')).toHaveTextContent('Owner correction')
+    expect(within(bar).getByRole('button', { name: 'Copy again' })).toBeEnabled()
+  }, WAIT)
+  expect(await admin.get(rowPath)).toMatchObject({ name: 'Hill Street renamed', state_code: 'Owner correction' })
+  expect(await admin.get('/api/table/Copybar%20Store/S003')).toMatchObject({ deleted_at_source: true })
+
+  await user.click(screen.getByRole('button', { name: 'List actions' }))
+  await user.click(await screen.findByRole('button', { name: 'Import conflicts' }))
+  const panel = await screen.findByRole('region', { name: 'Import conflicts' })
+  expect(await within(panel).findByText('Owner correction')).toBeInTheDocument()
+  expect(within(panel).getByText('34')).toBeInTheDocument()
+
+  await changeStandin(dir, 'sales', [`insert into copybar_stores values ('S003', 'Market Lane restored', 'Port Town', '32')`])
+  await admin.post('/api/table/Data%20Source/web-wh-copybar:refresh_tables', { database: 'sales' })
+  await user.click(within(bar).getByRole('button', { name: 'Copy again' }))
+  await waitFor(() => {
+    expect(screen.getByTestId('copy-result')).toHaveTextContent('Copied: 0 added · 4 updated')
+    expect(screen.getByTestId('copy-result')).toHaveTextContent('1 back at source')
+    expect(screen.getByTestId('copy-result')).not.toHaveTextContent('deleted at source')
+    expect(screen.getByTestId('list-rows')).toHaveTextContent('Market Lane restored')
+    expect(within(bar).getByRole('button', { name: 'Copy again' })).toBeEnabled()
+  }, WAIT)
+  expect(await admin.get('/api/table/Copybar%20Store/S003')).toMatchObject({ deleted_at_source: false, name: 'Market Lane restored' })
+})
+
+test('a refused Copy again can be retried after correcting source keys', async ({ admin }) => {
+  await changeStandin(dir, 'sales', ['create table copybar_retry_stores as select * from stores'])
+  await connect(admin, 'web-wh-copybar-retry')
+  await admin.post('/api/table/Data%20Source/web-wh-copybar-retry:copy_create', {
+    database: 'sales', schema: 'main', table: 'copybar_retry_stores', name: 'Copybar Retry Store', key: 'code',
+    columns: ['name', 'code'].map(source => ({ source, column_name: source })),
+  })
+  const before = await admin.get('/api/table/Copybar%20Retry%20Store/S001')
+  await changeStandin(dir, 'sales', [`insert into copybar_retry_stores values ('S001', 'Duplicate store', 'Port Town', '32')`])
+  await admin.post('/api/table/Data%20Source/web-wh-copybar-retry:refresh_tables', { database: 'sales' })
+  const user = userEvent.setup()
+  await renderApp('/featherbase/admin/table/copybar-retry-store', admin)
+  const bar = await screen.findByTestId('copy-bar', {}, WAIT)
+  await user.click(within(bar).getByRole('button', { name: 'Copy again' }))
+  expect(await within(bar).findByText('Copy key values must be unique')).toBeInTheDocument()
+  expect(screen.queryByTestId('copy-result')).not.toBeInTheDocument()
+  expect(within(bar).getByRole('button', { name: 'Copy again' })).toBeEnabled()
+  expect(await admin.get('/api/table/Copybar%20Retry%20Store/S001')).toEqual(before)
+
+  await changeStandin(dir, 'sales', [
+    `delete from copybar_retry_stores where name = 'Duplicate store'`,
+    `update copybar_retry_stores set name = 'Harbour Road refreshed' where code = 'S001'`,
+  ])
+  await admin.post('/api/table/Data%20Source/web-wh-copybar-retry:refresh_tables', { database: 'sales' })
+  await user.click(within(bar).getByRole('button', { name: 'Copy again' }))
+  expect(await screen.findByTestId('copy-result', {}, WAIT)).toHaveTextContent('Copied: 0 added · 3 updated')
+  expect(bar).not.toHaveTextContent('Copy key values must be unique')
+  await waitFor(() => {
+    expect(screen.getByTestId('list-rows')).toHaveTextContent('Harbour Road refreshed')
+    expect(within(bar).getByRole('button', { name: 'Copy again' })).toBeEnabled()
+  }, WAIT)
 })
