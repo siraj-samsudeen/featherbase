@@ -30,8 +30,8 @@ export function PanePlace({ value, resolved, onChange, label = 'Pane place' }: {
 /**
  * Content with the drill pane beside it (right: about 40% wide, at least
  * 360px, as tall as the window) or below it (bottom: at most half the window
- * tall). Either stays in sight while the page scrolls, and scrolls inside
- * itself; neither ever scrolls the page sideways. With no pane the content
+ * tall, below the content, never over it). A pane on the right stays in sight
+ * while the page scrolls; either scrolls inside itself, and neither ever scrolls the page sideways. With no pane the content
  * fills it all. `data-pane` says where the pane is, so the page around can
  * make room for one on the right.
  */
@@ -49,7 +49,7 @@ export function SplitWithPane({ place, pane, children }: {
       {shown && (
         <div data-testid="split-pane" className={right
           ? 'sticky top-0 flex max-h-[calc(100dvh-5rem)] min-h-0 w-2/5 min-w-90 max-w-full shrink-0 flex-col overflow-y-auto bg-surface'
-          : 'sticky bottom-0 mt-4 flex max-h-[50vh] min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto bg-surface shadow-lg'}
+          : 'mt-4 flex max-h-[50vh] min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto bg-surface'}
         >{pane}</div>
       )}
     </div>

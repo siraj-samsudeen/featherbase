@@ -7,7 +7,7 @@ import { connectionsQuery, type Connection, type Filter } from '../lib/connectio
 import { listFields, viewColumns } from '../lib/list-view-columns'
 import { metaQuery, type TableMeta } from '../lib/meta'
 import type { NavPane } from '../lib/nav-path'
-import { ALL_ROWS, TREE_PAGE, backlinkGroups, forwardLinks, groupRowsQuery, shownCode, UNSEEN_ROW, type BacklinkGroup } from '../lib/relations'
+import { ALL_ROWS, TREE_PAGE, backlinkGroups, groupOrder, forwardLinks, groupRowsQuery, shownCode, UNSEEN_ROW, type BacklinkGroup } from '../lib/relations'
 import { rowTitleQuery } from '../lib/row-titles'
 
 // #910 checklist 18–19: a tree of related rows. Each row line unfolds in
@@ -115,7 +115,7 @@ function groupLine(w: Walker, id: string, g: BacklinkGroup, table: string, row: 
   if (!meta) return { ...node, loading: true, children: [] }
   const all = ctx.showAll.has(id)
   const rows = w.get<{ data: Row[]; total: number }>(groupRowsQuery(g.connection, {
-    fields: listFields(viewColumns(meta, {})), limit: all ? ALL_ROWS : TREE_PAGE,
+    fields: listFields(viewColumns(meta, {})), limit: all ? ALL_ROWS : TREE_PAGE, orderBy: groupOrder(meta),
   }))
   if (!rows) return { ...node, loading: true, children: [] }
   const children = rows.data.map((r) => {

@@ -94,7 +94,7 @@ export const ALL_ROWS = 500
 
 /** A group's rows: the connected Table's list, narrowed by the connection's
  *  filters, `limit` at a time (undefined: as many as one read returns). */
-export function useGroupRows(connection: Pick<Connection, 'table' | 'filters'> | undefined, opts: { fields?: string[]; limit?: number; enabled?: boolean } = {}) {
+export function useGroupRows(connection: Pick<Connection, 'table' | 'filters'> | undefined, opts: { fields?: string[]; limit?: number; enabled?: boolean; orderBy?: string } = {}) {
   return useQuery({
     ...groupRowsQuery(connection ?? { table: '', filters: [] }, opts),
     enabled: Boolean(connection) && opts.enabled !== false,
@@ -102,12 +102,13 @@ export function useGroupRows(connection: Pick<Connection, 'table' | 'filters'> |
 }
 
 /** The one query for a group's rows (or, with no filters, a page of a Table's rows). */
-export function groupRowsQuery(connection: Pick<Connection, 'table' | 'filters'>, opts: { fields?: string[]; limit?: number; start?: number } = {}) {
+export function groupRowsQuery(connection: Pick<Connection, 'table' | 'filters'>, opts: { fields?: string[]; limit?: number; start?: number; orderBy?: string } = {}) {
   return {
-    queryKey: ['group-rows', connection.table, JSON.stringify(connection.filters), opts.fields ?? null, opts.limit ?? null, opts.start ?? 0],
+    queryKey: ['group-rows', connection.table, JSON.stringify(connection.filters), opts.fields ?? null, opts.limit ?? null, opts.start ?? 0, opts.orderBy ?? null],
     queryFn: () => listResource(connection.table, {
       filters: connection.filters,
       fields: opts.fields,
+      order_by: opts.orderBy,
       limit_start: opts.start || undefined,
       limit_page_length: opts.limit ?? ALL_ROWS,
     }),
@@ -161,4 +162,12 @@ export function rowNameText(name: RowName, loading = '…'): string {
   if (name.state === 'unreadable') return UNSEEN_ROW
   if (name.state === 'loading') return loading
   return name.code ? `${name.title} · ${name.code}` : name.title
+}
+
+/** The order a group lists its rows in: by code where rows have codes people
+ *  use, else by name, so "the first 20" are the same 20 every time. */
+export function groupOrder(meta: Pick<TableMeta, 'title_column' | 'id_pattern' | 'data_source'>): string | undefined {
+  const title = meta.title_column && meta.title_column !== 'row_id' ? meta.title_column : undefined
+  if (title && (meta.data_source || !generatedIds(meta.id_pattern))) return 'row_id asc'
+  return title ? `${title} asc` : undefined
 }

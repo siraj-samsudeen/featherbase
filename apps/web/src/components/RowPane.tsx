@@ -14,7 +14,7 @@ import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { push, type NavGroup, type NavPane, type NavStep } from '../lib/nav-path'
 import { useNavigation, type Navigation } from '../lib/navigation'
 import { useNavigationSettings } from '../lib/nav-settings'
-import { backlinkGroups, forwardLinks, groupKey, rowNameText, useGroupRows, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
+import { backlinkGroups, forwardLinks, groupKey, groupOrder, rowNameText, useGroupRows, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
 import { useConnections } from '../lib/connections'
 import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement } from './FormArrangement'
 import { useI18n } from '../lib/i18n'
@@ -159,9 +159,14 @@ function PointsAt({ links, nav, onOpen }: { links: ForwardLink[]; nav: Navigatio
       <dl className="grid grid-cols-[minmax(5rem,max-content)_minmax(0,1fr)] items-center gap-x-4 gap-y-2 text-sm">
         {links.map((link) => {
           const column = overList ? filterColumn(listMeta.data, link) : undefined
+          // The filter goes on the path before the row it was read from:
+          // "Sites › Region: Kerala › Enchakkal", as if narrowed first.
           const filter = column && (() => {
             const kept = (step.filters ?? []).filter((f) => f[0] !== column.column_name)
-            nav.push({ ...step, filters: [...kept, [column.column_name, '=', link.row_id]] })
+            const filtered: NavStep = { ...step, filters: [...kept, [column.column_name, '=', link.row_id]] }
+            const { pane: _, ...listOnly } = filtered
+            const before = { steps: nav.path.steps.slice(0, nav.path.at), at: nav.path.at - 1 }
+            nav.reshape(push(push(before, listOnly), filtered))
           })
           return (
             <div key={link.column} className="contents">
@@ -204,7 +209,7 @@ function GroupRows({ group, nav, onOpen }: { group: BacklinkGroup; nav: Navigati
   const settings = useSettings()
   const [view, setView] = useState<ViewMode>('table')
   const columns = meta.data ? viewColumns(meta.data, {}) : []
-  const rows = useGroupRows(connection, { fields: listFields(columns), limit: PANE_ROWS, enabled: columns.length > 0 })
+  const rows = useGroupRows(connection, { fields: listFields(columns), limit: PANE_ROWS, enabled: columns.length > 0, orderBy: meta.data ? groupOrder(meta.data) : undefined })
   const listStep: NavStep = { screen: 'list', table: connection.table, filters: connection.filters as ListFilter[] }
   const listHref = nav.addressed
     ? nav.href(push(nav.path, listStep))

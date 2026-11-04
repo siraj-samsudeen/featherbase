@@ -21,6 +21,8 @@ export interface Navigation {
   go: (index: number) => void
   /** Puts a whole path on screen (a recent path). */
   open: (path: NavPath) => void
+  /** Puts a whole path on screen in place of the current one, adding no history entry. */
+  reshape: (path: NavPath) => void
   /** The address of a path on the page that shows its current step, for links. */
   href: (path: NavPath) => string
   /** Whether this navigation lives in the address (and so can be shared). */
@@ -75,6 +77,7 @@ export function useAddressNavigation(here: NavStep, raw: unknown): Navigation {
     replace: (step) => show(replaceAt(path, step), true),
     go: (index) => show(goTo(path, index)),
     open: (next) => show(next),
+    reshape: (next) => show(next, true),
     href: pathHref,
     addressed: true,
   }), [path, show])
@@ -90,6 +93,7 @@ export function useLocalNavigation(here: NavStep): Navigation {
     replace: (step) => setPath((p) => replaceAt(p, step)),
     go: (index) => setPath((p) => goTo(p, index)),
     open: setPath,
+    reshape: setPath,
     href: () => '',
     addressed: false,
   }), [path])

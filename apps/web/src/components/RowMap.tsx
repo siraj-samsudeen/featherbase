@@ -309,7 +309,8 @@ export function RowMap({ table, name }: { table: string; name: string }) {
                 fontWeight={700}
                 fill="var(--color-action)"
               >
-                {fmtCount(g.count)}
+                {/* a space first, so the box reads "… via Site 3", not "Site3" */}
+                {` ${fmtCount(g.count)}`}
               </text>
             </g>
           ))}
