@@ -231,12 +231,12 @@ test("a link to a row the viewer can't read is not in the tab order", async ({ a
   expect(box).not.toHaveAttribute('tabindex')
 })
 
-// Beside the pane the map is narrow whatever the window: it switches to its
-// list by its own width, so the drawing never shrinks below legible text.
-test("the map picks its drawing or its list by its own width, not the window's", async ({ admin }) => {
+// Beside the pane the map keeps its drawing at its full size, so its text
+// never shrinks below legible; a narrow frame scrolls it sideways instead.
+test('the map drawing never shrinks below its own size; a narrow frame scrolls it', async ({ admin }) => {
   await seed(admin)
   await openMap(admin, 'Rm Order', 'ord-1')
-  expect(screen.getByTestId('map-svg').getAttribute('class')).toMatch(/@4xl:block/)
-  expect(screen.getByTestId('map-narrow').className).toMatch(/@4xl:hidden/)
-  expect(screen.getByTestId('map-svg').closest('.\\@container')).not.toBeNull()
+  const svg = screen.getByTestId('map-svg')
+  expect(svg.getAttribute('class')).toMatch(/\bmin-w-\[56rem\]/)
+  expect(svg.parentElement!.className).toMatch(/\boverflow-x-auto\b/)
 })
