@@ -5,6 +5,7 @@ import { makeClient, type TestClient, type CreateUserFn } from 'feather-testing-
 import { test as pgTest } from './pg-test'
 import { grantRole, makeTable } from './fixtures'
 import { discoverPackages } from '../src/runtime-packages'
+import { sql } from '../src/db'
 
 // #918: a ticket type's own transitions — who may take which action from
 // which state, and what they must record. The rules run on synthetic rows.
@@ -117,6 +118,45 @@ describe('Tickets: transitions per ticket type (#918)', () => {
     ticket = (await act(w.support, 'edit', { ...revision(ticket), assigned_to: w.contact.user })).ticket
     await refused(take(vivek, ticket, 'Mark fixed', { what_changed: 'x' }), /not allowed/i)
     expect((await take(w.contact, ticket, 'Mark fixed', { what_changed: 'Door number corrected' })).ticket_state).toBe('Fixed: to verify')
+  })
+
+  test('the requester and support correct the wording; the earlier wording is kept; anyone else is refused', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    let ticket = await raise(w)
+    await refused(act(w.colleague, 'edit', { ...revision(ticket), original: 'Hijacked' }), /authorized/i)
+    await refused(act(w.raiser, 'edit', { ...revision(ticket), original: '  ' }), /Original request is required/)
+    ticket = (await act(w.raiser, 'edit', { ...revision(ticket), original: 'Attakulangara carries both door numbers' })).ticket
+    ticket = (await act(w.support, 'edit', { ...revision(ticket), original: 'Attakulangara (ATK) carries both door numbers' })).ticket
+    // The open copy is what everyone reads, and it carries the history.
+    const seen = await read(w.colleague, 'detail', { row_id: ticket.row_id })
+    expect(seen.details.original).toBe('Attakulangara (ATK) carries both door numbers')
+    expect(seen.originalHistory.map((h: any) => [h.text, h.replaced_by])).toEqual([
+      ['Two plants carry both door numbers', w.raiser.user], ['Attakulangara carries both door numbers', w.support.user]])
+    expect(seen.originalHistory[0].replaced_at).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    expect(seen.privateEvents.filter((e: any) => JSON.parse(e.text).original_before).map((e: any) => [e.by, JSON.parse(e.text).original])).toEqual([
+      [w.raiser.user, 'Attakulangara carries both door numbers'], [w.support.user, 'Attakulangara (ATK) carries both door numbers']])
+    // Never through a generic write.
+    const [open] = (await admin.get<any>(`/api/table/tickets.open_request?filters=${encodeURIComponent(JSON.stringify([['row_id', '=', ticket.row_id]]))}&fields=${encodeURIComponent('["row_id","updated_at","original"]')}`)).data
+    await refused(save(w.raiser, 'tickets.open_request', { ...open, original: 'Generic write' }))
+  })
+
+  test("a private ticket's wording is corrected in its private request, opened copy included", async ({ admin, createUser }) => {
+    const w = await world(admin, createUser, 'private')
+    let ticket = await raise(w)
+    ticket = (await act(w.raiser, 'edit', { ...revision(ticket), original: 'Attakulangara carries both door numbers' })).ticket
+    const own = await read(w.raiser, 'detail', { row_id: ticket.row_id })
+    expect(own.details.original).toBe('Attakulangara carries both door numbers')
+    expect(own.originalHistory.map((h: any) => h.text)).toEqual(['Two plants carry both door numbers'])
+    expect(JSON.stringify(await read(w.colleague, 'detail', { row_id: ticket.row_id }))).not.toContain('Attakulangara')
+    // Opened later, then corrected again: both copies stay in step.
+    const row = (await admin.get<any>(`/api/table/tickets.ticket_type/${w.dq.row_id}`))
+    await save(admin, 'tickets.ticket_type', { ...row, details_visible_to: 'everyone' })
+    await act(w.support, 'open_details', { row_id: ticket.row_id })
+    ticket = (await act(w.support, 'edit', { ...revision(ticket), original: 'ATK carries both door numbers' })).ticket
+    expect((await read(w.colleague, 'detail', { row_id: ticket.row_id })).originalHistory.map((h: any) => h.text))
+      .toEqual(['Two plants carry both door numbers', 'Attakulangara carries both door numbers'])
+    const [kept] = await sql`select original from tickets.request where row_id = ${ticket.row_id}`
+    expect(kept.original).toBe('ATK carries both door numbers')
   })
 
   test('a ticket raised while its type was private is opened by support, with its history, when the type opens', async ({ admin, createUser }) => {

@@ -557,6 +557,30 @@ function TypeActions({ actions, state, mutate, busy }: { actions: TicketAction[]
     </section>
   )
 }
+// #918: the requester or support corrects the request's wording; the
+// earlier wording stays in the ticket's history.
+function Reword({ original, mutate, busy }: { original: string; mutate: Mutate; busy: boolean }) {
+  const [open, setOpen] = useState(false)
+  if (!open) return <button className="secondary" type="button" onClick={() => setOpen(true)}>Correct the wording</button>
+  return (
+    <form className="card" onSubmit={async (e) => {
+      e.preventDefault()
+      const text = String(new FormData(e.currentTarget).get('original') ?? '')
+      if (await mutate('edit', { original: text })) setOpen(false)
+    }}>
+      <fieldset disabled={busy}>
+        <Label title="Original message">
+          <textarea name="original" required rows={4} defaultValue={original} />
+        </Label>
+        <p className="fine">The earlier wording is kept in the ticket's history.</p>
+        <div className="actions">
+          <button type="button" onClick={() => setOpen(false)}>Cancel</button>
+          <button className="primary">Save wording</button>
+        </div>
+      </fieldset>
+    </form>
+  )
+}
 function CaseFile({
   detail,
   session,
@@ -649,6 +673,19 @@ function CaseFile({
                 <p className="request-body">
                   {display(detail.details.original)}
                 </p>
+                {(support || ticket.owner === (typeof session.user === 'string' ? session.user : session.user.row_id)) && (
+                  <Reword original={String(detail.details.original ?? '')} mutate={mutate} busy={busy} />
+                )}
+                {Array.isArray(detail.originalHistory) && detail.originalHistory.length > 0 && (
+                  <details className="fine">
+                    <summary>Earlier wording ({(detail.originalHistory as RecordData[]).length})</summary>
+                    {(detail.originalHistory as RecordData[]).map((h, i) => (
+                      <p key={i}>
+                        “{String(h.text)}” · replaced by {person(h.replaced_by)} · {time(h.replaced_at)}
+                      </p>
+                    ))}
+                  </details>
+                )}
                 <h3>Request details</h3>
                 <Facts
                   values={

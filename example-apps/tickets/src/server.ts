@@ -45,7 +45,9 @@ function validate(table: string, ctx: Validation) {
   if ((table === 'event' || table === 'open_event' || table === 'progress') && !ctx.isNew) ctx.reject('History is append-only')
   // Each person writes only their own name, which the platform supplies.
   if (table === 'member' && ctx.row.row_id !== ctx.user) ctx.reject('A person may record only their own name')
-  if ((table === 'request' || table === 'open_request') && ctx.old && ctx.row.original !== ctx.old.original) ctx.reject('The original request is immutable')
+  // The wording is corrected only through the edit action, which keeps the earlier wording in history.
+  if ((table === 'request' || table === 'open_request') && ctx.old && ctx.row.original !== ctx.old.original && allowed?.operation !== 'edit')
+    ctx.reject('The original request is changed only by editing the ticket')
   if (ctx.old && ctx.row.owner !== ctx.old.owner) ctx.reject('The requester is immutable')
 }
 const kinds = ['generic', 'access', 'freshness', 'quality', 'report', 'source', 'schema', 'pipeline', 'backfill']
@@ -276,6 +278,10 @@ async function place(ctx: ReadContext, ticketId: unknown): Promise<Place> {
   const [row] = await ctx.documents.list(OPEN.request, { fields: ['row_id'], filters: [['row_id', '=', String(ticketId)]], limit_page_length: 1 })
   return row ? OPEN : PRIVATE
 }
+/** The earlier wordings of a request, oldest first. */
+function history_of(request: Row): Row[] {
+  try { const list = JSON.parse(String(request.original_history ?? '[]')); return Array.isArray(list) ? list : [] } catch { return [] }
+}
 async function current(ctx: Context, p: Row, supportOnly = true) {
   const ticket = await ctx.documents.get('tickets.ticket', text(ctx, p.row_id, 'Ticket'))
   if (String(ticket.updated_at) !== text(ctx, p.updated_at, 'Revision')) ctx.reject('This ticket changed; reload before trying again')
@@ -315,7 +321,7 @@ function idsIn(value: unknown, out: Set<string>) {
   if (typeof value === 'string') out.add(value)
   else if (Array.isArray(value)) for (const item of value) idsIn(item, out)
   else if (value && typeof value === 'object') for (const [key, item] of Object.entries(value))
-    if (['owner', 'by', 'assigned_to'].includes(key)) idsIn(item, out)
+    if (['owner', 'by', 'assigned_to', 'replaced_by'].includes(key)) idsIn(item, out)
     else if (key === 'text' && typeof item === 'string') idsIn(parse(item), out)
     else if (item && typeof item === 'object') idsIn(item, out)
 }
@@ -365,7 +371,7 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     return { ticket }
   },
   async edit(ctx) {
-    const p = input(ctx, ['row_id', 'updated_at', 'title', 'kind', 'details', 'assigned_to', 'public_update', 'state'])
+    const p = input(ctx, ['row_id', 'updated_at', 'title', 'kind', 'details', 'assigned_to', 'public_update', 'state', 'original'])
     const { ticket, request, structured, support, where } = await current(ctx, p, false)
     if (!support && ['kind', 'assigned_to', 'public_update', 'state'].some(key => p[key] !== undefined)) ctx.reject('Only support may triage or publish progress')
     const types = await configuredTypes(ctx)
@@ -395,8 +401,18 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     if (ticket.kind === 'access' && category !== 'access') ctx.reject('An access request must keep its access gates')
     const recipientChanged = next.email !== structured.email
     const scopeChanged = ['scope', 'resource', 'region'].some(key => next[key] !== structured[key]) || category !== ticket.kind
-    if (p.details !== undefined || category !== ticket.kind) await ctx.documents.update(where.request, {
-      row_id: request.row_id, updated_at: request.updated_at, details_json: JSON.stringify(next),
+    // The requester or support may correct the wording; the earlier wording is kept.
+    const original = p.original === undefined ? undefined : text(ctx, p.original, 'Original request')
+    const reworded = original !== undefined && original !== request.original
+    const wording = reworded ? { original, original_history: JSON.stringify([...history_of(request), { text: request.original, replaced_by: ctx.user, replaced_at: new Date().toISOString() }]) } : {}
+    if (reworded && where.open) {
+      // A ticket opened from private keeps its private copy in step too.
+      const [kept] = await ctx.documents.list(PRIVATE.request, { fields: ['row_id', 'updated_at', 'original', 'original_history'], filters: [['row_id', '=', String(ticket.row_id)]], limit_page_length: 1 })
+      if (kept) await ctx.documents.update(PRIVATE.request, { row_id: kept.row_id, updated_at: kept.updated_at, original,
+        original_history: JSON.stringify([...history_of(kept), { text: kept.original, replaced_by: ctx.user, replaced_at: new Date().toISOString() }]) })
+    }
+    if (p.details !== undefined || category !== ticket.kind || reworded) await ctx.documents.update(where.request, {
+      row_id: request.row_id, updated_at: request.updated_at, details_json: JSON.stringify(next), ...wording,
       ...(where.open ? {} : {
         verification_key: recipientChanged ? randomUUID() : request.verification_key,
         approval_key: recipientChanged || scopeChanged ? randomUUID() : request.approval_key,
@@ -404,6 +420,7 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     })
     // Every edit is attributed history, including the requester's own scope or recipient change.
     await event(ctx, ticket, 'edit', { before: structured, details: next, kind: category,
+      ...(reworded ? { original_before: request.original, original } : {}),
       ...(p.assigned_to !== undefined ? { assigned_to: p.assigned_to } : {}), ...(p.state !== undefined ? { state: p.state } : {}) })
     const values: Row = { kind: category }
     if (p.title !== undefined) values.title = text(ctx, p.title, 'Public summary')
@@ -552,7 +569,8 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     if (type?.visibility !== 'everyone') ctx.reject('Only a ticket whose type shows its details to everyone can be opened')
     if ((await place(ctx, ticket.row_id)).open) return { ticket, opened: false }
     const request = await ctx.documents.get(PRIVATE.request, String(ticket.row_id))
-    await ctx.documents.create(OPEN.request, { row_id: ticket.row_id, original: request.original, details_json: request.details_json })
+    await ctx.documents.create(OPEN.request, { row_id: ticket.row_id, original: request.original, details_json: request.details_json,
+      ...(request.original_history ? { original_history: request.original_history } : {}) })
     const events = await all(ctx, PRIVATE.event, eventFields, [['ticket', '=', ticket.row_id]])
     for (const e of events) await ctx.documents.create(OPEN.event, { ticket: ticket.row_id, operation: e.operation, text: e.text, by: e.by, at: e.at })
     return { ticket, opened: true, events: events.length }
@@ -633,6 +651,9 @@ export const reads = {
     if (where.open || ticket.owner === ctx.user || support) {
       const request = await ctx.documents.get(where.request, id)
       answer.details = { ...parse(request.details_json), original: request.original }
+      // Whoever reads the request reads its earlier wordings, with who replaced each and when.
+      const earlier = history_of(request)
+      if (earlier.length) answer.originalHistory = earlier
       if (support || where.open) {
         const events = await history(ctx, ticket)
         answer.privateEvents = events
@@ -670,7 +691,7 @@ export const reads = {
       answer.actions = actions
     }
     answer.names = await names(ctx, { owner: ticket.owner, assigned_to: ticket.assigned_to }, answer.events, answer.privateEvents ?? [],
-      answer.verification ?? {}, answer.approval ?? {}, personValues)
+      answer.verification ?? {}, answer.approval ?? {}, answer.originalHistory ?? [], personValues)
     return { answer }
   },
 }
