@@ -327,6 +327,15 @@ describe('TreeOutline', () => {
     expect(screen.queryByRole('treeitem', { name: 'Links to' })).not.toBeInTheDocument()
   })
 
+  test('a caption inside an unfolded line is indented with its lines', () => {
+    const nested: TreeNode[] = [{ id: 'row', label: 'Top shelf', children: [
+      { id: 'row-h', label: 'Linked from', heading: true },
+      { id: 'row-g', label: 'Stock count', group: true, count: 2 },
+    ] }]
+    render(<TreeOutline label="Shelves" nodes={nested} expanded={new Set(['row'])} onToggle={() => {}} onActivate={() => {}} />)
+    expect(screen.getByText('Linked from').style.paddingInlineStart).toBe('1.25rem')
+  })
+
   test('a line reads name · code with its level', () => {
     render(<Tree open={['shelves']} />)
     expect(item('Top shelf · S-1')).toHaveAttribute('aria-level', '2')

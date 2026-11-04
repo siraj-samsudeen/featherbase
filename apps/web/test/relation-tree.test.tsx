@@ -133,3 +133,22 @@ test("a group of code-named rows lists them in code order, so a group's first 20
   await waitFor(() => expect(within(plants).getAllByRole('treeitem').map((i) => i.getAttribute('aria-level') === '2' && i.textContent))
     .toEqual([expect.stringContaining('1503'), expect.stringContaining('1504'), expect.stringContaining('1505')]))
 })
+
+test('a row unfolded under a group leaves out the link back to the row it is listed under', async ({ admin }) => {
+  await seedSites(admin)
+  await openTree(admin, SITE, 'ENK')
+  const supermarket = await line('Enchakkal Supermarket · 1503')
+  unfold(supermarket)
+  await waitFor(() => expect(within(supermarket).getByRole('treeitem', { name: `${PROFIT} 2` })).toBeInTheDocument())
+  expect(within(supermarket).queryByRole('treeitem', { name: 'Enchakkal · ENK' })).not.toBeInTheDocument()
+})
+
+test('two links from one table are told apart by their labels on the tree', async ({ admin }) => {
+  await seedSites(admin)
+  const meta = await admin.get<{ columns: Record<string, unknown>[] }>(`/api/table/${encodeURIComponent(PLANT)}:meta`)
+  await admin.put(`/api/table_def/${encodeURIComponent(PLANT)}`, {
+    ...meta, columns: [...meta.columns, { column_name: 'backup_site', column_type: 'Reference', reference_table: SITE, label: 'Backup site' }],
+  })
+  await openTree(admin, SITE, 'ENK')
+  expect(await line(`${PLANT} · Backup site 0`)).toBeInTheDocument()
+})
