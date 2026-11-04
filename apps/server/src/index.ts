@@ -20,6 +20,7 @@ import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAcce
 import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, renameServiceAccount, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
+import { principalReach } from './token-reach'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
@@ -1470,6 +1471,14 @@ app.post('/api/access_tokens', async (c) => {
       throw new AppError('ValidationError', 'expires_at must be an ISO date-time')
   }
   return c.json(await issueAccessToken(owner, body.label, expiresAt), 201)
+})
+
+// #852: what a token for this owner could reach, shown before it is issued.
+// The same rule as issuing: your own reach, or anyone's for a System Manager.
+app.get('/api/access_tokens/reach', async (c) => {
+  const owner = c.req.query('owner') || who(c)
+  if (owner !== who(c)) await assertSystemManager(who(c))
+  return c.json(await principalReach(owner))
 })
 
 app.get('/api/access_tokens', async (c) => {
