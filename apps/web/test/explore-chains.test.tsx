@@ -135,12 +135,17 @@ test('a row in the third pane opens the drill pane without changing either upstr
   const [line] = within(screen.getByTestId('explore-pane3')).getAllByTestId('explore-row')
   fireEvent.click(line)
   expect(line).not.toHaveAttribute('data-selected')
-  // The drill pane shows that line: of Ec Line, pointing at its order po-2.
-  const panel = await waitFor(() => {
-    const named = screen.getAllByRole('complementary').find((el) => el.hasAttribute('aria-label') && el.textContent?.includes('Ec Line'))
-    expect(named).toBeTruthy()
-    return named!
+  // The drill pane shows that very line, po-2's only one: named exactly as
+  // that row is, and pointing at po-2 (po-1 has a line of the same name).
+  const lines = await admin.get<{ data: { row_id: string }[] }>(
+    `/api/table/Ec%20Line?fields=${encodeURIComponent(JSON.stringify(['row_id']))}&filters=${encodeURIComponent(JSON.stringify([['parent', '=', 'po-2']]))}`,
+  )
+  expect(lines.data).toHaveLength(1)
+  const { titles: [expected] } = await admin.post<{ titles: { title: string }[] }>('/api/row_titles', {
+    rows: [{ table: 'Ec Line', row_id: lines.data[0].row_id }],
   })
+  const panel = await screen.findByRole('complementary', { name: expected.title })
+  expect(panel).toHaveTextContent('Ec Line')
   const pointsAt = (await within(panel).findByRole('heading', { name: 'Points at' })).parentElement!
   await waitFor(() => expect(pointsAt).toHaveTextContent('po-2'))
   fireEvent.click(within(panel).getByRole('button', { name: 'Close' }))
