@@ -21,8 +21,8 @@ interface PurgePlan {
 }
 
 /** Whether a Table's rows may ever be deleted permanently (the server's purgeRefusal). */
-export function tableCanPurge(meta: { name: string; kind: string; data_source?: string | null; system_written?: boolean; system?: boolean } | undefined): boolean {
-  return Boolean(meta) && canRetire(meta) && !meta!.system
+export function tableCanPurge(meta: { name: string; kind: string; data_source?: string | null; system_written?: boolean; system?: boolean; access_policy?: unknown } | undefined): boolean {
+  return Boolean(meta) && canRetire(meta) && !meta!.system && !meta!.access_policy
 }
 
 const CONFIRM_WORD = 'DELETE'
