@@ -16,6 +16,7 @@ export interface VersionRow {
   created_at: string
   data: {
     changed?: [string, unknown, unknown][]
+    created?: boolean
     import_run?: string
     resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown }
   } | null
