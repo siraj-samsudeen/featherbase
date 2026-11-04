@@ -6,6 +6,7 @@ import { ApiError, api } from '../lib/api'
 import { fmtCount } from '@featherbase/shop-floor'
 import { formatValue, useSettings } from '../lib/settings'
 import { Button, Notice, cardClasses } from '@featherbase/shop-floor'
+import { CopySchedule } from './CopySchedule'
 
 interface CopyInfo { data_source: string; database: string; source_schema: string; source_table: string; key_column: string; last_copied_at: string | null }
 interface CopyResult { inserted: number; updated: number; failed: number; conflicts: number; deleted_at_source: number; back_at_source: number; first_errors: string[] }
@@ -47,6 +48,7 @@ export function CopyBar({ table }: { table: string }) {
         </p>
         <Button variant="secondary" loading={busy} onClick={copyAgain} data-testid="copy-again">Copy again</Button>
       </div>
+      <div className={cardClasses('px-4 py-3')}><CopySchedule table={table} /></div>
       {result && (
         <div data-testid="copy-result">
           <Notice tone={result.conflicts || result.deleted_at_source || result.failed ? 'caution' : 'positive'}>

@@ -340,3 +340,34 @@ test('a refused Copy again can be retried after correcting source keys', async (
     expect(within(bar).getByRole('button', { name: 'Copy again' })).toBeEnabled()
   }, WAIT)
 })
+
+test('a copied table can be refreshed automatically, paused and resumed from its copy bar', async ({ admin }) => {
+  await changeStandin(dir, 'sales', ['create table schedule_stores as select * from stores'])
+  await connect(admin, 'web-wh-schedule')
+  await admin.post('/api/table/Data%20Source/web-wh-schedule:copy_create', {
+    database: 'sales', schema: 'main', table: 'schedule_stores', name: 'Schedule Store', key: 'code',
+    columns: ['name', 'code'].map(source => ({ source, column_name: source })),
+  })
+  const user = userEvent.setup()
+  await renderApp('/featherbase/admin/table/schedule-store', admin)
+  const schedule = await screen.findByTestId('copy-schedule', {}, WAIT)
+  const cadence = within(schedule).getByRole('combobox', { name: 'Refresh automatically' })
+  await waitFor(() => expect(cadence).toBeEnabled(), WAIT)
+  expect(cadence).toHaveValue('off')
+  await user.selectOptions(cadence, 'hourly')
+  const pause = await within(schedule).findByRole('button', { name: 'Pause' }, WAIT)
+  expect(within(schedule).getByRole('link', { name: 'Manage job' })).toBeInTheDocument()
+  await waitFor(() => expect(pause).toBeEnabled(), WAIT)
+  await user.click(pause)
+  await waitFor(() => expect(schedule).toHaveTextContent('Paused · hourly'), WAIT)
+  expect(cadence).toHaveValue('off')
+  const resume = within(schedule).getByRole('button', { name: 'Resume' })
+  await waitFor(() => expect(resume).toBeEnabled(), WAIT)
+  await user.click(resume)
+  await waitFor(() => expect(within(schedule).getByRole('button', { name: 'Pause' })).toBeInTheDocument(), WAIT)
+  expect(await admin.get('/api/table/Schedule%20Store:copy_schedule')).toMatchObject({ cadence: 'hourly', enabled: true })
+  // Turning it off keeps the cadence for a later resume.
+  await waitFor(() => expect(cadence).toBeEnabled(), WAIT)
+  await user.selectOptions(cadence, 'off')
+  await waitFor(() => expect(schedule).toHaveTextContent('Paused · hourly'), WAIT)
+}, 60_000)
