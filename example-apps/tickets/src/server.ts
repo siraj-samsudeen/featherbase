@@ -163,7 +163,8 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
       verification_key: recipientChanged ? randomUUID() : request.verification_key,
       approval_key: recipientChanged || scopeChanged ? randomUUID() : request.approval_key,
     })
-    if (support) await event(ctx, ticket, 'edit', { before: structured, details: next, kind: category,
+    // Every edit is attributed history, including the requester's own scope or recipient change.
+    await event(ctx, ticket, 'edit', { before: structured, details: next, kind: category,
       ...(p.assigned_to !== undefined ? { assigned_to: p.assigned_to } : {}) })
     const values: Row = { kind: category }
     if (p.title !== undefined) values.title = text(ctx, p.title, 'Public summary')
