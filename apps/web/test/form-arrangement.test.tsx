@@ -158,13 +158,13 @@ test('by importance, when and by whom the row was created and updated is one foo
   expect(footer.textContent).toMatch(new RegExp(`^Created ${day} by Administrator, updated ${day} by Administrator$`))
 })
 
-test('Arrange by stays on one line in a narrow form', async ({ admin }) => {
+test('in a narrow form Arrange by and Columns wrap as whole controls, every one in sight', async ({ admin }) => {
   await parcelDesk(admin)
   await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
   const bar = await screen.findByTestId('arrange-bar', undefined, { timeout: 8000 })
-  expect(bar.className).toMatch(/\bflex-nowrap\b/)
-  expect(bar.className).toMatch(/\boverflow-x-auto\b/)
-  expect(bar.querySelector('.flex-wrap')).toBeNull()
+  expect(bar.className).toMatch(/\bflex-wrap\b/)
+  expect(bar.className).not.toMatch(/\boverflow-(x-)?(auto|hidden|scroll)\b/)
+  for (const control of bar.querySelectorAll('button')) expect(control.className).toMatch(/\bwhitespace-nowrap\b/)
 })
 
 // ---- A read-only connected row ----
