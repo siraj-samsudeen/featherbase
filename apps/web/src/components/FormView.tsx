@@ -1361,7 +1361,7 @@ export function LinkControl({
   // drill pane, ↗ navigates to its form. Hidden while searching.
   const nav = useNavigation()
   const navigate = useNavigate()
-  // A filter has its own clear control and stays a filter: no peek or open.
+  // A filter has its own clear control and stays a filter: no pane or open.
   const hasValue = Boolean(value) && query === null && !forFilter
 
   // The floating list is placed once, under the box; scrolling or resizing
@@ -1460,7 +1460,7 @@ export function LinkControl({
                 nav.push({ ...nav.step, pane: { table: target, row: String(value) } })
               }}
               title={`Show ${target} ${String(value)} in the pane`}
-              data-testid={`link-peek-${field.column_name}`}
+              data-testid={`link-pane-${field.column_name}`}
               className="rounded px-1 text-sm text-ink-subtle hover:text-action"
             >
               ◎

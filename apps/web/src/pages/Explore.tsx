@@ -437,7 +437,7 @@ function Pane({
               if (onToggle) onToggle(String(r.row_id))
               else openPane?.(String(r.row_id))
             }}
-            onPeek={openPane ? () => openPane(String(r.row_id)) : undefined}
+            onOpenPane={openPane ? () => openPane(String(r.row_id)) : undefined}
           />
         ))}
         {!rows.length && (
@@ -475,14 +475,14 @@ function PaneRow({
   settings,
   selected,
   onToggle,
-  onPeek,
+  onOpenPane,
 }: {
   row: Row
   columns: CardColumn[]
   settings: Settings
   selected: boolean
   onToggle: () => void
-  onPeek?: () => void
+  onOpenPane?: () => void
 }) {
   const [first, ...rest] = columns
   return (
@@ -507,11 +507,11 @@ function PaneRow({
         <span className="truncate text-sm font-medium text-ink">
           {cellText(first, row, settings) || String(row.row_id)}
         </span>
-        {onPeek && (
+        {onOpenPane && (
           <button
             onClick={(e) => {
               e.stopPropagation()
-              onPeek()
+              onOpenPane()
             }}
             title="Show in the pane"
             className="invisible text-ink-subtle hover:text-action group-hover:visible"

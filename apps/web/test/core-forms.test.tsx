@@ -134,7 +134,7 @@ test('a linked row opens in the drill pane beside the form; its own link moves t
   await waitFor(() => expect(field('label')).toHaveValue('Main Street'))
 
   // First link: the city, in the pane; the form is still there.
-  fireEvent.mouseDown(await screen.findByTestId('link-peek-city'))
+  fireEvent.mouseDown(await screen.findByTestId('link-pane-city'))
   const first = await screen.findByRole('complementary', { name: 'Chennai' })
   expect(first).toHaveTextContent('Peek City')
 
@@ -172,7 +172,7 @@ test('a linked row in the drill pane: Open row page goes to that row\'s own form
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('label')).toHaveValue('Kid'))
 
-  fireEvent.mouseDown(await screen.findByTestId('link-peek-mother'))
+  fireEvent.mouseDown(await screen.findByTestId('link-pane-mother'))
   const pane = await screen.findByRole('complementary', { name: 'Mother' })
   fireEvent.click(within(pane).getByRole('link', { name: 'Open row page' }))
 
