@@ -68,5 +68,5 @@ never conceal pending steps or batch failing scenarios into a claimed pass.
 - [x] 6.1 People are shown by name, never by person id — red → caller's own name in the app context, Tickets name directory → green → commit.
 - [x] 6.2 A requester's scope change after verification awaits approval — red → request row records the actively verified recipient → green → commit.
 - [x] 6.3 An install or enable from another process works with no restart; a refusal says why — red → activate on next request, plain reasons → green → commit.
-- [ ] 6.4 An instance configures ticket types, fields, states and routing without a release — red → configuration Tables, `linked_tables` seam, rendered form → green → commit.
-- [ ] 6.5 Configure "Data Quality Issue" locally and load the 17 data-quality issues into it.
+- [x] 6.4 An instance configures ticket types, fields, states and routing without a release — red → configuration Tables, `linked_tables` seam, rendered form → green → commit.
+- [x] 6.5 Configure "Data Quality Issue" locally and load the 17 data-quality issues into it.

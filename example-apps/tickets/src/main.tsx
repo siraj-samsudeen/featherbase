@@ -97,6 +97,16 @@ const short = (id: string) =>
     : id.length > 24
       ? `${id.slice(0, 8)}…${id.slice(-4)}`
       : id
+// Ticket types the instance configured (Tickets configuration Tables), with
+// their fields and the options their links and people offer this viewer.
+type ConfiguredField = { name: string; label: string; type: string; required: boolean; choices?: string[]; options?: { value: string; label: string }[] }
+type ConfiguredType = { key: string; label: string; states: string[]; done: string[]; fields: ConfiguredField[] }
+const configuredTypes: Record<string, ConfiguredType> = {}
+const learnTypes = (types: unknown) => {
+  for (const type of Array.isArray(types) ? (types as (ConfiguredType & { builtin?: boolean })[]) : [])
+    if (!type.builtin) configuredTypes[type.key] = type
+}
+const kindLabel = (key: string) => kinds[key] ?? configuredTypes[key]?.label ?? stateLabel(key)
 // #912: people are shown by name. The reads return the names of the people
 // they mention; an id with no known name is never shown as-is.
 const knownNames: Record<string, string> = {}
@@ -137,10 +147,15 @@ function TypeSelect({
 }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)}>
-      {!kinds[value] && <option value={value}>{stateLabel(value)}</option>}
+      {!kinds[value] && !configuredTypes[value] && <option value={value}>{stateLabel(value)}</option>}
       {Object.entries(kinds).map(([key, name]) => (
         <option key={key} value={key}>
           {name}
+        </option>
+      ))}
+      {Object.values(configuredTypes).map((type) => (
+        <option key={type.key} value={type.key}>
+          {type.label}
         </option>
       ))}
     </select>
@@ -155,6 +170,38 @@ function Structured({
   values: RecordData
   change: (key: string, value: string) => void
 }) {
+  const configured = configuredTypes[kind]
+  if (configured)
+    return (
+      <div className="form-grid">
+        {configured.fields.map((field) => {
+          const value = String(values[field.name] ?? '')
+          const title = field.required ? `${field.label} *` : field.label
+          const set = (next: string) => change(field.name, next)
+          return (
+            <Label key={field.name} title={title}>
+              {field.type === 'long text' ? (
+                <textarea rows={3} value={value} required={field.required} onChange={(e) => set(e.target.value)} />
+              ) : field.type === 'choice' || field.type === 'link' || field.type === 'person' ? (
+                <select value={value} required={field.required} onChange={(e) => set(e.target.value)}>
+                  <option value="">Choose…</option>
+                  {(field.type === 'choice'
+                    ? (field.choices ?? []).map((choice) => ({ value: choice, label: choice }))
+                    : (field.options ?? [])
+                  ).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input type={field.type === 'date' ? 'date' : 'text'} value={value} required={field.required} onChange={(e) => set(e.target.value)} />
+              )}
+            </Label>
+          )
+        })}
+      </div>
+    )
   return (
     <div className="form-grid">
       {(fields[kind] ?? []).map(([key, title, type]) => (
@@ -447,8 +494,9 @@ function CaseFile({
     setEditing(false)
   }, [ticket.updated_at, ticket.row_id])
   const state = ticket.ticket_state.toLowerCase().replace(/ /g, '_')
+  const configured = configuredTypes[ticket.kind]
   const access = ticket.kind === 'access',
-    resolved = state === 'resolved'
+    resolved = configured ? configured.done.includes(ticket.ticket_state) : state === 'resolved'
   const verification = detail.verification,
     approval = detail.approval
   const approvalAllowed =
@@ -470,7 +518,7 @@ function CaseFile({
       <div className="detail-sub">
         <span className="avatar">{person(ticket.owner).slice(0, 1).toUpperCase()}</span>
         <span>{person(ticket.owner)}</span>
-        <span>· {kinds[ticket.kind] ?? stateLabel(ticket.kind)}</span>
+        <span>· {kindLabel(ticket.kind)}</span>
       </div>
       <div className="card public-progress">
         <span className="privacy">Public progress</span>
@@ -510,11 +558,23 @@ function CaseFile({
                 </p>
                 <h3>Request details</h3>
                 <Facts
-                  values={Object.fromEntries(
-                    Object.entries(structured ?? {}).filter(
-                      ([key]) => key !== 'original',
-                    ),
-                  )}
+                  values={
+                    configured
+                      ? Object.fromEntries(
+                          configured.fields
+                            .filter((field) => structured?.[field.name] != null)
+                            .map((field) => [
+                              field.label,
+                              (detail.labels as RecordData | undefined)?.[field.name] ??
+                                (field.type === 'person' ? person(structured?.[field.name]) : structured?.[field.name]),
+                            ]),
+                        )
+                      : Object.fromEntries(
+                          Object.entries(structured ?? {}).filter(
+                            ([key]) => key !== 'original',
+                          ),
+                        )
+                  }
                 />
                 {support && (
                   <>
@@ -535,10 +595,16 @@ function CaseFile({
                             kind,
                             details: Object.fromEntries(
                               Object.entries(draft).filter(
-                                ([key]) => key !== 'original',
+                                ([key]) =>
+                                  key !== 'original' &&
+                                  (!configuredTypes[kind] ||
+                                    configuredTypes[kind].fields.some((field) => field.name === key)),
                               ),
                             ),
                             assigned_to: data.get('assigned_to'),
+                            ...(configuredTypes[kind] && data.get('state') && data.get('state') !== ticket.ticket_state
+                              ? { state: data.get('state') }
+                              : {}),
                             ...(String(
                               data.get('public_update') ?? '',
                             ).trim() &&
@@ -564,6 +630,15 @@ function CaseFile({
                               setDraft((d) => ({ ...d, [key]: value }))
                             }
                           />
+                          {configuredTypes[kind] && kind === ticket.kind && (
+                            <Label title="State">
+                              <select name="state" defaultValue={ticket.ticket_state}>
+                                {configuredTypes[kind].states.map((option) => (
+                                  <option key={option} value={option}>{option}</option>
+                                ))}
+                              </select>
+                            </Label>
+                          )}
                           <Label title="Assign to">
                             <select name="assigned_to" defaultValue={ticket.assigned_to ?? ''}>
                               <option value="">Unassigned</option>
@@ -785,6 +860,15 @@ function CaseFile({
                         title="Resolution evidence reference"
                       />
                     )}
+                    {!resolved && configured && (
+                      <Label title="Done as">
+                        <select name="state" defaultValue={configured.done[0]}>
+                          {configured.done.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+                      </Label>
+                    )}
                   </ActionForm>
                 )}
               </>
@@ -937,8 +1021,11 @@ function App() {
         : 'Could not load Tickets. Please try again.',
     )
   useEffect(() => {
-    read<Session>('session')
-      .then(setSession)
+    Promise.all([read<Session>('session'), read<{ types: unknown }>('form')])
+      .then(([value, form]) => {
+        learnTypes(form.types)
+        setSession(value)
+      })
       .catch((e) => {
         report(e)
         setLoading(false)
@@ -1248,7 +1335,7 @@ function App() {
                   </div>
                   <div className="ticket-title">{ticket.title}</div>
                   <div className="ticket-meta">
-                    <span>{kinds[ticket.kind] ?? stateLabel(ticket.kind)}</span>
+                    <span>{kindLabel(ticket.kind)}</span>
                     <span>{person(ticket.owner)}</span>
                   </div>
                   {ticket.public_update && (

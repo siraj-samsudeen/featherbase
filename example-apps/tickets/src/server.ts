@@ -45,11 +45,46 @@ function validate(table: string, ctx: Validation) {
   if (table === 'request' && ctx.old && ctx.row.original !== ctx.old.original) ctx.reject('The original request is immutable')
   if (ctx.old && ctx.row.owner !== ctx.old.owner) ctx.reject('The requester is immutable')
 }
-export const validators = Object.fromEntries(['ticket', 'request', 'event', 'progress', 'person'].map(table =>
-  [`tickets.${table}`, (ctx: Validation) => validate(table, ctx)]))
-export const destructiveGuards = Object.fromEntries(Object.keys(validators).map(table =>
-  [table, (ctx: Validation) => ctx.reject('Tickets references and history cannot be renamed or deleted')]))
 const kinds = ['generic', 'access', 'freshness', 'quality', 'report', 'source', 'schema', 'pipeline', 'backfill']
+// Keys a configured field may never take: they carry the request or its gates.
+const protectedKeys = ['original', 'verification', 'approval', 'fulfillment', 'actor', 'by', 'at', 'owner', 'ticket_state', 'root_cause', 'title', 'kind', 'state']
+const fieldTypes = ['text', 'long text', 'choice', 'date', 'person', 'link']
+const lines = (value: unknown) => String(value ?? '').split('\n').map(line => line.trim()).filter(Boolean)
+// Instance configuration is edited in the generic Admin UI, not through
+// actions, so these validators check the configuration itself.
+function validateType(ctx: Validation) {
+  const key = String(ctx.row.type_key ?? '')
+  if (!/^[a-z][a-z0-9_]{1,40}$/.test(key)) ctx.reject('A ticket type key is lower case letters, digits and underscores')
+  if (ctx.old && ctx.old.type_key !== ctx.row.type_key) ctx.reject('A ticket type key never changes: its tickets carry it')
+  if (kinds.includes(key)) ctx.reject('A configured type cannot replace a built-in type')
+  const states = lines(ctx.row.states)
+  if (!states.length || new Set(states).size !== states.length) ctx.reject('List each state once, one per line; the first is where a ticket starts')
+  if (lines(ctx.row.done_states).some(state => !states.includes(state))) ctx.reject('Every done state must be one of the states')
+  if (ctx.row.reopen_state && !states.includes(String(ctx.row.reopen_state))) ctx.reject('The reopen state must be one of the states')
+  if (ctx.row.routing) {
+    const routing = parse(ctx.row.routing)
+    if (['field', 'table', 'match', 'person'].some(k => typeof routing[k] !== 'string' || !routing[k])) ctx.reject('Routing names field, table, match and person (and optionally primary)')
+  }
+}
+function validateField(ctx: Validation) {
+  const name = String(ctx.row.field_name ?? '')
+  if (!/^[a-z][a-z0-9_]{0,40}$/.test(name) || protectedKeys.includes(name)) ctx.reject('A field key is lower case letters, digits and underscores, and not a protected key')
+  if (!fieldTypes.includes(String(ctx.row.field_type))) ctx.reject(`A field type is one of: ${fieldTypes.join(', ')}`)
+  if (ctx.row.field_type === 'choice' && !lines(ctx.row.choices).length) ctx.reject('A choice field lists its choices, one per line')
+  if (ctx.row.field_type === 'link' && !String(ctx.row.link_table ?? '').trim()) ctx.reject('A link field names the Table it links to')
+}
+export const validators = {
+  ...Object.fromEntries(['ticket', 'request', 'event', 'progress', 'person'].map(table =>
+    [`tickets.${table}`, (ctx: Validation) => validate(table, ctx)])),
+  'tickets.ticket_type': validateType,
+  'tickets.type_field': validateField,
+}
+export const destructiveGuards = {
+  ...Object.fromEntries(['ticket', 'request', 'event', 'progress', 'person'].map(table =>
+    [`tickets.${table}`, (ctx: Validation) => ctx.reject('Tickets references and history cannot be renamed or deleted')])),
+  // A field can be removed; a type is switched off, so its tickets keep their meaning.
+  'tickets.ticket_type': (ctx: Validation) => ctx.reject('Switch a ticket type off (enabled) instead of renaming or deleting it'),
+}
 const ticketFields = ['row_id', 'title', 'kind', 'ticket_state', 'assigned_to', 'public_update', 'updated_at', 'owner']
 const eventFields = ['row_id', 'ticket', 'operation', 'text', 'by', 'at']
 const progressFields = ['row_id', 'ticket', 'text', 'by', 'at']
@@ -99,9 +134,72 @@ async function all(ctx: ReadContext, table: string, fields: string[], filters: L
     if (page.length < 500) return rows
   }
 }
-function kind(ctx: ReadContext, value: unknown) {
-  if (typeof value !== 'string' || !kinds.includes(value)) ctx.reject('Choose a valid ticket kind')
+interface TypeField { name: string; label: string; type: string; choices: string[]; required: boolean; link_table?: string; link_label?: string }
+interface TicketType { key: string; label: string; states: string[]; done: string[]; reopen: string; routing: Row | null; fields: TypeField[] }
+async function configuredTypes(ctx: ReadContext): Promise<Map<string, TicketType>> {
+  const rows = await all(ctx, 'tickets.ticket_type', ['row_id', 'type_key', 'label', 'enabled', 'states', 'done_states', 'reopen_state', 'routing'])
+  const fieldRows = await all(ctx, 'tickets.type_field', ['row_id', 'ticket_type', 'field_name', 'label', 'field_type', 'choices', 'link_table', 'link_label', 'required', 'field_order'])
+  const types = new Map<string, TicketType>()
+  for (const row of rows) {
+    if (!row.enabled) continue
+    const states = lines(row.states)
+    types.set(String(row.type_key), { key: String(row.type_key), label: String(row.label), states, done: lines(row.done_states),
+      reopen: String(row.reopen_state || states[0]), routing: row.routing ? parse(row.routing) : null,
+      fields: fieldRows.filter(f => f.ticket_type === row.row_id).sort((a, b) => Number(a.field_order ?? 0) - Number(b.field_order ?? 0)).map(f => ({
+        name: String(f.field_name), label: String(f.label), type: String(f.field_type), choices: lines(f.choices), required: !!f.required,
+        ...(f.link_table ? { link_table: String(f.link_table), link_label: String(f.link_label || 'row_id') } : {}),
+      })) })
+  }
+  return types
+}
+// A linked instance Table is read only when an administrator listed it, and
+// as the caller: what the caller may not read reads as nothing.
+function linked(ctx: ReadContext, table: string | undefined) {
+  return !!table && members(configured(ctx, 'linked_tables')).includes(table)
+}
+async function linkRows(ctx: ReadContext, field: TypeField, filters: ListArgs['filters'] = []) {
+  if (!linked(ctx, field.link_table)) return []
+  return ctx.documents.list(field.link_table!, { fields: ['row_id', field.link_label!], filters, limit_page_length: 500 })
+}
+function isDone(ticket: Row, types: Map<string, TicketType>) {
+  const type = types.get(String(ticket.kind))
+  return type ? type.done.includes(String(ticket.ticket_state)) : ticket.ticket_state === 'Resolved'
+}
+function kind(ctx: ReadContext, value: unknown, types: Map<string, TicketType>) {
+  if (typeof value !== 'string' || !(kinds.includes(value) || types.has(value))) ctx.reject('Choose a valid ticket kind')
   return value
+}
+// A configured type's values are checked against its current fields.
+async function typedDetails(ctx: ReadContext, type: TicketType, values: Row): Promise<Row> {
+  const known = new Map(type.fields.map(field => [field.name, field]))
+  const unknown = Object.keys(values).find(key => !known.has(key))
+  if (unknown) ctx.reject(`${type.label} has no field ${unknown}`)
+  const people = type.fields.some(f => f.type === 'person') ? new Set((await all(ctx, 'tickets.person', ['row_id'])).map(r => String(r.row_id))) : new Set<string>()
+  const out: Row = {}
+  for (const field of type.fields) {
+    const raw = values[field.name]
+    const value = typeof raw === 'string' ? raw.trim() : raw
+    if (value === undefined || value === null || value === '') {
+      if (field.required) ctx.reject(`${field.label} is required`)
+      continue
+    }
+    if (typeof value !== 'string') return ctx.reject(`${field.label} must be text`)
+    if (field.type === 'choice' && !field.choices.includes(value)) ctx.reject(`${field.label} must be one of: ${field.choices.join(', ')}`)
+    if (field.type === 'date' && !(/^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)))) ctx.reject(`${field.label} must be a date (YYYY-MM-DD)`)
+    if (field.type === 'person' && !people.has(value)) ctx.reject(`${field.label} must be a person who uses Tickets`)
+    if (field.type === 'link' && !(await linkRows(ctx, field, [['row_id', '=', value]])).length) ctx.reject(`${field.label} must be one of its listed rows`)
+    out[field.name] = value
+  }
+  return out
+}
+// The primary owner of the linked value, read as the requester; none → unassigned.
+async function routed(ctx: ReadContext, type: TicketType, values: Row): Promise<string | null> {
+  const routing = type.routing
+  if (!routing || values[String(routing.field)] === undefined || !linked(ctx, String(routing.table))) return null
+  const filters: [string, string, unknown][] = [[String(routing.match), '=', values[String(routing.field)]]]
+  if (routing.primary) filters.push([String(routing.primary), '=', 1])
+  const [owner] = await ctx.documents.list(String(routing.table), { fields: [String(routing.person)], filters, limit_page_length: 1 })
+  return owner && typeof owner[String(routing.person)] === 'string' ? String(owner[String(routing.person)]) : null
 }
 function details(ctx: ReadContext, value: unknown): Row {
   const row = object(ctx, value)
@@ -166,18 +264,28 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const p = input(ctx, ['title', 'original', 'kind', 'details'])
     const title = text(ctx, p.title, 'Public summary')
     const original = text(ctx, p.original, 'Original request')
-    const category = kind(ctx, p.kind ?? 'generic')
-    const structured = details(ctx, p.details ?? {})
-    const ticket = await ctx.documents.create('tickets.ticket', { title, owner: ctx.user, kind: category, ticket_state: category === 'access' ? 'Needs verification' : 'New' })
+    const types = await configuredTypes(ctx)
+    const category = kind(ctx, p.kind ?? 'generic', types)
+    const type = types.get(category)
+    const structured = type ? await typedDetails(ctx, type, object(ctx, p.details ?? {})) : details(ctx, p.details ?? {})
+    const assignee = type ? await routed(ctx, type, structured) : null
+    const ticket = await ctx.documents.create('tickets.ticket', { title, owner: ctx.user, kind: category,
+      ticket_state: type ? type.states[0] : category === 'access' ? 'Needs verification' : 'New', ...(assignee ? { assigned_to: assignee } : {}) })
     await ctx.documents.create('tickets.request', { row_id: ticket.row_id, original, details_json: JSON.stringify(structured), verification_key: randomUUID(), approval_key: randomUUID() })
     return { ticket }
   },
   async edit(ctx) {
-    const p = input(ctx, ['row_id', 'updated_at', 'title', 'kind', 'details', 'assigned_to', 'public_update'])
+    const p = input(ctx, ['row_id', 'updated_at', 'title', 'kind', 'details', 'assigned_to', 'public_update', 'state'])
     const { ticket, request, structured, support } = await current(ctx, p, false)
-    if (!support && ['kind', 'assigned_to', 'public_update'].some(key => p[key] !== undefined)) ctx.reject('Only support may triage or publish progress')
-    const next = p.details === undefined ? structured : { ...structured, ...details(ctx, p.details) }
-    const category = p.kind === undefined ? ticket.kind : kind(ctx, p.kind)
+    if (!support && ['kind', 'assigned_to', 'public_update', 'state'].some(key => p[key] !== undefined)) ctx.reject('Only support may triage or publish progress')
+    const types = await configuredTypes(ctx)
+    const category = p.kind === undefined ? String(ticket.kind) : kind(ctx, p.kind, types)
+    const type = types.get(category)
+    const merged = p.details === undefined ? structured : { ...structured, ...object(ctx, p.details) }
+    const next = type ? (p.details === undefined && category === ticket.kind ? structured : await typedDetails(ctx, type, merged))
+      : p.details === undefined ? structured : { ...structured, ...details(ctx, p.details) }
+    // Only a configured type moves between states directly, and only among its own.
+    if (p.state !== undefined && (!type || !type.states.includes(String(p.state)))) ctx.reject('Choose one of this type\'s states')
     // Never turn an access decision into an ordinary-resolution bypass.
     if (ticket.kind === 'access' && category !== 'access') ctx.reject('An access request must keep its access gates')
     const recipientChanged = next.email !== structured.email
@@ -189,7 +297,7 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     })
     // Every edit is attributed history, including the requester's own scope or recipient change.
     await event(ctx, ticket, 'edit', { before: structured, details: next, kind: category,
-      ...(p.assigned_to !== undefined ? { assigned_to: p.assigned_to } : {}) })
+      ...(p.assigned_to !== undefined ? { assigned_to: p.assigned_to } : {}), ...(p.state !== undefined ? { state: p.state } : {}) })
     const values: Row = { kind: category }
     if (p.title !== undefined) values.title = text(ctx, p.title, 'Public summary')
     if (p.assigned_to !== undefined) values.assigned_to = p.assigned_to === null || p.assigned_to === '' ? null : text(ctx, p.assigned_to, 'Assignee')
@@ -197,8 +305,9 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
       values.public_update = text(ctx, p.public_update, 'Public update')
       await ctx.documents.create('tickets.progress', { ticket: ticket.row_id, text: values.public_update, by: ctx.user, at: new Date().toISOString() })
     }
-    if (recipientChanged || scopeChanged) {
-      values.ticket_state = category === 'access' ? 'Needs verification' : 'New'
+    if (p.state !== undefined) values.ticket_state = String(p.state)
+    else if ((recipientChanged || scopeChanged) && !(type && category === ticket.kind)) {
+      values.ticket_state = category === 'access' ? 'Needs verification' : type ? type.states[0] : 'New'
       if (category === 'access') {
         // The request row says whether its current recipient holds an active
         // verification, so a requester's own edit is judged like support's.
@@ -270,7 +379,8 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     await event(ctx, ticket, 'evidence', { expected: text(ctx, p.expected, 'Expected outcome'), observed: text(ctx, p.observed, 'Observed outcome'),
       reference: text(ctx, p.reference, 'Evidence reference'), observed_at: observedAt, finding: text(ctx, p.finding, 'Manual finding'),
       ...(p.root_cause === undefined ? {} : { root_cause: text(ctx, p.root_cause, 'Root cause') }) })
-    return { ticket: await bump(ctx, ticket, ticket.kind === 'access' || ticket.ticket_state === 'Resolved' ? {} : { ticket_state: 'In progress' }) }
+    const types = await configuredTypes(ctx)
+    return { ticket: await bump(ctx, ticket, ticket.kind === 'access' || types.has(String(ticket.kind)) || ticket.ticket_state === 'Resolved' ? {} : { ticket_state: 'In progress' }) }
   },
   async link(ctx) {
     const p = input(ctx, ['row_id', 'updated_at', 'url'])
@@ -282,21 +392,26 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     return { ticket: await bump(ctx, ticket) }
   },
   async resolve(ctx) {
-    const p = input(ctx, ['row_id', 'updated_at', 'reason', 'reference'])
+    const p = input(ctx, ['row_id', 'updated_at', 'reason', 'reference', 'state'])
     const { ticket } = await current(ctx, p)
     if (ticket.kind === 'access') ctx.reject('Access must be completed through authorized fulfillment')
-    await event(ctx, ticket, 'resolve', { reason: text(ctx, p.reason, 'Resolution reason'), reference: text(ctx, p.reference, 'Resolution evidence') })
-    return { ticket: await bump(ctx, ticket, { ticket_state: 'Resolved' }) }
+    const type = (await configuredTypes(ctx)).get(String(ticket.kind))
+    const state = type ? String(p.state ?? type.done[0] ?? '') : 'Resolved'
+    if (type ? !type.done.includes(state) : p.state !== undefined) ctx.reject(type ? 'Choose one of this type\'s done states' : 'This type resolves as Resolved')
+    await event(ctx, ticket, 'resolve', { reason: text(ctx, p.reason, 'Resolution reason'), reference: text(ctx, p.reference, 'Resolution evidence'), ...(type ? { state } : {}) })
+    return { ticket: await bump(ctx, ticket, { ticket_state: state }) }
   },
   async reopen(ctx) {
     const p = input(ctx, ['row_id', 'updated_at', 'reason'])
     const { ticket, request } = await current(ctx, p)
-    if (ticket.ticket_state !== 'Resolved') ctx.reject('Only a resolved ticket can be reopened')
+    const types = await configuredTypes(ctx)
+    if (!isDone(ticket, types)) ctx.reject('Only a resolved ticket can be reopened')
     await event(ctx, ticket, 'reopen', { reason: text(ctx, p.reason, 'Reopening reason') })
     if (ticket.kind === 'access') await ctx.documents.update('tickets.request', {
       row_id: request.row_id, updated_at: request.updated_at, approval_key: randomUUID(),
     })
-    return { ticket: await bump(ctx, ticket, { ticket_state: ticket.kind === 'access' ? 'Needs verification' : 'In progress' }) }
+    const type = types.get(String(ticket.kind))
+    return { ticket: await bump(ctx, ticket, { ticket_state: ticket.kind === 'access' ? 'Needs verification' : type ? type.reopen : 'In progress' }) }
   },
 }
 export const actions = Object.fromEntries(Object.entries(handlers).map(([operation, handler]) =>
@@ -318,11 +433,30 @@ export const reads = {
     }
     return { answer }
   },
+  // The types a requester may choose, with each configured type's fields and
+  // the options its links and people offer this caller.
+  async form(ctx: ReadContext) {
+    input(ctx, [])
+    const types = await configuredTypes(ctx)
+    const people = [...types.values()].some(t => t.fields.some(f => f.type === 'person'))
+      ? (await all(ctx, 'tickets.person', ['row_id', 'full_name'])).map(r => ({ value: String(r.row_id), label: String(r.full_name) })) : []
+    const configuredList: Row[] = []
+    for (const type of types.values()) {
+      const fields: Row[] = []
+      for (const field of type.fields) fields.push({ name: field.name, label: field.label, type: field.type, required: field.required,
+        ...(field.type === 'choice' ? { choices: field.choices } : {}),
+        ...(field.type === 'person' ? { options: people } : {}),
+        ...(field.type === 'link' ? { options: (await linkRows(ctx, field)).map(r => ({ value: String(r.row_id), label: String(r[field.link_label!] ?? r.row_id) })) } : {}) })
+      configuredList.push({ key: type.key, label: type.label, states: type.states, done: type.done, fields })
+    }
+    return { answer: { types: [...kinds.map(key => ({ key, builtin: true })), ...configuredList] } }
+  },
   async queue(ctx: ReadContext) {
     const p = input(ctx, ['search', 'kind', 'state', 'assigned_to'])
     let tickets = await all(ctx, 'tickets.ticket', ticketFields)
+    const types = await configuredTypes(ctx)
     for (const [key, column] of [['kind', 'kind'], ['state', 'ticket_state'], ['assigned_to', 'assigned_to']])
-      if (p[key]) tickets = tickets.filter(ticket => p[key] === 'open' && key === 'state' ? ticket.ticket_state !== 'Resolved' : ticket[column] === p[key])
+      if (p[key]) tickets = tickets.filter(ticket => p[key] === 'open' && key === 'state' ? !isDone(ticket, types) : ticket[column] === p[key])
     if (p.search) {
       const words = text(ctx, p.search, 'Search').toLowerCase().split(/\s+/)
       tickets = tickets.filter(ticket => words.every(word => `${ticket.row_id} ${ticket.title} ${ticket.public_update ?? ''}`.toLowerCase().includes(word)))
@@ -349,8 +483,21 @@ export const reads = {
           !restricted(ctx, parse(request.details_json)) && (routes(ctx)[String(state.verification?.region)]?.includes(ctx.user) ?? false) }
       }
     }
+    const type = (await configuredTypes(ctx)).get(String(ticket.kind))
+    const entered = (answer.details ?? {}) as Row
+    const personValues: string[] = []
+    if (type && answer.details) {
+      const labels: Row = {}
+      for (const field of type.fields) {
+        const value = entered[field.name]
+        if (typeof value !== 'string') continue
+        if (field.type === 'link') { const [row] = await linkRows(ctx, field, [['row_id', '=', value]]); if (row) labels[field.name] = row[field.link_label!] ?? value }
+        if (field.type === 'person') personValues.push(value)
+      }
+      answer.labels = labels
+    }
     answer.names = await names(ctx, { owner: ticket.owner, assigned_to: ticket.assigned_to }, answer.events, answer.privateEvents ?? [],
-      answer.verification ?? {}, answer.approval ?? {})
+      answer.verification ?? {}, answer.approval ?? {}, personValues)
     return { answer }
   },
 }
