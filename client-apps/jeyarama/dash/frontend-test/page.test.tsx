@@ -315,7 +315,7 @@ describe('Feather Dash against the real platform', () => {
   }
 
   installed('lists combined leadership and staff reasons in title order for the same reader', async ({ dash }) => {
-    await dash.save('job_assignment', { person: dash.reader.user, job: 'Cluster Manager', store: '9901', starts_on: '2026-01-01' })
+    await dash.save('job_assignment', { person: dash.reader.user, job: 'Cluster Manager', cluster: 'DEMO-NORTH', store: '9901', starts_on: '2026-01-01' })
     await dash.save('job_assignment', { person: dash.reader.user, job: 'Team Leader', store: '9901', section: dash.section.row_id, starts_on: '2026-01-01' })
     await dash.save('job_assignment', { person: dash.reader.user, job: 'Staff', store: '9901', section: dash.section.row_id, starts_on: '2026-01-01' })
     await open()

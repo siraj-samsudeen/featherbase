@@ -128,7 +128,8 @@ describe("last month's datasets", () => {
 
 describe('the read grants, declared before the first install', () => {
   const ORG_CHART = ['feather_dash.store_floor', 'feather_dash.department', 'feather_dash.section', 'feather_dash.section_subcategory',
-    'feather_dash.display_location', 'feather_dash.job_assignment', 'feather_dash.section_alias', 'feather_dash.floor_alias', 'feather_dash.job_alias']
+    'feather_dash.display_location', 'feather_dash.job_assignment', 'feather_dash.section_alias', 'feather_dash.floor_alias', 'feather_dash.job_alias',
+    'feather_dash.designation', 'feather_dash.designation_alias']
   const granted = (role: string) => manifest.permissions.filter(p => p.role === role).map(p => p.table).sort()
 
   it('give every app role a read of the entry Table, which opening the app needs', () => {
@@ -145,6 +146,10 @@ describe('the read grants, declared before the first install', () => {
 
   it("give stage D's Section Reviewer a read of every org chart Table", () => {
     expect(granted('Feather Dash Section Reviewer')).toEqual([...ORG_CHART, 'feather_dash.store_rollout'].sort())
+  })
+
+  it('give no app role the people Tables: who reads contacts and stints is the scopes\' to decide (#683)', () => {
+    expect(manifest.permissions.filter(p => ['feather_dash.employee', 'feather_dash.employment'].includes(p.table))).toEqual([])
   })
 
   it('grant reads only: writing a Table that decides scope waits for featherbase #462', () => {
