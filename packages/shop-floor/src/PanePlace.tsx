@@ -103,11 +103,12 @@ export function SplitWithPane({ place, pane, children }: {
     return () => window.removeEventListener('resize', measure)
   }, [docked])
   useEffect(() => {
-    if (!docked) return
+    // Once the split has its docked height:
+    if (!docked || height === null) return
     // The line the pane shows stays in sight in the shorter content above it.
     split.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' })
     split.current?.scrollIntoView?.({ block: 'nearest' })
-  }, [docked])
+  }, [docked, height])
   return (
     <div ref={split} data-testid="split-with-pane" data-pane={shown ? place : undefined}
       style={docked && height ? { height } : undefined}
