@@ -114,3 +114,12 @@ test('only the person and System Managers may open the page', async ({ admin, cr
   expect((await admin.get<Explanation>(pageOf(person.user!))).person).toBe(person.user)
   await expect(admin.get(pageOf('psn_nobody_here'))).rejects.toMatchObject({ status: 404 })
 })
+
+test('a history entry that records no changed fields is passed over', async ({ admin, createUser }) => {
+  await grantRole(admin, { role: 'Ae Kept Role', table: [] })
+  const person = await createUser({ roles: ['Ae Kept Role'] })
+  const { sql } = await import('../src/db')
+  await sql`insert into version (row_id, ref_table, ref_name, data) values ('ae-annotation', 'Person', ${person.user!}, '{"import_run":"r-1"}'::jsonb)`
+  const page = await admin.get<Explanation>(pageOf(person.user!))
+  expect(page.roles.find((r) => r.role === 'Ae Kept Role')).toMatchObject({ given_by: 'Administrator' })
+})
