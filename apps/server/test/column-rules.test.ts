@@ -3,6 +3,8 @@ import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { grantRole } from './fixtures'
 import { sameStoredValue } from '../src/permissions'
+import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
 
 // #917: a Column reached only through a creator-scoped grant is read only on
 // the caller's own rows, on every path that returns or matches its values.
@@ -172,6 +174,23 @@ describe('listed grants on platform Tables', () => {
     await greeter.post('/api/save_row', { table: 'Cr Settings', row: { ...shown, greeting: 'Vanakkam' } })
     await expect(greeter.post('/api/save_row', { table: 'Cr Settings', row: { ...shown, greeting: 'Hello', region: 'North' } }))
       .rejects.toMatchObject({ status: 403 })
+  })
+})
+
+describe('history of a row with line items', () => {
+  test('a reader who sees every Column and line-item Column reads its history; a hidden line-item Column withholds it', async ({ admin, createUser }) => {
+    await admin.post('/api/table_def', { name: 'Hv Line', kind: 'sub_table', columns: [{ column_name: 'qty', column_type: 'Int' }] })
+    await admin.post('/api/table_def', { name: 'Hv Order', columns: [
+      { column_name: 'label', column_type: 'Data' }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Hv Line' },
+    ] })
+    const order = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Hv Order', row: { label: 'H-1', lines: [{ qty: 1 }] } })
+    await grantRole(admin, { table: ['Hv Order', 'Version'], role: 'Hv Reader', can_read: true })
+    const reader = await createUser({ roles: ['Hv Reader'] })
+    await sql`insert into version (row_id, ref_table, ref_name, data) values ('hv-1', 'Hv Order', ${order.row_id}, ${sql.json({ changed: [['label', 'H-0', 'H-1']] })})`
+    expect((await reader.fetch('/api/table/Version/hv-1')).status).toBe(200)
+    await sql`update column_def set tier = 'restricted' where parent = 'Hv Line' and column_name = 'qty'`
+    await invalidateMeta()
+    expect((await reader.fetch('/api/table/Version/hv-1')).status).toBe(403)
   })
 })
 

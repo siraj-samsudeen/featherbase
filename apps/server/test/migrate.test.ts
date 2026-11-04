@@ -91,7 +91,15 @@ describe('migrate: a new database', () => {
         (row_id, parent, parenttype, parentfield, note, private_note)
         values ('legacy-note', 'mine', 'Legacy Contact', 'notes', 'visible', 'inherited'),
           ('lines-note', 'lines-own', 'Legacy Contact', 'notes', 'shown', 'line-detail')`
+      // Preflight reads the flag form before the migration runs.
+      await db.sql`insert into permission (row_id, ref_table, role, tier, can_read) values ('legacy-open', 'Person', 'All', 'basic', true)`
+      const { preflightRelease } = await import('../src/release-preflight')
+      await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/grants role "All" on "Person" \(read\)/)
+      await db.sql`delete from permission where row_id = 'legacy-open'`
       expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
+      await db.sql`insert into permission (row_id, ref_table, role, operation, scope_mode, column_rule) values ('now-open', 'Person', 'All', 'read', 'all', 'basic')`
+      await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/grants role "All" on "Person" \(read\)/)
+      await db.sql`delete from permission where row_id = 'now-open'`
       const { app } = await import('../src/index')
       const { issueSession } = await import('../src/auth')
       const { token } = await issueSession('psn_legacy')
