@@ -13,18 +13,20 @@ export function RowName({ table, rowId }: { table: string; rowId: string }) {
 
 /** A link to a row, read by its name (D5). A row the viewer cannot read is
  *  neutral text instead: no link, no action, its id nowhere (#910 D3). */
-export function RowLink({ table, rowId, onClick, className = 'text-action hover:underline' }: {
+export function RowLink({ table, rowId, onClick, className = 'text-action hover:underline', withCode = true }: {
   table: string
   rowId: string
   onClick?: (event: MouseEvent<HTMLAnchorElement>) => void
   className?: string
+  /** False where the row reads by its name alone (a read-only field, #795). */
+  withCode?: boolean
 }) {
   const name = useRowName(table, rowId)
   if (name.state === 'unreadable') return <span className="text-ink-muted">{rowNameText(name)}</span>
   return (
     <Link to="/featherbase/admin/table/$table/row/$name" search={{ prefill: undefined }}
       params={{ table, name: rowId }} onClick={onClick} className={className}>
-      {name.state === 'loading' ? <span className="text-ink-subtle">…</span> : rowNameText(name)}
+      {name.state === 'loading' ? <span className="text-ink-subtle">…</span> : withCode ? rowNameText(name) : name.title}
     </Link>
   )
 }

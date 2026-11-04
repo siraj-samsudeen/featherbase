@@ -267,7 +267,7 @@ export function ValueField({ field, value, meta, settings, columns }: {
       e.preventDefault()
       nav.push({ ...nav.step, pane: { table: target, row: String(value) } })
     }
-    shown = <RowLink table={target} rowId={String(value)} onClick={open} />
+    shown = <RowLink table={target} rowId={String(value)} onClick={open} withCode={false} />
   } else if (kind === 'yesno')
     shown = <span className={pillClasses(value ? 'bg-positive-tint text-positive' : 'bg-subtle text-ink-muted')}>{value ? 'Yes' : 'No'}</span>
   else if (kind === 'number') shown = formatValue(field.column_type, value, settings) || String(value)
