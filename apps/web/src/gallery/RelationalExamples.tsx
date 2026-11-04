@@ -160,7 +160,7 @@ export function ChipsDemo() {
         <LinkChip label="Restricted owner" unreadable />
       </div>
       <div className="flex flex-wrap gap-2">
-        {[['fields', 'Fields'], ['shelf', 'Shelf', 3], ['count', 'Stock count', 125000]].map(([id, label, count]) => (
+        {[['fields', 'Fields'], ['shelf', 'Shelf', 3], ['count', 'Stock count', 125000], ['spare', 'Spare shelf', 0]].map(([id, label, count]) => (
           <GroupChip key={id} label={label as string} count={count as number | undefined} selected={group === id} onSelect={() => setGroup(id as string)} />
         ))}
       </div>
