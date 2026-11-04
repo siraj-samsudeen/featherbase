@@ -21,6 +21,7 @@ import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, renameServiceAccount, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { principalReach } from './token-reach'
+import { explainAccess } from './access-explanation'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
@@ -1463,6 +1464,11 @@ app.post('/api/access_tokens', async (c) => {
   }
   return c.json(await issueAccessToken(owner, body.label, expiresAt), 201)
 })
+
+// #628: what a person can see, and why. Their own, or anyone's for a System
+// Manager; never the data itself.
+app.get('/api/access_explanation/:person', async (c) =>
+  c.json(await explainAccess(c.req.param('person'), who(c))))
 
 // #852: what a token for this owner could reach, shown before it is issued.
 // The same rule as issuing: your own reach, or anyone's for a System Manager.
