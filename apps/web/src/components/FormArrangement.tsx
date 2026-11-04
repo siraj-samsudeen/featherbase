@@ -97,8 +97,9 @@ export function ArrangeBar({ mode, columns, onMode, onColumns }: {
 }) {
   const on = 'border-action bg-action-tint text-action'
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-1.5 text-sm" data-testid="arrange-bar">
-      <span role="group" aria-label="Arrange by" className="flex flex-wrap items-center gap-1.5">
+    // One line however narrow the form: beside the pane it scrolls sideways.
+    <div className="mb-3 flex flex-nowrap items-center gap-1.5 overflow-x-auto text-sm whitespace-nowrap" data-testid="arrange-bar">
+      <span role="group" aria-label="Arrange by" className="flex shrink-0 items-center gap-1.5">
         <span aria-hidden className="mr-1 text-xs text-ink-subtle">Arrange by</span>
         {ARRANGEMENTS.map(([m, label]) => (
           <button key={m} type="button" onClick={() => onMode(m)} aria-pressed={mode === m}
@@ -106,7 +107,7 @@ export function ArrangeBar({ mode, columns, onMode, onColumns }: {
             data-testid={`arrange-${m}`}>{label}</button>
         ))}
       </span>
-      <span role="group" aria-label="Columns" className="flex items-center gap-1.5 sm:ml-3">
+      <span role="group" aria-label="Columns" className="ml-3 flex shrink-0 items-center gap-1.5">
         <span aria-hidden className="mr-1 text-xs text-ink-subtle">Columns</span>
         {([1, 2] as const).map((c) => (
           <button key={c} type="button" onClick={() => onColumns(c)} aria-pressed={columns === c}
@@ -200,7 +201,7 @@ export function FieldGroupView({ group, columns, children }: { group: FieldGroup
         <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-ink-muted">{heading}</h3>
       ))}
       {open && (
-        <div className={`grid grid-cols-1 gap-x-6 gap-y-4 ${columns === 2 ? 'md:grid-cols-2' : ''}`}>
+        <div className={`grid grid-cols-1 gap-x-6 gap-y-4 ${columns === 2 ? '@2xl:grid-cols-2' : ''}`}>
           {group.fields.map((f) => children(f))}
         </div>
       )}
@@ -279,7 +280,7 @@ export function ValueField({ field, value, meta, settings, columns }: {
     long ? 'whitespace-pre-wrap break-words' : 'truncate whitespace-nowrap',
   ].join(' ')
   return (
-    <div className={`min-w-0 border-b border-border pb-1.5 ${long && columns === 2 ? 'md:col-span-2' : ''}`}
+    <div className={`min-w-0 border-b border-border pb-1.5 ${long && columns === 2 ? '@2xl:col-span-2' : ''}`}
       data-form-field={field.column_name} data-label={field.label ?? field.column_name} data-testid={`value-${field.column_name}`}>
       <div className={`flex min-w-0 gap-3 ${long ? 'flex-col gap-1' : 'items-baseline'}`}>
         <span className={`flex shrink-0 items-center gap-1.5 text-sm text-ink-muted ${long ? '' : 'w-2/5'}`}>

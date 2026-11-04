@@ -147,8 +147,10 @@ export function RowMap({ table, name }: { table: string; name: string }) {
           Open in Explore
         </Link>
       </div>
-      <div className={cardClasses('p-2')}>
-        <div className="space-y-3 xl:hidden" data-testid="map-narrow">
+      {/* The drawing needs its full width to stay legible; narrower (beside
+          the pane, say) the map is a list. */}
+      <div className={cardClasses('@container p-2')}>
+        <div className="space-y-3 @4xl:hidden" data-testid="map-narrow">
           <div className="break-words rounded-control border border-action bg-action-tint px-3 py-2 text-sm">
             <div className="font-semibold text-ink">{centreTitle}</div>
             <div className="text-xs text-ink-muted">{table}</div>
@@ -184,7 +186,7 @@ export function RowMap({ table, name }: { table: string; name: string }) {
         </div>
         <svg
           viewBox={`0 0 ${W} ${H}`}
-          className="hidden h-auto w-full xl:block"
+          className="hidden h-auto w-full @4xl:block"
           role="img"
           aria-label={`Relationship map for ${centreTitle}`}
           data-testid="map-svg"

@@ -460,7 +460,8 @@ export function FormView({
   }
 
   const work = <div className="flex flex-col gap-6 lg:flex-row">
-    <div className={`min-w-0 flex-1 ${arrangement.columns === 1 && !isNew ? 'max-w-2xl' : 'max-w-3xl'}`}>
+    // Its columns follow its own width (a form beside the pane is narrow).
+    <div className={`@container min-w-0 flex-1 ${arrangement.columns === 1 && !isNew ? 'max-w-2xl' : 'max-w-3xl'}`}>
       {!isNew && (
         <ArrangeBar mode={arrangement.mode} columns={arrangement.columns}
           onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
@@ -488,11 +489,11 @@ export function FormView({
             <div
               key={si}
               data-testid={`form-section-${si}`}
-              className={cardClasses(`mb-4 grid grid-cols-1 gap-4 p-5 ${arrangement.columns === 2 || isNew ? 'md:grid-cols-2' : ''}`)}
+              className={cardClasses(`mb-4 grid grid-cols-1 gap-4 p-5 ${arrangement.columns === 2 || isNew ? '@2xl:grid-cols-2' : ''}`)}
             >
               {fields.map((f) =>
                 f.column_type === 'Column Break' ? (
-                  arrangement.columns === 2 || isNew ? <div key={f.column_name} className="hidden md:block" /> : null
+                  arrangement.columns === 2 || isNew ? <div key={f.column_name} className="hidden @2xl:block" /> : null
                 ) : (
                   control(f)
                 ),
@@ -976,7 +977,7 @@ function FieldControl({
 
   const wide = ['Text', 'Long Text', 'JSON', 'Sub-table'].includes(field.column_type)
   const wrap = (control: React.ReactNode) => (
-    <div className={`min-w-0 ${wide ? 'md:col-span-2' : ''}`} data-form-field={field.column_name} data-label={field.label ?? field.column_name}>
+    <div className={`min-w-0 ${wide ? '@2xl:col-span-2' : ''}`} data-form-field={field.column_name} data-label={field.label ?? field.column_name}>
       {label}
       {control}
       {hint}
