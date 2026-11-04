@@ -192,3 +192,28 @@ test('import and resolution history says who imported and which decision the per
   expect(timeline).toHaveTextContent('Administrator kept their correction')
   expect(timeline).toHaveTextContent('City: kept the current value instead of East')
 })
+
+// #829: a person a first Google sign-in made reads as made by that sign-in,
+// and a row someone typed in reads as made by them.
+test('#829: the activity opens with who created the row', async ({ admin }) => {
+  const { configureGoogle } = await import('server/test/identity-fixtures')
+  const { completeSignIn } = await import('server/src/sign-in')
+  const { methodOfKind } = await import('server/src/identities')
+  await configureGoogle({ client_id: 'real-client-id', allowed_email_domains: 'staff.example.com' })
+  const issued = await completeSignIn(
+    (await methodOfKind('google'))!,
+    { status: 'verified', subject: 'g-829-web', email: 'new@staff.example.com', email_verified: true, display_name: 'New Starter', hosted_domain: 'staff.example.com' },
+    null,
+    { testMode: true },
+  )
+  await renderApp(`/featherbase/admin/table/${tableSlug('Person')}/row/${issued.user.row_id}`, admin)
+  const created = await screen.findByTestId('activity-created', {}, { timeout: 10_000 })
+  await waitFor(() => expect(created).toHaveTextContent(/^Google sign-in created this · \d{2}-[A-Z][a-z]{2}-\d{4} \d{2}:\d{2} IST$/))
+})
+
+test('#829: a row typed in reads as created by the person who saved it', async ({ admin }) => {
+  const rowId = await editedRow(admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(decodeURIComponent(ENC))}/row/${rowId}`, admin)
+  const created = await screen.findByTestId('activity-created', {}, { timeout: 10_000 })
+  await waitFor(() => expect(created).toHaveTextContent(/^Administrator created this · /))
+})

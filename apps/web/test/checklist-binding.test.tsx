@@ -83,7 +83,9 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
     `/featherbase/admin/table/third-sub-parent/view/checklist?run=${encodeURIComponent(run.row_id)}`,
     admin,
   )
-  expect(await screen.findByText('Unlock the shutter')).toBeInTheDocument()
+  // #736: the run pane reads each Sub-table's metadata in turn before it can
+  // bind one; on a busy CI runner that took past findByText's default 1 s.
+  expect(await screen.findByText('Unlock the shutter', {}, { timeout: 5_000 })).toBeInTheDocument()
   expect(screen.queryByText('not a checklist item')).not.toBeInTheDocument()
   runView.unmount()
 
@@ -96,9 +98,9 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
   // The first two metadata reads now really fail permission checks. They
   // must not prevent discovery of the readable, qualifying third child.
   await renderApp(`/featherbase/admin/table/third-sub-parent/view/checklist?run=${encodeURIComponent(run.row_id)}`, reader)
-  expect(await screen.findByText('Unlock the shutter')).toBeInTheDocument()
+  expect(await screen.findByText('Unlock the shutter', {}, { timeout: 5_000 })).toBeInTheDocument()
   expect(screen.queryByText('not a checklist item')).not.toBeInTheDocument()
-}, 15_000) // #619: creates four tables and traverses two screens on busy CI runners.
+}, 20_000) // #619: creates four tables and traverses two screens on busy CI runners.
 
 // Checklist Template Item carries must_do and photo_proof but no `done`: it
 // describes the standard rather than executing it. Binding "the first Check"

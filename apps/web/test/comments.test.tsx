@@ -53,17 +53,20 @@ async function submit(text: string) {
   screen.getByTestId('comment-submit').click()
 }
 
-test('a row with no comments says so rather than rendering an empty list', async ({ admin }) => {
+// #829: a row's activity always opens with who created it, so a row with no
+// comments shows that line and no comment entries.
+test('a row with no comments shows only who created it', async ({ admin }) => {
   const rowId = await seedRow(admin)
   const panel = await openRow(admin, rowId)
-  await waitFor(() => expect(panel).toHaveTextContent('No activity yet'))
+  await waitFor(() => expect(panel).toHaveTextContent('Administrator created this'))
+  expect(panel).not.toHaveTextContent('No activity yet')
   expect(screen.queryAllByTestId('activity-comment')).toHaveLength(0)
 })
 
 test('a posted comment appears in the thread and is stored against the row', async ({ admin }) => {
   const rowId = await seedRow(admin)
   const panel = await openRow(admin, rowId)
-  await waitFor(() => expect(panel).toHaveTextContent('No activity yet'))
+  await waitFor(() => expect(panel).toHaveTextContent('Administrator created this'))
 
   await submit('First observation')
 
@@ -119,7 +122,7 @@ test('a stored mention renders as its own highlighted node, and notifies', async
   const { ravi } = await people(admin)
   const rowId = await seedRow(admin)
   const panel = await openRow(admin, rowId)
-  await waitFor(() => expect(panel).toHaveTextContent('No activity yet'))
+  await waitFor(() => expect(panel).toHaveTextContent('Administrator created this'))
 
   await submit('cc @[Ravi Menon] please review')
   await waitFor(() => expect(screen.getAllByTestId('activity-comment')).toHaveLength(1))
