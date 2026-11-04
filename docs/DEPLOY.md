@@ -225,6 +225,13 @@ stopping at the first problem so that the old deployment keeps serving:
    developer's machine);
 4. on `staging` only, re-pin an app whose files changed (below).
 
+Steps 2 to 4 are one transaction, and they hold the apps' lifecycle lock from
+start to end. While they run, the old deployment's API requests and jobs wait,
+usually for a few seconds. To take the lock, the step waits up to 60 seconds for
+requests already running. If they keep the apps busy longer than that, the deploy
+fails and changes nothing; deploy again. Inside the transaction, a lock wait over
+60 seconds, or 5 minutes idle, also fails the deploy.
+
 **Variables.** The table above, and for a client instance:
 
 | Variable | Why |
