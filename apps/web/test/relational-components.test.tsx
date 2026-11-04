@@ -165,6 +165,19 @@ describe('DrillPane', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  test("its actions sit on a line of their own under the title, so they never squeeze it", () => {
+    pane()
+    const heading = screen.getByRole('heading', { level: 2, name: 'North bay · B-104' })
+    const titleRow = screen.getByRole('button', { name: 'Close' }).parentElement!
+    expect(titleRow).toContainElement(heading)
+    expect(titleRow).not.toContainElement(screen.getByRole('button', { name: 'Open row page' }))
+  })
+
+  test('its title wraps between words, never inside one', () => {
+    pane()
+    expect(screen.getByRole('heading', { level: 2, name: 'North bay · B-104' }).className).not.toMatch(/\b(wrap-anywhere|break-all)\b/)
+  })
+
   test('Escape inside the pane closes it', async () => {
     const user = userEvent.setup()
     const onClose = pane()
