@@ -237,6 +237,18 @@ describe('PathBar', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Copied')
   })
 
+  test('a long path scrolls its current step into view within the bar', () => {
+    const scrolled: Element[] = []
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this) }
+    try {
+      bar(1)
+      expect(scrolled.at(-1)).toHaveAttribute('aria-current', 'step')
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
+
   test('holds the recent paths slot', () => {
     bar(2)
     expect(screen.getByText('Recent slot')).toBeInTheDocument()
