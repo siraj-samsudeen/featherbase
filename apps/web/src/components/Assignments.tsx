@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, listResource } from '../lib/api'
+import { useCanReadTable } from '../lib/session'
 import { ShownName } from '../lib/people'
 import { buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
 
@@ -18,7 +19,10 @@ export function Assignments({ table, name, readOnly = false }: { table: string; 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // #861: only ask for ToDo rows when this person's role may read them.
+  const canRead = useCanReadTable('ToDo')
   const todos = useQuery({
+    enabled: canRead === true,
     queryKey: ['assignments', table, name],
     queryFn: () =>
       listResource<ToDoRow>('ToDo', {
@@ -48,6 +52,7 @@ export function Assignments({ table, name, readOnly = false }: { table: string; 
     }
   }
 
+  if (readOnly && canRead === false) return null
   if (readOnly && todos.data?.data.length === 0) return null
 
   return (

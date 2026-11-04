@@ -16,6 +16,7 @@ export interface VersionRow {
   created_at: string
   data: {
     changed?: [string, unknown, unknown][]
+    created?: boolean
     import_run?: string
     resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown }
   } | null
@@ -29,7 +30,7 @@ export function activityQuery(table: string, name: string) {
   return queryOptions({
     queryKey: ['activity', table, name],
     queryFn: () =>
-      api.get<{ comments: CommentRow[]; versions: VersionRow[] }>(
+      api.get<{ created?: { created_by?: string; created_at?: string }; comments: CommentRow[]; versions: VersionRow[] }>(
         `/api/activity/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
       ),
   })

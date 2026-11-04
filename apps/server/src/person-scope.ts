@@ -129,7 +129,7 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
       return getDoc(table, rowId)
     }),
     list: (table, args = {}) => read(table, async () => {
-      if (args.filters?.some(([, operator]) => operator === 'related')) throw new Error('Scope provider lists do not support related filters')
+      if (args.filters?.some(([, operator]) => operator === 'related' || operator === 'not related')) throw new Error('Scope provider lists do not support related filters')
       return (await getList(table, args)).data
     }),
   })
