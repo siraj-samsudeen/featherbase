@@ -269,11 +269,14 @@ describe('Tickets independently installed product contract (#810)', () => {
     ticket = (await act(w.support, 'link', { ...revision(ticket), url: 'https://github.com/fictional-warehouse/demo/issues/37' })).ticket
     ticket = (await act(w.support, 'resolve', { ...revision(ticket), reason: 'Report refreshed and both invoices present', reference: 'report-check-2' })).ticket
     expect(ticket.ticket_state).toBe('Resolved')
+    ticket = (await act(w.support, 'evidence', { ...revision(ticket), expected: '2 invoices', observed: '2 invoices',
+      reference: 'post-resolution-confirmation', observed_at: '2026-11-04T09:00:00Z', finding: 'no_mismatch' })).ticket
+    expect((await detail(w.support, ticket)).ticket.ticket_state).toBe('Resolved')
     ticket = (await act(w.support, 'reopen', { ...revision(ticket), reason: "The next day's report is still missing invoices" })).ticket
     expect(ticket.ticket_state).not.toBe('Resolved')
     const saved = serialized(await detail(w.support, ticket))
     for (const text of ['confirmed_mismatch', 'source-check-1', 'report-check-1', '2026-11-03T09:00:00', w.support.user,
-      'Report refreshed and both invoices present', 'report-check-2', "The next day's report", '/issues/37']) expect(saved).toContain(text)
+      'Report refreshed and both invoices present', 'report-check-2', 'post-resolution-confirmation', "The next day's report", '/issues/37']) expect(saved).toContain(text)
     expect(saved).not.toMatch(/"root_cause":"(?!unknown)[^"]+"/)
     const events = await admin.get<any>('/api/table/tickets.event?limit_page_length=500')
     expect(events.data.length).toBeGreaterThan(0)
