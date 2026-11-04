@@ -161,7 +161,7 @@ export function RowRelationTree({ table, row, label, code, expanded, onExpandedC
     return [...above, { ...centre, children: undefined, loading: false, hasChildren: false }, ...(centre.children ?? []), ...(centre.loading ? [{ id: 'loading', label: 'Loading', heading: true }] : [])]
   })
   return <Outline walk={walk} label={`Around ${label}`} expanded={expanded} onExpandedChange={onExpandedChange}
-    onOpen={onOpen} onFocus={onFocus} selected={selected} centre={rootId} />
+    onOpen={onOpen} onFocus={onFocus} selected={selected ?? rootId} centre={rootId} />
 }
 
 /** Every row of a table as a folded top line (the list's tree of all). */

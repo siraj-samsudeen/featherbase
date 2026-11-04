@@ -83,3 +83,14 @@ for (const activation of ['click', 'Enter', ' '] as const) {
     expect(screen.getAllByTestId('explore-chip')).toHaveLength(1)
   })
 }
+
+test("Explore's drill pane offers no Filter, since no list sits under it", async ({ admin }) => {
+  await seed(admin)
+  await renderApp(`/featherbase/admin/explore?root=${enc('Ex Purchase')}`, admin)
+  const pane1 = await screen.findByTestId('explore-pane1')
+  await waitFor(() => expect(within(pane1).getAllByTestId('explore-row')).toHaveLength(3))
+  fireEvent.click(within(pane1).getAllByTitle('Show in the pane')[0], { bubbles: true })
+  const panel = await pane(/^po-/)
+  expect(await within(panel).findByRole('button', { name: 'Go there' })).toBeInTheDocument()
+  expect(within(panel).queryByRole('button', { name: 'Filter' })).not.toBeInTheDocument()
+})

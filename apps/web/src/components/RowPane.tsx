@@ -150,7 +150,8 @@ function filterColumn(listMeta: TableMeta | undefined, link: ForwardLink): Colum
 
 function PointsAt({ links, nav, onOpen }: { links: ForwardLink[]; nav: Navigation; onOpen: (pane: NavPane) => void }) {
   const step = nav.step
-  const overList = step.screen === 'list'
+  // Filter narrows the list the pane sits over; Explore's pane has none.
+  const overList = step.screen === 'list' && nav.addressed
   const listMeta = useMeta(step.table, overList)
   if (!links.length) return <PaneSection title="Points at"><p className="text-sm text-ink-muted">No links to other rows</p></PaneSection>
   return (
