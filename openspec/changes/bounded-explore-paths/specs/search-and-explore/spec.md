@@ -8,6 +8,10 @@ Explore SHALL let the user start from a Table and add up to four more, following
 
 Opening a row from Explore SHALL use the same peek panel as a form's links rather than leaving Explore.
 
+Every traversal SHALL enforce access to the upstream Table and projected Reference, even when upstream records are explicitly selected. Unauthorized traversal MUST be refused; records excluded by upstream row restrictions MUST NOT contribute to endpoint rows or counts. Native and same-source PostgreSQL requests SHALL permit four nested relationship levels and sixteen relationship predicates per request, and refuse requests exceeding either bound.
+
+The synthetic journey uses Section ← FloorSection ← AssignmentSection → Assignment → Worker: FloorSection references Section; AssignmentSection references FloorSection and Assignment; Assignment references Worker. Duplicate junctions reach Amber, North reaches Amber and Birch, South reaches Cedar, and an unlinked assignment reaches an unreachable control worker. The complete result is exactly Amber, Birch and Cedar, once each.
+
 #### Scenario: Narrow by clicking
 
 - **WHEN** the user starts Explore from Supplier, adds Purchase Order, clicks
