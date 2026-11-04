@@ -10,6 +10,7 @@ const { expect } = require('playwright/test');
 const { externalSql, EXTERNAL_URL_ENV, EXTERNAL_READER, EXTERNAL_READER_PASSWORD } = require('../support/stack');
 const { SourceBrowserPage } = require('../support/pages/source-browser-page');
 const { ListPage } = require('../support/pages/list-page');
+const { rowHref, mapHref } = require('../support/addresses');
 
 const SCHEMA = 'shop_fixture';
 const SOURCE = 'shops';
@@ -108,13 +109,13 @@ When('the user connects its shelf and bin tables, naming them {string} and {stri
 
 When('the user opens a bin', async function () {
   const page = await this.actor();
-  await page.goto(`/featherbase/admin/Bin/${this.bin}`);
+  await page.goto(rowHref('Bin', this.bin));
   await page.getByTestId('form-view').waitFor();
 });
 
 When("the user opens that bin's relationship map", async function () {
   const page = await this.actor();
-  await page.goto(`/featherbase/admin/map/Bin/${this.bin}`);
+  await page.goto(mapHref('Bin', this.bin));
   await page.getByTestId('map-forward-Shelf').waitFor();
 });
 
