@@ -44,7 +44,8 @@
       {"column_name": "original", "label": "Original request", "column_type": "Text", "reqd": true},
       {"column_name": "details_json", "label": "Structured request", "column_type": "Text"},
       {"column_name": "verification_key", "label": "Recipient revision", "column_type": "Data", "hidden": true},
-      {"column_name": "approval_key", "label": "Scope revision", "column_type": "Data", "hidden": true}
+      {"column_name": "approval_key", "label": "Scope revision", "column_type": "Data", "hidden": true},
+      {"column_name": "active_verification", "label": "Actively verified recipient revision", "column_type": "Data", "hidden": true}
     ]},
     {"name": "tickets.event", "label": "Support event", "module": "Tickets", "id_pattern": "FTE-.########", "columns": [
       {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket"},

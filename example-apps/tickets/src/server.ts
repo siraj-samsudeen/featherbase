@@ -175,10 +175,12 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     }
     if (recipientChanged || scopeChanged) {
       values.ticket_state = category === 'access' ? 'Needs verification' : 'New'
-      if (support && category === 'access') {
-        const { verification } = workflow(request, await history(ctx, ticket))
+      if (category === 'access') {
+        // The request row says whether its current recipient holds an active
+        // verification, so a requester's own edit is judged like support's.
+        const verified = !recipientChanged && !!request.active_verification && request.active_verification === request.verification_key
         if (restricted(ctx, next)) values.ticket_state = 'Policy review'
-        else if (!recipientChanged && verification?.active === true) values.ticket_state = 'Awaiting approval'
+        else if (verified) values.ticket_state = 'Awaiting approval'
       }
     }
     return { ticket: await bump(ctx, ticket, values) }
@@ -193,7 +195,8 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     if (typeof p.active !== 'boolean') ctx.reject('Record the active employment result')
     const region = text(ctx, p.region, 'Region')
     const evidence = text(ctx, p.evidence, 'Evidence reference')
-    await ctx.documents.update('tickets.request', { row_id: request.row_id, updated_at: request.updated_at, approval_key: randomUUID() })
+    await ctx.documents.update('tickets.request', { row_id: request.row_id, updated_at: request.updated_at, approval_key: randomUUID(),
+      active_verification: p.active ? request.verification_key : null })
     await event(ctx, ticket, 'verify', { email, active: p.active, region, evidence, verification_key: request.verification_key })
     return { ticket: await bump(ctx, ticket, { ticket_state: restricted(ctx, structured) ? 'Policy review' : p.active ? 'Awaiting approval' : 'Needs verification' }) }
   },
