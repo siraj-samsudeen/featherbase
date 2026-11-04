@@ -56,7 +56,8 @@ them, stay private.
 
 An open type's request and history live in their own Tables that everyone may read, so the platform's own
 permissions give exactly the promised audience, through the app and the generic API alike. A private type's
-stay in the private Tables, read by the requester and support only. A ticket's details never move between the
+stay in the private Tables, as before: details for the requester and support, the full history (internal notes
+included) for support only; the requester follows the actions in the shared progress. A ticket's details never move between the
 two: changing a ticket to a type with the other visibility is refused.
 
 Rejected: one set of Tables with the app deciding who reads them. The platform enforces reads on its own Tables,
