@@ -104,6 +104,8 @@ export function Indicator({ value, label = value }: { value: string; label?: str
 }
 
 const NO_FILTERS: Filter[] = []
+type SettingsChange = { sort?: { field: string; dir: 'asc' | 'desc' } | null; arrangement?: Required<ColumnArrangement>; compact?: boolean }
+
 // A compact list: the row's name, then this many key values.
 const COMPACT_COLUMNS = 3
 
@@ -184,6 +186,7 @@ export function ListView({
   const [arrangement, setArrangement] = useState<Required<ColumnArrangement>>({ shownCols: [], hiddenCols: [] })
   // #910 checklist 1: Compact shows each row's name and two key values.
   const [compact, setCompact] = useState(false)
+  const earlyChange = useRef<SettingsChange | null>(null)
   const [colPickerOpen, setColPickerOpen] = useState(false)
   // #738: the Show columns menu grows into the space below its button and no
   // further, so it ends on screen; it scrolls inside only when that is short.
@@ -277,6 +280,7 @@ export function ListView({
   // persisted here — this covers the durable "customize a list" bits.
   useEffect(() => {
     let cancelled = false
+    earlyChange.current = null
     setSettingsLoaded(false)
     setSettingsUnsaved(false)
     api
@@ -286,10 +290,12 @@ export function ListView({
       .then((res) => {
         if (cancelled) return
         const s = res.settings
+        // A change the person made while these were on their way wins.
+        const early = earlyChange.current
         if (s) {
-          if (s.sort) setSort(s.sort)
-          setCompact(s.compact === true)
-          setArrangement({
+          if (s.sort && early?.sort === undefined) setSort(s.sort)
+          if (early?.compact === undefined) setCompact(s.compact === true)
+          if (!early?.arrangement) setArrangement({
             shownCols: Array.isArray(s.shownCols) ? s.shownCols : [],
             hiddenCols: Array.isArray(s.hiddenCols) ? s.hiddenCols : [],
           })
@@ -306,11 +312,24 @@ export function ListView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [table])
 
+  useEffect(() => {
+    if (!settingsLoaded || !earlyChange.current) return
+    const early = earlyChange.current
+    earlyChange.current = null
+    persist(early)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsLoaded])
+
   // Persist settings whenever the user changes them (after the initial load).
   // A save that fails is said, not swallowed (#546): the change still shows
   // now, but the list would open the old way next time.
-  function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement>; compact?: boolean }) {
-    if (!settingsLoaded) return
+  function persist(next: SettingsChange) {
+    // Before the saved settings arrive, a change is held and saved once they
+    // have (below), so a quick first click is neither lost nor undone.
+    if (!settingsLoaded) {
+      earlyChange.current = { ...earlyChange.current, ...next }
+      return
+    }
     const token = getToken()
     const snapshot = {
       sort: next.sort !== undefined ? next.sort : sort,
