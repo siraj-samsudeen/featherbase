@@ -109,8 +109,14 @@ test('a walk is listed under Recent paths by its names after signing in again', 
 
   await renderApp(tableHref(REGION), admin)
   fireEvent.click(await screen.findByRole('button', { name: 'Recent paths' }))
-  const item = await screen.findByRole('menuitem', { name: `${SITE} › Region: Kerala` })
+  const item = await screen.findByRole('menuitem', { name: `${SITE} › Region: Kerala · KL` })
   fireEvent.click(item)
   await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(2))
+})
+
+test("a row page's path bar names the row", async ({ admin }) => {
+  await seedSites(admin)
+  await renderApp(`${tableHref(PLANT)}/row/1503`, admin)
+  await waitFor(() => expect(current()).toHaveTextContent('Enchakkal Supermarket · 1503'))
 })

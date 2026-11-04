@@ -56,6 +56,9 @@ import SourceBrowser from './pages/SourceBrowser'
 import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { RelationMap } from './pages/RelationMap'
+import { NavPathBar } from './components/NavPathBar'
+import { NavigationProvider, useAddressNavigation } from './lib/navigation'
+import type { NavStep } from './lib/nav-path'
 
 // #642 (E4): a page with a frame policy of its own (the Sales Target report)
 // is entered and left by a full load, so each document carries the policy the
@@ -404,16 +407,24 @@ const tableRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'table/$table',
   ...tableAddress,
-  validateSearch: (search: Record<string, unknown>) => ({
+  // #910: `path` is the walk the user is on (lib/navigation); `filters`
+  // stays the way in from elsewhere (a saved view, a shared list link).
+  validateSearch: (search: Record<string, unknown>) => withPath(search, {
     filters: searchString(search.filters),
   }),
   component: tablePage(TableListPage),
 })
 
+/** A list or row page's search, with the walk's `path` when there is one:
+ *  kept as the router parsed it (an object), so the address carries it once,
+ *  not as a quoted string; decodePath validates either. */
+function withPath<T extends object>(search: Record<string, unknown>, rest: T): T & { path?: unknown } {
+  return search.path === undefined || search.path === null || search.path === '' ? rest : { ...rest, path: search.path }
+}
+
 function TableListPage() {
   const { table, tableMeta } = useTableAddress()
-  const { filters } = tableRoute.useSearch()
-  const navigate = tableRoute.useNavigate()
+  const { filters, path } = tableRoute.useSearch()
   // SET-001: a Settings Table has no list — open its one row directly.
   if (tableMeta.kind === 'settings') {
     return (
@@ -422,20 +433,28 @@ function TableListPage() {
       </div>
     )
   }
-  const parsed = parseFilters(filters)
+  return <NavigatedList key={table} table={table} filters={filters} path={path} />
+}
+
+function NavigatedList({ table, filters, path }: { table: string; filters?: string; path?: unknown }) {
+  const here = useMemo<NavStep>(() => {
+    const parsed = parseFilters(filters)
+    return parsed.length ? { screen: 'list', table, filters: parsed } : { screen: 'list', table }
+  }, [table, filters])
+  const nav = useAddressNavigation(here, path)
   return (
     <div data-testid="table-page">
-      <ListView
-        key={table}
-        table={table}
-        filters={parsed}
-        onFiltersChange={(next) =>
-          navigate({
-            search: { filters: next.length ? JSON.stringify(next) : undefined },
-            replace: true,
-          })
-        }
-      />
+      <NavigationProvider value={nav}>
+        <NavPathBar />
+        <ListView
+          table={table}
+          filters={nav.step.filters ?? []}
+          onFiltersChange={(next) => {
+            const { filters: _, ...step } = nav.step
+            nav.push(next.length ? { ...step, filters: next } : step)
+          }}
+        />
+      </NavigationProvider>
     </div>
   )
 }
@@ -800,7 +819,7 @@ const docRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'table/$table/row/$name',
   ...rowAddress,
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>) => withPath(search, {
     prefill: searchString(search.prefill),
   }),
   component: tablePage(TableFormPage),
@@ -809,7 +828,9 @@ const docRoute = createRoute({
 function TableFormPage() {
   const { table } = useTableAddress()
   const { name } = docRoute.useParams()
-  const { prefill } = docRoute.useSearch()
+  const { prefill, path } = docRoute.useSearch()
+  const here = useMemo<NavStep>(() => ({ screen: 'row', table, row: name }), [table, name])
+  const nav = useAddressNavigation(here, path)
   // #102 review: the raw prefill string is part of the key — navigating
   // from one ?prefill= URL to another (or clearing it, e.g. Ctrl/Cmd+B)
   // remounts the form instead of retaining the previous form's values.
@@ -817,12 +838,15 @@ function TableFormPage() {
   const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
   return (
     <div data-testid="doc-page">
-      <FormView
-        key={`${table}/${name}/${prefill ?? ''}`}
-        table={table}
-        name={name}
-        prefill={parsedPrefill}
-      />
+      <NavigationProvider value={nav}>
+        <NavPathBar />
+        <FormView
+          key={`${table}/${name}/${prefill ?? ''}`}
+          table={table}
+          name={name}
+          prefill={parsedPrefill}
+        />
+      </NavigationProvider>
     </div>
   )
 }

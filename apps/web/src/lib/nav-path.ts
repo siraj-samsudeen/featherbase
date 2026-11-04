@@ -240,6 +240,18 @@ export function rememberPath(list: NavPath[], path: NavPath): NavPath[] {
   return [path, ...list.filter((p) => encodePath(p) !== key)].slice(0, MAX_RECENT)
 }
 
+// A walk as it goes on: a path of one step is not worth offering again, and
+// a walk that carries on from the newest one remembered replaces it, so one
+// walk is one recent path, not one per step.
+export function rememberWalk(list: NavPath[], path: NavPath): NavPath[] {
+  if (path.steps.length < 2) return list
+  const steps = path.steps.slice(0, path.at + 1)
+  const newest = list[0]
+  const extends_ = newest && newest.steps.length <= steps.length
+    && newest.steps.every((s, i) => sameStep(s, steps[i]))
+  return rememberPath(extends_ ? list.slice(1) : list, path)
+}
+
 // Stored recent paths, each as an encoded string or a parsed object; the
 // malformed are dropped, repeats kept once, at most MAX_RECENT.
 export function decodeRecent(raw: unknown): NavPath[] {
