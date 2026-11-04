@@ -78,3 +78,10 @@ describe('a person\'s time', () => {
     expect(shown('2026-01-05')).toBe('05-Jan-2026')
   })
 })
+
+describe('stored dates', () => {
+  it('reads a stored Date as its calendar day', () => {
+    expect(employmentProblem(stint('e2', { joined_on: new Date('2026-01-21T00:00:00.000Z'), left_on: null }), [stint('e1', { left_on: new Date('2026-01-22T00:00:00.000Z') })])?.message)
+      .toMatch(/to 22-Jan-2026/)
+  })
+})
