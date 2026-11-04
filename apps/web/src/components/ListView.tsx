@@ -19,7 +19,7 @@ import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName, usePrincipalLabels } from '../lib/people'
-import { Button, DataCards, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
+import { Button, DataCards, NARROW_QUERY, ViewToggle, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp, ChevronDown } from '@featherbase/shop-floor'
 import { GlossaryHelp } from './GlossaryHelp'
 import { fmtCount } from '@featherbase/shop-floor'
@@ -103,6 +103,8 @@ export function Indicator({ value, label = value }: { value: string; label?: str
 }
 
 const NO_FILTERS: Filter[] = []
+// A compact list: the row's name, then this many key values.
+const COMPACT_COLUMNS = 3
 
 /** The link values a filtered list's new rows start with: each "= one row"
  *  filter on a link column the person may set. */
@@ -179,6 +181,8 @@ export function ListView({
   // UI-013 / #738: per-user saved settings — sort, and which columns show,
   // kept as columns switched on and off on top of the Table's list columns.
   const [arrangement, setArrangement] = useState<Required<ColumnArrangement>>({ shownCols: [], hiddenCols: [] })
+  // #910 checklist 1: Compact shows each row's name and two key values.
+  const [compact, setCompact] = useState(false)
   const [colPickerOpen, setColPickerOpen] = useState(false)
   // #738: the Show columns menu grows into the space below its button and no
   // further, so it ends on screen; it scrolls inside only when that is short.
@@ -275,7 +279,7 @@ export function ListView({
     setSettingsLoaded(false)
     setSettingsUnsaved(false)
     api
-      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[]; shownCols?: string[] } | null }>(
+      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[]; shownCols?: string[]; compact?: boolean } | null }>(
         `/api/user_settings/${encodeURIComponent(table)}`,
       )
       .then((res) => {
@@ -283,6 +287,7 @@ export function ListView({
         const s = res.settings
         if (s) {
           if (s.sort) setSort(s.sort)
+          setCompact(s.compact === true)
           setArrangement({
             shownCols: Array.isArray(s.shownCols) ? s.shownCols : [],
             hiddenCols: Array.isArray(s.hiddenCols) ? s.hiddenCols : [],
@@ -303,12 +308,13 @@ export function ListView({
   // Persist settings whenever the user changes them (after the initial load).
   // A save that fails is said, not swallowed (#546): the change still shows
   // now, but the list would open the old way next time.
-  function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement> }) {
+  function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement>; compact?: boolean }) {
     if (!settingsLoaded) return
     const token = getToken()
     const snapshot = {
       sort: next.sort !== undefined ? next.sort : sort,
       ...(next.arrangement ?? arrangement),
+      compact: next.compact ?? compact,
     }
     // Settings are whole snapshots. Keep writes in interaction order so a
     // slower earlier request cannot restore an obsolete sort or column set.
@@ -323,7 +329,8 @@ export function ListView({
       .catch(() => { if (getToken() === token) setSettingsUnsaved(true) })
   }
 
-  const columns = meta.data ? viewColumns(meta.data, arrangement) : []
+  const allColumns = meta.data ? viewColumns(meta.data, arrangement) : []
+  const columns = compact ? allColumns.slice(0, COMPACT_COLUMNS) : allColumns
   // #209 / #738: who may shape this Table's columns for everyone — "Edit
   // columns" and "Make this the default for everyone" show exactly here.
   // Not on system Tables (their columns are the platform's) nor bound ones
@@ -693,6 +700,10 @@ export function ListView({
               New
             </Link>
           )}
+          <ViewToggle label="List layout" value={compact ? 'compact' : 'table'} onChange={(v) => {
+            setCompact(v === 'compact')
+            persist({ compact: v === 'compact' })
+          }} />
           <Button aria-pressed={treeOn} onClick={() => setTree(!treeOn)}
             className={treeOn ? 'border-action bg-action-tint text-action' : undefined}>Tree of all</Button>
           <ActionDisclosure label="View: List">
