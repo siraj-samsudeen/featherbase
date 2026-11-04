@@ -39,6 +39,10 @@ export function needsAttention(root: Message, all: Message[], person: string) {
 export function lastChanged(root: Message, all: Message[]) {
   return Math.max(...[root, ...repliesTo(root, all)].map(message => Date.parse(message.updated_at)))
 }
+/** Only someone else's message is news: your own post, reply or resolution is never unread for you. */
+export function hasUnreadActivity(root: Message, all: Message[], person: string, seenAt: number) {
+  return [root, ...repliesTo(root, all)].some(message => message.created_by !== person && Date.parse(message.updated_at) > seenAt)
+}
 
 export function useMembers() {
   return useQuery({ queryKey: ['task-management', 'members'], queryFn: () => api.get<{ data: PersonOption[] }>('/api/table_members/tasker.discussion') })

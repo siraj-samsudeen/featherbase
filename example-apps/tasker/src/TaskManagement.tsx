@@ -11,6 +11,7 @@ import { fmtDateTime } from '@featherbase/shop-floor'
 import { ApiError, api, getSessionUser, listAllResources } from './api'
 import { listVisiblePeople, PEOPLE_LIMITED_NOTICE, type PersonOption } from './people'
 import { Markdown } from './Markdown'
+import { describeHistoryValue } from './history'
 import { ProjectDescription } from './ProjectDescription'
 import { TaskActions } from './TaskActions'
 import {
@@ -1238,7 +1239,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     ...(taskActivity.data?.versions ?? []).map((entry) => ({ kind: 'version' as const, at: entry.created_at, who: entry.author_name ?? 'Unknown person', changes: entry.data?.changed ?? [] })),
   ].sort((left, right) => new Date(left.at).getTime() - new Date(right.at).getTime())
   const latestActivity = activity.at(-1)
-  const formatValue = (value: unknown) => value == null || value === '' ? 'empty' : String(value)
 
   return <section ref={detail} className="tasker-detail" aria-label="Task detail content" onKeyDown={(event) => {
     if (event.key === 'Escape') {
@@ -1342,7 +1342,7 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
             <p className="pointer-fine:text-xs text-[var(--color-ink-muted)]"><strong className="text-[var(--color-ink)]">{entry.who}</strong> {entry.kind === 'comment' ? 'commented' : 'edited'} · {fmtDateTime(new Date(entry.at))}</p>
             {entry.kind === 'comment'
               ? <p className="mt-1 whitespace-pre-wrap">{entry.content}</p>
-              : <ul className="mt-1 pointer-fine:text-xs text-[var(--color-ink-muted)]">{entry.changes.length ? entry.changes.map(([field, from, to], changeIndex) => <li key={changeIndex}><strong>{field.replaceAll('_', ' ')}</strong>: {formatValue(from)} → {formatValue(to)}</li>) : <li>Task updated</li>}</ul>}
+              : <ul className="mt-1 pointer-fine:text-xs text-[var(--color-ink-muted)]">{entry.changes.length ? entry.changes.map(([field, from, to], changeIndex) => <li key={changeIndex}><strong>{field.replaceAll('_', ' ')}</strong>: {describeHistoryValue(field, from, { people, projects })} → {describeHistoryValue(field, to, { people, projects })}</li>) : <li>Task updated</li>}</ul>}
           </li>)}
         </ol>
         <a className="mt-6 block pointer-fine:text-xs text-[var(--color-action)]" href={rowHref('tasker.task', id)}>Attachments and advanced fields in Featherbase ↗</a>

@@ -269,6 +269,12 @@ featherbase advanced people --help
 featherbase advanced apps install-app <explicit-app-name>
 ```
 
+From a checkout, an app is found only on `FEATHERBASE_APP_PATHS`. To try Tasker,
+build it with `pnpm apps:prepare`, then set
+`FEATHERBASE_APP_PATHS='["<absolute checkout>/example-apps/tasker"]'` for both
+`install-app tasker` and `start`. Membership is the **Tasker Member** role on a Person;
+installing admits nobody. The default image already carries Tasker on that path.
+
 There is no public marketplace or automatic download of unreviewed code.
 
 ### Explicit opt-in: Feather Tickets
