@@ -146,7 +146,7 @@ async function applyCopy(user: SessionUser, target: string, copy: NonNullable<Aw
       rows, key_column: 'row_id', empty_cells: 'clear', columns: mapped,
       context: { ...context, part: ++partNumber },
     } }, [DELETED_AT_SOURCE])
-    if (part.failed.length)
+    if (part.failed?.length)
       throw new AppError('ValidationError', `Copy failed; no rows changed: ${part.failed.slice(0, 5).map(f => `${rows[f.index].row_id}: ${f.message}`).join('; ')}`)
     return part
   }

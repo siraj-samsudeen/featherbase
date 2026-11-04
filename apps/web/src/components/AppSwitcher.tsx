@@ -5,7 +5,7 @@ import { FEATHERBASE_ADMIN_DESTINATION, appHref } from 'shared'
 import { api } from '../lib/api'
 import { useWhoAmI } from '../lib/session'
 import { Logo } from './Logo'
-import { Select, iconButtonClasses } from './ui'
+import { Select, iconButtonClasses } from '@featherbase/shop-floor'
 
 /** Keep the server's cross-address sign-in handoff when leaving an app. */
 export function useOpenAdmin() {

@@ -1,14 +1,16 @@
 import { z } from 'zod'
-import { prettifyLabel } from 'shared'
+import { DEFAULT_ID_PATTERN, namingColumn, prettifyLabel, renameNamingColumn, tableSlug } from 'shared'
 import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
+import { accessPolicySchema, policyColumns } from './access-policy'
 import { logAccess } from './audit'
 import { deleteStored } from './storage'
 import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation, resolvedRelation, tableName } from './platform-schema'
+import { readingPresentationSchema } from 'shared'
 
 export { tableName }
 
@@ -114,6 +116,7 @@ export const columnSchema = z.object({
 })
 
 export const tableDefSchema = z.object({
+  access_policy: accessPolicySchema.nullish().transform(value => value ?? undefined).optional(),
   name: z
     .string()
     .regex(/^(?:[A-Za-z][A-Za-z0-9 ]{0,60}|[a-z][a-z0-9_]{0,30}\.[a-z][a-z0-9_]{0,30})$/, 'invalid Table name'),
@@ -126,6 +129,7 @@ export const tableDefSchema = z.object({
   is_submittable: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   id_pattern: optionalString,
   title_column: optionalString,
+  reading_presentation: readingPresentationSchema.nullish(),
   description: optionalString,
   // #74: platform-table flag. Accepted here so migrations and seeds can set
   // it through createTable; the public /api/table_def routes REJECT it — a
@@ -154,18 +158,22 @@ export type TableDef = z.infer<typeof tableDefSchema>
 function validateIdPattern(pattern: string, columnNames: string[]): void {
   const bad = (message: string) =>
     new AppError('ValidationError', message, { id_pattern: message })
-  if (pattern === 'hash' || pattern === 'prompt') return
+  if (pattern === 'hash' || pattern === 'prompt' || pattern === 'integer') return
   if (pattern.startsWith('opaque:')) {
     if (!/^[a-z]{2,8}_$/.test(pattern.slice('opaque:'.length)))
       throw bad('An opaque id pattern names a short lowercase prefix ending in _, e.g. opaque:psn_')
     return
   }
-  if (pattern.startsWith('field:')) {
-    const column = pattern.slice('field:'.length)
-    if (!columnNames.includes(column))
-      throw bad(`Naming column ${column} is not a column of this Table`)
+  // #858: field:<column>, or a prefix then {<column>}.
+  const naming = namingColumn(pattern)
+  if (naming) {
+    if (!columnNames.includes(naming.column))
+      throw bad(`Naming column ${naming.column} is not a column of this Table`)
+    if (/^\s|\s$/.test(naming.prefix)) throw bad('An id prefix cannot start or end with a space')
     return
   }
+  if (pattern.includes('{') || pattern.includes('}'))
+    throw bad('A prefixed id names one column after its prefix, e.g. PLANT-{plant_code}')
   if (!pattern.includes('.')) throw bad(`Unsupported id pattern ${pattern}`)
   const [prefix, mask] = [
     pattern.slice(0, pattern.indexOf('.')),
@@ -173,6 +181,14 @@ function validateIdPattern(pattern: string, columnNames: string[]): void {
   ]
   if (!prefix) throw bad('A series needs a prefix before the digits')
   if (!/^#+$/.test(mask)) throw bad('A series ends in # digit placeholders, e.g. ZONE-.###')
+}
+
+// #855: the key of a Table's row counter in `series`: one count per Table and
+// prefix ('' for plain numbers), never per prefix text alone, so two Tables
+// numbered alike keep separate counts. Table names hold no ':', and the
+// 'table:' marker keeps these keys apart from the old per-prefix ones.
+export function seriesKey(table: string, prefix: string): string {
+  return `table:${table}:${prefix}`
 }
 
 // NAM-001: change only how new rows are named. Deliberately narrow — the full
@@ -196,6 +212,21 @@ function targetOf(f: TableDef['columns'][number]): string | undefined {
 
 function validateDef(def: TableDef) {
   const errs: Record<string, string> = {}
+  if (def.access_policy) {
+    if (def.data_source || (def.kind && def.kind !== 'table')) errs.access_policy = 'Mandatory access requires a local collection'
+    if (def.access_policy.shared_column && !def.columns.some(c => c.column_name === def.access_policy!.shared_column && c.column_type === 'Check'))
+      errs.access_policy = 'The shared column must be a Check column'
+    if (def.access_policy.inherit_column && !def.columns.some(c => c.column_name === def.access_policy!.inherit_column && c.column_type === 'Reference'))
+      errs.access_policy = 'The inherited access column must be a Reference column'
+  }
+  const reading = def.reading_presentation
+  if (reading) {
+    const columns = new Set(def.columns.filter(f => !['Section Break', 'Column Break', 'Sub-table'].includes(f.column_type)).map(f => f.column_name))
+    columns.add('created_at')
+    columns.add('updated_at')
+    for (const name of [reading.title, ...reading.headers, reading.body, reading.attachment_names].filter((name): name is string => Boolean(name)))
+      if (!columns.has(name)) errs.reading_presentation = `Reading column ${name} is not a value column of this Table`
+  }
   // EDS-3/BV4/VDT-4: a source binding is only coherent for plain collection
   // Tables — no sub_tables, no settings, no submit lifecycle (the source has
   // no docstatus), no Sub-table columns (child rows can't live on a source).
@@ -253,6 +284,22 @@ export async function tableRelation(name: string): Promise<string> {
   if (!meta.owner_app || !meta.physical_schema || !meta.physical_relation)
     throw new AppError('ValidationError', `Table ${name} has no app storage mapping`)
   return `${meta.physical_schema}.${meta.physical_relation}`
+}
+
+// Describe the same storage the row readers use, never a label-derived name.
+// Source bindings are not local relations; Settings share a composite-key store.
+export async function tableStorageIdentity(meta: TableMeta) {
+  if (meta.data_source) {
+    if (!meta.external_table) return null
+    return { schema: meta.external_schema ?? '', relation: meta.external_table,
+      row_key: [meta.external_pk || ROW_KEY], data_source: meta.data_source, discriminator: null }
+  }
+  if (meta.kind === 'settings') {
+    return { schema: PLATFORM_SCHEMA, relation: 'single_value', row_key: ['table_name', 'field'],
+      data_source: null, discriminator: { table_name: meta.name } }
+  }
+  const [schema, relation] = (await tableRelation(meta.name)).split('.')
+  return { schema, relation, row_key: [meta.row_key], data_source: null, discriminator: null }
 }
 
 // #651: where a Table's rows are stored, read straight from its definition.
@@ -373,6 +420,20 @@ export async function updateTable(
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
   }
   const def = parsed.data
+  if (existing.access_policy && def.access_policy && JSON.stringify(def.access_policy) !== JSON.stringify(accessPolicySchema.parse(existing.access_policy)))
+    throw new AppError('PermissionError', 'An existing mandatory access policy cannot be changed through the schema editor')
+  if (existing.access_policy) {
+    def.access_policy = existing.access_policy
+    for (const name of policyColumns(existing.access_policy)) {
+      const before = existing.columns.find(column => column.column_name === name)
+      const after = def.columns.find(column => column.column_name === name)
+      if (!before || !after || before.column_type !== after.column_type ||
+          (before.reference_table ?? null) !== (after.reference_table ?? null) ||
+          (before.default_value ?? null) !== (after.default_value ?? null) ||
+          Boolean(before.reqd) !== Boolean(after.reqd))
+        throw new AppError('PermissionError', 'Columns that define mandatory access cannot be removed or redefined')
+    }
+  }
   // person-identities (D9): a Person email is unique ignoring case through the
   // index user_email_lower_uq. A column-level `unique` would re-add the
   // case-sensitive user_email_uq beside it, so it is refused here.
@@ -401,6 +462,7 @@ export async function updateTable(
       reference_table: name,
       hidden: true,
     })
+  if (def.reading_presentation === undefined) def.reading_presentation = existing.reading_presentation
   validateDef(def)
   if (def.id_pattern)
     validateIdPattern(def.id_pattern, def.columns.map((f) => f.column_name))
@@ -462,9 +524,11 @@ export async function updateTable(
       is_submittable: def.is_submittable ?? existing.is_submittable,
       id_pattern: def.id_pattern ?? existing.id_pattern,
       title_column: def.title_column ?? null,
+      ...(def.reading_presentation !== undefined ? { reading_presentation: def.reading_presentation } : {}),
       description: def.description ?? null,
       // Only when given: an update that leaves it out keeps the Table's choice.
       ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
+      ...(def.access_policy !== undefined ? { access_policy: def.access_policy } : {}),
       updated_at: new Date(),
     })} where name = ${name}`
 
@@ -576,6 +640,19 @@ async function clearChangedListOverrides(
   if (!changed.length) return
   await tx`delete from metadata_override
     where table_name = ${name} and property = 'in_list_view' and column_name in ${tx(changed)}`
+}
+
+// Serialize the ownership check with its metadata write, including nested
+// app-install/upgrade transactions. A single lock avoids acquiring several
+// slug locks in opposite orders when an app materializes multiple Tables.
+async function assertTableAddressAvailable(tx: TxSql, name: string, from?: string): Promise<void> {
+  await tx`select pg_advisory_xact_lock(hashtextextended('featherbase.table-url-ownership', 821))`
+  const tables = await tx<{ name: string }[]>`select name from table_def`
+  const owner = tables.find((table) => table.name !== from && tableSlug(table.name) === tableSlug(name))
+  if (owner)
+    throw new AppError('ConflictError', `Table ${name} would share its address with ${owner.name}`, {
+      name: `The address "${tableSlug(name)}" already belongs to ${owner.name}`,
+    })
 }
 
 export async function createTable(
@@ -696,12 +773,18 @@ export async function createTable(
       module: def.module ?? 'Core',
       kind: def.kind ?? 'table',
       is_submittable: def.is_submittable ?? false,
-      id_pattern: def.id_pattern ?? 'hash',
+      // #855: a new Table numbers its rows 1, 2, 3 unless told otherwise. Child
+      // rows and a Settings Table's single row keep random ids, and a bound
+      // Table's ids come from its source.
+      id_pattern: def.id_pattern ?? ((def.kind ?? 'table') === 'table' && !def.data_source ? DEFAULT_ID_PATTERN : 'hash'),
       title_column: def.title_column ?? null,
+      reading_presentation: def.reading_presentation ?? null,
       description: def.description ?? null,
       system: def.system ?? false,
     }
+    await assertTableAddressAvailable(tx, def.name)
     if (def.decides_scope) tableRow.decides_scope = true
+    if (def.access_policy) tableRow.access_policy = def.access_policy
     if (qualified) {
       tableRow.label = def.label ?? def.name.split('.')[1]
       tableRow.owner_app = ownerApp
@@ -764,6 +847,7 @@ export async function createTable(
 export async function deleteTable(name: string, user = 'Administrator', opts: { ownerApp?: string } = {}): Promise<void> {
   const meta = await getMeta(name)
   assertNotSystemWritten(meta, 'deleted')
+  if (meta.access_policy) throw new AppError('PermissionError', 'A protected Table must retain its access policy for private history')
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be deleted`)
 
@@ -882,6 +966,8 @@ export async function renameColumn(
   user = 'Administrator',
 ): Promise<TableMeta> {
   const meta = await getMeta(table)
+  if (policyColumns(meta.access_policy).includes(from))
+    throw new AppError('PermissionError', 'A column that defines mandatory access cannot be renamed')
   assertNotSystemWritten(meta, 'renamed or changed')
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be changed`)
@@ -943,15 +1029,17 @@ export async function renameColumn(
     // pattern would stop resolving and the list would lose its title.
     if (meta.title_column === from)
       await tx`update table_def set title_column = ${target} where name = ${meta.name}`
-    // `field:<column>` is the one id pattern that names a column (see
-    // document.ts). Left stale it stops resolving, and every new row fails
-    // with "Naming field glor is required" for a column that is gone.
-    if (meta.id_pattern === `field:${from}`)
-      await tx`update table_def set id_pattern = ${`field:${target}`} where name = ${meta.name}`
+    // The column rules (`field:<column>`, `PREFIX-{<column>}`, see
+    // document.ts) name a column. Left stale one stops resolving, and every new
+    // row fails with "Naming field glor is required" for a column that is gone.
+    const idPattern = renameNamingColumn(meta.id_pattern, from, target)
+    if (idPattern !== meta.id_pattern)
+      await tx`update table_def set id_pattern = ${idPattern} where name = ${meta.name}`
     // #651: an Admin override (a relabel, a hidden flag) belongs to the
     // column, not to its old name.
     await tx`update metadata_override set column_name = ${target} where table_name = ${meta.name} and column_name = ${from}`
     await renameInGlossary(tx, meta.name, { table: meta.name, column: from }, { table: meta.name, column: target })
+    await renameInImportHistory(tx, meta.name, from, target)
     await tx`update table_def set updated_at = ${new Date()} where name = ${meta.name}`
   })
 
@@ -961,6 +1049,23 @@ export async function renameColumn(
     row_id: meta.name,
   }).catch(() => {})
   return getMeta(meta.name)
+}
+
+// #865: an import decides who owns a field from the row's history, the source
+// values it remembers and its open conflicts, all keyed by column name. Left
+// under the old name, a person's correction reads as never made and the next
+// import overwrites it without a conflict.
+async function renameInImportHistory(tx: TxSql, table: string, from: string, to: string) {
+  await tx`update version set data = jsonb_set(data, '{changed}', (
+      select jsonb_agg(case when c->>0 = ${from} then jsonb_set(c, '{0}', to_jsonb(${to}::text)) else c end order by i)
+      from jsonb_array_elements(data->'changed') with ordinality as e(c, i)))
+    where ref_table = ${table} and jsonb_typeof(data->'changed') = 'array'
+      and jsonb_path_exists(data->'changed', '$[*] ? (@[0] == $f)', jsonb_build_object('f', ${from}::text))`
+  await tx`update version set data = jsonb_set(data, '{resolution,field}', to_jsonb(${to}::text))
+    where ref_table = ${table} and data->'resolution'->>'field' = ${from}`
+  await tx`update featherbase.import_source set values = (values - ${from}::text) || jsonb_build_object(${to}::text, values->${from}::text)
+    where ref_table = ${table} and values ? ${from}::text`
+  await tx`update featherbase.import_conflict set field = ${to} where ref_table = ${table} and field = ${from}`
 }
 
 // #629: a glossary term describes Tables and columns by name, in its links
@@ -986,6 +1091,8 @@ async function renameInGlossary(tx: TxSql, table: string, from: { table: string;
 const TABLE_NAME_COLUMNS: readonly [string, string][] = [
   ['custom_field', 'reference_table'], ['custom_field', 'row_table'], ['access_log', 'ref_table'],
   ['saved_view', 'ref_table'], ['user_settings', 'table_name'], ['tag_link', 'ref_table'],
+  // #871: an import's memory of each row, so a re-import keeps people's edits.
+  [`${PLATFORM_SCHEMA}.import_source`, 'ref_table'], [`${PLATFORM_SCHEMA}.import_conflict`, 'ref_table'],
 ]
 
 // #651: rename one of an app's Tables, keeping its rows, its history, the
@@ -997,18 +1104,46 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
     throw new AppError('ValidationError', `${from} belongs to ${meta.owner_app ?? 'the platform'}; only its own app renames it`)
   if (!to.startsWith(`${ownerApp}.`) || !tableDefSchema.shape.name.safeParse(to).success)
     throw new AppError('ValidationError', `${to} is not a name for one of ${ownerApp}'s Tables`)
-  const relationName = to.split('.')[1]
-  const [taken] = await sql`select 1 from table_def where name = ${to}`
-  const [clash] = await sql`select 1 from information_schema.tables where table_schema = ${ownerApp} and table_name = ${relationName}`
-  if (taken || clash) throw new AppError('ConflictError', `Table ${to} already exists`)
   const foreign = await sql<{ parent: string; column_name: string }[]>`
     select cd.parent, cd.column_name from column_def cd join table_def td on td.name = cd.parent
     where (cd.reference_table = ${from} or cd.row_table = ${from}) and td.owner_app is not null and td.owner_app <> ${ownerApp}
     order by 1, 2`
   if (foreign.length)
     throw new AppError('ValidationError', `${from} is linked from another app's ${foreign.map((f) => `${f.parent}.${f.column_name}`).join(', ')}`)
-  // Every live pointer at a Table, history included: unlike a deletion, a
-  // rename keeps what history says, under the name the Table now has.
+  return moveTable(meta, to, to.split('.')[1], user)
+}
+
+// #871: a System Manager renames a Table made in the builder or by an import.
+// Platform Tables, app Tables and Tables bound to a data source keep their
+// names: each is named by something outside this instance's Admin.
+export async function renameCustomTable(from: string, input: string, user: string): Promise<TableMeta> {
+  const meta = await getMeta(from)
+  const to = input.trim()
+  if (to === meta.name) return meta
+  assertNotSystemWritten(meta, 'renamed or changed')
+  if (meta.system || meta.owner_app || meta.data_source || meta.kind === 'settings')
+    throw new AppError('ValidationError', `${meta.name} is not a custom Table; it cannot be renamed here`)
+  // An installed app's ledger names its Tables; uninstalling acts on those names.
+  const apps = await sql<{ name: string; tables: unknown }[]>`select name, tables from installed_app order by name`
+  const owner = apps.find((app) => asNameList(app.tables).includes(meta.name))
+  if (owner) throw new AppError('ValidationError', `${meta.name} belongs to the installed app ${owner.name}; it cannot be renamed here`)
+  if (to.includes('.') || !tableDefSchema.shape.name.safeParse(to).success)
+    throw new AppError('ValidationError', 'A Table name starts with a letter and has only letters, digits and spaces, up to 61 characters', {
+      name: 'letters, digits and spaces',
+    })
+  return moveTable(meta, to, tableName(to), user)
+}
+
+// Every live pointer at a Table moves with it, history included: unlike a
+// deletion, a rename keeps what history says, under the name the Table now has.
+async function moveTable(meta: TableMeta, to: string, relationName: string, user: string): Promise<TableMeta> {
+  const from = meta.name
+  const [schemaName, fromRelation] = resolvedRelation(meta).split('.')
+  const [taken] = await sql`select 1 from table_def where lower(name) = lower(${to}) and name <> ${from}`
+  // A change of case alone ("Sap plant") keeps the same storage.
+  const sameRelation = relationName === fromRelation
+  const [clash] = sameRelation ? [] : await sql`select 1 from information_schema.tables where table_schema = ${schemaName} and table_name = ${relationName}`
+  if (taken || clash) throw new AppError('ConflictError', `Table ${to} already exists`)
   const pointers = await sql<{ parent: string; column_name: string }[]>`
     select cd.parent, cd.column_name from column_def cd join table_def td on td.name = cd.parent
     where cd.column_type = 'Reference' and cd.reference_table = 'Table'
@@ -1018,41 +1153,52 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
   // The Table being renamed may hold such a link itself: by the time the
   // sweep runs, its rows live under the new name.
   for (const p of pointers)
-    relations.set(p.parent, p.parent === from ? quoteRelation(`${meta.physical_schema}.${to.split('.')[1]}`) : quoteRelation(await storedRelation(p.parent)))
+    relations.set(p.parent, p.parent === from ? quoteRelation(`${schemaName}.${relationName}`) : quoteRelation(await storedRelation(p.parent)))
   const children: string[] = []
   for (const c of meta.columns)
     if (c.column_type === 'Sub-table' && c.row_table) children.push(quoteRelation(await storedRelation(c.row_table)))
 
-  const schema = quoteIdent(meta.physical_schema)
+  const schema = quoteIdent(schemaName)
   const relation = `${schema}.${quoteIdent(relationName)}`
   await sql.begin(async (tx) => {
-    await tx.unsafe(`alter table ${quoteRelation(`${meta.physical_schema}.${meta.physical_relation}`)} rename to ${quoteIdent(relationName)}`)
-    // Names Postgres built from the relation (its primary key, and on 18 its
-    // NOT NULL constraints): a fresh Table under the new name has them so.
-    const built = await tx<{ conname: string }[]>`
-      select conname from pg_constraint where conrelid = (
-        select c.oid from pg_class c join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = ${meta.physical_schema!} and c.relname = ${relationName})
-      and starts_with(conname, ${`${meta.physical_relation}_`})`
-    for (const { conname } of built)
-      await tx.unsafe(`alter table ${relation} rename constraint ${quoteIdent(conname)} to ${quoteIdent(`${relationName}_${conname.slice(meta.physical_relation!.length + 1)}`)}`)
-    // Names built from the Table's own name, so the next schema change finds them.
-    for (const c of meta.columns)
-      if (c.unique && pgType(c.column_type))
-        await tx.unsafe(`alter table ${relation} rename constraint ${quoteIdent(`${tableName(from)}_${c.column_name}_uq`)} to ${quoteIdent(`${tableName(to)}_${c.column_name}_uq`)}`)
-    if (meta.kind === 'sub_table')
-      await tx.unsafe(`alter index ${schema}.${quoteIdent(`${tableName(from)}_parent_idx`)} rename to ${quoteIdent(`${tableName(to)}_parent_idx`)}`)
-    else {
-      const [policy] = await tx`select 1 from pg_policies where schemaname = ${meta.physical_schema!} and tablename = ${relationName} and policyname = 'fc_select'`
+    await assertTableAddressAvailable(tx, to, from)
+    if (!sameRelation) {
+      await tx.unsafe(`alter table ${quoteRelation(`${schemaName}.${fromRelation}`)} rename to ${quoteIdent(relationName)}`)
+      // Names Postgres built from the relation (its primary key, and on 18 its
+      // NOT NULL constraints): a fresh Table under the new name has them so.
+      const built = await tx<{ conname: string }[]>`
+        select conname from pg_constraint where conrelid = (
+          select c.oid from pg_class c join pg_namespace n on n.oid = c.relnamespace
+          where n.nspname = ${schemaName} and c.relname = ${relationName})
+        and starts_with(conname, ${`${fromRelation}_`})`
+      for (const { conname } of built)
+        await tx.unsafe(`alter table ${relation} rename constraint ${quoteIdent(conname)} to ${quoteIdent(`${relationName}_${conname.slice(fromRelation.length + 1)}`)}`)
+      // Names built from the Table's own name, so the next schema change finds
+      // them. A custom Table's relation IS its name: the loop above did these.
+      if (tableName(from) !== fromRelation) for (const c of meta.columns)
+        if (c.unique && pgType(c.column_type))
+          await tx.unsafe(`alter table ${relation} rename constraint ${quoteIdent(`${tableName(from)}_${c.column_name}_uq`)} to ${quoteIdent(`${tableName(to)}_${c.column_name}_uq`)}`)
+      if (meta.kind === 'sub_table')
+        await tx.unsafe(`alter index ${schema}.${quoteIdent(`${tableName(from)}_parent_idx`)} rename to ${quoteIdent(`${tableName(to)}_parent_idx`)}`)
+    }
+    if (meta.kind !== 'sub_table') {
+      const [policy] = await tx`select 1 from pg_policies where schemaname = ${schemaName} and tablename = ${relationName} and policyname = 'fc_select'`
       if (policy) await tx.unsafe(`alter policy fc_select on ${relation} using (featherbase.fc_has_read('${to.replace(/'/g, "''")}'))`)
     }
     // column_def's key on table_def has no ON UPDATE: the definition moves.
+    // A custom Table's storage follows its name; an app's is mapped.
     const [row] = await tx`select * from table_def where name = ${from}`
-    await tx`insert into table_def ${tx({ ...row, name: to, physical_relation: relationName, updated_at: new Date() } as unknown as Record<string, never>)}`
+    await tx`insert into table_def ${tx({ ...row, name: to, ...(meta.owner_app ? { physical_relation: relationName } : {}), updated_at: new Date() } as unknown as Record<string, never>)}`
     await tx`update column_def set parent = ${to} where parent = ${from}`
     await tx`delete from table_def where name = ${from}`
     await tx`update column_def set reference_table = ${to} where reference_table = ${from}`
     await tx`update column_def set row_table = ${to} where row_table = ${from}`
+    // #855: the renamed Table carries on its own counts. Counts left by a
+    // deleted Table of the new name give way first (the primary key would
+    // refuse the move); skipping taken ids keeps them from mattering.
+    await tx`delete from series where starts_with(name, ${seriesKey(to, '')})`
+    await tx`update series set name = ${seriesKey(to, '')} || substr(name, ${seriesKey(from, '').length + 1})
+             where starts_with(name, ${seriesKey(from, '')})`
     for (const child of children)
       await tx.unsafe(`update ${child} set parenttype = $1 where parenttype = $2`, [to, from])
     for (const p of pointers)
@@ -1061,13 +1207,25 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
       await tx.unsafe(`update ${table} set ${quoteIdent(column)} = $1 where ${quoteIdent(column)} = $2`, [to, from])
     await renameInGlossary(tx, from, { table: from }, { table: to })
     await tx`update home_page_link set label = ${to} where link_to = ${to} and label = ${from}`
-    await tx`update installed_app set tables = (
-        select jsonb_agg(case when value = to_jsonb(${from}::text) then to_jsonb(${to}::text) else value end order by ordinality)
-        from jsonb_array_elements(tables) with ordinality)
-      where name = ${ownerApp} and jsonb_typeof(tables) = 'array' and tables ? ${from}`
+    // Recently opened: the entries keep pointing at the Table under its new name.
+    for (const kind of ['row:', 'list:'])
+      await tx`update user_event set ref_key = ${kind + to} || substr(ref_key, ${kind.length + from.length + 1}),
+                 label = case when label = ${from} then ${to} else label end,
+                 sub_label = case when sub_label = ${from} then ${to} else sub_label end
+               where starts_with(ref_key, ${kind + from}) and substr(ref_key, ${kind.length + from.length + 1}, 1) in ('/', '?')`
+    const [oldPath, newPath] = [`/featherbase/admin/table/${tableSlug(from)}`, `/featherbase/admin/table/${tableSlug(to)}`]
+    await tx`update user_event set path = ${newPath} || substr(path, ${oldPath.length + 1})
+             where path = ${oldPath} or starts_with(path, ${oldPath + '/'}) or starts_with(path, ${oldPath + '?'})`
+    if (meta.owner_app)
+      await tx`update installed_app set tables = (
+          select jsonb_agg(case when value = to_jsonb(${from}::text) then to_jsonb(${to}::text) else value end order by ordinality)
+          from jsonb_array_elements(tables) with ordinality)
+        where name = ${meta.owner_app} and jsonb_typeof(tables) = 'array' and tables ? ${from}`
+    // The old name's testimony, read back by getMeta: written last, so the
+    // sweep above never moves it to the new name.
+    await logAccess(user, 'rename_table', { table: from, row_id: to, required: true }, tx)
   })
   invalidateMeta()
-  await logAccess(user, `rename_table ${from} -> ${to}`, { table: 'Table', row_id: to }).catch(() => {})
   return getMeta(to)
 }
 
@@ -1075,6 +1233,8 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
 // (SAFE_TYPE_CHANGES); anything else is refused.
 export async function changeColumnType(table: string, column: string, to: string): Promise<TableMeta> {
   const meta = await getMeta(table)
+  if (policyColumns(meta.access_policy).includes(column))
+    throw new AppError('PermissionError', 'A column that defines mandatory access cannot change type')
   assertNotSystemWritten(meta, 'changed')
   if (meta.system || meta.data_source)
     throw new AppError('ValidationError', `${meta.name}'s column types are not changed here`)

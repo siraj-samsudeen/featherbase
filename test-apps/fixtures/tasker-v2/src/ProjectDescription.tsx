@@ -1,3 +1,4 @@
+import { Button } from '@featherbase/shop-floor'
 import { useRef, useState } from 'react'
 import { api } from './api'
 import { Markdown } from './Markdown'
@@ -26,14 +27,14 @@ export function ProjectDescription({ project, onSaved }: {
       </label>
       {error && <p role="alert">{error} Cancel and reopen to load the latest version.</p>}
       <div className="tasker-editor-actions">
-        <button className="fc-btn-primary" disabled={saving}>Save description</button>
-        <button type="button" className="fc-btn" disabled={saving} onClick={cancel}>Cancel</button>
+        <Button type="submit" variant="primary"  disabled={saving}>Save description</Button>
+        <Button type="button"  disabled={saving} onClick={cancel}>Cancel</Button>
       </div>
     </form> : <>
       {project.description && <Markdown>{project.description}</Markdown>}
-      <button ref={edit} type="button" className="fc-btn" onClick={() => setDraft({ description: project.description ?? '', updated_at: project.updated_at })}>
+      <Button ref={edit} type="button"  onClick={() => setDraft({ description: project.description ?? '', updated_at: project.updated_at })}>
         {project.description ? 'Edit description' : 'Add description'}
-      </button>
+      </Button>
       {!project.description && <span className="tasker-hint"> Give this project a purpose and shared context.</span>}
     </>}
   </section>

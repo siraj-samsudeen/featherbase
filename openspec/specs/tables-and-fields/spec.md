@@ -642,3 +642,112 @@ Given the user's contact policy has different translations for its original valu
 When the user opens that policy in a contact
 Then the existing translation of the original value is shown unchanged
 ```
+
+### Requirement: Recognize a Table in its settings
+
+The user SHALL recognize a saved Table by its own name rather than an unrelated grouping value. An explicitly authored display name MUST retain precedence.
+
+#### Scenario: SAP Plant is identified rather than its module
+
+```gherkin
+Given the user has a Table called "SAP Plant" in the "Custom" module
+When the user opens the settings for "SAP Plant"
+Then the settings identify "SAP Plant" rather than "Custom"
+```
+
+#### Scenario: An authored display name takes precedence
+
+```gherkin
+Given the user has a Table called "SAP Plant" in the "Custom" module
+And its effective authored display name is "Plant catalogue"
+When the user opens the settings for "SAP Plant"
+Then the settings identify "Plant catalogue"
+```
+
+### Requirement: Copy the authoritative storage identity
+
+The user SHALL be able to copy a saved Table's read-only schema, relation and physical row key when its metadata is readable. The identity MUST describe actual local, shared Settings or connected storage, not a name inferred from its label.
+
+#### Scenario: SAP Plant exposes its local storage
+
+```gherkin
+Given the user has a Table called "SAP Plant" in the "Custom" module
+When the user opens the settings for "SAP Plant"
+Then the user can copy schema "featherbase", relation "sap_plant" and row key "row_id" without editing them
+```
+
+#### Scenario: SAP Plant belongs to an installed app
+
+```gherkin
+Given an installed app owns "SAP Plant" with explicitly mapped storage
+When the user opens the settings for the app's "SAP Plant"
+Then the user can copy the app's mapped storage identity rather than a name inferred from its label
+```
+
+#### Scenario: SAP Plant uses shared Settings storage
+
+```gherkin
+Given "SAP Plant" is a Settings Table in the "Custom" module
+When the user opens the settings for "SAP Plant"
+Then the user can copy shared storage "featherbase.single_value" with key "table_name, field" and discriminator "SAP Plant"
+```
+
+#### Scenario: SAP Plant is connected to outside storage
+
+```gherkin
+Given "SAP Plant" is connected to an outside Data Source in the "Custom" module
+When the user opens the settings for "SAP Plant"
+Then its storage identity describes its source binding without credentials
+```
+
+#### Scenario: SAP Plant metadata is not readable
+
+Reading a Table's definition alone MUST NOT disclose storage when the described Table's metadata is denied; the definition form remains usable.
+
+```gherkin
+Given the user can read the definition of "SAP Plant" but not its metadata
+When the user opens the settings for "SAP Plant"
+Then its storage identity is not disclosed and the definition form remains usable
+```
+
+### Requirement: Do not invent a warehouse destination
+
+A warehouse destination SHALL be shown only when Featherbase has an authoritative configured CDC mapping for the Table. Without that mapping the destination MUST be absent, not inferred from a Table name or Data Source. This change introduces no CDC configuration or integration.
+
+#### Scenario: SAP Plant has no configured warehouse mapping
+
+```gherkin
+Given the user has a Table called "SAP Plant" in the "Custom" module
+And Featherbase has no configured warehouse mapping for "SAP Plant"
+When the user opens the settings for "SAP Plant"
+Then no warehouse destination is shown
+```
+
+### Requirement: Rename a custom Table and keep what it holds
+
+A System Manager SHALL be able to rename a Table made in the builder or by an
+import. Its rows and everything that names the Table SHALL move to the new
+name together, and a later re-import SHALL keep the edits people made before
+the rename. Platform, app and data-source Tables keep their names.
+
+#### Scenario: A corrected plant keeps its correction and history
+
+```gherkin
+Given a table "SAP Plant" whose plant 8151 a person corrected to "Chennai"
+When the System Manager renames the table to "Plant"
+Then plant 8151 of "Plant" reads "Chennai", with the correction in its history
+And importing the source again keeps "Chennai"
+```
+
+### Requirement: A renamed Table's old name says where it went
+
+The old name and address of a renamed Table SHALL say what the Table is now
+called, who renamed it and when, and link to it.
+
+#### Scenario: The old address says where the Table went
+
+```gherkin
+Given the table "SAP Plant" was renamed to "Plant"
+When the user opens the old address of "SAP Plant"
+Then the page says "SAP Plant is now called Plant" and links to "Plant"
+```

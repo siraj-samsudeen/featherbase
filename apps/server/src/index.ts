@@ -10,19 +10,21 @@ import { assertNotSystemWritten } from './system-written'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
-import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
+import { createTable, deleteTable, renameColumn, renameCustomTable, setIdPattern, tableStorageIdentity, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
+import { hasMandatoryRowAccess, mandatoryReferencesWhere } from './mandatory-access'
 import { loadControllers } from './controllers'
-import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
+import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, renameAccessToken, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
 import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
-import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
+import { createServiceAccount, listServiceAccounts, renameServiceAccount, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
+import { principalReach } from './token-reach'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
-import { personByEmail, pickPeople, principalNames } from './people-directory'
+import { personByEmail, pickPeople, principalNames, tableMembers } from './people-directory'
 import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
@@ -36,6 +38,7 @@ import { landingAfterSignIn, openAdminFor } from './landing'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
+import { commandDestinations } from './command-destinations'
 import {
   getCollectionAction,
   getRowAction,
@@ -59,7 +62,7 @@ import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker, stopWorker, syncScheduledJobs } from './jobs'
 import { attachRealtime, closeSessionSockets, publishDocEvent, publishUserEvent } from './realtime'
 import { createAssignment } from './assign'
-import { queueEmail, sendTestEmail } from './email'
+import { mailTransport, queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
 import { MIN_PASSWORD_LENGTH, requestPasswordReset, resetPassword } from './password-reset'
 import { renderWebPage } from './website'
@@ -80,7 +83,7 @@ import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uni
 import { packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { discoverAppLibrary, appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { documentActivity } from './document-activity'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -371,8 +374,9 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   // FILE-003: private files require either a valid signed URL (minted after a
   // permission check) or a session that can read the linked row. A user
   // without read on that row gets a 403.
-  if (isPrivate) {
-    const signed = verifyFileSignature(fileUrl, c.req.query('expires'), c.req.query('signature'))
+  const protectedRow = row.ref_table && row.ref_name && await hasMandatoryRowAccess(String(row.ref_table), String(row.ref_name))
+  if (isPrivate || protectedRow) {
+    const signed = !protectedRow && verifyFileSignature(fileUrl, c.req.query('expires'), c.req.query('signature'))
     if (!signed) {
       // #137/#173: the credential is the Authorization header, or the HttpOnly
       // `sid` cookie the browser already sends on a same-origin <img>/<a>
@@ -922,11 +926,11 @@ app.post('/api/open_admin', async (c) => {
 // scoped to the caller for the same reason.
 app.post('/api/events', async (c) => {
   const events = validateEventBatch(await c.req.json().catch(() => null))
-  const inserted = await recordEvents(who(c), events)
+  const timestamps = await recordEvents(who(c), events)
   // Nudge the poster's own "Mine" feed on their personal channel (PR #104
   // review — the 'feed' channel is System Manager-only).
   publishUserEvent(who(c), 'feed_mine')
-  return c.json({ inserted })
+  return c.json({ inserted: timestamps.length, timestamps })
 })
 
 app.get('/api/events/summary', async (c) => {
@@ -1047,10 +1051,11 @@ app.get('/api/activity_feed', async (c) => {
     throw new AppError('PermissionError', 'The team feed requires the System Manager role')
   // Changes and sign-ins as one ordered stream; a run is one person doing the
   // same kind of thing to the same target back to back.
+  const privateChanges = await mandatoryReferencesWhere(user, 'ref_table', 'ref_name')
   const rows = await sql`
     with stream as (
       select created_by as who, 'change'::text as kind, ref_table as sub, ref_name as label, created_at as at, row_id::text as id
-      from version
+      from version where ${privateChanges.frag}
       union all
       select "user", 'login', null, null, created_at, row_id::text
       from activity_log where operation = 'login'
@@ -1088,7 +1093,7 @@ app.get('/api/activity_feed', async (c) => {
           kind: 'change',
           label,
           sub,
-          path: sub && label ? `/featherbase/admin/${sub}/${label}` : '',
+          path: sub && label ? rowHref(sub, label) : '',
           at: new Date(r.at as string).toISOString(),
           count: Number(r.count),
         }
@@ -1178,12 +1183,21 @@ app.post('/api/set_password', async (c) => {
 app.get('/api/people/:id/identities', async (c) => {
   await assertSystemManager(who(c))
   const user = c.req.param('id')
-  const [row] = await sql`select (password_hash is not null) as has_password from person where row_id = ${user}`
+  const [row] = await sql`select (password_hash is not null) as has_password, email, expects_google_sign_in from person where row_id = ${user}`
   if (!row) throw new AppError('NotFoundError', `Person ${user} not found`)
   // Every method row, turned off or not, so an identity on a disabled method
   // still shows its name on the Person form.
   const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
-  return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
+  return c.json({
+    identities: await listIdentities(user, { includeEnded: true }),
+    has_password: row.has_password === true,
+    methods,
+    // #833: the Person's own address starts a Google invite, the panel explains
+    // an expected Google sign-in, and says where an invitation went.
+    email: row.email ?? null,
+    expects_google_sign_in: row.expects_google_sign_in === true,
+    mail_transport: mailTransport(),
+  })
 })
 
 // #667: why a person sees nothing from an app's datasets: the provider's
@@ -1281,6 +1295,8 @@ app.post('/api/people/names', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown }
   return c.json({ names: await principalNames(body.ids, who(c)) })
 })
+
+app.get('/api/table_members/:table', async (c) => c.json({ data: await tableMembers(c.req.param('table'), who(c)) }))
 
 app.get('/api/people/pick', async (c) => {
   return c.json({ people: await pickPeople(c.req.query('q') ?? '', who(c), Number(c.req.query('limit') ?? 10)) })
@@ -1455,10 +1471,27 @@ app.post('/api/access_tokens', async (c) => {
   return c.json(await issueAccessToken(owner, body.label, expiresAt), 201)
 })
 
+// #852: what a token for this owner could reach, shown before it is issued.
+// The same rule as issuing: your own reach, or anyone's for a System Manager.
+app.get('/api/access_tokens/reach', async (c) => {
+  const owner = c.req.query('owner') || who(c)
+  if (owner !== who(c)) await assertSystemManager(who(c))
+  return c.json(await principalReach(owner))
+})
+
 app.get('/api/access_tokens', async (c) => {
   // System Managers see every token (the admin screen); everyone else their own.
   const all = (await getRoles(who(c))).includes('System Manager')
   return c.json({ tokens: await listAccessTokens(all ? undefined : who(c)) })
+})
+
+app.patch('/api/access_tokens/:id', async (c) => {
+  assertCanChangeAccess(c.get('user'))
+  const token = await getAccessToken(c.req.param('id'))
+  if (token.owner !== who(c)) await assertSystemManager(who(c))
+  const body = await c.req.json().catch(() => ({})) as { label?: unknown }
+  if (typeof body?.label !== 'string') throw new AppError('ValidationError', 'Expected { label }')
+  return c.json(await renameAccessToken(token.id, body.label, who(c)))
 })
 
 app.delete('/api/access_tokens/:id', async (c) => {
@@ -1483,11 +1516,14 @@ app.get('/api/service_accounts', async (c) => {
   return c.json({ service_accounts: await listServiceAccounts() })
 })
 
-app.patch('/api/service_accounts/:name', async (c) => {
+app.patch('/api/service_accounts/:id', async (c) => {
   await assertSystemManager(who(c))
-  const body = (await c.req.json().catch(() => ({}))) as { enabled?: boolean }
-  if (typeof body.enabled !== 'boolean') throw new AppError('ValidationError', 'Expected { enabled }')
-  return c.json(await setServiceAccountEnabled(c.req.param('name'), body.enabled, who(c)))
+  const body = (await c.req.json().catch(() => ({}))) as { enabled?: unknown; label?: unknown }
+  if (typeof body?.label === 'string' && body.enabled === undefined)
+    return c.json(await renameServiceAccount(c.req.param('id'), body.label, who(c)))
+  if (typeof body?.enabled === 'boolean' && body.label === undefined)
+    return c.json(await setServiceAccountEnabled(c.req.param('id'), body.enabled, who(c)))
+  throw new AppError('ValidationError', 'Expected either { label } or { enabled }')
 })
 
 // person-rename R2: a service account's roles change only here, never
@@ -1569,6 +1605,14 @@ app.post('/api/table_def/:name/rename_column', async (c) => {
   if (typeof body.from !== 'string' || typeof body.to !== 'string')
     throw new AppError('ValidationError', 'Expected { from, to }')
   return c.json(await renameColumn(c.req.param('name'), body.from, body.to, who(c)))
+})
+
+// #871: rename a custom Table, carrying everything that names it.
+app.post('/api/table_def/:name/rename', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json()) as { to?: unknown }
+  if (typeof body.to !== 'string') throw new AppError('ValidationError', 'Expected { to }')
+  return c.json(await renameCustomTable(await resolveTableName(c.req.param('name')), body.to, who(c)))
 })
 
 app.put('/api/table_def/:name', async (c) => {
@@ -1687,6 +1731,10 @@ app.get('/api/signed_url', async (c) => {
     select row_id, ref_table, ref_name from file where file_url = ${fileUrl}`
   if (!row) throw new AppError('NotFoundError', `File not found: ${fileUrl}`)
   const user = who(c)
+  if (row.ref_table && row.ref_name && await hasMandatoryRowAccess(String(row.ref_table), String(row.ref_name))) {
+    await getDoc(String(row.ref_table), String(row.ref_name), user)
+    return c.json({ signed_url: fileUrl })
+  }
   if (fileUrl.startsWith('/private/files/')) {
     if (row.ref_table && row.ref_name)
       await getDoc(row.ref_table as string, row.ref_name as string, user)
@@ -2117,6 +2165,10 @@ app.get('/api/search', async (c) => {
   return c.json({ results: await globalSearch(q, who(c)) })
 })
 
+app.get('/api/command_destinations', async (c) => {
+  return c.json(await commandDestinations(who(c)))
+})
+
 // #80: the caller's visible Home Pages with their permission-filtered card
 // links — the ONLY source the Admin sidebar consumes. Role visibility is
 // presentation scoping (computed server-side), not a security boundary;
@@ -2177,7 +2229,7 @@ app.get('/api/table/:table', async (c) => {
     // #738: the caller's readable levels ride beside the cached meta, never
     // inside it — the meta object is shared by every caller.
     const readable = await permittedTiers(user.row_id, meta.name, 'read')
-    return c.json({ ...meta, readable_tiers: [...readable] })
+    return c.json({ ...meta, readable_tiers: [...readable], storage_identity: await tableStorageIdentity(meta) })
   }
   if (suffix === 'count') {
     const filters = c.req.query('filters')

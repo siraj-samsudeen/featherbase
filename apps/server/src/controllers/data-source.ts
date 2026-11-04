@@ -3,7 +3,7 @@ import { AppError } from '../errors'
 import { config } from '../config'
 import { invalidateMeta } from '../meta'
 import { assertSystemManager } from '../permissions'
-import { invalidateSources } from '../sources/registry'
+import { allowlistQualificationGuidance, invalidateSources } from '../sources/registry'
 import { readNamedVariable } from '../env'
 
 // EDS-1 validation + spec S1/S3: saving a Data Source drops its cached
@@ -24,6 +24,11 @@ const controller: TableController = {
           name: 'Use lowercase letters, digits and hyphens, starting with a letter',
         })
       const engine = String(row.engine)
+      const guidance = allowlistQualificationGuidance(engine, row.table_allowlist)
+      if (guidance)
+        throw new AppError('ValidationError', 'Incomplete table restriction', {
+          table_allowlist: guidance,
+        })
       // #772: a MotherDuck source connected by a pasted token names no
       // variable; its token is stored encrypted (ADR 0018).
       if (engine === 'motherduck') {

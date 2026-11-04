@@ -14,7 +14,8 @@
 // Database work happens before the servers start: an install or an apply from
 // another process would not reach a running server's in-memory caches.
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -22,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const isWindows = process.platform === 'win32'
+const loopbackHosts = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
 
 export class DevError extends Error {}
 
@@ -122,7 +124,7 @@ export function assertLocal(env) {
     if (env[name] && env[name] !== 'development')
       throw new DevError(`${name} is "${env[name]}". pnpm dev is for development only: unset it.`)
   const { hostname } = new URL(env.DATABASE_URL)
-  if (!['127.0.0.1', 'localhost', '[::1]', '::1'].includes(hostname))
+  if (!loopbackHosts.has(hostname))
     throw new DevError(`DATABASE_URL points at ${hostname}. pnpm dev migrates and rewrites its database, so it only uses one on this machine.`)
 }
 
@@ -307,8 +309,8 @@ async function waitForAnswer(url, what, seconds = 90) {
   throw new DevError(`${what} did not answer at ${url} within ${seconds}s; see its output above`)
 }
 
-/** --check: the server answers, every app is installed and its page serves. */
-async function verify(instance, env) {
+/** --check: apps are active; pages obey the signed-in user's catalog access. */
+export async function verify(instance, env) {
   const api = `http://127.0.0.1:${env.API_PORT}`
   const web = `http://localhost:${env.WEB_PORT}`
   const login = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ usr: 'Administrator', pwd: 'admin' }) })
@@ -317,12 +319,21 @@ async function verify(instance, env) {
   const listing = await fetch(`${api}/api/apps`, { headers: { authorization: `Bearer ${token}` } })
   if (!listing.ok) throw new DevError(`Listing apps failed (HTTP ${listing.status})`)
   const { installed } = await listing.json()
+  const catalogResponse = await fetch(`${api}/api/app_catalog`, { headers: { authorization: `Bearer ${token}` } })
+  if (!catalogResponse.ok) throw new DevError(`Reading app access failed (HTTP ${catalogResponse.status})`)
+  const catalog = await catalogResponse.json()
   for (const app of instance.apps) {
-    if (!installed.some((row) => row.name === app.name)) throw new DevError(`${app.name} is not installed`)
-    // Signed in: signed out, every address redirects to the login page.
+    const installation = installed.find((row) => row.name === app.name)
+    if (!installation) throw new DevError(`${app.name} is not installed`)
+    if (!installation.active) throw new DevError(`${app.name} is installed but not active`)
+    // Installation does not admit Administrator to an app's member-only pages.
+    const admitted = catalog.some((entry) => entry.name === app.name)
     const page = await fetch(`${web}/${app.name}/`, { headers: { authorization: `Bearer ${token}` } })
-    if (!page.ok) throw new DevError(`${web}/${app.name}/ answered HTTP ${page.status}`)
-    console.log(`check: ${app.name} is installed and its page serves`)
+    if (admitted ? !page.ok : page.status !== 404)
+      throw new DevError(`${web}/${app.name}/ answered HTTP ${page.status}; expected ${admitted ? 'a serving page' : '404 for a user without app access'}`)
+    console.log(admitted
+      ? `check: ${app.name} is installed and its page serves`
+      : `check: ${app.name} is installed and active; Administrator needs app access to open its page`)
   }
 }
 
@@ -338,14 +349,96 @@ export function instanceEnvironment(instance = resolveInstance()) {
       FEATHERBASE_APP_PATHS: JSON.stringify(instance.apps.map((app) => app.root)),
     } : {}),
   }
+  // postgres falls back to PGPORT when a supplied URL omits the port. Make
+  // that selection explicit so upload identity and printed targets agree.
+  const target = new URL(env.DATABASE_URL)
+  // The driver lets these query keys override the authority/path (database
+  // is also a startup parameter). Refuse before ANY command assigns uploads,
+  // not just reset: another target must never write into a resettable folder.
+  if (['host', 'port', 'database'].some((key) => target.searchParams.has(key)))
+    throw new DevError('Refusing local command: DATABASE_URL routing query options are ambiguous. Put the host, port and database in the URL authority/path instead.')
+  if (!target.port) target.port = env.PGPORT || '5432'
+  env.DATABASE_URL = target.toString()
   env.PORT = env.API_PORT
+  env.FILE_STORAGE_DIR = process.env.FILE_STORAGE_DIR || localStorageDirectory(env)
   return env
+}
+
+/** Database overrides select uploads too; passwords never become path names.
+ * Loopback aliases name the same local server. The legacy shared root stays. */
+function localStorageDirectory(env) {
+  const target = new URL(env.DATABASE_URL)
+  const host = loopbackHosts.has(target.hostname) ? 'local' : target.hostname
+  const identity = JSON.stringify([host, target.port || '5432', decodeURIComponent(target.pathname.slice(1))])
+  return join(root, 'apps/server/storage/instances', createHash('sha256').update(identity).digest('hex'))
+}
+
+/** Count without following links; neither a directory alias nor a nested
+ * symlink establishes exclusive ownership of files outside this target. */
+function resetFileCount(folder) {
+  let parent = folder
+  while (true) {
+    if (existsSync(parent) && lstatSync(parent).isSymbolicLink()) throw new DevError(`Refusing reset: storage path is a symbolic link: ${parent}`)
+    const next = dirname(parent)
+    if (next === parent) break
+    parent = next
+  }
+  if (!existsSync(folder)) return 0
+  if (!lstatSync(folder).isDirectory()) throw new DevError(`Refusing reset: storage is not a directory: ${folder}`)
+  return readdirSync(folder, { withFileTypes: true }).reduce((count, entry) => {
+    if (entry.isSymbolicLink()) throw new DevError(`Refusing reset: storage contains a symbolic link: ${join(folder, entry.name)}`)
+    return count + (entry.isDirectory() ? resetFileCount(join(folder, entry.name)) : 1)
+  }, 0)
+}
+
+export async function resetInstance(instance, env, yes) {
+  assertLocal(env)
+  const target = new URL(env.DATABASE_URL)
+  // postgres accepts routing options in URL query parameters; checking only
+  // URL.hostname would not prove which server or database receives the DROP.
+  if (target.search) throw new DevError('Refusing reset: DATABASE_URL query options can override the selected target. Use a plain local URL.')
+  if (!['postgres:', 'postgresql:'].includes(target.protocol)) throw new DevError('Refusing reset: use a PostgreSQL DATABASE_URL.')
+  const name = decodeURIComponent(target.pathname.slice(1))
+  if (!name || ['postgres', 'template0', 'template1'].includes(name)) throw new DevError('Refusing reset: select a Featherbase development database, not a maintenance database.')
+  const storage = localStorageDirectory(env)
+  if (resolve(env.FILE_STORAGE_DIR) !== storage) throw new DevError(`Refusing reset: custom storage ownership is unknown. Expected isolated storage: ${storage}. Legacy/shared uploads are never deleted.`)
+  const files = resetFileCount(storage)
+  console.log(`Reset ${instance.name}: database ${name} on ${target.hostname}:${target.port || 5432}`)
+  console.log(`Storage: ${storage} (${files} file${files === 1 ? '' : 's'})`)
+  if (!yes) throw new DevError('Dry-run only; nothing changed. Repeat with --yes to delete this database and its isolated uploads.')
+
+  const { default: postgres } = createRequire(join(root, 'apps/server/package.json'))('postgres')
+  const adminUrl = new URL(target)
+  adminUrl.pathname = '/postgres'
+  const options = { max: 1, connect_timeout: 5, onnotice: () => {}, connection: { statement_timeout: 5000 } }
+  const admin = postgres(adminUrl.toString(), options)
+  const inspect = postgres(target.toString(), options)
+  try {
+    const [present] = await inspect`select to_regclass('featherbase.internal_metadata') is not null as present`
+    const [stamp] = present.present ? await inspect`select value from featherbase.internal_metadata where key = 'environment'` : []
+    if (stamp?.value !== 'development') throw new DevError(`Refusing reset: database ${name} must be recorded as development (found ${stamp?.value ?? 'no environment stamp'}).`)
+    await inspect.end({ timeout: 1 })
+    const connections = await admin`select pid, application_name from pg_stat_activity where datname = ${name}`
+    if (connections.length) throw new DevError(`Refusing reset: stop the connected Featherbase server or other database process first: ${connections.map((c) => `PostgreSQL PID ${c.pid} (${c.application_name || 'unnamed client'})`).join(', ')}. Nothing was killed.`)
+    // No FORCE: a new connection after inspection must prevent the drop too.
+    await admin`drop database ${admin(name)}`
+    rmSync(storage, { recursive: true, force: true })
+  } catch (error) {
+    if (error instanceof DevError) throw error
+    throw new DevError(`Reset stopped for database ${name}: ${error.code ?? 'storage error'}. ${error.code === '55006' ? 'Stop connected processes and retry; uploads were not removed.' : 'Check the selected database and storage permissions; no setup was run.'}`)
+  } finally {
+    await inspect.end({ timeout: 1 }).catch(() => {})
+    await admin.end({ timeout: 1 }).catch(() => {})
+  }
+  console.log('Selected database and isolated uploads removed. Legacy/shared uploads were left untouched.')
+  console.log('Next: featherbase setup')
 }
 
 export async function prepareInstance(instance, env, environment = 'local') {
   assertLocal(env)
   const target = new URL(env.DATABASE_URL)
   step(`Preparing ${instance.name}: database ${decodeURIComponent(target.pathname.slice(1))} on ${target.hostname}:${target.port || 5432}`)
+  console.log(`Uploads: ${env.FILE_STORAGE_DIR}. Legacy shared uploads are not moved or deleted; see README before reusing an existing database.`)
   for (const app of instance.apps) buildApp(app, env)
   await ensureDatabase(env)
   serverCommand(env, 'migrate')

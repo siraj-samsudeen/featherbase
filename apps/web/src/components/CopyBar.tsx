@@ -3,9 +3,9 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
-import { fmtCount } from '../lib/inr'
+import { fmtCount } from '@featherbase/shop-floor'
 import { formatValue, useSettings } from '../lib/settings'
-import { Button, Notice, cardClasses } from './ui'
+import { Button, Notice, cardClasses } from '@featherbase/shop-floor'
 
 interface CopyInfo { data_source: string; database: string; source_schema: string; source_table: string; key_column: string; last_copied_at: string | null }
 interface CopyResult { inserted: number; updated: number; failed: number; conflicts: number; deleted_at_source: number; back_at_source: number; first_errors: string[] }

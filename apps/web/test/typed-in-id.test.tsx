@@ -2,6 +2,7 @@
 // is a name typed in by whoever creates the row. The generic form is the only
 // place a person creates a row, so that choice has to be usable from it.
 
+import { tableSlug } from 'shared'
 import { screen, waitFor } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { describe } from 'vitest'
@@ -19,7 +20,7 @@ describe('Choose how new rows are named', () => {
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
     })
-    await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/new`, admin)
+    await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/new`, admin)
     await screen.findByTestId('form-view')
 
     const idInput = await waitFor(() => {

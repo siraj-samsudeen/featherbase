@@ -11,8 +11,12 @@ test('a token asked for from a preview sign-in is refused with the reason', asyn
   const user = userEvent.setup()
   const { token } = await issueSession(admin.user!, { preview: true })
   await renderApp('/featherbase/admin/access-tokens', { ...admin, token })
+  await waitFor(() => expect(screen.getByTestId('issue-token')).toBeEnabled())
   await user.click(await screen.findByTestId('issue-token', {}, { timeout: 10_000 }))
   await user.type(screen.getByTestId('token-label'), 'from preview')
+  await user.click(screen.getByTestId('issue-confirm'))
+  // #852: a token that never expires is issued on a second, deliberate press.
+  await screen.findByTestId('token-no-expiry')
   await user.click(screen.getByTestId('issue-confirm'))
   expect(await screen.findByTestId('issue-error')).toHaveTextContent(
     'Not allowed from this sign-in. Sign in again normally to change how this account signs in.',
@@ -24,6 +28,8 @@ test('a service account name that is not a slug is refused; a role ticked then u
   const user = userEvent.setup()
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Atr Exporter' } })
   await renderApp('/featherbase/admin/access-tokens', admin)
+  await user.click(await screen.findByRole('tab', { name: 'Service accounts' }, { timeout: 10_000 }))
+  await user.click(screen.getByTestId('sa-create-open'))
   await user.type(await screen.findByTestId('sa-name', {}, { timeout: 10_000 }), 'Nightly Export')
   await user.click(screen.getByTestId('sa-create'))
   expect(await screen.findByTestId('sa-error')).toHaveTextContent('Service account names are lowercase slugs like "svc-rama-installer"')

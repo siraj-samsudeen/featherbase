@@ -32,3 +32,27 @@ test('failures from the duplicate gate and from the server come back in source-r
   expect(report.failed.map((f) => f.sourceIndex)).toEqual([2, 4, 7])
   expect(report.inserted).toBe(2)
 })
+
+test('#851 changes in separate import parts count together', async ({ admin }) => {
+  setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
+  await admin.post('/api/table_def', {
+    name: 'Iro Zone', track_changes: false,
+    columns: [
+      { column_name: 'zone', column_type: 'Data' },
+      { column_name: 'pop', column_type: 'Int' },
+    ],
+  })
+  const original = Array.from({ length: 520 }, (_, i) => ({ zone: `Z${i}`, pop: 1000 + i }))
+  await admin.post('/api/table/Iro%20Zone:import', { rows: original })
+  const report = await sendImportRun({
+    table: 'Iro Zone', dryRun: true,
+    upsert: { key_column: 'zone', empty_cells: 'keep', columns: ['zone', 'pop'] },
+    rows: original.map((row, i) => ({ sourceIndex: i, values: {
+      ...row, pop: row.pop + (i < 11 || (i >= 500 && i < 510) ? 7 : 0),
+    } })),
+  })
+  expect(report).toMatchObject({
+    updated: 520, changed: 21, unchanged: 499, inserted: 0,
+    fields_updated: 21, fields_kept: 0, rows_kept: 0, conflicts: 0, failed: [],
+  })
+})

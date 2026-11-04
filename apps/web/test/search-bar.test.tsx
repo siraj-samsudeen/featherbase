@@ -44,7 +44,7 @@ test('The search bar opens what it finds: picking a matching record opens its fo
   fireEvent.click(hit)
 
   await waitFor(() => expect(field('title')).toHaveValue('Zebrafinch widget'))
-  expect(here(app)).toContain('Sb Gadget')
+  expect(here(app)).toBe('/featherbase/admin/table/sb-gadget/row/Zebrafinch-widget')
   await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 
@@ -59,7 +59,7 @@ test('The search bar opens what it finds: a matching Table offers its list and a
   expect(await screen.findAllByTestId('awesomebar-table')).not.toHaveLength(0)
   fireEvent.click(create)
 
-  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Sb Gadget/new'))
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/table/sb-gadget/new'))
   await waitFor(() => expect(field('title')).toHaveValue(''))
   await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
@@ -70,6 +70,8 @@ test('Plain arrow keys choose typed results in displayed order', async ({ admin 
   fireEvent.focus(bar)
   fireEvent.change(bar, { target: { value: 'Sb Gadget' } })
   await screen.findByTestId('awesomebar-doc')
+  await screen.findByTestId('awesomebar-table')
+  await screen.findByTestId('awesomebar-new')
   const results = screen.getByTestId('awesomebar-results')
   const choices = Array.from(results.querySelectorAll('a, button'))
   expect(choices.length).toBeGreaterThanOrEqual(3)
@@ -88,7 +90,7 @@ test('Plain arrow keys choose typed results in displayed order', async ({ admin 
   }
   expect(create).toHaveAttribute('aria-selected', 'true')
   fireEvent.submit(bar.closest('form') as HTMLFormElement)
-  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Sb Gadget/new'))
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/table/sb-gadget/new'))
   expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument()
 })
 
@@ -115,7 +117,7 @@ test('The search bar opens what it finds: Enter on an exact Table name opens tha
   await screen.findAllByTestId('awesomebar-table')
   fireEvent.submit(bar.closest('form') as HTMLFormElement)
 
-  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Sb Home'))
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/table/sb-home'))
   expect(await screen.findByTestId('list-view')).toBeInTheDocument()
   await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
@@ -144,7 +146,7 @@ test('The search bar opens what it finds: Enter on a word that names a record, n
   await screen.findByTestId('awesomebar-doc')
   fireEvent.submit(bar.closest('form') as HTMLFormElement)
   await waitFor(() => expect(field('title')).toHaveValue('Zebrafinch widget'))
-  expect(here(app)).toContain('Sb Gadget')
+  expect(here(app)).toBe('/featherbase/admin/table/sb-gadget/row/Zebrafinch-widget')
   await waitFor(() => expect(screen.queryByTestId('awesomebar-results')).not.toBeInTheDocument())
 })
 
@@ -184,7 +186,7 @@ test('A past search comes back in the empty bar: arrow keys choose it and Enter 
   bar.focus()
   const recents = await screen.findByTestId('awesomebar-recents')
   const items = within(recents).getAllByRole('option')
-  const at = items.findIndex((b) => b.textContent?.includes('Zebrafinch') && !b.textContent?.includes('-widget'))
+  const at = items.findIndex((b) => b.textContent?.includes('Zebrafinch') && within(b).queryByRole('img', { name: 'Search' }))
   expect(at).toBeGreaterThanOrEqual(0)
   // ArrowUp from the top wraps to the bottom; ArrowDown walks forward again.
   fireEvent.keyDown(bar, { key: 'ArrowUp' })
@@ -196,4 +198,24 @@ test('A past search comes back in the empty bar: arrow keys choose it and Enter 
   bar.focus()
   fireEvent.keyDown(bar, { key: 'Escape' })
   expect(document.activeElement).not.toBe(bar)
+})
+
+test('#737 reopening the command bar discovers Tables added in the same session', async ({ admin }) => {
+  await seed(admin)
+  const { bar } = await openBar(admin)
+  fireEvent.focus(bar)
+  fireEvent.change(bar, { target: { value: 'Sb Gadget' } })
+  await screen.findByTestId('awesomebar-table')
+  fireEvent.keyDown(bar, { key: 'Escape' })
+
+  await admin.post('/api/table_def', {
+    name: 'Sb Added Later',
+    columns: [{ column_name: 'title', column_type: 'Data' }],
+  })
+  fireEvent.focus(bar)
+  fireEvent.change(bar, { target: { value: 'Sb Added Later' } })
+  await waitFor(() => {
+    const tables = screen.getAllByTestId('awesomebar-table')
+    expect(tables.map((t) => t.textContent)).toEqual([expect.stringContaining('Sb Added Later')])
+  })
 })

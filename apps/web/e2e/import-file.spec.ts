@@ -61,7 +61,7 @@ test('IMP-006: drop a CSV; inferred schema prefills the builder; create imports 
     await page.getByTestId('dt-create').click()
 
     // Lands on the new Table's list with the imported rows visible.
-    await expect(page).toHaveURL(new RegExp('/admin/Import%20Sales'))
+    await expect(page).toHaveURL(new RegExp('/featherbase/admin/table/import-sales'))
     await expect(page.getByTestId('list-rows')).toContainText('Alice')
     await expect(page.getByTestId('list-rows')).toContainText('Chandra')
   })
@@ -119,7 +119,7 @@ test('IMP-006: a real .xlsx imports the same way (via the file picker)', async (
 
   await session.step('create the Table and land on its list with the imported rows', async ({ page }) => {
     await page.getByTestId('dt-create').click()
-    await expect(page).toHaveURL(new RegExp('/admin/Import%20Inventory'))
+    await expect(page).toHaveURL(new RegExp('/featherbase/admin/table/import-inventory'))
     await expect(page.getByTestId('list-rows')).toContainText('Widget')
     await expect(page.getByTestId('list-rows')).toContainText('Gadget')
   })

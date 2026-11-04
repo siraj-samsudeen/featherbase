@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
-import { fmtCount } from '../lib/inr'
+import { fmtCount } from '@featherbase/shop-floor'
 import { formatValue, useSettings } from '../lib/settings'
 import { browserHref, lastPlace, listTables, previewTable, refreshTables, rememberPlace, type BrowseContext, type WarehouseSource } from '../lib/warehouse'
-import { Breadcrumbs, Button, ContentTabs, DataList, Notice, SearchableList, Select, Skeleton, buttonClasses, type DataColumn } from '../components/ui'
+import { Breadcrumbs, Button, ContentTabs, DataList, Notice, SearchableList, Select, Skeleton, buttonClasses, type DataColumn } from '@featherbase/shop-floor'
 
 type CatalogRow = { schema: string; name: string; rows: number; columns: number }
 const EMPTY = { title: 'No matches', body: 'Try a different search or schema.' }
@@ -73,8 +73,8 @@ export function WarehouseBrowser({ name, ...context }: { name: string } & Browse
     <div data-testid="warehouse-browser" className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
       <Breadcrumbs items={[
         { label: 'Admin', href: '/featherbase/admin' },
-        { label: 'Data Source', href: '/featherbase/admin/Data%20Source' },
-        { label: name, href: `/featherbase/admin/Data%20Source/${encodeURIComponent(name)}` },
+        { label: 'Data Source', href: '/featherbase/admin/table/data-source' },
+        { label: name, href: `/featherbase/admin/table/data-source/row/${encodeURIComponent(name)}` },
         { label: database ?? 'Browse tables', href: tab === 'preview' ? browserHref(name, { ...context, tab: 'catalog' }) : undefined },
         ...(tab === 'preview' ? table
           ? [{ label: tableSchema ?? schema ?? '', href: browserHref(name, { ...context, tab: 'catalog' }) }, { label: table }]

@@ -28,7 +28,10 @@ const branchHistory = {
   '0007b_table_copy_lifecycle.sql': 'd79014711e5a80d51eec3890bd93f76aec123d7579c7421a2e46b1231eb2e3fc',
 }
 const additions = ['0007_motherduck_pasted_token.sql', '0008_table_copy.sql', '0009_table_copy_lifecycle.sql']
-const allMigrations = [...Object.keys(mainHistory), ...additions]
+const laterMain = ['0012_table_settings_storage_identity.sql', '0013_reading_presentation.sql',
+  '0014_series_per_table.sql', '0015_metadata_override_editor.sql', '0138_mandatory_access.sql']
+const pendingAfterLabels = [...additions, ...laterMain]
+const allMigrations = [...Object.keys(mainHistory), ...pendingAfterLabels]
 const oldLabels = { postgres: 'PostgreSQL', mysql: 'MySQL', duckdb: 'DuckDB', 'csv-folder': 'CSV folder' }
 const engineLabels = {
   ...oldLabels, motherduck: 'MotherDuck',
@@ -62,7 +65,7 @@ async function expectCurrent(scratch: Scratch) {
     { conname: 'table_copy_target_fkey', confupdtype: 'c', confdeltype: 'c', convalidated: true },
   ])
   expect(await scratch.migrate.pendingMigrations()).toEqual([])
-  expect(await runMain(scratch.migrate.main, [])).toEqual({ code: 0, stdout: 'migrations up to date (9 total)\n', stderr: '' })
+  expect(await runMain(scratch.migrate.main, [])).toEqual({ code: 0, stdout: `migrations up to date (${allMigrations.length} total)\n`, stderr: '' })
 }
 
 it('a fresh install labels the MotherDuck engine choice', async () => {
@@ -84,9 +87,9 @@ it('upgrades the actual main 0006 installation', async () => {
     expect(await engine(scratch)).toEqual([{ choices: 'postgres\nmysql\nduckdb\ncsv-folder', choice_labels: oldLabels }])
     expect(await scratch.db`select to_regclass('featherbase.data_source_secret') as secret,
       to_regclass('featherbase.table_copy') as copy`).toEqual([{ secret: null, copy: null }])
-    expect(await scratch.migrate.pendingMigrations()).toEqual(additions)
+    expect(await scratch.migrate.pendingMigrations()).toEqual(pendingAfterLabels)
     expect(await runMain(scratch.migrate.main, [])).toEqual({ code: 0, stderr: '',
-      stdout: additions.map(f => `applied ${f}\n`).join('') + 'migrations up to date (9 total)\n' })
+      stdout: pendingAfterLabels.map(f => `applied ${f}\n`).join('') + `migrations up to date (${allMigrations.length} total)\n` })
     expect(await ledger(scratch)).toEqual(allMigrations)
     await expectCurrent(scratch)
   } finally {
@@ -150,7 +153,7 @@ it('upgrades the historical branch ledger without replacing its data', async () 
       native: await scratch.db`select row_id, full_name from featherbase.person where row_id = 'Administrator'`,
     })
     const before = await snapshot()
-    expect(await scratch.migrate.pendingMigrations()).toEqual(['0006_readable_labels.sql', ...additions])
+    expect(await scratch.migrate.pendingMigrations()).toEqual(['0006_readable_labels.sql', ...pendingAfterLabels])
     expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
     expect(await snapshot()).toEqual(before)
     expect(await ledger(scratch)).toEqual([...allMigrations, ...Object.keys(branchHistory)].sort())

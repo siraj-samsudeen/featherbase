@@ -18,12 +18,12 @@
 // change outright, and dropping a column is destructive in a way that
 // belongs with Table deletion rather than beside a rename.
 import { useState } from 'react'
-import { Link, useParams } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { RESERVED, SNAKE, TARGET_REQUIRED_TYPES, slugify } from '../lib/column-rules'
-import { buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '../components/ui'
+import { buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
 
 interface NewColumn {
   label: string
@@ -120,8 +120,7 @@ function RenameRow({ table, column }: { table: string; column: { column_name: st
   )
 }
 
-export function ColumnEditor() {
-  const { table } = useParams({ strict: false }) as { table: string }
+export function ColumnEditor({ table }: { table: string }) {
   const queryClient = useQueryClient()
   const [adding, setAdding] = useState<NewColumn>(blank())
   const [labels, setLabels] = useState<Record<string, string>>({})
@@ -221,7 +220,7 @@ export function ColumnEditor() {
       <h1 className="mb-1 text-xl font-semibold text-ink">
         Columns of{' '}
         <Link
-          to="/featherbase/admin/$table"
+          to="/featherbase/admin/table/$table"
           params={{ table: def.name }}
           search={{ filters: undefined }}
           className="underline"

@@ -38,9 +38,19 @@ test('ambiguous source packages and folders without repository metadata are not 
     const source = resolve(root, 'example-apps/other')
     for (const copy of ['duplicate', 'third'])
       await cp(source, resolve(root, `example-apps/${copy}`), { recursive: true })
+    const second = resolve(root, 'client-apps/customer/second')
+    await cp(source, second, { recursive: true })
+    for (const file of ['featherbase.json', 'server.mjs']) {
+      const path = resolve(second, file)
+      await writeFile(path, (await readFile(path, 'utf8')).replaceAll('other', 'second'))
+    }
     await discoverAppLibrary([], root)
-    expect(await admin.get('/api/apps')).toMatchObject({ catalog: [] })
-    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 417 })
+    const catalog = await admin.get<{ catalog: { name: string }[] }>('/api/apps')
+    expect(catalog.catalog.map(app => app.name)).toEqual(['second'])
+    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({
+      status: 417, message: expect.stringContaining('Unknown trusted app name'),
+    })
+    expect(await sql`select name from installed_app where name in ('other', 'second')`).toEqual([])
     for (const copy of ['duplicate', 'third']) await rm(resolve(root, `example-apps/${copy}`), { recursive: true })
     await rm(resolve(root, '.git'), { recursive: true })
     await discoverAppLibrary([], root)
@@ -61,9 +71,23 @@ test('an already-built trusted package installs without executing its source bui
     expect(await admin.get('/api/apps')).toMatchObject({ catalog: [expect.objectContaining({ name: 'other', installed: false, preparation: { state: 'ready' } })] })
     expect(await admin.post('/api/apps/prepare-install', { name: 'other' })).toEqual({ name: 'other', installed: true })
     expect(await admin.get('/api/apps')).toMatchObject({ catalog: [expect.objectContaining({ name: 'other', installed: true, active: true })] })
+    expect(await sql`select name, package_version from installed_app where name = 'other'`).toEqual([{ name: 'other', package_version: '0.0.1' }])
   } finally {
     await discoverAppLibrary([], null)
     await loadInstalledApps()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('an invalid source declaration is not offered for installation', async ({ admin }) => {
+  const root = await sourceRepository()
+  try {
+    await writeFile(resolve(root, 'example-apps/other/featherbase.json'), '{invalid')
+    await discoverAppLibrary([], root)
+    expect((await admin.get<{ catalog: unknown[] }>('/api/apps')).catalog).toEqual([])
+    await expect(admin.post('/api/apps/prepare-install', { name: 'other' })).rejects.toMatchObject({ status: 417 })
+  } finally {
+    await discoverAppLibrary([], null)
     await rm(root, { recursive: true, force: true })
   }
 })
@@ -147,29 +171,28 @@ test('the catalog returns secret presence without values or package paths', asyn
   const root = await sourceRepository()
   const file = resolve(root, 'example-apps/other/featherbase.json')
   const manifest = JSON.parse(await readFile(file, 'utf8'))
-  await writeFile(file, JSON.stringify({ ...manifest, secrets: ['CATALOG_TEST_SECRET', { name: 'CATALOG_OPTIONAL_SECRET', optional: true }] }))
+  manifest.secrets.push({ name: 'CATALOG_OPTIONAL_SECRET', optional: true })
+  await writeFile(file, JSON.stringify(manifest))
   try {
     await discoverAppLibrary([], root)
-    await withNamedVariable('CATALOG_TEST_SECRET', 'not-for-the-browser', async () => {
-      await withNamedVariable('CATALOG_OPTIONAL_SECRET', '   ', async () => {
+    for (const absent of [undefined, '   ']) {
+      await withNamedVariable('CATALOG_TEST_SECRET', 'not-for-the-browser', () => withNamedVariable('CATALOG_OPTIONAL_SECRET', absent, async () => {
         const result = await admin.get<{ catalog: { secrets: unknown[] }[] }>('/api/apps')
         expect(result.catalog[0].secrets).toEqual([
           { name: 'CATALOG_TEST_SECRET', optional: false, present: true },
           { name: 'CATALOG_OPTIONAL_SECRET', optional: true, present: false },
         ])
         expect(JSON.stringify(result)).not.toMatch(/not-for-the-browser|built\.mjs|server\.mjs|app-library-/)
-      })
-    })
-    await withNamedVariable('CATALOG_TEST_SECRET', undefined, async () => {
-      await withNamedVariable('CATALOG_OPTIONAL_SECRET', 'optional-not-for-browser', async () => {
-        const result = await admin.get<{ catalog: { secrets: unknown[] }[] }>('/api/apps')
-        expect(result.catalog[0].secrets).toEqual([
-          { name: 'CATALOG_TEST_SECRET', optional: false, present: false },
-          { name: 'CATALOG_OPTIONAL_SECRET', optional: true, present: true },
-        ])
-        expect(JSON.stringify(result)).not.toContain('optional-not-for-browser')
-      })
-    })
+      }))
+    }
+    await withNamedVariable('CATALOG_TEST_SECRET', undefined, () => withNamedVariable('CATALOG_OPTIONAL_SECRET', 'optional-not-for-the-browser', async () => {
+      const result = await admin.get<{ catalog: { secrets: unknown[] }[] }>('/api/apps')
+      expect(result.catalog[0].secrets).toEqual([
+        { name: 'CATALOG_TEST_SECRET', optional: false, present: false },
+        { name: 'CATALOG_OPTIONAL_SECRET', optional: true, present: true },
+      ])
+      expect(JSON.stringify(result)).not.toContain('optional-not-for-the-browser')
+    }))
   } finally {
     await discoverAppLibrary([], null)
     await rm(root, { recursive: true, force: true })
@@ -193,8 +216,12 @@ test('a colleague cannot prepare a trusted app', async ({ createUser }) => {
 test('preparation accepts catalog names rather than paths or build commands', async ({ admin }) => {
   for (const body of [{ name: '../other' }, { name: 'unknown' }, { name: 'other', path: '/tmp' }, { name: 'other', command: 'echo unsafe' }, {}, null])
     await expect(admin.post('/api/apps/prepare-install', body)).rejects.toMatchObject({ status: 417 })
-  const malformed = await admin.fetch('/api/apps/prepare-install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{' })
+  const malformed = await admin.fetch('/api/apps/prepare-install', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{',
+  })
   expect(malformed.status).toBe(417)
+  expect(await malformed.json()).toMatchObject({ error: { type: 'ValidationError', message: 'Expected { name } naming an app in the catalog; paths and commands are not accepted' } })
+  expect(await sql`select name from installed_app`).toEqual([])
 })
 
 test('restart reactivates an installed repository app without explicit paths', async ({ admin }) => {
@@ -281,6 +308,13 @@ for (const { stamp, edit, active } of [
       ? JSON.stringify({ ...JSON.parse(original), title: 'Changed declaration' })
       : JSON.stringify(JSON.parse(original), null, 2))
     await withNamedVariable('FEATHERBASE_ENV', 'development', async () => {
+      if (stamp === 'development' && edit === 'code') {
+        const repinned = await withNamedVariable('FEATHERBASE_APP_PATHS', '[]', () => runMain(main, ['install-app', 'other']))
+        expect(repinned.code).toBe(0)
+        expect(repinned.stdout).toContain('other is already installed; re-pinned to its folder as it is now')
+        const [afterCli] = await sql`select artifact_digest from installed_app where name = 'other'`
+        expect(afterCli.artifact_digest).not.toBe(before.artifact_digest)
+      }
       await discoverAppLibrary([], root)
       await loadInstalledApps()
     })
@@ -293,10 +327,16 @@ for (const { stamp, edit, active } of [
     } else {
       expect(after.artifact_digest).toBe(before.artifact_digest)
       expect(await sql`select quantity from other.task where row_id = 'edited-survivor'`).toEqual([{ quantity: 34 }])
+      const refused = await withNamedVariable('FEATHERBASE_APP_PATHS', '[]', () => runMain(main, ['install-app', 'other']))
+      expect(refused.code).toBe(1)
+      expect(refused.stderr).toContain('other on this database is not the other in its folder')
+      expect(await sql`select artifact_digest from installed_app where name = 'other'`).toEqual([before])
+      expect(await sql`select quantity from other.task where row_id = 'edited-survivor'`).toEqual([{ quantity: 34 }])
       const reinstall = await runMain(main, ['install-app', 'other'])
       expect(reinstall.code).toBe(1)
       expect(reinstall.stderr).toContain('Upgrade it')
       expect(await sql`select artifact_digest from installed_app where name = 'other'`).toEqual([before])
+      expect(await sql`select quantity from other.task where row_id = 'edited-survivor'`).toEqual([{ quantity: 34 }])
     }
   } finally {
     await discoverAppLibrary([], null)

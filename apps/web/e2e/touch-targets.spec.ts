@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, anonymousTest, expect, adminAuth, type Page } from './fixtures'
 import { ensureListTableA, ensureTable, fillRows, LIST_DT_A } from './fixtures-ui'
 import * as XLSX from 'xlsx'
@@ -83,16 +84,16 @@ async function rowId(page: Page): Promise<string> {
 
 const SCREENS: [string, (page: Page) => Promise<string>][] = [
   ['Admin home', async () => '/admin'],
-  ['a Table list (cards)', async () => `/admin/${encodeURIComponent(LIST_DT_A)}`],
-  ['a row', async (page) => `/admin/${encodeURIComponent(LIST_DT_A)}/${await rowId(page)}`],
-  ['a new row', async () => `/admin/${encodeURIComponent(LIST_DT_A)}/new`],
-  ['a report', async () => `/admin/${encodeURIComponent(LIST_DT_A)}/view/report`],
-  ['System Settings', async () => '/admin/System%20Settings'],
+  ['a Table list (cards)', async () => `/featherbase/admin/table/${encodeURIComponent(tableSlug(LIST_DT_A))}`],
+  ['a row', async (page) => `/featherbase/admin/table/${encodeURIComponent(tableSlug(LIST_DT_A))}/row/${await rowId(page)}`],
+  ['a new row', async () => `/featherbase/admin/table/${encodeURIComponent(tableSlug(LIST_DT_A))}/new`],
+  ['a report', async () => `/featherbase/admin/table/${encodeURIComponent(tableSlug(LIST_DT_A))}/view/report`],
+  ['System Settings', async () => '/featherbase/admin/table/system-settings'],
   ['All tables', async () => '/admin/all-tables'],
-  ['permissions', async () => `/admin/permissions/${encodeURIComponent(LIST_DT_A)}`],
+  ['permissions', async () => `/featherbase/admin/table/${encodeURIComponent(tableSlug(LIST_DT_A))}/permissions`],
   ['access tokens', async () => '/admin/access-tokens'],
   ['the new-Table builder', async () => '/admin/new-table'],
-  ['the column editor', async () => `/admin/${encodeURIComponent(LIST_DT_A)}/columns`],
+  ['the column editor', async () => `/featherbase/admin/table/${encodeURIComponent(tableSlug(LIST_DT_A))}/columns`],
 ]
 
 for (const [screen, path] of SCREENS) {
@@ -124,7 +125,7 @@ anonymousTest('every control on the sign-in page is big enough for a thumb', asy
 })
 
 test('every row of the Show columns menu is big enough for a thumb', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(WIDE_DT)}`).assertHas('[data-testid="list-view"]')
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(WIDE_DT))}`).assertHas('[data-testid="list-view"]')
   await session.step('open Show columns, then measure', async ({ page }) => {
     await page.getByTestId('list-columns').click()
     await expect(page.getByTestId('list-make-default')).toBeVisible()
@@ -133,7 +134,7 @@ test('every row of the Show columns menu is big enough for a thumb', async ({ se
 })
 
 test('the Show columns menu of a ten-column Table stays on a phone screen', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(WIDE_DT)}`).assertHas('[data-testid="list-view"]')
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(WIDE_DT))}`).assertHas('[data-testid="list-view"]')
   await session.step('open Show columns, then measure it against the screen', async ({ page }) => {
     await page.getByTestId('list-columns').click()
     const popup = (await page.getByTestId('list-columns-popup').boundingBox())!
@@ -147,7 +148,7 @@ test('the Show columns menu of a ten-column Table stays on a phone screen', asyn
 // absolutely placed screen-reader label with no positioned box around it)
 // would make the whole page scroll, carrying the top bar away.
 test('a list of cards with "N more" scrolls inside main, never the page', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(WIDE_DT)}`).assertHas('[data-testid="card-more"]')
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(WIDE_DT))}`).assertHas('[data-testid="card-more"]')
   await session.step('compare the page height with the screen', async ({ page }) => {
     await expect(page.getByTestId('card-more')).toHaveCount(6)
     expect(await page.evaluate(() => document.scrollingElement!.scrollHeight)).toBe(812)
@@ -155,7 +156,7 @@ test('a list of cards with "N more" scrolls inside main, never the page', async 
 })
 
 test('the "N more" toggle on a phone card is big enough for a thumb', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(WIDE_DT)}`).assertHas('[data-testid="card-more"]')
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(WIDE_DT))}`).assertHas('[data-testid="card-more"]')
   await session.step('measure the cards, then open one card\'s other columns and measure again', async ({ page }) => {
     await page.waitForLoadState('networkidle')
     expect(await smallTargets(page)).toEqual([])
@@ -196,14 +197,14 @@ test.describe('at phone width with a mouse', () => {
   }
 
   test('the "N more" toggle on a phone card is thumb-sized', async ({ session }) => {
-    await session.visit(`/admin/${encodeURIComponent(WIDE_DT)}`).assertHas('[data-testid="card-more"]')
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(WIDE_DT))}`).assertHas('[data-testid="card-more"]')
     await session.step('measure every "N more"', async ({ page }) => {
       for (const h of await heights(page, '[data-testid="card-more"]')) expect(h).toBeGreaterThanOrEqual(MIN)
     })
   })
 
   test('every row of the Show columns menu is thumb-sized', async ({ session }) => {
-    await session.visit(`/admin/${encodeURIComponent(WIDE_DT)}`).assertHas('[data-testid="list-view"]')
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(WIDE_DT))}`).assertHas('[data-testid="list-view"]')
     await session.step('open Show columns, then measure its rows', async ({ page }) => {
       await page.getByTestId('list-columns').click()
       const rows = await heights(page, '[data-testid="list-columns-popup"] :is(label, button)')
@@ -240,7 +241,7 @@ test.describe('at phone width with a mouse', () => {
   })
 
   test('the Edit columns In list tick is thumb-sized', async ({ session }) => {
-    await session.visit(`/admin/${encodeURIComponent(WIDE_DT)}/columns`).assertHas('[data-testid="ce-in-list-title"]')
+    await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(WIDE_DT))}/columns`).assertHas('[data-testid="ce-in-list-title"]')
     await session.step('measure each tick\'s label', async ({ page }) => {
       for (const h of await heights(page, 'label:has([data-testid^="ce-in-list-"])')) expect(h).toBeGreaterThanOrEqual(MIN)
     })

@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminAuth } from './fixtures'
 
 const DT = 'Gantt E2E Project'
@@ -37,7 +38,7 @@ test.beforeAll(async ({ request }) => {
 
 // UI-022: Gantt bars.
 test('UI-022: bars span the correct ranges', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/view/gantt`).assertHas('[data-testid="gantt-view"]')
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/view/gantt`).assertHas('[data-testid="gantt-view"]')
 
   await session
     .within(`[data-testid="gantt-bar-${taskA}"]`, (bar) =>
@@ -56,7 +57,7 @@ test('UI-022: bars span the correct ranges', async ({ session }) => {
 })
 
 test('UI-022: resizing a bar updates the end date', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/view/gantt`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/view/gantt`)
 
   await session.within(`[data-testid="gantt-bar-${taskA}"]`, (bar) =>
     bar.assertAttribute('data-end', '2026-03-05'),

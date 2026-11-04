@@ -4,6 +4,7 @@
 // message each panel shows on a refusal was never seen. Every refusal here is
 // a real answer from the in-process server — a person who does not exist, a
 // row deleted underneath the open form — never a stubbed response.
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
@@ -13,23 +14,28 @@ const ENC = encodeURIComponent(DT)
 
 type Admin = Parameters<typeof renderApp>[1]
 
-async function seedRow(admin: Admin): Promise<string> {
+async function seedRow(admin: Admin, property: string): Promise<string> {
   await admin.post('/api/table_def', {
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
+  })
+  await admin.post('/api/save_row', {
+    table: 'Metadata Override',
+    row: { table_name: DT, property, value: 'true' },
   })
   const row = (await admin.post('/api/save_row', { table: DT, row: { title: 'refuse me' } })) as { row_id: string }
   return row.row_id
 }
 
-async function openRow(admin: Admin, rowId: string) {
-  await renderApp(`/featherbase/admin/${ENC}/${rowId}`, admin)
+async function openRow(admin: Admin, rowId: string, tab = 'Collaboration') {
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/row/${rowId}`, admin)
   await screen.findByTestId('form-view')
+  await userEvent.click(await screen.findByRole('tab', { name: tab }))
 }
 
 test('assigning to someone who is not a person says the server could not find them', async ({ admin }) => {
   const user = userEvent.setup()
-  const rowId = await seedRow(admin)
+  const rowId = await seedRow(admin, 'enable_assignments')
   await openRow(admin, rowId)
   const panel = await screen.findByTestId('assignments-panel')
   await user.type(within(panel).getByTestId('assign-to'), 'nobody-rsr@example.com')
@@ -43,7 +49,7 @@ test('assigning to someone who is not a person says the server could not find th
 
 test('a tag typed and entered on a row deleted meanwhile is refused, and nothing is stored', async ({ admin }) => {
   const user = userEvent.setup()
-  const rowId = await seedRow(admin)
+  const rowId = await seedRow(admin, 'enable_tags')
   await openRow(admin, rowId)
   const panel = await screen.findByTestId('tags-panel')
   await waitFor(() => expect(panel).toHaveTextContent('No tags'))
@@ -60,7 +66,7 @@ test('a tag typed and entered on a row deleted meanwhile is refused, and nothing
 
 test('+ Attach opens the file picker', async ({ admin }) => {
   const user = userEvent.setup()
-  const rowId = await seedRow(admin)
+  const rowId = await seedRow(admin, 'enable_files')
   await openRow(admin, rowId)
   const panel = await screen.findByTestId('attachments-panel')
   const picker = within(panel).getByTestId('attach-file-input')
@@ -72,7 +78,7 @@ test('+ Attach opens the file picker', async ({ admin }) => {
 
 test('removing an attachment someone else already removed says so', async ({ admin }) => {
   const user = userEvent.setup()
-  const rowId = await seedRow(admin)
+  const rowId = await seedRow(admin, 'enable_files')
   const file = (await admin.post('/api/save_row', {
     table: 'File',
     row: { file_name: 'gone.txt', ref_table: DT, ref_name: rowId },
@@ -80,17 +86,18 @@ test('removing an attachment someone else already removed says so', async ({ adm
   await openRow(admin, rowId)
   const panel = await screen.findByTestId('attachments-panel')
   await within(panel).findByText('gone.txt')
+  const remove = await within(panel).findByRole('button', { name: 'Remove gone.txt' })
   await admin.delete(`/api/table/File/${encodeURIComponent(file.row_id)}`)
-  await user.click(within(panel).getByRole('button', { name: 'Remove gone.txt' }))
+  await user.click(remove)
   expect(await within(panel).findByTestId('attach-error')).toHaveTextContent(/not found/i)
 })
 
 test('a comment on a row deleted meanwhile is refused and the draft is kept', async ({ admin }) => {
   const user = userEvent.setup()
-  const rowId = await seedRow(admin)
-  await openRow(admin, rowId)
+  const rowId = await seedRow(admin, 'enable_discussion')
+  await openRow(admin, rowId, 'Activity')
   const panel = await screen.findByTestId('comments-panel')
-  await waitFor(() => expect(panel).toHaveTextContent('No comments yet'))
+  await waitFor(() => expect(screen.getByTestId('activity-timeline')).toHaveTextContent('Administrator created this'))
   await admin.delete(`/api/table/${ENC}/${rowId}`)
   await user.type(within(panel).getByTestId('comment-input'), 'still there?')
   await user.click(within(panel).getByTestId('comment-submit'))
@@ -120,7 +127,7 @@ test('a workflow action someone else already took is refused with the reason', a
     },
   })
   await admin.post(`/api/table/${ENC}`, { row_id: 'rsr-1', title: 'approve me' })
-  await openRow(admin, 'rsr-1')
+  await openRow(admin, 'rsr-1', 'Work')
   const actions = await screen.findByTestId('workflow-actions')
   await within(actions).findByRole('button', { name: 'Approve' })
   await admin.post(`/api/table/${ENC}/rsr-1:apply_workflow_action`, { action: 'Approve' })

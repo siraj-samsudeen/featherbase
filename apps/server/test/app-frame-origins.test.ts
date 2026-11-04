@@ -1,3 +1,4 @@
+import { admitTasker } from './tasker-client'
 // #642 (design E4): an app declares the outside sites it frames. Featherbase
 // allows them as frame sources on that app's own pages and nowhere else.
 import { afterEach, describe, expect } from 'vitest'
@@ -61,6 +62,7 @@ describe('declared frame origins: the frame policy', () => {
     ])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
     await admin.post('/api/install_app', { name: 'tasker' })
+    await admitTasker(admin)
     const page = await admin.fetch('/tasker/', { headers: { accept: 'text/html' } })
     expect(page.status).toBe(200)
     expect(page.headers.get('content-security-policy')).toBe("frame-src 'self'")

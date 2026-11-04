@@ -55,7 +55,7 @@ test.afterAll(async ({ request }) => {
 
 test('a photo_proof item takes a camera upload and shows its thumbnail', async ({ session }) => {
   await session
-    .visit(`/admin/Checklist%20Run/view/checklist?run=${openRunName}`)
+    .visit(`/featherbase/admin/table/checklist-run/view/checklist?run=${openRunName}`)
     .assertHas('[data-testid="checklist-run-view"]')
 
   await session.step('a camera upload produces a thumbnail', async ({ page }) => {
@@ -85,10 +85,10 @@ test.describe('mobile width', () => {
 
   test('the run list and items stay usable at phone width', async ({ session }) => {
     await session
-      .visit('/admin/Checklist%20Run/view/checklist')
+      .visit('/featherbase/admin/table/checklist-run/view/checklist')
       .assertHas('[data-testid="checklist-view"]')
     await session
-      .visit(`/admin/Checklist%20Run/view/checklist?run=${openRunName}`)
+      .visit(`/featherbase/admin/table/checklist-run/view/checklist?run=${openRunName}`)
       .assertHas('[data-testid="checklist-run-view"]')
 
     await session.step('no horizontal overflow, and the tap target is comfortably tall', async ({ page }) => {

@@ -7,6 +7,8 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { createTable } from '../src/table-engine'
+import { invalidateMeta } from '../src/meta'
 
 interface Card {
   label: string | null
@@ -266,5 +268,120 @@ describe('module pages never collide with the System page', () => {
     await sql`update home_page set shortcuts = ${'{not json'} where row_id = 'hp-bad-shortcuts'`
     const page = (await pages(admin)).find((p) => p.row_id === 'hp-bad-shortcuts')!
     expect(page.shortcuts).toEqual([])
+  })
+})
+
+describe('System membership comes from the current catalogue', () => {
+  test('every standalone system Table appears exactly once', async ({ admin }) => {
+    const catalogue = await sql`select name from table_def where system and kind != 'sub_table'`
+    const system = (await pages(admin)).find((p) => p.row_id === 'system')!
+    expect(system.cards.flatMap((c) => c.links.map((l) => l.link_to)).sort())
+      .toEqual(catalogue.map((t) => t.name).sort())
+  })
+
+  test('an unlinked system Table appears on the next fetch', async ({ admin }) => {
+    await pages(admin)
+    await createTable({ name: 'HP New Engine', system: true, columns: [{ column_name: 'title', column_type: 'Data' }] })
+    const system = (await pages(admin)).find((p) => p.row_id === 'system')!
+    expect(system.cards.find((c) => c.label === 'Platform')!.links)
+      .toContainEqual({ label: 'HP New Engine', link_to: 'HP New Engine' })
+    expect(await sql`select 1 from home_page_link where link_to = 'HP New Engine'`).toHaveLength(0)
+  })
+
+  test('missing placement hints fall back to one name-ordered Platform card', async ({ admin }) => {
+    await sql`delete from home_page_link where parent = 'system' and parenttype = 'Home Page'`
+    const catalogue = await sql`select name from table_def where system and kind != 'sub_table'`
+    const names = catalogue.map((t) => String(t.name)).sort()
+    const system = (await pages(admin)).find((p) => p.row_id === 'system')!
+    expect(system.cards).toEqual([
+      { label: 'Platform', links: names.map((name) => ({ label: name, link_to: name })) },
+    ])
+  })
+
+  test('placement hints cannot change eligible membership', async ({ admin }) => {
+    await createTable({ name: 'HP Not Engine', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    const before = await sql`select label from home_page_link
+      where parent = 'system' and type = 'Card Break' order by position, row_id`
+    for (const [i, target] of ['Person', 'HP Not Engine', 'Column', 'HP Gone'].entries()) {
+      await sql`insert into home_page_link ${sql({
+        row_id: `hp-system-hint-${i}`, parent: 'system', parenttype: 'Home Page', parentfield: 'links',
+        position: 100 + i, label: 'Stale label', type: 'Link', link_to: target,
+      })}`
+    }
+    const system = (await pages(admin)).find((p) => p.row_id === 'system')!
+    expect(system.cards.map((c) => c.label)).toEqual(before.map((c) => c.label))
+    expect(system.cards[0].links.filter((l) => l.link_to === 'Person'))
+      .toEqual([{ label: 'Person', link_to: 'Person' }])
+    const catalogue = await sql`select name from table_def where system and kind != 'sub_table'`
+    expect(system.cards.flatMap((c) => c.links.map((l) => l.link_to)).sort())
+      .toEqual(catalogue.map((t) => t.name).sort())
+    const platform = system.cards.find((c) => c.label === 'Platform')!
+    const unplaced = platform.links.filter((l) => ['Data Source', 'Sign In Method', 'App Setting'].includes(l.link_to))
+    expect(unplaced.map((l) => l.link_to)).toEqual(['App Setting', 'Data Source', 'Sign In Method'])
+  })
+
+  test('a legacy disallowed override leaves System navigation available', async ({ admin }) => {
+    // Persisted before the allowlist: cover hinted/discovered links and both
+    // override scopes, including #774's permitted-properties diagnostic suffix.
+    for (const name of ['Person', 'Sign In Method']) {
+      await sql`insert into metadata_override ${sql({
+        row_id: `hp-legacy-${name}`, table_name: name,
+        column_name: name === 'Person' ? 'email' : null, property: 'system', value: 'false',
+      })}`
+      invalidateMeta(name)
+    }
+    const system = (await pages(admin)).find((p) => p.row_id === 'system')!
+    const links = system.cards.flatMap((c) => c.links)
+    expect(links).toContainEqual({ label: 'Person', link_to: 'Person' })
+    expect(links).toContainEqual({ label: 'Sign In Method', link_to: 'Sign In Method' })
+    // Navigation resilience does not relax the metadata validation policy.
+    expect((await admin.fetch('/api/table/Person:meta')).status).toBe(417)
+  })
+
+  test('System label resolution preserves unrelated metadata refusals', async ({ admin }) => {
+    // Migration-owned settings metadata remains while its namespace is unavailable.
+    // This is not an app-manifest fixture: apps cannot declare system Tables.
+    await sql`insert into table_def ${sql({
+      name: 'hp_unavailable.Settings', kind: 'settings', system: true, label: 'Unavailable settings',
+    })}`
+    const response = await admin.fetch('/api/home_pages')
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ error: {
+      type: 'PermissionError', message: 'App hp_unavailable is disabled or unavailable',
+    } })
+  })
+
+  test('generated links use effective labels after the viewer passes visibility checks', async ({ admin, createUser }) => {
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission', row: { ref_table: 'Sign In Method', role: ROLE, can_read: true, own_rows_only: true },
+    })
+    await admin.post('/api/save_row', {
+      table: 'Permission', row: { ref_table: 'Person', role: ROLE, can_read: true },
+    })
+    await admin.post('/api/table/Metadata%20Override', {
+      row_id: 'hp-sign-in-label', table_name: 'Sign In Method', property: 'label', value: 'Sign-in providers',
+    })
+    await admin.post('/api/table/Metadata%20Override', {
+      row_id: 'hp-person-label', table_name: 'Person', property: 'label', value: 'People',
+    })
+    const reader = await createUser({ roles: [ROLE] })
+    const system = (await pages(reader)).find((p) => p.row_id === 'system')!
+    expect(system.cards).toEqual([
+      { label: 'Users & Access', links: [{ label: 'People', link_to: 'Person' }] },
+      { label: 'Platform', links: [
+        { label: 'Glossary Term', link_to: 'Glossary Term' },
+        { label: 'Sign-in providers', link_to: 'Sign In Method' },
+      ] },
+    ])
+    // No read grant on Table or Home Page is required. Page roles still apply.
+    await sql`insert into home_page_role ${sql({
+      row_id: 'hp-system-role', parent: 'system', parenttype: 'Home Page', parentfield: 'roles', role: 'System Manager',
+    })}`
+    expect((await pages(reader)).some((p) => p.row_id === 'system')).toBe(false)
+    const manager = await createUser({ roles: ['System Manager'] })
+    expect((await pages(manager)).find((p) => p.row_id === 'system')!.cards.flatMap((c) => c.links))
+      .toContainEqual({ label: 'Sign-in providers', link_to: 'Sign In Method' })
+    expect((await pages(admin)).some((p) => p.row_id === 'system')).toBe(true)
   })
 })

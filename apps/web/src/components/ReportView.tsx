@@ -6,8 +6,8 @@ import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
 import { FilterBar, type Filter } from './ListView'
-import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from './ui'
-import { fmtCount, fmtNumber } from '../lib/inr'
+import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { fmtCount, fmtNumber } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 
@@ -308,7 +308,7 @@ export function ReportView({
   // is unique, so no row repeats or goes missing at a page boundary when many
   // rows tie on the view's own sort; the view's order is restored afterwards.
   async function allRows(): Promise<Row[]> {
-    if (data.length >= matching) return data
+    if (rows.data && data.length >= matching) return data
     const fields = groupBy ? listArgs.fields : [...new Set([...listArgs.fields, 'updated_at'])]
     const all: Row[] = []
     for (let start = 0; ; start += PAGE) {
@@ -410,7 +410,7 @@ export function ReportView({
     <tr key={String(row.row_id)} className="border-t border-border" data-testid="report-row">
       <td className="px-3 py-1.5">
         <RouterLink
-          to="/featherbase/admin/$table/$name"
+          to="/featherbase/admin/table/$table/row/$name"
           search={{ prefill: undefined }}
           params={{ table, name: String(row.row_id) }}
           className={touchLinkClasses('text-action hover:underline')}
@@ -453,7 +453,7 @@ export function ReportView({
             XLSX
           </button>
           <RouterLink
-            to="/featherbase/admin/$table"
+            to="/featherbase/admin/table/$table"
             params={{ table }}
             search={{ filters: undefined }}
             className={buttonClasses()}

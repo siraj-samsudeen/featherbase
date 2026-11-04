@@ -1,7 +1,8 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { getMeta } from '../src/meta'
+import { getMeta, invalidateMeta, resolveTableName } from '../src/meta'
+import { grantRole, makeTable } from './fixtures'
 
 const DT = 'Meta Test Note'
 
@@ -39,11 +40,49 @@ describe('META-001: table/column storage and Meta loader', () => {
     expect(body.columns).toHaveLength(2)
   })
 
+  test.for([
+    ['Table', 'table_def', ['name']],
+    ['Column', 'column_def', ['row_id']],
+    ['System Settings', 'single_value', ['table_name', 'field']],
+  ] as const)('metadata identifies %s storage', async ([name, relation, row_key], { admin }) => {
+    const meta = await admin.get<{ storage_identity: unknown }>(`/api/table/${encodeURIComponent(name)}:meta`)
+    expect(meta.storage_identity).toEqual({
+      schema: 'featherbase', relation, row_key, data_source: null,
+      discriminator: name === 'System Settings' ? { table_name: name } : null,
+    })
+  })
+
+  test('metadata reports the configured source binding without connecting', async ({ admin }) => {
+    await makeTable(admin, { name: 'Storage Bound Plant', columns: ['plant_name'] })
+    await sql`insert into data_source (row_id, engine, url_env) values ('storage-bound', 'postgres', 'UNSET_STORAGE_URL')`
+    await sql`update table_def set data_source = 'storage-bound', external_schema = 'erp',
+      external_table = 'actual_plants', external_pk = 'plant_code' where name = 'Storage Bound Plant'`
+    invalidateMeta('Storage Bound Plant')
+    const meta = await admin.get<{ storage_identity: unknown }>('/api/table/Storage%20Bound%20Plant:meta')
+    expect(meta.storage_identity).toEqual({ schema: 'erp', relation: 'actual_plants', row_key: ['plant_code'], data_source: 'storage-bound', discriminator: null })
+  })
+
+  test('reading a definition does not grant its storage metadata', async ({ admin, createUser }) => {
+    await makeTable(admin, { name: 'Storage Private Plant', columns: ['plant_name'] })
+    await grantRole(admin, { role: 'Storage Definition Reader', table: 'Table', can_read: true })
+    const reader = await createUser({ roles: ['Storage Definition Reader'] })
+    expect(await reader.get('/api/table/Table/Storage%20Private%20Plant')).toMatchObject({ row_id: 'Storage Private Plant' })
+    await expect(reader.get('/api/table/Storage%20Private%20Plant:meta')).rejects.toMatchObject({ status: 403 })
+  })
+
   test('404s for an unknown Table with the error envelope', async ({ admin }) => {
     await expect(admin.get('/api/table/Nope:meta')).rejects.toMatchObject({
       status: 404,
       type: 'NotFoundError',
     })
+  })
+
+  test('leaves an unknown address unresolved when deletion history is unavailable', async () => {
+    // Mid-upgrade resolution must preserve the input for the metadata loader.
+    // Exercise this boundary directly: the sandbox's outer transaction is
+    // aborted by a missing relation, unlike separate pooled HTTP reads.
+    await sql`alter table featherbase.access_log rename to unavailable_audit`
+    expect(await resolveTableName('Never Created')).toBe('Never Created')
   })
 })
 
