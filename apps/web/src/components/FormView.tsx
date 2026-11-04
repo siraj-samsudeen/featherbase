@@ -1459,7 +1459,7 @@ export function LinkControl({
                 e.preventDefault()
                 nav.push({ ...nav.step, pane: { table: target, row: String(value) } })
               }}
-              title={`Show ${target} ${String(value)} in the pane`}
+              title="Show in the pane"
               data-testid={`link-pane-${field.column_name}`}
               className="rounded px-1 text-sm text-ink-subtle hover:text-action"
             >
@@ -1477,7 +1477,7 @@ export function LinkControl({
                 search: { prefill: undefined },
               })
             }}
-            title={`Open ${target} ${String(value)}`}
+            title="Open row page"
             data-testid={`link-open-${field.column_name}`}
             className="rounded px-1 text-sm text-ink-subtle hover:text-action"
           >
