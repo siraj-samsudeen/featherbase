@@ -40,12 +40,15 @@ const iso = (value: unknown) => (value as Date).toISOString()
  *  reads as the second time. */
 async function roleGrants(person: string): Promise<Map<string, { by: string; at: string }>> {
   const versions = await sql`
-    select data, created_by, created_at from version
-    where ref_table = 'Person' and ref_name = ${person} order by created_at, row_id`
+    select data->'changed' as changed, created_by, created_at from version
+    where ref_table = 'Person' and ref_name = ${person} and jsonb_typeof(data->'changed') = 'array'
+    order by created_at, row_id`
   const names = (value: unknown) => new Set(typeof value === 'string' && value ? value.split(', ') : [])
   const given = new Map<string, { by: string; at: string }>()
   for (const v of versions) {
-    const changed = (v.data as { changed: [string, unknown, unknown][] }).changed
+    // Only entries that record changed fields count (an import's
+    // annotations and older shapes carry none).
+    const changed = v.changed as [string, unknown, unknown][]
     for (const [, was, now] of changed.filter(([column]) => column === 'roles')) {
       const before = names(was)
       for (const role of names(now)) if (!before.has(role)) given.set(role, { by: String(v.created_by), at: iso(v.created_at) })
