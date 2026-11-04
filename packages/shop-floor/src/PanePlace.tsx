@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { Segmented } from './Segmented'
 
 export type PanePlaceValue = 'auto' | 'right' | 'bottom'
@@ -29,11 +29,14 @@ export function PanePlace({ value, resolved, onChange, label = 'Pane place' }: {
 
 /**
  * Content with the drill pane beside it (right: about 40% wide, at least
- * 360px, as tall as the window) or below it (bottom: at most half the window
- * tall, below the content, never over it). A pane on the right stays in sight
- * while the page scrolls; either scrolls inside itself, and neither ever scrolls the page sideways. With no pane the content
- * fills it all. `data-pane` says where the pane is, so the page around can
- * make room for one on the right.
+ * 360px, as tall as the window) or below it (bottom: docked at the foot of
+ * the window, at most half its height). A pane on the right stays in sight
+ * while the page scrolls. With a pane at the bottom the split takes the
+ * window's height, the content scrolling on its own above the pane, never
+ * under it; opening one scrolls the split into view so the pane shows. Either
+ * pane scrolls inside itself, and neither ever scrolls the page sideways.
+ * With no pane the content fills it all. `data-pane` says where the pane is,
+ * so the page around can make room for one on the right.
  */
 export function SplitWithPane({ place, pane, children }: {
   place: ResolvedPanePlace
@@ -42,14 +45,19 @@ export function SplitWithPane({ place, pane, children }: {
 }) {
   const right = place === 'right'
   const shown = pane != null && pane !== false
+  const docked = shown && !right
+  const split = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (docked) split.current?.scrollIntoView?.({ block: 'end' })
+  }, [docked])
   return (
-    <div data-testid="split-with-pane" data-pane={shown ? place : undefined}
-      className={`flex min-h-0 min-w-0 flex-1 ${right ? 'flex-row items-start gap-4' : 'flex-col'}`}>
+    <div ref={split} data-testid="split-with-pane" data-pane={shown ? place : undefined}
+      className={`flex min-h-0 min-w-0 flex-1 ${right ? 'flex-row items-start gap-4' : 'flex-col'} ${docked ? 'h-[calc(100dvh-7rem)] min-h-96' : ''}`}>
       <div className="min-h-0 min-w-0 flex-1 self-stretch overflow-auto">{children}</div>
       {shown && (
         <div data-testid="split-pane" className={right
           ? 'sticky top-0 flex max-h-[calc(100dvh-5rem)] min-h-0 w-2/5 min-w-90 max-w-full shrink-0 flex-col overflow-y-auto bg-surface'
-          : 'mt-4 flex max-h-[50vh] min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto bg-surface'}
+          : 'flex max-h-1/2 min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto bg-surface shadow-[0_-4px_12px_-8px_rgb(0_0_0/0.25)]'}
         >{pane}</div>
       )}
     </div>
