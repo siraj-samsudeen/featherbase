@@ -1,6 +1,6 @@
 import { sign, verify } from 'hono/jwt'
 import { rowDisplayTitle, adminPathTitle, rowHref, tableHref } from 'shared'
-import { sql, withTransaction } from './db'
+import { sql, usingTransaction, withTransaction, type Sql, type TxSql } from './db'
 import { jwtSecret } from './auth'
 import { AppError } from './errors'
 import { getMeta } from './meta'
@@ -126,6 +126,30 @@ export async function bindNavigation(user: string, event: NavigationEvent): Prom
     || (binding.row && !uuid.test(binding.row)) || !originalRoute(event, binding)) return { unavailable: true }
   const resolved = await resolveNavigation(user, { ...event, destination: binding })
   return resolved.state === 'unavailable' ? { unavailable: true } : binding
+}
+
+// Called before DDL, under the actual rename's definition lock. Only legacy
+// NULL metadata is eligible; never revive a new refused claim or rewrite its
+// original fields. Existing read-time birth/access checks establish eligibility.
+export async function captureLegacyNavigationForRename(table: string, tx: TxSql): Promise<void> {
+  await usingTransaction(tx as unknown as Sql, async () => {
+    const rows = await sql`select row_id, created_by, kind, ref_key, label, sub_label, path, occurred_at
+      from user_event where destination is null and (
+        starts_with(ref_key, ${`row:${table}/`}) or starts_with(ref_key, ${`list:${table}?`})
+        or starts_with(ref_key, ${`list:${table}/`}))`
+    for (const row of rows) {
+      const event: NavigationEvent = { kind: row.kind as string, key: row.ref_key as string,
+        label: row.label as string, sub: row.sub_label as string, path: row.path as string,
+        at: new Date(row.occurred_at as string).getTime(), destination: null }
+      const user = row.created_by as string
+      if ((await resolveNavigation(user, event)).state !== 'available') continue
+      const rowId = event.kind === 'row' ? event.key.slice(`row:${table}/`.length) : undefined
+      const claim = await captureNavigation(user, table, rowId)
+      const binding = await bindNavigation(user, { ...event, claim })
+      if ('unavailable' in binding) continue
+      await sql`update user_event set destination = ${sql.json(binding)} where row_id = ${row.row_id} and destination is null`
+    }
+  })
 }
 
 // Read-time only. NULL is legacy; a newly refused claim can NEVER become legacy.

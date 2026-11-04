@@ -10,7 +10,7 @@ import { assertNotSystemWritten } from './system-written'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
-import { createTable, deleteTable, renameColumn, setIdPattern, tableStorageIdentity, updateTable } from './table-engine'
+import { createTable, deleteTable, renameColumn, renameCustomTable, setIdPattern, tableStorageIdentity, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
@@ -1598,6 +1598,14 @@ app.post('/api/table_def/:name/rename_column', async (c) => {
   if (typeof body.from !== 'string' || typeof body.to !== 'string')
     throw new AppError('ValidationError', 'Expected { from, to }')
   return c.json(await renameColumn(c.req.param('name'), body.from, body.to, who(c)))
+})
+
+// #871: rename a custom Table, carrying everything that names it.
+app.post('/api/table_def/:name/rename', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json()) as { to?: unknown }
+  if (typeof body.to !== 'string') throw new AppError('ValidationError', 'Expected { to }')
+  return c.json(await renameCustomTable(await resolveTableName(c.req.param('name')), body.to, who(c)))
 })
 
 app.put('/api/table_def/:name', async (c) => {

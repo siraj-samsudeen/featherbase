@@ -173,6 +173,29 @@ function flush(useBeacon = false): void {
   }
 }
 
+// #871: a renamed Table's entries follow it, here as on the server: the
+// cached list, unconfirmed visits and events not yet sent all name the new
+// Table, so a visit made just before the rename does not bring the old back.
+export function renameTableInRecents(user: string, from: string, to: string, fromPath: string, toPath: string): void {
+  const moved = <T extends { key?: unknown; label?: unknown; sub?: unknown; path?: unknown }>(entry: T): T => {
+    const key = String(entry.key ?? '')
+    const prefix = ['row:', 'list:'].find((kind) => key.startsWith(kind + from) && ['/', '?'].includes(key.charAt(kind.length + from.length)))
+    if (!prefix) return entry
+    const path = String(entry.path ?? '')
+    return {
+      ...entry,
+      key: prefix + to + key.slice(prefix.length + from.length),
+      label: entry.label === from ? to : entry.label,
+      sub: entry.sub === from ? to : entry.sub,
+      path: path === fromPath || path.startsWith(fromPath + '/') || path.startsWith(fromPath + '?') ? toPath + path.slice(fromPath.length) : path,
+    }
+  }
+  save(user, loadAll(user).map(moved))
+  const journal = unconfirmed.get(user)
+  if (journal) journal.entries = journal.entries.map(moved)
+  queue = queue.map((q) => (q.owner === user ? { ...q, event: moved(q.event) } : q))
+}
+
 /** Drain the queue NOW (e.g. right before sign-out, while the departing
  *  user's credentials still exist). */
 export function flushPendingEvents(): void {

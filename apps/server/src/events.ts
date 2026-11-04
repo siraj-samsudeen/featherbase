@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { parseFilters } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
-import { bindNavigation } from './navigation-targets'
+import { bindNavigation, resolveNavigation, type NavigationEvent } from './navigation-targets'
 
 // #101 Phase 3: the server half of recent actions. The client batches
 // read-side intent (rows visited, lists filtered, searches run) into
@@ -189,13 +189,36 @@ export async function routineSuggestion(user: string): Promise<RoutineTarget[]> 
 
 export async function eventSummary(user: string, scan = 800): Promise<EventSummaryEntry[]> {
   const rows = await sql`
-    select kind, ref_key, label, sub_label, path, occurred_at
+    select kind, ref_key, label, sub_label, path, occurred_at, destination
     from user_event
     where created_by = ${user}
     order by occurred_at desc
     limit ${scan}`
+  const identities = [...new Set(rows.flatMap(row => {
+    const binding = row.destination as NavigationEvent['destination']
+    return binding && 'table' in binding ? [binding.table] : []
+  }))]
+  const definitions = identities.length ? await sql`select navigation_identity, name from table_def
+    where navigation_identity in ${sql(identities)}` : []
+  const names = new Map(definitions.map(d => [d.navigation_identity, d.name as string]))
   const byKey = new Map<string, EventSummaryEntry>()
   for (const r of rows) {
+    const binding = r.destination as NavigationEvent['destination']
+    if (binding && 'table' in binding) {
+      const current = names.get(binding.table)
+      if (current && current !== binding.originalTable) {
+        const resolved = await resolveNavigation(user, { kind: r.kind as string, key: r.ref_key as string,
+          label: r.label as string, sub: r.sub_label as string, path: r.path as string,
+          at: new Date(r.occurred_at as string).getTime(), destination: binding })
+        if (resolved.state === 'available') {
+          // The cache gets the current address; the stored visit is untouched.
+          r.ref_key = `${r.kind}:${current}${(r.ref_key as string).slice(`${r.kind}:${binding.originalTable}`.length)}`
+          if (r.label === binding.originalTable) r.label = current
+          if (r.sub_label === binding.originalTable) r.sub_label = current
+          r.path = resolved.path
+        }
+      }
+    }
     let entry = byKey.get(r.ref_key as string)
     if (!entry) {
       // Rows arrive newest-first, so the first row per key carries the

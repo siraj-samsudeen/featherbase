@@ -120,6 +120,14 @@ class HomeDestinations {
     await this.evidence('earlier');
     this.snapshot = await acceptanceSql('select * from featherbase.user_event where created_by = $1 order by row_id', [this.user]);
   }
+  async historicalRename() {
+    // Model history from before rename-time capture existed. Restore the
+    // exact disposable legacy records only after the operation, so today's
+    // rename cannot attest an old visit that was never available to it.
+    const visits = await acceptanceSql('delete from featherbase.user_event where created_by = $1 returning *', [this.user]);
+    await this.renameTable();
+    await acceptanceSql('insert into featherbase.user_event select * from jsonb_populate_recordset(null::featherbase.user_event, $1::jsonb)', [JSON.stringify(visits)]);
+  }
   async evidence(value) {
     const time = value === 'earlier' ? this.legacyAt - 10000 : value === 'equal to the visit time' ? this.legacyAt : value === 'unknown' ? null : this.legacyAt + 10000;
     // created_at is NOT NULL; infinity is known unusable creation evidence.

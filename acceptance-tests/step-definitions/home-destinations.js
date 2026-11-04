@@ -32,7 +32,7 @@ Given('"North depot" now has the title "Confidential depot"', async function () 
 Given('the user has an older visit without a known destination to the Plant row "North depot"', async function () { await (await home(this)).legacy(); });
 Given('Plant and that row demonstrably existed before the visit', async function () { await this.home873.evidence('earlier'); });
 Given('the current Plant was created after the visit', async function () { await this.home873.evidence('later'); });
-Given('Plant no longer exists under that name', async function () { await this.home873.renameTable(); });
+Given('Plant no longer exists under that name', async function () { await this.home873.historicalRename(); });
 Given('a Table named Depot contains a row titled "North depot"', async function () { await this.home873.assertCurrentRow(); });
 Given('Plant\'s creation time is equal to the visit time', async function () { await this.home873.evidence('equal to the visit time'); });
 Given('Plant\'s creation time is unknown', async function () { await this.home873.evidence('unknown'); });

@@ -1107,6 +1107,8 @@ async function renameInGlossary(tx: TxSql, table: string, from: { table: string;
 const TABLE_NAME_COLUMNS: readonly [string, string][] = [
   ['custom_field', 'reference_table'], ['custom_field', 'row_table'], ['access_log', 'ref_table'],
   ['saved_view', 'ref_table'], ['user_settings', 'table_name'], ['tag_link', 'ref_table'],
+  // #871: an import's memory of each row, so a re-import keeps people's edits.
+  [`${PLATFORM_SCHEMA}.import_source`, 'ref_table'], [`${PLATFORM_SCHEMA}.import_conflict`, 'ref_table'],
 ]
 
 // #651: rename one of an app's Tables, keeping its rows, its history, the
@@ -1118,18 +1120,46 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
     throw new AppError('ValidationError', `${from} belongs to ${meta.owner_app ?? 'the platform'}; only its own app renames it`)
   if (!to.startsWith(`${ownerApp}.`) || !tableDefSchema.shape.name.safeParse(to).success)
     throw new AppError('ValidationError', `${to} is not a name for one of ${ownerApp}'s Tables`)
-  const relationName = to.split('.')[1]
-  const [taken] = await sql`select 1 from table_def where name = ${to}`
-  const [clash] = await sql`select 1 from information_schema.tables where table_schema = ${ownerApp} and table_name = ${relationName}`
-  if (taken || clash) throw new AppError('ConflictError', `Table ${to} already exists`)
   const foreign = await sql<{ parent: string; column_name: string }[]>`
     select cd.parent, cd.column_name from column_def cd join table_def td on td.name = cd.parent
     where (cd.reference_table = ${from} or cd.row_table = ${from}) and td.owner_app is not null and td.owner_app <> ${ownerApp}
     order by 1, 2`
   if (foreign.length)
     throw new AppError('ValidationError', `${from} is linked from another app's ${foreign.map((f) => `${f.parent}.${f.column_name}`).join(', ')}`)
-  // Every live pointer at a Table, history included: unlike a deletion, a
-  // rename keeps what history says, under the name the Table now has.
+  return moveTable(meta, to, to.split('.')[1], user)
+}
+
+// #871: a System Manager renames a Table made in the builder or by an import.
+// Platform Tables, app Tables and Tables bound to a data source keep their
+// names: each is named by something outside this instance's Admin.
+export async function renameCustomTable(from: string, input: string, user: string): Promise<TableMeta> {
+  const meta = await getMeta(from)
+  const to = input.trim()
+  if (to === meta.name) return meta
+  assertNotSystemWritten(meta, 'renamed or changed')
+  if (meta.system || meta.owner_app || meta.data_source || meta.kind === 'settings')
+    throw new AppError('ValidationError', `${meta.name} is not a custom Table; it cannot be renamed here`)
+  // An installed app's ledger names its Tables; uninstalling acts on those names.
+  const apps = await sql<{ name: string; tables: unknown }[]>`select name, tables from installed_app order by name`
+  const owner = apps.find((app) => asNameList(app.tables).includes(meta.name))
+  if (owner) throw new AppError('ValidationError', `${meta.name} belongs to the installed app ${owner.name}; it cannot be renamed here`)
+  if (to.includes('.') || !tableDefSchema.shape.name.safeParse(to).success)
+    throw new AppError('ValidationError', 'A Table name starts with a letter and has only letters, digits and spaces, up to 61 characters', {
+      name: 'letters, digits and spaces',
+    })
+  return moveTable(meta, to, tableName(to), user)
+}
+
+// Live pointers move with the Table; navigation projects its new address
+// without rewriting the original visit testimony.
+async function moveTable(meta: TableMeta, to: string, relationName: string, user: string): Promise<TableMeta> {
+  const from = meta.name
+  const [schemaName, fromRelation] = resolvedRelation(meta).split('.')
+  const [taken] = await sql`select 1 from table_def where lower(name) = lower(${to}) and name <> ${from}`
+  // A change of case alone ("Sap plant") keeps the same storage.
+  const sameRelation = relationName === fromRelation
+  const [clash] = sameRelation ? [] : await sql`select 1 from information_schema.tables where table_schema = ${schemaName} and table_name = ${relationName}`
+  if (taken || clash) throw new AppError('ConflictError', `Table ${to} already exists`)
   const pointers = await sql<{ parent: string; column_name: string }[]>`
     select cd.parent, cd.column_name from column_def cd join table_def td on td.name = cd.parent
     where cd.column_type = 'Reference' and cd.reference_table = 'Table'
@@ -1139,40 +1169,46 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
   // The Table being renamed may hold such a link itself: by the time the
   // sweep runs, its rows live under the new name.
   for (const p of pointers)
-    relations.set(p.parent, p.parent === from ? quoteRelation(`${meta.physical_schema}.${to.split('.')[1]}`) : quoteRelation(await storedRelation(p.parent)))
+    relations.set(p.parent, p.parent === from ? quoteRelation(`${schemaName}.${relationName}`) : quoteRelation(await storedRelation(p.parent)))
   const children: string[] = []
   for (const c of meta.columns)
     if (c.column_type === 'Sub-table' && c.row_table) children.push(quoteRelation(await storedRelation(c.row_table)))
 
-  const schema = quoteIdent(meta.physical_schema)
+  const schema = quoteIdent(schemaName)
   const relation = `${schema}.${quoteIdent(relationName)}`
   await sql.begin(async (tx) => {
     await assertTableAddressAvailable(tx, to, from)
     await tx`select name from table_def where name = ${from} for update`
     await tx`set constraints featherbase.table_navigation_identity_unique deferred`
-    await tx.unsafe(`alter table ${quoteRelation(`${meta.physical_schema}.${meta.physical_relation}`)} rename to ${quoteIdent(relationName)}`)
-    // Names Postgres built from the relation (its primary key, and on 18 its
-    // NOT NULL constraints): a fresh Table under the new name has them so.
-    const built = await tx<{ conname: string }[]>`
-      select conname from pg_constraint where conrelid = (
-        select c.oid from pg_class c join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = ${meta.physical_schema!} and c.relname = ${relationName})
-      and starts_with(conname, ${`${meta.physical_relation}_`})`
-    for (const { conname } of built)
-      await tx.unsafe(`alter table ${relation} rename constraint ${quoteIdent(conname)} to ${quoteIdent(`${relationName}_${conname.slice(meta.physical_relation!.length + 1)}`)}`)
-    // Names built from the Table's own name, so the next schema change finds them.
-    for (const c of meta.columns)
-      if (c.unique && pgType(c.column_type))
-        await tx.unsafe(`alter table ${relation} rename constraint ${quoteIdent(`${tableName(from)}_${c.column_name}_uq`)} to ${quoteIdent(`${tableName(to)}_${c.column_name}_uq`)}`)
-    if (meta.kind === 'sub_table')
-      await tx.unsafe(`alter index ${schema}.${quoteIdent(`${tableName(from)}_parent_idx`)} rename to ${quoteIdent(`${tableName(to)}_parent_idx`)}`)
-    else {
-      const [policy] = await tx`select 1 from pg_policies where schemaname = ${meta.physical_schema!} and tablename = ${relationName} and policyname = 'fc_select'`
+    const { captureLegacyNavigationForRename } = await import('./navigation-targets')
+    await captureLegacyNavigationForRename(from, tx)
+    if (!sameRelation) {
+      await tx.unsafe(`alter table ${quoteRelation(`${schemaName}.${fromRelation}`)} rename to ${quoteIdent(relationName)}`)
+      // Names Postgres built from the relation (its primary key, and on 18 its
+      // NOT NULL constraints): a fresh Table under the new name has them so.
+      const built = await tx<{ conname: string }[]>`
+        select conname from pg_constraint where conrelid = (
+          select c.oid from pg_class c join pg_namespace n on n.oid = c.relnamespace
+          where n.nspname = ${schemaName} and c.relname = ${relationName})
+        and starts_with(conname, ${`${fromRelation}_`})`
+      for (const { conname } of built)
+        await tx.unsafe(`alter table ${relation} rename constraint ${quoteIdent(conname)} to ${quoteIdent(`${relationName}_${conname.slice(fromRelation.length + 1)}`)}`)
+      // Names built from the Table's own name, so the next schema change finds
+      // them. A custom Table's relation IS its name: the loop above did these.
+      if (tableName(from) !== fromRelation) for (const c of meta.columns)
+        if (c.unique && pgType(c.column_type))
+          await tx.unsafe(`alter table ${relation} rename constraint ${quoteIdent(`${tableName(from)}_${c.column_name}_uq`)} to ${quoteIdent(`${tableName(to)}_${c.column_name}_uq`)}`)
+      if (meta.kind === 'sub_table')
+        await tx.unsafe(`alter index ${schema}.${quoteIdent(`${tableName(from)}_parent_idx`)} rename to ${quoteIdent(`${tableName(to)}_parent_idx`)}`)
+    }
+    if (meta.kind !== 'sub_table') {
+      const [policy] = await tx`select 1 from pg_policies where schemaname = ${schemaName} and tablename = ${relationName} and policyname = 'fc_select'`
       if (policy) await tx.unsafe(`alter policy fc_select on ${relation} using (featherbase.fc_has_read('${to.replace(/'/g, "''")}'))`)
     }
     // column_def's key on table_def has no ON UPDATE: the definition moves.
+    // A custom Table's storage follows its name; an app's is mapped.
     const [row] = await tx`select * from table_def where name = ${from}`
-    await tx`insert into table_def ${tx({ ...row, name: to, physical_relation: relationName, updated_at: new Date() } as unknown as Record<string, never>)}`
+    await tx`insert into table_def ${tx({ ...row, name: to, ...(meta.owner_app ? { physical_relation: relationName } : {}), updated_at: new Date() } as unknown as Record<string, never>)}`
     await tx`update column_def set parent = ${to} where parent = ${from}`
     await tx`delete from table_def where name = ${from}`
     await tx`set constraints featherbase.table_navigation_identity_unique immediate`
@@ -1192,15 +1228,18 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
       await tx.unsafe(`update ${table} set ${quoteIdent(column)} = $1 where ${quoteIdent(column)} = $2`, [to, from])
     await renameInGlossary(tx, from, { table: from }, { table: to })
     await tx`update home_page_link set label = ${to} where link_to = ${to} and label = ${from}`
-    await tx`update installed_app set tables = (
-        select jsonb_agg(case when value = to_jsonb(${from}::text) then to_jsonb(${to}::text) else value end order by ordinality)
-        from jsonb_array_elements(tables) with ordinality)
-      where name = ${ownerApp} and jsonb_typeof(tables) = 'array' and tables ? ${from}`
+    if (meta.owner_app)
+      await tx`update installed_app set tables = (
+          select jsonb_agg(case when value = to_jsonb(${from}::text) then to_jsonb(${to}::text) else value end order by ordinality)
+          from jsonb_array_elements(tables) with ordinality)
+        where name = ${meta.owner_app} and jsonb_typeof(tables) = 'array' and tables ? ${from}`
+    // The old name's testimony, read back by getMeta: written last, so the
+    // sweep above never moves it to the new name.
+    await logAccess(user, 'rename_table', { table: from, row_id: to, required: true }, tx)
   })
   invalidateMeta()
   if (inAppTransaction()) whenTransactionEnds(publishNavigationChange)
   else publishNavigationChange()
-  await logAccess(user, `rename_table ${from} -> ${to}`, { table: 'Table', row_id: to }).catch(() => {})
   return getMeta(to)
 }
 
