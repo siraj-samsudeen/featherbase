@@ -145,8 +145,10 @@ describe('#859 delete permanently, Codex review round 4', () => {
     await grantRole(admin, { table: notebook.name, role: 'Pg Notebook Member', can_read: true, can_create: true, can_write: true })
     const owner = await createUser({ roles: ['Pg Notebook Member'] })
     const row = await owner.post<{ row_id: string }>('/api/save_row', { table: notebook.name, row: { title: 'Private draft' } })
-    await expectApiError(preview(admin, notebook, [row.row_id]), { status: 403 })
-    await expectApiError(purge(admin, notebook, { ids: [row.row_id] }), { status: 403 })
+    // Private work keeps its own lifecycle: its deletion record could not
+    // stay readable once the row is gone (Codex round 6).
+    await expectApiError(preview(admin, notebook, [row.row_id]), { status: 417, message: expect.stringContaining('cannot be deleted permanently') })
+    await expectApiError(purge(admin, notebook, { ids: [row.row_id] }), { status: 417 })
     expect(await sql.unsafe('select 1 from featherbase.pg_private_notebook where row_id = $1', [row.row_id])).toHaveLength(1)
   })
 
@@ -218,5 +220,33 @@ describe('#859 delete permanently, Codex review round 5', () => {
     expect(kept.visits.map((v) => v.unit)).toEqual(['BU-K'])
     // Its revision moved, so a form left open on it knows it changed.
     expect(kept.updated_at).not.toBe(before.updated_at)
+  })
+})
+
+describe('#859 delete permanently, Codex review round 6', () => {
+  test('a document keeping a line with a date and time still saves when another line goes', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    await makeTable(admin, { name: 'Pg Slot', kind: 'sub_table', columns: [{ column_name: 'unit', column_type: 'Reference', reference_table: BU }, 'at:Datetime', 'day:Date'] })
+    const plan = await makeTable(admin, { name: 'Pg Rota', id_pattern: 'prompt', columns: [{ column_name: 'slots', column_type: 'Sub-table', row_table: 'Pg Slot' }] })
+    await admin.post(plan.url, { row_id: 'R-1', slots: [{ unit: 'BU-T', at: '2026-11-04T10:00:00.000Z', day: '2026-11-04' }, { unit: 'BU-K', at: '2026-11-05T10:00:00.000Z', day: '2026-11-05' }] })
+    await purge(admin, bu, { ids: ['BU-T'] })
+    const kept = await admin.get<{ slots: { unit: string; at: string; day: string }[] }>(plan.rowUrl('R-1'))
+    expect(kept.slots.map((s) => [s.unit, String(s.day).slice(0, 10)])).toEqual([['BU-K', '2026-11-05']])
+    expect(Date.parse(kept.slots[0].at)).toBe(Date.parse('2026-11-05T10:00:00.000Z'))
+  })
+
+  test('a row being deleted keeps its own link in its deletion record', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    // Self-links: BU-K points at BU-T; both go, so BU-K's link is not cleared first.
+    await makeTable(admin, { name: 'Pg Node', id_pattern: 'prompt', columns: [{ column_name: 'next_node', column_type: 'Reference', reference_table: 'Pg Node' }] })
+    const node = { url: '/api/table/Pg%20Node' } as TableRef
+    await admin.post(node.url, { row_id: 'N-B' })
+    await admin.post(node.url, { row_id: 'N-A', next_node: 'N-B' })
+    await admin.post(node.url, { row_id: 'N-C', next_node: 'N-B' })
+    await purge(admin, node, { ids: ['N-A', 'N-B'], links: 'clear' })
+    const [rec] = await sql`select snapshot from access_log where operation = 'purge' and ref_table = 'Pg Node' and reference_name = 'N-A'`
+    expect(rec.snapshot).toMatchObject({ next_node: 'N-B' })
+    expect((await sql.unsafe("select next_node from featherbase.pg_node where row_id = 'N-C'"))[0].next_node).toBeNull()
+    void bu
   })
 })
