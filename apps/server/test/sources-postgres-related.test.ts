@@ -71,6 +71,17 @@ const query = (filters: Filters) => new URLSearchParams({ filters: JSON.stringif
 const path = `/api/table/${encodeURIComponent(FLOOR)}`
 
 describe('same-source PostgreSQL relationship membership', () => {
+  test.for([
+    [STORE, 'label', "A reference-related filter applies to 'row_id'"],
+    [REGION, 'row_id', `${FLOOR}.store is not a Reference to ${REGION}`],
+  ] as const)('refuses forward projection onto %s.%s', async ([table, field, message], { admin }) => {
+    await connect(admin)
+    const filters: Filters = [[field, 'related', { table: FLOOR, reference: 'store', filters: [] }]]
+    const response = await admin.fetch(`/api/table/${encodeURIComponent(table)}?${query(filters)}`)
+    expect(response.status).toBe(417)
+    expect(await response.json()).toEqual({ error: { type: 'ValidationError', message } })
+  })
+
   test('projects full-set forward membership without duplicate endpoints', async ({ admin }) => {
     await connect(admin)
     const filters: Filters = [['row_id', 'related', { table: FLOOR, reference: 'store', filters: [] }]]
