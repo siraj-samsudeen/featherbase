@@ -56,7 +56,7 @@ export type DifferenceKind = 'source_changed' | 'edited_here' | 'conflict' | 'di
 export type ColumnDecision = { apply: true } | { apply: false; raise?: DifferenceKind }
 
 type Value = string | null
-const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})(?:$|[T ])/
+const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})(?:[T ]([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):?[0-5]\d)?)?$/
 /** A date written as an ISO day (optionally with a time), whose day exists. */
 function isoDay(value: string): string | null {
   const day = ISO_DAY.exec(value)
@@ -75,7 +75,11 @@ export function normalize(value: unknown, columnType?: string): Value {
     const n = Number(value)
     return Number.isFinite(n) ? String(n) : String(value)
   }
-  if (columnType === 'Check') return ['1', 'true', 't', 'yes'].includes(String(value).toLowerCase()) ? 'true' : 'false'
+  if (columnType === 'Check') {
+    const text = String(value).toLowerCase()
+    // Anything else stays as written, so it is seen as a change and refused, not read as false.
+    return ['1', 'true', 't', 'yes'].includes(text) ? 'true' : ['0', 'false', 'f', 'no'].includes(text) ? 'false' : String(value)
+  }
   if (columnType === 'Date' || columnType === 'Datetime') {
     if (value instanceof Date) return columnType === 'Date' ? value.toISOString().slice(0, 10) : value.toISOString()
     const text = String(value)
@@ -102,7 +106,7 @@ export function toMaster(value: unknown, columnType?: string): unknown {
     if (!Number.isFinite(number) || (columnType === 'Int' && !Number.isInteger(number))) return NOT_FITTING
     return number
   }
-  if (columnType === 'Check') return typeof value === 'boolean' || ['true', 'false', '0', '1'].includes(String(value).toLowerCase()) ? n === 'true' : NOT_FITTING
+  if (columnType === 'Check') return n === 'true' ? true : n === 'false' ? false : NOT_FITTING
   if (columnType === 'Date' || columnType === 'Datetime') {
     if (value instanceof Date) return n
     // Not an ISO date, a day that does not exist (30-Feb), or an unreadable time: never guessed.
@@ -336,7 +340,8 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
         if (!(error instanceof AppError) || error.type !== 'ValidationError') throw error
         for (const field of Object.keys(values))
           differences.push({ kind: 'cannot_apply', source_key: key, master_row: target, column_name: field,
-            source_value: normalize(values[field], master.columns.find(c => c.column_name === field)?.column_type), featherbase_value: normalize(current[field]) })
+            source_value: normalize(values[field], master.columns.find(c => c.column_name === field)?.column_type),
+            featherbase_value: normalize(current[field], master.columns.find(c => c.column_name === field)?.column_type) })
       }
     }
   }
