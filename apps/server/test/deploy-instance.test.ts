@@ -2,8 +2,10 @@
 // disk and rerun the step, as a new image would.
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import postgres from 'postgres'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { uninstallApp } from '../src/apps'
+import { config } from '../src/config'
 import { sql } from '../src/db'
 import { deployInstance, followsAppFiles, instanceFolder, repinChangedApps, settingsSection } from '../src/deploy-instance'
 import { assertInstalledAppsShipped } from '../src/release-preflight'
@@ -272,5 +274,75 @@ describe('a newer version in the image', () => {
 
     rmSync(next, { recursive: true })
     await expect(assertInstalledAppsShipped({ followFiles: true })).rejects.toThrow(/does not ship it.*previousVersions/)
+  })
+})
+
+// #943: the staging switch hung for 17 minutes. The deploy's transaction had
+// saved a Scheduled Job row; the live server's job runner, holding the shared
+// app lifecycle lock, waited on that row; then the deploy asked for the
+// exclusive lifecycle lock (discoverPackages, in the re-pin) and waited on the
+// runner. Postgres sees no cycle (the deploy waits in Node, not in SQL), and
+// every live /api request queued behind the exclusive request.
+describe('a live server working while the deploy runs (#943)', () => {
+  test('a live job waiting on a row the deploy saves does not hang it', async () => {
+    await pretendTo('staging')
+    const [before] = await sql`select enabled from scheduled_job where row_id = 'check_sla'`
+    await sql`update scheduled_job set enabled = false where row_id = 'check_sla'`
+    const live = mkdtempSync(join(import.meta.dirname, '.deploy-instance-'))
+    mkdirSync(join(live, 'client-apps/acme/instances/board'), { recursive: true })
+    writeFileSync(join(live, 'client-apps/acme/instances/board/instance-settings.json'), JSON.stringify({
+      settings: {}, environments: { dev: { settings: { 'Scheduled Job': [{ row_id: 'check_sla', enabled: true }] } } },
+    }))
+    // The live server's job runner: the shared lifecycle lock (296, 1, as in
+    // app-lifecycle.ts), then its run recorded on the job's row.
+    const runner = postgres(config.databaseUrl, { max: 1, prepare: false, onnotice: () => {},
+      connection: { search_path: 'featherbase', application_name: 'live-job-runner-943' } })
+    let stop = false
+    const running = (async () => {
+      while (!stop) await runner.begin(async (tx) => {
+        await tx`select pg_advisory_xact_lock_shared(296, 1)`
+        await tx`update scheduled_job set last_run_at = now() where row_id = 'check_sla'`
+      })
+    })()
+    let timer: NodeJS.Timeout | undefined
+    try {
+      const out = captureIO()
+      const hung = new Promise<'hung'>((done) => { timer = setTimeout(() => done('hung'), 15_000) })
+      const outcome = await Promise.race([deployInstance('acme/board', out.io, { root: live }).then(() => 'deployed'), hung])
+      expect(outcome).toBe('deployed')
+      expect(out.stdout()).toContain('Scheduled Job check_sla enabled')
+      expect((await sql`select enabled from scheduled_job where row_id = 'check_sla'`)[0].enabled).toBe(true)
+    } finally {
+      clearTimeout(timer)
+      stop = true
+      // A hung run leaves the runner waiting forever; end it so the file finishes.
+      await sql`select pg_terminate_backend(pid) from pg_stat_activity where application_name = 'live-job-runner-943'`
+      await running.catch(() => {})
+      await runner.end({ timeout: 1 })
+      await sql`update scheduled_job set enabled = ${before.enabled} where row_id = 'check_sla'`
+      rmSync(live, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  test('a live request that keeps the apps busy fails the deploy after the wait, changing nothing', async () => {
+    await pretendTo('staging')
+    const busy = postgres(config.databaseUrl, { max: 1, prepare: false, onnotice: () => {} })
+    let release!: () => void
+    let held!: () => void
+    const holding = new Promise<void>((done) => { held = done })
+    const done = busy.begin(async (tx) => {
+      await tx`select pg_advisory_xact_lock_shared(296, 1)`
+      held()
+      await new Promise<void>((r) => { release = r })
+    })
+    try {
+      await holding
+      await expect(deployInstance('acme/board', captureIO().io, { root, lockWaitSeconds: 1 })).rejects.toThrow(/kept the apps busy for 1 seconds, so the deploy did not start/)
+      expect(await sql`select 1 from installed_app where name = ${name}`).toHaveLength(0)
+    } finally {
+      release()
+      await done
+      await busy.end()
+    }
   })
 })

@@ -86,6 +86,26 @@ export function assertStillServing(app: string, identity: string, then: () => Pr
   })
 }
 
+/** #943: an instance deploy holds the exclusive lifecycle lock from before its
+ *  transaction takes any lock until it ends, so it never waits for live
+ *  requests while holding a row they wait for: nested app operations (install,
+ *  discovery, the settings apply) then run inside it. The wait for the lock is
+ *  bounded, and live requests queue behind it, so it is short. */
+export function instanceDeployOperation<T>(fn: () => Promise<T>, waitSeconds: number): Promise<T> {
+  if (scope.getStore()) throw new Error('An instance deploy cannot run inside another app operation')
+  return locks.begin(async (tx) => {
+    await tx.unsafe(`set local lock_timeout = '${Math.ceil(waitSeconds)}s'`)
+    try {
+      await tx`select pg_advisory_xact_lock(296, 1)`
+    } catch (error) {
+      if ((error as { code?: string }).code === '55P03')
+        throw new Error(`The live server kept the apps busy for ${Math.ceil(waitSeconds)} seconds, so the deploy did not start; nothing changed. Deploy again.`)
+      throw error
+    }
+    return scope.run({ exclusive: true }, fn)
+  }) as Promise<T>
+}
+
 export function provisionApp<T>(name: string, fn: () => Promise<T>): Promise<T> {
   return appOperation(() => scope.run({ exclusive: true, provisioning: name }, fn), true)
 }
