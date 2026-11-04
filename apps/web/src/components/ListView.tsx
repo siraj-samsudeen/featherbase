@@ -700,12 +700,6 @@ export function ListView({
               New
             </Link>
           )}
-          <ViewToggle label="List layout" value={compact ? 'compact' : 'table'} onChange={(v) => {
-            setCompact(v === 'compact')
-            persist({ compact: v === 'compact' })
-          }} />
-          <Button aria-pressed={treeOn} onClick={() => setTree(!treeOn)}
-            className={treeOn ? 'border-action bg-action-tint text-action' : undefined}>Tree of all</Button>
           <ActionDisclosure label="View: List">
           <Link
             to="/featherbase/admin/table/$table/view/report"
@@ -977,6 +971,15 @@ export function ListView({
           )}
         </div>
       )}
+      {/* #910: the list's layouts, just above it. */}
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+        <ViewToggle label="List layout" value={compact ? 'compact' : 'table'} onChange={(v) => {
+          setCompact(v === 'compact')
+          persist({ compact: v === 'compact' })
+        }} />
+        <Button aria-pressed={treeOn} onClick={() => setTree(!treeOn)}
+          className={treeOn ? 'border-action bg-action-tint text-action' : undefined}>Tree of all</Button>
+      </div>
       {treeOn ? (
         <div className={cardClasses('p-3')}>
           <TreeOfAll table={table} filters={queryFilters} expanded={treeExpanded}
