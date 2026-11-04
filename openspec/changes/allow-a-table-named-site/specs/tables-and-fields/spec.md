@@ -6,8 +6,9 @@
 
 Building a table SHALL be refused when its name matches an existing table's
 name, or storage the platform itself uses, once letter case and spacing are
-ignored. The list of sites an instance serves is kept apart from the
-builder's tables, so "Site" stays free for a table of the builder's own.
+ignored. The platform's record of the web addresses it answers on is kept
+apart from the builder's tables, so "Site" stays free for a table of the
+builder's own.
 
 #### Scenario: Same name in different letters
 
@@ -21,5 +22,5 @@ builder's tables, so "Site" stays free for a table of the builder's own.
 Given no table is called "Site"
 When the user creates a table "Site" and adds the site "Enchakkal"
 Then the table shows "Enchakkal"
-And the list of sites the instance serves is unchanged
+And the platform's record of its web addresses is unchanged
 ```

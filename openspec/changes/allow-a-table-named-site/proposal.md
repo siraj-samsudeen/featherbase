@@ -5,18 +5,18 @@ with platform storage. A client wants Site as a business Table (a physical
 place that groups several plants) and uses "Site Master" in the meantime.
 
 The refusal protects against a clash that no longer exists. When it was added
-(#296/#298), a builder's Table and the platform's record of the sites an
-instance hosts lived side by side, so a Table "Site" would have landed on that
+(#296/#298), a builder's Table and the platform's record of the web
+addresses it answers on lived side by side, so a Table "Site" would have landed on that
 record. Builders' Tables have since moved into the platform's own space, so a
-Table "Site" and the host record are two separate things.
+Table "Site" and that record are two separate things.
 
 ## What Changes
 
 - A Table named "Site" can be built, like any other name nobody has taken.
-- The host record of sites is left exactly as it was.
+- The record of web addresses is left exactly as it was.
 - The general rule stays: a name already taken by a Table or by the
   platform's own storage is still refused.
-- Out of scope: moving or renaming the host record (#906 option 2), which
+- Out of scope: moving or renaming that record (#906 option 2), which
   costs a migration for a record nothing reads yet.
 
 ## Capabilities
