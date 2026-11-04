@@ -237,15 +237,21 @@ describe('PathBar', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Copied')
   })
 
-  test('a long path scrolls its current step into view within the bar', () => {
-    const scrolled: Element[] = []
-    const original = Element.prototype.scrollIntoView
-    Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this) }
+  test('a long path scrolls the bar, not the page, to its current step', () => {
+    const calls: { el: Element; left: number }[] = []
+    const proto = Element.prototype as unknown as Record<'scrollTo' | 'getBoundingClientRect', (this: Element, ...args: never[]) => unknown>
+    const [scrollTo, rect] = [proto.scrollTo, proto.getBoundingClientRect]
+    // The bar is 300px wide; the current step sits 500px to 620px from its left.
+    proto.getBoundingClientRect = function (this: Element) {
+      const box = this.getAttribute('aria-current') === 'step' ? [500, 620] : this.tagName === 'NAV' ? [0, 300] : [0, 0]
+      return { left: box[0], right: box[1] } as DOMRect
+    } as never
+    proto.scrollTo = function (this: Element, options: ScrollToOptions) { calls.push({ el: this, left: options.left! }) } as never
     try {
       bar(1)
-      expect(scrolled.at(-1)).toHaveAttribute('aria-current', 'step')
+      expect(calls.at(-1)).toEqual({ el: screen.getByRole('navigation', { name: 'Path' }), left: 320 })
     } finally {
-      Element.prototype.scrollIntoView = original
+      Object.assign(proto, { scrollTo, getBoundingClientRect: rect })
     }
   })
 
