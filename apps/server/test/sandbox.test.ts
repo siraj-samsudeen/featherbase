@@ -6,7 +6,7 @@ import { describe, afterAll, expect, it } from 'vitest'
 import { test } from './pg-test'
 import { committedTest } from './pg-test-shared'
 import { withCommittedDatabase } from './committed-database'
-import { _getRootSql, sql, withTransaction } from '../src/db'
+import { _getRootSql, sql, withTransaction, usingTransaction, type Sql } from '../src/db'
 
 // Both tests create the SAME Table and the SAME document names. Without
 // sandbox isolation the second test would collide with the first's leftovers.
@@ -63,11 +63,15 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     })
   }
 
-  for (const fail of [false, true]) test(`an unawaited child rolls back with ${fail ? 'the original failure' : 'an explicit refusal'}`, async () => {
+  for (const failChild of [false, true])
+  for (const fail of [false, true]) test(`an unawaited ${failChild ? 'failing' : 'successful'} child rolls back with ${fail ? 'the original failure' : 'an explicit refusal'}`, async () => {
     await sql`create temporary table unawaited_probe (id integer primary key) on commit drop`
     const original = new Error('Original enclosing failure')
     const result = withTransaction(async () => {
-      void withTransaction(async () => { await sql`insert into unawaited_probe values (1)` }).catch(() => {})
+      void withTransaction(async () => {
+        await sql`insert into unawaited_probe values (1)`
+        if (failChild) throw new Error('Unawaited child failure')
+      }).catch(() => {})
       if (fail) throw original
     })
     if (fail) await expect(result).rejects.toBe(original)
@@ -202,6 +206,18 @@ it('committed fixture restores state after a failing callback', async () => {
 // Both callbacks must enter before either gate opens, so a global queue fails.
 it('native query arrays retain their awaited results', async () => {
   expect(await sql.begin(tx => [tx`select 17 as n`, tx`select 31 as n`])).toEqual([[{ n: 17 }], [{ n: 31 }]])
+})
+
+it('helpers bound to an existing native transaction retain bounded locks', async () => {
+  await _getRootSql().begin(tx => usingTransaction(tx as unknown as Sql, async () => {
+    await sql`create temporary table adopted_probe (id integer primary key) on commit drop`
+    for (let id = 0; id < 30; id++) {
+      await withTransaction(async () => { await sql`insert into adopted_probe values (${id})` })
+    }
+    expect((await sql`select count(*)::int as n from adopted_probe`)[0].n).toBe(30)
+    expect((await sql`select count(*)::int as n from pg_locks
+      where pid = pg_backend_pid() and locktype = 'transactionid'`)[0].n).toBeLessThan(8)
+  }))
 })
 
 for (const failed of ['withTransaction', 'sql.begin']) {
