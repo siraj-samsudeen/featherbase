@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { listResource } from './api'
+import { useCanReadTable } from './session'
 
 // CUST-003: Client Scripts. Enabled scripts for a Table are fetched and
 // evaluated in the browser. Each script registers form-event handlers via a
@@ -56,7 +57,10 @@ function compileClientScripts(table: string, scripts: string[]): CompiledScripts
 }
 
 export function useClientScripts(table: string): CompiledScripts {
+  // #861: a role that cannot read Client Script gets none, so do not ask.
+  const canRead = useCanReadTable('Client Script')
   const q = useQuery({
+    enabled: canRead === true,
     queryKey: ['client-scripts', table],
     queryFn: () =>
       listResource<{ name: string; script: string }>('Client Script', {

@@ -199,9 +199,9 @@ class RelatedWorkspace extends RecordWorkspace {
   async prefilledNew() {
     await this.rows().getByTestId('list-new').click();
     await expect(this.page.getByTestId('form-view')).toBeVisible();
-    // Generic Reference controls currently display the row identifier, not a
-    // promised title-first picker (#793 remains separately owned).
-    await expect(this.page.getByRole('combobox', { name: 'Project', exact: true })).toHaveValue('lab-north');
+    // The prefilled link holds North workshop's row identifier and, since
+    // #792/#793, reads by its title.
+    await expect(this.page.getByRole('combobox', { name: 'Project', exact: true })).toHaveValue('North workshop');
   }
   async onlyReadableRow() {
     await expect(this.rows().getByTestId('list-total')).toHaveText('1 total');

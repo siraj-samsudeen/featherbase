@@ -1,0 +1,102 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "tickets",
+  "title": "Tickets",
+  "server": "dist/server.mjs",
+  "client": "dist/client",
+  "entryTable": "tickets.ticket",
+  "roles": ["Tickets Support"],
+  "settings": [
+    {"name": "support_users", "required": false},
+    {"name": "verification_admins", "required": false},
+    {"name": "fulfillment_admins", "required": false},
+    {"name": "approval_routes", "required": false},
+    {"name": "restricted_resources", "required": false},
+    {"name": "linked_tables", "required": false}
+  ],
+  "actions": {"version": 2, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.progress", "tickets.member", "tickets.ticket_type", "tickets.type_field"], "operations": {
+    "create": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "edit": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "verify": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "decide": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "fulfill": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "evidence": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "link": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "note": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "resolve": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "reopen": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
+  }},
+  "reads": {"version": 1, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.progress", "tickets.member", "tickets.ticket_type", "tickets.type_field"], "operations": {
+    "session": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "form": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "queue": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "detail": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
+  }},
+  "tables": [
+    {"name": "tickets.ticket", "label": "Ticket", "module": "Tickets", "id_pattern": "FT-.#####", "title_column": "title", "columns": [
+      {"column_name": "title", "label": "Public summary", "column_type": "Data", "reqd": true, "in_list_view": true},
+      {"column_name": "owner", "label": "Requester", "column_type": "Data", "reqd": true},
+      {"column_name": "kind", "label": "Type", "column_type": "Data", "default_value": "generic", "in_list_view": true},
+      {"column_name": "ticket_state", "label": "State", "column_type": "Data", "default_value": "New", "in_list_view": true},
+      {"column_name": "assigned_to", "label": "Assigned to", "column_type": "Data"},
+      {"column_name": "public_update", "label": "Public update", "column_type": "Text"}
+    ]},
+    {"name": "tickets.request", "label": "Private request", "module": "Tickets", "columns": [
+      {"column_name": "original", "label": "Original request", "column_type": "Text", "reqd": true},
+      {"column_name": "details_json", "label": "Structured request", "column_type": "Text"},
+      {"column_name": "verification_key", "label": "Recipient revision", "column_type": "Data", "hidden": true},
+      {"column_name": "approval_key", "label": "Scope revision", "column_type": "Data", "hidden": true},
+      {"column_name": "active_verification", "label": "Actively verified recipient revision", "column_type": "Data", "hidden": true}
+    ]},
+    {"name": "tickets.event", "label": "Support event", "module": "Tickets", "id_pattern": "FTE-.########", "columns": [
+      {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket"},
+      {"column_name": "operation", "label": "Operation", "column_type": "Data"},
+      {"column_name": "text", "label": "Event", "column_type": "Text"},
+      {"column_name": "by", "label": "Actor", "column_type": "Data"},
+      {"column_name": "at", "label": "Time", "column_type": "Data"}
+    ]},
+    {"name": "tickets.ticket_type", "label": "Ticket type", "module": "Tickets", "id_pattern": "FTT-.###", "title_column": "label", "columns": [
+      {"column_name": "type_key", "label": "Key (lower case, never changed)", "column_type": "Data", "reqd": true, "unique": true, "in_list_view": true},
+      {"column_name": "label", "label": "Name", "column_type": "Data", "reqd": true, "in_list_view": true},
+      {"column_name": "enabled", "label": "Enabled", "column_type": "Check", "default_value": "1", "in_list_view": true},
+      {"column_name": "states", "label": "States (one per line; the first is where a ticket starts)", "column_type": "Text", "reqd": true},
+      {"column_name": "done_states", "label": "Done states (one per line)", "column_type": "Text"},
+      {"column_name": "reopen_state", "label": "State a reopened ticket returns to", "column_type": "Data"},
+      {"column_name": "routing", "label": "Routing (JSON: field, table, match, person, primary)", "column_type": "Text"}
+    ]},
+    {"name": "tickets.type_field", "label": "Ticket type field", "module": "Tickets", "id_pattern": "FTF-.#####", "title_column": "label", "columns": [
+      {"column_name": "ticket_type", "label": "Ticket type", "column_type": "Reference", "reference_table": "tickets.ticket_type", "reqd": true, "in_list_view": true},
+      {"column_name": "field_name", "label": "Key", "column_type": "Data", "reqd": true, "in_list_view": true},
+      {"column_name": "label", "label": "Label", "column_type": "Data", "reqd": true, "in_list_view": true},
+      {"column_name": "field_type", "label": "Field type", "column_type": "Choice", "choices": "text\nlong text\nchoice\ndate\nperson\nlink", "default_value": "text", "reqd": true, "in_list_view": true},
+      {"column_name": "choices", "label": "Choices (one per line)", "column_type": "Text"},
+      {"column_name": "link_table", "label": "Linked Table (listed in linked_tables)", "column_type": "Data"},
+      {"column_name": "link_label", "label": "Linked Table column to show", "column_type": "Data"},
+      {"column_name": "required", "label": "Required", "column_type": "Check"},
+      {"column_name": "field_order", "label": "Order", "column_type": "Int"}
+    ]},
+    {"name": "tickets.member", "label": "Tickets member", "module": "Tickets", "title_column": "full_name", "columns": [
+      {"column_name": "full_name", "label": "Name", "column_type": "Data", "reqd": true}
+    ]},
+    {"name": "tickets.progress", "label": "Public progress", "module": "Tickets", "id_pattern": "FTP-.########", "columns": [
+      {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket"},
+      {"column_name": "text", "label": "Update", "column_type": "Text"},
+      {"column_name": "by", "label": "Actor", "column_type": "Data"},
+      {"column_name": "at", "label": "Time", "column_type": "Data"}
+    ]}
+  ],
+  "permissions": [
+    {"table": "tickets.ticket", "role": "All", "can_read": true, "can_write": true, "can_create": true},
+    {"table": "tickets.request", "role": "All", "own_rows_only": true, "can_read": true, "can_write": true, "can_create": true},
+    {"table": "tickets.request", "role": "Tickets Support", "can_read": true, "can_write": true, "can_create": true},
+    {"table": "tickets.event", "role": "All", "own_rows_only": true, "can_read": true, "can_create": true},
+    {"table": "tickets.event", "role": "Tickets Support", "can_read": true, "can_create": true},
+    {"table": "tickets.progress", "role": "All", "can_read": true, "can_create": true},
+    {"table": "tickets.member", "role": "All", "can_read": true, "can_write": true, "can_create": true},
+    {"table": "tickets.ticket_type", "role": "All", "can_read": true},
+    {"table": "tickets.ticket_type", "role": "System Manager", "can_read": true, "can_write": true, "can_create": true},
+    {"table": "tickets.type_field", "role": "All", "can_read": true},
+    {"table": "tickets.type_field", "role": "System Manager", "can_read": true, "can_write": true, "can_create": true, "can_delete": true}
+  ]
+}

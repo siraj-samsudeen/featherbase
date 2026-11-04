@@ -9,7 +9,7 @@ import { logAccess } from './audit'
 import { deleteStored } from './storage'
 import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
-import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation, resolvedRelation, tableName } from './platform-schema'
+import { PLATFORM_SCHEMA, platformRelation, resolvedRelation, tableName } from './platform-schema'
 import { readingPresentationSchema } from 'shared'
 
 export { tableName }
@@ -706,14 +706,15 @@ export async function createTable(
   // creates no storage of its own, but tableRelation() still resolves its
   // name, so a Settings Table spelled like a platform relation would reach
   // that relation's rows.
+  //
+  // #906: only the schema the Table will live in is checked. The host
+  // registry public.site is outside it, so "Site" is a free name.
   const physical = tableName(def.name)
   const relation = qualified ? `${ownerApp}.${def.name.split('.')[1]}` : platformRelation(physical)
   const [clash] = await sql`
     select 1 from information_schema.tables
-    where (table_schema = ${qualified ? ownerApp! : PLATFORM_SCHEMA}
-           and table_name = ${qualified ? def.name.split('.')[1] : physical})
-       or (${!qualified && physical === SITE_REGISTRY_RELATION.split('.')[1]}
-           and table_schema = 'public' and table_name = 'site')`
+    where table_schema = ${qualified ? ownerApp! : PLATFORM_SCHEMA}
+      and table_name = ${qualified ? def.name.split('.')[1] : physical}`
   if (clash)
     throw new AppError('ConflictError', `Table ${def.name} collides with an internal table`, {
       name: `"${physical}" is reserved for platform storage`,
@@ -1190,6 +1191,9 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
     const [row] = await tx`select * from table_def where name = ${from}`
     await tx`insert into table_def ${tx({ ...row, name: to, ...(meta.owner_app ? { physical_relation: relationName } : {}), updated_at: new Date() } as unknown as Record<string, never>)}`
     await tx`update column_def set parent = ${to} where parent = ${from}`
+    // A copied Table's provenance follows it, before the old definition's
+    // delete would cascade it away (#772: Copy again must survive a rename).
+    await tx`update featherbase.table_copy set target_table = ${to} where target_table = ${from}`
     await tx`delete from table_def where name = ${from}`
     await tx`update column_def set reference_table = ${to} where reference_table = ${from}`
     await tx`update column_def set row_table = ${to} where row_table = ${from}`

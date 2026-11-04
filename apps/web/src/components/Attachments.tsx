@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, listResource } from '../lib/api'
+import { useCanReadTable } from '../lib/session'
 import { useRowCapabilities } from '../lib/row-capabilities'
 import { cardClasses, iconButtonClasses, touchLinkClasses, touchRowClasses } from '@featherbase/shop-floor'
 
@@ -22,7 +23,10 @@ export function Attachments({ table, name, readOnly = false, canUpload = true }:
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // #861: only ask for File rows when this person's role may read them.
+  const canRead = useCanReadTable('File')
   const files = useQuery({
+    enabled: canRead === true,
     queryKey: ['attachments', table, name],
     queryFn: () =>
       listResource<FileRow>('File', {
@@ -68,6 +72,8 @@ export function Attachments({ table, name, readOnly = false, canUpload = true }:
   // same-origin, so the HttpOnly `sid` cookie authenticates it.
   const href = (f: FileRow) => f.file_url
 
+  // Nothing to show to someone who can neither read the files nor attach one.
+  if (canRead === false && (readOnly || !canUpload)) return null
   if (readOnly && files.data?.data.length === 0) return null
 
   return (

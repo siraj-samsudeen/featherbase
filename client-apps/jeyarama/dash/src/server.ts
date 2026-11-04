@@ -4,7 +4,7 @@
 // chart Tables' save rules are its `validators`.
 export { validators } from './validators.ts'
 import { orgChartProvider, type Place } from './provider.ts'
-import { EMBED_STATE_LIMIT_BYTES, buildReport, headingOf, initialState, istToday, needsShortCodes, scopeIn, storeLabels, storeShortName, storesOf, type CachedAnswer, type Month, type SalesRow, type StateFormat } from './report.ts'
+import { EMBED_STATE_LIMIT_BYTES, MONTH_CHOICES, buildReport, monthLabel, headingOf, initialState, istToday, needsShortCodes, periodOf, scopeIn, storeLabels, storeShortName, storesOf, type CachedAnswer, type Month, type MonthChoice, type SalesRow, type StateFormat } from './report.ts'
 import { gzipBase64 } from './compress.ts'
 
 /** The places each person covers (featherbase B2), per store: the new org chart or today's derivation. */
@@ -15,6 +15,16 @@ export const SALES_DATASET = 'sales_to_date'
 
 /** The month's metadata dataset: period, last day of actuals, targets available; no figure. */
 export const MONTH_DATASET = 'sales_month'
+
+/** Last month's two datasets (#750), the same shapes as this month's: the whole month, kept apart so each holds one period. */
+export const LAST_SALES_DATASET = 'sales_last_month'
+export const LAST_MONTH_DATASET = 'sales_last_month_meta'
+
+/** Each month choice's figures and metadata. */
+const DATASETS: Readonly<Record<MonthChoice, { sales: string; month: string }>> = {
+  this: { sales: SALES_DATASET, month: MONTH_DATASET },
+  last: { sales: LAST_SALES_DATASET, month: LAST_MONTH_DATASET },
+}
 
 /**
  * How long the store picker waits for the stores' names before offering them by code: well
@@ -64,6 +74,14 @@ function chosenStore(ctx: ScopedContext): string {
   return named
 }
 
+/** The month the read is for (#750): `this` (also when none is named) or `last`; anything else is refused. */
+function chosenMonth(ctx: ScopedContext): MonthChoice {
+  const named = (ctx.payload as { month?: unknown } | undefined)?.month
+  if (named === undefined || named === null || named === '') return 'this'
+  if (typeof named !== 'string' || !(MONTH_CHOICES as readonly string[]).includes(named)) ctx.reject('Choose this month or last month')
+  return named as MonthChoice
+}
+
 /**
  * The page's origin as the page sends it, when it is a plain http(s) origin: the Dive's ready
  * message is sent to it. It carries no data, so a wrong origin only misdirects that message.
@@ -86,7 +104,27 @@ export function appOrigin(value: unknown): string | null {
  * The Sales Target Dive reads it from v13, its published cached-first version. v12 on MotherDuck
  * is an older wording-only version that does not, so it is not listed.
  */
-export const COMPACT_DIVES: Readonly<Record<string, readonly number[]>> = Object.freeze({ '9022f10f-be83-4fba-a729-5399c18d150e': [13] })
+export const COMPACT_DIVES: Readonly<Record<string, readonly number[]>> = Object.freeze({ '9022f10f-be83-4fba-a729-5399c18d150e': [13, 14] })
+
+/**
+ * The Dives known to show the month Feather Dash asks for (#750): they cap their anchor day at the
+ * state's `period_end` (data-warehouse#4630, Sales Target Dive v14). Any other pin always shows the
+ * latest month, so last month opens as the cached table instead.
+ */
+export const MONTH_DIVES: Readonly<Record<string, readonly number[]>> = Object.freeze({ '9022f10f-be83-4fba-a729-5399c18d150e': [14] })
+
+// Swappable for the tests, like the compact map.
+let monthDives: Readonly<Record<string, readonly number[]>> = MONTH_DIVES
+export function setMonthDives(known: Readonly<Record<string, readonly number[]>> | null) {
+  monthDives = known ?? MONTH_DIVES
+}
+
+/** Whether the pinned Dive shows the month it is asked for: a known Dive id at a known version (digits only). */
+export function showsChosenMonth(diveId: string | undefined, version: string | undefined,
+  known: Readonly<Record<string, readonly number[]>> = monthDives): boolean {
+  if (!diveId || !version || !/^\d+$/.test(version)) return false
+  return Object.hasOwn(known, diveId) && known[diveId].includes(Number(version))
+}
 
 // Swappable for the tests, which exercise the compact path with a map of their own.
 let compactDives: Readonly<Record<string, readonly number[]>> = COMPACT_DIVES
@@ -101,14 +139,14 @@ export function stateFormat(diveId: string | undefined, version: string | undefi
   return Object.hasOwn(known, diveId) && known[diveId].includes(Number(version)) ? 'compact' : 'legacy'
 }
 
-async function cachedRows(ctx: ScopedContext, store?: string): Promise<CachedAnswer> {
-  const answer = await ctx.datasets.active(SALES_DATASET, store ? { store_code: store } : undefined)
+async function cachedRows(ctx: ScopedContext, store: string | undefined, month: MonthChoice): Promise<CachedAnswer> {
+  const answer = await ctx.datasets.active(DATASETS[month].sales, store ? { store_code: store } : undefined)
   return answer ? { at: answer.at, rows: answer.rows as SalesRow[] } : null
 }
 
 /** The month's metadata as the store's snapshot has it: any of the reader's rows carries the same values. */
-async function monthOf(ctx: ScopedContext, store: string): Promise<Month | null> {
-  const answer = await ctx.datasets.active(MONTH_DATASET, { store_code: store })
+async function monthOf(ctx: ScopedContext, store: string, month: MonthChoice): Promise<Month | null> {
+  const answer = await ctx.datasets.active(DATASETS[month].month, { store_code: store })
   const row = (answer?.rows as Month[] | undefined)?.[0]
   return row && answer ? { period_start: row.period_start, data_through: row.data_through, targets_available: row.targets_available, at: answer.at,
     store_name: row.store_name ?? null } : null
@@ -116,10 +154,11 @@ async function monthOf(ctx: ScopedContext, store: string): Promise<Month | null>
 
 async function storeReport(ctx: ScopedContext) {
   const store = chosenStore(ctx)
-  const answer = await cachedRows(ctx, store)
-  const month = await monthOf(ctx, store)
+  const choice = chosenMonth(ctx)
+  const answer = await cachedRows(ctx, store, choice)
+  const month = await monthOf(ctx, store, choice)
   const today = istToday()
-  const report = buildReport({ store, places: placesOf(ctx), answer, month, today })
+  const report = buildReport({ store, places: placesOf(ctx), answer, month, today, choice })
   return { answer, today, report, heading: headingOf(placesOf(ctx), store, storeShortName(report, month)) }
 }
 
@@ -176,11 +215,22 @@ export const reads = {
     return storeLabels(stores, names, shorts)
   },
 
+  /**
+   * The bar's month picker (#750): this month and last month, each named by its month
+   * ("This month · Nov'26"). The values are the choice, not the month, so an address keeps its
+   * meaning ("last month") from one month to the next.
+   */
+  months() {
+    const today = istToday()
+    return MONTH_CHOICES.map(choice => ({ value: choice,
+      label: `${choice === 'this' ? 'This month' : 'Last month'} · ${monthLabel(periodOf(today, choice).period_start)}` }))
+  },
+
   /** One store's report from the cached rows (what the quick view shows), with the page's header (#4486). */
   async report(context: ReadContext) {
     const ctx = context as ScopedContext
     const { report, heading } = await storeReport(ctx)
-    await ctx.recordView({ dataset: SALES_DATASET })
+    await ctx.recordView({ dataset: DATASETS[report.month].sales })
     return { ...report, heading }
   },
 
@@ -193,13 +243,16 @@ export const reads = {
   async embed_session(context: ReadContext) {
     const ctx = context as ScopedContext
     const store = chosenStore(ctx)
+    const choice = chosenMonth(ctx)
     const { dive_id: diveId, dive_version: version, embed_service_account: account } = ctx.settings
     if (!diveId || !version || !account) return { not_set_up: true }
+    // A Dive that always shows the latest month must never be opened under last month's header.
+    if (choice !== 'this' && !showsChosenMonth(diveId, version)) return { month_unsupported: true }
     let answer: CachedAnswer = null
     let month: Month | null = null
     try {
-      answer = await cachedRows(ctx, store)
-      month = await monthOf(ctx, store)
+      answer = await cachedRows(ctx, store, choice)
+      month = await monthOf(ctx, store, choice)
     } catch {
       // The Dive reads the warehouse itself; without a cached copy it opens without one.
     }
@@ -209,13 +262,13 @@ export const reads = {
     let storeCodes = (answer?.rows ?? []).filter(r => r.store_code === store).map(r => r.subcategory_code)
     if (format === 'legacy' && scopeIn(placesOf(ctx), store).wholeStore && !storeCodes.length) {
       try {
-        storeCodes = ((await ctx.datasets.live(SALES_DATASET, { store_code: store })).rows as SalesRow[]).map(r => r.subcategory_code)
+        storeCodes = ((await ctx.datasets.live(DATASETS[choice].sales, { store_code: store })).rows as SalesRow[]).map(r => r.subcategory_code)
       } catch {
         // The Dive still gets `whole_store`, and the places' own subcategories.
       }
     }
     const today = istToday()
-    const report = buildReport({ store, places: placesOf(ctx), answer, month, today })
+    const report = buildReport({ store, places: placesOf(ctx), answer, month, today, choice })
     const origin = appOrigin((ctx.payload as { app_origin?: unknown } | undefined)?.app_origin)
     const state = initialState(report, answer, placesOf(ctx), today, { appOrigin: origin, compress: gzipBase64, format, storeCodes })
     // Past MotherDuck's cap the session would be refused: never trimmed, the page shows the cached
@@ -237,7 +290,7 @@ export const reads = {
       })
       const answered = await response.json().catch(() => null) as { session?: unknown } | null
       if (response.ok && typeof answered?.session === 'string') {
-        await ctx.recordView({ dataset: SALES_DATASET })
+        await ctx.recordView({ dataset: DATASETS[choice].sales })
         // `dive_ready_signal: on`: the Dive posts { type: 'feather-dash:dive-ready' } once it has drawn
         // (B7), and the page waits for it rather than trusting the frame's load event.
         return { frame: `${EMBED_ORIGIN}/sandbox/#session=${encodeURIComponent(answered.session)}`,

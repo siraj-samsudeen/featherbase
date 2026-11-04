@@ -78,9 +78,15 @@ export interface Totals {
 /** `unconfirmed`: the reader has no row, and no metadata compatible with the figures says whether the month has arrived. */
 export type ReportState = 'ready' | 'not_built' | 'no_data_yet' | 'no_sections' | 'unconfirmed'
 
+/** The month a reader chose (#750): this month to date, or last month whole. */
+export type MonthChoice = 'this' | 'last'
+export const MONTH_CHOICES: readonly MonthChoice[] = ['this', 'last']
+
 export interface Report {
   state: ReportState
   store: string
+  /** Which month the report is of (#750). */
+  month: MonthChoice
   store_name: string | null
   short_code: string | null
   period_start: string
@@ -137,9 +143,22 @@ export function istToday(now = Date.now()): string {
   return new Date(now + 330 * 60_000).toISOString().slice(0, 10)
 }
 
-/** Month to date: the first of the month through today. */
-export function periodOf(today: string) {
-  return { period_start: `${today.slice(0, 8)}01`, period_end: today }
+/**
+ * The period of a month choice (#750): this month to date, the first of the month through today;
+ * or last month whole, its first day through its last.
+ */
+export function periodOf(today: string, month: MonthChoice = 'this') {
+  if (month === 'this') return { period_start: `${today.slice(0, 8)}01`, period_end: today }
+  const first = new Date(`${today.slice(0, 8)}01T00:00:00Z`)
+  const last = new Date(first.getTime() - 86_400_000)
+  return { period_start: `${last.toISOString().slice(0, 8)}01`, period_end: last.toISOString().slice(0, 10) }
+}
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** A month as people read it, Mon'YY ("Nov'26"), from any ISO day in it. */
+export function monthLabel(day: string): string {
+  return `${MONTH_NAMES[Number(day.slice(5, 7)) - 1]}'${day.slice(2, 4)}`
 }
 
 /** Every store the reader's places name, by plant code. */
@@ -196,10 +215,12 @@ interface BuildInput {
   /** The month's metadata; when unknown, the reader's own rows stand in for it. */
   month?: Month | null
   today: string
+  /** The month chosen (#750); `answer` and `month` must be that month's datasets. */
+  choice?: MonthChoice
 }
 
-export function buildReport({ store, places, answer, month = null, today }: BuildInput): Report {
-  const period = periodOf(today)
+export function buildReport({ store, places, answer, month = null, today, choice = 'this' }: BuildInput): Report {
+  const period = periodOf(today, choice)
   const scope = scopeIn(places, store)
   const rows = (answer?.rows ?? []).filter(r => r.store_code === store)
   const first = rows[0]
@@ -212,12 +233,12 @@ export function buildReport({ store, places, answer, month = null, today }: Buil
     ? { period_start: first.period_start, data_through: first.data_through, targets_available: first.targets_available }
     : compatible ? month : null
   const empty = { target: null, actual: null, gap: null, achievement: null, missing: 0, no_target_no_sale: 0, n: 0, targets_recorded: 0, sales_recorded: 0 }
-  const base = { store, store_name: first?.store_name ?? null, short_code: first?.short_code ?? null, ...period,
+  const base = { store, month: choice, store_name: first?.store_name ?? null, short_code: first?.short_code ?? null, ...period,
     refreshed_at: answer?.at ?? null, data_through: known?.data_through ?? null, targets_available: known?.targets_available ?? true,
     rows: [] as ReportRow[], sections: [], total: empty }
   if (!answer) return { ...base, state: 'not_built' }
   if (scope.wholeStore && !scope.hasSections) return { ...base, state: 'no_sections' }
-  // Figures cut before this month began can't hold this month's figures.
+  // Figures cut before the month began can't hold its figures.
   if (!first && istDay(answer.at) < period.period_start) return { ...base, state: 'no_data_yet' }
   // An empty scope with nothing compatible to say whether the month has arrived: not claimed
   // either way (the page still opens the Dive, which reads the warehouse itself).
@@ -346,7 +367,9 @@ export function initialState(report: Report, answer: CachedAnswer, places: reado
       ? { sections: Object.fromEntries(Object.keys(bySection).sort().map(name => [name, codeSteps(bySection[name])])) }
       : { material_groups: listed,
           section_by_material_group: Object.fromEntries(listed.filter(c => scope.sectionOf[c]).map(c => [c, scope.sectionOf[c]])) }),
-    ...periodOf(today),
+    // The report's own period (#750): the Dive caps its anchor day at `period_end` from v14.
+    period_start: report.period_start,
+    period_end: report.period_end,
     ...(appOrigin ? { app_origin: appOrigin } : {}),
   }
   if (report.state !== 'ready') return state

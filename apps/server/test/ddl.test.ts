@@ -131,6 +131,22 @@ describe('META-003: Table save generates its physical table', () => {
     expect(row).toBeUndefined()
   })
 
+  // #906: "Site" was refused because a builder's Table once shared `public`
+  // with the host registry `public.site`. Tables now live in the platform
+  // schema, so "Site" is featherbase.site and the registry is left alone.
+  test('builds a Table named Site beside the host registry', async ({ admin }) => {
+    const registry = () => sql`select * from public.site order by 1`
+    const before = await registry()
+    const res = await admin.fetch('/api/table_def', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Site', columns: [{ column_name: 'site_name', column_type: 'Data' }] }),
+    })
+    expect(res.status).toBe(201)
+    await admin.post('/api/save_row', { table: 'Site', row: { site_name: 'Riverside' } })
+    expect(await sql`select site_name from featherbase.site`).toEqual([{ site_name: 'Riverside' }])
+    expect(await registry()).toEqual(before)
+  })
+
   test('rolls back metadata when DDL fails (transactional)', async ({ admin }) => {
     // A composite type occupies the same pg_class namespace as a table, so
     // `create table ddl_ghost2` still fails — but it is NOT an

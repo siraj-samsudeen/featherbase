@@ -1,7 +1,7 @@
 import { Button, StatusPill } from '@featherbase/shop-floor'
 import { useQuery } from '@tanstack/react-query'
 import { api, getSessionUser } from './api'
-import { lastChanged, needsAttention, questionState, useDiscussions, useMembers } from './discussions'
+import { hasUnreadActivity, lastChanged, needsAttention, questionState, useDiscussions, useMembers } from './discussions'
 
 export function Attention({ tasks, onOpen }: { tasks: { row_id: string; task_title: string }[]; onOpen: (task: string, question: string) => void }) {
   const me = getSessionUser()?.row_id ?? ''
@@ -21,7 +21,7 @@ export function Attention({ tasks, onOpen }: { tasks: { row_id: string; task_tit
       <Button variant="quiet" className="text-left justify-start" onClick={() => onOpen(root.task, root.row_id)}>{root.body}</Button>
       <div className="flex flex-wrap items-center gap-2">
         <StatusPill tone="caution">{questionState(root, all) === 'review' ? 'Review answer' : root.reply_needed_from ? 'Reply needed from you' : 'Open to anyone'}</StatusPill>
-        {lastChanged(root, all) > (seen.data?.settings?.[root.row_id] ?? 0) && <span className="text-action">Unread</span>}
+        {hasUnreadActivity(root, all, me, seen.data?.settings?.[root.row_id] ?? 0) && <span className="text-action">Unread</span>}
       </div>
     </div>)}
   </section>

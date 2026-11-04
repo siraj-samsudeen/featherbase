@@ -14,7 +14,7 @@ import { sql } from '../db'
 import { saveDoc } from '../document'
 import { assertSystemManager } from '../permissions'
 import { encryptSecret, lastFour } from '../secret-store'
-import { getSource, invalidateSources } from '../sources/registry'
+import { assertAllowed, getSource, invalidateSources } from '../sources/registry'
 import { run, quoteIdentifier } from '../sources/duckdb-driver'
 import { inspectToken, type WarehouseDatabase } from '../sources/motherduck'
 import type { SourceConfig } from '../sources/types'
@@ -129,8 +129,10 @@ registerRowAction('replace_token', {
     const token = tokenArg(args)
     const report = await inspectToken(token)
     // The same database, not just one of the same name: another account's
-    // "gold" must not quietly stand in for this source's.
-    const missing = cfg.databases.filter((d) => !report.databases.some((r) => r.name === d.name && r.address === d.address)).map((d) => d.name)
+    // "gold" must not quietly stand in for this source's. An owned database's
+    // address (`md:<name>`) is account-relative, so its owning user must match.
+    const missing = cfg.databases.filter((d) => !report.databases.some((r) =>
+      r.name === d.name && r.address === d.address && (r.account === undefined || r.account === d.account))).map((d) => d.name)
     if (missing.length) throw new AppError('ValidationError', `The new token cannot read ${missing.join(', ')}`, { token: `The new token cannot read ${missing.join(', ')}` })
     await actionTransaction(() => storeToken(name, token))
     invalidateSources(name)
@@ -176,6 +178,7 @@ registerRowAction('preview', {
     const db = chosen(cfg, args.database)
     const schema = String(args.schema ?? '')
     const tableName = String(args.table ?? '')
+    assertAllowed(cfg, `${db.name}.${schema}`, tableName)
     const columns = await run(cfg,
       `select column_name, data_type from duckdb_columns()
        where database_name = ? and schema_name = ? and table_name = ? order by column_index`, [db.name, schema, tableName])

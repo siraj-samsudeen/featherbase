@@ -1,5 +1,4 @@
 export const PLATFORM_SCHEMA = 'featherbase'
-export const SITE_REGISTRY_RELATION = 'public.site'
 
 // Physical basenames owned by Featherbase at the cf88a7b convergence boundary.
 // Metadata-backed user Tables are resolved separately by tableRelation().

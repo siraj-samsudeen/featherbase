@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect } from 'vitest'
+import { afterAll, beforeAll, describe, expect, vi } from 'vitest'
 import { rmSync } from 'node:fs'
 import { test } from './pg-test'
 import { overrideVariable } from '../src/env'
@@ -7,7 +7,8 @@ import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standi
 import { sql } from '../src/db'
 import { grantRole } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
-import { registerJob, runOneJob } from '../src/jobs'
+import { jobRegistrant, registerJob, runOneJob } from '../src/jobs'
+import { registerCopyRefreshJobs } from '../src/copy-refresh'
 import { invalidateMeta } from '../src/meta'
 import { runMigrations } from '../src/migrate'
 
@@ -67,6 +68,17 @@ describe('Scheduled copied-table refresh', () => {
     expect(await admin.get('/api/table/Scheduled%20Stores:copy_schedule')).toMatchObject({ enabled: true })
   })
 
+  test('nobody can rename a copied-table refresh, so its handler keeps its linkage', async ({ admin, createUser }) => {
+    await makeCopy(admin)
+    const schedule = await admin.post<{ row_id: string; method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
+    await grantRole(admin, { role: 'Rename Editor', table: ['Scheduled Job'], can_read: true, can_write: true, can_create: true, can_delete: true })
+    const user = await createUser({ roles: ['Rename Editor'] })
+    const url = `/api/table/Scheduled%20Job/${schedule.row_id}:rename`
+    await expect(user.post(url, { new_name: 'renamed_refresh' })).rejects.toMatchObject({ status: 417 })
+    await expect(admin.post(url, { new_name: 'renamed_refresh' })).rejects.toMatchObject({ status: 417 })
+    expect(await admin.get('/api/table/Scheduled%20Stores:copy_schedule')).toMatchObject({ row_id: schedule.row_id, method: schedule.method })
+  })
+
   test('a refresh rejects the every-minute cadence through ordinary job editing', async ({ admin }) => {
     await expect(admin.post('/api/save_row', { table: 'Scheduled Job', row: { method: 'copy_refresh_fake', cadence: 'every minute', enabled: true } })).rejects.toMatchObject({ status: 417, type: 'ValidationError' })
   })
@@ -91,7 +103,9 @@ describe('Scheduled copied-table refresh', () => {
     await createUser({ email: 'copy.owner840@example.test', roles: ['System Manager'] })
     const row = await admin.get<{ updated_at: string }>('/api/table/Scheduled%20Stores/S001')
     await admin.post('/api/save_row', { table: 'Scheduled Stores', row: { row_id: 'S001', title: 'Private correction', updated_at: row.updated_at } })
-    await changeStandin(dir, 'sales', ["update notice_stores set name = 'Private source value' where code = 'S001'"])
+    const second = await admin.get<{ updated_at: string }>('/api/table/Scheduled%20Stores/S002')
+    await admin.post('/api/save_row', { table: 'Scheduled Stores', row: { row_id: 'S002', title: 'Second private correction', updated_at: second.updated_at } })
+    await changeStandin(dir, 'sales', ["update notice_stores set name = 'Private source value' where code in ('S001', 'S002')"])
     invalidateSources('refresh-test') // The stand-in snapshots its files per session.
     await sql`delete from background_job`
     const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
@@ -99,9 +113,50 @@ describe('Scheduled copied-table refresh', () => {
     await runOneJob()
     const [notice] = await sql`select subject, body from email_queue where recipient = 'copy.owner840@example.test' and subject like 'Copy refresh conflicts:%'`
     expect(notice?.subject).toBe('Copy refresh conflicts: Scheduled Stores')
-    expect(notice?.body).toContain('1 new conflict')
+    expect(notice?.body).toContain('2 new conflicts')
     expect(notice?.body).not.toContain('Private')
     expect(await admin.get('/api/table/Scheduled%20Stores/S001')).toMatchObject({ title: 'Private correction' })
+  })
+
+  test('with no System Manager to mail, a scheduled conflict is recorded as undelivered', async ({ admin }) => {
+    await changeStandin(dir, 'sales', ['create table unmailed_stores as select * from stores'])
+    await makeCopy(admin, 'unmailed_stores')
+    const row = await admin.get<{ updated_at: string }>('/api/table/Scheduled%20Stores/S001')
+    await admin.post('/api/save_row', { table: 'Scheduled Stores', row: { row_id: 'S001', title: 'Kept correction', updated_at: row.updated_at } })
+    await changeStandin(dir, 'sales', ["update unmailed_stores set name = 'Unmailed source value' where code = 'S001'"])
+    invalidateSources('refresh-test')
+    await sql`delete from background_job`
+    const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
+    await sql`update person set email = null where row_id in (select parent from has_role where role = 'System Manager')`
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await sql`update background_job set run_at = now() where method = ${schedule.method}`
+      await runOneJob()
+    } finally { warn.mockRestore() }
+    const [execution] = await sql`select outcome from job_execution where method = ${schedule.method}`
+    expect(execution.outcome).toBe('success')
+    const undelivered = await sql`select operation from activity_log where operation like 'notice_undelivered:%copy refresh conflicts: Scheduled Stores%'`
+    expect(undelivered).toHaveLength(1)
+  })
+
+  test('schedules saved earlier are registered again when the server starts', async ({ admin }) => {
+    await makeCopy(admin)
+    const schedule = await admin.post<{ row_id: string; method: string; updated_at: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'daily' })
+    await registerCopyRefreshJobs()
+    expect(jobRegistrant(schedule.method)).toBeTruthy()
+    // An ordinary job save that leaves the cadence out keeps the saved one.
+    await admin.post('/api/save_row', { table: 'Scheduled Job', row: { row_id: schedule.row_id, enabled: false, updated_at: schedule.updated_at } })
+    expect(await admin.get('/api/table/Scheduled%20Stores:copy_schedule')).toMatchObject({ cadence: 'daily', enabled: false })
+    // A database still awaiting migration 0010 registers nothing and does not fail.
+    await sql`alter table featherbase.copy_refresh_schedule rename to copy_refresh_schedule_awaiting`
+    await expect(registerCopyRefreshJobs()).resolves.toBeUndefined()
+    await sql`alter table featherbase.copy_refresh_schedule_awaiting rename to copy_refresh_schedule`
+  })
+
+  test('schedule requests name a copied table and say whether it is enabled', async ({ admin }) => {
+    await makeCopy(admin)
+    await expect(admin.get('/api/table/Person:copy_schedule')).rejects.toMatchObject({ status: 404 })
+    await expect(admin.post('/api/table/Scheduled%20Stores:set_copy_schedule', { cadence: 'hourly', enabled: 'yes' })).rejects.toMatchObject({ status: 417 })
   })
 
   test('a notice outage does not retry a committed refresh', async ({ admin, createUser }) => {
