@@ -54,7 +54,8 @@
         "engine": "duckdb",
         "url_env": "MOTHERDUCK_URL",
         "default_schema": "gold.main",
-        "access": "read_only"
+        "access": "read_only",
+        "read_scaling_token": true
       }
     ]
   },

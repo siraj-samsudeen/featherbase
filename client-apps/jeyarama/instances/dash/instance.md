@@ -27,7 +27,8 @@ The base applies everywhere. `local`, `dev` and `prod` hold what differs:
 - **Refreshing the cached figures.** Off locally: there is no warehouse to
   refresh from, and a refresh would only fail.
 - **The warehouse.** The `motherduck` Data Source names the variable holding its
-  connection, `MOTHERDUCK_URL`.
+  connection, `MOTHERDUCK_URL`. Its token is a MotherDuck read-scaling token,
+  so the source is marked `read_scaling_token`: the token itself cannot write.
 
 Apply from the repository root. `--dry-run` writes nothing, and an app's settings
 need the app installed first:
