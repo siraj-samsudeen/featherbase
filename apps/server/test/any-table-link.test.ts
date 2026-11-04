@@ -187,5 +187,9 @@ describe('a column that links to a row of any Table', () => {
     expect((await patch({ shapes_table: PLANT, shapes: 'PKN-GOLD' })).status).toBe(417)
     expect((await patch({ shapes_table: PLANT, shapes: '8151' })).status).toBe(200)
     expect(await admin.get(row(DECISION, empty.row_id))).toMatchObject({ shapes_table: PLANT, shapes: '8151' })
+    // The same row id in another Table is another row, checked afresh.
+    expect((await patch({ shapes_table: UNIT })).status).toBe(417)
+    await admin.post('/api/save_row', { table: UNIT, row: { row_id: '8151', label: 'Palakkad unit' } })
+    expect((await patch({ shapes_table: UNIT })).status).toBe(200)
   })
 })
