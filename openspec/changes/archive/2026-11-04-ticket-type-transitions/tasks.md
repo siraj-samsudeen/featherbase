@@ -19,5 +19,5 @@
 
 ## 4. Close
 
-- [ ] 4.1 Codex review; fix blockers, file the rest.
-- [ ] 4.2 Sync specs and archive the change as the branch's last commit.
+- [x] 4.1 Codex review; fix blockers, file the rest.
+- [x] 4.2 Sync specs and archive the change as the branch's last commit.
