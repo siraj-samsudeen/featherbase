@@ -234,8 +234,9 @@ describe("An account's permanent reference is never an address or a code", () =>
     const first = await redeemSession(api, await googleSignIn(api, 'asha.old@gmail.com', { subject: 'g-asha' }))
     const person = first.user.row_id
     // Featherbase assigns the reference: neither the address nor its local part.
-    expect(person).toMatch(/^psn_/)
-    expect(person.toLowerCase()).not.toContain('asha')
+    // A random reference may contain "asha" by chance; its opaque format is
+    // independent of the address, unlike psn_asha.old or psn_asha.old@gmail.com.
+    expect(person).toMatch(/^psn_[a-z2-7]{20}$/)
     const again = await redeemSession(api, await googleSignIn(api, 'asha.new@gmail.com', { subject: 'g-asha' }))
     expect(again.user.row_id).toBe(person)
     // The Google sign-in now records the new address; the reference is untouched.
