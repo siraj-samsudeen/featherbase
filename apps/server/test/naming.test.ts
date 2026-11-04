@@ -1,8 +1,11 @@
 import { describe, expect } from 'vitest'
+import { randomUUID } from 'node:crypto'
 import { test } from './pg-test'
+import { committedTest } from './pg-test-shared'
 import { makeTable } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { deleteTable } from '../src/table-engine'
 
 const SERIES_DT = 'Nm Invoice'
 const FIELD_DT = 'Nm Country'
@@ -53,18 +56,24 @@ describe('META-006: naming rules', () => {
     expect(await admin.get('/api/table/Pattern%20Refusal:meta')).toEqual(before)
   })
 
-  test('50 parallel series inserts produce distinct gapless sequential names', async ({
-    admin,
-  }) => {
-    await makeDT(admin, SERIES_DT, 'NMINV-.####')
-    const results = await Promise.all(
-      Array.from({ length: 50 }, (_, i) => save(admin, SERIES_DT, { title: `t${i}` })),
-    )
-    const names = results.map((r) => r.row_id)
-    expect(new Set(names).size).toBe(50)
-    const nums = names.map((n) => Number(n.replace('NMINV-', ''))).sort((a, b) => a - b)
-    expect(nums).toEqual(Array.from({ length: 50 }, (_, i) => i + 1))
-    expect(names[0]).toMatch(/^NMINV-\d{4}$/)
+  // Real root transactions, not a shared-session sandbox whose dispatcher
+  // must serialize requests. Keep the numbering concurrency promise genuine.
+  committedTest('50 parallel series inserts produce distinct gapless sequential names', async ({ admin }) => {
+    const prefix = `NMINV${randomUUID().replaceAll('-', '')}-`
+    await makeDT(admin, SERIES_DT, `${prefix}.####`)
+    const pending = Array.from({ length: 50 }, (_, i) => save(admin, SERIES_DT, { title: `t${i}` }))
+    try {
+      const names = (await Promise.all(pending)).map(r => r.row_id)
+      expect(new Set(names).size).toBe(50)
+      const nums = names.map(n => Number(n.slice(prefix.length))).sort((a, b) => a - b)
+      expect(nums).toEqual(Array.from({ length: 50 }, (_, i) => i + 1))
+      expect(names.every(name => name.startsWith(prefix))).toBe(true)
+      expect(names[0].slice(prefix.length)).toMatch(/^\d{4}$/)
+    } finally {
+      await Promise.allSettled(pending)
+      await deleteTable(SERIES_DT)
+      await sql`delete from series where name = ${prefix}`
+    }
   })
 
   test('field: naming uses the field value and requires it', async ({ admin }) => {

@@ -24,6 +24,22 @@ const STORES = [
 ]
 
 describe('Copy a warehouse table into Featherbase', () => {
+  test('a public copy releases completed row transaction locks', async ({ admin }) => {
+    await changeStandin(dir, 'sales', [
+      `create table lock_stores as select 'L' || range::varchar as code, 'Store ' || range::varchar as title from range(301)`,
+    ])
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-locks', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    const made = await admin.post<{ result: { inserted: number } }>(`${SOURCES}/tc-locks:copy_create`, {
+      database: 'sales', schema: 'main', table: 'lock_stores', name: 'Bounded Locks Copy', key: 'code',
+      columns: [{ source: 'code', column_name: 'code' }, { source: 'title', column_name: 'title' }],
+    })
+    expect(made.result.inserted).toBe(301)
+    expect(await admin.get('/api/table/Bounded%20Locks%20Copy/L300')).toMatchObject({ code: 'L300', title: 'Store 300' })
+    const [locks] = await sql`select count(*)::int as n from pg_locks
+      where pid = pg_backend_pid() and locktype = 'transactionid'`
+    expect(locks.n).toBeLessThan(8)
+  }, 30_000)
+
   test('a column with repeats cannot be the key; a unique one can', async ({ admin }) => {
     await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-key', token: STANDIN_TOKENS.reader, databases: ['sales'] })
     const city = await admin.get<{ usable: boolean }>(`${SOURCES}/tc-key:copy_check_key?database=sales&schema=main&table=stores&column=city`)

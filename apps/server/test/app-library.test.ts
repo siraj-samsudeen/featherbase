@@ -1,5 +1,6 @@
 import { expect } from 'vitest'
 import { test } from './pg-test'
+import { committedTest } from './pg-test-shared'
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { discoverAppLibrary } from '../src/app-library'
@@ -126,7 +127,7 @@ test('failed preparation reports an actionable state without installing', async 
   }
 })
 
-test('preparation progress remains inspectable while the build runs', async ({ admin }) => {
+committedTest('preparation progress remains inspectable while the build runs', async ({ admin }) => {
   const root = await sourceRepository(`node -e "setTimeout(() => require('fs').copyFileSync('server.mjs','built.mjs'), 350)"`)
   let request: Promise<unknown> | undefined
   try {
@@ -365,7 +366,7 @@ copyFileSync('server.mjs', 'built.mjs')
   }
 })
 
-test('a concurrent successful installation is not reported as failed preparation', async ({ admin }) => {
+committedTest('a concurrent successful installation is not reported as failed preparation', async ({ admin }) => {
   const root = await sourceRepository(`node -e "setTimeout(() => require('fs').copyFileSync('server.mjs','built.mjs'), 250)"`)
   const file = resolve(root, 'example-apps/other/featherbase.json')
   const manifest = JSON.parse(await readFile(file, 'utf8'))

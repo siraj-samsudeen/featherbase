@@ -8,6 +8,7 @@ import { resolve } from 'node:path'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
+import { committedTest } from './pg-test-shared'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { pathToFileURL } from 'node:url'
 import { sql } from '../src/db'
@@ -97,7 +98,7 @@ describe("declared bar controls: the picker's options", () => {
 
   // Codex round 1 on #643: an outbound options read calls out after its
   // authorization, holding no lifecycle lock, as an app read does (#625).
-  test('while an outbound options read waits on an outside call, an app lifecycle change completes', async ({ admin }) => {
+  committedTest('while an outbound options read waits on an outside call, an app lifecycle change completes', async ({ admin }) => {
     const directory = await barProof((manifest) => ({ ...manifest, bar: [{ picker: 'Store', options: 'waiting', sets: 'store' }] }))
     expect(await discoverPackages([directory, ROSTER])).toEqual([])
     await admin.post('/api/install_app', { name: 'barproof' })
@@ -116,7 +117,7 @@ describe("declared bar controls: the picker's options", () => {
       await Promise.race([changed, new Promise((_, reject) => setTimeout(() => reject(new Error('blocked: still waiting')), 3000))])
     } finally {
       release()
-      // Every request this test started finishes inside its sandbox.
+      // Every request this test started finishes before fixture restoration.
       await Promise.allSettled([pending, changed])
     }
     expect(await pending).toEqual({ controls: [{ picker: 'Store', sets: 'store', options: [{ value: 'N1', label: 'North' }] }] })
