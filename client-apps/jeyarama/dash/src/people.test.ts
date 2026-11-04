@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { employmentProblem, shown, timeProblem } from './people.ts'
+import { fold } from './values.ts'
 
 type Row = Record<string, unknown>
 const stint = (id: string, extra: Row = {}): Row =>
@@ -84,4 +85,16 @@ describe('stored dates', () => {
     expect(employmentProblem(stint('e2', { joined_on: new Date('2026-01-21T00:00:00.000Z'), left_on: null }), [stint('e1', { left_on: new Date('2026-01-22T00:00:00.000Z') })])?.message)
       .toMatch(/to 22-Jan-2026/)
   })
+})
+
+describe('values the rules read', () => {
+  it('reads an invalid stored Date as no day, and a missing percentage as no share', () => {
+    expect(employmentProblem(stint('e2', { joined_on: '2026-03-01', left_on: null }), [stint('e1', { left_on: new Date('x') })])?.message).toMatch(/still current/)
+    expect(timeProblem([{ row_id: 'a', person: 'p', assignment_type: 'Primary', percentage: 100, starts_on: '2026-08-01' },
+      { row_id: 'b', person: 'p', assignment_type: 'Secondary', starts_on: '2026-08-01' }], '2026-08-10')).toBeNull()
+  })
+})
+
+it('folds nothing to an empty name', () => {
+  expect(fold(null)).toBe('')
 })

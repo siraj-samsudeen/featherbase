@@ -156,10 +156,6 @@ export const validators: Record<string, Validator> = {
       reject('A percentage is more than 0 and at most 100', { percentage: 'more than 0, at most 100' })
   },
 
-  'feather_dash.employee'(context) {
-    if (!text(context.row.name)) context.reject('An employee needs a name', { name: 'required' })
-  },
-
   'feather_dash.employment'(context) {
     const { row, reject, documents } = context
     const start = day(row.joined_on)
@@ -181,7 +177,6 @@ export const validators: Record<string, Validator> = {
   },
 
   'feather_dash.designation'(context) {
-    if (!text(context.row.title)) context.reject('A designation needs a title', { title: 'required' })
     context.row.title_key = fold(context.row.title)
   },
 

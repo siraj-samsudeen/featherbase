@@ -159,6 +159,34 @@ describe('job_assignment', () => {
   })
 })
 
+describe('people', () => {
+  it('refuses an approved headcount that is not a whole number', () => {
+    expect(() => save('feather_dash.section', { store: '9901', section_name: 'Sarees', team_leaders_allowed: 1, approved_headcount_min: 2.5 })).toThrow(/whole number/)
+    expect(() => save('feather_dash.section', { store: '9901', section_name: 'Sarees', team_leaders_allowed: 1, approved_headcount_max: -1 })).toThrow(/whole number/)
+  })
+
+  it('refuses an employment code padded with spaces, before reading any other row', () => {
+    expect(() => save('feather_dash.employment', { employee: 'e1', legal_company: ' DEMO-CO', employee_number: 'DEMO-0101', joined_on: '2026-01-01' })).toThrow(/no spaces/)
+    expect(() => save('feather_dash.employment', { employee: 'e1', legal_company: 'DEMO-CO', employee_number: 'DEMO-0101', joined_on: '2026-01-01' })).not.toThrow()
+  })
+
+  it('reads every page of a person\'s stints before deciding', async () => {
+    const pages: Row[][] = [Array.from({ length: 500 }, (_, i) => ({ row_id: `x${i}`, employee: 'e1', legal_company: 'OTHER-CO', employee_number: `N${i}`, joined_on: '2020-01-01' })),
+      [{ row_id: 'last', employee: 'e1', legal_company: 'DEMO-CO', employee_number: 'DEMO-0101', joined_on: '2025-01-01' }], []]
+    const calls: unknown[] = []
+    const documents = { get: async () => ({}), list: async (_table: string, args: unknown) => { calls.push(args); return pages.shift() ?? [] } }
+    const row = { employee: 'e1', legal_company: 'DEMO-CO', employee_number: 'DEMO-0101', joined_on: '2026-01-01' }
+    await expect(Promise.resolve(validators['feather_dash.employment']({ row, user: 'admin@example.test', isNew: true, documents,
+      reject(message: string): never { throw new Refused(message) } }))).rejects.toThrow(/overlaps/)
+    expect(calls).toHaveLength(3)
+  })
+
+  it('keys a designation by its folded title, and an alias by its source and alias', () => {
+    expect(save('feather_dash.designation', { title: ' Assistant  Manager ' }).title_key).toBe('assistant manager')
+    expect(save('feather_dash.designation_alias', { source: 'hr', alias: 'ASST MGR', designation: 'd1' }).alias_key).toBe('hr/asst mgr')
+  })
+})
+
 describe('aliases', () => {
   it('keys a section alias by its store, source and alias', () => {
     expect(save('feather_dash.section_alias', { store: '9901', source: 'hr', alias: ' Saree ', section: 's1' }).alias_key).toBe('9901/hr/saree')
