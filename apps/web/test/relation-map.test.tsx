@@ -93,7 +93,9 @@ test('a code-keyed row reads by its name in its box', async ({ admin }) => {
   await admin.post('/api/save_row', { table: 'Rm State', row: { row_id: '32', state_name: 'Kerala' } })
   await admin.post('/api/save_row', { table: 'Rm Depot', row: { row_id: 'd-1', title: 'Kochi depot', state: '32' } })
   await openMap(admin, 'Rm Depot', 'd-1')
-  await waitFor(() => expect(screen.getByTestId('map-forward-Rm State')).toHaveTextContent(/^Kerala/))
+  const box = await screen.findByTestId('map-forward-Rm State')
+  await waitFor(() => expect(box).toHaveTextContent('Kerala'))
+  expect(box).not.toHaveTextContent(/\b32\b/)
 })
 
 test('the narrow layout exposes every backlink count through buttons', async ({ admin }) => {

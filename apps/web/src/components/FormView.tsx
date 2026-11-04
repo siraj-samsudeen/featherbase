@@ -587,18 +587,6 @@ export function FormView({
               Print
             </RouterLink>
           )}
-          {/* #100 pattern 6: walk this row's relational neighborhood. */}
-          {!isNew && m.kind !== 'settings' && (
-            <RouterLink
-              to="/featherbase/admin/table/$table/row/$name/map"
-              params={{ table, name }}
-              search={{ trail: undefined }}
-              data-testid="form-map"
-              className={buttonClasses()}
-            >
-              Map
-            </RouterLink>
-          )}
           {/* A bound row's pk belongs to the source — never renameable here. */}
           {renamable && !renaming && (
             <button

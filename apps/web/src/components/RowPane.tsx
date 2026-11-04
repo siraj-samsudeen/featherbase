@@ -97,7 +97,8 @@ function RowPane({ nav, pane, place, placeChoice, onFocus }: {
   return (
     <DrillPane kind={table} title={title} place={place} onClose={close}
       actions={<>
-        {onFocus && <button type="button" onClick={() => onFocus(pane)} className={buttonClasses({ variant: 'quiet' })}>Focus here</button>}
+        {onFocus && !(step.screen === 'row' && step.table === table && step.row === row) &&
+          <button type="button" onClick={() => onFocus(pane)} className={buttonClasses({ variant: 'quiet' })}>Focus here</button>}
         <HrefLink href={pageHref} className={buttonClasses({ variant: 'quiet' })}>Open row page</HrefLink>
         <HrefLink href={pageHref} className={buttonClasses({ variant: 'quiet' })}>Edit</HrefLink>
       </>}>

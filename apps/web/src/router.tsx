@@ -55,7 +55,6 @@ import { AllTablesPage } from './pages/AllTables'
 import SourceBrowser from './pages/SourceBrowser'
 import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
-import { RelationMap } from './pages/RelationMap'
 import { NavPathBar } from './components/NavPathBar'
 import { PaneSplit } from './components/RowPane'
 import { NavigationProvider, useAddressNavigation } from './lib/navigation'
@@ -843,7 +842,7 @@ function TableFormPage() {
     <div data-testid="doc-page">
       <NavigationProvider value={nav}>
         <NavPathBar />
-        <PaneSplit>
+        <PaneSplit onFocus={(pane) => nav.push({ screen: 'row', table: pane.table, row: pane.row, ...(nav.step.view ? { view: nav.step.view } : {}) })}>
           <FormView
             key={`${table}/${name}/${prefill ?? ''}`}
             table={table}
@@ -878,7 +877,7 @@ const exploreRoute = createRoute({
   path: 'explore',
   validateSearch: (search: Record<string, unknown>) => ({
     root: searchString(search.root),
-    // Entry points (ListView split button, RelationMap) deep-link a whole
+    // Entry points (ListView split button, the row page's Map tab) deep-link a whole
     // workspace: `chain` pre-builds step2/step3, `select` preselects pane 1.
     // Both are validated the parseFilters way — malformed means absent.
     chain: searchString(search.chain),
@@ -914,29 +913,6 @@ function ExplorePage() {
   )
 }
 
-// #100 pattern 6: relationship map — the row's neighborhood as a walkable
-// graph. `trail` carries the hop history (static first segment).
-const mapRoute = createRoute({
-  getParentRoute: () => adminRoute,
-  path: 'table/$table/row/$name/map',
-  ...rowAddress,
-  validateSearch: (search: Record<string, unknown>) => ({
-    trail: search.trail,
-  }),
-  component: tablePage(MapPage),
-})
-
-function MapPage() {
-  const { table } = useTableAddress()
-  const { name } = mapRoute.useParams()
-  const { trail } = mapRoute.useSearch()
-  return (
-    <div data-testid="table-page">
-      <RelationMap key={`${table}/${name}`} table={table} name={name} trail={trail} />
-    </div>
-  )
-}
-
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   featherbaseIndexRoute,
@@ -949,5 +925,5 @@ export const routeTree = rootRoute.addChildren([
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])
