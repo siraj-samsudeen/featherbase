@@ -57,7 +57,7 @@ import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { NavPathBar } from './components/NavPathBar'
 import { PaneSplit } from './components/RowPane'
-import { NavigationProvider, useAddressNavigation } from './lib/navigation'
+import { NavigationProvider, useAddressNavigation, useLocalNavigation } from './lib/navigation'
 import type { NavStep } from './lib/nav-path'
 
 // #642 (E4): a page with a frame policy of its own (the Sales Target report)
@@ -889,8 +889,12 @@ const exploreRoute = createRoute({
 function ExplorePage() {
   const { root, chain, select } = exploreRoute.useSearch()
   const navigate = exploreRoute.useNavigate()
+  // #910: Explore keeps its own chain; its drill pane walks in memory.
+  const nav = useLocalNavigation({ screen: 'list', table: root || 'Explore' })
   return (
     <div data-testid="table-page">
+      <NavigationProvider value={nav}>
+      <PaneSplit>
       {/* Params initialize state, they are not two-way bound — in-view step
           and selection changes stay pure state (#87 keeps root shareable;
           the chain/select params exist for the entry points). The key
@@ -909,6 +913,8 @@ function ExplorePage() {
           })
         }
       />
+      </PaneSplit>
+      </NavigationProvider>
     </div>
   )
 }

@@ -6,7 +6,7 @@ import { listFields } from '../lib/list-view-columns'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { stepKey, useStepOptions, type Step } from '../lib/explore-steps'
 import { adminPageTitle } from 'shared'
-import { usePeek } from '../components/Peek'
+import { useNavigation } from '../lib/navigation'
 import { cardClasses, inputClasses, pillClasses, touchTargetClasses } from '@featherbase/shop-floor'
 import { fmtCount, fmtShowing } from '@featherbase/shop-floor'
 import { RowTitle } from '../lib/row-titles'
@@ -366,7 +366,9 @@ function Pane({
 }) {
   const meta = useMeta(table)
   const settings = useSettings()
-  const peek = usePeek()
+  // #910: opening a row shows it in the drill pane beside Explore.
+  const nav = useNavigation()
+  const openPane = nav ? (row: string) => nav.push({ ...nav.step, pane: { table, row } }) : undefined
   const columns = useMemo(() => (meta.data ? listColumns(meta.data) : []), [meta.data])
   // Headline: hash-named tables (sub-tables, mostly) lead with their first
   // real column instead of an opaque row id.
@@ -433,13 +435,9 @@ function Pane({
             selected={selected.has(String(r.row_id))}
             onToggle={() => {
               if (onToggle) onToggle(String(r.row_id))
-              else if (peek.available) peek.push({ kind: 'record', table, name: String(r.row_id) })
+              else openPane?.(String(r.row_id))
             }}
-            onPeek={
-              peek.available
-                ? () => peek.push({ kind: 'record', table, name: String(r.row_id) })
-                : undefined
-            }
+            onPeek={openPane ? () => openPane(String(r.row_id)) : undefined}
           />
         ))}
         {!rows.length && (
@@ -515,7 +513,7 @@ function PaneRow({
               e.stopPropagation()
               onPeek()
             }}
-            title="Peek"
+            title="Show in the pane"
             className="invisible text-ink-subtle hover:text-action group-hover:visible"
           >
             ◎
