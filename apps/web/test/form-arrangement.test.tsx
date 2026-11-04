@@ -148,6 +148,16 @@ test('a row with no side panels gives its form the whole width, with no empty si
   expect(form.querySelectorAll('aside')).toHaveLength(0)
 })
 
+// #795 point 2: who made and last changed the row is one quiet line at the
+// foot, not fields among the row's own.
+test('by importance, when and by whom the row was created and updated is one footer line', async ({ admin }) => {
+  await parcelDesk(admin)
+  await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
+  const footer = await screen.findByTestId('bookkeeping-line', undefined, { timeout: 8000 })
+  const day = '\\d{2}-[A-Z][a-z]{2}-\\d{4}'
+  expect(footer.textContent).toMatch(new RegExp(`^Created ${day} by Administrator, updated ${day} by Administrator$`))
+})
+
 test('Arrange by stays on one line in a narrow form', async ({ admin }) => {
   await parcelDesk(admin)
   await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
