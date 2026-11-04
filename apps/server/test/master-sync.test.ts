@@ -12,7 +12,9 @@ import { invalidateSources } from '../src/sources/registry'
 import { discoverPackages } from '../src/runtime-packages'
 import { decideColumn, isNotFitting, normalize, toMaster } from '../src/master-sync'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
-import { makeTable } from './fixtures'
+import { grantRole, makeTable } from './fixtures'
+import { readFileSync } from 'node:fs'
+import { makeClient } from 'feather-testing-postgres'
 import { runOneJob } from '../src/jobs'
 import { invalidateMeta } from '../src/meta'
 
@@ -243,6 +245,38 @@ describe('Master sync (#927)', () => {
     expect(execution.outcome).toBe('success')
     expect(String(execution.result)).toContain('master sync: 1 applied')
     expect(await person(admin, 'P1')).toMatchObject({ phone: '112' })
+  })
+
+  test("with Tickets itself: a difference becomes a Source Change ticket routed to the source system's primary contact", async ({ admin, createUser }) => {
+    const { rule } = await world(admin, 'staff_tickets')
+    const tickets = resolve('../..', 'example-apps/tickets')
+    const version = JSON.parse(readFileSync(resolve(tickets, 'package.json'), 'utf8')).version
+    const pinned = makeClient({ request: (p, init) => admin.fetch(String(p), { ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': `tickets@${version}` } }) }, admin.token, admin.user)
+    await discoverPackages([resolve('../..', 'test-apps/ticket-sink'), tickets])
+    await admin.post('/api/install_app', { name: 'tickets' })
+    const contact = await createUser({ email: 'stylehr.contact@example.test', fullName: 'StyleHR Contact', roles: ['Tickets Support'] })
+    await makeTable(admin, { name: 'Sync Source System', id_pattern: 'field:system_name', title_column: 'system_name', columns: ['system_name'] } as any)
+    await makeTable(admin, { name: 'Sync Support Contact', columns: [
+      { column_name: 'source_system', column_type: 'Reference', reference_table: 'Sync Source System' }, 'person', 'is_primary:Check'] })
+    await grantRole(admin, { role: 'All', table: ['Sync Source System', 'Sync Support Contact'], can_read: true })
+    const system = await admin.post<Row>('/api/save_row', { table: 'Sync Source System', row: { system_name: 'StyleHR' } })
+    await admin.post('/api/save_row', { table: 'Sync Support Contact', row: { source_system: system.row_id, person: contact.user, is_primary: true } })
+    for (const [name, value] of [['linked_tables', ['Sync Source System', 'Sync Support Contact']], ['support_users', [contact.user]]] as const)
+      await pinned.post('/api/save_row', { table: 'App Setting', row: { row_id: `tickets.${name}`, value: JSON.stringify(value) } })
+    const type = await pinned.post<Row>('/api/save_row', { table: 'tickets.ticket_type', row: { type_key: 'source_change', label: 'Source Change', enabled: true,
+      states: 'Raised\nDone', done_states: 'Done',
+      routing: JSON.stringify({ field: 'source_system', table: 'Sync Support Contact', match: 'source_system', person: 'person', primary: 'is_primary' }) } })
+    let order = 0
+    for (const [field_name, label, field_type, extra] of [['source_system', 'Source system', 'link', { link_table: 'Sync Source System', link_label: 'system_name' }],
+      ['record_key', 'Record', 'text'], ['field', 'Field', 'text'], ['current_value', 'Featherbase value', 'long text'],
+      ['expected_value', 'Source value', 'long text'], ['action', 'What to do', 'long text']] as const)
+      await pinned.post('/api/save_row', { table: 'tickets.type_field', row: { ticket_type: type.row_id, field_order: ++order, field_name, label, field_type, ...(extra ?? {}) } })
+    await admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, tickets: { app: 'tickets', type: 'source_change', source_system: String(system.row_id) } } })
+    const result = await run(admin)
+    expect(result).toMatchObject({ raised: 1, ticket_errors: [] })
+    const [ticket] = await sql`select row_id, kind, ticket_state, assigned_to, title from tickets.ticket where row_id = ${result.tickets[0]}`
+    expect(ticket).toMatchObject({ kind: 'source_change', ticket_state: 'Raised', assigned_to: contact.user })
+    expect(ticket.title).toMatch(/StyleHR/)
   })
 
   test('a ticket that cannot be raised is kept and raised on the next run; only a System Manager sets or runs a rule', async ({ admin, createUser }) => {
