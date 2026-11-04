@@ -25,7 +25,13 @@ class Tickets {
     if (this.ready) return;
     if (!packageDiscovered) { await restartAcceptance(appEnvironment); packageDiscovered = true; }
     const api = await ticketsAdmin();
-    await api.installSampleApp('tickets', 'tickets.ticket');
+    try { await api.installSampleApp('tickets', 'tickets.ticket'); }
+    catch (error) {
+      // Another scenario reset the stack without the Tickets package: discover it again.
+      if (!/Unknown app: tickets/.test(String(error?.message))) throw error;
+      await restartAcceptance(appEnvironment);
+      await (await ticketsAdmin()).installSampleApp('tickets', 'tickets.ticket');
+    }
     for (const name of ['Anjali', 'Colleague', 'Support', 'Verifier', 'Bala', 'Karthik', 'Shiva', 'Fulfiller']) {
       const staff = !['Anjali', 'Colleague'].includes(name);
       await this.world.person(name, staff ? ['Tickets Support'] : ['All']);
