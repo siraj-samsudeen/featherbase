@@ -324,6 +324,12 @@
           }
         }
       ]
+    },
+    {
+      "id": "readable_history_and_unread",
+      "fromVersion": "3.0.0",
+      "toVersion": "3.0.1",
+      "operations": []
     }
   ],
   "tables": [

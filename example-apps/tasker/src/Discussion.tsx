@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Field, Select, inputClasses, fmtDateTime, StatusPill } from '@featherbase/shop-floor'
 import { api, getSessionUser } from './api'
-import { discussionKey, lastChanged, needsAttention, questionState, repliesTo, useDiscussions, useMembers, type Message } from './discussions'
+import { discussionKey, hasUnreadActivity, lastChanged, needsAttention, questionState, repliesTo, useDiscussions, useMembers, type Message } from './discussions'
 import { Markdown } from './Markdown'
 
 const seenKey = ['task-management', 'discussion-seen']
@@ -70,7 +70,7 @@ export function Discussion({ taskId, shared }: { taskId: string; shared: boolean
     {!messages.isPending && !roots.length && <p>No discussion yet. Post an update or ask a question.</p>}
     {roots.map(root => {
       const state = questionState(root, all)
-      const unread = lastChanged(root, all) > (seen.data?.settings?.[root.row_id] ?? 0)
+      const unread = hasUnreadActivity(root, all, me, seen.data?.settings?.[root.row_id] ?? 0)
       return <article key={root.row_id} id={`question-${root.row_id}`} tabIndex={-1} className="rounded-card border border-border p-4 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <strong>{name(root.created_by)}</strong>{' '}<span className="text-ink-muted">{root.kind === 'Question' ? 'asked' : 'commented'} · {fmtDateTime(new Date(root.created_at))}</span>
