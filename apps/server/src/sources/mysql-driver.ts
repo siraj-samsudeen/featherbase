@@ -430,11 +430,7 @@ export const mysqlDriver: SourceDriver = {
         has_default: r.column_default != null || extra.includes('auto_increment'),
         is_pk: isPk,
         max_length: r.character_maximum_length == null ? null : Number(r.character_maximum_length),
-        column_type: mapMysqlType(
-          String(r.data_type),
-          String(r.column_type ?? ''),
-          r.character_maximum_length == null ? null : Number(r.character_maximum_length),
-        ),
+        column_type: mapMysqlType(String(r.data_type), String(r.column_type ?? '')),
         references:
           fks.get(fkKey(String(r.table_schema), String(r.table_name), String(r.column_name))) ??
           null,
@@ -587,7 +583,7 @@ export const mysqlDriver: SourceDriver = {
 
 // EDS-2: proposed Featherbase column type per MySQL data type. column_type
 // (the full spelling) is needed for one case: tinyint(1) is MySQL's boolean.
-function mapMysqlType(dataType: string, columnType: string, maxLength: number | null): string {
+function mapMysqlType(dataType: string, columnType: string): string {
   switch (dataType) {
     case 'tinyint':
       return columnType.startsWith('tinyint(1)') ? 'Check' : 'Int'
@@ -613,9 +609,9 @@ function mapMysqlType(dataType: string, columnType: string, maxLength: number | 
       return 'Data'
     case 'char':
     case 'varchar':
-      // A declared length is one-line text however long the limit (#795): a
-      // varchar(255) name is still a name. Only unbounded text is long text.
-      return maxLength != null ? 'Data' : 'Text'
+      // One-line text however long the limit (#795): a varchar(255) name is
+      // still a name. MySQL always declares a char or varchar's length.
+      return 'Data'
     default:
       return 'Text'
   }
