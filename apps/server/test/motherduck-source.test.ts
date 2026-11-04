@@ -141,8 +141,8 @@ describe('A warehouse token can be replaced', () => {
     await connect(admin, 'md-replace')
     await expect(admin.post(`${SOURCES}/md-replace:replace_token`, { token: STANDIN_TOKENS.refused })).rejects.toMatchObject({ status: 417 })
     expect((await admin.get<{ token_last_four: string }>(`${SOURCES}/md-replace`)).token_last_four).toBe('4f2a')
-    await admin.post(`${SOURCES}/md-replace:replace_token`, { token: STANDIN_TOKENS.writer })
-    expect((await admin.get<{ token_last_four: string }>(`${SOURCES}/md-replace`)).token_last_four).toBe('77b1')
+    await admin.post(`${SOURCES}/md-replace:replace_token`, { token: STANDIN_TOKENS.second })
+    expect((await admin.get<{ token_last_four: string }>(`${SOURCES}/md-replace`)).token_last_four).toBe('9c1e')
     const tables = await admin.get<{ schemas: { schema: string }[] }>(`${SOURCES}/md-replace:tables?database=sales`)
     expect(tables.schemas.map((s) => s.schema)).toContain('main')
   })
@@ -318,6 +318,19 @@ describe('Review fixes (#772 security review)', () => {
     const res = await admin.fetch(`${SOURCES}/md-other-account:replace_token`, { method: 'POST', body: JSON.stringify({ token: STANDIN_TOKENS.second }) })
     expect(res.status).toBe(417)
     expect(await res.text()).toMatch(/cannot read sales/)
+  })
+
+  test("another account's token is refused even when it owns a database of the same name at the same address", async ({ admin }) => {
+    // reader_user and writer_user both own "sales" (md:sales on MotherDuck).
+    await connect(admin, 'md-same-name-other-user', ['sales'])
+    const res = await admin.fetch(`${SOURCES}/md-same-name-other-user:replace_token`, { method: 'POST', body: JSON.stringify({ token: STANDIN_TOKENS.writer }) })
+    expect(res.status).toBe(417)
+    expect(await res.text()).toMatch(/cannot read sales/)
+    expect((await admin.get<{ token_last_four: string }>(`${SOURCES}/md-same-name-other-user`)).token_last_four).toBe('4f2a')
+    // A shared database's address is global, so another user reading the same share is accepted.
+    await connect(admin, 'md-share-other-user', ['finance'])
+    await admin.post(`${SOURCES}/md-share-other-user:replace_token`, { token: STANDIN_TOKENS.writer })
+    expect((await admin.get<{ token_last_four: string }>(`${SOURCES}/md-share-other-user`)).token_last_four).toBe('77b1')
   })
 
   test('a source opens its databases read-only, even with a token that can write', async ({ admin }) => {

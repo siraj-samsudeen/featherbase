@@ -14,7 +14,7 @@ import { sql } from '../db'
 import { getMeta, type TableMeta } from '../meta'
 import { createTable, tableRelation } from '../table-engine'
 import type { SessionUser } from '../auth'
-import { getSource } from './registry'
+import { assertAllowed, getSource } from './registry'
 import { mapDuckType, quoteIdentifier, run, stream } from './duckdb-driver'
 import type { SourceConfig } from './types'
 
@@ -51,6 +51,7 @@ async function withSourceRows<T>(cfg: SourceConfig, query: string, key: string, 
 /** How many rows, how many distinct values and how many empty ones a column has. */
 export async function checkKey(sourceName: string, database: string, schema: string, table: string, column: string) {
   const cfg = await getSource(sourceName)
+  assertAllowed(cfg, `${database}.${schema}`, table)
   const [r] = await run(cfg,
     `select count(*) as n, count(distinct ${quoteIdentifier(column)}) as d, count(*) filter (where ${quoteIdentifier(column)} is null) as e
      from ${relation(database, schema, table)}`, [])
@@ -73,6 +74,23 @@ export async function createCopy(
     `select column_name, data_type from duckdb_columns() where database_name = ? and schema_name = ? and table_name = ?`,
     [input.database, input.schema, input.table])
   const typeOf = new Map(types.map((t) => [String(t.column_name), mapDuckType(String(t.data_type))]))
+  const rawTypeOf = new Map(types.map((t) => [String(t.column_name), String(t.data_type).toUpperCase()]))
+  // Codes keep every digit: a warehouse string stays a string. Only the key is
+  // bounded (it becomes the row id); any other VARCHAR is unbounded text, so a
+  // long note never fails the whole copy against Data's 140 characters.
+  const nativeType = (source: string) => {
+    const mapped = typeOf.get(source) ?? 'Data'
+    const raw = rawTypeOf.get(source) ?? ''
+    if (mapped === 'Text') return 'Long Text'
+    // Native numbers travel as JavaScript doubles: a DECIMAL wider than 15
+    // digits, or an integer type wider than BIGINT, would be silently rounded.
+    // Copy those as text so every digit survives.
+    const decimal = /^DECIMAL\((\d+),\s*\d+\)$/.exec(raw)
+    if ((decimal && Number(decimal[1]) > 15) || raw === 'HUGEINT' || raw === 'UHUGEINT' || raw === 'UBIGINT')
+      return source === input.key ? 'Data' : 'Text'
+    if (source !== input.key && rawTypeOf.get(source) === 'VARCHAR') return 'Text'
+    return mapped
+  }
   const select = input.columns.map(c => `${quoteIdentifier(c.source)} as ${quoteIdentifier(c.column_name)}`).join(', ')
   return withSourceRows(cfg, `select ${select} from ${relation(input.database, input.schema, input.table)}`, keyColumn.column_name, (folder, parts) => actionTransaction(async () => {
     await createTable({
@@ -83,8 +101,7 @@ export async function createCopy(
         ...input.columns.map((c) => ({
           column_name: c.column_name,
           label: c.label || c.column_name,
-          // Codes keep every digit: a warehouse text column stays text.
-          column_type: typeOf.get(c.source) === 'Text' ? 'Long Text' : (typeOf.get(c.source) ?? 'Data'),
+          column_type: nativeType(c.source),
           description: c.description || undefined,
           source_column: c.source,
           unique: c.source === input.key || undefined,
@@ -114,6 +131,7 @@ export async function copyAgain(user: SessionUser, target: string): Promise<Copy
     const copy = await copyInfo(target)
     if (!copy) throw new AppError('NotFoundError', `${target} was not copied from a data source`)
     const cfg = await getSource(String(copy.data_source))
+    assertAllowed(cfg, `${copy.database}.${copy.source_schema}`, String(copy.source_table))
     const meta = await getMeta(target)
     const columns = meta.columns.filter(c => c.source_column)
     const key = columns.find(c => c.column_name === copy.key_column)

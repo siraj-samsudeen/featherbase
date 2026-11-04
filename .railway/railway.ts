@@ -32,6 +32,7 @@ const ENVIRONMENTS: Record<string, {
     watchPatterns: [
       'apps/**', 'packages/**', 'pnpm-lock.yaml', 'tools/dev.mjs', 'tools/build-instance-apps.mjs',
       'client-apps/jeyarama/instances/dash/**', 'client-apps/jeyarama/dash/**', 'example-apps/tasker/**',
+      'example-apps/tickets/**',
     ],
   },
 }

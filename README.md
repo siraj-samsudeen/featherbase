@@ -271,6 +271,52 @@ featherbase advanced apps install-app <explicit-app-name>
 
 There is no public marketplace or automatic download of unreviewed code.
 
+### Explicit opt-in: Feather Tickets
+
+Tickets is a separate product app in `example-apps/tickets`, not the Helpdesk
+sample. Build it with `npm ci --prefix example-apps/tickets` followed by
+`npm run build --prefix example-apps/tickets`. Add that folder's absolute path
+to the JSON array `FEATHERBASE_APP_PATHS` in your untracked `.env.local`, restart
+the server, then choose Tickets in app administration (or run
+`featherbase advanced apps install-app tickets`). Either takes effect at once,
+with no second restart; if the app cannot run, the Apps screen and every
+Tickets request say why. Ordinary startup does not install it or create
+sample requests.
+
+An instance adds its own ticket types without a release: a System Manager
+adds a row to Tickets' *Ticket type* Table (its states, one per line, the
+first being where a ticket starts; its done states; the state a reopened
+ticket returns to; optional routing) and one *Ticket type field* row per
+field (text, long text, choice, date, person or link). A link field reads an
+instance Table only when that Table is listed in the `linked_tables` setting,
+and always with the requester's own permissions.
+
+Requesters share public ticket summaries and progress. Original request details
+stay with the submitter and support; employee verification and investigation
+evidence remain support-only. Give staff the `Tickets Support` role and configure
+the app's settings with person IDs, not display names: `support_users`,
+`verification_admins` and `fulfillment_admins` are JSON arrays; `approval_routes`
+maps regions to arrays of alternative approvers; `restricted_resources` is a
+JSON array of restricted resource names. Missing authority or routing blocks
+access decisions. Use the existing App Setting/instance-settings interface.
+
+Tickets uses ordinary platform Table permissions: Administrator and System
+Manager retain privileged read access. The `Tickets Support` role grants private
+reads independently of action membership; removing someone from an action
+setting alone does not revoke that role's read access.
+
+For an explicitly disposable, local development instance only:
+
+```bash
+node tools/seed-tickets-development.mjs --url=http://127.0.0.1:8000
+```
+
+This opt-in walkthrough creates fictional people and requests through the real
+server. It refuses remote destinations, non-development databases and queues
+containing real requests. It never connects to StyleHR, email, MotherDuck or
+GitHub. Stage one records manual verification, decisions, fulfillment and
+investigation; live integrations are a separate stage.
+
 ### Boot and smoke-test for contributors
 
 `./init.sh` installs checkout dependencies, bootstraps local Postgres where

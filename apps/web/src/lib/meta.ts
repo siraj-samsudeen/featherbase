@@ -23,6 +23,9 @@ export interface ColumnDef {
   tier: 'basic' | 'restricted'
   /** One plain line shown under the control (#473). */
   description?: string | null
+  /** On a source-bound Table: the source table this column's foreign key lands on (#796). */
+  source_fk_schema?: string | null
+  source_fk_table?: string | null
   created_by: string
   updated_by: string
   created_at: string

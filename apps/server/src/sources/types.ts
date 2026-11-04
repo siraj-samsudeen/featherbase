@@ -37,7 +37,7 @@ export interface SourceConfig {
   // (read-only) token, so an app's dataset query may run on it.
   read_scaling_token?: boolean
   // #772: a pasted-token MotherDuck source attaches only these databases.
-  databases: { name: string; address: string; owner: string }[]
+  databases: { name: string; address: string; owner: string; account?: string }[]
 }
 
 // EDS-6: the shape of a write the data source refused for a constraint

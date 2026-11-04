@@ -1627,6 +1627,9 @@ describe('Saved views stay within their list', () => {
         id: 'pop-up', name: 'Pop-up store work', scope: { kind: 'all' },
         setup: { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [gone.row_id] } },
       }, {
+        id: 'pop-up-board', name: 'Pop-up store board', scope: { kind: 'project', projectId: gone.row_id },
+        setup: { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [] } },
+      }, {
         id: 'former-owner', name: 'Former colleague personal list', scope: { kind: 'personal', owner: 'former@example.test' },
         setup: { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [] } },
       }, {
@@ -1638,6 +1641,7 @@ describe('Saved views stay within their list', () => {
 
       await user.click(await screen.findByRole('button', { name: /Views/ }))
       expect(await screen.findByText('One or more projects are unavailable')).toBeInTheDocument()
+      expect(screen.getByText('Project unavailable')).toBeInTheDocument()
       expect(screen.getByText('Person unavailable')).toBeInTheDocument()
       expect(screen.getByText('One or more people are unavailable')).toBeInTheDocument()
       await user.click(screen.getByRole('button', { name: /Pop-up store work/ }))
