@@ -64,13 +64,13 @@ describe('Copy a warehouse table into Featherbase', () => {
 
   test('warehouse scalar types retain their values in native rows', async ({ admin }) => {
     await changeStandin(dir, 'sales', [
-      `create table typed_copy_rows(code varchar, amount double, opened date, note text)`,
-      `insert into typed_copy_rows values ('0007', 12.75, '2024-02-29', 'Long warehouse note')`,
+      `create table typed_copy_rows(code varchar, amount double, opened date, note text, opening_time time)`,
+      `insert into typed_copy_rows values ('0007', 12.75, '2024-02-29', 'Long warehouse note', '08:37:12')`,
     ])
     await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-types', token: STANDIN_TOKENS.reader, databases: ['sales'] })
-    await admin.post(`${SOURCES}/tc-types:copy_create`, { database: 'sales', schema: 'main', table: 'typed_copy_rows', name: 'Typed Copy', key: 'code', columns: ['code', 'amount', 'opened', 'note'].map(source => ({ source, column_name: source })) })
+    await admin.post(`${SOURCES}/tc-types:copy_create`, { database: 'sales', schema: 'main', table: 'typed_copy_rows', name: 'Typed Copy', key: 'code', columns: ['code', 'amount', 'opened', 'note', 'opening_time'].map(source => ({ source, column_name: source })) })
     // Native Date columns serialize as midnight UTC, not a DuckDB object.
-    expect(await admin.get('/api/table/Typed%20Copy/0007')).toMatchObject({ code: '0007', amount: 12.75, opened: '2024-02-29T00:00:00.000Z', note: 'Long warehouse note' })
+    expect(await admin.get('/api/table/Typed%20Copy/0007')).toMatchObject({ code: '0007', amount: 12.75, opened: '2024-02-29T00:00:00.000Z', note: 'Long warehouse note', opening_time: '08:37:12' })
   })
 
   test('copy, correct, copy again: the correction is kept, a changed source raises a conflict, a gone row is marked', async ({ admin }) => {
