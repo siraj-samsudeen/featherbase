@@ -50,7 +50,7 @@ test('helpdesk: a ticket renders in the Admin and opens with workflow actions', 
   session,
 }) => {
   await session
-    .visit('/admin/HD%20Ticket')
+    .visit('/featherbase/admin/table/hd-ticket')
     .assertText(SUBJECT)
 
   await session.step('click the ticket row to open its form', async ({ page }) => {

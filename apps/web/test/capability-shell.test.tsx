@@ -78,7 +78,7 @@ test('a Person reader without management access cannot see administrative sign-i
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Shelf Clerk', can_read: true } })
   const clerk = await createUser({ email: 'person.reader@example.com', roles: ['Shelf Clerk'] })
   const urls = recordCalls()
-  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(clerk.user!)}`, clerk)
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(clerk.user!)}`, clerk)
   await screen.findByTestId('form-view')
   expect(screen.queryByTestId('user-sign-in-methods')).not.toBeInTheDocument()
   expect(urls.filter((u) => u.includes('/identities') || u === '/api/me/sign_in_methods')).toEqual([])
@@ -163,15 +163,17 @@ test('a Table list offers Columns, Merge and Import only to a System Manager, an
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Back Office', role: 'Shelf Clerk', can_read: true, can_create: true } })
   const clerk = await createUser({ email: 'clerk-list@example.com', roles: ['Shelf Clerk'] })
 
-  await renderApp('/featherbase/admin/Back%20Office', clerk)
+  await renderApp('/featherbase/admin/table/back-office', clerk)
   await screen.findByTestId('list-new')
   // Import is a System Manager tool (its route and wizard are), even for someone who can create rows.
+  await userEvent.click(await screen.findByRole('button', { name: 'List actions' }))
   expect(screen.queryByTestId('open-import')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Table administration' })).not.toBeInTheDocument()
   expect(screen.queryByTestId('open-columns')).not.toBeInTheDocument()
   expect(screen.queryByTestId('open-merge')).not.toBeInTheDocument()
   cleanup()
 
-  await renderApp('/featherbase/admin/Shelf%20Note', clerk)
+  await renderApp('/featherbase/admin/table/shelf-note', clerk)
   await screen.findByTestId('list-columns')
   // A read-only clerk gets no way to add rows, in the toolbar or the empty list.
   expect(screen.queryByTestId('list-new')).not.toBeInTheDocument()
@@ -179,17 +181,27 @@ test('a Table list offers Columns, Merge and Import only to a System Manager, an
   expect(screen.queryByTestId('list-empty-new')).not.toBeInTheDocument()
   cleanup()
 
-  await renderApp('/featherbase/admin/Back%20Office', admin)
+  await renderApp('/featherbase/admin/table/back-office', admin)
+  await userEvent.click(await screen.findByRole('button', { name: 'Table administration' }))
   expect(await screen.findByTestId('open-columns')).toBeInTheDocument()
   expect(screen.getByTestId('open-merge')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'List actions' }))
   expect(screen.getByTestId('open-import')).toBeInTheDocument()
+  // Escape from a menu item dismisses the disclosure and returns focus to
+  // its trigger, so keyboard users can continue along the toolbar.
+  screen.getByTestId('open-import').focus()
+  await userEvent.keyboard('{Escape}')
+  const actions = screen.getByRole('button', { name: 'List actions' })
+  expect(actions).toHaveAttribute('aria-expanded', 'false')
+  expect(actions).toHaveFocus()
+  expect(screen.queryByTestId('open-import')).not.toBeInTheDocument()
 })
 
 // (6) Manage-only routes bounce everyone else to the admin home.
 test('typing a management address as a non-manager lands on the admin home instead', async ({ admin, createUser }) => {
   await seed(admin)
   const clerk = await createUser({ email: 'clerk-route@example.com', roles: ['Shelf Clerk'] })
-  for (const path of ['/featherbase/admin/new-table', '/featherbase/admin/import', '/featherbase/admin/imports', '/featherbase/admin/Shelf%20Note/columns', '/featherbase/admin/Shelf%20Note/merge']) {
+  for (const path of ['/featherbase/admin/new-table', '/featherbase/admin/import', '/featherbase/admin/imports', '/featherbase/admin/table/shelf-note/columns', '/featherbase/admin/table/shelf-note/merge']) {
     await renderApp(path, clerk)
     await screen.findByTestId('admin-sidebar')
     await waitFor(() => expect(screen.queryByTestId('table-page')).not.toBeInTheDocument())
@@ -234,8 +246,8 @@ test('a create-only grant holder is not told "nothing is open to you"', async ({
 test('a refused table list says the person cannot read it, rather than showing an empty list', async ({ admin, createUser }) => {
   await seed(admin)
   const clerk = await createUser({ email: 'clerk.refused@example.com', roles: ['Shelf Clerk'] })
-  await renderApp('/featherbase/admin/Back%20Office', clerk)
-  const refusal = await screen.findByTestId('list-error', {}, { timeout: 10_000 })
+  await renderApp('/featherbase/admin/table/back-office', clerk)
+  const refusal = await screen.findByRole('alert', {}, { timeout: 10_000 })
   expect(refusal).toHaveTextContent(/no read permission on Back Office/i)
   expect(screen.queryByText('No rows')).not.toBeInTheDocument()
 })

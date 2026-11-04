@@ -9,7 +9,7 @@ class RelationMapPage {
   }
 
   async open(table, rowId) {
-    await this.page.goto(`/featherbase/admin/map/${encodeURIComponent(table)}/${encodeURIComponent(rowId)}`);
+    await this.page.goto(`${tableHref(table)}/row/${encodeURIComponent(rowId)}/map`);
     await this.page.getByTestId('map-center').waitFor();
   }
 

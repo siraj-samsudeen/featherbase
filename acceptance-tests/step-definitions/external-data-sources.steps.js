@@ -12,6 +12,7 @@ const { givenReaderSource, grantReader } = require('../support/outside-db');
 const { SourceBrowserPage } = require('../support/pages/source-browser-page');
 const { ListPage } = require('../support/pages/list-page');
 const { FormPage } = require('../support/pages/form-page');
+const { tableHref, rowHref, mapHref } = require('../support/addresses');
 
 const SCHEMA = 'shop_fixture';
 const SOURCE = 'shops';
@@ -161,13 +162,13 @@ When('the user connects its shelf and bin tables, naming them {string} and {stri
 
 When('the user opens a bin', async function () {
   const page = await this.actor();
-  await page.goto(`/featherbase/admin/Bin/${this.bin}`);
+  await page.goto(rowHref('Bin', this.bin));
   await page.getByTestId('form-view').waitFor();
 });
 
 When('the user opens that shelf', async function () {
   const page = await this.actor();
-  await page.goto(`/featherbase/admin/Shelf/${this.shelf}`);
+  await page.goto(`${tableHref('Shelf')}/row/${this.shelf}`);
   await page.getByTestId('form-view').waitFor();
 });
 
@@ -178,14 +179,14 @@ When('the user opens the list of shelves', async function () {
 
 When('the user opens a bin and takes the offer to connect the shelf table', async function () {
   const page = await this.actor();
-  await page.goto(`/featherbase/admin/Bin/${this.bin}`);
+  await page.goto(`${tableHref('Bin')}/row/${this.bin}`);
   await new FormPage(page).offerToConnect('Shelf').click();
   this.sourceBrowser = new SourceBrowserPage(page);
 });
 
 When("the user opens that bin's relationship map", async function () {
   const page = await this.actor();
-  await page.goto(`/featherbase/admin/map/Bin/${this.bin}`);
+  await page.goto(mapHref('Bin', this.bin));
   await page.getByTestId('map-forward-Shelf').waitFor();
 });
 

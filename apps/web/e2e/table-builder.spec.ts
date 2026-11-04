@@ -1,3 +1,4 @@
+import { tableSlug } from 'shared'
 import { test, expect, adminToken } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
@@ -63,7 +64,7 @@ test('UI-011: create a Table with 5 fields from the Admin; list+form work immedi
 
   // Lands on the new Table's (empty) list view
   await session
-    .assertPath(`/featherbase/admin/${encodeURIComponent(NEW_DT)}`)
+    .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(NEW_DT))}`)
     .assertHas('[data-testid="list-view"]')
     .assertHas('[data-testid="col-title"]', { text: 'Title' })
 
@@ -77,7 +78,7 @@ test('UI-011: create a Table with 5 fields from the Admin; list+form work immedi
     await page.getByTestId(`home-link-${NEW_DT}`).click()
   })
   await session
-    .assertPath(`/featherbase/admin/${encodeURIComponent(NEW_DT)}`)
+    .assertPath(`/featherbase/admin/table/${encodeURIComponent(tableSlug(NEW_DT))}`)
     .assertHas('[data-testid="list-view"]')
 
   // Form view works immediately: create a document
@@ -92,7 +93,7 @@ test('UI-011: create a Table with 5 fields from the Admin; list+form work immedi
 
   // It appears in the list
   await session
-    .visit(`/admin/${encodeURIComponent(NEW_DT)}`)
+    .visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(NEW_DT))}`)
     .assertHas('[data-testid="list-rows"]', { text: 'first doc' })
 
   // And the metadata is real (server side)

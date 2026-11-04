@@ -69,7 +69,7 @@ Given('a colleague may read parcels and racks', async function () {
 
 Given("the user arranged the parcel's fields by data type in one column", async function () {
   const form = new FormPage(await this.actor());
-  await form.open('Parcel', PARCEL);
+  await form.openRow('Parcel', PARCEL);
   await form.arrangeBy('type');
   // Done once the person's settings have taken the choice.
   const saved = form.page.waitForResponse((r) => r.url().includes('/api/user_settings/') && r.request().method() === 'PUT' && r.ok());
@@ -104,35 +104,35 @@ Given('a parcel {string} at the parcel counter', async function (rowId) {
 
 When('the user opens that parcel', async function () {
   this.form = new FormPage(await this.actor());
-  await this.form.open('Parcel', PARCEL);
+  await this.form.openRow('Parcel', PARCEL);
 });
 
 When('a colleague opens that parcel', async function () {
   this.form = new FormPage(await this.signedIn('a colleague'));
-  await this.form.open('Parcel', PARCEL);
+  await this.form.openRow('Parcel', PARCEL);
 });
 
 When('the user opens that parcel again', async function () {
   // A new browser: only what is kept for the person, not for this browser, comes back.
   this.form = new FormPage(await this.signedInAfresh('the user'));
-  await this.form.open('Parcel', PARCEL);
+  await this.form.openRow('Parcel', PARCEL);
 });
 
 When('the user opens that parcel and opens its empty fields', async function () {
   this.form = new FormPage(await this.actor());
-  await this.form.open('Parcel', PARCEL);
+  await this.form.openRow('Parcel', PARCEL);
   await this.form.openEmptyFields();
 });
 
 When(/^the user opens that parcel and arranges (its fields by data type|its filled fields first|its links first|its fields in the table's own order)$/, async function (how) {
   this.form = new FormPage(await this.actor());
-  await this.form.open('Parcel', PARCEL);
+  await this.form.openRow('Parcel', PARCEL);
   await this.form.arrangeBy(MODES[how]);
 });
 
 When('the user opens that parcel and shows its fields in one column', async function () {
   this.form = new FormPage(await this.actor());
-  await this.form.open('Parcel', PARCEL);
+  await this.form.openRow('Parcel', PARCEL);
   await this.form.showColumns(1);
 });
 

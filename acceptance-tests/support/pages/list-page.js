@@ -19,7 +19,7 @@ class ListPage {
     };
     this.page.on('response', onResponse);
     try {
-      await this.page.goto(`/featherbase/admin/${encodeURIComponent(table)}`);
+      await this.page.goto(`/featherbase/admin/table/${encodeURIComponent(table.toLowerCase().replace(/[-_\s]+/g, ' ').trim().replace(/ /g, '-'))}`);
       // A wide screen shows the column headers; a phone shows the rows as cards.
       await this.headers().first().or(this.page.getByTestId('list-rows').getByRole('listitem').first()).waitFor();
     } catch (err) {

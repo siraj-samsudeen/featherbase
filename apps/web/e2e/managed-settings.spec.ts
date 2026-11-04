@@ -6,7 +6,7 @@ import { test, adminAuth, type APIRequestContext } from './fixtures'
 // locked before the first apply.
 
 const HINT = 'Set in the instance settings file (instance-settings.json). Change it there, then apply the file.'
-const GOOGLE = '/admin/Sign%20In%20Method/google'
+const GOOGLE = '/featherbase/admin/table/sign-in-method/row/google'
 let originalDomains: string | null = null
 let timeZone: string | null = null
 
@@ -43,6 +43,7 @@ test('nothing is locked before the first apply', async ({ session }) => {
     .assertHas('[data-testid="form-view"]')
     .within('[data-field="allowed_email_domains"]', (input) => input.refuteAttribute('disabled'))
     .refuteHas('[data-testid="managed-allowed_email_domains"]')
+    .clickButton('Record actions')
     .assertHas('[data-testid="form-rename"]')
     .assertHas('[data-testid="form-delete"]')
 })
@@ -60,6 +61,7 @@ test('the Google sign-in method form locks the domains the file sets, and only t
     .refuteHas('[data-testid="managed-label"]')
     // Checklist item 10: the server refuses renaming or deleting a row with a
     // locked field, so the form does not offer either.
+    .clickButton('Record actions')
     .refuteHas('[data-testid="form-rename"]')
     .refuteHas('[data-testid="form-delete"]')
     // The filename never breaks at its hyphen.
@@ -70,11 +72,12 @@ test('the Google sign-in method form locks the domains the file sets, and only t
 test('the System Settings form locks a field the file sets', async ({ session, request }) => {
   await applyFile(request, { 'System Settings': { time_zone: timeZone } })
   await session
-    .visit('/admin/System%20Settings')
+    .visit('/featherbase/admin/table/system-settings')
     .assertHas('[data-testid="form-view"]')
     .within('[data-field="time_zone"]', (input) => input.assertAttribute('disabled'))
     .within('[data-testid="managed-time_zone"]', (hint) => hint.assertExactText(HINT))
     .within('[data-field="app_name"]', (input) => input.refuteAttribute('disabled'))
+    .clickButton('Record actions')
     .refuteHas('[data-testid="form-rename"]')
     // The file stopped naming the Google domains, so they are editable again.
     .visit(GOOGLE)

@@ -43,7 +43,10 @@ export default defineConfig({
     // component tests are targeted from.
     coverage: {
       provider: 'istanbul',
-      include: ['src/**/*.{ts,tsx}'],
+      // Moving the shared UI out of this app must not remove it from the
+      // coverage denominator; these same component tests still exercise it.
+      allowExternal: true,
+      include: ['src/**/*.{ts,tsx}', '../../packages/shop-floor/src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.test.{ts,tsx}', 'src/**/*.d.ts'],
       reporter: ['text', 'json-summary', ['json', { file: '../.nyc_output/jsdom.json' }]],
       // Without this a single failing test suppresses the report entirely

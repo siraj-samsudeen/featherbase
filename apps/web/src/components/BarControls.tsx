@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useRouter, useRouterState } from '@tanstack/react-router'
 import { api } from '../lib/api'
 import { announceBarChange, useBarAddress } from '../lib/bar-address'
-import { cx } from './ui'
-import { Check, ChevronDown } from './ui/icons'
+import { cx } from '@featherbase/shop-floor'
+import { Check, ChevronDown } from '@featherbase/shop-floor'
 
 // #642 (design E8): the controls an app declares for the shared top bar,
 // drawn by the platform — the app never runs its own code in the bar

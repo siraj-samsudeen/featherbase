@@ -94,7 +94,7 @@ class BaseInstall {
   async configurationReachable() {
     await this.details().getByRole('link', { name: 'Configure role mappings', exact: true }).waitFor();
     await this.details().getByRole('link', { name: 'Configure settings', exact: true }).click();
-    await this.page.waitForURL('**/App%20Setting?*');
+    await this.page.waitForURL(`**${ADMIN}/table/app-setting?*`);
   }
   async preparationSucceeded() {
     await this.page.getByRole('status').filter({ hasText: 'Preparing the package' }).waitFor();
@@ -134,6 +134,16 @@ class BaseInstall {
   async install(name = 'tasker') {
     const app = await this.app(name);
     if (!app.installed) await this.call('POST', app.preparation.state === 'ready' ? '/api/install_app' : '/api/apps/prepare-install', { name }, [201]);
+    // The scenario's working actor is explicitly admitted after installation;
+    // installing an app itself grants nobody access to private work.
+    if (name === 'tasker') {
+      const person = await this.api.row('Person', SYSTEM_MANAGER.user);
+      if (!person.roles.some(entry => entry.role === 'Tasker Member'))
+        await this.api.saveRow('Person', {
+          row_id: person.row_id, updated_at: person.updated_at,
+          roles: [...person.roles, { role: 'Tasker Member' }],
+        });
+    }
   }
   async manager() {
     if (!this.page) {
@@ -329,7 +339,7 @@ class BaseInstall {
     await this.call('POST', '/api/save_row', { table: 'App Setting', row: { row_id: 'feather_dash.dive_version', value: 'initial-version' } }, [201]);
   }
   async editableVersion() {
-    await this.open(`${ADMIN}/App%20Setting/feather_dash.dive_version`);
+    await this.open(`${ADMIN}/table/app-setting/row/feather_dash.dive_version`);
     const input = this.page.getByLabel('Value', { exact: true });
     assert.equal(await input.isEnabled(), true);
     await input.fill('acceptance-version');
@@ -341,7 +351,7 @@ class BaseInstall {
     assert.equal(row.value, 'acceptance-version');
   }
   async lockedIdentifier() {
-    await this.open(`${ADMIN}/App%20Setting/feather_dash.dive_id`);
+    await this.open(`${ADMIN}/table/app-setting/row/feather_dash.dive_id`);
     const input = this.page.getByLabel('Value', { exact: true });
     await input.waitFor();
     assert.ok(await input.isDisabled() || await input.getAttribute('readonly') !== null);
@@ -366,7 +376,12 @@ class BaseInstall {
   async command(args, input) {
     return new Promise((resolve, reject) => {
       const child = spawn(process.execPath, ['tools/featherbase.mjs', ...args], {
-        cwd: REPO_ROOT, env: { ...this.env, API_PORT: '8031', WEB_PORT: '5204', PORT: '8031' },
+        cwd: REPO_ROOT, env: {
+          ...this.env,
+          API_PORT: String(Number(this.env.API_PORT) + 1),
+          WEB_PORT: String(Number(this.env.WEB_PORT) + 1),
+          PORT: String(Number(this.env.API_PORT) + 1),
+        },
         stdio: ['pipe', 'pipe', 'pipe'], timeout: 180_000,
       });
       let stdout = '', stderr = '';

@@ -4,6 +4,7 @@
 // chart's value column, and saving or pinning refused by the server.
 // URL.createObjectURL is a browser API jsdom lacks; the spy hands back the
 // exported Blob so the test reads what the person would download.
+import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach } from 'vitest'
@@ -56,14 +57,14 @@ function textOf(blob: Blob): Promise<string> {
 }
 
 async function openReport(admin: Admin, search = '') {
-  await renderApp(`/featherbase/admin/${ENC}/view/report${search}`, admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/view/report${search}`, admin)
   await screen.findByTestId('report-view', {}, { timeout: 8000 })
   await waitFor(() => expect(screen.getAllByTestId('report-row')).toHaveLength(2))
 }
 
-test('a report for a removed Table explains that it cannot load instead of showing an empty report', async ({ admin }) => {
-  await renderApp(`/featherbase/admin/${ENC}/view/report`, admin)
-  expect(await screen.findByText(`Cannot load ${T}`)).toBeInTheDocument()
+test('a report for an unknown Table shows Page not found instead of showing an empty report', async ({ admin }) => {
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/view/report`, admin)
+  expect(await screen.findByText('Page not found')).toBeInTheDocument()
   expect(screen.queryByTestId('export-csv')).not.toBeInTheDocument()
 })
 
