@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -151,6 +152,23 @@ describe('declared transactional runtime actions', () => {
     expect(await sql`select count(*)::int as grants from pg_class c, aclexplode(c.relacl) a where c.oid = 'featherbase.runtime_action_result'::regclass and a.grantee <> c.relowner`).toEqual([{ grants: 0 }])
     await discoverPackages([]); await loadInstalledApps()
     await expect(admin.post(action + 'probe', request)).rejects.toMatchObject({ status: 403 })
+  })
+
+  // #912: an administrator lets an app read named instance Tables, as the caller, never write them.
+  test('linked_tables: read as the caller, never written, and nothing without the listing', async ({ admin, createUser }) => {
+    await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
+    await admin.post('/api/table_def', { name: 'Linked Probe', columns: [{ column_name: 'label', column_type: 'Data' }] })
+    const row = await admin.post<any>('/api/save_row', { table: 'Linked Probe', row: { label: 'visible' } })
+    const probe = (client: TestClient, operation: string, extra: object) => client.post<any>(action + 'probe', { idempotencyKey: randomUUID(), payload: { operation, table: 'Linked Probe', ...extra } })
+    await expect(probe(admin, 'list', { values: { fields: ['label'] } })).rejects.toMatchObject({ status: 417 })
+    await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'actionproof.linked_tables', value: JSON.stringify(['Linked Probe']) } })
+    expect((await probe(admin, 'list', { values: { fields: ['label'] } })).result).toEqual([{ label: 'visible' }])
+    expect((await probe(admin, 'get', { source: row.row_id })).result).toMatchObject({ label: 'visible' })
+    await expect(probe(admin, 'create', { values: { label: 'written' } })).rejects.toMatchObject({ status: 417 })
+    await expect(probe(admin, 'update', { values: { row_id: row.row_id, updated_at: row.updated_at, label: 'changed' } })).rejects.toMatchObject({ status: 417 })
+    // A caller without read permission on the linked Table reads nothing.
+    const plain = await createUser({ email: 'linked-reader@example.com' })
+    expect((await probe(plain, 'list', { values: { fields: ['label'] } })).result).toEqual([])
   })
 
   test('two packages isolate the same local action and key; incomplete declarations never load', async ({ admin }) => {
