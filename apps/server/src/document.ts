@@ -541,7 +541,7 @@ async function assertAccessColumnsUnchanged(
       named.add(id)
       let written: RowValues
       try {
-        written = { ...stored.get(id)!, ...childFieldValues(childMeta, r, 'update', childTiers) }
+        written = { ...stored.get(id)!, ...childFieldValues(childMeta, r, 'update', childTiers, stored.get(id)) }
       } catch {
         // A row that fails validation counts as a change; the save that
         // follows meets the same failure and reports it.
@@ -591,14 +591,14 @@ async function childWriteTiers(user: string, parentWriteTiers: Tiers, childTable
   return new Set(['basic', ...parentWriteTiers, ...(await permittedTiers(user, childTable, 'write'))])
 }
 
-// Tiers are stripped before defaults on insert (a hidden column still gets
-// its default) and after them on update (a default never lands on a stored
-// value the writer could not see).
-function childFieldValues(childMeta: TableMeta, row: RowValues, mode: 'insert' | 'update', writeTiers: Tiers): RowValues {
-  const strip = (values: RowValues) => stripUnwritableFields(childMeta.columns, writeTiers, values)
-  const values = mode === 'insert'
-    ? applyDefaults(childMeta, strip(pickFieldValues(childMeta, row)))
-    : strip(applyDefaults(childMeta, pickFieldValues(childMeta, row)))
+// Defaults may initialise a hidden column, but may not overwrite an existing
+// hidden value. Check supplied values before adding any defaults.
+function childFieldValues(childMeta: TableMeta, row: RowValues, mode: 'insert' | 'update', writeTiers: Tiers, stored?: RowValues): RowValues {
+  const supplied = stripUnwritableFields(childMeta.columns, writeTiers, pickFieldValues(childMeta, row), stored)
+  const defaultsMeta = mode === 'insert' ? childMeta : {
+    ...childMeta, columns: childMeta.columns.filter((column) => writeTiers.has(column.tier)),
+  }
+  const values = applyDefaults(defaultsMeta, supplied)
   return validateValues(childMeta, values, mode)
 }
 
@@ -611,25 +611,24 @@ async function saveChildren(
   parentWriteTiers: Tiers,
 ) {
   const childMeta = await getMeta(input.childTable)
-  // #341: a child column above the writer's tier is dropped, as on the
-  // parent — so a form that was never shown it cannot overwrite or set it.
+  // Child columns are subject to the same atomic refusal as parent columns.
   const writeTiers = await childWriteTiers(user, parentWriteTiers, childMeta.name)
   const table = await tableRelation(childMeta.name)
   const childKey = childMeta.row_key
   const existing = await tx`
-    select ${tx(childKey)} from ${tx(table)}
+    select * from ${tx(table)}
     where parent = ${parentRowId} and parenttype = ${parentMeta.name}
       and parentfield = ${input.columnName}`
-  const existingIds = new Set(existing.map((r) => r[childKey] as string))
+  const stored = new Map(existing.map((r) => [String(r[childKey]), r as RowValues]))
   const keep = new Set<string>()
   const errors: Record<string, string> = {}
 
   for (const [i, row] of input.rows.entries()) {
     const rowId = row[ROW_KEY]
-    const isExisting = rowId != null && existingIds.has(String(rowId))
+    const isExisting = rowId != null && stored.has(String(rowId))
     let fieldValues: RowValues
     try {
-      fieldValues = childFieldValues(childMeta, row, isExisting ? 'update' : 'insert', writeTiers)
+      fieldValues = childFieldValues(childMeta, row, isExisting ? 'update' : 'insert', writeTiers, stored.get(String(rowId)))
     } catch (err) {
       // childFieldValues refuses only field by field; anything else is a bug.
       if (!(err instanceof AppError) || !err.fields) throw err
@@ -667,7 +666,7 @@ async function saveChildren(
     throw new AppError('ValidationError', `Invalid child rows for ${input.columnName}`, errors)
 
   // Rows omitted from the payload are deleted — the payload is authoritative.
-  const remove = [...existingIds].filter((n) => !keep.has(n))
+  const remove = [...stored.keys()].filter((n) => !keep.has(n))
   if (remove.length)
     await tx`delete from ${tx(table)} where ${tx(childKey)} in ${tx(remove)}`
 }
@@ -899,6 +898,7 @@ async function writeDoc(
       await runDocEventScripts('validate', meta.name, ctx.row, ctx.tx)
       await runHooks('before_save', ctx)
       await runDocEventScripts('before_save', meta.name, ctx.row, ctx.tx)
+      stripUnwritableFields(meta.columns.filter((column) => !column.read_only), writeTiers, row, fieldValues)
       await assertAttachedTarget(meta, row, null, user, Boolean(opts.skipPermissions))
       assertStoredFileUrl(meta, row, opts.uploadedFileUrl)
       // Hooks may add or replace Sub-table arrays on ctx.row (an app hook
@@ -993,6 +993,7 @@ async function saveBoundDoc(
   await runHooks('before_validate', hctx)
   await runHooks('validate', hctx)
   await runHooks('before_save', hctx)
+  stripUnwritableFields(meta.columns.filter((column) => !column.read_only), writeTiers, hctx.row, fieldValues)
   // Re-judge the FINALIZED row: defaults and hooks can set Reference values
   // the raw payload never carried (review finding 2).
   await assertUserPermissions(user, meta, hctx.row)
@@ -1043,7 +1044,7 @@ async function updateBoundDoc(
   const writeTiers = await permittedTiers(user, meta.name, 'write')
   const fieldValues = validateValues(
     meta,
-    stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values)),
+    stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values), current),
     'update',
   )
   const row: RowValues = { ...current, ...fieldValues }
@@ -1051,6 +1052,7 @@ async function updateBoundDoc(
   await runHooks('before_validate', hctx)
   await runHooks('validate', hctx)
   await runHooks('before_save', hctx)
+  stripUnwritableFields(meta.columns.filter((column) => !column.read_only), writeTiers, hctx.row, current)
   // BV2!: write only fields present in the payload — plus any a hook
   // actually changed — so CLI-owned columns the Admin never touched survive.
   const toWrite: RowValues = {}
@@ -1110,7 +1112,7 @@ async function updateDoc(
     : await permittedTiers(user, meta.name, 'write')
   const fieldValues = validateValues(
     meta,
-    stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values)),
+    pickFieldValues(meta, values),
     'update',
   )
   assertRequiredChildren(meta, values, 'update')
@@ -1167,7 +1169,8 @@ async function updateDoc(
           'ValidationError',
           `${meta.name} ${name} is cancelled and cannot be modified`,
         )
-      const row: RowValues = { ...(existing as RowValues), ...fieldValues }
+      const writableValues = stripUnwritableFields(meta.columns, writeTiers, fieldValues, existing as RowValues)
+      const row: RowValues = { ...(existing as RowValues), ...writableValues }
       // Expose child rows to hooks under their column names (see insert path).
       for (const ci of pickChildInputs(meta, values)) row[ci.columnName] = ci.rows
       const ctx: HookContext = {
@@ -1186,6 +1189,7 @@ async function updateDoc(
       // #437: neither a role grant nor a write-share opens access columns.
       // Judged on the row the hooks and scripts leave behind — the one that
       // is written — against the stored row.
+      stripUnwritableFields(meta.columns.filter((column) => !column.read_only), writeTiers, row, existing as RowValues)
       await assertAccessColumnsUnchanged(stx, meta, row, existing as RowValues, user, trusted, writeTiers)
       await assertAttachedTarget(meta, row, existing as RowValues, user, trusted)
       assertStoredFileUrl(meta, row, existing.file_url)

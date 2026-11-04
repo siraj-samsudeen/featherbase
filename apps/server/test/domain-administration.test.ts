@@ -7,13 +7,16 @@ import { eventVisibleTo } from '../src/realtime'
 const employee = tableRef('contactproof.employee')
 
 describe('domain administration', () => {
-  test('an ungranted contact detail rejects the entire correction', async ({ admin, createUser }) => {
+  test.for(['request', 'hook'] as const)('an ungranted contact detail from %s rejects the entire correction', async (source, { admin, createUser }) => {
     registerApp({
       name: 'contactproof',
       tables: [{ name: employee.name, id_pattern: 'prompt', columns: [
         { column_name: 'phone', column_type: 'Data' },
         { column_name: 'employee_number', column_type: 'Data', tier: 'restricted' },
       ] }],
+      doc_events: { [employee.name]: { before_save(ctx) {
+        if (source === 'hook' && ctx.row.phone === 'changed') ctx.row.employee_number = 'FORBIDDEN'
+      } } },
       fixtures: [{ table: employee.name, rows: [
         { row_id: 'priya', phone: 'demo-phone-priya', employee_number: 'DEMO-003' },
       ] }],
@@ -28,11 +31,17 @@ describe('domain administration', () => {
       expect(before.employee_number).toBe('DEMO-003')
       await expectApiError(editor.post('/api/save_row', {
         table: employee.name,
-        row: { row_id: 'priya', updated_at: before.updated_at, phone: 'changed', employee_number: 'FORBIDDEN' },
+        row: { row_id: 'priya', updated_at: before.updated_at, phone: 'changed',
+          ...(source === 'request' ? { employee_number: 'FORBIDDEN' } : {}),
+        },
       }), { status: 403 })
       expect(await editor.get(employee.rowUrl('priya'))).toMatchObject({
         phone: 'demo-phone-priya', employee_number: 'DEMO-003', updated_at: before.updated_at,
       })
+      expect(await editor.post('/api/save_row', {
+        table: employee.name,
+        row: { row_id: 'priya', updated_at: before.updated_at, phone: 'permitted', employee_number: 'DEMO-003' },
+      })).toMatchObject({ phone: 'permitted', employee_number: 'DEMO-003' })
     } finally {
       suspendRuntimeApp('contactproof')
     }

@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 import { sql } from './db'
 import { AppError } from './errors'
 import { activeApps, isProvisioningApp } from './app-lifecycle'
@@ -317,20 +318,24 @@ export function filterReadFields(
   return out
 }
 
-// Drop writes to columns above the user's write tier (silently ignored,
-// like read_only) so a client can't escalate via restricted-tier columns.
+// An ordinary column outside the grant rejects the whole correction. Silently
+// discarding it would report success after saving only part of the request.
 export function stripUnwritableFields(
   columns: { column_name: string; tier: 'basic' | 'restricted' }[],
   tiers: Set<'basic' | 'restricted'>,
   values: Record<string, unknown>,
+  stored?: Record<string, unknown>,
 ): Record<string, unknown> {
   if (tiers.has('basic') && tiers.has('restricted')) return values
-  const writable = new Set(
-    columns.filter((f) => allowsTier(tiers, f.tier)).map((f) => f.column_name),
-  )
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(values)) if (writable.has(k)) out[k] = v
-  return out
+  const allowed = { ...values }
+  for (const column of columns) {
+    const name = column.column_name
+    if (!Object.hasOwn(values, name) || allowsTier(tiers, column.tier)) continue
+    if (!stored || !isDeepStrictEqual(values[name] ?? null, stored[name] ?? null))
+      throw new AppError('PermissionError', `No write permission on column ${name}`)
+    delete allowed[name]
+  }
+  return allowed
 }
 
 export async function assertSystemManager(user: string) {

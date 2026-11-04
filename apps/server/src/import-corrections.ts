@@ -32,7 +32,7 @@ const same = (a: unknown, b: unknown, type: string) => isDeepStrictEqual(normali
  * history, including an initial import and an import that changed nothing. */
 export async function planImport(meta: TableMeta, current: Row, input: Row, user: string): Promise<ImportPlan> {
   const shared = await isSharedWith(user, meta.name, String(current.row_id), 'write')
-  const allowed = shared ? input : stripUnwritableFields(meta.columns, await permittedTiers(user, meta.name, 'write'), input)
+  const allowed = shared ? input : stripUnwritableFields(meta.columns.filter((column) => !column.read_only), await permittedTiers(user, meta.name, 'write'), input, current)
   const values: Row = { ...input }
   const source_values: Row = {}
   const protected_values: Row = {}
