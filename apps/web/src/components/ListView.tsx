@@ -5,7 +5,8 @@ import { choiceLabel, parseFilters, rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, getToken, listResource } from '../lib/api'
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
-import { RowName } from '../lib/row-name'
+import { LinkedTitle, RowLink } from '../lib/row-name'
+import { UNSEEN_ROW, useLinkTitle } from '../lib/relations'
 import { useNavigation } from '../lib/navigation'
 import { TreeOfAll } from './RelationTree'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
@@ -1258,7 +1259,7 @@ function ListCell({
           <PrincipalName id={String(row[col.column_name])} />
         ) : col.column_type === 'Reference' && col.reference_table && !isBlank(row[col.column_name]) ? (
           // A title that links to another row reads as that row's title.
-          <RowTitle table={col.reference_table} rowId={String(row[col.column_name])} />
+          <LinkedTitle table={col.reference_table} rowId={String(row[col.column_name])} />
         ) : col.column_name !== 'row_id' && isBlank(row[col.column_name]) ? (
           // #792: a row with a blank title is led by its id, never a blank; a
           // person's opaque id reads as what identifies them (#835).
@@ -1284,20 +1285,16 @@ function ListCell({
       ) : col.column_type === 'Reference' && col.reference_table && !isBlank(value) ? (
         // #792: a link reads as the linked row's title and opens that row;
         // #910 D5: its code follows when people use one.
-        <Link
-          to="/featherbase/admin/table/$table/row/$name"
-          search={{ prefill: undefined }}
-          params={{ table: col.reference_table, name: String(value) }}
+        <RowLink
+          table={col.reference_table}
+          rowId={String(value)}
           onClick={(e) => {
             e.stopPropagation()
             if (!nav || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
             e.preventDefault()
             nav.push({ ...nav.step, pane: { table: col.reference_table!, row: String(value) } })
           }}
-          className="text-action hover:underline"
-        >
-          <RowName table={col.reference_table} rowId={String(value)} />
-        </Link>
+        />
       ) : (
         cell(value, col.column_type, settings)
       )}
@@ -1306,6 +1303,20 @@ function ListCell({
 }
 
 const isBlank = (v: unknown) => v == null || String(v).trim() === ''
+
+/** A nested row's link, by its key as before; a row the viewer cannot read
+ *  is neutral words with no link (#910 D3). */
+function NestedLink({ table, rowId }: { table: string; rowId: string }) {
+  const principal = isPrincipalTable(table)
+  const title = useLinkTitle(principal ? undefined : table, rowId)
+  if (!principal && title.state === 'unreadable') return <span className="text-ink-muted">{UNSEEN_ROW}</span>
+  return (
+    <Link to="/featherbase/admin/table/$table/row/$name" search={{ prefill: undefined }}
+      params={{ table, name: rowId }} className="text-action hover:underline">
+      {principal ? <PrincipalName id={rowId} /> : rowId}
+    </Link>
+  )
+}
 
 // usable-on-any-device "Lists fit a phone": the same rows as cards. The first
 // column is the card's title and link, the first Choice its status, and the
@@ -1517,14 +1528,7 @@ function InlineChildGrid({
               {cols.map((c) => (
                 <td key={c.column_name} className="px-3 py-1 text-ink">
                   {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
-                    <Link
-                      to="/featherbase/admin/table/$table/row/$name"
-                      search={{ prefill: undefined }}
-                        params={{ table: c.reference_table, name: String(r[c.column_name]) }}
-                      className="text-action hover:underline"
-                    >
-                      {isPrincipalTable(c.reference_table) ? <PrincipalName id={String(r[c.column_name])} /> : String(r[c.column_name])}
-                    </Link>
+                    <NestedLink table={c.reference_table} rowId={String(r[c.column_name])} />
                   ) : (
                     c.column_type === 'Choice' && r[c.column_name] != null
                       ? choiceLabel(String(r[c.column_name]), c.choice_labels, t)
@@ -1710,7 +1714,7 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
   return (
     <>
       {label} {op}{' '}
-      {linked ? <RowTitle table={col.reference_table!} rowId={String(value)} />
+      {linked ? <LinkedTitle table={col.reference_table!} rowId={String(value)} />
         : (op === '=' || op === '!=') && col?.column_type === 'Choice' ? choiceLabel(String(value), col.choice_labels, t)
         : filterValueLabel(op, value)}
     </>

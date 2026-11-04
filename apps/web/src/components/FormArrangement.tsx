@@ -8,6 +8,7 @@ import { api } from '../lib/api'
 import type { ColumnDef, TableMeta } from '../lib/meta'
 import { formatValue, type Settings } from '../lib/settings'
 import { RowTitle } from '../lib/row-titles'
+import { RowLink } from '../lib/row-name'
 import { useIsSystemManager } from '../lib/session'
 import { useI18n } from '../lib/i18n'
 import { useNavigation } from '../lib/navigation'
@@ -264,12 +265,7 @@ export function ValueField({ field, value, meta, settings, columns }: {
       e.preventDefault()
       nav.push({ ...nav.step, pane: { table: target, row: String(value) } })
     }
-    shown = (
-      <RouterLink to="/featherbase/admin/table/$table/row/$name" params={{ table: target, name: String(value) }}
-        search={{ prefill: undefined }} onClick={open} className="text-action hover:underline">
-        <RowTitle table={target} rowId={String(value)} />
-      </RouterLink>
-    )
+    shown = <RowLink table={target} rowId={String(value)} onClick={open} />
   } else if (kind === 'yesno')
     shown = <span className={pillClasses(value ? 'bg-positive-tint text-positive' : 'bg-subtle text-ink-muted')}>{value ? 'Yes' : 'No'}</span>
   else if (kind === 'number') shown = formatValue(field.column_type, value, settings) || String(value)

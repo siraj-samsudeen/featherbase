@@ -7,6 +7,7 @@ import { pickerFor } from '../lib/pickers'
 import { changeOverride, overrideControl } from '../lib/metadata-override-editor'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
+import { UNSEEN_ROW, useLinkTitle } from '../lib/relations'
 import { useRowCapabilities } from '../lib/row-capabilities'
 import { useWhoAmI } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
@@ -1415,7 +1416,11 @@ export function LinkControl({
   const valueLabel = picker.peopleSearch
     ? value ? principalLabel(String(value), principalName, principalName === null) : null
     : picker.labelField && current.data ? String(current.data[picker.labelField] ?? '') || null : null
-  const shown = query ?? valueLabel ?? String(value ?? '')
+  // #910 D3: a row the viewer cannot read is named neutrally, never by its id,
+  // and offers no way to it.
+  const linked = useLinkTitle(!picker.peopleSearch && value ? target : undefined, value ? String(value) : undefined)
+  const unseen = !picker.peopleSearch && Boolean(value) && linked.state === 'unreadable'
+  const shown = query ?? (unseen ? UNSEEN_ROW : valueLabel ?? String(value ?? ''))
 
   return (
     <div className="relative">
@@ -1446,10 +1451,10 @@ export function LinkControl({
           if (floating && e.target.value === '') onChange(null)
           search(e.target.value)
         }}
-        className={`${className} ${hasValue ? 'pr-14' : ''}`}
+        className={`${className} ${hasValue && !unseen ? 'pr-14' : ''}`}
         {...common}
       />
-      {hasValue && (
+      {hasValue && !unseen && (
         <span className="absolute inset-y-0 right-2 flex items-center gap-0.5">
           {nav && (
             <button

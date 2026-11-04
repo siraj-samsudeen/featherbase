@@ -9,7 +9,7 @@ import { adminPageTitle } from 'shared'
 import { useNavigation } from '../lib/navigation'
 import { cardClasses, inputClasses, pillClasses, touchTargetClasses } from '@featherbase/shop-floor'
 import { fmtCount, fmtShowing } from '@featherbase/shop-floor'
-import { RowTitle } from '../lib/row-titles'
+import { LinkedTitle } from '../lib/row-name'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -465,7 +465,7 @@ type CardColumn = { column_name: string; label: string; column_type: string; ref
 function cellText(c: CardColumn, row: Row, settings: Settings) {
   const value = row[c.column_name]
   if (c.column_type === 'Reference' && c.reference_table && value != null && value !== '')
-    return <RowTitle table={c.reference_table} rowId={String(value)} />
+    return <LinkedTitle table={c.reference_table} rowId={String(value)} />
   return formatValue(c.column_type, value, settings)
 }
 
