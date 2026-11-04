@@ -196,6 +196,22 @@ describe('Tickets independently installed product contract (#810)', () => {
     expect(own).toEqual([{ operation: 'edit', by: w.owner.user }])
   })
 
+  test("after the requester's own scope change only re-approval is needed; a recipient change needs verification", async ({ admin, createUser }) => {
+    const w = await setup(admin, createUser)
+    let ticket = await approve(w.bala, await verify(w.verifier, await create(w.owner)))
+    ticket = (await act(w.owner, 'edit', { ...revision(ticket), details: { scope: 'Silver SAP, read only' } })).ticket
+    expect(ticket.ticket_state).toBe('Awaiting approval')
+    ticket = await approve(w.bala, ticket)
+    ticket = (await act(w.owner, 'edit', { ...revision(ticket), details: { email: 'another@example.com' } })).ticket
+    expect(ticket.ticket_state).toBe('Needs verification')
+    let inactive = await verify(w.verifier, await create(w.owner), false)
+    inactive = (await act(w.owner, 'edit', { ...revision(inactive), details: { scope: 'Gold finance, read only' } })).ticket
+    expect(inactive.ticket_state).toBe('Needs verification')
+    let bronze = await verify(w.verifier, await create(w.owner))
+    bronze = (await act(w.owner, 'edit', { ...revision(bronze), details: { resource: 'Bronze Zakya' } })).ticket
+    expect(bronze.ticket_state).toBe('Policy review')
+  })
+
   test('inactive, unknown-region, restricted-resource and empty configuration fail closed; settings changes revoke old memberships', async ({ admin, createUser }) => {
     const w = await setup(admin, createUser)
     for (const [active, region, scope] of [[false, 'Kerala', 'Gold'], [true, 'Unknown', 'Gold'], [true, 'Kerala', 'Bronze Zakya']] as const) {
