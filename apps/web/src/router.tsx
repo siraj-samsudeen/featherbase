@@ -34,6 +34,7 @@ import { useHomePages } from './lib/home-pages'
 import { Jobs } from './pages/Jobs'
 import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
+import { AccessExplanation } from './pages/AccessExplanation'
 import { AccountLayout } from './pages/AccountLayout'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
@@ -611,6 +612,18 @@ const signInMethodsRoute = createRoute({
   component: SignInMethods,
 })
 
+// #628: what a person can see, and why. An account page, so a person without
+// Admin access opens their own; the server refuses anyone else's to all but a
+// System Manager.
+const accessExplanationRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: 'access/$person',
+  component: function AccessExplanationPage() {
+    const { person } = accessExplanationRoute.useParams()
+    return <AccessExplanation person={person} />
+  },
+})
+
 // person-resolution: find a person by an exact identifier (an employee code
 // mailed by HR) — linked from the Person list.
 const findPersonRoute = createRoute({
@@ -918,7 +931,7 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   salesTargetRoute,
-  accountRoute.addChildren([signInMethodsRoute]),
+  accountRoute.addChildren([signInMethodsRoute, accessExplanationRoute]),
   printRoute,
   adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])
