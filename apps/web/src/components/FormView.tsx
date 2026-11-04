@@ -476,11 +476,10 @@ export function FormView({
             {groups.map((g) => (
               <FieldGroupView key={`${arrangement.mode}-${g.key}`} group={g} columns={arrangement.columns}>{control}</FieldGroupView>
             ))}
-            {rowsReadOnly ? (
-              <BookkeepingLine fields={bookkeeping} values={values} settings={formSettings} />
-            ) : (
+            {!rowsReadOnly && (
               <FieldGroupView group={{ key: 'bookkeeping', fields: bookkeeping }} columns={arrangement.columns}>{control}</FieldGroupView>
             )}
+            <BookkeepingLine fields={rowsReadOnly ? bookkeeping : []} values={baseline as Row} settings={formSettings} />
           </div>
         )
       })() : (

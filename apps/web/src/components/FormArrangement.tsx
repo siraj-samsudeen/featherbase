@@ -5,7 +5,8 @@ import { useId, useState, type MouseEvent, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { api } from '../lib/api'
-import type { ColumnDef, TableMeta } from '../lib/meta'
+import { ROW_STAMPS, type ColumnDef, type TableMeta } from '../lib/meta'
+import { ShownName } from '../lib/people'
 import { formatValue, type Settings } from '../lib/settings'
 import { RowTitle } from '../lib/row-titles'
 import { RowLink } from '../lib/row-name'
@@ -13,7 +14,7 @@ import { useIsSystemManager } from '../lib/session'
 import { useI18n } from '../lib/i18n'
 import { useNavigation } from '../lib/navigation'
 import {
-  buttonClasses, pillClasses,
+  buttonClasses, fmtDate, pillClasses,
   Braces, CalendarDays, ChevronDown, ChevronRight, Hash, Image, Link2, ToggleRight, Type, type LucideIcon,
 } from '@featherbase/shop-floor'
 
@@ -297,16 +298,45 @@ export function ValueField({ field, value, meta, settings, columns }: {
   )
 }
 
-/** When the row was created and changed, and by whom, on one quiet line. */
+/** The day of an instant on the viewer's own clock, DD-Mon-YYYY. */
+function stampDay(value: unknown): string {
+  const d = new Date(String(value))
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return fmtDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
+}
+
+/** "Created 04-Nov-2026 by Asha, updated 05-Nov-2026 by Ravi": the row's
+ *  own stamps (ROW_STAMPS, as the reading presentation names them). */
+function RowStamps({ values }: { values: Record<string, unknown> }) {
+  const parts = (['created_at', 'updated_at'] as const).flatMap((at) => {
+    const day = isEmpty(values[at]) ? '' : stampDay(values[at])
+    if (!day) return []
+    const by = values[ROW_STAMPS[at].by]
+    return [{ at, day, by: isEmpty(by) ? null : String(by) }]
+  })
+  return <>{parts.map((p, i) => (
+    <span key={p.at}>
+      {i > 0 && ', '}
+      {i > 0 ? ROW_STAMPS[p.at].label.toLowerCase() : ROW_STAMPS[p.at].label} {p.day}
+      {p.by && <> by <ShownName id={p.by} /></>}
+    </span>
+  ))}</>
+}
+
+/** When the row was created and changed, and by whom, on one quiet line:
+ *  the platform's stamps, then any bookkeeping columns a source keeps. */
 export function BookkeepingLine({ fields, values, settings }: { fields: ColumnDef[]; values: Record<string, unknown>; settings: Settings }) {
   const { t } = useI18n()
   const shown = fields.filter((f) => !isEmpty(values[f.column_name]))
-  if (!shown.length) return null
+  const stamped = !isEmpty(values.created_at) || !isEmpty(values.updated_at)
+  if (!shown.length && !stamped) return null
   return (
     <p className="mt-3 border-t border-border pt-2 text-xs text-ink-subtle" data-testid="bookkeeping-line">
+      {stamped && <RowStamps values={values} />}
       {shown.map((f, i) => (
         <span key={f.column_name}>
-          {i > 0 && ' · '}
+          {(i > 0 || stamped) && ' · '}
           {t(f.label ?? f.column_name)}{' '}
           <span className="text-ink-muted">
             {f.column_type === 'Reference' && f.reference_table
