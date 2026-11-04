@@ -230,3 +230,13 @@ test("a link to a row the viewer can't read is not in the tab order", async ({ a
   await waitFor(() => expect(box).toHaveTextContent('Not visible to you'))
   expect(box).not.toHaveAttribute('tabindex')
 })
+
+// Beside the pane the map is narrow whatever the window: it switches to its
+// list by its own width, so the drawing never shrinks below legible text.
+test("the map picks its drawing or its list by its own width, not the window's", async ({ admin }) => {
+  await seed(admin)
+  await openMap(admin, 'Rm Order', 'ord-1')
+  expect(screen.getByTestId('map-svg').getAttribute('class')).toMatch(/@4xl:block/)
+  expect(screen.getByTestId('map-narrow').className).toMatch(/@4xl:hidden/)
+  expect(screen.getByTestId('map-svg').closest('.\\@container')).not.toBeNull()
+})

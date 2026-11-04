@@ -119,6 +119,36 @@ test('a new row keeps the sectioned layout and no arrange switch', async ({ admi
   expect(screen.queryByTestId('arrange-bar')).not.toBeInTheDocument()
 })
 
+// #910: beside the drill pane the form is narrow whatever the window is, so
+// its two columns follow the form's own width, not the window's.
+test("two columns follow the form's own width, so a form beside the pane falls back to one", async ({ admin }) => {
+  await parcelDesk(admin)
+  await admin.put('/api/user_settings/Arrange%20Desk', { form: { mode: 'importance', columns: 2 } })
+  await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
+  const group = (await screen.findAllByTestId('field-group', undefined, { timeout: 8000 }))[0]
+  const grid = group.querySelector('.grid')!
+  expect(grid.className).toMatch(/@2xl:grid-cols-2/)
+  expect(grid.className).not.toMatch(/(^|\s)md:grid-cols-2/)
+  expect(grid.closest('.\\@container')).not.toBeNull()
+})
+
+test('a sectioned form in two columns also follows its own width', async ({ admin }) => {
+  await parcelDesk(admin, true)
+  await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
+  const section = await screen.findByTestId('form-section-1', undefined, { timeout: 8000 })
+  expect(section.className).toMatch(/@2xl:grid-cols-2/)
+  expect(section.className).not.toMatch(/(^|\s)md:grid-cols-2/)
+})
+
+test('Arrange by stays on one line in a narrow form', async ({ admin }) => {
+  await parcelDesk(admin)
+  await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
+  const bar = await screen.findByTestId('arrange-bar', undefined, { timeout: 8000 })
+  expect(bar.className).toMatch(/\bflex-nowrap\b/)
+  expect(bar.className).toMatch(/\boverflow-x-auto\b/)
+  expect(bar.querySelector('.flex-wrap')).toBeNull()
+})
+
 // ---- A read-only connected row ----
 
 const ENV = 'WEB_ARRANGE_FIXTURE_URL'
