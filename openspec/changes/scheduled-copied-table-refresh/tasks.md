@@ -16,6 +16,6 @@
 ## 3. Completion
 
 - [x] 3.1 Boot the isolated database and ports with init.sh; run targeted HTTP tests, local worker proof and browser acceptance with no pending steps.
-- [ ] 3.2 Independently verify checklist at 1280 pixels; inspect screenshots and interaction clip. Run ordinary security review at the exact integration head, fix material findings, rerun checks.
-- [ ] 3.3 Run strict OpenSpec validation, typechecks, relevant regression suites and exact-head CI; open one stacked PR, subscribe to CI/comments and report evidence to manager.
-- [ ] 3.4 After owner review of evidence, sync/archive on this branch and reconcile against final #772 before manager-owned merge.
+- [x] 3.2 Independently verify checklist at 1280 pixels; inspect screenshots and interaction clip. Run ordinary security review at the exact integration head, fix material findings, rerun checks. (Verifier PASS earlier; Codex standard + adversarial, two rounds, 04-Nov-2026: rename guard fixed, notice durability is #934.)
+- [x] 3.3 Run strict OpenSpec validation, typechecks, relevant regression suites and exact-head CI; open one stacked PR, subscribe to CI/comments and report evidence to manager.
+- [x] 3.4 After owner review of evidence, sync/archive on this branch and reconcile against final #772 before manager-owned merge.
