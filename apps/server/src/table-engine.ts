@@ -1005,6 +1005,8 @@ export async function renameColumn(
       await tx.unsafe(`alter table ${relation} rename column ${quoteIdent(from)} to ${quoteIdent(target)}`)
     await tx`update column_def set column_name = ${target}
       where parent = ${meta.name} and column_name = ${from}`
+    await tx`update featherbase.table_copy set key_column = ${target}
+      where target_table = ${meta.name} and key_column = ${from}`
     // A Sub-table's children name their column on every row, in
     // `parentfield`, and every child read filters on it (document.ts
     // loadChildren). Renaming only the column_def would leave them addressed
@@ -1189,6 +1191,9 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
     const [row] = await tx`select * from table_def where name = ${from}`
     await tx`insert into table_def ${tx({ ...row, name: to, ...(meta.owner_app ? { physical_relation: relationName } : {}), updated_at: new Date() } as unknown as Record<string, never>)}`
     await tx`update column_def set parent = ${to} where parent = ${from}`
+    // A copied Table's provenance follows it, before the old definition's
+    // delete would cascade it away (#772: Copy again must survive a rename).
+    await tx`update featherbase.table_copy set target_table = ${to} where target_table = ${from}`
     await tx`delete from table_def where name = ${from}`
     await tx`update column_def set reference_table = ${to} where reference_table = ${from}`
     await tx`update column_def set row_table = ${to} where row_table = ${from}`
