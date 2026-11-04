@@ -268,11 +268,10 @@ function QuickView({ report, why }: { report: Report; why?: 'too_large' | 'month
   return (
     <section className="fd-card fd-quick" data-testid="quick-view">
       <header className="fd-quick-head">
-        <h2 className="fd-title">Quick view</h2>
-        <p className="fd-muted" data-testid="quick-label">
-          {quickLabel(why)}
+        <p className="fd-muted fd-quick-line">
+          <span data-testid="quick-label">{quickLabel(why)}</span>
+          <span data-testid="data-line">{dataLine(report)}</span>
         </p>
-        <p className="fd-muted" data-testid="data-line">{dataLine(report)}</p>
         {!report.targets_available && <p className="fd-muted">Targets for {monthWords(report.month)} aren't available yet; sales are shown.</p>}
       </header>
       {body === 'nothing' && <p data-testid="quick-nothing">{report.month === 'last' ? 'Nothing was recorded last month for your section.' : 'Nothing recorded this month for your section yet.'}</p>}
