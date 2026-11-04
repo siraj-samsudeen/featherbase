@@ -1718,6 +1718,9 @@ async function setRetirement(
   // Only someone who may open the row may retire or reactivate it: the read
   // path's own checks (mandatory access, shares, a comment's or file's row).
   await getDoc(table, name, user)
+  // PERM-008: reactivating is editing, so a write share grants it as it
+  // grants an update; retiring is deleting, which no share grants.
+  const sharedWrite = !retire && await isSharedWith(user, table, name, 'write')
   const tbl = await tableRelation(table)
   let previous: RowValues = {}
   const [saved] = await afterCommitOf(() => sql.begin(async (tx) => {
@@ -1727,8 +1730,11 @@ async function setRetirement(
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${name} not found`)
     previous = existing as RowValues
-    await assertDocPermission(user, table, retire ? 'delete' : 'write', String(existing.created_by))
-    await assertUserPermissions(user, meta, existing as RowValues)
+    await assertMandatoryAccess(user, meta, existing as RowValues)
+    if (!sharedWrite) {
+      await assertDocPermission(user, table, retire ? 'delete' : 'write', String(existing.created_by))
+      await assertUserPermissions(user, meta, existing as RowValues)
+    }
     if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, existing as RowValues, user)
     await assertRowNotManaged(stx, meta, name, user)
     if (retire && existing.retired_at != null)
@@ -1737,6 +1743,19 @@ async function setRetirement(
       throw new AppError('ValidationError', `${table} ${name} is not retired`)
     // The database's clock, as for history (#432).
     const [{ at }] = await tx<{ at: Date }[]>`select clock_timestamp() as at`
+    // The whole update trigger chain (AGENTS.md invariant 2): the pre-save
+    // hooks and scripts see the row as it will be, and may refuse it (a
+    // Table whose controller refuses generic writes refuses this too). Only
+    // the retirement columns are written, whatever a hook changes.
+    const pre: HookContext = {
+      row: { ...(existing as RowValues), retired_at: retire ? at : null, retired_by: retire ? user : null, retired_reason: reason },
+      old: existing as RowValues, meta, user, isNew: false, tx: stx,
+    }
+    await runHooks('before_validate', pre)
+    await runHooks('validate', pre)
+    await runDocEventScripts('validate', meta.name, pre.row, stx)
+    await runHooks('before_save', pre)
+    await runDocEventScripts('before_save', meta.name, pre.row, stx)
     const [updated] = await tx`
       update ${tx(tbl)} set retired_at = ${retire ? at : null}, retired_by = ${retire ? user : null},
         retired_reason = ${reason}, updated_at = ${at}, updated_by = ${user}
@@ -1753,8 +1772,6 @@ async function setRetirement(
       ref_name: name,
       data: { changed: [], retirement: retire ? { action: 'retired', reason } : { action: 'reactivated' } } as unknown as string,
     })}`
-    // The update half of the trigger chain, as a save runs it (AGENTS.md
-    // invariant 2). No field changes, so validation hooks have nothing to judge.
     const ctx: HookContext = { row: { ...(updated as RowValues) }, old: existing as RowValues, meta, user, isNew: false, tx: stx }
     await runHooks('after_save', ctx)
     await runHooks('on_update', ctx)
@@ -1913,8 +1930,10 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
     const retirement = (action: 'delete' | 'write') => allowed(async () => {
       assertNotSystemWritten(meta, 'changed')
       await assertSecurityWriter(table, user)
-      await assertDocPermission(user, table, action, String(row.created_by))
-      await assertUserPermissions(user, meta, row)
+      if (action === 'delete' || !(await isSharedWith(user, table, name, 'write'))) {
+        await assertDocPermission(user, table, action, String(row.created_by))
+        await assertUserPermissions(user, meta, row)
+      }
       if (ROW_ATTACHED_TABLES.has(table)) await assertAttachedRowReadable(table, row, user)
     })
     const retirable = canRetire(meta)

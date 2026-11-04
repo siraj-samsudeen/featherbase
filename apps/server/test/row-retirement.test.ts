@@ -223,3 +223,26 @@ async function tableRelationOf(name: string) {
   const { tableRelation, quoteRelation } = await import('../src/table-engine')
   return quoteRelation(await tableRelation(name))
 }
+
+describe('#859 reactivating is editing (Codex review round 2)', () => {
+  test('a write share lets its holder reactivate, never retire', async ({ admin, createUser }) => {
+    const { plant } = await plants(admin)
+    const guest = await createUser({ roles: [] })
+    const user = (guest as unknown as { user: string }).user
+    await admin.post('/api/save_row', { table: 'Share', row: { share_table: PLANT, share_name: 'Sample plant', person: user, read: true, write: true } })
+    expect(await guest.get(`${plant.rowUrl('Sample plant')}:capabilities`)).toMatchObject({ retire: false })
+    await expectApiError(retire(guest, plant, 'Sample plant', 'mine now'), { status: 403 })
+    await retire(admin, plant, 'Sample plant', 'Not a real location')
+    expect(await guest.get(`${plant.rowUrl('Sample plant')}:capabilities`)).toMatchObject({ reactivate: true })
+    expect(await reactivate(guest, plant, 'Sample plant')).toMatchObject({ retired_at: null })
+  })
+
+  test('a controller that refuses generic writes refuses retiring too', async ({ admin }) => {
+    const svc = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-rt-bot', roles: [] })
+    await expectApiError(admin.post(`/api/table/Service%20Account/${encodeURIComponent(svc.row_id)}:retire`, { reason: 'x' }), {
+      status: 417, message: expect.stringContaining('managed by the service-account API'),
+    })
+    const [after] = await sql`select retired_at from service_account where row_id = ${svc.row_id}`
+    expect(after.retired_at).toBeNull()
+  })
+})

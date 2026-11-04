@@ -769,7 +769,6 @@ export function FormView({
         <RetireDialog
           table={table}
           name={name}
-          label={name}
           // The person's own retire is not someone else's change (RT-002).
           onSubmit={() => { suppressStaleUntil.current = Date.now() + 2000 }}
           onClose={() => setRetiring(false)}

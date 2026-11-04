@@ -441,11 +441,12 @@ async function countDocsImpl(
   table: string,
   filters: Filter[] = [],
   user = 'Administrator',
+  opts: { withRetired?: boolean } = {},
 ): Promise<number> {
   // M3 seam: source-bound Tables count on the source (spec EDS-5).
   const meta = await getMeta(table)
   if (isBound(meta)) return boundCountDocs(meta, filters, user)
-  const { table: tbl, where } = await scopedWhere(table, user, hideRetired(meta, filters))
+  const { table: tbl, where } = await scopedWhere(table, user, hideRetired(meta, filters, opts.withRetired))
   const [{ count }] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
   return count as number
 }

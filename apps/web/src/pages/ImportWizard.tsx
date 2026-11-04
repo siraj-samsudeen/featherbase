@@ -313,7 +313,8 @@ function TargetPicker({
 function TargetRowCount({ i, table }: { i: number; table: string }) {
   const count = useQuery({
     queryKey: ['iw-count', table],
-    queryFn: () => api.get<{ count: number }>(`/api/table/${encodeURIComponent(table)}:count`),
+    // #859: every row an import can match, retired ones included.
+    queryFn: () => api.get<{ count: number }>(`/api/table/${encodeURIComponent(table)}:count?with_retired=true`),
     staleTime: 30_000,
   })
   if (count.data == null) return null

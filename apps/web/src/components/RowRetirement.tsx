@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { StatusPill, buttonClasses, cardClasses, fmtInstant, inputClasses, labelClasses } from '@featherbase/shop-floor'
 import { ApiError, api } from '../lib/api'
 import { PrincipalName } from '../lib/people'
+import { RowTitle } from '../lib/row-titles'
 
 // #859 (ADR 0019): retiring takes a row out of use without deleting it. The
 // server owns every rule (the delete right to retire, the write right to
@@ -28,7 +29,9 @@ export async function refreshAfterRetirement(queryClient: ReturnType<typeof useQ
 }
 
 export function RetiredBadge({ className }: { className?: string }) {
-  return <StatusPill tone="missing" className={className}><span data-testid="retired-badge">Retired</span></StatusPill>
+  // A border as well as the tint: on the form's own grey header the tint alone
+  // all but vanished (verifier, #859).
+  return <StatusPill tone="missing" className={`border border-ink-subtle ${className ?? ''}`}><span data-testid="retired-badge">Retired</span></StatusPill>
 }
 
 /** "Retired <when> by <who> — <why>", under a retired row's heading. */
@@ -44,7 +47,7 @@ export function RetiredNotice({ row }: { row: Row }) {
 }
 
 /** Asks for the reason, then retires the row. */
-export function RetireDialog({ table, name, label, onClose, onSubmit }: { table: string; name: string; label: string; onClose: () => void; onSubmit?: () => void }) {
+export function RetireDialog({ table, name, onClose, onSubmit }: { table: string; name: string; onClose: () => void; onSubmit?: () => void }) {
   const queryClient = useQueryClient()
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -80,7 +83,7 @@ export function RetireDialog({ table, name, label, onClose, onSubmit }: { table:
         data-testid="retire-row-dialog"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="retire-row-title" className="mb-2 text-base font-semibold text-ink">Retire {table} {label}?</h2>
+        <h2 id="retire-row-title" className="mb-2 text-base font-semibold text-ink">Retire {table}: <RowTitle table={table} rowId={name} />?</h2>
         <p className="mb-3 text-sm text-ink-muted">
           It stays, with its history, but lists and pickers stop offering it. You can reactivate it later.
         </p>

@@ -2235,7 +2235,7 @@ app.get('/api/table/:table', async (c) => {
         throw new AppError('BadRequestError', 'filters must be valid JSON')
       }
     }
-    return c.json({ count: await countDocs(table, parsed as never, user.row_id) })
+    return c.json({ count: await countDocs(table, parsed as never, user.row_id, { withRetired: c.req.query('with_retired') === 'true' }) })
   }
   if (suffix) {
     const action = getCollectionAction(suffix)
