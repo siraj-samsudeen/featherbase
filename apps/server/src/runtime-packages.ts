@@ -10,7 +10,7 @@ import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
-import { APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
+import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
 import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
@@ -118,6 +118,10 @@ const manifestSchema = z.object({
   // #642 (E8): the app's controls in the shared top bar.
   bar: z.array(barControl).optional(),
   tabs: tabsDeclaration.optional(),
+  // #941 (ADR 0019): the app's accent, one of the platform's named set. Any
+  // text is accepted here so the app is still found; installing (or upgrading
+  // to) an accent outside the set is refused, naming the accents there are.
+  accent: z.string().optional(),
   // #629: the app's glossary terms, written under the app at install and
   // upgrade.
   glossary: glossaryDeclaration.optional(),
@@ -249,8 +253,15 @@ function sameManifest(pkg: RuntimePackage, row: Record<string, unknown>) {
   return canonical(stored) === canonical(pkg.app.runtime_manifest)
 }
 
+function assertKnownAccent(pkg: RuntimePackage) {
+  const { accent } = pkg.manifest
+  if (accent !== undefined && !(APP_ACCENTS as readonly string[]).includes(accent))
+    throw new AppError('ValidationError', `App ${pkg.name} names the accent '${accent}'; Featherbase provides: ${APP_ACCENTS.join(', ')}`)
+}
+
 export async function verifySelectedRuntimePackage(name: string) {
   const pkg = await verifyArtifact(packages.get(name))
+  assertKnownAccent(pkg)
   const [row] = await sql`select * from installed_app where name = ${name}`
   if (row && !matchesInstalled(pkg, row)) refuse('Restore the exact installed artifact before enabling')
   await assertOnlyScopeProvider(pkg)
@@ -551,6 +562,7 @@ async function upgradePlan(name: string, version: string, preview = true) {
   const [row] = await sql`select * from installed_app where name = ${name} and runtime_package`
   if (!row) refuse('Upgrade requires an installed runtime application')
   const target = await verifyArtifact(artifacts.get(`${name}@${version}`))
+  assertKnownAccent(target)
   const prior = await verifyArtifact(artifacts.get(`${name}@${row.package_version}`))
   if (!matchesInstalled(prior, row)) refuse('Installed artifact does not match its recorded identity')
   if (row.activation_pending) throw new AppError('ConflictError', 'Activate the committed upgrade before previewing another version')
@@ -846,7 +858,7 @@ export async function appAsset(name: string, asset: string, user: string, client
     }
     if (!(await stat(file)).isFile()) throw new Error('Not a file')
     const clientEntry = file === await contained(pkg.clientRoot!, 'index.html')
-    return { file, bytes: await readFile(file), catalog, clientEntry, frameOrigins: pkg.manifest.frameOrigins ?? [] }
+    return { file, bytes: await readFile(file), catalog, clientEntry, frameOrigins: pkg.manifest.frameOrigins ?? [], accent: pkg.manifest.accent }
   } catch {
     throw new AppError('NotFoundError', 'App asset not found')
   }
