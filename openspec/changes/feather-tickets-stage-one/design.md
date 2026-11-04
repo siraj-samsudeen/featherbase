@@ -149,6 +149,16 @@ setting, and that app's actions and reads may then read (never write) those
 Tables **as the caller**, with the caller's own permissions. Nothing is read
 that the caller could not read already.
 
+An issue that concerns two systems ("SAP / StyleHR") uses a second, optional
+link field ("Also concerns system"): configuration only, no new field type.
+Routing follows the first. A multi-row link type was rejected for now: it
+would need list values in the private request, list validation and list
+display, for a case two link fields already cover.
+
+A person field takes any Person the requester may read (the platform's people
+picker and an app-context `people.names`, both as the caller), not only
+people who have used Tickets.
+
 Rejected: instance-added columns on `tickets.request` through the platform's
 custom fields. Every type's fields would land on one shared row shape, a
 column would be readable wherever the row is, the form could not tell which
