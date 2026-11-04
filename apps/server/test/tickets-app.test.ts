@@ -5,7 +5,8 @@ import { describe, expect } from 'vitest'
 import { makeClient, type TestClient, type CreateUserFn } from 'feather-testing-postgres'
 import { test as pgTest } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
-import { loadInstalledApps } from '../src/apps'
+import { loadInstalledApps, setAppEnabled, listInstalledApps } from '../src/apps'
+import { sql } from '../src/db'
 
 const directory = resolve('../..', 'example-apps/tickets')
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
@@ -196,6 +197,32 @@ describe('Tickets independently installed product contract (#810)', () => {
     expect(own).toEqual([{ operation: 'edit', by: w.owner.user }])
   })
 
+  // #912: the CLI installs (or an administrator enables) from another process
+  // while this server runs. Disabling here and enabling the row directly is
+  // that situation: the database says enabled, this process has not wired it.
+  test('an app installed or enabled by another process works at once, with no restart', async ({ admin, createUser }) => {
+    const { owner } = await setup(admin, createUser)
+    await setAppEnabled('tickets', false)
+    await sql`update installed_app set enabled = true where name = 'tickets'`
+    expect((await create(owner, 'generic', {})).row_id).toEqual(expect.any(String))
+    expect((await listInstalledApps()).find(app => app.name === 'tickets')).toMatchObject({ active: true, recovery: null })
+  })
+
+  test('a changed app under the same version is refused with the reason and what to do, not a bare access refusal', async ({ admin, createUser }) => {
+    const { owner } = await setup(admin, createUser)
+    await setAppEnabled('tickets', false)
+    await sql`update installed_app set enabled = true, artifact_digest = 'an-earlier-build' where name = 'tickets'`
+    let failure: any
+    try { await create(owner, 'generic', {}) } catch (error) { failure = error }
+    expect(failure?.status).toBe(403)
+    expect(failure.message).not.toContain('Application access refused')
+    expect(failure.message).toMatch(/tickets 0\.1\.0.*files changed.*same version/i)
+    expect(failure.message).toMatch(/new version|install-app tickets/)
+    const listed = (await listInstalledApps()).find(app => app.name === 'tickets')
+    expect(listed).toMatchObject({ active: false })
+    expect(listed?.recovery).toMatch(/files changed.*same version/i)
+  })
+
   test('people are shown by name: requester, assignee, verifier, approver and history', async ({ admin, createUser }) => {
     const w = await setup(admin, createUser)
     expect((await read(w.owner, 'session')).user).toEqual({ row_id: w.owner.user, full_name: 'anjali' })
@@ -203,13 +230,13 @@ describe('Tickets independently installed product contract (#810)', () => {
     ticket = (await act(w.support, 'edit', { ...revision(ticket), assigned_to: w.support.user, public_update: 'Checking' })).ticket
     ticket = await approve(w.bala, await verify(w.verifier, ticket))
     const queue = await read(w.support, 'queue')
-    expect(queue.names).toMatchObject({ [w.owner.user]: 'anjali', [w.support.user]: 'triager' })
+    expect(queue.names).toMatchObject({ [w.owner.user!]: 'anjali', [w.support.user!]: 'triager' })
     const seen = await detail(w.support, ticket)
-    expect(seen.names).toMatchObject({ [w.owner.user]: 'anjali', [w.support.user]: 'triager', [w.verifier.user]: 'verifier', [w.bala.user]: 'bala' })
+    expect(seen.names).toMatchObject({ [w.owner.user!]: 'anjali', [w.support.user!]: 'triager', [w.verifier.user!]: 'verifier', [w.bala.user!]: 'bala' })
     // Another requester sees the names on what they may see, never an opaque id for a person who acted.
     const shared = await detail(w.other, ticket)
-    expect(shared.names).toMatchObject({ [w.owner.user]: 'anjali', [w.support.user]: 'triager' })
-    expect(shared.names[w.verifier.user]).toBeUndefined()
+    expect(shared.names).toMatchObject({ [w.owner.user!]: 'anjali', [w.support.user!]: 'triager' })
+    expect(shared.names[w.verifier.user!]).toBeUndefined()
     // Support can choose an assignee by name from the people configured for Tickets.
     const people = (await read(w.support, 'session')).people as { row_id: string; full_name: string }[]
     expect(people).toEqual(expect.arrayContaining([{ row_id: w.bala.user, full_name: 'bala' }]))
@@ -244,7 +271,7 @@ describe('Tickets independently installed product contract (#810)', () => {
     let ticket = await create(w.owner)
     await settings(admin, { verification_admins: [], approval_routes: {}, fulfillment_admins: [] })
     await refused(verify(w.verifier, ticket))
-    await settings(admin, { verification_admins: [w.support.user], approval_routes: { Kerala: [w.shiva.user] }, fulfillment_admins: [w.support.user] })
+    await settings(admin, { verification_admins: [w.support.user!], approval_routes: { Kerala: [w.shiva.user!] }, fulfillment_admins: [w.support.user!] })
     ticket = await verify(w.support, ticket)
     await refused(approve(w.bala, ticket))
     ticket = await approve(w.shiva, ticket)
