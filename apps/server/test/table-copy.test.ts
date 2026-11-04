@@ -1,5 +1,6 @@
 // #772 part 2: copy a warehouse table in, correct it, copy it again.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { DuckDBConnection } from '@duckdb/node-api'
 import { rmSync } from 'node:fs'
 import { makeClient } from 'feather-testing-postgres'
 import { app } from '../src/index'
@@ -7,6 +8,7 @@ import { issueSession } from '../src/auth'
 import { deleteTable } from '../src/table-engine'
 import { sql } from '../src/db'
 import { test } from './pg-test'
+import { committedTest } from './pg-test-shared'
 import { overrideVariable } from '../src/env'
 import { invalidateSources } from '../src/sources/registry'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
@@ -297,6 +299,41 @@ describe('Copy a warehouse table into Featherbase', () => {
       await expect(admin.post('/api/table/Empty%20Key%20Copy:copy_again', {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Copy key values must not be empty') })
       expect(await admin.get('/api/table/Empty%20Key%20Copy/S001')).toEqual(before)
       expect(await admin.get('/api/import/batches')).toEqual(history)
+    }
+  })
+
+  committedTest('a mapping changed during the source read refuses the stale copy', async ({ admin }) => {
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-mapping-race', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-mapping-race:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Mapping Race Copy', key: 'code', columns: STORES })
+    const before = await admin.get('/api/table/Mapping%20Race%20Copy/S001')
+    const history = await admin.get('/api/import/batches')
+    const provenance = await admin.get('/api/table/Mapping%20Race%20Copy:copy_info')
+    let entered!: () => void
+    let release!: () => void
+    const reading = new Promise<void>(resolve => { entered = resolve })
+    const released = new Promise<void>(resolve => { release = resolve })
+    const original = DuckDBConnection.prototype.stream
+    const gate = vi.spyOn(DuckDBConnection.prototype, 'stream').mockImplementationOnce(async function (this: DuckDBConnection, ...args) {
+      entered()
+      await released
+      return original.apply(this, args)
+    })
+    const refresh = admin.post('/api/table/Mapping%20Race%20Copy:copy_again', {})
+    // Attach the rejection observer before releasing the external SDK read.
+    const refused = expect(refresh).rejects.toMatchObject({ status: 409, message: expect.stringContaining('copy changed') })
+    try {
+      await reading
+      await admin.post('/api/table_def/Mapping%20Race%20Copy/rename_column', { from: 'display_name', to: 'trading_name' })
+      release()
+      await refused
+      const { display_name, ...unchanged } = before as Record<string, unknown>
+      expect(await admin.get('/api/table/Mapping%20Race%20Copy/S001')).toEqual({ ...unchanged, trading_name: display_name })
+      expect(await admin.get('/api/import/batches')).toEqual(history)
+      expect(await admin.get('/api/table/Mapping%20Race%20Copy:copy_info')).toEqual(provenance)
+    } finally {
+      release()
+      await Promise.allSettled([refresh, refused])
+      gate.mockRestore()
     }
   })
 
