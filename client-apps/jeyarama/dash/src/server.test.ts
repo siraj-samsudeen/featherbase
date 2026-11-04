@@ -477,6 +477,9 @@ describe("a Dive state too large to embed", () => {
     const places = [place('9901', '9901'), place('9901 / Section: All', '9901', many)]
     expect(await reads.embed_session(context({ payload: { store: '9901' }, places, rows: null }).ctx))
       .toEqual({ frame: 'https://embed-motherduck.com/sandbox/#session=s' })
+    const sent = JSON.parse(String(calls[0].init.body)).initial_state
+    // The compact state: the store alone and its sections by code step, so 6,000 codes stay small.
+    expect([sent.material_groups, sent.sections.All.length, bytes(sent) < EMBED_STATE_LIMIT_BYTES / 2]).toEqual([undefined, 6000, true])
   })
 })
 
