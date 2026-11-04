@@ -300,7 +300,7 @@ export async function resolveTableName(input: string): Promise<string> {
     // metadata invalidation, and a database mid-upgrade may lack access_log.
     const graves = await sql<{ name: string }[]>`
       select distinct ref_table as name from access_log
-      where operation = 'delete_table' and ref_table is not null`.catch(() => [])
+      where operation in ('delete_table', 'rename_table') and ref_table is not null`.catch(() => [])
     if (graves.some((grave) => grave.name === input)) return input
     matches = graves.map((grave) => grave.name).filter((name) => tableSlug(name) === tableSlug(input))
   }
@@ -327,17 +327,21 @@ export async function getMeta(name: string): Promise<TableMeta> {
     // (DEL-R8) read back at the miss. A never-created name stays a plain
     // not-found: a tombstone is only ever minted from a real burial.
     // Guarded: a database mid-upgrade may not have access_log yet.
+    // #871: a renamed Table's old name says where it went; the latest of the
+    // two wins when a name was both.
     const [grave] = await sql`
-      select "user", created_at from access_log
-      where operation = 'delete_table' and ref_table = ${name}
+      select operation, "user", created_at, reference_name from access_log
+      where operation in ('delete_table', 'rename_table') and ref_table = ${name}
       order by created_at desc limit 1`.catch(() => [])
-    if (grave)
+    if (grave) {
+      const by = `by ${grave.user as string} on ${new Date(grave.created_at as string).toISOString().slice(0, 10)}`
       throw new AppError(
         'NotFoundError',
-        `Table ${name} was deleted by ${grave.user as string} on ${new Date(
-          grave.created_at as string,
-        ).toISOString().slice(0, 10)}`,
+        grave.operation === 'rename_table'
+          ? `Table ${name} was renamed to ${grave.reference_name as string} ${by}`
+          : `Table ${name} was deleted ${by}`,
       )
+    }
     throw new AppError('NotFoundError', `Table ${name} not found`)
   }
   const columns = await sql<ColumnDef[]>`

@@ -153,6 +153,7 @@ describe('#432: every privileged principal is refused on an audit table', () => 
           client.post('/api/save_row', { table: 'Custom Field', row: { row_id: 'Activity Log-forged_flag', dt: AL, column_name: 'forged_flag', column_type: 'Check' } }),
           REFUSED,
         )
+        await expectApiError(client.post(`/api/table_def/${ENC}/rename`, { to: 'Forged Log' }), REFUSED)
         await expectApiError(client.delete(`/api/table_def/${ENC}`), REFUSED)
         const after = await admin.get<{ columns: { column_name: string }[]; id_pattern: string }>(`/api/table/${ENC}:meta`)
         expect(after.columns.map((c) => c.column_name)).not.toContain('forged_note')
@@ -309,6 +310,7 @@ describe('#432: every write entry point is covered', () => {
     'PUT /api/table_def/:name': 'structure',
     'PUT /api/table_def/:name/id_pattern': 'structure',
     'POST /api/table_def/:name/rename_column': 'structure',
+    'POST /api/table_def/:name/rename': 'structure',
     'DELETE /api/table_def/:name': 'structure',
     'POST /api/import_customizations': 'structure — custom fields go through the guarded save',
     'POST /api/reapply_custom_fields': 'structure — re-applies existing custom fields only',

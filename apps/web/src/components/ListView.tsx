@@ -20,6 +20,7 @@ import { GlossaryHelp } from './GlossaryHelp'
 import { fmtCount } from '@featherbase/shop-floor'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
+import { RenameTable } from './RenameTable'
 
 export type Filter = [string, string, unknown]
 
@@ -336,6 +337,10 @@ export function ListView({
     ) : (
       `Cannot load rows for ${table}`
     )
+  ) : list.isPending ? (
+    // Not yet loaded is not empty: "No rows" would alarm someone whose
+    // Table holds data (#871, a list reopened after its rename).
+    'Loading…'
   ) : (
     <>
       No rows
@@ -731,6 +736,10 @@ export function ListView({
               {/* DEL-J1/DEL-R1 (docs/specs/0003-table-deletion.md): the
                   affordance is generic and metadata-gated — never rendered
                   for system tables, never per-table code. */}
+              {/* #871: a custom Table only; app and platform Tables are named elsewhere. */}
+              {meta.data && !meta.data.system && !meta.data.owner_app && !meta.data.data_source && meta.data.kind !== 'settings' && !isSystemWritten(meta.data) && (
+                <RenameTable table={table} />
+              )}
               {!meta.data?.system && !isSystemWritten(meta.data) && (
                 <button
                   onClick={() => setConfirmingDelete(true)}
