@@ -890,6 +890,9 @@ jobs:
       - name: Run acceptance suite
         env:
           VITE_COVERAGE: 'true'
+          # Samples require PostgreSQL itself to be local, not Docker forwarding.
+          # The harness derives its disposable *_e2e databases from this URL.
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/postgres
           RUNTIME_PROOF_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/featherbase_runtime_proof_e2e
         run: |
           npm --prefix acceptance-tests ci
