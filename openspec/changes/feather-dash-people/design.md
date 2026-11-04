@@ -60,8 +60,10 @@ at most one Primary; Primary + Secondary ≤ 100%; Temporary deployments ≤ the
 - *Rejected:* every active row counted toward 100%. Deploying someone would then mean closing
   their home row and reopening it at 0% for the deployment's dates, so the home assignment would
   not "stay".
-- A person leading two sections holds two rows (one per section, #630), so their shares split,
-  for example 50% and 50%.
+- Rows with an assignment type may span stores: a Secondary or a temporary deployment in another
+  store is no longer listed as "several stores at once"; that rule stays for untyped rows. Other
+  27-Oct rules are unchanged: a Team Leader of several sections is still listed (#630), whatever
+  their shares.
 
 ### 4. Where each rule is enforced
 
@@ -102,8 +104,11 @@ the organisation's Cluster master code; no other job names one.
 
 - **Codes, not links**: `legal_company` and `cluster` are codes, so a mistyped code saves. The
   loader takes them from the masters; piece B can check them when it reads the masters.
-- **Two saves of different people claiming one number at once** are not serialised (each locks its
-  own employee row). Loads write one company's numbers from one source, so this is left out.
+- **Two saves of different people claiming one number at once** are not serialised: each locks its
+  own employee row, and the platform gives an app's save rule no lock on a value that no row holds
+  yet. A per-row unique key would forbid the same person keeping their number across a rejoin.
+  Loads write one company's numbers from one source, one person at a time, so this is
+  deliberately not handled.
 
 ## Migration Plan
 

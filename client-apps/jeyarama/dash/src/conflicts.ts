@@ -123,11 +123,14 @@ export function conflictsOf(store: string, chart: OrgChart, on: string, name: (p
       add('overlapping_placement', `Subcategory ${text(a.subcategory)} is placed in ${text(sections.get(text(a.section))?.section_name)} and ${text(sections.get(text(b.section))?.section_name)} on overlapping dates`, [id(a), id(b)])
   }))
 
-  // One store at a time: two overlapping jobs in different stores are allowed only when both are Cluster Manager.
+  // One store at a time, for rows written before assignment types (#928): two overlapping jobs in different
+  // stores are allowed only when both are Cluster Manager. Typed rows may span stores (a Secondary, a
+  // temporary deployment); their time shares are checked below instead.
   const cluster = (r: Row) => text(r.job) === 'Cluster Manager'
+  const typed = (r: Row) => !!text(r.assignment_type)
   for (const person of new Set(storeJobs.map(r => text(r.person)))) {
     const rows = chart.jobs.filter(r => text(r.person) === person)
-    const clash = (a: Row, b: Row) => exact(b.store) !== exact(a.store) && overlap(a, b) && !(cluster(a) && cluster(b))
+    const clash = (a: Row, b: Row) => exact(b.store) !== exact(a.store) && overlap(a, b) && !(cluster(a) && cluster(b)) && !(typed(a) && typed(b))
     const here = rows.filter(r => exact(r.store) === store && rows.some(o => clash(r, o)))
     const elsewhere = rows.filter(r => here.some(h => clash(h, r)))
     for (const other of new Set(elsewhere.map(r => exact(r.store))))

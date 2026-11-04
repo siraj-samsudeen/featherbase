@@ -114,7 +114,15 @@ describe('the conflict list', () => {
     const rows = [{ ...job('psn_103', 'Team Leader', { section: 's-sarees' }), reports_to: 'psn_107', assignment_type: 'Primary', percentage: 100 },
       { ...job('psn_103', 'Staff', { section: 's-hill-acc' }, HILLVIEW), assignment_type: 'Temporary deployment', percentage: 100 }]
     const data = clean([], c => { c.jobs = [...c.jobs.filter(r => r.person !== 'psn_103'), ...rows] })
-    expect(kinds(data).filter(k => /primary|percent/.test(k))).toEqual([])
+    expect(conflictsOf(LAKESIDE, data, ON, name)).toEqual([])
+    expect(conflictsOf(HILLVIEW, data, ON, name).filter(c => c.rows.some(r => r.includes('psn_103')))).toEqual([])
+  })
+
+  it('lists no conflict for a Primary and Secondary split across two stores', () => {
+    const rows = [{ ...job('psn_103', 'Team Leader', { section: 's-sarees' }), reports_to: 'psn_107', assignment_type: 'Primary', percentage: 70 },
+      { ...job('psn_103', 'Staff', { section: 's-hill-acc' }, HILLVIEW), assignment_type: 'Secondary', percentage: 30 }]
+    const data = clean([], c => { c.jobs = [...c.jobs.filter(r => r.person !== 'psn_103'), ...rows] })
+    expect(conflictsOf(LAKESIDE, data, ON, name)).toEqual([])
   })
 
   it('does not list a Director or Chief Operating Officer as an unknown job', () => {
