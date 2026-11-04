@@ -34,7 +34,7 @@ Then support sees the requester by the name Anjali's own session shows, not by h
 ```
 
 ### Requirement: An install or enable takes effect without a restart
-An **App** installed or enabled by another process while the server runs (the `install-app` command, another server) SHALL start serving on its next request when this server holds its exact package, with no restart. When it cannot run here, every refusal and the Apps screen SHALL state the plain reason and what to do: its files or its manifest changed under the same version, this server has another version, or its files are missing. Such a refusal SHALL still be audited and fail closed; it SHALL never read only "Application access refused".
+An **App** installed or enabled by another process while the server runs SHALL start serving on its next request when this server holds its exact package, with no restart. When it cannot run here, its refusals and the Apps screen SHALL state the plain reason and what to do, and SHALL still be audited and fail closed.
 
 #### Scenario: Tickets installed from the command line works at once
 
