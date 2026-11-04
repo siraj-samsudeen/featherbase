@@ -64,7 +64,8 @@ Then the ticket is back in "Raised" and its history shows Bala asking and Anjali
 A ticket's details and history SHALL be readable by everyone who can see the ticket, unless its type is made
 private. A private type works as Tickets always has: its details are read by the raiser and support, its full
 history by support only, and everyone else sees only which actions were taken. Built-in types, such as access
-requests, are private.
+requests, are private. A ticket raised while its type was private stays private until support opens it, with its
+history.
 
 #### Scenario: Data Quality Issue details are open to everyone
 

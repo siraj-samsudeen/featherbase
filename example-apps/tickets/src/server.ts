@@ -537,6 +537,22 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     await ctx.documents.create('tickets.progress', { ticket: ticket.row_id, text: `${action}: ${from} → ${to}`, by: ctx.user, at: new Date().toISOString() })
     return { ticket: await bump(ctx, ticket, { ticket_state: to }) }
   },
+  // A ticket raised before its type's details were open to everyone keeps them
+  // private until support opens them: copied, with its history, into the open
+  // Tables. The private rows stay as they were (history is never deleted).
+  async open_details(ctx) {
+    const p = input(ctx, ['row_id'])
+    if (!capabilities(ctx).support) ctx.reject('Only Tickets support may open a ticket\'s details')
+    const ticket = await ctx.documents.get('tickets.ticket', text(ctx, p.row_id, 'Ticket'))
+    const type = (await configuredTypes(ctx)).get(String(ticket.kind))
+    if (type?.visibility !== 'everyone') ctx.reject('Only a ticket whose type shows its details to everyone can be opened')
+    if ((await place(ctx, ticket.row_id)).open) return { ticket, opened: false }
+    const request = await ctx.documents.get(PRIVATE.request, String(ticket.row_id))
+    await ctx.documents.create(OPEN.request, { row_id: ticket.row_id, original: request.original, details_json: request.details_json })
+    const events = await all(ctx, PRIVATE.event, eventFields, [['ticket', '=', ticket.row_id]])
+    for (const e of events) await ctx.documents.create(OPEN.event, { ticket: ticket.row_id, operation: e.operation, text: e.text, by: e.by, at: e.at })
+    return { ticket, opened: true, events: events.length }
+  },
   async reopen(ctx) {
     const p = input(ctx, ['row_id', 'updated_at', 'reason'])
     const { ticket, request } = await current(ctx, p)

@@ -26,7 +26,8 @@
     "note": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "resolve": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
     "reopen": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
-    "transition": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
+    "transition": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "open_details": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
   }},
   "reads": {"version": 1, "tables": ["tickets.ticket", "tickets.request", "tickets.event", "tickets.open_request", "tickets.open_event", "tickets.progress", "tickets.member", "tickets.ticket_type", "tickets.type_field"], "operations": {
     "session": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},

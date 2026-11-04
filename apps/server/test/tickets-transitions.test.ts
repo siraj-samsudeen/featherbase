@@ -119,6 +119,24 @@ describe('Tickets: transitions per ticket type (#918)', () => {
     expect((await take(w.contact, ticket, 'Mark fixed', { what_changed: 'Door number corrected' })).ticket_state).toBe('Fixed: to verify')
   })
 
+  test('a ticket raised while its type was private is opened by support, with its history, when the type opens', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser, 'private')
+    let ticket = await raise(w)
+    ticket = await take(w.contact, ticket, 'Ask a question', { question: 'Which plant?' })
+    expect((await read(w.colleague, 'detail', { row_id: ticket.row_id })).details).toBeUndefined()
+    const row = (await admin.get<any>(`/api/table/tickets.ticket_type/${w.dq.row_id}`))
+    await save(admin, 'tickets.ticket_type', { ...row, details_visible_to: 'everyone' })
+    await refused(act(w.raiser, 'open_details', { row_id: ticket.row_id }), /support/)
+    expect(await act(w.support, 'open_details', { row_id: ticket.row_id })).toMatchObject({ opened: true, events: 1 })
+    expect(await act(w.support, 'open_details', { row_id: ticket.row_id })).toMatchObject({ opened: false })
+    const seen = await read(w.colleague, 'detail', { row_id: ticket.row_id })
+    expect(seen.details).toMatchObject({ current_value: '78/499/1', question: 'Which plant?' })
+    expect(seen.privateEvents.map((e: any) => [e.operation, e.by])).toEqual([['transition', w.contact.user]])
+    // It carries on in the open Tables.
+    ticket = await take(w.raiser, ticket, 'Answer', { answer: 'Plant 1100' })
+    expect((await read(w.colleague, 'detail', { row_id: ticket.row_id })).details.answer).toBe('Plant 1100')
+  })
+
   test('private details: only the requester and support read them, through the app and the generic API', async ({ admin, createUser }) => {
     const w = await world(admin, createUser, 'private')
     let ticket = await raise(w)
