@@ -67,6 +67,21 @@ Then the drill pane shows Enchakkal Supermarket and what points at it
 And the list of sites stays as it was
 ```
 
+### Requirement: Two links from the same table stay separate groups
+
+When one table links to the row in two ways, the drill pane SHALL show each way as its own group
+with its own count, and a group with no rows stays listed, quieter than the rest.
+
+#### Scenario: Supplying and billing plants
+
+```gherkin
+Given each cost centre names a supplying plant and a billing plant
+And Enchakkal Supermarket supplies 8 cost centres and bills none
+When the user opens Enchakkal Supermarket in the drill pane
+Then a group of 8 cost centres by supplying plant shows
+And a group of 0 cost centres by billing plant shows, quieter than the other
+```
+
 ### Requirement: A group lists its rows like the table's own list
 
 A group in the drill pane SHALL list its rows with the columns of that table's list, and the user
@@ -91,6 +106,19 @@ the rows that point at the row in the pane.
 Given the user has Enchakkal open in the drill pane
 When the user opens its group of plants as a list
 Then the list of plants opens, narrowed to the 3 plants of Enchakkal
+```
+
+### Requirement: A new row from a group starts linked to the row
+
+From a group opened as a list, a new row SHALL start already linked to the row in the pane, and
+no new row is offered to a user who may not add rows to that table.
+
+#### Scenario: A new plant for Enchakkal
+
+```gherkin
+Given the user may add plants and has Enchakkal's plants open as a list
+When the user starts a new plant
+Then the new plant's site is already Enchakkal
 ```
 
 ### Requirement: Narrow the list from a linked value

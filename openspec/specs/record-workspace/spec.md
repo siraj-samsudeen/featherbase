@@ -1,7 +1,9 @@
-# record-workspace Specification
+# Record Workspace
 
 ## Purpose
-TBD - created by archiving change purposeful-record-chrome. Update Purpose after archive.
+A row's page keeps the user's attention on the row itself: its own work stays prominent, Table
+administration and occasional operations stay out of the way, and optional collaboration shows
+only where a Table turns it on.
 
 ## Requirements
 
