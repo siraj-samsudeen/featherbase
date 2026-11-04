@@ -94,8 +94,8 @@ export function assertStillServing(app: string, identity: string, then: () => Pr
 export function instanceDeployOperation<T>(fn: () => Promise<T>, waitSeconds: number): Promise<T> {
   if (scope.getStore()) throw new Error('An instance deploy cannot run inside another app operation')
   return locks.begin(async (tx) => {
-    await tx.unsafe(`set local lock_timeout = '${Math.ceil(waitSeconds)}s'`)
     try {
+      await tx.unsafe(`set local lock_timeout = '${Math.ceil(waitSeconds)}s'`)
       await tx`select pg_advisory_xact_lock(296, 1)`
     } catch (error) {
       if ((error as { code?: string }).code === '55P03')
