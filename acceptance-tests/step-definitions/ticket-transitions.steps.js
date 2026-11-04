@@ -43,7 +43,7 @@ steps(When, [
 
 steps(Then, [
   ['Bala is offered to confirm it, and Anjali is not', async x => {
-    await x.page.getByRole('button', { name: 'Confirm', exact: true }).waitFor();
+    await x.page.getByRole('group', { name: 'Actions on this ticket' }).getByRole('button', { name: 'Confirm', exact: true }).waitFor();
     assert.deepEqual(await x.offered('Anjali'), []);
   }],
   ['the confirmation is refused as missing the target date', x => {

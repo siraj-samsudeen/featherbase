@@ -613,7 +613,7 @@ function TicketActions({
 }) {
   if (!actions.length) return null
   return (
-    <div className="ticket-actions" role="group" aria-label="Actions on this ticket">
+    <div className="header-actions" role="group" aria-label="Actions on this ticket">
       {actions.map((item, i) => (
         <button
           key={item.key}

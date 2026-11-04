@@ -54,8 +54,8 @@ steps(Then, [
   ['the ticket starts in {string}', (x, state) => assert.equal(x.t.ticket.ticket_state, state)],
   ['that type is listed under Request types and offered in the new-ticket form', async x => {
     const page = x.view;
-    assert.ok((await page.locator('.type-list').innerText()).includes('Data Quality Issue'));
-    await page.getByRole('button', { name: /New ticket/ }).click();
+    await page.locator('featherbase-sidebar button', { hasText: 'Data Quality Issue' }).first().waitFor();
+    await page.getByRole('button', { name: /New ticket/ }).first().click();
     await page.locator('dialog select').first().selectOption(x.key);
     await page.locator('dialog').getByText('Urgency *').waitFor();
   }],
@@ -76,7 +76,7 @@ steps(Then, [
   ["the ticket shows that person's name, and Pat's form finds them by name", async x => {
     assert.equal((await detail(x, 'Pat')).names[x.outsiderId], x.outsiderName);
     const page = await x.page('Pat');
-    await page.getByRole('button', { name: /New ticket/ }).click();
+    await page.getByRole('button', { name: /New ticket/ }).first().click();
     await page.locator('dialog select').first().selectOption(x.key);
     await page.getByLabel('Raised for').fill(x.outsiderName);
     await page.locator('dialog').getByRole('option', { name: new RegExp(x.outsiderName) }).first().waitFor({ state: 'attached' });
