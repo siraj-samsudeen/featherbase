@@ -127,11 +127,6 @@ Then('the user sees the customer {string} in the drill pane beside the orders li
   await new DrillPane(page).shows(name);
   assert.ok(new URL(page.url()).pathname === tableHref(ORDERS), `the user left the orders list for ${page.url()}`);
 });
-  const field = page.getByTestId('form-view').getByLabel('Customer Name', { exact: true });
-  const reads = await eventually(page, () => field.inputValue(), (v) => v === name);
-  assert.equal(reads, name);
-});
-
 Then('the user sees the filter in use reading {string}', async function (words) {
   const page = await this.actor();
   const chip = page.getByTestId('filter-chip').first();
