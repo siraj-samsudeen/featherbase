@@ -152,3 +152,21 @@ test('two links from one table are told apart by their labels on the tree', asyn
   await openTree(admin, SITE, 'ENK')
   expect(await line(`${PLANT} · Backup site 0`)).toBeInTheDocument()
 })
+
+// Checklist 12: a step brings back what was unfolded when it was taken.
+test('choosing an earlier step brings back what was unfolded at that step', async ({ admin }) => {
+  await seedSites(admin)
+  await openTree(admin, SITE, 'ENK')
+  unfold(await line('Enchakkal Supermarket · 1503'))
+  await line(`${PROFIT} 2`)
+  fireEvent.click(within(await line('Enchakkal Textiles · 1504')).getByText('Enchakkal Textiles · 1504'))
+  await screen.findByRole('complementary', { name: 'Enchakkal Textiles · 1504' })
+  fireEvent.keyDown(await line('Enchakkal Supermarket · 1503'), { key: 'ArrowLeft' })
+  await waitFor(async () => expect(await line('Enchakkal Supermarket · 1503')).toHaveAttribute('aria-expanded', 'false'))
+  fireEvent.click(within(await line('Enchakkal Jewellery · 1505')).getByText('Enchakkal Jewellery · 1505'))
+  await screen.findByRole('complementary', { name: 'Enchakkal Jewellery · 1505' })
+  const path = screen.getByRole('navigation', { name: 'Path' })
+  fireEvent.click(within(path).getByRole('button', { name: 'Enchakkal Textiles · 1504' }))
+  await screen.findByRole('complementary', { name: 'Enchakkal Textiles · 1504' })
+  await waitFor(async () => expect(await line('Enchakkal Supermarket · 1503')).toHaveAttribute('aria-expanded', 'true'))
+})
