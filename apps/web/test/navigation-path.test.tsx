@@ -80,6 +80,28 @@ test("a step on a row the viewer can't read is named neutrally, never by its id"
   expect(pathNav()).not.toHaveTextContent('no-such-plant-77')
 })
 
+test('a filter on several linked rows names each of them', async ({ admin }) => {
+  await seedSites(admin)
+  const path: NavPath = { steps: [{ screen: 'list', table: SITE, filters: [['region', 'in', ['KL', 'TN']]] }], at: 0 }
+  await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(encodePath(path))}`, admin)
+  await waitFor(() => expect(current()).toHaveTextContent('Region in Kerala · KL, Tamil Nadu · TN'))
+})
+
+test("a filter on rows the viewer can't read names them neutrally, never by their ids", async ({ admin }) => {
+  await seedSites(admin)
+  const path: NavPath = { steps: [{ screen: 'list', table: SITE, filters: [['region', 'not in', ['no-such-77']]] }], at: 0 }
+  await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(encodePath(path))}`, admin)
+  await waitFor(() => expect(current()).toHaveTextContent('Region not in A row you cannot see'))
+  expect(pathNav()).not.toHaveTextContent('no-such-77')
+})
+
+test('a filter on the row id names the row', async ({ admin }) => {
+  await seedSites(admin)
+  const path: NavPath = { steps: [{ screen: 'list', table: SITE, filters: [['row_id', '=', 'ENK']] }], at: 0 }
+  await renderApp(`${tableHref(SITE)}?path=${encodeURIComponent(encodePath(path))}`, admin)
+  await waitFor(() => expect(current()).toHaveTextContent('Row ID: Enchakkal · ENK'))
+})
+
 test('Copy link copies the address of this step', async ({ admin }) => {
   await seedSites(admin)
   const writeText = vi.fn().mockResolvedValue(undefined)
