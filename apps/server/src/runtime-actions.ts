@@ -139,7 +139,7 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
     // A refusal is recorded in the access log before it is answered.
     await assertAppAvailable(`${app}.__action`, true).catch((error: unknown) =>
       error instanceof AppError && error.type === 'PermissionError'
-        ? recordAppAccessRefusal(user, app, name, 'permission')
+        ? recordAppAccessRefusal(user, app, name, 'permission', error)
         : Promise.reject(error))
     const contribution = declaration()
     const handler = contribution?.handlers.get(name)

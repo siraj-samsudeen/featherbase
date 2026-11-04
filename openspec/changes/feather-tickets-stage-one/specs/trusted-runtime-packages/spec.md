@@ -32,3 +32,18 @@ Given the user is signed in as Anjali
 When the user submits "Please check the Palakkad totals" as a free-text request
 Then support sees the requester by the name Anjali's own session shows, not by her person id
 ```
+
+### Requirement: An install or enable takes effect without a restart
+An **App** installed or enabled by another process while the server runs (the `install-app` command, another server) SHALL start serving on its next request when this server holds its exact package, with no restart. When it cannot run here, every refusal and the Apps screen SHALL state the plain reason and what to do: its files or its manifest changed under the same version, this server has another version, or its files are missing. Such a refusal SHALL still be audited and fail closed; it SHALL never read only "Application access refused".
+
+#### Scenario: Tickets installed from the command line works at once
+
+- **GIVEN** the server is running and Tickets is not installed
+- **WHEN** an administrator runs `featherbase advanced apps install-app tickets`
+- **THEN** a requester's next Tickets request succeeds, with no restart
+
+#### Scenario: A changed app under the same version says why
+
+- **GIVEN** Tickets 0.1.0 is installed and the server holds a changed Tickets 0.1.0
+- **WHEN** a requester opens Tickets
+- **THEN** the refusal says its files (or featherbase.json) changed under the same version, and to re-pin it on a development database or give it a new version

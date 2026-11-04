@@ -226,8 +226,20 @@ export async function installedAppsAtStart(environment = currentEnvironment()): 
     await assertInstalledAppsShipped()
     return []
   }
-  return ((await installedNotShipped())?.missing ?? []).map(({ name, version }) =>
-    `WARNING: App ${name} version ${version} is installed and enabled, but this server does not have it, so it is unavailable. On a developer machine, add the folder holding ${name} ${version} to FEATHERBASE_APP_PATHS (init.sh sets it), or disable the app in Admin. A release refuses until it ships.`)
+  const found = await installedNotShipped()
+  if (!found) return []
+  // #912: say which difference it is, and what to do, not only "does not have it".
+  const { whyUnshipped, notRunningMessage } = await import('./runtime-packages')
+  const paths = await appLibraryPaths(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+  const lines: string[] = []
+  for (const row of found.missingRows) {
+    const reason = await whyUnshipped(row, paths)
+    const name = String(row.name), version = String(row.package_version)
+    lines.push(reason === 'absent'
+      ? `WARNING: App ${name} version ${version} is installed and enabled, but this server does not have it, so it is unavailable. On a developer machine, add the folder holding ${name} ${version} to FEATHERBASE_APP_PATHS (init.sh sets it), or disable the app in Admin. A release refuses until it ships.`
+      : `WARNING: ${notRunningMessage(name, version, reason)} Until then it is unavailable here; a release refuses until it ships.`)
+  }
+  return lines
 }
 
 /** The installed, enabled apps with a recorded version, and those not shipped
