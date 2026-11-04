@@ -252,3 +252,29 @@ test('Enter on a link inside a list line still follows the link, not the line', 
   await new Promise((r) => setTimeout(r, 300))
   expect(screen.queryByRole('complementary', { name: /^Enchakkal/ })).not.toBeInTheDocument()
 })
+
+// Checklist 13: Filter from the pane is one browser history entry, and the
+// browser's back button lands on the step before it on the path.
+test("after Filter from the pane, the browser's back button lands on the filter's step", async ({ admin }) => {
+  const { pane: site, view } = await openEnchakkal(admin)
+  const history = (view.router as unknown as { history: { length: number; back: () => void } }).history
+  const before = history.length
+  fireEvent.click(await within(site).findByRole('button', { name: 'Filter' }))
+  await waitFor(() => expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala · KL', 'Enchakkal · ENK']))
+  expect(history.length).toBe(before + 1)
+  history.back()
+  await waitFor(() => expect(within(screen.getByRole('navigation', { name: 'Path' })).getByRole('button', { current: 'step' })).toHaveTextContent('Region: Kerala · KL'))
+  expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala · KL', 'Enchakkal · ENK'])
+})
+
+test("opening a group on the row page's own row changes its step in place, adding no browser history entry", async ({ admin }) => {
+  await seedSites(admin)
+  const view = await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+  const history = (view.router as unknown as { history: { length: number } }).history
+  await screen.findByRole('navigation', { name: 'Path' })
+  const before = history.length
+  fireEvent.click(await screen.findByRole('button', { name: `${PLANT} 3` }))
+  await pane('Enchakkal')
+  expect(pathSteps()).toHaveLength(1)
+  expect(history.length).toBe(before)
+})
