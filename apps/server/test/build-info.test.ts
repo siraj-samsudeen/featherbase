@@ -53,6 +53,26 @@ test('a build that cannot tell its commit says so rather than guessing', async (
   } finally { await rm(folder, { recursive: true, force: true }) }
 })
 
+test('a checkout with no GitHub remote names its commit but links nowhere, and an empty message is none', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'build-info-'))
+  const run = (...args: string[]) => execFileSync('git', args, { cwd: folder, stdio: 'ignore' })
+  try {
+    run('init', '-q')
+    run('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '--allow-empty-message', '-m', '')
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: folder, encoding: 'utf8' }).trim()
+    // A commit with no message has none to show. No origin at all, then an
+    // origin that is not on GitHub: neither gets links.
+    expect(buildInfo(folder)).toMatchObject({ commit: head, message: null, repositoryUrl: null, commitUrl: null })
+    run('remote', 'add', 'origin', 'https://git.example.com/team/featherbase.git')
+    const other = await mkdtemp(join(tmpdir(), 'build-info-'))
+    try {
+      execFileSync('git', ['clone', '-q', folder, other], { stdio: 'ignore' })
+      execFileSync('git', ['remote', 'set-url', 'origin', 'https://git.example.com/team/featherbase.git'], { cwd: other, stdio: 'ignore' })
+      expect(buildInfo(other)).toMatchObject({ commit: head, repositoryUrl: null, commitUrl: null, historyUrl: null })
+    } finally { await rm(other, { recursive: true, force: true }) }
+  } finally { await rm(folder, { recursive: true, force: true }) }
+})
+
 test('each app shows what changed in its current version, newest first', async ({ admin }) => {
   const { catalog } = await admin.get<Apps>('/api/apps')
   const tasker = catalog.find(app => app.name === 'tasker')!
