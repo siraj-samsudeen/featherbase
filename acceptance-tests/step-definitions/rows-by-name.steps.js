@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const { Given, When, Then } = require('@cucumber/cucumber');
 const { ListPage } = require('../support/pages/list-page');
 const { tableHref } = require('../support/addresses');
+const { DrillPane } = require('../support/pages/drill-pane');
 
 // The tables "orders from the customers … and …" creates.
 const CUSTOMERS = 'Pick Customer';
@@ -121,9 +122,11 @@ Then('the user sees the customer of the order {string} read by its id {string}',
   assert.ok(reads?.includes(rowId), `the order's customer reads "${reads}"`);
 });
 
-Then('the user sees the customer {string}', async function (name) {
+Then('the user sees the customer {string} in the drill pane beside the orders list', async function (name) {
   const page = await this.actor();
-  await page.waitForURL((url) => url.pathname.startsWith(`${tableHref(CUSTOMERS)}/row/`), { timeout: 10_000 });
+  await new DrillPane(page).shows(name);
+  assert.ok(new URL(page.url()).pathname === tableHref(ORDERS), `the user left the orders list for ${page.url()}`);
+});
   const field = page.getByTestId('form-view').getByLabel('Customer Name', { exact: true });
   const reads = await eventually(page, () => field.inputValue(), (v) => v === name);
   assert.equal(reads, name);
