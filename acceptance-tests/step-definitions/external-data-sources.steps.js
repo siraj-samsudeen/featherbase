@@ -259,7 +259,7 @@ When("the user opens that bin's relationship map", async function () {
 
 When('the user opens crate {int}', async function (number) {
   const page = await this.actor();
-  await page.goto(`/featherbase/admin/Crate/${number}`);
+  await page.goto(rowHref('Crate', String(number)));
   await page.getByTestId('form-view').waitFor();
   this.form = new FormPage(page);
 });
