@@ -26,7 +26,7 @@ export function RowTree({ table, name }: { table: string; name: string }) {
       expanded={expanded}
       onExpandedChange={(next) => {
         setLocal(next)
-        if (rowNav) rowNav.replace({ ...rowNav.step, view: 'tree', expanded: [...next] })
+        if (rowNav) rowNav.setExpanded([...next])
       }}
       onOpen={(pane) => nav?.push({ ...nav.step, pane })}
       onFocus={nav ? (pane) => nav.push({ screen: 'row', table: pane.table, row: pane.row, view: 'tree' }) : undefined} />

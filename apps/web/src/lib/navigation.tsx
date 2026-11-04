@@ -27,6 +27,10 @@ export interface Navigation {
   href: (path: NavPath) => string
   /** Whether this navigation lives in the address (and so can be shared). */
   addressed: boolean
+  /** Unfolds or folds the tree on screen. The step keeps what was unfolded
+   *  when it was taken; later changes stay on the page and go into the next
+   *  step taken from it, so an earlier step brings back its own tree. */
+  setExpanded: (expanded: string[]) => void
 }
 
 const NavigationContext = createContext<Navigation | null>(null)
@@ -70,17 +74,28 @@ export function useAddressNavigation(here: NavStep, raw: unknown): Navigation {
     if (next === path) return
     void navigate({ href: pathHref(next), replace })
   }, [navigate, path])
-  return useMemo<Navigation>(() => ({
-    path,
-    step: path.steps[path.at],
-    push: (step) => show(pushStep(path, step)),
-    replace: (step) => show(replaceAt(path, step), true),
-    go: (index) => show(goTo(path, index)),
-    open: (next) => show(next),
-    reshape: (next) => show(next, true),
-    href: pathHref,
-    addressed: true,
-  }), [path, show])
+  // What the tree unfolded since the current step was taken: it belongs to
+  // that step on screen only, until the user moves to another step.
+  const [unfolded, setUnfolded] = useState<{ path: NavPath; expanded: string[] } | null>(null)
+  const live = unfolded && unfolded.path === path ? unfolded.expanded : null
+  return useMemo<Navigation>(() => {
+    const stored = path.steps[path.at]
+    const step = live ? { ...stored, expanded: live } : stored
+    // A step on the same screen carries the tree as it is now.
+    const carry = (next: NavStep) => live && sameScreen(next, stored) && !next.expanded ? { ...next, expanded: live } : next
+    return {
+      path,
+      step,
+      push: (next) => show(pushStep(path, carry(next))),
+      replace: (next) => show(replaceAt(path, next), true),
+      go: (index) => show(goTo(path, index)),
+      open: (next) => show(next),
+      reshape: (next) => show(next, true),
+      href: pathHref,
+      addressed: true,
+      setExpanded: (expanded) => setUnfolded({ path, expanded }),
+    }
+  }, [path, show, live])
 }
 
 /** A navigation held in memory, for a screen with no address of its own. */
@@ -96,5 +111,6 @@ export function useLocalNavigation(here: NavStep): Navigation {
     reshape: setPath,
     href: () => '',
     addressed: false,
+    setExpanded: (expanded) => setPath((p) => replaceAt(p, { ...p.steps[p.at], expanded })),
   }), [path])
 }
