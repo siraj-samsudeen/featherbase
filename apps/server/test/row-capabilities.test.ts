@@ -123,9 +123,9 @@ describe('#800 row action capabilities', () => {
     const user = await createUser({ roles: ['Cap800 Changing'] })
     const row = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'Fresh grants' } })
     expect(await user.get(capabilities(row.row_id))).toEqual(readerCapabilities)
-    const [grant] = await grantRole(admin, { role: 'Cap800 Changing', table: DT, tier: 'basic', can_write: true, can_delete: true })
+    const grants = await grantRole(admin, { role: 'Cap800 Changing', table: DT, tier: 'basic', can_write: true, can_delete: true })
     expect(await user.get(capabilities(row.row_id))).toEqual({ ...readerCapabilities, write: true, rename: true, delete: true })
-    await admin.delete(tableRef('Permission').rowUrl(grant))
+    for (const grant of grants) await admin.delete(tableRef('Permission').rowUrl(grant))
     expect(await user.get(capabilities(row.row_id))).toEqual(readerCapabilities)
   })
 

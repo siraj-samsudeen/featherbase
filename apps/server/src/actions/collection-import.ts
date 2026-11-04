@@ -6,7 +6,7 @@ import { quoteIdent } from '../sql-identifier'
 import { AppError } from '../errors'
 import { checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
-import { assertDocPermission, assertPermission, permissionScope, permittedTiers } from '../permissions'
+import { assertDocPermission, assertPermission, permissionScope, permittedColumns, includesColumn } from '../permissions'
 import { registerCollectionAction } from '../actions'
 import { sql } from '../db'
 import { tableRelation, quoteRelation } from '../table-engine'
@@ -272,14 +272,16 @@ registerCollectionAction('import', {
       for (const column of columns)
         if (column !== ROW_KEY && !meta.columns.some((c) => c.column_name === column))
           throw new AppError('ValidationError', `${meta.name} has no column ${column}`)
-      const readTiers = await permittedTiers(user.row_id, table, 'read')
-      const writeTiers = await permittedTiers(user.row_id, table, 'write')
+      const readColumns = await permittedColumns(user.row_id, table, 'read')
+      const writeColumns = await permittedColumns(user.row_id, table, 'write')
+      // The row key is not a metadata Column: any grant of the action reaches it.
+      const reaches = (selection: ReadonlySet<string>, definition: (typeof meta.columns)[number] | undefined) =>
+        definition ? includesColumn(selection, definition) : selection.size > 0
       const key_candidates: { column: string; matched: number; complete: boolean; can_match: boolean }[] = []
       for (const column of columns) {
         const definition = meta.columns.find((c) => c.column_name === column)
         if (definition && (definition.read_only || ['Section Break', 'Column Break', 'Sub-table'].includes(definition.column_type))) continue
-        const tier = definition?.tier ?? 'basic'
-        if (!readTiers.has(tier)) continue
+        if (!reaches(readColumns, definition)) continue
         const matches = await resolveRows(meta, rows, column)
         // A single blank, duplicate or ambiguous key invalidates the column.
         if (matches.some((r) => r.action === 'fail')) continue
@@ -295,7 +297,7 @@ registerCollectionAction('import', {
         }
         // Readable overlap still matters to an append-only caller. Whether
         // this key can authorize an upsert is a separate permission fact.
-        let can_match = writeTiers.has(tier)
+        let can_match = reaches(writeColumns, definition)
         if (can_match) {
           try {
             await assertRunPermitted(user.row_id, table, matches)

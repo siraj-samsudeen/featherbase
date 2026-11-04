@@ -6,7 +6,7 @@ import { scopedWhere } from './query'
 import { principalNames } from './people-directory'
 import { getMeta, ROW_KEY, type TableMeta } from './meta'
 import { boundGetList, isBound } from './sources/dispatch'
-import { permittedTiers } from './permissions'
+import { includesColumn, permittedColumns } from './permissions'
 import { isSensitiveColumn } from './sensitive-columns'
 
 // Home cleanup: what a person reads for each referenced row (Home tiles,
@@ -80,8 +80,8 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
 // through the same scoped list a bound Table's list view uses. A source that
 // refuses or is down leaves these rows out, like any unreadable Table.
 async function boundTitles(meta: TableMeta, ids: string[], user: string): Promise<RowTitle[]> {
-  const tiers = await permittedTiers(user, meta.name, 'read')
-  const columns = meta.columns.filter((c) => tiers.has(c.tier ?? 'basic')
+  const granted = await permittedColumns(user, meta.name, 'read', '')
+  const columns = meta.columns.filter((c) => includesColumn(granted, c)
     && !['Sub-table', 'Section Break', 'Column Break'].includes(c.column_type)
     && !isSensitiveColumn(c.column_name) && !isSensitiveColumn(c.source_column || ''))
   const fields = columns.map((c) => c.column_name)

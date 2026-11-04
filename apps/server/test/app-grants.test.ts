@@ -26,7 +26,7 @@ function manifest(extra: Partial<AppManifest> = {}): AppManifest {
     ],
     roles: [ROLE],
     permissions: [
-      { table: DT, role: ROLE, can_read: true, can_write: true, can_create: true },
+      { table: DT, role: ROLE, operations: { read: '*', update: '*', create: '*' } },
     ],
     ...extra,
   }
@@ -37,6 +37,35 @@ async function unwire() {
 }
 
 describe('PLAT-004: manifest-declared roles and permissions', () => {
+  test('an app child Column selection stays attached to its named grid', async ({ createUser }) => {
+    registerApp(manifest({
+      tables: [
+        { name: 'Grant Note', kind: 'sub_table', columns: [
+          { column_name: 'text', column_type: 'Data' },
+          { column_name: 'private_text', column_type: 'Data' },
+        ] },
+        { name: DT, id_pattern: 'prompt', columns: [
+          { column_name: 'public_notes', column_type: 'Sub-table', row_table: 'Grant Note' },
+          { column_name: 'private_notes', column_type: 'Sub-table', row_table: 'Grant Note' },
+        ] },
+      ],
+      permissions: [{ table: DT, role: ROLE, operations: { read: ['public_notes.text', 'private_notes.private_text'] } }],
+      fixtures: [{ table: DT, rows: [{ row_id: 'two-grids',
+        public_notes: [{ text: 'public', private_text: 'not granted in public grid' }],
+        private_notes: [{ text: 'not granted in private grid', private_text: 'private' }],
+      }] }],
+    }))
+    try {
+      await installApp(APP)
+      const reader = await createUser({ roles: [ROLE] })
+      const row = await reader.get<{ public_notes: Record<string, unknown>[]; private_notes: Record<string, unknown>[] }>(`/api/table/${encodeURIComponent(DT)}/two-grids`)
+      expect(row.public_notes[0]).toMatchObject({ text: 'public' })
+      expect(row.public_notes[0]).not.toHaveProperty('private_text')
+      expect(row.private_notes[0]).toMatchObject({ private_text: 'private' })
+      expect(row.private_notes[0]).not.toHaveProperty('text')
+    } finally { await unwire() }
+  })
+
   test('install creates the role and grant; a scoped user works inside them and nowhere else', async ({
     admin,
     createUser,
@@ -45,14 +74,13 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     try {
       const res = await installApp(APP)
       expect(res.roles).toEqual([ROLE])
-      expect(res.perms).toHaveLength(1)
+      expect(res.perms).toHaveLength(3)
 
       const [role] = await sql`select 1 from role where row_id = ${ROLE}`
       expect(role).toEqual({ '?column?': 1 })
-      const [perm] = await sql`
-        select can_read, can_write, can_create, can_delete from permission
-        where ref_table = ${DT} and role = ${ROLE} and tier = 'basic'`
-      expect(perm).toMatchObject({ can_read: true, can_write: true, can_create: true, can_delete: false })
+      const permissions = await sql`
+        select operation from permission where ref_table = ${DT} and role = ${ROLE} order by operation`
+      expect(permissions.map((permission) => permission.operation)).toEqual(['create', 'read', 'update'])
 
       // A user holding only the app's role can insert and read its Table…
       const user = await createUser({ roles: [ROLE] })
@@ -80,8 +108,8 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     registerApp(
       manifest({
         permissions: [
-          { table: DT, role: ROLE, can_read: true, can_write: true, can_create: true },
-          { table: 'ToDo', role: ROLE, can_read: true },
+          { table: DT, role: ROLE, operations: { read: '*', update: '*', create: '*' } },
+          { table: 'ToDo', role: ROLE, operations: { read: '*' } },
         ],
       }),
     )
@@ -102,13 +130,13 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
     const pre = await admin.post<{ row_id: string }>('/api/save_row', {
       table: 'Permission',
-      row: { ref_table: 'ToDo', role: ROLE, can_read: true },
+      row: { ref_table: 'ToDo', role: ROLE, operation: 'read', scope_mode: 'all' },
     })
     registerApp(
       manifest({
         permissions: [
-          // Same identity (ToDo, ROLE, basic) but broader flags — must NOT overwrite.
-          { table: 'ToDo', role: ROLE, can_read: true, can_write: true, can_delete: true },
+          // Existing manual configuration must not acquire the app's broader powers.
+          { table: 'ToDo', role: ROLE, operations: { read: '*', update: '*', delete: true } },
         ],
       }),
     )
@@ -117,8 +145,8 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
       // Neither the role nor the grant was created by this install.
       expect(res.roles).toEqual([])
       expect(res.perms).toEqual([])
-      const [perm] = await sql`select can_write, can_delete from permission where row_id = ${pre.row_id}`
-      expect(perm).toMatchObject({ can_write: false, can_delete: false })
+      const permissions = await sql`select operation from permission where ref_table = 'ToDo' and role = ${ROLE}`
+      expect(permissions.map((permission) => permission.operation)).toEqual(['read'])
 
       await uninstallApp(APP)
       // The adopted role and grant predate the app and must survive it.
@@ -133,8 +161,8 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     registerApp(
       manifest({
         permissions: [
-          { table: DT, role: ROLE, can_read: true, can_write: true, can_create: true },
-          { table: 'ToDo', role: ROLE, can_read: true },
+          { table: DT, role: ROLE, operations: { read: '*', update: '*', create: '*' } },
+          { table: 'ToDo', role: ROLE, operations: { read: '*' } },
         ],
       }),
     )
@@ -168,7 +196,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     registerApp(
       manifest({
         roles: [],
-        permissions: [{ table: 'ToDo', role: 'No Such Role', can_read: true }],
+        permissions: [{ table: 'ToDo', role: 'No Such Role', operations: { read: '*' } }],
       }),
     )
     try {
@@ -181,7 +209,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
   test('a can_create grant without can_write keeps what a new row was given (#608)', async ({ createUser }) => {
     registerApp(
       manifest({
-        permissions: [{ table: DT, role: ROLE, can_read: true, can_create: true }],
+        permissions: [{ table: DT, role: ROLE, operations: { read: '*', create: '*' } }],
       }),
     )
     try {

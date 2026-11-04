@@ -2,6 +2,7 @@ import { expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
+import { grantRole } from './fixtures'
 
 // #852: before a token is issued, the Access tokens screen says what its owner
 // can reach, so a token that can do nothing useful is caught before it is used.
@@ -27,7 +28,7 @@ test('a role adds the Tables it grants, to read and to change', async ({ admin }
 
   await admin.post('/api/table_def', { name: 'Reach Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Reach Reader' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Reach Zone', role: 'Reach Reader', can_read: true } })
+  await grantRole(admin, { table: 'Reach Zone', role: 'Reach Reader', can_read: true })
   await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Reach Reader'] })
   const withReader = await admin.get<Reach>(reachOf(account.row_id))
   expect(withReader).toMatchObject({ every_table: false, own_roles: true, own_reach: true, change: before.change })
@@ -35,7 +36,7 @@ test('a role adds the Tables it grants, to read and to change', async ({ admin }
   expect(withReader.read.find((t) => t.table === 'Reach Zone')?.own_rows).toBe(false)
 
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Reach Writer' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Reach Zone', role: 'Reach Writer', can_write: true } })
+  await grantRole(admin, { table: 'Reach Zone', role: 'Reach Writer', can_write: true })
   await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Reach Reader', 'Reach Writer'] })
   expect(names((await admin.get<Reach>(reachOf(account.row_id))).change)).toEqual([...names(before.change), 'Reach Zone'].sort())
 })
@@ -50,7 +51,7 @@ test('the reach matches what the token can really do', async ({ admin, api }) =>
   expect((await api.fetch('/api/table/Reach%20Bin', asToken)).status).toBe(403)
 
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Bin Reader' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Reach Bin', role: 'Bin Reader', can_read: true } })
+  await grantRole(admin, { table: 'Reach Bin', role: 'Bin Reader', can_read: true })
   await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Bin Reader'] })
   expect(names((await admin.get<Reach>(reachOf(account.row_id))).read)).toContain('Reach Bin')
   expect((await api.fetch('/api/table/Reach%20Bin', asToken)).status).toBe(200)
@@ -73,15 +74,13 @@ test('a grant for its own rows only is marked as such; a full grant on the same 
   await admin.post('/api/table_def', { name: 'Reach Order', columns: [{ column_name: 'code', column_type: 'Data' }] })
   const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'reach-own-rows' })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Order Own Writer' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: {
-    ref_table: 'Reach Order', role: 'Order Own Writer', can_read: true, can_write: true, own_rows_only: true,
-  } })
+  await grantRole(admin, { table: 'Reach Order', role: 'Order Own Writer', can_read: true, can_write: true, own_rows_only: true })
   await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Order Own Writer'] })
   const own = await admin.get<Reach>(reachOf(account.row_id))
   expect(own.change.find((t) => t.table === 'Reach Order')).toEqual({ table: 'Reach Order', own_rows: true })
 
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Order Writer' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Reach Order', role: 'Order Writer', can_read: true, can_write: true } })
+  await grantRole(admin, { table: 'Reach Order', role: 'Order Writer', can_read: true, can_write: true })
   await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Order Own Writer', 'Order Writer'] })
   const full = await admin.get<Reach>(reachOf(account.row_id))
   expect(full.change.find((t) => t.table === 'Reach Order')).toEqual({ table: 'Reach Order', own_rows: false })
@@ -101,7 +100,7 @@ test('a Table whose mandatory access admits none of the owner\'s roles is not re
   const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'reach-vault' })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Vault Reader' } })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Vault Member' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Reach Vault', role: 'Vault Reader', can_read: true } })
+  await grantRole(admin, { table: 'Reach Vault', role: 'Vault Reader', can_read: true })
   await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Vault Reader'] })
   expect(names((await admin.get<Reach>(reachOf(account.row_id))).read)).not.toContain('Reach Vault')
 

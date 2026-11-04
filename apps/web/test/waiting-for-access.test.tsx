@@ -6,6 +6,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -58,7 +59,7 @@ test('nobody waiting: an empty state and no badge', async ({ admin }) => {
 test('someone who is not a System Manager gets no link, no count call and no page', async ({ admin, createUser }) => {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
   await admin.post('/api/table_def', { name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Shelf Note', role: 'Shelf Clerk', can_read: true } })
+  await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_read: true })
   const clerk = await createUser({ email: 'clerk.wfa@example.com', roles: ['Shelf Clerk'] })
   const urls: string[] = []
   const real = globalThis.fetch

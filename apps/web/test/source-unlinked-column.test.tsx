@@ -6,6 +6,7 @@ import { invalidateSources } from 'server/src/sources/registry'
 import { EXTERNAL_DATABASE_URL } from 'server/test/external-database'
 import { test, expect, renderApp } from './pg-test'
 import { tableHref } from 'shared'
+import { grantRole } from 'server/test/fixtures'
 
 // #796: a column whose source foreign key points at a table not connected yet
 // says so beside its value; a System Manager is offered that table, and the
@@ -69,7 +70,7 @@ test('asking for a table already connected chooses nothing', async ({ admin }) =
 test('someone who may only read crates is told, but not offered to connect', async ({ admin, createUser }) => {
   await crateAlone(admin)
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Crate Reader' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Crate', role: 'Crate Reader', can_read: true } })
+  await grantRole(admin, { table: 'Crate', role: 'Crate Reader', can_read: true })
   const reader = await createUser({ email: 'crate-reader@example.test', roles: ['Crate Reader'] })
   await renderApp(`${tableHref('Crate')}/row/5`, reader)
   const note = await screen.findByTestId('unlinked-rack_id', undefined, { timeout: 8000 })

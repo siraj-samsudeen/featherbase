@@ -47,7 +47,7 @@ describe('PERM-006: field-level (tier) permissions', () => {
     expect(Number(adminDoc.salary)).toBe(5000)
   })
 
-  test('basic-tier user cannot write the restricted-tier field (silently ignored, not escalated)', async ({
+  test('an ungranted field refuses the whole update', async ({
     admin,
     createUser,
   }) => {
@@ -61,11 +61,12 @@ describe('PERM-006: field-level (tier) permissions', () => {
       method: 'PATCH',
       body: JSON.stringify({ updated_at: cur.updated_at, employee: 'Alice B', salary: 99999 }),
     })
-    expect(res.status).toBe(200)
-    // salary unchanged, employee changed
+    expect(res.status).toBe(403)
+    // No partial save: both values and the revision stay unchanged.
     const after = await admin.get<Record<string, unknown>>(dt.rowUrl(name))
     expect(Number(after.salary)).toBe(5000)
-    expect(after.employee).toBe('Alice B')
+    expect(after.employee).toBe('Alice')
+    expect(after.updated_at).toBe(cur.updated_at)
   })
 
   test('document activity omits restricted field values from a basic-tier reader', async ({

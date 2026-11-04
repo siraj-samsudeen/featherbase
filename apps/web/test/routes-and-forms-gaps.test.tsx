@@ -7,6 +7,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 const anonymous = { user: null, token: null } as never
 type Router = { state: { location: { pathname: string } } }
@@ -39,7 +40,7 @@ for (const path of [
 test('someone with a Table but no Home Page is pointed at All tables', async ({ admin, createUser }) => {
   await admin.post('/api/table_def', { name: 'Rfg Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Rfg Clerk' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Rfg Note', role: 'Rfg Clerk', can_read: true } })
+  await grantRole(admin, { table: 'Rfg Note', role: 'Rfg Clerk', can_read: true })
   await sql`delete from home_page`
   const clerk = await createUser({ roles: ['Rfg Clerk'] })
   await renderApp('/featherbase/admin', clerk)

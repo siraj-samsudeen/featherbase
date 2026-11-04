@@ -4,7 +4,7 @@
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { expectApiError, makeTable, patchDoc } from './fixtures'
+import { expectApiError, makeTable, patchDoc, grantRole } from './fixtures'
 import { sql } from '../src/db'
 
 const OLD = 'Trn SAP Plant'
@@ -31,7 +31,7 @@ describe('#871: renaming a custom Table', () => {
     await admin.post('/api/save_row', { table: 'Trn Visit', row: { plant: 'PLANT-8151' } })
     await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: OLD, ref_name: 'PLANT-8151', content: 'Checked on site' } })
     await admin.post(url('Role'), { row_id: 'Trn Reader' })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: OLD, role: 'Trn Reader', can_read: true } })
+    await grantRole(admin, { table: OLD, role: 'Trn Reader', can_read: true })
     await admin.post('/api/saved_views', { table: OLD, label: 'Chennai only', filters: [['city', '=', 'Chennai']] })
     await admin.put(`/api/user_settings/${encodeURIComponent(OLD)}`, { columns: ['city'] })
 

@@ -5,7 +5,7 @@ import { planRevert } from '../../src/actions/collection-import-revert'
 import { sql } from '../../src/db'
 import { invalidateMeta } from '../../src/meta'
 import { tableRelation } from '../../src/table-engine'
-import { expectApiError } from '../fixtures'
+import { expectApiError, grantRole } from '../fixtures'
 
 // Spec 0005 (import revert) — the contract, rule, and invariant layers.
 // RVT-R1: a run becomes addressable (run_id + touched rows in the log).
@@ -339,10 +339,7 @@ describe('RVT-R6: whole-request permission refusal', () => {
     await setup(admin)
     const runId = await seedAndRun(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: ROLE, can_read: true, can_write: true }, // no delete
-    })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true, can_write: true }) // no delete
     const user = await createUser({ roles: [ROLE] })
     const before = await rowsByZone(admin)
     const res = await user.fetch(REVERT, {
@@ -405,10 +402,7 @@ describe('RVT: rows a revert cannot act on are named, and the rest still revert'
     await setup(admin)
     const runId = await seedAndRun(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Revert Own Rows' } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: 'Revert Own Rows', can_read: true, can_write: true, can_delete: true, own_rows_only: true },
-    })
+    await grantRole(admin, { table: DT, role: 'Revert Own Rows', can_read: true, can_write: true, can_delete: true, own_rows_only: true })
     const user = await createUser({ roles: ['Revert Own Rows'] })
     const before = await rowsByZone(admin)
     await expectApiError(user.post(REVERT, { run_id: runId }), { status: 403 })

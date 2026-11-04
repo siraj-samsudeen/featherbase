@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { grantRole } from './fixtures'
 
 // #340: webhooks and email rules send a row out of the platform, to nobody
 // in particular, so neither carries a restricted (sensitive) column — on the
@@ -101,7 +102,7 @@ describe('#340: email rules leave restricted columns out', () => {
   test('a rule addressed from a restricted column still reaches its recipient when a basic-tier person moves the row', async ({ admin, createUser }) => {
     await setup(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Out Clerk' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: 'Out Clerk', tier: 'basic', can_read: true, can_write: true } })
+    await grantRole(admin, { table: DT, role: 'Out Clerk', tier: 'basic', can_read: true, can_write: true })
     const clerk = await createUser({ roles: ['Out Clerk'] })
     await admin.post('/api/save_row', {
       table: 'Workflow',

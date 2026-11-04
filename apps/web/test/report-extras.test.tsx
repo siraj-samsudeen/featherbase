@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach } from 'vitest'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 type Admin = Parameters<typeof renderApp>[1]
 const T = 'Rex Sale'
@@ -101,12 +102,12 @@ test('an ungrouped CSV export has a line per row and a total, and is logged', as
 test('an export still downloads when the server refuses to log it', async ({ admin, createUser }) => {
   await seed(admin)
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Rex Reader' } })
-  const grant = (await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: T, role: 'Rex Reader', can_read: true } })) as { row_id: string }
+  const [grantId] = await grantRole(admin, { table: T, role: 'Rex Reader', can_read: true })
   const reader = await createUser({ roles: ['Rex Reader'] })
   const blobs = captureDownloads()
   await openReport(reader)
   // The grant is withdrawn after the rows were shown: the log refuses the export.
-  await admin.delete(`/api/table/Permission/${encodeURIComponent(grant.row_id)}`)
+  await admin.delete(`/api/table/Permission/${encodeURIComponent(grantId)}`)
   await expect(reader.post('/api/access_log', { table: T, method: 'csv' })).rejects.toMatchObject({ status: 403 })
   await userEvent.click(screen.getByTestId('export-csv'))
   await waitFor(() => expect(blobs).toHaveLength(1))

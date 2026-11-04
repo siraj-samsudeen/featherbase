@@ -31,7 +31,7 @@ import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirec
 import { sendInvitation } from './invitation-email'
 import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
-import { assertPermission, assertSystemManager, getRoles, permissionScope, permittedTiers, tableAccessFor } from './permissions'
+import { assertPermission, assertSystemManager, getRoles, includesColumn, permissionScope, permittedColumns, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
 import { landingAfterSignIn, openAdminFor } from './landing'
@@ -1783,19 +1783,21 @@ app.post('/api/pin_chart_to_dashboard', async (c) => {
   return c.json(await pinChartToDashboard(dashboard, chart, who(c)))
 })
 
-// SET-003: role & permission manager. Reads/writes the Permission matrix for
-// a Table at tier 'basic'. Editing permissions is System-Manager-only.
-// Writes go through the normal save lifecycle, and permissionScope reads
-// Permission live, so a change takes effect on the very next request.
-const PERM_FLAGS = ['can_read', 'can_write', 'can_create', 'can_delete', 'can_submit', 'can_cancel', 'can_amend'] as const
+// The existing simple matrix is a presentation of operation contributions.
+// Granular selections and scoped contributions are edited as Permission Rows;
+// this coarse editor must never replace them with broader permissions.
+const MATRIX_OPERATIONS = {
+  can_read: 'read', can_write: 'update', can_create: 'create', can_delete: 'delete',
+  can_submit: 'submit', can_cancel: 'cancel', can_amend: 'amend',
+} as const
 
 app.get('/api/permissions/:table', async (c) => {
   await assertSystemManager(who(c))
   const table = c.req.param('table')
   const roles = (await sql`select row_id from role order by row_id`).map((r) => r.row_id as string)
-  const perms = await sql`
-    select row_id, role, ${sql(PERM_FLAGS as unknown as string[])}
-    from permission where ref_table = ${table} and tier = 'basic' order by role`
+  const rows = await sql`select role, operation from permission where ref_table = ${table} and parent_permission is null`
+  const perms = roles.map((role) => ({ role, ...Object.fromEntries(Object.entries(MATRIX_OPERATIONS)
+    .map(([flag, operation]) => [flag, rows.some((row) => row.role === role && row.operation === operation)])) }))
   return c.json({ table, roles, perms })
 })
 
@@ -1805,17 +1807,27 @@ app.post('/api/permissions/:table', async (c) => {
   const table = c.req.param('table')
   const body = (await c.req.json().catch(() => ({}))) as { role?: string } & Record<string, unknown>
   if (!body.role) throw new AppError('ValidationError', 'Expected { role }')
-  const flags = Object.fromEntries(PERM_FLAGS.map((f) => [f, Boolean(body[f])]))
-  const [existing] = await sql`
-    select row_id, updated_at from permission
-    where ref_table = ${table} and role = ${body.role} and tier = 'basic'`
-  if (existing)
-    await saveDoc(
-      'Permission',
-      { row_id: existing.row_id as string, updated_at: existing.updated_at, ...flags },
-      user,
-    )
-  else await saveDoc('Permission', { ref_table: table, role: body.role, tier: 'basic', ...flags }, user)
+  await withTransaction(async () => {
+    // The matrix is the basic-level Rows of one role, as its one flag Row was:
+    // added operations keep that Row's creator restriction and app ownership.
+    const existing = await sql`select * from permission where ref_table = ${table} and role = ${body.role!}
+      and parent_permission is null and requires_permission is null for update`
+    const shapes = new Set(existing.map((row) => `${String(row.scope_mode)} ${String(row.owner_app ?? '')}`))
+    if (existing.some((row) => row.column_rule !== 'basic') || shapes.size > 1)
+      throw new AppError('ValidationError', 'Edit the individual Permission Rows to preserve their scopes and Column selections')
+    const [shape] = existing
+    for (const [flag, operation] of Object.entries(MATRIX_OPERATIONS)) {
+      const contributions = existing.filter((row) => row.operation === operation)
+      if (!body[flag]) {
+        for (const row of contributions) await deleteDoc('Permission', String(row.row_id), user)
+      } else if (!contributions.length) {
+        const saved = await saveDoc('Permission', {
+          ref_table: table, role: body.role, operation, scope_mode: shape?.scope_mode ?? 'all', column_rule: 'basic',
+        }, user)
+        if (shape?.owner_app) await sql`update permission set owner_app = ${String(shape.owner_app)} where row_id = ${String(saved.row_id)}`
+      }
+    }
+  })
   return c.json({ ok: true })
 })
 
@@ -2221,8 +2233,8 @@ app.get('/api/table/:table', async (c) => {
     await assertPermission(user.row_id, meta.name, 'read')
     // #738: the caller's readable levels ride beside the cached meta, never
     // inside it — the meta object is shared by every caller.
-    const readable = await permittedTiers(user.row_id, meta.name, 'read')
-    return c.json({ ...meta, readable_tiers: [...readable], storage_identity: await tableStorageIdentity(meta) })
+    const readable = await permittedColumns(user.row_id, meta.name, 'read')
+    return c.json({ ...meta, readable_columns: meta.columns.filter((column) => includesColumn(readable, column)).map((column) => column.column_name), storage_identity: await tableStorageIdentity(meta) })
   }
   if (suffix === 'count') {
     const filters = c.req.query('filters')

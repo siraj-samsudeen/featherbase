@@ -145,6 +145,11 @@ class Api {
     return res.json();
   }
 
+  /** One basic-level Permission Row per operation for this role on this table. */
+  async grant(table, role, operations) {
+    for (const operation of operations) await this.saveRow('Permission', { ref_table: table, role, operation });
+  }
+
   /** A role that may read this table (its basic columns). */
   async readerRoleFor(table) {
     const role = `${table} Reader`;
@@ -154,7 +159,7 @@ class Api {
     await this.call(
       'POST',
       '/api/save_row',
-      { table: 'Permission', row: { ref_table: table, role, can_read: true } },
+      { table: 'Permission', row: { ref_table: table, role, operation: 'read' } },
       [201],
       `let ${role} read ${table}`,
     );

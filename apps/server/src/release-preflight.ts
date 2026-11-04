@@ -359,13 +359,18 @@ async function assertAccessConfiguration(environment: string): Promise<string[]>
   if (await installed()) {
     // #559: a Table marked as deciding scope is a security Table too.
     const marked = (await sql`select name from table_def where decides_scope`).map((r) => String(r.name))
+    // Preflight must inspect both sides of migration 0006 before allowing
+    // that migration to run. Runtime permission evaluation uses operations only.
+    const [schema] = await sql`select exists (select 1 from information_schema.columns
+      where table_schema = 'featherbase' and table_name = 'permission' and column_name = 'operation') as operations`
+    const selection = schema.operations ? sql`operation` : sql`${sql(ACTION_FLAGS.map((a) => `can_${a}`))}`
     const grants = await sql`
-      select row_id, role, ref_table, ${sql(ACTION_FLAGS.map((a) => `can_${a}`))}
+      select row_id, role, ref_table, ${selection}
       from permission
       where role in ('All', 'Guest') and ref_table in ${sql(['Person', ...SECURITY_TABLES, ...marked])}
       order by role, ref_table, row_id`
     for (const r of grants) {
-      const granted = ACTION_FLAGS.filter((a) => r[`can_${a}`] === true)
+      const granted = schema.operations ? [String(r.operation)] : ACTION_FLAGS.filter((a) => r[`can_${a}`] === true)
       if (granted.length)
         problems.push(`Permission ${String(r.row_id)} grants role "${String(r.role)}" on "${String(r.ref_table)}" (${granted.join(', ')}): give these Tables to named roles only, and delete the row`)
     }

@@ -13,7 +13,7 @@ interface CatalogApp {
   preparation: { state: 'needed' | 'preparing' | 'ready' | 'failed' | 'unavailable'; error?: string }
   declarations: {
     tables: { name: string; label?: string }[]
-    permissions: { table: string; role: string; tier?: string; own_rows_only?: boolean; [key: string]: unknown }[]
+    permissions: { table: string; role: string; scope_mode?: 'all' | 'creator'; operations: Record<string, string[] | string | true> }[]
     roles: string[]
     settings: { name: string; required: boolean }[]
     roleDefaults?: Record<string, string[]>
@@ -28,9 +28,19 @@ interface CatalogApp {
 }
 
 const GRANTS = [
-  ['can_read', 'read'], ['can_write', 'edit'], ['can_create', 'create'],
-  ['can_delete', 'delete'], ['can_submit', 'submit'], ['can_cancel', 'cancel'], ['can_amend', 'amend'],
+  ['read', 'read'], ['update', 'edit'], ['create', 'create'],
+  ['delete', 'delete'], ['submit', 'submit'], ['cancel', 'cancel'], ['amend', 'amend'],
 ] as const
+
+/** One declared grant in words: each operation, and which Columns it reaches
+ *  when it is not every basic-level one. */
+function describeGrant(operations: Record<string, string[] | string | true>): string {
+  return GRANTS.filter(([key]) => operations[key] !== undefined).map(([key, label]) => {
+    const selection = operations[key]
+    if (selection === '*') return `${label} (every column)`
+    return Array.isArray(selection) ? `${label} (${selection.join(', ')})` : label
+  }).join(', ') || 'No grants'
+}
 
 function configurationPath(table: string, app: string) {
   return `${tableHref(table)}?filters=${encodeURIComponent(JSON.stringify([['app', '=', app]]))}`
@@ -54,7 +64,7 @@ function AppDetails({ app }: { app: CatalogApp }) {
   const needsPreparation = app.preparation.state !== 'ready'
   const busy = install.isPending || app.preparation.state === 'preparing'
   const error = install.error?.message ?? app.preparation.error
-  const broadGrants = permissions.some(p => p.role === 'All' && GRANTS.some(([key]) => p[key]))
+  const broadGrants = permissions.some(p => p.role === 'All' && GRANTS.some(([key]) => p.operations[key] !== undefined))
   return (
     <Card className="min-w-0 space-y-6 p-5" aria-label={`${app.title} details`}>
       <header className="space-y-3">
@@ -112,7 +122,7 @@ function AppDetails({ app }: { app: CatalogApp }) {
                 <tr key={i}>
                   <td className="py-2 pr-3">{tables.find(t => t.name === permission.table)?.label ?? permission.table}</td>
                   <td className="py-2 pr-3">{permission.role}</td>
-                  <td className="py-2">{GRANTS.filter(([key]) => permission[key]).map(([, label]) => label).join(', ') || 'No grants'}{permission.own_rows_only ? ' · Own rows only' : ''}{permission.tier === 'restricted' ? ' · Restricted tier' : ''}</td>
+                  <td className="py-2">{describeGrant(permission.operations)}{permission.scope_mode === 'creator' ? ' · Own rows only' : ''}</td>
                 </tr>
               ))}</tbody>
             </table>

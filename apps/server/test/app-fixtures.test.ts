@@ -289,8 +289,8 @@ describe('helpdesk: a registered app that installs and uninstalls cleanly', () =
     try {
       expect(res.tables).toEqual(['HD Ticket'])
       expect(res.roles).toEqual(['Support Agent', 'Support Manager', 'Customer'])
-      // 3 on HD Ticket + 2 ToDo + 3 Comment + 3 File + 2 Version.
-      expect(res.perms).toHaveLength(13)
+      // One row per operation: 9 HD Ticket + 4 ToDo + 9 Comment + 9 File + 2 Version.
+      expect(res.perms).toHaveLength(33)
       // 6 fixture rows declared, 5 created — the Email Account was adopted.
       expect(res.fixtures.map((f) => f.table)).toEqual([
         'Workflow',

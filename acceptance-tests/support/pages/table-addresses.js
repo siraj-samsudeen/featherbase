@@ -54,8 +54,7 @@ class TableAddresses {
     const role = 'Route Probe Editor';
     const existing = await api.call('GET', '/api/table/Role/Route%20Probe%20Editor');
     if (existing.status() !== 200) await api.saveRow('Role', { row_id: role });
-    await api.saveRow('Permission', { ref_table: 'Route Probe', role, tier: 'basic',
-      can_read: true, can_write: true, can_create: true });
+    await api.grant('Route Probe', role, ['read', 'update', 'create']);
     return role;
   }
 

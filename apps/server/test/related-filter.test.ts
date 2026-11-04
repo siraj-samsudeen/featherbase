@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { grantRole } from './fixtures'
 
 // NAV-002: the 'related' filter operator — relationship-shaped list filters
 // compiled to permission-scoped subqueries server-side. World: Supplier ←
@@ -120,14 +121,8 @@ describe('NAV-002: related filters', () => {
     const ROLE = 'Rel Role'
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
     for (const dt of [ORDER, LINE])
-      await admin.post('/api/save_row', {
-        table: 'Permission',
-        row: { ref_table: dt, role: ROLE, can_read: true },
-      })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: SUP, role: ROLE, can_read: true },
-    })
+      await grantRole(admin, { table: dt, role: ROLE, can_read: true })
+    await grantRole(admin, { table: SUP, role: ROLE, can_read: true })
     const user = await createUser({ roles: [ROLE] })
     // Data Scope: user may only read supplier S-A
     await admin.post('/api/save_row', {
@@ -149,10 +144,7 @@ describe('NAV-002: related filters', () => {
     await setup(admin)
     const ROLE = 'Rel Narrow Role'
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: ORDER, role: ROLE, can_read: true },
-    })
+    await grantRole(admin, { table: ORDER, role: ROLE, can_read: true })
     const user = await createUser({ roles: [ROLE] })
     await expect(
       list(user, ORDER, [['supplier', 'related', { table: SUP, filters: [] }]]),

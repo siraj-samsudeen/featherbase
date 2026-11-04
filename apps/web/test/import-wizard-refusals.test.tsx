@@ -11,6 +11,7 @@ import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
 import { setSession } from '../src/lib/api'
 import { ImportWizard } from '../src/pages/ImportWizard'
+import { grantRole } from 'server/test/fixtures'
 
 async function upload(csv: string, name = 'zones.csv') {
   const bytes = new TextEncoder().encode(csv).buffer
@@ -263,14 +264,10 @@ test('#851 a mapped-column choice invalidates acknowledged append despite the sa
 test('#851 readable append-only coverage warns without offering a matching action', async ({ admin, createUser }) => {
   const rows = await consentZones(admin, 2)
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Iwr Appender' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: {
-    ref_table: 'Iwr Zone', role: 'Iwr Appender', can_read: true, can_create: true, can_write: false,
-  } })
+  await grantRole(admin, { table: 'Iwr Zone', role: 'Iwr Appender', can_read: true, can_create: true, can_write: false })
   // The generic target picker reads Table metadata; this is a read grant,
   // not System Manager or write access to the imported rows.
-  await admin.post('/api/save_row', { table: 'Permission', row: {
-    ref_table: 'Table', role: 'Iwr Appender', can_read: true,
-  } })
+  await grantRole(admin, { table: 'Table', role: 'Iwr Appender', can_read: true })
   const appender = await createUser({ roles: ['Iwr Appender'] })
   await admin.post('/api/save_row', { table: 'Data Scope', row: {
     person: appender.user, allow_table: 'Table', for_value: 'Iwr Zone',

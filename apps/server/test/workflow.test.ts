@@ -4,7 +4,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { initDocState } from '../src/workflow'
-import { expectApiError } from './fixtures'
+import { expectApiError, grantRole } from './fixtures'
 
 // WF-001/002/003: workflow definition, execution, and server-side role
 // enforcement.
@@ -39,10 +39,7 @@ async function setup(admin: TestClient) {
   for (const r of [APPROVER, VIEWER])
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: r } })
   // Viewer can read+write the doc but is NOT the approver.
-  await admin.post('/api/save_row', {
-    table: 'Permission',
-    row: { ref_table: DT, role: VIEWER, tier: 'basic', can_read: true, can_write: true },
-  })
+  await grantRole(admin, { table: DT, role: VIEWER, can_read: true, can_write: true })
 }
 
 async function makeFlow(admin: TestClient) {
@@ -315,10 +312,7 @@ describe('Move a row forward with an allowed action', () => {
     await setup(admin)
     await makeFlow(admin)
     await makeDoc(admin)
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: APPROVER, tier: 'basic', can_read: true },
-    })
+    await grantRole(admin, { table: DT, role: APPROVER, can_read: true })
     const approver = await createUser({ roles: [APPROVER] })
     await admin.post(url(':apply_workflow_action'), { action: 'Submit' })
 

@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
 import { tableSlug } from 'shared'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 type Admin = Parameters<typeof renderApp>[1]
 
@@ -28,7 +29,7 @@ function recordCalls(): string[] {
 async function seed(admin: Admin): Promise<string> {
   await admin.post('/api/table_def', { name: DT, columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: ROLE, can_read: true } })
+  await grantRole(admin, { table: DT, role: ROLE, can_read: true })
   const row = (await admin.post('/api/save_row', { table: DT, row: { title: 'Blue box' } })) as { row_id: string }
   return row.row_id
 }
@@ -55,7 +56,7 @@ test('a reader who may read only this Table sees no errors for assignments and a
 
 test('a reader whose role may also read assignments sees who the row is assigned to', async ({ admin, createUser }) => {
   const rowId = await seed(admin)
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'ToDo', role: ROLE, can_read: true } })
+  await grantRole(admin, { table: 'ToDo', role: ROLE, can_read: true })
   await admin.post('/api/assign', { table: DT, row_id: rowId, assign_to: 'Administrator' })
   const reader = await createUser({ email: 'rrp.todo@example.com', roles: [ROLE] })
   await openCollaboration(reader, rowId)

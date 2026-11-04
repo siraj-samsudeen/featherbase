@@ -9,6 +9,7 @@ import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { getToken } from '../src/lib/api'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -30,10 +31,7 @@ async function seed(admin: Admin, table: string) {
     await admin.post('/api/save_row', { table, row: { title, stage } })
   // Anyone holding this role may read it, so a teammate can see the views.
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Sv Reader' } })
-  await admin.post('/api/save_row', {
-    table: 'Permission',
-    row: { ref_table: table, role: 'Sv Reader', tier: 'basic', can_read: true },
-  })
+  await grantRole(admin, { table: table, role: 'Sv Reader', tier: 'basic', can_read: true })
 }
 
 async function open(admin: Admin, table: string, filters?: unknown) {
