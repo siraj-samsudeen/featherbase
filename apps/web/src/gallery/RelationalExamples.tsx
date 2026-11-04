@@ -135,7 +135,7 @@ export function PathBarDemo() {
   const [current, setCurrent] = useState(ALL_STEPS.length - 1)
   const [picked, setPicked] = useState('')
   return (
-    <div className="flex min-w-0 flex-col gap-2 overflow-hidden rounded-card border border-border">
+    <div className="flex min-w-0 flex-col gap-2 rounded-card border border-border [&>:first-child]:rounded-t-card">
       <PathBar steps={ALL_STEPS} current={current} onStep={setCurrent}
         onBack={() => setCurrent(Math.max(0, current - 1))} onForward={() => setCurrent(Math.min(ALL_STEPS.length - 1, current + 1))}
         onCopyLink={() => {}}
