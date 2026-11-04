@@ -1,12 +1,54 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { registerApp, installApp, suspendRuntimeApp } from '../src/apps'
-import { expectApiError, grantRole, tableRef } from './fixtures'
+import { expectApiError, grantRole, makeTable, tableRef } from './fixtures'
 import { eventVisibleTo } from '../src/realtime'
+import { getMeta } from '../src/meta'
 
 const employee = tableRef('contactproof.employee')
 
 describe('domain administration', () => {
+  test('creating reading and updating use independent column selections', async ({ admin, createUser }) => {
+    const contacts = await makeTable(admin, {
+      name: 'Independent Contact',
+      columns: ['name', 'employee_number', 'phone', 'emergency_contact'],
+    })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Independent Contact Maintainer' } })
+    const meta = await getMeta(contacts.name)
+    for (const [operation, columns] of [
+      ['create', ['name', 'employee_number', 'phone']],
+      ['read', ['name', 'employee_number']],
+      ['update', ['phone']],
+    ] as const) {
+      await admin.post('/api/save_row', { table: 'Permission', row: {
+        ref_table: contacts.name, role: 'Independent Contact Maintainer', operation, scope_mode: 'all',
+        columns: columns.map((name) => ({ target_column: meta.columns.find((column) => column.column_name === name)!.row_id })),
+      } })
+    }
+    const maintainer = await createUser({ roles: ['Independent Contact Maintainer'] })
+    const created = await maintainer.post<Record<string, unknown>>('/api/save_row', {
+      table: contacts.name, row: { name: 'Priya', employee_number: 'DEMO-003', phone: 'original' },
+    })
+    expect(created).toMatchObject({ name: 'Priya', employee_number: 'DEMO-003' })
+    expect(created).not.toHaveProperty('phone')
+    const url = contacts.rowUrl(String(created.row_id))
+    const changed = await maintainer.post<Record<string, unknown>>('/api/save_row', {
+      table: contacts.name, row: { row_id: created.row_id, updated_at: created.updated_at, phone: 'corrected' },
+    })
+    expect(await admin.get(url)).toMatchObject({ phone: 'corrected' })
+    expect(await maintainer.get(url)).not.toHaveProperty('phone')
+    await expectApiError(maintainer.get(contacts.listUrl({ fields: ['phone'] })), { status: 417 })
+    await expectApiError(maintainer.post('/api/save_row', {
+      table: contacts.name,
+      row: { row_id: created.row_id, updated_at: changed.updated_at, phone: 'partial', employee_number: 'FORBIDDEN' },
+    }), { status: 403 })
+    expect(await admin.get(url)).toMatchObject({ phone: 'corrected', employee_number: 'DEMO-003' })
+    await expectApiError(maintainer.post('/api/save_row', {
+      table: contacts.name, row: { name: 'Ravi', emergency_contact: 'ungranted' },
+    }), { status: 403 })
+    expect(await admin.get(contacts.listUrl({}))).toMatchObject({ total: 1 })
+  })
+
   test.for(['request', 'hook'] as const)('an ungranted contact detail from %s rejects the entire correction', async (source, { admin, createUser }) => {
     registerApp({
       name: 'contactproof',
