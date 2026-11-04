@@ -242,7 +242,7 @@ describe('Tickets independently installed product contract (#810)', () => {
     expect(people).toEqual(expect.arrayContaining([{ row_id: w.bala.user, full_name: 'bala' }]))
     expect((await read(w.owner, 'session')).people).toBeUndefined()
     // Names come only from the platform, for the person acting: no generic write can set one.
-    await refused(w.other.post('/api/table/tickets.person', { row_id: w.other.user, full_name: 'bala' }))
+    await refused(w.other.post('/api/table/tickets.member', { row_id: w.other.user, full_name: 'bala' }))
   })
 
   test("after the requester's own scope change only re-approval is needed; a recipient change needs verification", async ({ admin, createUser }) => {

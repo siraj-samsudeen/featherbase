@@ -41,7 +41,7 @@ function validate(table: string, ctx: Validation) {
   if (!allowed || allowed.user !== ctx.user) ctx.reject('Use an authorized Tickets action')
   if ((table === 'event' || table === 'progress') && !ctx.isNew) ctx.reject('History is append-only')
   // Each person writes only their own name, which the platform supplies.
-  if (table === 'person' && ctx.row.row_id !== ctx.user) ctx.reject('A person may record only their own name')
+  if (table === 'member' && ctx.row.row_id !== ctx.user) ctx.reject('A person may record only their own name')
   if (table === 'request' && ctx.old && ctx.row.original !== ctx.old.original) ctx.reject('The original request is immutable')
   if (ctx.old && ctx.row.owner !== ctx.old.owner) ctx.reject('The requester is immutable')
 }
@@ -74,13 +74,13 @@ function validateField(ctx: Validation) {
   if (ctx.row.field_type === 'link' && !String(ctx.row.link_table ?? '').trim()) ctx.reject('A link field names the Table it links to')
 }
 export const validators = {
-  ...Object.fromEntries(['ticket', 'request', 'event', 'progress', 'person'].map(table =>
+  ...Object.fromEntries(['ticket', 'request', 'event', 'progress', 'member'].map(table =>
     [`tickets.${table}`, (ctx: Validation) => validate(table, ctx)])),
   'tickets.ticket_type': validateType,
   'tickets.type_field': validateField,
 }
 export const destructiveGuards = {
-  ...Object.fromEntries(['ticket', 'request', 'event', 'progress', 'person'].map(table =>
+  ...Object.fromEntries(['ticket', 'request', 'event', 'progress', 'member'].map(table =>
     [`tickets.${table}`, (ctx: Validation) => ctx.reject('Tickets references and history cannot be renamed or deleted')])),
   // A field can be removed; a type is switched off, so its tickets keep their meaning.
   'tickets.ticket_type': (ctx: Validation) => ctx.reject('Switch a ticket type off (enabled) instead of renaming or deleting it'),
@@ -174,7 +174,7 @@ async function typedDetails(ctx: ReadContext, type: TicketType, values: Row): Pr
   const known = new Map(type.fields.map(field => [field.name, field]))
   const unknown = Object.keys(values).find(key => !known.has(key))
   if (unknown) ctx.reject(`${type.label} has no field ${unknown}`)
-  const people = type.fields.some(f => f.type === 'person') ? new Set((await all(ctx, 'tickets.person', ['row_id'])).map(r => String(r.row_id))) : new Set<string>()
+  const people = type.fields.some(f => f.type === 'person') ? new Set((await all(ctx, 'tickets.member', ['row_id'])).map(r => String(r.row_id))) : new Set<string>()
   const out: Row = {}
   for (const field of type.fields) {
     const raw = values[field.name]
@@ -237,9 +237,9 @@ function workflow(request: Row, events: Row[]) {
 }
 // Names of the people who acted in Tickets, as each of them last appeared.
 async function remember(ctx: Context) {
-  const [row] = await ctx.documents.list('tickets.person', { fields: ['row_id', 'full_name', 'updated_at'], filters: [['row_id', '=', ctx.user]], limit_page_length: 1 })
-  if (!row) await ctx.documents.create('tickets.person', { row_id: ctx.user, full_name: ctx.userName })
-  else if (row.full_name !== ctx.userName) await ctx.documents.update('tickets.person', { row_id: ctx.user, updated_at: row.updated_at, full_name: ctx.userName })
+  const [row] = await ctx.documents.list('tickets.member', { fields: ['row_id', 'full_name', 'updated_at'], filters: [['row_id', '=', ctx.user]], limit_page_length: 1 })
+  if (!row) await ctx.documents.create('tickets.member', { row_id: ctx.user, full_name: ctx.userName })
+  else if (row.full_name !== ctx.userName) await ctx.documents.update('tickets.member', { row_id: ctx.user, updated_at: row.updated_at, full_name: ctx.userName })
 }
 function idsIn(value: unknown, out: Set<string>) {
   if (typeof value === 'string') out.add(value)
@@ -253,7 +253,7 @@ async function names(ctx: ReadContext, ...values: unknown[]): Promise<Record<str
   const ids = new Set<string>()
   for (const value of values) idsIn(value, ids)
   if (!ids.size) return {}
-  const rows = await all(ctx, 'tickets.person', ['row_id', 'full_name'], [['row_id', 'in', [...ids]]])
+  const rows = await all(ctx, 'tickets.member', ['row_id', 'full_name'], [['row_id', 'in', [...ids]]])
   return Object.fromEntries(rows.map(row => [String(row.row_id), String(row.full_name)]))
 }
 async function history(ctx: ReadContext, ticket: Row) {
@@ -439,7 +439,7 @@ export const reads = {
     input(ctx, [])
     const types = await configuredTypes(ctx)
     const people = [...types.values()].some(t => t.fields.some(f => f.type === 'person'))
-      ? (await all(ctx, 'tickets.person', ['row_id', 'full_name'])).map(r => ({ value: String(r.row_id), label: String(r.full_name) })) : []
+      ? (await all(ctx, 'tickets.member', ['row_id', 'full_name'])).map(r => ({ value: String(r.row_id), label: String(r.full_name) })) : []
     const configuredList: Row[] = []
     for (const type of types.values()) {
       const fields: Row[] = []
