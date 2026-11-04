@@ -54,6 +54,9 @@ test('an editable form shows a link to an unreadable row as neutral text, with n
   })
   await waitFor(() => expect(field).toHaveTextContent('A row you cannot see'))
   expect(field.querySelector('input, textarea, [role="combobox"]')).toBeNull()
+  // Not drawn as a box either: none of the input's border or surface.
+  const words = field.querySelector('[data-testid="link-unseen-region"]')!
+  expect(words.className).not.toMatch(/\bborder\b|\bbg-surface\b|\brounded/)
   expect(field).not.toHaveTextContent('KL')
   expect(screen.queryByTestId('link-pane-region')).not.toBeInTheDocument()
   expect(screen.queryByTestId('link-open-region')).not.toBeInTheDocument()
