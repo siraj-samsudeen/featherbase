@@ -1,6 +1,9 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
+import { grantRole } from './fixtures'
 
 // NAV-002: the 'related' filter operator — relationship-shaped list filters
 // compiled to permission-scoped subqueries server-side. World: Supplier ←
@@ -72,6 +75,75 @@ const list = async (client: TestClient, table: string, filters: unknown[]) => {
 }
 
 describe('NAV-002: related filters', () => {
+  test('forward membership deduplicates projected endpoints', async ({ admin }) => {
+    await setup(admin)
+    expect(await list(admin, SUP, [['row_id', 'related', { table: ORDER, reference: 'supplier', filters: [] }]]))
+      .toEqual({ names: ['S-A', 'S-B'], total: 2 })
+  })
+
+  test('forward membership uses more than one hundred native upstream rows', async ({ admin }) => {
+    await setup(admin)
+    for (let i = 0; i < 101; i++)
+      await admin.post('/api/save_row', { table: ORDER, row: { row_id: `Bulk-${String(i).padStart(3, '0')}`, supplier: 'S-A' } })
+    await admin.post('/api/save_row', { table: SUP, row: { row_id: 'S-C', city: 'Invented city' } })
+    await admin.post('/api/save_row', { table: ORDER, row: { row_id: 'Z-last', supplier: 'S-C' } })
+    expect(await list(admin, SUP, [['row_id', 'related', { table: ORDER, reference: 'supplier', filters: [] }]]))
+      .toEqual({ names: ['S-A', 'S-B', 'S-C'], total: 3 })
+  })
+
+  test('forward membership applies upstream row scope', async ({ admin, createUser }) => {
+    await setup(admin)
+    const role = 'Forward Reader'
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: role } })
+    for (const table of [SUP, ORDER])
+      await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: table, role, can_read: true } })
+    const user = await createUser({ roles: [role] })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: user.user, allow_table: ORDER, for_value: 'O-3' } })
+    expect(await list(user, SUP, [['row_id', 'related', { table: ORDER, reference: 'supplier', filters: [] }]]))
+      .toEqual({ names: ['S-B'], total: 1 })
+    expect(await list(user, SUP, [['row_id', 'related', { table: ORDER, reference: 'supplier', filters: [['row_id', 'in', ['O-1', 'O-3']]] }]]))
+      .toEqual({ names: ['S-B'], total: 1 })
+  })
+
+  test('forward membership refuses a restricted projected Reference', async ({ admin, createUser }) => {
+    await setup(admin)
+    await sql`update column_def set tier = 'restricted' where parent = ${ORDER} and column_name = 'supplier'`
+    invalidateMeta()
+    await grantRole(admin, { role: 'Forward Reader', table: [SUP, ORDER], can_read: true })
+    const user = await createUser({ roles: ['Forward Reader'] })
+    await expect(list(user, SUP, [['row_id', 'related', { table: ORDER, reference: 'supplier', filters: [['row_id', 'in', ['O-1']]] }]]))
+      .rejects.toMatchObject({ status: 417 })
+  })
+
+  test('forward membership refuses a Reference to a different destination', async ({ admin }) => {
+    await setup(admin)
+    await expect(list(admin, PART, [['row_id', 'related', { table: ORDER, reference: 'supplier', filters: [] }]]))
+      .rejects.toMatchObject({ status: 417 })
+  })
+
+  test('forward membership refuses an unreadable upstream Table', async ({ admin, createUser }) => {
+    await setup(admin)
+    const role = 'Forward Narrow Reader'
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: role } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: SUP, role, can_read: true } })
+    const user = await createUser({ roles: [role] })
+    await expect(list(user, SUP, [['row_id', 'related', { table: ORDER, reference: 'supplier', filters: [] }]]))
+      .rejects.toMatchObject({ status: 403 })
+  })
+
+  test.for([
+    ['row_id', { reference: '' }], ['row_id', { reference: 42 }],
+    ['city', { reference: 'supplier' }],
+    ['row_id', { reference: 'supplier', via: LINE, column: 'part' }],
+    ['row_id', { reference: 'supplier', column: 'supplier' }],
+    ['row_id', { reference: 'supplier', parentfield: 'lines' }],
+    ['row_id', { reference: 'total' }], ['row_id', { reference: 'missing' }],
+  ] as const)('refuses malformed forward membership %s %j', async ([field, shape], { admin }) => {
+    await setup(admin)
+    await expect(list(admin, SUP, [[field, 'related', { table: ORDER, filters: [], ...shape }]]))
+      .rejects.toMatchObject({ status: 417 })
+  })
+
   test('reference column: rows pointing at matching target rows', async ({ admin }) => {
     await setup(admin)
     const { names } = await list(admin, ORDER, [
@@ -198,7 +270,7 @@ describe('NAV-002: related filters', () => {
       total: 2,
     })
 
-    // depth cap: a 4th nested hop is rejected (3 is the maximum)
+    // Depth four is legal; only the fifth edge exceeds the bounded path.
     const supHop = (filters: unknown[]) => ({ table: SUP, filters })
     const deep = [
       [
@@ -210,7 +282,7 @@ describe('NAV-002: related filters', () => {
             [
               'supplier',
               'related',
-              supHop([['parent_sup', 'related', supHop([['parent_sup', 'related', supHop([])]])]]),
+              supHop([['parent_sup', 'related', supHop([['parent_sup', 'related', supHop([['parent_sup', 'related', supHop([])]])]])]]),
             ],
           ],
         },
@@ -220,14 +292,14 @@ describe('NAV-002: related filters', () => {
       status: 417,
       message: expect.stringMatching(/nest at most/),
     })
-    // …while exactly 3 hops is fine
+    // …while exactly 4 hops is fine
     const ok = [
       [
         'parent',
         'related',
         {
           table: ORDER,
-          filters: [['supplier', 'related', supHop([['parent_sup', 'related', supHop([])]])]],
+          filters: [['supplier', 'related', supHop([['parent_sup', 'related', supHop([['parent_sup', 'related', supHop([])]])]])]],
         },
       ],
     ]
