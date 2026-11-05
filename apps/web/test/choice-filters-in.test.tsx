@@ -3,6 +3,7 @@
 // quick filter box and the chip. Against the real in-process server.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { tableHref } from 'shared'
+import { decodePath } from '../src/lib/nav-path'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -168,9 +169,13 @@ test('An older link with floor != Ground ticks the other floors, and unticking T
 
 type Router = Awaited<ReturnType<typeof openList>>
 
-/** The filters the page address holds; the router keeps them as a JSON string. */
+/** The filters the page address holds: the current step of its walk (#910)
+ *  once the page has changed them, else the link's own `filters`. */
 function addressFilters(router: Router): unknown[] {
-  const raw = (router.state as { location: { search: { filters?: string } } }).location.search.filters
+  const params = new URLSearchParams((router.state as { location: { searchStr: string } }).location.searchStr)
+  const path = decodePath(params.get('path'))
+  if (path) return path.steps[path.at].filters ?? []
+  const raw = params.get('filters')
   return raw ? (JSON.parse(raw) as unknown[]) : []
 }
 
