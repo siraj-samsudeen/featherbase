@@ -34,7 +34,7 @@ async function connect(admin: Client, name: string) {
   await admin.post('/api/table/Data%20Source:motherduck_connect', { name, databases: ['sales', 'stock'] })
 }
 
-test('picking MotherDuck folds the kinds into one line; the instance's token lists the databases to tick, with nothing to paste; saving opens the browser', async ({ admin }) => {
+test('picking MotherDuck folds the kinds into one line; the token of this instance lists the databases to tick, with nothing to paste; saving opens the browser', async ({ admin }) => {
   const user = userEvent.setup()
   await renderApp('/featherbase/admin/table/data-source/new', admin)
   await user.click(await screen.findByTestId('kind-motherduck', {}, WAIT))

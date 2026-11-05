@@ -791,6 +791,14 @@ describe('Data Source rows (#703)', () => {
     expect((await applyInstanceSettings({ settings: { 'Data Source': [warehouse] } }, { by: 'Administrator' })).changes).toEqual([])
   })
 
+  // What the #969 migration leaves on an instance whose connection variable may already be gone.
+  test('the file gives a migrated MotherDuck source its databases', async () => {
+    await sql`insert into data_source (row_id, engine, url_env, access) values ('migrated-warehouse', 'motherduck', null, 'read_only')`
+    const databases = [{ name: 'gold' }, { name: 'marts' }]
+    await applyInstanceSettings({ settings: { 'Data Source': [{ row_id: 'migrated-warehouse', engine: 'motherduck', databases }] } }, { by: 'Administrator' })
+    expect((await sql`select databases from data_source where row_id = 'migrated-warehouse'`)[0].databases).toEqual(databases)
+  })
+
   test('the Feather Dash file applies: its warehouse reads gold and marts with the one token', async () => {
     const file = JSON.parse(readFileSync(new URL('../../../client-apps/jeyarama/instances/dash/instance-settings.json', import.meta.url), 'utf8'))
     const [warehouse] = file.settings['Data Source']

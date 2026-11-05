@@ -323,6 +323,34 @@ describe('Requests a warehouse source refuses', () => {
 })
 
 describe('An account with no database of its own', () => {
+  // #969: a service account that owns nothing reaches the warehouse only through
+  // shares, by their listed address. Queries still name the databases directly.
+  test('a dataset query naming "gold" and "marts" reads them through their shares, read-only', async () => {
+    const bare = await buildStandin([])
+    await changeStandin(bare, 'gold', ['create schema masters', "create table masters.store (code varchar)", "insert into masters.store values ('S001')"])
+    await changeStandin(bare, 'marts', ['create schema sales', "create table sales.target_vs_actual_daily (code varchar, target integer)", "insert into sales.target_vs_actual_daily values ('S001', 7)"])
+    const { DuckDBInstance } = await import('@duckdb/node-api')
+    const listing = await DuckDBInstance.create(`${bare}/md_information_schema.duckdb`)
+    const conn = await listing.connect()
+    await conn.run(`insert into shared_with_me values ('gold', '${bare}/gold.duckdb', 'warehouse-owner'), ('marts', '${bare}/marts.duckdb', 'warehouse-owner')`)
+    conn.closeSync()
+    listing.closeSync()
+    overrideVariable('MOTHERDUCK_STANDIN', bare)
+    const cfg = { name: 'md-shares-only', engine: 'motherduck', url_env: null, root_path: null, default_schema: 'gold.main', access: 'read_only', pool_max: 5, statement_timeout_ms: 10000, allowlist: null, databases: [{ name: 'gold' }, { name: 'marts' }] } as const
+    try {
+      const rows = await duckdbDriver.query!({ ...cfg, databases: [...cfg.databases] },
+        'select s.code, t.target from "gold"."masters"."store" s join "marts"."sales"."target_vs_actual_daily" t on t.code = s.code',
+        [{ name: 'code', type: 'text' }, { name: 'target', type: 'integer' }])
+      expect(rows).toEqual([{ code: 'S001', target: 7 }])
+      const attached = await run({ ...cfg, databases: [...cfg.databases] }, "select database_name, readonly from duckdb_databases() where database_name in ('gold', 'marts') order by 1", [])
+      expect(attached).toEqual([{ database_name: 'gold', readonly: true }, { database_name: 'marts', readonly: true }])
+    } finally {
+      duckdbDriver.dispose(cfg.name)
+      overrideVariable('MOTHERDUCK_STANDIN', dir)
+      rmSync(bare, { recursive: true, force: true })
+    }
+  })
+
   test('lists only the databases shared with it', async ({ admin }) => {
     const bare = await buildStandin([])
     overrideVariable('MOTHERDUCK_STANDIN', bare)
