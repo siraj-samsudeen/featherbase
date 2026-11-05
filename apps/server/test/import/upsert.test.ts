@@ -692,18 +692,21 @@ describe('UPS-R5: the key is remembered per Table', () => {
 
     const logs = await admin.get<{ data: Record<string, unknown>[] }>(
       `/api/table/${encodeURIComponent('Import Log')}?fields=${encodeURIComponent(
-        '["key_column","empty_cells","updated","created_at"]',
+        '["key_column","empty_cells","inserted","updated","created_at"]',
       )}&filters=${encodeURIComponent(
         JSON.stringify([['ref_table', '=', DT]]),
       )}&order_by=${encodeURIComponent('created_at desc')}`,
     )
     expect(logs.data.length).toBe(3) // seed request + keyed run + keyless run
-    // Latest row (the keyless run) records the truthful zero count but no
-    // match-key configuration…
-    expect(logs.data[0].updated).not.toBeNull()
-    expect(logs.data[0].updated).toBe(0)
-    expect(logs.data[0].key_column).toBeNull()
-    expect(logs.data[0].empty_cells).toBeNull()
+    // The keyless run records the truthful zero count but no match-key
+    // configuration. It is found by what it wrote: this test runs in one
+    // transaction, so all three rows share one created_at and have no order.
+    const keyless = logs.data.filter((l) => l.inserted === 1)
+    expect(keyless).toHaveLength(1)
+    expect(keyless[0].updated).not.toBeNull()
+    expect(keyless[0].updated).toBe(0)
+    expect(keyless[0].key_column).toBeNull()
+    expect(keyless[0].empty_cells).toBeNull()
     // …and the wizard's lookup — newest row WITH a key — still finds the
     // remembered pair, so a keyless run never erases the suggestion.
     const remembered = logs.data.find((l) => l.key_column != null)
