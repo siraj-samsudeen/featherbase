@@ -25,7 +25,7 @@ export const scopeProviders = {
       return [{ label: row.place, filters: { store: [row.store] } }]
     }
     const rows = await documents.list('placeroster.position', {
-      filters: [['person', '=', person.id]], fields: ['place', 'store', 'section', 'basis', 'assumed'], order_by: 'place asc',
+      filters: [['person', '=', person.id]], fields: ['place', 'store', 'section', 'basis', 'assumed', 'reason', 'since', 'until'], order_by: 'place asc',
     })
     // Rows with one place label make one place covering all their values.
     const places = new Map()
@@ -34,6 +34,8 @@ export const scopeProviders = {
       if (!place.filters.store.includes(row.store)) place.filters.store.push(row.store)
       if (!place.filters.section.includes(row.section)) place.filters.section.push(row.section)
       if (row.basis && !place.basis) place.basis = row.basis
+      // #628: each row may say why it gives the place, and from when.
+      if (row.reason) (place.reasons ??= []).push({ text: row.reason, ...(row.since ? { since: row.since } : {}), ...(row.until ? { until: row.until } : {}) })
       place.confirmation.section[row.section] = row.assumed ? 'assumed' : 'confirmed'
       places.set(row.place, place)
     }

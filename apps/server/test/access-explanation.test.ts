@@ -18,6 +18,7 @@ interface Explanation {
   change: { table: string; own_rows: boolean; roles: string[] }[]
   limits: { table: string; value: string; title: string | null; set_by: string; set_at: string }[]
   shares: { table: string; row_id: string; title: string | null; write: boolean; reshare: boolean; shared_by: string; shared_at: string }[]
+  scope: { app: string; title: string; problem: string | null; places: { label: string; reasons: { text: string; since: string | null; until: string | null }[] }[] } | null
 }
 
 const pageOf = (person: string) => `/api/access_explanation/${encodeURIComponent(person)}`
@@ -167,4 +168,35 @@ test('a person with no places is never covered, and a viewer with none covers no
   await position(manager.user!, 'North', 'N1', 'kids')
   await expect(manager.get(pageOf(unplaced.user!))).rejects.toMatchObject({ status: 403 })
   await expect(other.get(pageOf(unplaced.user!))).rejects.toMatchObject({ status: 403 })
+})
+
+// Q1 C (owner, 4 Nov): the app's scope explains itself. Each place the scope
+// provider gives a person carries its own reasons, with dates where the app
+// knows them. Labels and reasons only: never a filter value.
+test('the places an app\'s scope gives a person, each with its reasons', async ({ admin, createUser }) => {
+  const position = await withPlaces(admin)
+  const person = await createUser({ roles: [] })
+  await position(person.user!, 'North / Kids', 'N1', 'kids')
+  await admin.post('/api/save_row', { table: 'placeroster.position', row: {
+    row_id: `${person.user}-south`, person: person.user, place: 'South / Mens', store: 'S1', section: 'mens',
+    reason: 'Team Leader job assignment', since: '2026-08-06', until: '2026-12-31',
+  } })
+
+  const page = await person.get<Explanation>(pageOf(person.user!))
+  expect(page.scope).toEqual({
+    app: 'placeroster', title: 'Place roster proof', problem: null,
+    places: [
+      { label: 'North / Kids', reasons: [] },
+      { label: 'South / Mens', reasons: [{ text: 'Team Leader job assignment', since: '2026-08-06', until: '2026-12-31' }] },
+    ],
+  })
+  expect(JSON.stringify(page.scope)).not.toContain('S1')
+})
+
+test('a person with no places says so, and an instance with no scope provider shows none', async ({ admin, createUser }) => {
+  const person = await createUser({ roles: [] })
+  expect((await admin.get<Explanation>(pageOf(person.user!))).scope).toBeNull()
+  await withPlaces(admin)
+  expect((await admin.get<Explanation>(pageOf(person.user!))).scope)
+    .toEqual({ app: 'placeroster', title: 'Place roster proof', problem: 'scope', places: [] })
 })
