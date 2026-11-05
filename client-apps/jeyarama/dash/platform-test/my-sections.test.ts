@@ -264,6 +264,14 @@ describe('what an approver decides', () => {
     expect(await row('Job Assignment', 'JA-1')).toMatchObject({ section: 'LKS-S1', ends_on: null })
   })
 
+  test('a subcategory retired at source since the ask is not added', async ({ admin, createUser }) => {
+    const { maker, manager } = await world(admin, createUser)
+    const proposal = await act(maker, 'propose_add', { job: 'JA-1', subcategory: '010101004' })
+    const [row_] = await sql`select updated_at from ${sql(await tableRelation('Subcategory'))} where row_id = '010101004'`
+    await saveRow(admin, 'Subcategory', { row_id: '010101004', updated_at: row_.updated_at, deleted_at_source: true })
+    expect(await act(manager, 'decide', { proposal: proposal.id, decision: 'approve' })).toMatchObject({ state: 'Needs fresh review' })
+  })
+
   test('a pending proposal says who it waits for now, as the job changes hands', async ({ admin, createUser }) => {
     const { maker, otherStaff, job } = await world(admin, createUser)
     await act(maker, 'propose_move', move())

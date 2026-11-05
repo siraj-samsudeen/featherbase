@@ -358,6 +358,7 @@ export const actions = {
     const today = istToday()
     // A subcategory in no section yet has no row to queue at, so two adds queue on what they share.
     if (a.kind === 'add' && !a.from_section) await ctx.changeProposals.serialize(`${a.site}:${a.subcategory}`)
+    if (a.kind === 'add') await ctx.changeProposals.lockRow(T.subcategory, exact(a.subcategory))
     const stale = await whyStale(ctx, proposal, a, job, today)
     if (stale) return view(await ctx.changeProposals.needsFreshReview(proposal.row_id, { approvers, reason: stale }))
     const newRow: Record<string, string> = a.kind === 'section'
@@ -388,6 +389,10 @@ async function whyStale(ctx: ActionContext, proposal: ChangeProposal, a: About, 
   if (a.kind === 'section' && floor && floor.proposed_value !== (exact(to.floor) || null)) return 'The section it would go to has moved floor.'
   if (a.kind === 'move' && exact(job.section) !== a.from_section) return 'The person who asked no longer holds that section.'
   if (a.kind === 'add' && exact(job.section) !== a.to_section) return 'The person who asked no longer holds that section.'
+  if (a.kind === 'add') {
+    const [subcategory] = await list(ctx, T.subcategory, ['is_merchandise', 'deleted_at_source'], [['row_id', '=', exact(a.subcategory)]])
+    if (subcategory?.is_merchandise !== true || subcategory?.deleted_at_source === true) return 'That subcategory is no longer sold.'
+  }
   if (a.kind !== 'section') {
     const rows = await list(ctx, T.placement, PLACEMENT_FIELDS, [['site', '=', a.site], ['subcategory', '=', exact(a.subcategory)]])
     if (rows.some(row => notOver(row, today) && day(row.starts_on) > today)) return 'A change to that subcategory is already planned.'
