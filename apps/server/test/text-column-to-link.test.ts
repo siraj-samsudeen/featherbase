@@ -66,8 +66,13 @@ test('a value with no row refuses the change, naming the value, and the column s
 test('a link column turns back into text, keeping its values', async ({ admin }) => {
   await seed(admin, ['1150', '1160'])
   expect((await turnInto(admin, 'Reference')).status).toBe(200)
-  expect((await turnInto(admin, 'Data')).status).toBe(200)
+  const back = await admin.fetch(`/api/table_def/${encodeURIComponent(PLANT)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ columns: [{ column_name: 'plant_name', label: 'Plant name', column_type: 'Data' }, { ...salesOrg('Data'), reference_table: ORG }] }),
+  })
+  expect(back.status).toBe(200)
   expect(await column(admin)).toMatchObject({ column_type: 'Data' })
+  expect((await column(admin))?.reference_table ?? null).toBeNull()
   expect(await values(admin)).toEqual(['1150', '1160'])
 })
 

@@ -513,7 +513,7 @@ describe('loss preview uses installed ownership', () => {
 // #911: an app version turns a code column into a link, in place.
 describe('a text column becomes a link', () => {
   const linkCode = (to: Record<string, unknown> = { column_type: 'Reference', reference_table: 'Role' }) =>
-    ({ kind: 'alterColumn', table: 'shop.supplier', column: 'code', from: { column_type: 'Data', ...('reference_table' in to ? { reference_table: null } : {}) }, to })
+    ({ kind: 'alterColumn', table: 'shop.supplier', column: 'code', from: { column_type: 'Data', reference_table: null }, to })
 
   shopTest('every code names a row, so the column becomes a link and keeps its values', async () => {
     await registered()
@@ -532,7 +532,25 @@ describe('a text column becomes a link', () => {
   })
 
   test('a link without the Table it links to is refused', () => {
-    expect(() => step([linkCode({ column_type: 'Reference' })])).toThrow(/a link needs the Table it links to/)
+    expect(() => step([linkCode({ column_type: 'Reference', reference_table: null })])).toThrow(/a link needs the Table it links to/)
+  })
+
+  test('a link turning into text names the Table it leaves, and keeps none', () => {
+    const toText = (from: Record<string, unknown>, to: Record<string, unknown>) =>
+      () => step([{ kind: 'alterColumn', table: 'shop.order', column: 'supplier', from, to }])
+    expect(toText({ column_type: 'Reference' }, { column_type: 'Data' })).toThrow(/names the Table it links to and from/)
+    expect(toText({ column_type: 'Reference', reference_table: 'shop.supplier' }, { column_type: 'Data', reference_table: 'shop.supplier' }))
+      .toThrow(/text links to no Table/)
+    expect(toText({ column_type: 'Reference', reference_table: 'shop.supplier' }, { column_type: 'Data', reference_table: null })).not.toThrow()
+  })
+
+  shopTest('a link to a row of any Table does not turn into text', async () => {
+    await registered()
+    await createTable({ name: 'shop.audit', label: 'Audit', columns: [
+      { column_name: 'about_table', label: 'About Table', column_type: 'Reference', reference_table: 'Table' },
+      { column_name: 'about', label: 'About', column_type: 'Reference', table_column: 'about_table' },
+    ] }, 'shop')
+    await expect(changeColumnType('shop.audit', 'about', 'Data')).rejects.toThrow(/link to a row of any Table/)
   })
 
   test("a link's Table cannot be swapped on its own", () => {
