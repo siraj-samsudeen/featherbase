@@ -33,7 +33,7 @@
     {
       "path": "client-apps/jeyarama/dash",
       "version": "0.10.3",
-      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/ce2ff6138aedf1e151a14fb5ff3fae68ff2d341a"
+      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/4dc1395f5ee1f9ee362bbfe3b37173eee4b5372f"
     }
   ],
   "madeUpData": "client-apps/jeyarama/dash/scripts/seed-made-up.mts"
