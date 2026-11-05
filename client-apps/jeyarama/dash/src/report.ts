@@ -342,14 +342,14 @@ const scaled = (value: number | string | null | undefined, by: number) => (value
  * partial cache would read as a total.
  */
 /**
- * `compact` only for a Dive known to read it (the server decides from the pinned Dive, see
- * `stateFormat`); `legacy` otherwise: 0.8.0's scope keys, which a Dive before v12 needs, because
- * it reads a missing `material_groups` as "every store".
+ * The app always sends `compact` to the latest Dive (#937). `legacy` is 0.8.0's scope keys, the
+ * shape the platform's older Sales Target page still sends: the Dive's harness (data-warehouse
+ * #4453) builds it here to prove the Dive keeps reading it.
  */
 export type StateFormat = 'legacy' | 'compact'
 
 export function initialState(report: Report, answer: CachedAnswer, places: readonly Place[], today: string,
-  { appOrigin = null, compress, format = 'legacy', storeCodes = [] }: { appOrigin?: string | null; compress: (json: string) => string;
+  { appOrigin = null, compress, format = 'compact', storeCodes = [] }: { appOrigin?: string | null; compress: (json: string) => string;
     format?: StateFormat; storeCodes?: readonly string[] }): InitialState {
   const scope = scopeIn(places, report.store)
   const bySection: Record<string, string[]> = {}

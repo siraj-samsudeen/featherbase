@@ -443,21 +443,6 @@ describe('Feather Dash against the real platform', () => {
     expect(document.body.textContent).toContain('Assigned cloth')
   })
 
-  installed('a store too large for the real embed-state limit retains all its cached totals and explains fallback', async ({ dash, admin }) => {
-    // A genuine legacy Dive configuration and a large legal store inventory.
-    // The producer must reject its own oversized state before any hosted call.
-    for (const [setting, value] of Object.entries({ dive_id: 'large-local-proof', dive_version: '1', embed_service_account: 'made-up-local-account' }))
-      await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: `feather_dash.${setting}`, value } })
-    const facts = Array.from({ length: 5500 }, (_, index) => dash.fact(String(100000000 + index), { subcategory: `Cloth ${index}`, target: 1, actual: 2 }))
-    await dash.snapshot(facts)
-    await open()
-    await waitForText('This store is too large for the interactive report yet.', 10000)
-    expect(document.querySelector('iframe')).toBeNull()
-    expect(document.querySelector('tfoot')?.textContent).toBe('Total₹5,500.00₹11,000.00+₹5,500.00200%')
-    expect(document.body.textContent).toContain('Cloth 5499')
-    expect(document.querySelectorAll('tbody .fd-sub')).toHaveLength(5500)
-  }, 30000)
-
   for (const signedIn of [true, false]) {
     installed(`a late ${signedIn ? 'successful' : 'refused'} address check never replaces a bar choice`, async ({ dash: _dash, createUser }) => {
       if (!signedIn) token = (await createUser({ email: 'dash-no-role@example.test' })).token

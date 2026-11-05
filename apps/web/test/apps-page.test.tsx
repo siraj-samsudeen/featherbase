@@ -40,7 +40,7 @@ test('the real catalog offers example and client apps, keeps the list alongside 
   expect(within(details).queryByRole('textbox')).not.toBeInTheDocument()
   expect(within(details).queryByRole('link', { name: 'Configure settings' })).not.toBeInTheDocument()
   await userEvent.click(within(list).getByRole('button', { name: /Feather Dash/ }))
-  expect(screen.getByRole('region', { name: 'Feather Dash details' })).toHaveTextContent('dive_version')
+  expect(screen.getByRole('region', { name: 'Feather Dash details' })).toHaveTextContent('embed_service_account')
   expect(list).toBeInTheDocument()
   expect(await admin.get('/api/apps')).toMatchObject({ installed: [] })
 })

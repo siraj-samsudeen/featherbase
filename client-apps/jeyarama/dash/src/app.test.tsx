@@ -200,13 +200,6 @@ describe('choosing another store on the rendered page', () => {
     expect(calls.filter(c => c.name !== 'stores').map(c => c.payload.month)).toEqual(['last', 'last'])
     await act(async () => root.unmount())
   })
-
-  it("says the Dive can't show last month yet when the pinned Dive shows only the latest", async () => {
-    const { container, unmount } = await openOn9901({ embed: { month_unsupported: true } })
-    expect(container.querySelector('[data-testid=quick-label]')?.textContent)
-      .toBe("The interactive report can't show last month yet. Showing the cached table.")
-    await unmount()
-  })
 })
 
 // #4486: the header says why the reader sees the store on show, and follows the bar's store picker.
