@@ -1289,6 +1289,39 @@ const CHILD_CELL_CLASSES = 'w-full rounded border border-transparent px-1 py-0.5
 
 // Minimal child grid: renders child rows with editable cells. Full add/
 // delete/reorder verification is UI-007.
+/** A Sub-table cell that links to a row: of its fixed Table, or (#881) of the
+ *  Table the row's own Table cell names. A Table cell that row cells take
+ *  their Table from offers only the Tables they allow, and changing it clears
+ *  them. */
+function ChildLinkCell({ column, columns, row, setCell, common }: {
+  column: ColumnDef
+  columns: ColumnDef[]
+  row: Row
+  setCell: (changes: Record<string, unknown>) => void
+  common: Record<string, unknown>
+}) {
+  const value = row[column.column_name]
+  if (column.table_column) {
+    const chosen = row[column.table_column]
+    if (chosen == null || chosen === '')
+      return <input type="text" className={CHILD_CELL_CLASSES} {...common} disabled value="" placeholder="Choose its Table first" />
+    return (
+      <LinkControl key={String(chosen)} field={{ ...column, reference_table: String(chosen) }} value={value}
+        onChange={(next) => setCell({ [column.column_name]: next })} className={CHILD_CELL_CLASSES} common={common} floating anyTable />
+    )
+  }
+  const bound = column.reference_table === 'Table' ? columns.filter((c) => c.table_column === column.column_name) : []
+  return (
+    <LinkControl field={column} value={value}
+      onChange={(next) => setCell({
+        [column.column_name]: next,
+        ...(next !== value ? Object.fromEntries(bound.map((c) => [c.column_name, null])) : {}),
+      })}
+      className={CHILD_CELL_CLASSES} common={common} floating
+      extraFilters={bound.length ? anyTableFilters(bound) : undefined} />
+  )
+}
+
 function ChildGrid({
   id,
   labelledBy,
@@ -1324,10 +1357,11 @@ function ChildGrid({
   const cols = childMeta.data.columns.filter(
     (f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden,
   )
-  function setCell(i: number, columnName: string, value: unknown) {
+  function setCell(i: number, columnName: string | Record<string, unknown>, value?: unknown) {
+    const changes = typeof columnName === 'string' ? { [columnName]: value } : columnName
     onChange(rows.map((row, j) => {
       if (j !== i) return row
-      const edited = { ...row, [columnName]: value }
+      const edited = { ...row, ...changes }
       if (row.row_id == null) draftKeys.current.set(edited, rowKey(row))
       return edited
     }))
@@ -1366,18 +1400,19 @@ function ChildGrid({
                     // #832: a link cell is picked from the linked Table's rows,
                     // with the form's own link picker; its list floats above
                     // the grid's scrolling frame instead of being cut by it.
-                    <LinkControl
-                      field={c}
-                      value={row[c.column_name]}
-                      onChange={(value) => setCell(i, c.column_name, value)}
-                      className={CHILD_CELL_CLASSES}
+                    // #881: a link to a row of any Table waits for its row's
+                    // Table, as on the form.
+                    <ChildLinkCell
+                      column={c}
+                      columns={cols}
+                      row={row}
+                      setCell={(changes) => setCell(i, changes)}
                       common={{
                         id: `${id}-${rowKey(row)}-${c.column_name}`,
                         'aria-label': `${t(field.label ?? field.column_name)}, ${t(c.label ?? c.column_name)}, row ${i + 1}`,
                         'data-childfield': c.column_name,
                         ...cellInvalid(i, row, c),
                       }}
-                      floating
                     />
                   ) : (
                   <label className={c.column_type === 'Check' ? 'inline-flex size-control cursor-pointer items-center justify-center' : 'block'}>
