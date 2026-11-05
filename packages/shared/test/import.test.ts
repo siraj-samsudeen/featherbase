@@ -231,19 +231,19 @@ describe('IMP-003: tableNameFromFile', () => {
 })
 
 describe('a column made a Choice by hand: choiceOptions', () => {
-  it('takes every distinct value, past what inference would call a Choice', () => {
+  test('takes every distinct value, past what inference would call a Choice', () => {
     const values = Array.from({ length: 40 }, (_, i) => `S${String(i % 20).padStart(2, '0')}`)
     expect(inferChoices(values)).toBeNull()
     expect(choiceOptions(values)).toHaveLength(20)
     expect(choiceOptions(values)[0]).toBe('S00')
   })
-  it('matches what will be sent: trimmed, numbers as text, blanks left out', () => {
+  test('matches what will be sent: trimmed, numbers as text, blanks left out', () => {
     expect(choiceOptions([' b', 'b ', 2, 2, '', '  ', null, undefined])).toEqual(['2', 'b'])
     const options = choiceOptions([' b', 2])
     for (const [value] of coerceRows([{ column_name: 'c', column_type: 'Choice' }], [[' b'], [2]]).map((r) => Object.values(r.values)))
       expect(options).toContain(value)
   })
-  it('leaves out a value holding a line break, since options are one per line', () => {
+  test('leaves out a value holding a line break, since options are one per line', () => {
     expect(choiceOptions(['a', 'b\nc'])).toEqual(['a'])
   })
 })
