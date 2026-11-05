@@ -601,6 +601,41 @@ describe('Copy a warehouse table into Featherbase', () => {
     expect(await admin.get('/api/table/Exact%20Numbers%20By%20Huge/123456789012345678901234567890')).toMatchObject({ code: 'N-1' })
   })
 
+  test('a BIGINT beyond the exact whole-number range refuses the copy, naming the column and value (#932)', async ({ admin }) => {
+    await changeStandin(dir, 'sales', [
+      'create table big_ids (code varchar, ref bigint)',
+      "insert into big_ids values ('B-1', 9007199254740991), ('B-2', 9007199254740993)",
+    ])
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-bigint', databases: ['sales'] })
+    const columns = ['code', 'ref'].map(source => ({ source, column_name: source }))
+    await expect(admin.post(`${SOURCES}/tc-bigint:copy_create`, { database: 'sales', schema: 'main', table: 'big_ids', name: 'Big Ids', key: 'code', columns }))
+      .rejects.toMatchObject({ status: 417, message: expect.stringMatching(/ref.*9007199254740993.*B-2/) })
+    expect(await sql`select name from table_def where name = 'Big Ids'`).toEqual([])
+    // Within the range a BIGINT stays a number.
+    await changeStandin(dir, 'sales', ["delete from big_ids where code = 'B-2'"])
+    invalidateSources('tc-bigint')
+    await admin.post(`${SOURCES}/tc-bigint:copy_create`, { database: 'sales', schema: 'main', table: 'big_ids', name: 'Big Ids', key: 'code', columns })
+    expect(await admin.get('/api/table/Big%20Ids/B-1')).toMatchObject({ ref: 9007199254740991 })
+    // A later Copy again that meets one is refused the same way, and changes nothing.
+    await changeStandin(dir, 'sales', ["update big_ids set ref = -9007199254740993 where code = 'B-1'"])
+    invalidateSources('tc-bigint')
+    await expect(admin.post('/api/table/Big%20Ids:copy_again', {}))
+      .rejects.toMatchObject({ status: 417, message: expect.stringMatching(/ref.*-9007199254740993.*B-1/) })
+    expect(await admin.get('/api/table/Big%20Ids/B-1')).toMatchObject({ ref: 9007199254740991 })
+  })
+
+  test('the deleted-at-source marker of a copied Table cannot be renamed or removed (#932)', async ({ admin }) => {
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-marker', databases: ['sales'] })
+    await admin.post(`${SOURCES}/tc-marker:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Marker Copy', key: 'code', columns: STORES })
+    const refused = { status: 417, message: expect.stringContaining('marks rows deleted at the source') }
+    await expect(admin.post('/api/table_def/Marker%20Copy/rename_column', { from: 'deleted_at_source', to: 'gone' })).rejects.toMatchObject(refused)
+    const meta = await admin.get<{ columns: { column_name: string }[] }>('/api/table/Marker%20Copy:meta')
+    await expect(admin.put('/api/table_def/Marker%20Copy', { columns: meta.columns.filter(c => c.column_name !== 'deleted_at_source'), remove_columns: ['deleted_at_source'] }))
+      .rejects.toMatchObject(refused)
+    await admin.post('/api/table/Marker%20Copy:copy_again', {})
+    expect(await admin.get('/api/table/Marker%20Copy/S002')).toMatchObject({ display_name: 'Hill Street', deleted_at_source: false })
+  })
+
   test('a table restriction on the source refuses preview, key checks, copying and Copy again of any other table', async ({ admin }) => {
     await changeStandin(dir, 'stock', [
       'create table fenced_items (sku varchar, title varchar)',
