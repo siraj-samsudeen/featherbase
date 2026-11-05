@@ -2,6 +2,10 @@ export const platformVersion = '2026-10'
 // Hands each helper call straight through, so the platform's own rules are what is proved.
 export const actions = {
   async probe({ payload, baseTables, changeProposals }) {
+    if (payload.op === 'parallel') return Promise.all([changeProposals.list({}), changeProposals.list({})])
+    if (payload.op === 'unawaited') { void changeProposals.list({}).catch(() => {}); return true }
+    if (payload.op === 'authority') return { may: await changeProposals.mayDecide(payload.maker, payload.approvers), route: await changeProposals.routeFor(payload.maker, payload.approvers) }
+    if (payload.op === 'serialize') return changeProposals.serialize(payload.key) ?? null
     if (payload.op === 'list') return baseTables.list(payload.table, payload.args)
     if (payload.op === 'proposals') return changeProposals.list(payload.filter)
     if (payload.op === 'lock') { await changeProposals.lockRow(payload.table, payload.row); await changeProposals.serialize(payload.key); return true }
@@ -21,6 +25,7 @@ export const actions = {
 }
 export const reads = {
   async look({ payload, baseTables, changeProposals }) {
+    if (payload.authority) return { may: await changeProposals.mayDecide(payload.authority.maker, payload.authority.approvers), route: await changeProposals.routeFor(payload.authority.maker, payload.authority.approvers) }
     return { canPropose: typeof changeProposals.propose === 'function', canDecide: typeof changeProposals.approve === 'function',
       rows: await baseTables.list(payload.table, payload.args), proposals: await changeProposals.list({}) }
   },

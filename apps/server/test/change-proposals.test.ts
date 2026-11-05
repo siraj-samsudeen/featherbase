@@ -311,6 +311,58 @@ describe('holding authority still', () => {
   })
 })
 
+describe('what the helpers refuse', () => {
+  test('reads: a related filter, and a Table with Sub-tables or one that is the platform\'s', async ({ admin, createUser }) => {
+    const { maker } = await setUp(admin, createUser)
+    await expect(probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label'], filters: [['site', 'related', 'x']] } })).rejects.toMatchObject({ status: 417 })
+    await admin.post('/api/table_def', { name: 'Holder Child', kind: 'sub_table', columns: [{ column_name: 'label', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { name: 'Holder Base', columns: [{ column_name: 'label', column_type: 'Data' }, { column_name: 'kids', column_type: 'Sub-table', row_table: 'Holder Child' }] })
+    const [setting] = await sql`select updated_at from app_setting where row_id = 'proposalproof.linked_tables'`
+    await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'proposalproof.linked_tables', updated_at: setting.updated_at, value: JSON.stringify(['Placement', 'Holder Base']) } })
+    await expect(probe(maker, { op: 'list', table: 'Holder Base', args: { fields: ['label'] } })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('helpers run one at a time, and none outlives its handler', async ({ admin, createUser }) => {
+    const { maker } = await setUp(admin, createUser)
+    await expect(probe(maker, { op: 'parallel' })).rejects.toMatchObject({ status: 417 })
+    await expect(probe(maker, { op: 'unawaited' })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('proposing: nothing to change, a value that is not text, a column both changed and reviewed, bad approvers', async ({ admin, createUser }) => {
+    const { maker, manager } = await setUp(admin, createUser)
+    const base = ask(manager.user).request
+    for (const request of [{ ...base, changes: {} }, { ...base, changes: { label: 7 } }, { ...base, reviewed: ['label'] }, { ...base, approvers: { people: 'x' } }, { ...base, approvers: undefined }])
+      await expect(probe(maker, { op: 'propose', request })).rejects.toMatchObject({ status: 417 })
+    expect((await sql`select count(*)::int as n from change_proposal`)[0].n).toBe(0)
+  })
+
+  test('deciding: a bad day, no reason, no proposal; a row that starts after the day is stale', async ({ admin, createUser }) => {
+    const { maker, manager } = await setUp(admin, createUser)
+    const proposal = await probe(maker, ask(manager.user))
+    await expect(probe(manager, { op: 'approve', id: proposal.row_id, decision: decision(manager.user, { effectiveOn: 'soon' }) })).rejects.toMatchObject({ status: 417 })
+    await expect(probe(manager, { op: 'needs_fresh_review', id: proposal.row_id, decision: decision(manager.user, {}) })).rejects.toMatchObject({ status: 417 })
+    await expect(probe(manager, { op: 'reject', id: '', decision: decision(manager.user, { reason: 'x' }) })).rejects.toMatchObject({ status: 417 })
+    expect((await probe(manager, { op: 'approve', id: proposal.row_id, decision: decision(manager.user, { effectiveOn: '2026-09-01', newRow: { placement_id: 'P-EARLY' } }) })).state).toBe('Needs fresh review')
+  })
+
+  test('locks and keys need something to name', async ({ admin, createUser }) => {
+    const { maker } = await setUp(admin, createUser)
+    await expect(probe(maker, { op: 'lock', table: 'Placement', row: '', key: 'a' })).rejects.toMatchObject({ status: 417 })
+    await expect(probe(maker, { op: 'lock', table: 'Placement', row: 'P-1', key: '' })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('authority can be asked before deciding, by an action and by a read', async ({ admin, createUser }) => {
+    const { maker, manager, other } = await setUp(admin, createUser)
+    await giveRole(admin, other.user, 'Proof Editor')
+    const asks = (approvers: object) => ({ maker: maker.user, approvers })
+    expect(await probe(manager, { op: 'authority', ...asks({ people: [manager.user], fallbackRoles: [] }) })).toEqual({ may: true, route: { people: [manager.user], roles: [] } })
+    expect(await probe(maker, { op: 'authority', ...asks({ people: [manager.user], fallbackRoles: [] }) })).toMatchObject({ may: false })
+    expect(await probe(manager, { op: 'authority', ...asks({ people: [], fallbackRoles: [] }) })).toEqual({ may: false, route: null })
+    const { result } = await other.post<any>('/api/app_reads/proposalproof/look', { payload: { authority: asks({ people: [], fallbackRoles: ['Proof Editor'] }) } })
+    expect(result).toEqual({ may: true, route: { people: [], roles: ['Proof Editor'] } })
+  })
+})
+
 describe('listing', () => {
   test('lists only this app\'s proposals, by state and maker', async ({ admin, createUser }) => {
     const { maker, manager, other } = await setUp(admin, createUser)
