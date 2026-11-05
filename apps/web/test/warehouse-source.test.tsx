@@ -1,4 +1,4 @@
-// #772: connect a MotherDuck warehouse by pasting its token, see it in the
+// #772, #969: connect a MotherDuck warehouse with the instance's token, see it in the
 // sidebar, and browse it schema → table → preview — against the local stand-in.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -21,31 +21,29 @@ beforeAll(async () => {
     `create table zz_catalog_tail (${Array.from({ length: 80 }, (_, i) => `field_${String(i).padStart(3, '0')} varchar`).join(', ')})`,
   ])
   overrideVariable('MOTHERDUCK_STANDIN', dir)
+  overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.reader)
 })
 afterAll(() => {
   invalidateSources()
   overrideVariable('MOTHERDUCK_STANDIN', undefined)
+  overrideVariable('MOTHERDUCK_TOKEN', undefined)
   rmSync(dir, { recursive: true, force: true })
 })
 
 async function connect(admin: Client, name: string) {
-  await admin.post('/api/table/Data%20Source:motherduck_connect', { name, token: STANDIN_TOKENS.reader, databases: ['sales', 'stock'] })
+  await admin.post('/api/table/Data%20Source:motherduck_connect', { name, databases: ['sales', 'stock'] })
 }
 
-test('picking MotherDuck folds the kinds into one line; a tested token lists the databases to tick; saving opens the browser', async ({ admin }) => {
+test('picking MotherDuck folds the kinds into one line; the instance's token lists the databases to tick, with nothing to paste; saving opens the browser', async ({ admin }) => {
   const user = userEvent.setup()
   await renderApp('/featherbase/admin/table/data-source/new', admin)
   await user.click(await screen.findByTestId('kind-motherduck', {}, WAIT))
   expect(screen.getByTestId('kind-line')).toHaveTextContent('MotherDuck')
   expect(screen.queryByTestId('kind-postgres')).not.toBeInTheDocument()
-  expect(screen.queryByTestId('connect-databases')).not.toBeInTheDocument()
-  expect(screen.getByTestId('connect-token')).toHaveAttribute('type', 'password')
-  expect(screen.queryByRole('button', { name: /show/i })).not.toBeInTheDocument()
+  expect(document.querySelector('input[type=password]')).toBeNull()
 
   await user.clear(screen.getByTestId('connect-name'))
   await user.type(screen.getByTestId('connect-name'), 'web-wh')
-  await user.type(screen.getByTestId('connect-token'), STANDIN_TOKENS.reader)
-  await user.click(screen.getByTestId('connect-test'))
   await waitFor(() => expect(screen.getByTestId('connect-result')).toHaveTextContent('Connected as reader_user · it can read 5 databases'), WAIT)
   expect(screen.getByTestId('connect-save')).toBeDisabled()
 
@@ -57,23 +55,26 @@ test('picking MotherDuck folds the kinds into one line; a tested token lists the
 })
 
 test('a refused token says so in plain words and offers no databases', async ({ admin }) => {
-  const user = userEvent.setup()
-  await renderApp('/featherbase/admin/table/data-source/new', admin)
-  await user.click(await screen.findByTestId('kind-motherduck', {}, WAIT))
-  await user.type(screen.getByTestId('connect-token'), STANDIN_TOKENS.refused)
-  await user.click(screen.getByTestId('connect-test'))
-  await waitFor(() => expect(screen.getByTestId('connect-result')).toHaveTextContent('MotherDuck refused the token'), WAIT)
-  expect(screen.getByTestId('connect-result')).not.toHaveTextContent(STANDIN_TOKENS.refused)
-  expect(screen.queryByTestId('connect-databases')).not.toBeInTheDocument()
+  overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.refused)
+  try {
+    const user = userEvent.setup()
+    await renderApp('/featherbase/admin/table/data-source/new', admin)
+    await user.click(await screen.findByTestId('kind-motherduck', {}, WAIT))
+    await waitFor(() => expect(screen.getByTestId('connect-result')).toHaveTextContent("MotherDuck refused this server's token"), WAIT)
+    expect(screen.getByTestId('connect-result')).not.toHaveTextContent(STANDIN_TOKENS.refused)
+    expect(screen.queryByTestId('connect-databases')).not.toBeInTheDocument()
+  } finally { overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.reader) }
 })
 
-test('a token that can write is flagged', async ({ admin }) => {
-  const user = userEvent.setup()
-  await renderApp('/featherbase/admin/table/data-source/new', admin)
-  await user.click(await screen.findByTestId('kind-motherduck', {}, WAIT))
-  await user.type(screen.getByTestId('connect-token'), STANDIN_TOKENS.writer)
-  await user.click(screen.getByTestId('connect-test'))
-  await waitFor(() => expect(screen.getByTestId('connect-result')).toHaveTextContent('can also write'), WAIT)
+test('an instance with no token says so and offers no databases', async ({ admin }) => {
+  overrideVariable('MOTHERDUCK_TOKEN', undefined)
+  try {
+    const user = userEvent.setup()
+    await renderApp('/featherbase/admin/table/data-source/new', admin)
+    await user.click(await screen.findByTestId('kind-motherduck', {}, WAIT))
+    await waitFor(() => expect(screen.getByTestId('connect-result')).toHaveTextContent('MOTHERDUCK_TOKEN is not set'), WAIT)
+    expect(screen.queryByTestId('connect-databases')).not.toBeInTheDocument()
+  } finally { overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.reader) }
 })
 
 test('another kind keeps the native Data Source form', async ({ admin }) => {
@@ -84,17 +85,13 @@ test('another kind keeps the native Data Source form', async ({ admin }) => {
   expect(screen.getByTestId('kind-line')).toHaveTextContent('Postgres')
 })
 
-test('the source page shows only the token\'s last four, and replacing it shows the new four', async ({ admin }) => {
+test('the source page shows its databases, and no token to see or change', async ({ admin }) => {
   await connect(admin, 'web-wh-token')
-  const user = userEvent.setup()
   await renderApp('/featherbase/admin/table/data-source/row/web-wh-token', admin)
-  expect(await screen.findByTestId('warehouse-token', {}, WAIT)).toHaveTextContent('Saved, ending …4f2a')
+  expect(await screen.findByTestId('warehouse-databases', {}, WAIT)).toHaveTextContent('sales')
   expect(document.body).not.toHaveTextContent(STANDIN_TOKENS.reader)
-  expect(screen.getByTestId('warehouse-databases')).toHaveTextContent('sales')
-  await user.click(screen.getByTestId('replace-token'))
-  await user.type(screen.getByTestId('replace-token-input'), STANDIN_TOKENS.readerWriter)
-  await user.click(screen.getByTestId('replace-token-save'))
-  await waitFor(() => expect(screen.getByTestId('warehouse-token')).toHaveTextContent('Saved, ending …5d3a'), WAIT)
+  expect(document.querySelector('input[type=password]')).toBeNull()
+  expect(screen.queryByRole('button', { name: /replace/i })).not.toBeInTheDocument()
 })
 
 test('the searchable catalog opens a preview and keeps its filters and selection across tabs and copy-return', async ({ admin }) => {

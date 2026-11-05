@@ -72,14 +72,14 @@ export async function getSource(name: string): Promise<SourceConfig> {
     url_env: (row.url_env as string | null) || null,
     root_path: (row.root_path as string | null) || null,
     default_schema: (row.default_schema as string | null) || null,
-    access: row.access === 'read_write' ? 'read_write' : 'read_only',
+    // #969: a MotherDuck source is view-only in code, whatever a row says.
+    access: engine !== 'motherduck' && row.access === 'read_write' ? 'read_write' : 'read_only',
     pool_max: Math.min(Math.max(Number(row.pool_max ?? 5) || 5, 1), 20),
     statement_timeout_ms: Math.min(
       Math.max(Number(row.statement_timeout_ms ?? 10000) || 10000, 100),
       60000,
     ),
     allowlist: parseAllowlist(row.table_allowlist),
-    read_scaling_token: row.read_scaling_token === true,
     databases: Array.isArray(row.databases) ? (row.databases as SourceConfig['databases']) : [],
   }
   cache.set(name, cfg)

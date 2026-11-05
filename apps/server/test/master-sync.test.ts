@@ -85,8 +85,8 @@ describe('the three-way rule for one column', () => {
 })
 
 let dir: string
-beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir) })
-afterAll(() => { invalidateSources(); overrideVariable('MOTHERDUCK_STANDIN', undefined); rmSync(dir, { recursive: true, force: true }) })
+beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir); overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.reader) })
+afterAll(() => { invalidateSources(); overrideVariable('MOTHERDUCK_STANDIN', undefined); overrideVariable('MOTHERDUCK_TOKEN', undefined); rmSync(dir, { recursive: true, force: true }) })
 
 const SOURCES = '/api/table/Data%20Source'
 const COPY = '/api/table/Sync%20Staff%20Copy'
@@ -97,7 +97,7 @@ async function world(admin: TestClient, source: string) {
     `create or replace table ${source} (emp_id varchar, name varchar, phone varchar, role varchar)`,
     `insert into ${source} values ('E1', 'Asha', '111', 'Cashier'), ('E2', 'Bala', '222', 'Packer'), ('E3', 'Chitra', '333', 'Cashier'), ('E4', 'Dev', '444', 'Guard')`,
   ])
-  await admin.post(`${SOURCES}:motherduck_connect`, { name: `ms-${source.replaceAll("_", "-")}`, token: STANDIN_TOKENS.reader, databases: ['sales'] })
+  await admin.post(`${SOURCES}:motherduck_connect`, { name: `ms-${source.replaceAll("_", "-")}`, databases: ['sales'] })
   await admin.post(`${SOURCES}/ms-${source.replaceAll("_", "-")}:refresh_tables`, { database: 'sales' })
   await admin.post(`${SOURCES}/ms-${source.replaceAll("_", "-")}:copy_create`, { database: 'sales', schema: 'main', table: source, name: 'Sync Staff Copy', key: 'emp_id',
     columns: ['emp_id', 'name', 'phone', 'role'].map(c => ({ source: c, column_name: c })) })

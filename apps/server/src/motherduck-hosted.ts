@@ -2,7 +2,7 @@
 // live token. This module alone is excluded from local coverage; callers'
 // token validation and query construction stay measured.
 import { readVariable } from './env'
-import { requireMotherDuckToken } from './motherduck-reader'
+import { attachStatement, requireMotherDuckToken } from './motherduck-reader'
 
 export async function readMotherDuck(sqlText: string, purpose: string): Promise<unknown[][]> {
   const token = requireMotherDuckToken(purpose)
@@ -21,7 +21,7 @@ export async function readMotherDuck(sqlText: string, purpose: string): Promise<
   }
 }
 
-// #772 design D4: a pasted-token session opens live MotherDuck, unless
+// #772 design D4: a source's session opens live MotherDuck, unless
 // MOTHERDUCK_STANDIN (development and test only) names the local stand-in.
 export function openMotherDuck(
   token: string,
@@ -31,7 +31,7 @@ export function openMotherDuck(
   return standin ? openStandin(standin, token) : openHostedMotherDuck(token)
 }
 
-// #772 design D2: a session for a source connected by a pasted token. MotherDuck
+// #772 design D2: a session for a MotherDuck source. MotherDuck
 // refuses `md:?attach_mode=single` without a database name, so the session is an
 // in-memory DuckDB with the extension loaded in single-attach mode; each chosen
 // database is then attached by its own address. The tested logic lives in
@@ -53,10 +53,10 @@ export async function openHostedMotherDuck(token: string): Promise<import('./sou
   }
   return {
     instance,
-    async attach(address, alias, readOnly = true) {
+    async attach(address, alias) {
       if (!/^md:(_share\/[A-Za-z0-9_-]+\/[0-9a-f-]+|[A-Za-z0-9_]+)$/.test(address)) throw new Error(`Not a MotherDuck database address: ${address}`)
       const c = await instance.connect()
-      try { await c.run(`attach '${address}' as "${alias.replace(/"/g, '""')}"${readOnly ? ' (read_only)' : ''}`) } finally { c.closeSync() }
+      try { await c.run(attachStatement(address, alias)) } finally { c.closeSync() }
     },
     async user(c) {
       const reader = await c.runAndReadAll('select current_user() as name')

@@ -1,10 +1,7 @@
 import { AppError } from '../errors'
 import { datasetQueryText } from './dataset-query'
-import { datasetSourceReadOnly } from './read-only'
 import { readNamedVariable } from '../env'
-import { sql } from '../db'
-import { decryptSecret } from '../secret-store'
-import { openSourceSession } from './motherduck'
+import { instanceToken, openSourceSession } from './motherduck'
 import type {
   Binding,
   IntrospectedTable,
@@ -17,9 +14,8 @@ import type {
 import { orderClause } from './order'
 
 // M3: the duckdb/MotherDuck driver — strictly read-only (the warehouse
-// browser). The connection string comes from the env var named by url_env:
-// either a MotherDuck URL (md:?motherduck_token=... — the recommended shape,
-// with a read-scaling token) or a local .duckdb file path (used by tests).
+// browser). A MotherDuck source uses the instance's MOTHERDUCK_TOKEN; a duckdb
+// source is a local .duckdb file, its path in the env var named by url_env.
 // @duckdb/node-api 1.5.6-r.2 (DuckDB 1.5.6) passed real MotherDuck connection,
 // introspection and read-only warehouse query checks on 1-Nov-2026 (#747).
 //
@@ -76,23 +72,28 @@ function requireUrl(cfg: SourceConfig): string {
 // DuckDB's READ_ONLY access mode: browsing, testing the connection and an
 // app's dataset query share it, and any write (nextval included) is refused.
 // One instance per file, one setting, so DuckDB never meets the same file
-// opened twice with different settings. MotherDuck (`md:`) cannot be opened
-// read-only; its guarantee is a read-scaling token (read-only.ts).
-const isMotherDuck = (url: string) => url.startsWith('md:')
+// opened twice with different settings.
+//
+// #969: a MotherDuck address cannot be opened read-only, so it is refused here:
+// the only way to MotherDuck is a motherduck source, whose session attaches its
+// databases read-only (ADR 0020).
+function localFile(cfg: SourceConfig): string {
+  const url = requireUrl(cfg)
+  if (/^\s*(md|motherduck):/i.test(url))
+    throw new AppError('ValidationError', `Data source ${cfg.name} is a DuckDB file source, but ${cfg.url_env} holds a MotherDuck address. Use a MotherDuck source, which reads MOTHERDUCK_TOKEN.`)
+  return url
+}
 
-// #772: a pasted-token MotherDuck source decrypts its token only to open its
-// session; the cache key is the stored ciphertext plus the chosen databases, so
-// replacing the token or the databases opens a fresh session.
-async function storedToken(cfg: SourceConfig): Promise<{ token: string; key: string }> {
-  const [row] = await sql`select token_ciphertext from featherbase.data_source_secret where data_source = ${cfg.name}`
-  if (!row) throw new AppError('ValidationError', `Data source ${cfg.name} has no token saved; paste one`)
-  const ciphertext = String(row.token_ciphertext)
-  return { token: decryptSecret(ciphertext), key: `${ciphertext}|${JSON.stringify(cfg.databases)}` }
+// #969: the session key is the token plus the chosen databases, so a new token
+// or new databases open a fresh session.
+function motherDuckCredentials(cfg: SourceConfig): { token: string; key: string } {
+  const token = instanceToken()
+  return { token, key: `${token}|${JSON.stringify(cfg.databases.map((d) => d.name))}` }
 }
 
 async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry & { release(): void }> {
-  const credentials = cfg.engine === 'motherduck' ? await storedToken(cfg) : null
-  const key = credentials?.key ?? requireUrl(cfg)
+  const credentials = cfg.engine === 'motherduck' ? motherDuckCredentials(cfg) : null
+  const key = credentials?.key ?? localFile(cfg)
   let cached = instances.get(cfg.name)
   // No await between observing the key and publishing the in-flight open.
   // Replaced sessions drain their readers instead of closing live connections.
@@ -100,7 +101,7 @@ async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry & { release
     if (cached) retire(cached)
     const ready = credentials
       ? openSourceSession(credentials.token, cfg.databases).then(session => ({ instance: session.instance, secret: credentials.token, close: () => session.close() }))
-      : loadDuckdb().then(async ({ DuckDBInstance }) => ({ instance: await DuckDBInstance.create(key, isMotherDuck(key) ? undefined : { access_mode: 'READ_ONLY' }), secret: key }))
+      : loadDuckdb().then(async ({ DuckDBInstance }) => ({ instance: await DuckDBInstance.create(key, { access_mode: 'READ_ONLY' }), secret: key }))
     cached = { key, ready, readers: 0, retired: false }
     instances.set(cfg.name, cached)
   }
@@ -249,10 +250,8 @@ export const duckdbDriver: SourceDriver = {
   writable: false,
 
   // #625: an app's dataset query (MotherDuck in production). Wrapped as a
-  // sub-query, so only a query that reads can run.
+  // sub-query, on a session that holds its databases read-only.
   async query(cfg, query, columns, where) {
-    if (!datasetSourceReadOnly(cfg))
-      throw new AppError('PermissionError', `Data source ${cfg.name} is MotherDuck without a read-scaling token, so it cannot run an app's dataset query`)
     const { text, values } = datasetQueryText(query, columns, where,
       { placeholder: () => '?', asText: (column) => `cast(${column} as varchar)`, asDay: (column) => `cast(cast(${column} as date) as varchar)` })
     return run(cfg, text, values)

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 // Instance settings as code, group 3 (#465, design D2–D4, D9): the managed
 // scope, apply, dry run, and export. Apply runs in one transaction through
 // saveDoc as actor `instance-settings`; a dry run and a wrong file write
@@ -61,7 +62,7 @@ describe('the managed scope (D2)', () => {
       ]],
       ['Scheduled Job', 'rows', ['cadence', 'enabled']],
       ['App Setting', 'rows', ['value']],
-      ['Data Source', 'rows', ['engine', 'url_env', 'default_schema', 'access', 'table_allowlist']],
+      ['Data Source', 'rows', ['engine', 'url_env', 'default_schema', 'access', 'table_allowlist', 'databases']],
     ])
     // The privacy notice may be kept in its own file next to the settings file.
     expect(scope[0].fileFields).toContain('privacy_notice')
@@ -781,6 +782,23 @@ describe('values from variables (#703)', () => {
 })
 
 describe('Data Source rows (#703)', () => {
+  // #969: a MotherDuck row names the databases it reads, and no variable.
+  test('a MotherDuck source comes back with the databases it reads, view-only', async () => {
+    const warehouse = { row_id: 'made-up-motherduck', engine: 'motherduck', default_schema: 'gold.main', databases: [{ name: 'gold' }, { name: 'marts' }] }
+    await applyInstanceSettings({ settings: { 'Data Source': [warehouse] } }, { by: 'Administrator' })
+    const [row] = await sql`select engine, url_env, access, databases from data_source where row_id = ${warehouse.row_id}`
+    expect(row).toEqual({ engine: 'motherduck', url_env: null, access: 'read_only', databases: warehouse.databases })
+    expect((await applyInstanceSettings({ settings: { 'Data Source': [warehouse] } }, { by: 'Administrator' })).changes).toEqual([])
+  })
+
+  test('the Feather Dash file applies: its warehouse reads gold and marts with the one token', async () => {
+    const file = JSON.parse(readFileSync(new URL('../../../client-apps/jeyarama/instances/dash/instance-settings.json', import.meta.url), 'utf8'))
+    const [warehouse] = file.settings['Data Source']
+    expect(warehouse).toEqual({ row_id: 'motherduck', engine: 'motherduck', default_schema: 'gold.main', databases: [{ name: 'gold' }, { name: 'marts' }] })
+    await applyInstanceSettings({ settings: { 'Data Source': [warehouse] } }, { by: 'Administrator' })
+    expect((await sql`select engine from data_source where row_id = 'motherduck'`)[0].engine).toBe('motherduck')
+  })
+
   const source = { row_id: 'made-up-warehouse', engine: 'postgres', url_env: 'MADE_UP_WAREHOUSE_URL', access: 'read_only' }
 
   test('a row comes back from the file, and is locked', async () => {

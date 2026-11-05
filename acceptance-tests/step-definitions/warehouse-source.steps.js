@@ -1,52 +1,72 @@
 'use strict';
 
-// Steps for connecting a MotherDuck warehouse by its token and browsing it
-// (external-data-sources, #772). The warehouse is the local stand-in the stack
+// Steps for connecting a MotherDuck warehouse with the instance's token and browsing it
+// (external-data-sources, #772, #969). The warehouse is the local stand-in the stack
 // builds (support/stack.js); its made-up tokens are below. "The user" is the
 // seeded System Manager unless a step says otherwise.
 
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { Given, When, Then } = require('@cucumber/cucumber');
-const { addStandinTable, changeStandin } = require('../support/stack');
-const { ConnectWarehousePage, WarehouseSourcePage, DataSourcesSidebar, WarehouseBrowserPage, CopiedWarehousePage } = require('../support/pages/warehouse-pages');
+const { addStandinTable, changeStandin, restartAcceptance, acceptanceSql } = require('../support/stack');
+const { ConnectWarehousePage, DataSourcesSidebar, WarehouseBrowserPage, CopiedWarehousePage } = require('../support/pages/warehouse-pages');
 const { FormPage } = require('../support/pages/form-page');
 
 // The stand-in's tokens (apps/server/test/motherduck-standin.ts).
 const TOKENS = {
-  reader: 'standin-read-scaling-token-4f2a',
+  reader: 'standin-read-token-4f2a',
   writer: 'standin-read-write-token-77b1',
-  second: 'standin-second-read-token-9c1e',
   refused: 'standin-revoked-token-0000',
 };
-const byLastFour = (four) => Object.values(TOKENS).find((t) => t.endsWith(four));
 
 /** A MotherDuck source saved through the API, with a name of this scenario's own. */
-async function givenSource(world, databases, token = TOKENS.reader) {
+async function givenSource(world, databases) {
   world.source = `acc-wh-${randomUUID().slice(0, 8)}`;
   await world.withApi((api) =>
-    api.call('POST', '/api/table/Data%20Source:motherduck_connect', { name: world.source, token, databases }, [201], `connect ${world.source}`),
+    api.call('POST', '/api/table/Data%20Source:motherduck_connect', { name: world.source, databases }, [201], `connect ${world.source}`),
   );
 }
 
 // ---- Given ----
 
-Given('a token that can read five databases, among them {string} and {string}', async function (first, second) {
-  this.token = TOKENS.reader;
+Given('the instance\'s token can read five databases, among them {string} and {string}', async function (first, second) {
+  await restartAcceptance({ MOTHERDUCK_TOKEN: TOKENS.reader });
   this.expected = [first, second];
   this.connect = new ConnectWarehousePage(await this.asSystemManager());
   await this.connect.open();
+  await this.connect.answered();
 });
 
-Given('a token that has passed its test', async function () {
+Given('the instance\'s token can read databases', async function () {
+  await restartAcceptance({ MOTHERDUCK_TOKEN: TOKENS.reader });
   this.connect = new ConnectWarehousePage(await this.asSystemManager());
   await this.connect.open();
-  await this.connect.test(TOKENS.reader);
+  await this.connect.answered();
 });
 
-Given('a MotherDuck source saved with a token ending in {string}', async function (four) {
-  this.token = byLastFour(four);
-  await givenSource(this, ['sales', 'stock'], this.token);
+Given('the instance\'s token can read five databases', async function () {
+  await restartAcceptance({ MOTHERDUCK_TOKEN: TOKENS.reader });
+});
+
+Given('MotherDuck refuses the instance\'s token', async function () {
+  await restartAcceptance({ MOTHERDUCK_TOKEN: TOKENS.refused });
+});
+
+Given('the instance has no MotherDuck token', async function () {
+  await restartAcceptance({ MOTHERDUCK_TOKEN: '' });
+});
+
+Given('the instance\'s token can also write to the warehouse', async function () {
+  await restartAcceptance({ MOTHERDUCK_TOKEN: TOKENS.writer });
+});
+
+Given('a table connected from its database {string}', async function (database) {
+  await givenSource(this, [database]);
+  this.database = database;
+  await this.withApi((api) =>
+    api.call('POST', `/api/table/Data%20Source/${this.source}:reflect`, { schema: `${database}.main`, tables: ['stores'] }, [200, 201], 'connect the table'));
+  const [bound] = await acceptanceSql('select name from featherbase.table_def where data_source = $1', [this.source]);
+  this.connectedTable = bound.name;
 });
 
 Given('a MotherDuck source reading the databases {string} and {string}', async function (first, second) {
@@ -72,46 +92,28 @@ Given('the table list of {string} was read before the table {string} was added',
 
 // ---- When ----
 
-When('the user tests a working token that can read five databases', async function () {
+When('the user starts connecting a MotherDuck warehouse', async function () {
   this.connect = new ConnectWarehousePage(this.page);
   await this.connect.open();
-  await this.connect.test(TOKENS.reader);
+  await this.connect.answered();
 });
 
-When('the user tests a token that MotherDuck refuses', async function () {
-  this.connect = new ConnectWarehousePage(this.page);
-  await this.connect.open();
-  await this.connect.test(TOKENS.refused);
-});
-
-When('the user tests a working token that can also write to the warehouse', async function () {
-  this.connect = new ConnectWarehousePage(this.page);
-  await this.connect.open();
-  await this.connect.test(TOKENS.writer);
+When('the user tries to change a row of that table', async function () {
+  // The call itself says the change is refused: anything but a refusal fails it.
+  await this.withApi((api) =>
+    api.call('PUT', `/api/table/${encodeURIComponent(this.connectedTable)}/S001`, { name: 'Changed' }, [403, 417], 'change a connected row'));
 });
 
 When('the user ticks {string} and {string} and saves the source', async function (first, second) {
   this.source = `acc-wh-${randomUUID().slice(0, 8)}`;
   await this.connect.name(this.source);
-  await this.connect.test(this.token);
   await this.connect.tick(first);
   await this.connect.tick(second);
   await this.connect.save();
 });
 
 When('the user has ticked no database', function () {
-  // Nothing is ticked after a test; the scenario checks the save is blocked.
-});
-
-When('the user opens the source', async function () {
-  this.sourcePage = new WarehouseSourcePage(await this.asSystemManager());
-  await this.sourcePage.open(this.source);
-});
-
-When('the user replaces it with a working token ending in {string}', async function (four) {
-  this.sourcePage = new WarehouseSourcePage(await this.asSystemManager());
-  await this.sourcePage.open(this.source);
-  await this.sourcePage.replaceToken(byLastFour(four));
+  // Nothing is ticked when the page opens; the scenario checks the save is blocked.
 });
 
 When('the user looks at the sidebar', async function () {
@@ -153,18 +155,35 @@ Then('they are told who the token signs in as and that it can read five database
   assert.match(await this.connect.result(), /Connected as reader_user · it can read 5 databases/);
 });
 
+Then('they are not asked for a token', async function () {
+  assert.equal(await this.connect.asksForToken(), false);
+});
+
 Then('they are told the token was refused, in plain words', async function () {
-  assert.match(await this.connect.result(), /MotherDuck refused the token/);
+  assert.match(await this.connect.result(), /MotherDuck refused this server's token/);
+});
+
+Then('they are told the instance has no MotherDuck token', async function () {
+  assert.match(await this.connect.result(), /MOTHERDUCK_TOKEN is not set/);
+});
+
+Then('no database is offered', async function () {
+  assert.equal(await this.connect.databasesOffered(), false);
+});
+
+Then('the change is refused', function () {
+  // Checked by the call in the When step.
+});
+
+Then('the row in the warehouse is unchanged', async function () {
+  await this.withApi(async (api) => {
+    const preview = await api.call('GET', `/api/table/Data%20Source/${this.source}:preview?database=${this.database}&schema=main&table=stores`, undefined, [200], 'read the warehouse');
+    assert.equal(preview.first_rows.find((row) => row.code === 'S001').name, 'Harbour Road');
+  });
 });
 
 Then('the message does not contain the token', async function () {
   assert.ok(!(await this.connect.result()).includes(TOKENS.refused));
-});
-
-Then('the test succeeds, with a warning to use a read scaling token instead', async function () {
-  const result = await this.connect.result();
-  assert.match(result, /Connected as writer_user/);
-  assert.match(result, /read scaling token instead/);
 });
 
 Then('browsing the source offers {string} and {string} and no other database', async function (first, second) {
@@ -174,18 +193,6 @@ Then('browsing the source offers {string} and {string} and no other database', a
 
 Then('the source cannot be saved', async function () {
   assert.equal(await this.connect.canSave(), false);
-});
-
-Then('they see that a token is saved, ending in {string}', async function (four) {
-  assert.match(await this.sourcePage.token(), new RegExp(`Saved, ending …${four}`));
-});
-
-Then('the rest of the token appears nowhere on the page', async function () {
-  assert.ok(!(await this.sourcePage.pageText()).includes(this.token));
-});
-
-Then('the source shows a token ending in {string}', async function (four) {
-  assert.match(await this.sourcePage.tokenEnding(four), new RegExp(`Saved, ending …${four}`));
 });
 
 Then('it shows the source with {string} and {string} under it', async function (first, second) {

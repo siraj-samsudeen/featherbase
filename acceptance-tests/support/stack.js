@@ -68,6 +68,10 @@ async function externalSql(statement, parameters = []) {
   finally { await db.end(); }
 }
 
+// #969: the one token every MotherDuck source reads, made up, for the stand-in
+// (apps/server/test/motherduck-standin.ts).
+const STANDIN_READER_TOKEN = 'standin-read-token-4f2a';
+
 const children = [];
 const logs = [];
 let apiChild;
@@ -77,7 +81,7 @@ function isolatedEnvironment(overrides = {}) {
   return {
     ...process.env, DATABASE_URL: acceptanceDatabaseUrl(), PORT: String(API_PORT),
     API_PORT: String(API_PORT), WEB_PORT: String(WEB_PORT), FEATHERBASE_ENV: 'test',
-    FEATHERBASE_INSTANCE: '', FEATHERBASE_APP_PATHS: '[]', MOTHERDUCK_TOKEN: '',
+    FEATHERBASE_INSTANCE: '', FEATHERBASE_APP_PATHS: '[]', MOTHERDUCK_TOKEN: STANDIN_READER_TOKEN,
     SMTP_HOST: '', SMTP_USER: '', SMTP_PASSWORD: '',
     GOOGLE_CLIENT_SECRET: 'acceptance-private-secret',
     ALLOW_MOCK_OAUTH: '1', PREAUTH_LOGIN_MAX: '10000', WEB_ORIGINS: BASE_URL,

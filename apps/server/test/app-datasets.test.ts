@@ -568,18 +568,18 @@ describe('a cached dataset read', () => {
     expect(state?.missing).toEqual(['data source datasetproof-missing'])
   })
 
-  // A MotherDuck connection cannot be opened read-only; only a read-scaling
-  // token keeps it so, and the platform cannot see which token it holds. The
-  // address below is never dialled: the refusal comes first.
-  test('a MotherDuck source not marked as holding a read-scaling token cannot back a dataset', async ({ admin, createUser }) => {
-    const { reader, app } = await setup(admin, createUser, { source: false })
-    await admin.post('/api/table/Data%20Source', { row_id: 'datasetproof-warehouse', engine: 'duckdb', url_env: 'B4_MOTHERDUCK_URL', access: 'read_only' })
-    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
-    app.hooks.run = (context: Context) => context.datasets.active('sales')
-    await withNamedVariable('B4_MOTHERDUCK_URL', 'md:never_dialled', async () => {
-      await expectApiError(reader.post(read + 'inside', { payload: {} }), { status: 409, type: 'NotSetUpError' })
+  // #969: a MotherDuck source is read-only whatever its token, so no flag is
+  // asked for; the setup names the instance's one token when it is missing.
+  test('a MotherDuck source can back a dataset, and its setup asks only for the token', async ({ admin, createUser }) => {
+    await setup(admin, createUser, { source: false })
+    await admin.post('/api/table/Data%20Source', { row_id: 'datasetproof-warehouse', engine: 'motherduck', databases: [{ name: 'gold' }] })
+    await withNamedVariable('MOTHERDUCK_TOKEN', undefined, async () => {
       expect((await appSetupState()).find(({ app }) => app === 'datasetproof')?.missing)
-        .toEqual(['read-only data source datasetproof-warehouse', 'data source datasetproof-missing'])
+        .toEqual(['secret MOTHERDUCK_TOKEN', 'data source datasetproof-missing'])
+    })
+    await withNamedVariable('MOTHERDUCK_TOKEN', 'made-up-token', async () => {
+      expect((await appSetupState()).find(({ app }) => app === 'datasetproof')?.missing)
+        .toEqual(['data source datasetproof-missing'])
     })
   })
 

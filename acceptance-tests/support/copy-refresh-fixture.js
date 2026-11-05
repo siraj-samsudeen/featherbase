@@ -18,7 +18,7 @@ class CopyRefreshFixture {
       `insert into ${this.relation} values ('P01', 'Rose'), ('P02', 'Fern')`,
     ]);
     await this.api.call('POST', '/api/table/Data%20Source:motherduck_connect', {
-      name: this.source, token: 'standin-read-scaling-token-4f2a', databases: ['sales'],
+      name: this.source, databases: ['sales'],
     }, [201], 'connect local plants source');
     await this.api.copyWarehouse(this.source, {
       database: 'sales', schema: 'main', table: this.relation, name: 'Plants', key: 'code',

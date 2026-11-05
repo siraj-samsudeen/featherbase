@@ -16,3 +16,10 @@ export function requireMotherDuckToken(purpose: string): string {
   if (!token) throw new Error(`MOTHERDUCK_TOKEN is not set (required to ${purpose})`)
   return token
 }
+
+// #969: the one way a MotherDuck session opens a database, shared by live
+// MotherDuck and the local stand-in. It has no writable form: the token may have
+// write rights, and Featherbase still only reads (ADR 0020).
+export function attachStatement(address: string, alias: string): string {
+  return `attach '${address.replace(/'/g, "''")}' as "${alias.replace(/"/g, '""')}" (read_only)`
+}

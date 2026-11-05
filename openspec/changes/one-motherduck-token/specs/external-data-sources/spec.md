@@ -47,10 +47,6 @@ Then the source cannot be saved
 
 ## ADDED Requirements
 
-### Requirement: Connect a MotherDuck warehouse with the instance's token`
-
-## MODIFIED Requirements
-
 ### Requirement: Connect a MotherDuck warehouse with the instance's token
 
 MotherDuck is a cloud warehouse. A token, a long secret string, signs in to

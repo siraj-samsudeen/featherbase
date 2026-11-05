@@ -2,7 +2,7 @@
 // missing token fails by name and says what it was needed for. The hosted
 // query itself (readMotherDuck) needs a live token and is exercised manually.
 import { afterEach, describe, expect, it } from 'vitest'
-import { requireMotherDuckToken } from '../src/motherduck-reader'
+import { attachStatement, requireMotherDuckToken } from '../src/motherduck-reader'
 
 const saved = process.env.MOTHERDUCK_TOKEN
 afterEach(() => {
@@ -21,5 +21,12 @@ describe('Reading the warehouse', () => {
   it('with a token set returns it for the connection', () => {
     process.env.MOTHERDUCK_TOKEN = 'md-test-token'
     expect(requireMotherDuckToken('refresh anything')).toBe('md-test-token')
+  })
+})
+
+describe('attachStatement (#969)', () => {
+  it('always attaches read-only, and keeps an address and a name quoted', () => {
+    expect(attachStatement('md:_share/gold/abc', 'gold')).toBe(`attach 'md:_share/gold/abc' as "gold" (read_only)`)
+    expect(attachStatement("a'b", 'c"d')).toBe(`attach 'a''b' as "c""d" (read_only)`)
   })
 })
