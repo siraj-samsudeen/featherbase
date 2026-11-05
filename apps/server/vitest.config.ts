@@ -53,6 +53,8 @@ export default defineConfig({
     // Empties the tables that outlive a run — `background_job` (rows orphaned
     // by an interrupted run) and `user_event` (rows the app itself commits
     // outside any sandbox) — so neither can fail the next one. See the file.
+    // Long end-to-end flows, under coverage on a loaded runner, pass 5 seconds.
+    testTimeout: 15_000,
     globalSetup: ['./test/global-setup.ts'],
     server: {
       deps: {
