@@ -309,12 +309,12 @@ export async function checkWithProvider(
     return 'rejected'
   }
   // Before the left check: an answer about somebody else, or about nobody it
-  // names, says nothing about this person. The first filled value wins, top level
-  // first. A body with neither a yes nor a leaver falls through to "could not confirm".
+  // names, says nothing about this person; nor does one naming two records. A body
+  // with neither a yes nor a leaver falls through to "could not confirm".
   if (mustName) {
-    const named = ls.map((o) => o[mustName.key]).find(filled)
+    const named = ls.map((o) => o[mustName.key]).filter(filled)
     const speaks = ls.some((o) => saysYes(o, cfg.wire) || saysLeft(o, cfg.wire))
-    if (named === undefined ? speaks : String(named).trim() !== mustName.record) {
+    if (named.length ? named.some((v) => String(v).trim() !== mustName.record) : speaks) {
       logOutcome(cfg, 'another_record', `http_${res.status} ${keys}`)
       return 'another_record'
     }

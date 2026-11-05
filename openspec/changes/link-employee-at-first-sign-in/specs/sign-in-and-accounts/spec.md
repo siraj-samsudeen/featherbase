@@ -57,8 +57,8 @@ later sign-in uses that account.
 
 - **WHEN** the user signs in again, and the HR system confirms the password but
   names a different record than the one their account was linked to
-- **THEN** they are refused as for a wrong password, and their account stays as
-  it was
+- **THEN** they are refused as for a wrong password, their account stays as it
+  was, and the activity log names the link
 
 #### Scenario: Two first sign-ins at once
 
@@ -88,8 +88,8 @@ Everyone refused sees the same wording as a wrong password.
 When an ID is on two roster rows, when its row or its values already belong to
 someone, or when the HR system confirms a different record than the row's, the
 sign-in SHALL be refused as for a wrong password, nothing SHALL change, and the
-activity log SHALL tell an administrator which row needs attention, without the
-ID, a name or a password.
+activity log SHALL tell an administrator which row or link needs attention,
+without the ID, a name or a password.
 
 #### Scenario: Two rows with one ID
 

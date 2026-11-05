@@ -218,6 +218,20 @@ describe('every later sign-in must name the same record too', () => {
     expect(person.enabled).toBe(true)
   })
 
+  test('an answer naming two records is not believed, for a yes or for a leaver', async ({ api, admin }) => {
+    const { res, person } = await firstThen(api, admin, () => Response.json({ employee_id: Number(RECORD), employee: { employee_id: 7002, is_active: false } }))
+    expect(res.status).toBe(401)
+    expect(person.enabled).toBe(true)
+    provider(() => Response.json({ employee_id: Number(RECORD), user: { employee_id: 7002, access: 'opaque' } }))
+    expect((await signIn(api)).status).toBe(401)
+  })
+
+  test('a later answer naming another record is noted for an administrator', async ({ api, admin }) => {
+    await firstThen(api, admin, () => Response.json({ access: 'opaque', employee_id: 7002 }))
+    const [link] = await sql`select id from sign_in_identity where subject = ${RECORD}`
+    expect(await heldNotes()).toEqual([`first_sign_in_held stylehr ${String(link.id)} service_named_another_record`])
+  })
+
   test('with the roster taken off the method, it refuses rather than stop checking', async ({ api, admin }) => {
     await setUp(admin)
     provider()
@@ -369,6 +383,19 @@ describe('two first sign-ins at once', () => {
     expect(outer.status).toBe(200)
     expect(((await outer.json()) as { user: { row_id: string } }).user.row_id).toBe(typeof inner!.user === 'string' ? inner!.user : inner!.user.row_id)
     expect(await peopleCount()).toBe(before + 1)
+  })
+
+  test('the one that arrives just after the winner committed is asked about, and lands on the winner', async ({ api, admin }) => {
+    await setUp(admin)
+    const calls = provider()
+    const cfg = (await delegatedLoginConfig('stylehr'))!
+    const winner = await rosterFirstSignIn(cfg, CODE, PASSWORD, null)
+    const late = await rosterFirstSignIn(cfg, CODE, PASSWORD, null)
+    expect((late.user as unknown as { row_id: string }).row_id).toBe((winner.user as unknown as { row_id: string }).row_id)
+    expect(calls).toHaveLength(2)
+    expect(await heldNotes()).toEqual([])
+    provider(() => Response.json({ message: 'Invalid Credentials' }, { status: 401 }))
+    await expect(rosterFirstSignIn(cfg, CODE, 'wrong', null)).rejects.toThrow(REFUSED)
   })
 
   test('a row taken by another person meanwhile is refused and raised', async ({ api, admin, createUser }) => {

@@ -44,8 +44,8 @@ interface RosterRow {
 const refused = () => new AppError('AuthenticationError', INVALID_CREDENTIALS)
 
 /** Once per method, row and reason, so repeated tries cannot flood the log. */
-async function hold(method: string, rowId: string, reason: HeldReason): Promise<void> {
-  const operation = `first_sign_in_held ${method} ${rowId} ${reason}`.slice(0, 140)
+export async function hold(method: string, target: string, reason: HeldReason): Promise<void> {
+  const operation = `first_sign_in_held ${method} ${target} ${reason}`.slice(0, 140)
   const [seen] = await sql`select 1 from activity_log where operation = ${operation} limit 1`
   if (!seen) await logActivity('system', operation)
 }
@@ -139,6 +139,9 @@ async function candidate(method: SignInMethod, roster: Roster, id: string): Prom
   }
   const [row] = rows
   if (row.status !== roster.link.current_status) return null
+  // A concurrent first sign-in committed just now. The service still checks this
+  // one's password, and link() then lands it on the winner.
+  if (row.person && (await winner(method, row))) return row
   const problem = await problemWith(method, roster, row)
   if (problem) {
     await hold(method.key, row.row_id, problem)
