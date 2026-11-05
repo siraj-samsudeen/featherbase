@@ -1637,6 +1637,8 @@ function ChoiceBox({
   column,
   filters,
   onChange,
+  className,
+  width,
 }: {
   column: {
     column_name: string
@@ -1647,14 +1649,18 @@ function ChoiceBox({
   }
   filters: Filter[]
   onChange: (filters: Filter[]) => void
+  /** #742's box layout: one line on a desktop, the full width on a phone. */
+  className: string
+  /** The button's width, as the text boxes': at most 10rem on a desktop. */
+  width?: string
 }) {
   const { t } = useI18n()
   const label = column.label ?? column.column_name
   const choices = choicesOf(column)!
   const ticked = tickedChoices(filters, column.column_name, choices)
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">{label}</span>
+    <div className={className}>
+      <span className="text-xs font-semibold text-ink-subtle">{label}</span>
       <ChoiceTicks
         label={label}
         // A link's value that is no longer a choice still shows, ticked.
@@ -1666,7 +1672,7 @@ function ChoiceBox({
         buttonText={ticked.length ? `${ticked.length} selected` : 'All'}
         testId={`std-filter-${column.column_name}`}
         listTestId={`std-choices-${column.column_name}`}
-        className="min-w-[8rem] max-w-[10rem]"
+        className={width}
       />
     </div>
   )
@@ -1756,7 +1762,7 @@ function StandardFilters({
     >
       {shown.map((f) =>
         f.column_type === 'Choice' ? (
-          <ChoiceBox key={f.column_name} column={f} filters={filters} onChange={onChange} />
+          <ChoiceBox key={f.column_name} column={f} filters={filters} onChange={onChange} className={box} width={textWidth} />
         ) : f.column_type === 'Reference' && f.reference_table ? (
           // #793: a link filters by picking a row by its name, not by typing its id.
           <label key={f.column_name} className={box}>
