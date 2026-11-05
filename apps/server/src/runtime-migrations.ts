@@ -84,8 +84,12 @@ export const migrationSchema = z.object({
     if ('reference_table' in op.to && !linking)
       ctx.addIssue({ code: 'custom', path: ['operations', index, 'to', 'reference_table'],
         message: "a link's Table changes only when a text column becomes a link" })
-    if (linking && op.to.column_type === 'Reference' && !op.to.reference_table)
+    if (linking && !('reference_table' in op.to))
+      ctx.addIssue({ code: 'custom', path: ['operations', index, 'to'], message: 'a change between text and link names the Table it links to and from' })
+    else if (linking && op.to.column_type === 'Reference' && !op.to.reference_table)
       ctx.addIssue({ code: 'custom', path: ['operations', index, 'to', 'reference_table'], message: 'a link needs the Table it links to' })
+    else if (linking && op.to.column_type === 'Data' && op.to.reference_table !== null)
+      ctx.addIssue({ code: 'custom', path: ['operations', index, 'to', 'reference_table'], message: 'text links to no Table: reference_table is null' })
     if (op.backfill !== undefined && displayOnly(op.to))
       ctx.addIssue({ code: 'custom', path: ['operations', index, 'backfill'],
         message: 'alterColumn changes only what people read (label, description, hidden), so it takes no backfill' })
@@ -228,6 +232,8 @@ function forward(app: string, state: TableDef[], op: Operation) {
       const toType = op.to.column_type
       if (fromType && toType && fromType !== toType && !isSafeTypeChange(fromType, toType))
         refuse(`${what}: ${fromType} to ${toType} is not a safe conversion; add a new column, copy the data, then drop the old one`)
+      if (fromType && toType && isLinkTypeChange(fromType, toType) && target.table_column)
+        refuse(`${what}: a link to a row of any Table does not turn into text`)
       setProperties(target, op.to)
       checkColumns(app, state, table, [target], what)
       if (target.unique && op.backfill !== undefined) refuse(`${what}: a unique column cannot be backfilled with one value`)

@@ -639,6 +639,7 @@ export async function updateTable(
           // #911: the only type changes that reach here are text ⇄ link.
           if (f.column_type === 'Reference')
             await assertValuesNameRows(tx, relation, name, f.column_name, f.reference_table!)
+          else row.reference_table = null
           row.column_type = f.column_type
         }
         await tx`update column_def set ${tx(row)}
@@ -1347,6 +1348,8 @@ export async function changeColumnType(table: string, column: string, to: string
     throw new AppError('ValidationError', `${meta.name}.${column}: ${from} to ${to} is not a safe conversion; add a new column, copy the data, then drop the old one`)
   const relation = quoteRelation(await tableRelation(meta.name))
   if (isLinkTypeChange(from, to)) {
+    if (current.table_column)
+      throw new AppError('ValidationError', `${meta.name}.${column} is a link to a row of any Table, so it does not turn into text`)
     const target = to === 'Reference' ? opts.reference_table ?? null : null
     if (to === 'Reference') {
       if (!target) throw new AppError('ValidationError', `${meta.name}.${column}: a link needs the Table it links to`)
