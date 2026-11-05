@@ -72,7 +72,7 @@ export async function mayPurge(user: string, meta: TableMeta): Promise<boolean> 
   return purgeRefusal(meta) === null && (await isPrivileged(user))
 }
 
-const titleOf = (meta: TableMeta, row: Row) => rowDisplayTitle(meta, row, String(row[meta.row_key] ?? row[ROW_KEY]))
+const titleOf = (meta: TableMeta, row: Row) => rowDisplayTitle(meta, row, String(row[meta.row_key]))
 
 /** The rows one import run added that are still there. */
 async function runRows(db: Db, table: string, runId: string, lock = false): Promise<string[]> {
@@ -83,8 +83,8 @@ async function runRows(db: Db, table: string, runId: string, lock = false): Prom
   if (!parts.length) throw new AppError('NotFoundError', `No import run ${runId} on ${table}`)
   const inserted = new Map<string, number>()
   for (const part of parts)
-    for (const t of (Array.isArray(part.touched) ? part.touched : []) as { action?: string; row_id: string; stamp?: string }[])
-      if (t.action === 'inserted' && t.stamp) inserted.set(String(t.row_id), Date.parse(t.stamp))
+    for (const t of (Array.isArray(part.touched) ? part.touched : []) as { action?: string; row_id: string; stamp: string }[])
+      if (t.action === 'inserted') inserted.set(String(t.row_id), Date.parse(t.stamp))
   if (!inserted.size) return []
   const meta = await getMeta(table)
   const present = await db`select ${db(meta.row_key)} as id, created_at from ${db(await tableRelation(table))} where ${db(meta.row_key)} = any(${[...inserted.keys()]}) ${lock ? db`for update` : db``}`
@@ -150,20 +150,13 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
   }
   // Mandatory privacy holds for a System Manager too: a row private to
   // someone else is never previewed, changed or removed.
-  const visible = async (meta: TableMeta, row: Row) => {
-    try { await assertMandatoryAccess(user, meta, row) } catch (err) {
-      if (err instanceof AppError && err.type === 'PermissionError')
-        throw new AppError('PermissionError', 'Some of the rows this reaches are private to someone else, so they cannot be deleted permanently')
-      throw err
-    }
-  }
+  const visible = (meta: TableMeta, row: Row) => assertMandatoryAccess(user, meta, row)
   const addAttached = async (t: string, id: string) => {
     for (const h of activityHolders) {
       const held = await db`select ${db(h.key)} as id from ${db(`${PLATFORM_SCHEMA}.${h.relation}`)}
         where ${db(h.tableColumn)} = ${t} and ${db(h.nameColumn)} = ${id} ${forUpdate}`
       for (const row of held) {
         const rowId = String(row.id)
-        if (isRemoved(h.table, rowId)) continue
         mark(h.table, rowId)
         attached.push({ table: h.table, row_id: rowId })
         checkSize()
@@ -183,7 +176,6 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
   }
   const addDoc = async (meta: TableMeta, row: Row) => {
     const id = String(row[meta.row_key])
-    if (isRemoved(meta.name, id)) return false
     await visible(meta, row)
     mark(meta.name, id)
     rows.push({ table: meta.name, row_id: id, title: titleOf(meta, row) })
@@ -195,7 +187,6 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
       const owned = await db`select * from ${db(await tableRelation(f.row_table!))} where parent = ${id} and parenttype = ${meta.name} ${forUpdate}`
       for (const line of owned) await addLine(f.row_table!, line as Row)
     }
-    return true
   }
 
   const roots = await db`select * from ${db(await tableRelation(table))} where ${db(rootMeta.row_key)} = any(${ids}) ${forUpdate}`
@@ -216,17 +207,14 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
       const column = String(ref.column_name)
       // #881: a link to a row of any Table names its Table in a second column.
       const tableColumn = ref.table_column ? String(ref.table_column) : null
-      const meta = await getMeta(holder).catch(() => null)
+      // A Table whose app is turned off cannot be scanned; the refusal says so.
+      const meta = await getMeta(holder)
       // One group per holder, however many steps of the walk reach it.
       const group = (g: Omit<PurgeGroup, 'table' | 'column'>) => {
         const same = groups.find((x) => x.table === holder && x.column === column && x.parent_table === g.parent_table && x.action === g.action)
         if (!same) return void groups.push({ table: holder, column, ...(tableColumn ? { table_column: tableColumn } : {}), ...g })
         same.count += g.count
         same.rows = [...same.rows, ...g.rows].slice(0, 50)
-      }
-      if (!meta) {
-        group({ lines: false, count: 0, rows: [], action: 'blocked', why: `${holder} is not available, so its links cannot be checked` })
-        continue
       }
       if (meta.kind === 'settings') {
         // A link to any Table counts only when its Table half names this Table.
@@ -257,10 +245,10 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
         else buckets.push([String(h.parenttype), [h]])
       }
       for (const [parentTable, bucket] of buckets) {
-        const parentMeta = parentTable ? await getMeta(parentTable).catch(() => null) : null
-        const canDelete = isLines ? Boolean(parentMeta) && purgeRefusal(parentMeta!) === null : purgeRefusal(meta) === null
+        const parentMeta = parentTable ? await getMeta(parentTable) : null
+        const canDelete = purgeRefusal(parentMeta ?? meta) === null
         const canClear = !ref.reqd && !meta.system && !meta.system_written
-          && !(isLines && (!parentMeta || parentMeta.system || parentMeta.system_written || parentMeta.access_policy))
+          && !(parentMeta && purgeRefusal(parentMeta))
         const action: PurgeGroup['action'] = links === 'cascade'
           ? (canDelete ? 'delete' : canClear ? 'clear' : 'blocked')
           : (canClear ? 'clear' : canDelete ? 'delete' : 'blocked')
@@ -269,20 +257,23 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
           // Every dependent, a blocked one too: a private row is never named.
           await visible(meta, h)
           if (named.length >= 50) continue
-          if (isLines) {
-            const [p] = parentMeta ? await db`select * from ${db(await tableRelation(parentMeta.name))} where ${db(parentMeta.row_key)} = ${String(h.parent)}` : []
-            named.push({ table: holder, row_id: String(h[ROW_KEY]), title: parentMeta && p ? titleOf(parentMeta, p) : String(h.parent), parent: { table: String(h.parenttype), row_id: String(h.parent) } })
+          if (parentMeta) {
+            const [p] = await db`select * from ${db(await tableRelation(parentMeta.name))} where ${db(parentMeta.row_key)} = ${String(h.parent)}`
+            named.push({ table: holder, row_id: String(h[ROW_KEY]), title: titleOf(parentMeta, p), parent: { table: parentMeta.name, row_id: String(h.parent) } })
           } else named.push({ table: holder, row_id: String(h[meta.row_key]), title: titleOf(meta, h) })
         }
         group({
           lines: isLines, ...(parentTable ? { parent_table: parentTable } : {}), count: bucket.length, rows: named, action,
-          ...(action === 'blocked' ? { why: ref.reqd ? `${holder}.${column} is required and ${parentTable ?? holder} rows cannot be deleted here` : `${parentTable ?? holder} rows cannot be changed here` } : {}),
+          ...(action === 'blocked' ? { why: `${holder}.${column} points at it, and ${parentTable ?? holder} rows can be neither deleted nor unlinked here` } : {}),
         })
         if (action === 'delete') {
           const next: string[] = []
           for (const h of bucket) {
             if (isLines) await addLine(holder, h)
-            else if (await addDoc(meta, h)) next.push(String(h[meta.row_key]))
+            else {
+              await addDoc(meta, h)
+              next.push(String(h[meta.row_key]))
+            }
           }
           if (next.length) queue.push({ table: holder, ids: next })
         }
@@ -331,11 +322,11 @@ const MAX_REASON = 1000
 
 /** What a row's comments and files said, replies and files on them included,
  *  for its deletion record: nothing is silently lost. */
-async function activitySnapshot(db: Db, table: string, rowId: string, depth = 0): Promise<{ _comments: Row[]; _files: Row[] }> {
+async function activitySnapshot(db: Db, table: string, rowId: string): Promise<{ _comments: Row[]; _files: Row[] }> {
   const read = async (kind: string, relation: string, columns: string[]) => {
     const rows = await db`select row_id, ${db(columns)} from ${db(`${PLATFORM_SCHEMA}.${relation}`)} where ref_table = ${table} and ref_name = ${rowId} order by created_at`
     const out: Row[] = []
-    for (const r of rows) out.push({ ...r, ...(depth < 8 ? await activitySnapshot(db, kind, String(r.row_id), depth + 1) : {}) })
+    for (const r of rows) out.push({ ...r, ...(await activitySnapshot(db, kind, String(r.row_id))) })
     return out
   }
   return { _comments: await read('Comment', 'comment', ['created_by', 'created_at', 'content']), _files: await read('File', 'file', ['created_by', 'created_at', 'file_name', 'file_url']) }
@@ -385,7 +376,6 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
     const saveSurviving = async (docTable: string, docId: string, change: (doc: Row, docMeta: TableMeta) => Promise<Row>) => {
       const docMeta = await getMeta(docTable)
       const [doc] = await db`select * from ${db(await tableRelation(docTable))} where ${db(docMeta.row_key)} = ${docId} for update`
-      if (!doc) return
       const values = await change(doc as Row, docMeta)
       await usingTransaction(db, () => saveDoc(docTable, { [ROW_KEY]: docId, updated_at: doc.updated_at, ...values }, user))
       events.push({ table: docTable, row_id: docId, event: 'updated' })
@@ -443,7 +433,7 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
       const snapshots = new Map<string, Row>()
       for (const line of group) {
         const [row] = await db`select * from ${db(await tableRelation(line.table))} where ${db(ROW_KEY)} = ${line.row_id}`
-        if (row) snapshots.set(line.row_id, { ...(row as Row), ...(await activitySnapshot(db, line.table, line.row_id)) })
+        snapshots.set(line.row_id, { ...(row as Row), ...(await activitySnapshot(db, line.table, line.row_id)) })
       }
       await saveSurviving(parenttype, parent, async (_doc, docMeta) => {
         const values: Row = {}
@@ -453,10 +443,8 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
         return values
       })
       for (const line of group) {
-        const snapshot = snapshots.get(line.row_id)
-        if (!snapshot) continue
         await forgetRow(db, line.table, line.row_id, files)
-        await record(db, user, line.table, line.row_id, reason, snapshot, run, root)
+        await record(db, user, line.table, line.row_id, reason, snapshots.get(line.row_id)!, run, root)
         deleted++
       }
     }
@@ -466,7 +454,6 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
       const meta = await getMeta(r.table)
       const rel = await tableRelation(r.table)
       const [row] = await db`select * from ${db(rel)} where ${db(meta.row_key)} = ${r.row_id} for update`
-      if (!row) continue
       await assertRowNotManaged(db, meta, r.row_id, user)
       await runHooks('on_trash', { row: row as Row, meta, user, isNew: false, tx: db })
       // The record is taken before anything goes: replies, and the lines' own activity, included.
@@ -499,8 +486,9 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
       const refs = await db`select parent, column_name, table_column from column_def
         where column_type = 'Reference' and (reference_table = ${t} or table_column is not null)`
       for (const ref of refs) {
-        const holder = await getMeta(String(ref.parent)).catch(() => null)
-        if (!holder || holder.kind === 'settings' || isBound(holder)) continue
+        const holder = await getMeta(String(ref.parent))
+        // A Settings or connected holder already held the delete, in the plan.
+        if (holder.kind === 'settings') continue
         const [left] = await db`select 1 from ${db(await tableRelation(holder.name))} where ${db(String(ref.column_name))} = any(${list})
           ${ref.table_column ? db`and ${db(String(ref.table_column))} = ${t}` : db``} limit 1`
         if (left) throw new AppError('ConflictError', `${holder.name} gained a link to a row being deleted; try again`)

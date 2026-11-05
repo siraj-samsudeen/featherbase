@@ -259,3 +259,20 @@ describe('#859 the Person picker leaves retired people out (Codex review round 3
     expect(await pick()).toEqual([id])
   })
 })
+
+describe('#859 the rest of retirement', () => {
+  test('the reason has a limit, and the names are reserved', async ({ admin }) => {
+    const { plant } = await plants(admin)
+    await expectApiError(retire(admin, plant, 'Sample plant', 'x'.repeat(1001)), { status: 417, fields: { retired_reason: 'Too long' } })
+    await expectApiError(admin.post('/api/table_def', { name: 'Rt Reserved', columns: [{ column_name: 'retired_at', column_type: 'Data' }] }), { status: 417 })
+    const { renameColumn } = await import('../src/table-engine')
+    await expect(renameColumn(PLANT, 'city', 'retired_by')).rejects.toMatchObject({ type: 'ValidationError' })
+  })
+
+  test('a comment can be retired by someone who may open its row', async ({ admin }) => {
+    const { plant } = await plants(admin)
+    const c = await admin.post<{ row_id: string }>('/api/table/Comment', { ref_table: PLANT, ref_name: 'Riverside', content: 'out of date' })
+    expect(await admin.post(`/api/table/Comment/${c.row_id}:retire`, { reason: 'Out of date' })).toMatchObject({ retired_reason: 'Out of date' })
+    void plant
+  })
+})

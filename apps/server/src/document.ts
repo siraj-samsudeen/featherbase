@@ -1586,11 +1586,11 @@ async function deleteDocImpl(
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
         throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
-      assertNothingRetained(table, name, await retainedDocumentCounts(stx, table, name), canRetire(meta))
+      assertNothingRetained(table, name, await retainedDocumentCounts(stx, table, name), true)
     } else {
       // #321: a plain row keeps its comments, history, attachments and shares
       // by refusing the delete while it has any (links are checked below).
-      assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name), canRetire(meta))
+      assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name), true)
     }
     await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
     if ((existing.status as string) === 'submitted')
@@ -1621,8 +1621,8 @@ async function deleteDocImpl(
           : `${parentTable} ${ref[parentKey] as string}`
         throw new AppError(
           'ValidationError',
-          `Cannot delete ${table} ${name}: it is linked from ${holder}${canRetire(meta) ? `. ${RETIRE_INSTEAD}` : ''}`,
-          canRetire(meta) ? { retire: 'available' } : undefined,
+          `Cannot delete ${table} ${name}: it is linked from ${holder}. ${RETIRE_INSTEAD}`,
+          { retire: 'available' },
         )
       }
     }
@@ -1631,8 +1631,8 @@ async function deleteDocImpl(
     if (anyHolder)
       throw new AppError(
         'ValidationError',
-        `Cannot delete ${table} ${name}: it is linked from ${anyHolder}${canRetire(meta) ? `. ${RETIRE_INSTEAD}` : ''}`,
-        canRetire(meta) ? { retire: 'available' } : undefined,
+        `Cannot delete ${table} ${name}: it is linked from ${anyHolder}. ${RETIRE_INSTEAD}`,
+        { retire: 'available' },
       )
 
     const ctx: HookContext = {
@@ -1987,20 +1987,13 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
         await assertDocPermission(user, table, action, String(row.created_by))
         await assertUserPermissions(user, meta, row)
       }
-      if (ROW_ATTACHED_TABLES.has(table)) await assertAttachedRowReadable(table, row, user)
     })
     const retirable = canRetire(meta)
-    const rowIsManaged = async (id: string) => {
-      try { await assertRowNotManaged(sql, meta, id, user); return false } catch (err) {
-        if (err instanceof AppError) return true
-        throw err
-      }
-    }
     return {
       write: !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && row.status !== 'cancelled' && await rowGrant('write'),
       retire: retirable && row.retired_at == null && await retirement('delete'),
       reactivate: retirable && row.retired_at != null && await retirement('write'),
-      purge: !(await rowIsManaged(name)) && await mayPurge(user, meta),
+      purge: await mayPurge(user, meta),
       rename,
       delete: meta.kind === 'table' && !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && await rowGrant('delete'),
       submit: Boolean(meta.is_submittable) && row.status === 'draft' && await rowGrant('submit'),

@@ -450,3 +450,121 @@ describe('#859 Codex review round 13', () => {
     expect(await admin.get(url)).toEqual({ remaining: 0 })
   })
 })
+
+describe('#859 delete permanently: the rest of the paths', () => {
+  test('bad requests are refused, and nothing changes', async ({ admin, createUser }) => {
+    const { bu } = await setup(admin)
+    await expectApiError(admin.get(`${bu.url}:purge_preview?ids=not-json`), { status: 400 })
+    await expectApiError(admin.get(`${bu.url}:purge_preview`), { status: 417, message: expect.stringContaining('Expected') })
+    await expectApiError(admin.get(`${bu.url}:purge_preview?ids=${encodeURIComponent('["BU-T"]')}&links=sideways`), { status: 417, message: expect.stringContaining("links must be") })
+    await expectApiError(preview(admin, bu, ['BU-NOPE']), { status: 404 })
+    await expectApiError(admin.get(`${bu.url}:purge_preview?run_id=no-such-run`), { status: 404 })
+    await expectApiError(admin.get(`${bu.url}:purge_run_remaining`), { status: 417 })
+    await expectApiError(purge(admin, bu, { ids: ['BU-T'], reason: 5 }), { status: 417, fields: { reason: 'Required' } })
+    await expectApiError(purge(admin, bu, { ids: ['BU-T'], reason: 'x'.repeat(1001) }), { status: 417, fields: { reason: 'Too long' } })
+    void createUser
+    expect(await exists('pg_business_unit', 'BU-T')).toBe(true)
+  })
+
+  test('a run that recorded no rows has nothing to delete', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    const run = await admin.post<{ run_id: string }>(`${bu.url}:import`, { rows: [{ row_id: 'BU-N', bu_name: 'Imported' }] })
+    await sql`update import_log set touched = null where run_id = ${run.run_id}`
+    expect(await admin.get(`${bu.url}:purge_run_remaining?run_id=${run.run_id}`)).toEqual({ remaining: 0 })
+  })
+
+  test('a chain through one Table is one group, and a row reached twice goes once', async ({ admin }) => {
+    const node = await makeTable(admin, { name: 'Pg Chain', id_pattern: 'prompt', columns: [
+      { column_name: 'next_node', column_type: 'Reference', reference_table: 'Pg Chain' },
+      { column_name: 'other_node', column_type: 'Reference', reference_table: 'Pg Chain' },
+    ] })
+    await admin.post(node.url, { row_id: 'C-1' })
+    await admin.post(node.url, { row_id: 'C-2', next_node: 'C-1' })
+    await admin.post(node.url, { row_id: 'C-3', next_node: 'C-2', other_node: 'C-1' })
+    await admin.post(node.url, { row_id: 'C-4', next_node: 'C-2' })
+    const plan = await preview(admin, node, ['C-1'])
+    expect(plan.rows.map((r) => r.row_id)).toEqual(['C-1', 'C-2', 'C-3', 'C-4'])
+    expect((plan.groups as unknown as { column: string; count: number }[]).find((g) => g.column === 'next_node')?.count).toBe(2)
+    expect(await purge(admin, node, { ids: ['C-1'] })).toEqual({ deleted: 4, cleared: 0 })
+  })
+
+  test('a link held on a line is cleared through its document; other lines stay', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    await makeTable(admin, { name: 'Pg Stop', kind: 'sub_table', columns: ['label', { column_name: 'unit', column_type: 'Reference', reference_table: BU }] })
+    const route = await makeTable(admin, { name: 'Pg Route', id_pattern: 'prompt', columns: [{ column_name: 'stops', column_type: 'Sub-table', row_table: 'Pg Stop' }] })
+    await admin.post(route.url, { row_id: 'RT-1', stops: [{ label: 'first', unit: 'BU-T' }, { label: 'second', unit: 'BU-T' }, { label: 'third', unit: 'BU-K' }] })
+    expect((await preview(admin, bu, ['BU-T'], 'clear')).groups).toContainEqual(expect.objectContaining({ table: 'Pg Stop', count: 2, action: 'clear' }))
+    expect(await purge(admin, bu, { ids: ['BU-T'], links: 'clear' })).toMatchObject({ deleted: 1, cleared: 4 }) // its two stores and two lines
+    const kept = await admin.get<{ stops: { label: string; unit: string | null }[] }>(route.rowUrl('RT-1'))
+    expect(kept.stops.map((s) => [s.label, s.unit])).toEqual([['first', null], ['second', null], ['third', 'BU-K']])
+  })
+
+  test('where the chosen way is impossible the other is used, and neither holds the delete', async ({ admin, createUser }) => {
+    const { bu } = await setup(admin)
+    // A required link cannot be cleared, so asking to clear deletes it instead.
+    const must = await makeTable(admin, { name: 'Pg Must', columns: [{ column_name: 'unit', column_type: 'Reference', reference_table: BU, reqd: true }] })
+    const m = await admin.post<{ row_id: string }>(must.url, { unit: 'BU-T' })
+    expect((await preview(admin, bu, ['BU-T'], 'clear')).groups).toContainEqual(expect.objectContaining({ table: 'Pg Must', action: 'delete' }))
+    // Private work cannot be deleted: a cascade clears an optional link and is held by a required one.
+    const { grantRole } = await import('./fixtures')
+    const open = await makeTable(admin, { name: 'Pg Soft Note', access_policy: { version: 1, roles: ['Pg Soft Member'], shared_column: 'shared' }, columns: ['shared:Check', { column_name: 'unit', column_type: 'Reference', reference_table: BU }] })
+    const hard = await makeTable(admin, { name: 'Pg Hard Note', access_policy: { version: 1, roles: ['Pg Soft Member'], shared_column: 'shared' }, columns: ['shared:Check', { column_name: 'unit', column_type: 'Reference', reference_table: BU, reqd: true }] })
+    await grantRole(admin, { table: [open.name, hard.name], role: 'Pg Soft Member', can_read: true, can_create: true, can_write: true })
+    const owner = await createUser({ roles: ['Pg Soft Member', 'System Manager'] })
+    await owner.post('/api/save_row', { table: open.name, row: { unit: 'BU-K' } })
+    expect((await preview(owner, bu, ['BU-K'])).groups).toContainEqual(expect.objectContaining({ table: 'Pg Soft Note', action: 'clear' }))
+    await owner.post('/api/save_row', { table: hard.name, row: { unit: 'BU-T' } })
+    for (const links of ['cascade', 'clear']) {
+      const plan = await preview(owner, bu, ['BU-T'], links)
+      expect(plan.blocked).toBe(true)
+      expect(plan.groups).toContainEqual(expect.objectContaining({ table: 'Pg Hard Note', action: 'blocked' }))
+    }
+    expect(await exists('pg_must', m.row_id)).toBe(true)
+  })
+
+  test('a link from a connected Table cannot be checked, so it holds the delete', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    await makeTable(admin, { name: 'Pg Remote', columns: [{ column_name: 'unit', column_type: 'Reference', reference_table: BU }] })
+    await sql`update table_def set data_source = 'pg-elsewhere' where name = 'Pg Remote'`
+    const { invalidateMeta } = await import('../src/meta')
+    invalidateMeta('Pg Remote')
+    try {
+      const plan = await preview(admin, bu, ['BU-T'])
+      expect(plan.blocked).toBe(true)
+      expect(plan.groups).toContainEqual(expect.objectContaining({ table: 'Pg Remote', action: 'blocked' }))
+    } finally { invalidateMeta('Pg Remote') }
+  })
+
+  test('an unset Settings link holds nothing, and a link written during the delete refuses it', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    await makeTable(admin, { name: 'Pg Unset', kind: 'settings', columns: [{ column_name: 'unit', column_type: 'Reference', reference_table: BU }] })
+    const late: TableController = {
+      table: BU,
+      hooks: { on_trash: async ({ tx }) => { await tx.unsafe("insert into featherbase.pg_store (row_id, store_name, business_unit) values ('S-LATE', 'Late', 'BU-T')") } },
+    }
+    registerController(late)
+    try {
+      await expectApiError(purge(admin, bu, { ids: ['BU-T'] }), { status: 409, message: expect.stringContaining('gained a link') })
+    } finally { unregisterController(late) }
+    expect(await exists('pg_business_unit', 'BU-T')).toBe(true)
+    expect(await exists('pg_store', 'S-LATE')).toBe(false)
+  })
+
+  test('attachments go with the row; only the platform\'s own stored files are touched', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    await admin.post('/api/save_row', { table: 'File', row: { file_name: 'a.txt', is_private: false, ref_table: BU, ref_name: 'BU-T' } })
+    await sql`update file set file_url = '/files/0123456789abcdef_a.txt' where ref_table = ${BU} and file_name = 'a.txt'`
+    await admin.post('/api/save_row', { table: 'File', row: { file_name: 'b.txt', is_private: false, ref_table: BU, ref_name: 'BU-T' } })
+    await sql`update file set file_url = '/elsewhere/b.txt' where ref_table = ${BU} and file_name = 'b.txt'`
+    await admin.post('/api/save_row', { table: 'File', row: { file_name: 'c.txt', is_private: false, ref_table: BU, ref_name: 'BU-T' } })
+    await sql`update file set file_url = '/files/fedcba9876543210_c.txt' where ref_table = ${BU} and file_name = 'c.txt'`
+    await admin.post('/api/save_row', { table: 'File', row: { file_name: 'kept.txt', is_private: false } })
+    await sql`update file set file_url = '/files/0123456789abcdef_a.txt' where file_name = 'kept.txt'`
+    await purge(admin, bu, { ids: ['BU-T'] })
+    expect(await sql`select 1 from file where ref_table = ${BU} and ref_name = 'BU-T'`).toHaveLength(0)
+    expect(await sql`select 1 from file where file_name = 'kept.txt'`).toHaveLength(1)
+    const [rec] = await sql`select snapshot from access_log where operation = 'purge' and ref_table = ${BU} and reference_name = 'BU-T'`
+    expect(rec.snapshot._files.map((f: { file_name: string }) => f.file_name).sort()).toEqual(['a.txt', 'b.txt', 'c.txt'])
+  })
+
+})
