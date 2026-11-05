@@ -440,6 +440,12 @@ export function headingTitle({ name, sections }: { name: string | null; sections
   return [name ?? 'Your store', ...(named ? [named] : [])].join(' · ')
 }
 
+/** The title split for the page: the count, when sections are counted, is what opens their full list. */
+export function headingParts({ name, sections }: { name: string | null; sections: readonly string[] }): { lead: string; count: string | null } {
+  if (sections.length <= 3) return { lead: headingTitle({ name, sections }), count: null }
+  return { lead: `${name ?? 'Your store'} · `, count: `${sections.length} sections` }
+}
+
 /**
  * Every basis a place can carry, in the order a sentence gives them: leadership first (the old
  * page's SCOPE_BASES order), the new org chart's Cluster Manager after Store Manager and Floor
