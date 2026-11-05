@@ -1153,7 +1153,7 @@ const isFigure = (col: ListColumn) => ['Int', 'Float', 'Currency', 'Percent'].in
 
 function ListCell({
   row,
-  col,
+  col: shownCol,
   table,
   settings,
   first,
@@ -1168,6 +1168,11 @@ function ListCell({
   quiet?: boolean
 }) {
   const { t } = useI18n()
+  // #881: a link to a row of any Table reads as a link to the row's own Table.
+  const anyTable = shownCol.table_column ? row[shownCol.table_column] : undefined
+  const col = shownCol.table_column
+    ? { ...shownCol, reference_table: isBlank(anyTable) ? null : String(anyTable) }
+    : shownCol
   if (first)
     return (
       <Link

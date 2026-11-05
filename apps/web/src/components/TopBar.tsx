@@ -458,6 +458,18 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
           >
             {t('Sign-in methods')}
           </Link>
+          {user && (
+            <Link
+              role="menuitem"
+              to="/featherbase/account/access/$person"
+              params={{ person: user.row_id }}
+              onClick={() => setOpen(false)}
+              data-testid="account-access-explanation"
+              className={MENU_ITEM}
+            >
+              {t('What can I see?')}
+            </Link>
+          )}
           <button role="menuitem" type="button" onClick={() => void signOutNow()} data-testid="logout" className={MENU_ITEM}>
             {t('Log out')}
           </button>
