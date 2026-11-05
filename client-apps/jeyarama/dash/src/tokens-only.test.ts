@@ -4,12 +4,15 @@ import { describe, expect, it } from 'vitest'
 
 // #950 checklist 9: Dash colours itself only through Shop Floor's tokens, so the theme the top bar
 // paints (and an accent, should Dash ever name one) reaches every part of its page. A literal
-// colour would stay the same in every theme. The same check as Tickets' (#941).
+// colour would stay the same in every theme. The same check as Tickets' (#941), and `transparent`
+// is allowed: it has no hue to clash with a theme.
 const source = import.meta.dirname
 const LITERAL_COLOUR = new RegExp([
   String.raw`#[0-9a-fA-F]{3,8}\b`,
   String.raw`\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(`,
-  String.raw`(?<![\w-])(?:white|black|red|green|blue|orange|yellow|purple|gray|grey|pink|brown|navy|teal|silver|gold|maroon|olive|lime|aqua|fuchsia|beige|ivory|crimson|coral|salmon|tomato|indigo|violet|khaki)(?![\w-])`,
+  String.raw`(?<![\w-])(?:white|black|red|green|blue|orange|yellow|purple|gray|grey|pink|brown|navy|teal|silver|gold|maroon|olive|lime|aqua|fuchsia|beige|ivory|crimson|coral|salmon|tomato|indigo|violet|khaki|cyan|magenta|tan)(?![\w-])`,
+  // Tailwind's palette classes (text-red-500) carry a colour the tokens don't control.
+  String.raw`\b(?:text|bg|border|ring|fill|stroke|outline|accent|from|via|to|divide|decoration|caret|shadow)-[a-z]+-\d{2,3}\b`,
 ].join('|'), 'g')
 
 function files(directory: string): string[] {

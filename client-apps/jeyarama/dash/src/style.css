@@ -8,6 +8,9 @@
 @source './';
 @source '../index.html';
 
+/* The shared top bar sits in the flow above #root, so #root is as tall as its content, not the
+   window's height on top of the bar: a short page never scrolls by the bar's height. */
+#root { height: auto; }
 * { box-sizing: border-box; }
 html, body { max-width: 100%; overflow-x: hidden; }
 body { margin: 0; background: var(--color-canvas); color: var(--color-ink); font: var(--text-control)/1.45 var(--font-sans); }
@@ -25,7 +28,10 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); o
 /* The page's header (#4486) is one row (#950): the title, then the period, why and measure in
    smaller muted text, set apart by "·". Long lines wrap, never scroll sideways. */
 .fd-heading { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 2px; margin: 0 auto 8px; max-width: 960px; width: 100%; overflow-wrap: anywhere; }
-.fd-heading .fd-title { font-size: 16px; margin-right: 4px; }
+.fd-heading .fd-title { font-size: 16px; font-weight: 600; margin-right: 4px; }
+/* The count opens the full list of sections, on a row of its own. */
+.fd-count { padding: 0; border: 0; background: none; color: var(--color-action); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.fd-sections { flex-basis: 100%; margin: 2px 0 0; font-size: 13px; color: var(--color-ink-muted); }
 .fd-heading .fd-muted { font-size: 13px; }
 .fd-heading .fd-muted + .fd-muted::before, .fd-quick-line > * + *::before { content: '·'; margin-right: 8px; color: var(--color-ink-muted); }
 .fd-heading-wide { max-width: none; }

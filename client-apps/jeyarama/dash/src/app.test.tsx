@@ -243,6 +243,45 @@ describe("the page's header", () => {
     await act(async () => root.unmount())
   })
 
+  // sales-target-report, "Many Sections are counted, not listed": the full list is a tap or key press away.
+  const openWithSections = async (sections: string[]) => {
+    const { act } = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { FeatherDash } = await import('./app')
+    history.replaceState(null, '', '?store=9901')
+    calls.length = 0
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => { root.render(<FeatherDash />) })
+    await act(async () => { await settle() })
+    for (const c of calls.filter(c => c.store === '9901'))
+      c.answer.resolve(c.name === 'report' ? withHeading('9901', { name: 'LKS', sections, reasons: [] }) : { not_set_up: true })
+    await act(async () => { await settle() })
+    return { act, container, unmount: () => act(async () => root.unmount()) }
+  }
+
+  it('lists every section when the reader presses the count, and hides them again', async () => {
+    const { act, container, unmount } = await openWithSections(['Alpha', 'Beta', 'Gamma', 'Delta'])
+    expect(text(container, 'heading-title')).toBe('LKS · 4 sections')
+    expect(container.querySelector('[data-testid=sections-list]')).toBeNull()
+    const toggle = container.querySelector<HTMLButtonElement>('[data-testid=heading-title] button')!
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    await act(async () => { toggle.click() })
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(text(container, 'sections-list')).toBe('Alpha · Beta · Gamma · Delta')
+    await act(async () => { toggle.click() })
+    expect(container.querySelector('[data-testid=sections-list]')).toBeNull()
+    await unmount()
+  })
+
+  it('offers nothing to expand when the title already names the sections', async () => {
+    const { container, unmount } = await openWithSections(['Alpha', 'Beta', 'Gamma'])
+    expect(text(container, 'heading-title')).toBe('LKS · Alpha · Beta · Gamma')
+    expect(container.querySelector('[data-testid=heading-title] button')).toBeNull()
+    await unmount()
+  })
+
   it('draws the header above the Dive too', async () => {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
