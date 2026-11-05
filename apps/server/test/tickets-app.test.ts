@@ -245,6 +245,27 @@ describe('Tickets independently installed product contract (#810)', () => {
     await refused(w.other.post('/api/table/tickets.member', { row_id: w.other.user, full_name: 'bala' }))
   })
 
+  test('people listed as assignable are offered for assignment without support rights (#964)', async ({ admin, createUser }) => {
+    const w = await setup(admin, createUser)
+    // Names are known for people who have used Tickets.
+    let ticket = await create(w.owner, 'generic', {})
+    ticket = (await act(w.support, 'edit', { ...revision(ticket), public_update: 'Checking' })).ticket
+    await create(w.other, 'generic', {})
+    const offered = async () => ((await read(w.support, 'session')).people as { row_id: string }[]).map(p => p.row_id)
+    // An empty setting changes nothing: support is offered, a requester is not.
+    expect(await offered()).toContain(w.support.user)
+    expect(await offered()).not.toContain(w.other.user)
+    await settings(admin, { assignees: [w.other.user] })
+    expect(await offered()).toEqual(expect.arrayContaining([w.other.user, w.support.user]))
+    ticket = (await act(w.support, 'edit', { ...revision(ticket), assigned_to: w.other.user })).ticket
+    expect(ticket.assigned_to).toBe(w.other.user)
+    // Being assignable gives no support rights.
+    const session = await read(w.other, 'session')
+    expect(session.capabilities.support).toBe(false)
+    expect(session.people).toBeUndefined()
+    await refused(act(w.other, 'edit', { ...revision(ticket), public_update: 'Looking' }))
+  })
+
   test("after the requester's own scope change only re-approval is needed; a recipient change needs verification", async ({ admin, createUser }) => {
     const w = await setup(admin, createUser)
     let ticket = await approve(w.bala, await verify(w.verifier, await create(w.owner)))
