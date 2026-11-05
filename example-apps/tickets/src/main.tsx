@@ -1085,7 +1085,9 @@ function CaseFile({
                             ? 'This request is already resolved.'
                             : state === 'policy_review'
                               ? 'Resource policy blocks ordinary approval. An authorized policy review is required.'
-                              : 'Current active verification and a configured regional approval route are required.'}
+                              : verification?.active === true
+                                ? 'Only a configured approver for this region can decide.'
+                                : 'Current active verification and a configured regional approval route are required.'}
                         </p>
                       )}
                     </section>
@@ -1479,6 +1481,11 @@ function App() {
     : kind
       ? BUILT_IN_STATES
       : [...new Set([...BUILT_IN_STATES, ...Object.values(configuredTypes).flatMap((type) => type.states)])]
+  // A state the chosen type can't hold would leave the list empty with nothing
+  // on screen to explain it.
+  useEffect(() => {
+    if (state && !stateOptions.includes(state)) setState('')
+  }, [kind])
   const connections =
     session?.connections && typeof session.connections === 'object'
       ? (session.connections as Record<string, unknown>)

@@ -50,7 +50,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 /* Shell: the shared sidebar beside the work, under the shared top bar */
 .tickets-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); height: calc(100vh - var(--featherbase-bar-height, 48px)); }
 featherbase-sidebar.tickets-sidebar { overflow: auto; background: var(--color-surface); }
-.tickets-sidebar > button > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tickets-sidebar > button > span:first-child { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 .tickets-sidebar .count { margin-left: auto; font-size: 12px; font-variant-numeric: tabular-nums; }
 .tickets-sidebar .sidebar-heading { padding: 14px 12px 6px; color: var(--color-ink-subtle); font-size: 12px; font-weight: 600; }
 .tickets-sidebar .connection-status { margin-top: auto; padding: 8px 12px; white-space: nowrap; color: var(--color-ink-subtle); font-size: 12px; }
