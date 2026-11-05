@@ -419,9 +419,9 @@ export async function importRows({ table, args, user }: CollectionActionContext,
     // RVT-R1 (spec 0005): record every row this part writes — id, action,
     // and the updated_at stamp the write left — so the run is revertable.
     const touched: TouchedRow[] = []
-    const unchanged = opts.skipUnchanged && upsert && resolutions
-      ? await observeUnchangedRows(meta, rows.flatMap((row, index) => resolutions[index].action === 'update' && typeof row === 'object' && row !== null && !Array.isArray(row)
-        ? [{ row_id: resolutions[index].row_id!, values: updateValues(row as Record<string, unknown>, upsert, resolutions[index]) }]
+    const unchanged = opts.skipUnchanged && resolutions
+      ? await observeUnchangedRows(meta, rows.flatMap((row, index) => resolutions[index].action === 'update'
+        ? [{ row_id: resolutions[index].row_id!, values: updateValues(row as Record<string, unknown>, upsert!, resolutions[index]) }]
         : []), user.row_id, runId)
       : new Set<string>()
     for (const [index, row] of rows.entries()) {
@@ -471,7 +471,7 @@ export async function importRows({ table, args, user }: CollectionActionContext,
     // unchanged: as its own save would have, that row fails on its old stamp.
     if (unchanged.size && (inserted || updated > unchanged.size)) {
       const after = new Map((await sql`select ${sql(meta.row_key)} as row_id, updated_at from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = any(${[...unchanged]})`).map(r => [String(r.row_id), stampOf(r.updated_at)]))
-      for (const [index, resolution] of (resolutions ?? []).entries())
+      for (const [index, resolution] of resolutions!.entries())
         if (resolution.action === 'update' && unchanged.has(resolution.row_id!) && after.get(resolution.row_id!) !== stampOf(resolution.updated_at))
           failed.push({ index, message: 'The row changed while this import ran' })
     }

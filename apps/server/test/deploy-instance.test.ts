@@ -365,14 +365,15 @@ describe('a live server working while the deploy runs (#943)', () => {
   test('a live request that keeps the apps busy fails the deploy after its tries, changing nothing', async () => {
     await pretendTo('staging')
     const busy = await sharedHolder()
+    const alsoBusy = await sharedHolder()
     const out = captureIO()
     try {
       await expect(deployInstance('acme/board', out.io, { root, lockWait: { attemptSeconds: 0.2, pauseSeconds: 0.1, attempts: 2 } }))
         .rejects.toThrow(/kept the apps busy for 1 seconds, so the deploy did not start; nothing changed\. Deploy again\./)
       expect(await sql`select 1 from installed_app where name = ${name}`).toHaveLength(0)
       expect(out.stdout()).toMatch(/try 1 of 2.*still busy.*trying again in 0\.1 seconds/)
-      expect(out.stdout()).toMatch(/try 2 of 2.*still busy/)
-    } finally { await busy.end() }
+      expect(out.stdout()).toMatch(/try 2 of 2.*still busy \(2 live requests or jobs/)
+    } finally { await busy.end(); await alsoBusy.end() }
   })
 
   test('a deploy tries again by itself and goes ahead once the live request ends', async () => {

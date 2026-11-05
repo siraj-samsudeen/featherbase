@@ -133,7 +133,7 @@ export async function instanceDeployOperation<T>(fn: () => Promise<T>, wait: Dep
     } catch (error) {
       if (!(error instanceof DeployLockBusy)) throw error
     }
-    const holders = await lifecycleLockHolders().catch(() => 'holders unknown')
+    const holders = await lifecycleLockHolders()
     const last = attempt >= wait.attempts
     log(`Deploy: try ${attempt} of ${wait.attempts}: the live server is still busy (${holders})${last ? '' : `; trying again in ${wait.pauseSeconds} seconds`}`)
     if (last) throw new Error(`The live server kept the apps busy for ${elapsed()} seconds, so the deploy did not start; nothing changed. Deploy again.`)

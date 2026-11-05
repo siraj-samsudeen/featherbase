@@ -152,6 +152,8 @@ describe('Copy a warehouse table into Featherbase', () => {
       const others = await admin.get<{ updated_at: string }>(`${PATH}/S002`)
       await source("update quiet_stores set name = 'Harbour Road North' where code = 'S001'")
       expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ updated: 3, changed: 1, unchanged: 2 })
+      await source("insert into quiet_stores values ('S009', 'New Lane', 'Upton', '33')")
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ inserted: 1, updated: 3, changed: 0, unchanged: 3 })
       expect(await admin.get(`${PATH}/S001`)).toMatchObject({ display_name: 'Harbour Road North' })
       expect((await admin.get<{ updated_at: string }>(`${PATH}/S002`)).updated_at).toBe(others.updated_at)
     })
