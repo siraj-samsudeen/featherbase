@@ -168,16 +168,18 @@ export async function alertAccessRequest(person: string, target: AccessTarget): 
 export async function remindAccessRequests(): Promise<number | 'no recipients'> {
   await settleAccessRequests()
   return withTransaction(async () => {
-    const due = await sql`
-      update access_request set reminded_at = now()
-      where reminded_at is null and created_at < now() - make_interval(hours => ${REMINDER_AFTER_HOURS})
-      returning person, app, created_at`
-    if (!due.length) return 0
+    const dueWhere = sql`reminded_at is null and created_at < now() - make_interval(hours => ${REMINDER_AFTER_HOURS})`
     const managers = await systemManagerEmails()
+    // With nobody to tell, nothing is marked reminded: a later run, once a
+    // System Manager has an address, still names these requests.
     if (!managers.length) {
+      const [waiting] = await sql`select 1 from access_request where ${dueWhere} limit 1`
+      if (!waiting) return 0
       await recordUndeliveredNotice('waiting-for-access reminder')
       return 'no recipients'
     }
+    const due = await sql`update access_request set reminded_at = now() where ${dueWhere} returning person, app, created_at`
+    if (!due.length) return 0
     const names = await sql`select row_id, full_name, email from person where row_id in ${sql(due.map((r) => String(r.person)))}`
     const who = new Map(names.map((p) => [String(p.row_id), shownName(p.full_name as string | null) || 'not given']))
     const lines = [...due]

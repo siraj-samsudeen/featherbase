@@ -387,11 +387,18 @@ describe('the reminder a day later', () => {
   })
 
   test('with no System Manager to mail, the reminder is recorded as undelivered', async () => {
+    await noManagerMail()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // Nothing due: nothing to record.
+    expect(await remindAccessRequests()).toBe(0)
+    expect(await sql`select 1 from activity_log where operation like 'notice_undelivered:%'`).toHaveLength(0)
     await requestAccess(await makePerson({ full_name: 'Unseen' }), 'featherbase')
     await ageRequests('2 days')
     await noManagerMail()
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     expect(await remindAccessRequests()).toBe('no recipients')
+    // Not marked reminded, so the reminder still goes once someone can get it.
+    expect(await sql`select 1 from access_request where reminded_at is not null`).toHaveLength(0)
     const rows = await sql`select operation from activity_log where operation like 'notice_undelivered:%reminder)'`
     expect(rows).toEqual([{ operation: 'notice_undelivered: no System Manager has an email address (waiting-for-access reminder)' }])
   })
