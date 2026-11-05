@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { planImport, saveImportedRow, unchangedImportRows } from '../import-corrections'
+import { observeUnchangedRows, planImport, saveImportedRow } from '../import-corrections'
 import { getDoc } from '../document'
 import { createHash } from 'node:crypto'
 import { quoteIdent } from '../sql-identifier'
@@ -420,9 +420,9 @@ export async function importRows({ table, args, user }: CollectionActionContext,
     // and the updated_at stamp the write left — so the run is revertable.
     const touched: TouchedRow[] = []
     const unchanged = opts.skipUnchanged && upsert && resolutions
-      ? await unchangedImportRows(meta, rows.flatMap((row, index) => resolutions[index].action === 'update' && typeof row === 'object' && row !== null && !Array.isArray(row)
+      ? await observeUnchangedRows(meta, rows.flatMap((row, index) => resolutions[index].action === 'update' && typeof row === 'object' && row !== null && !Array.isArray(row)
         ? [{ row_id: resolutions[index].row_id!, values: updateValues(row as Record<string, unknown>, upsert, resolutions[index]) }]
-        : []))
+        : []), user.row_id, runId)
       : new Set<string>()
     for (const [index, row] of rows.entries()) {
       if (typeof row !== 'object' || row === null || Array.isArray(row)) {

@@ -34,9 +34,9 @@ A copy holds its per-table advisory lock across the read, so it takes that befor
 
 The read records the owning app's version and artifact; the apply refuses under the lock if it changed, by the check outbound reads use (`assertStillServing`). The existing check on the copy's mapping and columns stays.
 
-### A no-op row is decided in bulk and only when nothing at all differs
+### A no-op row is decided in bulk, and still observed
 
-A row skips the save only when every copied value equals the stored one, it has no open import conflict, and the latest observation already says the same. Anything else takes the existing save path unchanged. Rejected: skipping whenever values match, which loses the observation that a later conflict decision reads.
+A row skips the save only when every copied value equals the stored one and it has no open import conflict; anything else takes the existing save path unchanged. Each skipped row still gets its observation for this run, in one bulk insert. Rejected: skipping the observation when the latest one already says the same, which saves rows but lets undoing the earlier run lose what a later run saw, hiding a later conflict (Codex adversarial review).
 
 ### Skipping runs no automations for a no-op row, on copies only
 

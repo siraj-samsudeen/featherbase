@@ -4,7 +4,7 @@ import { AppError } from './errors'
 import { sql } from './db'
 import { actionTransaction } from './action-transaction'
 import { getMeta, type TableMeta } from './meta'
-import { getDoc, saveDoc, saveSystemRow } from './document'
+import { getDoc, hashRowId, saveDoc, saveSystemRow } from './document'
 import { holdBeforeRowLock } from './row-lock-order'
 import { tableRelation } from './table-engine'
 import { assertDocPermission } from './permissions'
@@ -13,6 +13,8 @@ import { assertManagedUnchanged } from './managed-settings'
 import { registerCollectionAction } from './actions'
 
 type Row = Record<string, unknown>
+/** Eleven parameters a row, inside Postgres's limit of 65,535 for one statement. */
+const OBSERVATIONS_PER_INSERT = 5000
 type Change = [string, unknown, unknown]
 interface History { row_id: string; created_by: string; created_at: Date; data: { changed?: Change[]; import_run?: string; import_revert?: string; resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown } } }
 interface Conflict { field: string; kept: unknown; incoming: unknown; editor: string; edited_at: Date }
@@ -145,36 +147,35 @@ export async function saveImportedRow(meta: TableMeta, input: Row, user: string,
 
 /** #971: which of these updates would change nothing at all, decided in a few
  *  statements rather than a save per row. True only when every value equals the
- *  stored one, the row has no open conflict for the save to close, and the
- *  latest observation already says the same: a later conflict is decided from
- *  that observation (planImport). Anything else takes saveImportedRow as ever. */
-export async function unchangedImportRows(meta: TableMeta, inputs: { row_id: string; values: Row }[]): Promise<Set<string>> {
+ *  stored one and the row has no open conflict for the save to close. Anything
+ *  else takes saveImportedRow as ever. Each unchanged row is still observed by
+ *  this run, in bulk: a later conflict is decided from the latest observation
+ *  of a run that was not undone (planImport), so each run must keep its own. */
+export async function observeUnchangedRows(meta: TableMeta, inputs: { row_id: string; values: Row }[], user: string, runId: string): Promise<Set<string>> {
   const unchanged = new Set<string>()
   if (!inputs.length) return unchanged
   const ids = inputs.map(i => i.row_id)
   const stored = new Map((await sql`select * from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = any(${ids})`).map(r => [String(r[meta.row_key]), r]))
   const conflicted = new Set((await sql`select distinct ref_name from featherbase.import_conflict where ref_table = ${meta.name} and ref_name = any(${ids}) and closed is not true`).map(c => String(c.ref_name)))
-  const observed = meta.track_changes
-    ? new Map((await sql`select distinct on (s.ref_name) s.ref_name, s.values, s.created_at from featherbase.import_source s
-        where s.ref_table = ${meta.name} and s.ref_name = any(${ids})
-          and not exists (select 1 from import_log l where l.ref_table = s.ref_table and l.run_id = s.run_id and l.reverted_at is not null)
-        order by s.ref_name, s.created_at desc, s.row_id desc`).map(o => [String(o.ref_name), o]))
-    : null
   const columns = meta.columns.filter(c => !['Section Break', 'Column Break', 'Sub-table'].includes(c.column_type))
+  // The database's wall clock, as saveImportedRow stamps its observations: now()
+  // is this transaction's start, older than rows it has just saved.
+  const [{ at }] = await sql`select clock_timestamp()::text as at`
+  const observations: Row[] = []
   for (const { row_id, values } of inputs) {
     const current = stored.get(row_id)
     if (!current || conflicted.has(row_id)) continue
     const mapped = columns.filter(c => Object.hasOwn(values, c.column_name))
     if (!mapped.every(c => same(current[c.column_name], values[c.column_name], c.column_type))) continue
-    if (observed) {
-      const latest = observed.get(row_id)
-      const said = latest?.values as Row | undefined
-      if (!said || (latest!.created_at as Date) < (current.created_at as Date)) continue
-      // Read-only columns are never source observations (planImport).
-      if (!mapped.filter(c => !c.read_only).every(c => Object.hasOwn(said, c.column_name) && same(said[c.column_name], values[c.column_name], c.column_type))) continue
-    }
     unchanged.add(row_id)
+    // What planImport records: read-only columns are never source observations.
+    if (meta.track_changes) observations.push({
+      row_id: hashRowId(), ref_table: meta.name, ref_name: row_id, run_id: runId, created_by: user, updated_by: user, created_at: at, updated_at: at, status: 'draft', position: 0,
+      values: sql.json(Object.fromEntries(mapped.filter(c => !c.read_only).map(c => [c.column_name, normalized(values[c.column_name], c.column_type)])) as never),
+    })
   }
+  for (let i = 0; i < observations.length; i += OBSERVATIONS_PER_INSERT)
+    await sql`insert into featherbase.import_source ${sql(observations.slice(i, i + OBSERVATIONS_PER_INSERT) as never)}`
   return unchanged
 }
 

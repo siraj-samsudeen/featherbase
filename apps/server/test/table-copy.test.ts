@@ -105,7 +105,8 @@ describe('Copy a warehouse table into Featherbase', () => {
       const run = await admin.post<{ run_id: string }>(`${PATH}:copy_again`, {})
       expect(run).toMatchObject({ inserted: 0, updated: 3, changed: 0, unchanged: 3, conflicts: 0 })
       expect((await admin.get<{ updated_at: string }>(`${PATH}/S001`)).updated_at).toBe(before.updated_at)
-      expect(await counts()).toEqual({ ...counted, runs: counted.runs + 1 })
+      // Every run keeps its own observation of each row: undoing one must not lose what another saw.
+      expect(await counts()).toEqual({ ...counted, runs: counted.runs + 1, observations: counted.observations + 3 })
       expect(await sql`select 1 from import_log where ref_table = 'Quiet Stores' and run_id = ${run.run_id}`).toHaveLength(1)
     })
 
@@ -159,6 +160,17 @@ describe('Copy a warehouse table into Featherbase', () => {
       expect(await admin.get(`${PATH}/S001`)).toMatchObject({ display_name: 'Corrected Road' })
     })
 
+    test('undoing the run that first agreed with a correction keeps what a later run observed', async ({ admin }) => {
+      await quietCopy(admin)
+      await correct(admin, 'Corrected Road')
+      await source("update quiet_stores set name = 'Corrected Road' where code = 'S001'")
+      const agreeing = await admin.post<{ run_id: string }>(`${PATH}:copy_again`, {})
+      await admin.post(`${PATH}:copy_again`, {})
+      await admin.post(`${PATH}:import-revert`, { run_id: agreeing.run_id })
+      await source("update quiet_stores set name = 'Harbour Road' where code = 'S001'")
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ conflicts: 1 })
+    })
+
     test('with no conflict open, agreeing with a correction is still observed, so going back raises one', async ({ admin }) => {
       await quietCopy(admin)
       await correct(admin, 'Corrected Road')
@@ -166,10 +178,6 @@ describe('Copy a warehouse table into Featherbase', () => {
       expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ conflicts: 0 })
       await source("update quiet_stores set name = 'Corrected Road' where code = 'S001'")
       expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ conflicts: 0 })
-      const observed = await counts()
-      // Saying it again observes nothing new.
-      await admin.post(`${PATH}:copy_again`, {})
-      expect((await counts()).observations).toBe(observed.observations)
       // Back to the original: what the source said last was the correction.
       await source("update quiet_stores set name = 'Harbour Road' where code = 'S001'")
       expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ conflicts: 1 })
