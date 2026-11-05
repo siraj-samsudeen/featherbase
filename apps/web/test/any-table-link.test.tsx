@@ -3,7 +3,7 @@
 // by its title. A row the reader can't read shows only its Table. Made-up rows.
 import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
-import { tableHref } from 'shared'
+import { rowHref, tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
 import { columnsToAdd, ANY_TABLE_LINK } from '../src/pages/ColumnEditor'
@@ -95,3 +95,42 @@ test("a list reads a link to a row of any Table as that row's title", async ({ a
   await waitFor(() => expect(cell).toHaveTextContent('Palakkad'))
   expect(within(cell).getByRole('link')).toHaveAttribute('href', expect.stringContaining('8151'))
 })
+
+// #881, second slice: a Sub-table row holds the pair too; its row cell waits
+// for its Table cell, which offers only the allowed Tables.
+async function pickCell(label: string, field: string, typed: string, option: string) {
+  await waitFor(async () => {
+    const cell = screen.getByLabelText(label)
+    fireEvent.change(cell, { target: { value: `${typed} ` } })
+    fireEvent.change(cell, { target: { value: typed } })
+    const options = await screen.findByTestId(`link-options-${field}`)
+    await waitFor(() => expect(options).toHaveTextContent(option), { timeout: 600 })
+  }, { timeout: 5000 })
+  fireEvent.mouseDown(within(screen.getByTestId(`link-options-${field}`)).getAllByTestId('link-option').find((o) => o.textContent === option)!)
+}
+
+test('a Sub-table row links to a row of any Table, its Table first', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/table_def', { name: 'Atw Step', kind: 'sub_table', columns: [
+    ...columnsToAdd({ label: 'Shapes', column_name: 'shapes', column_type: ANY_TABLE_LINK, target: `${PLANT}\n${UNIT}`, nameTouched: false }),
+  ] })
+  await admin.post('/api/table_def', { name: 'Atw Plan', columns: [
+    { column_name: 'label', column_type: 'Data' },
+    { column_name: 'steps', column_type: 'Sub-table', label: 'Steps', row_table: 'Atw Step' },
+  ] })
+  const plan = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Atw Plan', row: { label: 'p1' } })
+  await renderApp(rowHref('Atw Plan', plan.row_id), admin)
+  fireEvent.click(await screen.findByTestId('add-row-steps', {}, { timeout: 8000 }))
+  expect(await screen.findByLabelText('Steps, Shapes, row 1')).toBeDisabled()
+
+  await pickCell('Steps, Shapes Table, row 1', 'shapes_table', 'Atw', PLANT)
+  await waitFor(() => expect(screen.getByLabelText('Steps, Shapes, row 1')).toBeEnabled())
+  await pickCell('Steps, Shapes, row 1', 'shapes', 'Pala', 'Palakkad')
+  await waitFor(() => expect(screen.getByLabelText('Steps, Shapes, row 1')).toHaveValue('Palakkad'))
+
+  screen.getByTestId('form-save').click()
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'), { timeout: 8000 })
+  const stored = await admin.get<{ steps: { shapes_table: string; shapes: string }[] }>(`/api/table/${encodeURIComponent('Atw Plan')}/${plan.row_id}`)
+  expect(stored.steps.map((s) => [s.shapes_table, s.shapes])).toEqual([[PLANT, '8151']])
+})
+
