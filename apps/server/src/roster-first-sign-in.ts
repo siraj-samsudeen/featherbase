@@ -237,9 +237,9 @@ export async function rosterFirstSignIn(cfg: DelegatedLoginConfig, id: string, p
   try {
     linked = await link(method, roster, id, row)
   } catch (err) {
-    // A save refused it, so nothing was kept. The row lock already serialises a
-    // race for this row; a database failure stays a failure, not a wrong password.
-    if (!(err instanceof AppError)) throw err
+    // A save refused it, or another row with this record won the unique link: nothing
+    // was kept. Any other database failure stays a failure, not a wrong password.
+    if (!(err instanceof AppError) && (err as { code?: string }).code !== '23505') throw err
     linked = 'link_failed'
   }
   if (typeof linked === 'string') {

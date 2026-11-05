@@ -514,6 +514,27 @@ describe('what cannot be read is refused', () => {
     expect(await peopleCount()).toBe(before)
   })
 
+  test('losing the unique link to another row keeps nothing, is noted, and logs no value', async ({ api, admin }) => {
+    await setUp(admin)
+    const before = await peopleCount()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    provider(async () => {
+      // What a second row's commit does to this insert, with a value no check can see in time.
+      await sql.unsafe(`create function featherbase.lose_the_race() returns trigger language plpgsql as $$
+        begin raise unique_violation using message = 'lost'; end $$`)
+      await sql.unsafe(`create trigger lose_the_race before insert on featherbase.sign_in_identity
+        for each row execute function featherbase.lose_the_race()`)
+      return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
+    })
+    const res = await signIn(api)
+    expect(res.status).toBe(401)
+    expect(((await res.json()) as { error: { message: string } }).error.message).toBe(REFUSED)
+    expect(await peopleCount()).toBe(before)
+    expect((await heldNotes())[0]).toMatch(/ link_failed$/)
+    expect(JSON.stringify([...error.mock.calls, ...warn.mock.calls])).not.toContain(RECORD)
+  })
+
   test('a value its identifier system cannot hold is noted, without asking', async ({ api, admin }) => {
     await setUp(admin, { roster: { ...ROSTER, identifiers: { 'stylehr-employee-code': 'login' } } })
     await expectRefusedWithoutAsking(api, provider())
