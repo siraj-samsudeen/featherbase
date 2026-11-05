@@ -48,5 +48,28 @@ describe("an app's entry document", () => {
     // No tabs, no change to the app's document beyond the bar.
     expect(composeRuntimeShell('<html><head></head><body></body></html>', app)).not.toContain('viewport')
   })
-})
 
+  // #941 (design D2): the app's accent is on the document from its first
+  // frame, and on the bar's host so the bar can carry it into its shadow root.
+  test("an app's accent is on the document's html", () => {
+    const html = composeRuntimeShell('<!doctype html><html lang="en"><head></head><body></body></html>', { ...app, accent: 'green' })
+    expect(html).toContain('<html lang="en" data-featherbase-accent="green">')
+  })
+
+  test("an app's accent is on the bar's host", () => {
+    const html = composeRuntimeShell('<html><head></head><body></body></html>', { ...app, accent: 'green' })
+    expect(html).toContain('<featherbase-bar data-app="notes" data-title="Notes" data-accent="green"></featherbase-bar>')
+  })
+
+  test('a document without an html tag gets the accent on the bar host only', () => {
+    const html = composeRuntimeShell('<main>bare</main>', { ...app, accent: 'green' })
+    expect(html).toBe('<script type="module" src="/featherbase/bar.js"></script><featherbase-bar data-app="notes" data-title="Notes" data-accent="green"></featherbase-bar><main>bare</main>')
+  })
+
+  test('an app with no accent, or the default one, carries no accent', () => {
+    for (const accent of [undefined, 'blue']) {
+      const html = composeRuntimeShell('<html><head></head><body></body></html>', { ...app, accent })
+      expect(html, String(accent)).not.toMatch(/accent/)
+    }
+  })
+})

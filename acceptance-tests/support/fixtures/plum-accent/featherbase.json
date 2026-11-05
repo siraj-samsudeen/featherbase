@@ -1,0 +1,17 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "plumproof",
+  "title": "Plum proof",
+  "accent": "plum",
+  "entryTable": "plumproof.note",
+  "tables": [
+    {
+      "name": "plumproof.note",
+      "label": "Note",
+      "id_pattern": "hash",
+      "columns": [{ "column_name": "body", "label": "Body", "column_type": "Data" }]
+    }
+  ],
+  "permissions": [{ "table": "plumproof.note", "role": "All", "can_read": true }]
+}

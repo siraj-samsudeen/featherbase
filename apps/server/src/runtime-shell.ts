@@ -1,3 +1,5 @@
+import { DEFAULT_APP_ACCENT } from 'shared'
+
 // #650 (design D3, "One top bar on every address"): an installed app's entry
 // document carries the platform's shared top bar. The server adds two things
 // and nothing else: a host element, first in the body, naming the app, and the
@@ -13,6 +15,8 @@ interface ShellApp {
   title: string
   /** #380 task 4.4: the app declares phone tabs, which the bar draws. */
   tabs?: boolean
+  /** #941 (ADR 0019): the app's accent; the default (blue) is written as none. */
+  accent?: string
 }
 
 // A page without a viewport lays out 980px wide on a phone, so the bar's
@@ -28,9 +32,14 @@ function escapeHtml(value: string): string {
 }
 
 export function composeRuntimeShell(html: string, app: ShellApp): string {
+  const accent = app.accent && app.accent !== DEFAULT_APP_ACCENT ? escapeHtml(app.accent) : undefined
   const script = `${app.tabs && !HAS_VIEWPORT.test(html) ? VIEWPORT : ''}<script type="module" src="${BAR_SCRIPT}"></script>`
-  const host = `<${BAR_ELEMENT} data-app="${escapeHtml(app.name)}" data-title="${escapeHtml(app.title)}"></${BAR_ELEMENT}>`
-  const rooted = rootRuntimeEntryAssets(html, app.name)
+  const host = `<${BAR_ELEMENT} data-app="${escapeHtml(app.name)}" data-title="${escapeHtml(app.title)}"${accent ? ` data-accent="${accent}"` : ''}></${BAR_ELEMENT}>`
+  // The accent is on the document's <html> so Shop Floor's accent tokens
+  // apply from the first frame, without a script. A document with no <html>
+  // tag keeps its markup; the bar still carries the accent from its host.
+  const accented = accent ? html.replace(/<html\b([^>]*)>/i, (_match, attributes: string) => `<html${attributes} data-featherbase-accent="${accent}">`) : html
+  const rooted = rootRuntimeEntryAssets(accented, app.name)
   const body = /<body(?:\s[^>]*)?>/i
   const head = /<\/head>/i
   if (!body.test(rooted) && !head.test(rooted)) return `${script}${host}${rooted}`

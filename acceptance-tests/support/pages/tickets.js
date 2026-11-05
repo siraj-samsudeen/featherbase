@@ -313,12 +313,12 @@ class TicketTypes {
   async page(actor, path = '/tickets/') {
     const page = await this.t.world.signedIn(actor);
     await page.goto(`${BASE_URL}${path}`);
-    await page.getByRole('button', { name: /New ticket/ }).waitFor();
+    await page.getByRole('button', { name: /New ticket/ }).first().waitFor();
     return page;
   }
   async openTicket(actor) {
     const page = await this.page(actor);
-    await page.getByPlaceholder(/Search public summaries/).fill(this.t.ticket.row_id);
+    await page.getByLabel('Search tickets').fill(this.t.ticket.row_id);
     await page.locator('.ticket-id', { hasText: this.t.ticket.row_id }).first().click();
     await page.getByRole('heading', { name: 'Original message' }).waitFor();
     return page;
