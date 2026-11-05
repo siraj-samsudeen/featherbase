@@ -8,6 +8,7 @@ import { sql } from '../src/db'
 import { DEPLOY_LOCK_WAIT, instanceDeployOperation, type DeployLockWait } from '../src/app-lifecycle'
 import { overrideVariable } from '../src/env'
 import { invalidateMeta } from '../src/meta'
+import { tableRelation } from '../src/table-engine'
 import { invalidateSources } from '../src/sources/registry'
 import { runOneJob } from '../src/jobs'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
@@ -199,6 +200,35 @@ describe('a copy and a deploy at the same time', () => {
       await second
     } finally { gates.read = undefined; read.release() }
     expect(await sql`select 1 from import_log where ref_table = 'Overlap Stores'`).toHaveLength(3)
+  })
+
+  test('a value another writer is saving is not taken for unchanged', async ({ admin }) => {
+    await makeCopy(admin)
+    const relation = sql(await tableRelation('Overlap Stores'))
+    let release!: () => void
+    let wrote!: () => void
+    const writing = new Promise<void>((done) => { wrote = done })
+    const writer = sql.begin(async (tx) => {
+      await tx`update ${relation} set title = 'Saved meanwhile' where row_id = 'S001'`
+      wrote()
+      await new Promise<void>((done) => { release = done })
+    })
+    await writing
+    const copy = admin.post(AGAIN, {}).then(() => 'applied', () => 'refused')
+    // The copy waits for the row, rather than deciding on the value before the save.
+    for (let i = 0; i < 40; i++) {
+      const [{ n }] = await sql`select count(*)::int as n from pg_stat_activity where wait_event_type = 'Lock' and query like '%for update%' and datname = current_database()`
+      if (n > 0) break
+      await new Promise((done) => setTimeout(done, 25))
+    }
+    release()
+    await writer
+    await copy
+    const [latest] = await sql`select values from featherbase.import_source where ref_table = 'Overlap Stores' and ref_name = 'S001' order by created_at desc, row_id desc limit 1`
+    const [row] = await sql`select title from ${relation} where row_id = 'S001'`
+    // Either the copy applied over the save, or it was refused and observed nothing.
+    if (row.title === 'Saved meanwhile') expect(await sql`select count(*)::int as n from import_log where ref_table = 'Overlap Stores'`).toEqual([{ n: 1 }])
+    else expect(latest.values).toMatchObject({ title: 'Harbour Road' })
   })
 
   test('the standing wait outlasts the slowest copy seen on staging', () => {

@@ -155,7 +155,10 @@ export async function observeUnchangedRows(meta: TableMeta, inputs: { row_id: st
   const unchanged = new Set<string>()
   if (!inputs.length) return unchanged
   const ids = inputs.map(i => i.row_id)
-  const stored = new Map((await sql`select * from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = any(${ids})`).map(r => [String(r[meta.row_key]), r]))
+  // Locked to the end of the run, as a save would: a value another writer commits
+  // while this run decides is either seen here or waits, so the observation
+  // below can never be newer than a value it did not see.
+  const stored = new Map((await sql`select * from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = any(${ids}) order by ${sql(meta.row_key)} for update`).map(r => [String(r[meta.row_key]), r]))
   const conflicted = new Set((await sql`select distinct ref_name from featherbase.import_conflict where ref_table = ${meta.name} and ref_name = any(${ids}) and closed is not true`).map(c => String(c.ref_name)))
   const columns = meta.columns.filter(c => !['Section Break', 'Column Break', 'Sub-table'].includes(c.column_type))
   // The database's wall clock, as saveImportedRow stamps its observations: now()
