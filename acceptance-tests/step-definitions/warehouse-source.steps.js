@@ -8,7 +8,7 @@
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { Given, When, Then } = require('@cucumber/cucumber');
-const { addStandinTable, changeStandin, restartAcceptance, acceptanceSql } = require('../support/stack');
+const { addStandinTable, changeStandin, useInstanceToken, acceptanceSql } = require('../support/stack');
 const { ConnectWarehousePage, DataSourcesSidebar, WarehouseBrowserPage, CopiedWarehousePage } = require('../support/pages/warehouse-pages');
 const { FormPage } = require('../support/pages/form-page');
 
@@ -20,7 +20,8 @@ const TOKENS = {
 };
 
 /** A MotherDuck source saved through the API, with a name of this scenario's own. */
-async function givenSource(world, databases) {
+async function givenSource(world, databases, token = TOKENS.reader) {
+  await useInstanceToken(token);
   world.source = `acc-wh-${randomUUID().slice(0, 8)}`;
   await world.withApi((api) =>
     api.call('POST', '/api/table/Data%20Source:motherduck_connect', { name: world.source, databases }, [201], `connect ${world.source}`),
@@ -30,7 +31,7 @@ async function givenSource(world, databases) {
 // ---- Given ----
 
 Given('the instance\'s token can read five databases, among them {string} and {string}', async function (first, second) {
-  await restartAcceptance({ MOTHERDUCK_TOKEN: TOKENS.reader });
+  await useInstanceToken(TOKENS.reader);
   this.expected = [first, second];
   this.connect = new ConnectWarehousePage(await this.asSystemManager());
   await this.connect.open();
@@ -38,30 +39,30 @@ Given('the instance\'s token can read five databases, among them {string} and {s
 });
 
 Given('the instance\'s token can read databases', async function () {
-  await restartAcceptance({ MOTHERDUCK_TOKEN: TOKENS.reader });
+  await useInstanceToken(TOKENS.reader);
   this.connect = new ConnectWarehousePage(await this.asSystemManager());
   await this.connect.open();
   await this.connect.answered();
 });
 
 Given('the instance\'s token can read five databases', async function () {
-  await restartAcceptance({ MOTHERDUCK_TOKEN: TOKENS.reader });
+  await useInstanceToken(TOKENS.reader);
 });
 
 Given('MotherDuck refuses the instance\'s token', async function () {
-  await restartAcceptance({ MOTHERDUCK_TOKEN: TOKENS.refused });
+  await useInstanceToken(TOKENS.refused);
 });
 
 Given('the instance has no MotherDuck token', async function () {
-  await restartAcceptance({ MOTHERDUCK_TOKEN: '' });
+  await useInstanceToken('');
 });
 
 Given('the instance\'s token can also write to the warehouse', async function () {
-  await restartAcceptance({ MOTHERDUCK_TOKEN: TOKENS.writer });
+  await useInstanceToken(TOKENS.writer);
 });
 
 Given('a table connected from its database {string}', async function (database) {
-  await givenSource(this, [database]);
+  await givenSource(this, [database], TOKENS.writer);
   this.database = database;
   await this.withApi((api) =>
     api.call('POST', `/api/table/Data%20Source/${this.source}:reflect`, { schema: `${database}.main`, tables: ['stores'] }, [200, 201], 'connect the table'));
@@ -101,7 +102,7 @@ When('the user starts connecting a MotherDuck warehouse', async function () {
 When('the user tries to change a row of that table', async function () {
   // The call itself says the change is refused: anything but a refusal fails it.
   await this.withApi((api) =>
-    api.call('PUT', `/api/table/${encodeURIComponent(this.connectedTable)}/S001`, { name: 'Changed' }, [403, 417], 'change a connected row'));
+    api.call('PATCH', `/api/table/${encodeURIComponent(this.connectedTable)}/S001`, { name: 'Changed' }, [403], 'change a connected row'));
 });
 
 When('the user ticks {string} and {string} and saves the source', async function (first, second) {

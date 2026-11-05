@@ -10,6 +10,7 @@ import { overrideVariable } from '../src/env'
 import { invalidateMeta } from '../src/meta'
 import { getSource, invalidateSources } from '../src/sources/registry'
 import { duckdbDriver, run, stream } from '../src/sources/duckdb-driver'
+import { readMotherDuck } from '../src/sources/motherduck'
 import { addStandinTable, buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
 
 let dir: string
@@ -141,6 +142,15 @@ describe('A MotherDuck warehouse is only ever read', () => {
     await expect(duckdbDriver.query!(cfg, "select nextval('stock.main.stock_probe') as code", column)).rejects.toThrow(/read-only|read only/i)
   })
 
+  test("the platform's own fixed reads hold only the databases they name, read-only", async () => {
+    overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.writer)
+    expect(await readMotherDuck('select count(*)::int from sales.main.stores', 'test', ['sales'])).toEqual([[3]])
+    await expect(readMotherDuck("update sales.main.stores set name = 'Changed'", 'test', ['sales'])).rejects.toThrow(/read-only|read only/i)
+    await expect(readMotherDuck('select * from stock.main.items', 'test', ['sales'])).rejects.toThrow(/stock/)
+    overrideVariable('MOTHERDUCK_TOKEN', undefined)
+    await expect(readMotherDuck('select 1', 'run the leaver check', ['sales'])).rejects.toThrow('MOTHERDUCK_TOKEN is not set (required to run the leaver check)')
+  })
+
   test('a connected table refuses a change, even if the stored row says read and write', async ({ admin }) => {
     overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.writer)
     await connect(admin, 'md-bound', ['sales'])
@@ -151,10 +161,15 @@ describe('A MotherDuck warehouse is only ever read', () => {
     expect((await getSource('md-bound')).access).toBe('read_only')
     const [bound] = await sql`select name from featherbase.table_def where data_source = 'md-bound'`
     const path = `/api/table/${encodeURIComponent(String(bound.name))}`
-    const res = await admin.fetch(`${path}/S001`, { method: 'PUT', body: JSON.stringify({ name: 'Changed' }) })
-    expect(res.status).toBeGreaterThanOrEqual(400)
-    expect((await admin.fetch(path, { method: 'POST', body: JSON.stringify({ code: 'S999', name: 'New' }) })).status).toBeGreaterThanOrEqual(400)
-    expect((await admin.fetch(`${path}/S001`, { method: 'DELETE' })).status).toBeGreaterThanOrEqual(400)
+    for (const [url, init] of [
+      [`${path}/S001`, { method: 'PATCH', body: JSON.stringify({ name: 'Changed' }) }],
+      [path, { method: 'POST', body: JSON.stringify({ code: 'S999', name: 'New' }) }],
+      [`${path}/S001`, { method: 'DELETE' }],
+    ] as const) {
+      const res = await admin.fetch(url, init)
+      expect(res.status).toBe(403)
+      expect(await res.text()).toMatch(/read-only/)
+    }
     const [row] = await run(await getSource('md-bound'), "select name from sales.main.stores where code = 'S001'", [])
     expect(row.name).toBe('Harbour Road')
   })

@@ -130,6 +130,12 @@ async function restartAcceptance(overrides = {}, root = REPO_ROOT) {
   await waitFor(`${API_URL}/api/ping`, apiChild, 'The scenario API');
 }
 
+// #969: a scenario that reads the warehouse says which instance token it needs;
+// an earlier scenario may have left another one, or none, on the shared API.
+async function useInstanceToken(token = STANDIN_READER_TOKEN) {
+  if ((scenarioEnvironment ?? isolatedEnvironment()).MOTHERDUCK_TOKEN !== token) await restartAcceptance({ MOTHERDUCK_TOKEN: token });
+}
+
 // Reset only our disposable DB, with the API stopped (its metadata is cached).
 // Local/hosted health scenarios need distinct real process environments. Restore
 // the test stamp before calling the existing guarded reset, never another DB.
@@ -239,6 +245,6 @@ AfterAll(async function () {
 process.on('exit', stopAll);
 
 module.exports = {
-  BASE_URL, API_URL, PROTOTYPE_URL, resetAcceptance, restartAcceptance, acceptanceSql, acceptanceDatabaseUrl, isolatedEnvironment, REPO_ROOT,
+  BASE_URL, API_URL, PROTOTYPE_URL, resetAcceptance, restartAcceptance, useInstanceToken, acceptanceSql, acceptanceDatabaseUrl, isolatedEnvironment, REPO_ROOT,
   externalSql, EXTERNAL_URL_ENV, EXTERNAL_READER, EXTERNAL_READER_PASSWORD, addStandinTable, changeStandin,
 };

@@ -11,7 +11,7 @@ import type { DuckDBConnection, DuckDBInstance } from '@duckdb/node-api'
 import { AppError } from '../errors'
 import { readVariable } from '../env'
 import { openMotherDuck } from '../motherduck-hosted'
-import { attachStatement } from '../motherduck-reader'
+import { attachStatement, requireMotherDuckToken } from '../motherduck-reader'
 
 /** A database a source reads. Only its name is kept: its address is looked up
  *  from what the token can read each time a session opens. */
@@ -146,5 +146,24 @@ export async function openSourceSession(token: string, databases: ChosenDatabase
   } catch (err) {
     session?.close()
     throw motherDuckError(err, token)
+  }
+}
+
+/** One read by the platform's own fixed SQL (a dataset refresh, the leaver
+ *  check), on a session holding only `databases`, read-only like any source's. */
+export async function readMotherDuck(sqlText: string, purpose: string, databases: string[]): Promise<unknown[][]> {
+  const token = requireMotherDuckToken(purpose)
+  const session = await openSourceSession(token, databases.map((name) => ({ name })))
+  try {
+    const conn = await session.instance.connect()
+    try {
+      return (await conn.runAndReadAll(sqlText)).getRows() as unknown[][]
+    } finally {
+      conn.closeSync()
+    }
+  } catch (err) {
+    throw motherDuckError(err, token)
+  } finally {
+    session.close()
   }
 }

@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { resolve } = require('node:path');
 const { Given, When, Then } = require('@cucumber/cucumber');
-const { changeStandin, restartAcceptance, acceptanceSql, REPO_ROOT } = require('../support/stack');
+const { changeStandin, restartAcceptance, useInstanceToken, acceptanceSql, REPO_ROOT } = require('../support/stack');
 
 let sinkDiscovered = false;
 const path = name => `/api/table/${encodeURIComponent(name)}`;
@@ -34,6 +34,7 @@ Given("StyleHR's staff are copied in and kept in step with People, Asha linked t
   ]);
   const dataSource = `acc-sync-${tag}`;
   s.dataSource = dataSource;
+  await useInstanceToken();
   await call(this, 'POST', '/api/table/Data%20Source:motherduck_connect', { name: dataSource, databases: ['sales'] });
   await call(this, 'POST', `/api/table/Data%20Source/${dataSource}:refresh_tables`, { database: 'sales' });
   await call(this, 'POST', `/api/table/Data%20Source/${dataSource}:copy_create`, { database: 'sales', schema: 'main', table: s.source, name: s.copy, key: 'emp_id',

@@ -83,9 +83,9 @@ async function main() {
   // what a live-mode server would pay — it would hold the connection. Timing the
   // cold path against a warm snapshot would flatter the snapshot, so both are
   // reported: cold (connect + query) and warm (query on a held connection).
-  const { DuckDBInstance } = await import('@duckdb/node-api')
-  const instance = await DuckDBInstance.create(`md:?motherduck_token=${process.env.MOTHERDUCK_TOKEN}`)
-  const heldConn = await instance.connect()
+  const { openSourceSession } = await import('../src/sources/motherduck')
+  const session = await openSourceSession(process.env.MOTHERDUCK_TOKEN!, [{ name: 'gold' }, { name: 'marts' }])
+  const heldConn = await session.instance.connect()
   const warmRead = async (text: string) => (await heldConn.runAndReadAll(text)).getRows() as unknown[][]
 
   const read = _liveReader()

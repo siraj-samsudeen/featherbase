@@ -19,7 +19,7 @@ Featherbase and the read-scaling concept goes away. That token may have write ri
 ## Decision Outcome
 
 Chosen: **one deployment variable, `MOTHERDUCK_TOKEN`, with read-only single-attach sessions.** A
-source names the databases it reads; each session looks up their addresses from what the token can
+source names the databases it reads, and the platform's own fixed reads (a dataset refresh, the leaver check) name theirs; each session looks up their addresses from what the token can
 read and attaches only those, read-only. The attach statement has no writable form. The engine has
 no write path, a source cannot be set to read-write, and a DuckDB source refuses a MotherDuck address,
 so there is no second way in. Deployment variables are again the only place a secret lives, so the
@@ -32,5 +32,3 @@ encrypted token store and `SECRET_STORE_KEY` are removed.
 - Bad: changing the token needs a variable change and a restart, not a screen.
 - Bad: sources cannot read different accounts. The token must be able to read every database any
   source names; a share created hidden is not listed, so it cannot be named until it is shown.
-- Bad: the platform's own fixed reads (the leaver check) still open MotherDuck's default mode, with the same
-  token. They run only the platform's SQL, and no connected table or dataset reaches them.
