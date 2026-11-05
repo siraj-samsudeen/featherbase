@@ -577,9 +577,10 @@ function availableActions(now: {
     target: 'action-transition',
     transition,
   }))
-  if (now.rewordable)
-    actions.push({ key: 'wording', label: 'Correct the wording', tab: 'Request', target: 'action-wording' })
-  if (!now.support) return actions
+  const wording: HeaderAction[] = now.rewordable
+    ? [{ key: 'wording', label: 'Correct the wording', tab: 'Request', target: 'action-wording' }]
+    : []
+  if (!now.support) return [...actions, ...wording]
   const workflow = (key: string, label: string): HeaderAction => ({
     key,
     label,
@@ -602,6 +603,7 @@ function availableActions(now: {
   if (now.editable)
     actions.push({ key: 'edit', label: 'Edit request', tab: 'Request', target: 'action-edit' })
   actions.push(
+    ...wording,
     { key: 'evidence', label: 'Record evidence', tab: 'Evidence', target: 'action-evidence' },
     { key: 'link', label: 'Link work', tab: 'Evidence', target: 'action-link' },
     { key: 'note', label: 'Add note', tab: 'Activity', target: 'action-note' },
@@ -735,7 +737,7 @@ function CaseFile({
     detail.capabilities?.approve === true
   const canDecide =
     support &&
-    (approvalAllowed || state === 'awaiting_approval') &&
+    approvalAllowed &&
     verification?.active === true
   const canReword =
     Boolean(detail.details) &&
@@ -1465,7 +1467,7 @@ function App() {
       typeCounts.set(ticket.kind, (typeCounts.get(ticket.kind) ?? 0) + 1)
   const typeKeys = [
     ...new Set([
-      ...Object.keys(kinds).filter((key) => typeCounts.has(key)),
+      ...Object.keys(kinds),
       ...Object.values(configuredTypes).filter((type) => type.enabled !== false).map((type) => type.key),
       ...[...typeCounts.keys()].sort(),
       ...(kind ? [kind] : []),
@@ -1474,7 +1476,9 @@ function App() {
   // The states the list can hold: the chosen type's own, else every type's.
   const stateOptions = configuredTypes[kind]
     ? configuredTypes[kind].states
-    : [...new Set([...BUILT_IN_STATES, ...Object.values(configuredTypes).flatMap((type) => type.states)])]
+    : kind
+      ? BUILT_IN_STATES
+      : [...new Set([...BUILT_IN_STATES, ...Object.values(configuredTypes).flatMap((type) => type.states)])]
   const connections =
     session?.connections && typeof session.connections === 'object'
       ? (session.connections as Record<string, unknown>)
