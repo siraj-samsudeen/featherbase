@@ -196,6 +196,15 @@ export function inferChoices(values: unknown[]): string[] | null {
   return distinct.sort()
 }
 
+// A column the person made a Choice themselves: every value it will send is an
+// option, however many there are, because the person has said it is a fixed
+// list. Options are one per line, so a value holding a line break cannot be one
+// and its row is refused by name instead.
+export function choiceOptions(values: unknown[]): string[] {
+  const options = values.filter((v) => !isEmpty(v)).map((v) => String(coerceCell(v, 'Choice')))
+  return [...new Set(options)].filter((s) => !s.includes('\n')).sort()
+}
+
 export interface MappingTarget {
   column_name: string
   label?: string | null
@@ -433,6 +442,9 @@ function coerceCell(v: unknown, columnType: string): unknown {
     case 'Float':
     case 'Currency':
       return typeof v === 'number' ? v : String(v).trim()
+    case 'Choice':
+      // A Choice's options are trimmed, so what is sent must be too.
+      return (v instanceof Date ? localIso(v) : String(v)).trim()
     default:
       if (v instanceof Date) return localIso(v)
       return typeof v === 'string' ? v : String(v)

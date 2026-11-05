@@ -23,6 +23,7 @@ export {
   autoMapImportColumns,
   retiredColumnNotice,
   coerceRows,
+  choiceOptions,
   inferChoices,
   inferColumnType,
   inferTableDef,
