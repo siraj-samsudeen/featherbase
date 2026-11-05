@@ -73,7 +73,7 @@ insert into featherbase.column_def (row_id, parent, position, column_name, label
 select gen_random_uuid()::text, 'Change Proposal', 3, 'target_row', 'Row', 'Data', NULL, NULL, NULL, false, false, true, false, true, 'basic', 'Table', 'columns', false, 'Empty for a proposed new row.'
 where not exists (select 1 from featherbase.column_def where parent = 'Change Proposal' and column_name = 'target_row');
 insert into featherbase.column_def (row_id, parent, position, column_name, label, column_type, reference_table, choices, row_table, reqd, "unique", read_only, hidden, in_list_view, tier, parenttype, parentfield, custom, description)
-select gen_random_uuid()::text, 'Change Proposal', 4, 'maker', 'Made by', 'Reference', 'Person', NULL, NULL, false, false, true, false, true, 'basic', 'Table', 'columns', false, NULL
+select gen_random_uuid()::text, 'Change Proposal', 4, 'maker', 'Made by', 'Data', NULL, NULL, NULL, false, false, true, false, true, 'basic', 'Table', 'columns', false, NULL
 where not exists (select 1 from featherbase.column_def where parent = 'Change Proposal' and column_name = 'maker');
 insert into featherbase.column_def (row_id, parent, position, column_name, label, column_type, reference_table, choices, row_table, reqd, "unique", read_only, hidden, in_list_view, tier, parenttype, parentfield, custom, description)
 select gen_random_uuid()::text, 'Change Proposal', 5, 'proposal_state', 'State', 'Choice', NULL, 'Pending
@@ -85,7 +85,7 @@ insert into featherbase.column_def (row_id, parent, position, column_name, label
 select gen_random_uuid()::text, 'Change Proposal', 6, 'about', 'About', 'JSON', NULL, NULL, NULL, false, false, true, false, false, 'basic', 'Table', 'columns', false, 'The app''s own description of the proposal.'
 where not exists (select 1 from featherbase.column_def where parent = 'Change Proposal' and column_name = 'about');
 insert into featherbase.column_def (row_id, parent, position, column_name, label, column_type, reference_table, choices, row_table, reqd, "unique", read_only, hidden, in_list_view, tier, parenttype, parentfield, custom, description)
-select gen_random_uuid()::text, 'Change Proposal', 7, 'decided_by', 'Decided by', 'Reference', 'Person', NULL, NULL, false, false, true, false, true, 'basic', 'Table', 'columns', false, NULL
+select gen_random_uuid()::text, 'Change Proposal', 7, 'decided_by', 'Decided by', 'Data', NULL, NULL, NULL, false, false, true, false, true, 'basic', 'Table', 'columns', false, NULL
 where not exists (select 1 from featherbase.column_def where parent = 'Change Proposal' and column_name = 'decided_by');
 insert into featherbase.column_def (row_id, parent, position, column_name, label, column_type, reference_table, choices, row_table, reqd, "unique", read_only, hidden, in_list_view, tier, parenttype, parentfield, custom, description)
 select gen_random_uuid()::text, 'Change Proposal', 8, 'decided_at', 'Decided at', 'Datetime', NULL, NULL, NULL, false, false, true, false, true, 'basic', 'Table', 'columns', false, NULL
@@ -115,7 +115,7 @@ insert into featherbase.column_def (row_id, parent, position, column_name, label
 select gen_random_uuid()::text, 'Change Proposal Column', 4, 'review_base_value', 'Reviewed', 'Long Text', NULL, NULL, NULL, false, false, true, false, false, 'basic', 'Table', 'columns', false, 'What the approver reviewed against; a different value at approval means a fresh review.'
 where not exists (select 1 from featherbase.column_def where parent = 'Change Proposal Column' and column_name = 'review_base_value');
 insert into featherbase.column_def (row_id, parent, position, column_name, label, column_type, reference_table, choices, row_table, reqd, "unique", read_only, hidden, in_list_view, tier, parenttype, parentfield, custom, description)
-select gen_random_uuid()::text, 'Change Proposal Approver', 1, 'person', 'Person', 'Reference', 'Person', NULL, NULL, false, false, true, false, true, 'basic', 'Table', 'columns', false, NULL
+select gen_random_uuid()::text, 'Change Proposal Approver', 1, 'person', 'Person', 'Data', NULL, NULL, NULL, false, false, true, false, true, 'basic', 'Table', 'columns', false, NULL
 where not exists (select 1 from featherbase.column_def where parent = 'Change Proposal Approver' and column_name = 'person');
 insert into featherbase.column_def (row_id, parent, position, column_name, label, column_type, reference_table, choices, row_table, reqd, "unique", read_only, hidden, in_list_view, tier, parenttype, parentfield, custom, description)
 select gen_random_uuid()::text, 'Change Proposal Approver', 2, 'role', 'Role', 'Data', NULL, NULL, NULL, false, false, true, false, true, 'basic', 'Table', 'columns', false, NULL
