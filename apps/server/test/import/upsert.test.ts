@@ -680,14 +680,20 @@ describe('UPS-R5: the key is remembered per Table', () => {
   test('UPS-R5: a keyed run stores its key and choice; a keyless run records updated 0 and no key configuration', async ({
     admin,
   }) => {
+    // #979: one test is one transaction, so now() dates every import alike.
+    // Age the earlier ones so "the latest" has one answer.
+    const ageEarlierImports = () =>
+      sql`update featherbase.import_log set created_at = created_at - interval '1 minute' where ref_table = ${DT}`
     await setup(admin)
     await seed(admin)
+    await ageEarlierImports()
     await admin.post(PATH, {
       key_column: 'zone',
       empty_cells: 'clear',
       columns: ['zone', 'pop'],
       rows: [{ zone: 'Alpha', pop: 1 }],
     })
+    await ageEarlierImports()
     await admin.post(PATH, { rows: [{ zone: 'Later keyless', pop: 2 }] })
 
     const logs = await admin.get<{ data: Record<string, unknown>[] }>(
