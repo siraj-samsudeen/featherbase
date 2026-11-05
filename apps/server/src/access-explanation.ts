@@ -2,7 +2,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
 import { OPEN_ROLES, PLATFORM_ROLES, getRoles } from './permissions'
-import { coversPersonScope, resolvePersonScope } from './person-scope'
+import { NoPersonScope, coversPersonScope, resolvePersonScope } from './person-scope'
 import { findScopeProvider } from './runtime-packages'
 import { principalReach, type TableReach } from './token-reach'
 import { rowTitles } from './row-titles'
@@ -35,6 +35,16 @@ export interface AccessExplanation {
   change: TableReach[]
   limits: { table: string; value: string; title: string | null; set_by: string; set_at: string }[]
   shares: { table: string; row_id: string; title: string | null; write: boolean; reshare: boolean; shared_by: string; shared_at: string }[]
+  /** The places the instance's scope-providing app gives the person today,
+   *  each with the reasons the app gives (Q1 C). Null when no app provides a
+   *  scope. Labels and reasons only, never a filter value. */
+  scope: {
+    app: string
+    title: string
+    /** Why the person has no usable scope, as NoPersonScope names it. */
+    problem: NoPersonScope['reason'] | null
+    places: { label: string; reasons: { text: string; since: string | null; until: string | null }[] }[]
+  } | null
 }
 
 const iso = (value: unknown) => (value as Date).toISOString()
@@ -52,6 +62,24 @@ async function assertMayExplain(person: string, viewer: string) {
   if (roles.includes('System Manager') || roles.includes(ACCESS_AUDITOR)) return
   if (await coversPlaces(viewer, person)) return
   throw new AppError('PermissionError', 'Only the person, a System Manager, an Access Auditor or someone whose places cover theirs may open this page')
+}
+
+async function scopeOf(person: string): Promise<AccessExplanation['scope']> {
+  const binding = await findScopeProvider()
+  if (!binding) return null
+  const answer = await resolvePersonScope(person, binding).then(
+    (places) => ({ problem: null, places }),
+    // Besides NoPersonScope's reasons, resolving fails only when the app is
+    // not set up yet (a declared identifier system is missing): its
+    // configuration. The page still shows everything else.
+    (error: unknown) => ({ problem: error instanceof NoPersonScope ? error.reason : 'configuration' as const, places: [] }))
+  return {
+    app: binding.app, title: binding.title, problem: answer.problem,
+    places: answer.places.map((place) => ({
+      label: place.label,
+      reasons: (place.reasons ?? []).map((r) => ({ text: r.text, since: r.since ?? null, until: r.until ?? null })),
+    })),
+  }
 }
 
 async function coversPlaces(viewer: string, person: string): Promise<boolean> {
@@ -127,6 +155,7 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
   }
 
   const reach = await principalReach(person)
+  const scope = await scopeOf(person)
 
   const scopeRows = await sql`
     select allow_table, for_value, created_by, created_at from data_scope
@@ -157,5 +186,6 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
       table: String(r.share_table), row_id: String(r.share_name), title: title(String(r.share_table), String(r.share_name)),
       write: Boolean(r.write), reshare: Boolean(r.share), shared_by: String(r.created_by), shared_at: iso(r.created_at),
     })),
+    scope,
   }
 }
