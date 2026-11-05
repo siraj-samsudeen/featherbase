@@ -212,6 +212,12 @@ describe('every later sign-in must name the same record too', () => {
     expect(person.enabled).toBe(true)
   })
 
+  test('a leaver answer naming no record does not disable this person', async ({ api, admin }) => {
+    const { res, person } = await firstThen(api, admin, () => Response.json({ is_active: false }))
+    expect(res.status).toBe(401)
+    expect(person.enabled).toBe(true)
+  })
+
   test('with the roster taken off the method, it refuses rather than stop checking', async ({ api, admin }) => {
     await setUp(admin)
     provider()

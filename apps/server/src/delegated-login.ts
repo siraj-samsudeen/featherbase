@@ -308,11 +308,16 @@ export async function checkWithProvider(
     logOutcome(cfg, 'rejected', `http_${res.status}_error_body ${keys}`)
     return 'rejected'
   }
-  // Before the left check: an answer about somebody else says nothing about this person.
-  const named = mustName && ls.map((o) => o[mustName.key]).find(filled)
-  if (mustName && named !== undefined && String(named).trim() !== mustName.record) {
-    logOutcome(cfg, 'another_record', `http_${res.status} ${keys}`)
-    return 'another_record'
+  // Before the left check: an answer about somebody else, or about nobody it
+  // names, says nothing about this person. The first filled value wins, top level
+  // first. A body with neither a yes nor a leaver falls through to "could not confirm".
+  if (mustName) {
+    const named = ls.map((o) => o[mustName.key]).find(filled)
+    const speaks = ls.some((o) => saysYes(o, cfg.wire) || saysLeft(o, cfg.wire))
+    if (named === undefined ? speaks : String(named).trim() !== mustName.record) {
+      logOutcome(cfg, 'another_record', `http_${res.status} ${keys}`)
+      return 'another_record'
+    }
   }
   if (ls.some((o) => saysLeft(o, cfg.wire))) {
     logOutcome(cfg, 'left', `http_${res.status} ${keys}`)
@@ -321,11 +326,6 @@ export async function checkWithProvider(
   if (!ls.some((o) => saysYes(o, cfg.wire))) {
     logOutcome(cfg, 'unavailable', `http_${res.status}_unrecognised_success ${keys}`)
     return 'unavailable'
-  }
-  // A yes that names no record is not a yes for this one.
-  if (mustName && named === undefined) {
-    logOutcome(cfg, 'another_record', `http_${res.status} ${keys}`)
-    return 'another_record'
   }
   return 'verified'
 }
