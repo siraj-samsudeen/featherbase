@@ -29,6 +29,9 @@ The base applies everywhere. `local`, `dev` and `prod` hold what differs:
   refresh from, and a refresh would only fail.
 - **The warehouse.** The `motherduck` Data Source names the variable holding its
   connection, `MOTHERDUCK_URL`.
+- **The HR system (when the StyleHR app is installed).** Its `stylehr` Data
+  Source names `STYLEHR_URL`, a read-only login's connection string set per
+  environment (`../../stylehr/README.md`).
 
 Apply from the repository root. `--dry-run` writes nothing, and an app's settings
 need the app installed first:

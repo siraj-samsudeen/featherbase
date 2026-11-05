@@ -6,7 +6,7 @@ import { asNameList, declaresOwnPages } from './installed-app-ledger'
 import { ensureHomePageForTable } from './home-pages'
 import { getMeta, invalidateMeta, physicalRowKey } from './meta'
 import { saveDoc, deleteDoc } from './document'
-import { reflectTables } from './sources/reflect'
+import { reflectTables, type TableSettings } from './sources/reflect'
 import { invalidateSources } from './sources/registry'
 import { activeApps, appOperation, provisionApp } from './app-lifecycle'
 import { cadenceSeconds, jobRegistrant, registerJob, syncScheduledJobs, unregisterAppJobs, type Cadence, type JobHandler } from './jobs'
@@ -82,12 +82,19 @@ export interface AppSource {
   table_allowlist?: string
   // Relations to reflect once the source is connected. Table names may be
   // schema-qualified; ambiguous bare names are refused by the reflector.
+  // Each entry is a table name, or a table with how it reads (#808).
   reflect?: {
     schema?: string
     prefix?: string
     module?: string
-    tables: string[]
+    tables: (string | AppSourceTable)[]
   }
+}
+
+// How one connected table reads. Column names are the source's.
+export interface AppSourceTable extends TableSettings {
+  table: string
+  name?: string
 }
 
 export interface AppManifest {
@@ -485,11 +492,20 @@ async function provisionSources(
     if (!src.reflect?.tables?.length) continue
     // Reflection needs the source to answer — an unreachable source fails
     // the install loudly rather than leaving a half-configured app.
+    const entries = src.reflect.tables.map((t) => (typeof t === 'string' ? { table: t } : t))
+    const names: Record<string, string> = {}
+    const settings: Record<string, TableSettings> = {}
+    for (const { table, name, ...rest } of entries) {
+      if (name) names[table] = name
+      settings[table] = rest
+    }
     const result = await reflectTables(src.name, {
       schema: src.reflect.schema,
-      tables: src.reflect.tables,
+      tables: entries.map((t) => t.table),
       module: src.reflect.module,
       prefix: src.reflect.prefix,
+      names,
+      settings,
     })
     for (const c of result.created) tables.push(c.name)
     // "Already reflected" is adoption, not failure; anything else is a
@@ -663,7 +679,22 @@ const appSourceSchema = z
         schema: z.string().optional(),
         prefix: z.string().optional(),
         module: z.string().optional(),
-        tables: z.array(z.string().min(1)).min(1),
+        tables: z
+          .array(
+            z.union([
+              z.string().min(1),
+              z
+                .object({
+                  table: z.string().min(1),
+                  name: z.string().min(1).optional(),
+                  leave_out_columns: z.array(z.string().min(1)).optional(),
+                  title_column: z.string().min(1).optional(),
+                  list_columns: z.array(z.string().min(1)).min(1).optional(),
+                })
+                .strict(),
+            ]),
+          )
+          .min(1),
       })
       .strict()
       .optional(),

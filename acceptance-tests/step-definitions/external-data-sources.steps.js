@@ -7,8 +7,8 @@
 const assert = require('node:assert/strict');
 const { Given, When, Then } = require('@cucumber/cucumber');
 const { expect } = require('playwright/test');
-const { externalSql } = require('../support/stack');
-const { givenReaderSource } = require('../support/outside-db');
+const { externalSql, EXTERNAL_URL_ENV } = require('../support/stack');
+const { givenReaderSource, grantReader } = require('../support/outside-db');
 const { SourceBrowserPage } = require('../support/pages/source-browser-page');
 const { ListPage } = require('../support/pages/list-page');
 const { FormPage } = require('../support/pages/form-page');
@@ -52,7 +52,53 @@ Given('a Postgres database of shelves and the bins on each shelf', async functio
   await externalSql(`insert into ${SHELVES}.shelf (id, aisle, label) values (7, 'West', 'Middle')`);
   await externalSql(`insert into ${SHELVES}.bin values ('b1', 7)`);
   this.bin = 'b1';
-  for (const name of ['Bin', 'Shelf']) await this.withApi((api) => api.removeTableIfPresent(name));
+  await this.withApi(async (api) => {
+    // An earlier scenario's app owns its Shelf table: uninstalling removes both.
+    await api.call('POST', '/api/uninstall_app', { name: SHELF_APP });
+    for (const name of ['Bin', 'Shelf']) await api.removeTableIfPresent(name);
+  });
+});
+
+// ---- An app that connects the shelves (#808) ----
+
+const SHELF_APP = 'shelf_browser';
+
+// The app brings its own data source over the shelves database; the reader
+// login is granted here, as the database's owner would.
+function shelfApp(name, settings) {
+  return {
+    name: SHELF_APP,
+    sources: [{
+      name: SHELF_SOURCE, engine: 'postgres', url_env: EXTERNAL_URL_ENV, default_schema: SHELVES,
+      access: 'read_only', table_allowlist: `${SHELVES}.shelf`,
+      reflect: { schema: SHELVES, module: 'Shelves', tables: [{ table: 'shelf', name, ...settings }] },
+    }],
+  };
+}
+
+Given('an app that connects its shelf table as {string}, titled by its {word} and listing only its {word}',
+  async function (name, title, listed) {
+    await grantReader(SHELVES, ['shelf', 'bin']);
+    this.app = shelfApp(name, { title_column: title, list_columns: [listed] });
+  });
+
+Given('an app that connects its shelf table as {string}, titled by its {word}, listing only its {word}, and leaving out its {word}',
+  async function (name, title, listed, leftOut) {
+    await grantReader(SHELVES, ['shelf', 'bin']);
+    this.app = shelfApp(name, { title_column: title, list_columns: [listed], leave_out_columns: [leftOut] });
+  });
+
+async function installShelfApp(world) {
+  return world.withApi(async (api) => {
+    await api.call('DELETE', `/api/table/Data%20Source/${SHELF_SOURCE}`);
+    const res = await api.call('POST', '/api/install_app', { manifest: world.app });
+    return { status: res.status(), body: await res.text() };
+  });
+}
+
+Given('the app is installed', async function () {
+  const { status, body } = await installShelfApp(this);
+  assert.equal(status, 201, `the app did not install: ${body}`);
 });
 
 Given('a data source for that database', async function () {
@@ -93,6 +139,10 @@ Given('the user may read bins but not shelves', async function () {
 });
 
 // ---- When ----
+
+When('the user installs the app', async function () {
+  this.installed = await installShelfApp(this);
+});
 
 When('the user browses the data source', async function () {
   this.sourceBrowser = new SourceBrowserPage(await this.actor());
@@ -183,6 +233,33 @@ Then('the user sees the shelf as {string}', async function (title) {
 Then("the user sees each shelf's label and aisle", async function () {
   const shown = await this.list.columnLabels();
   for (const label of ['Label', 'Aisle']) assert.ok(shown.includes(label), `the list shows ${shown.join(', ')}, not ${label}`);
+});
+
+Then("the user sees each shelf's aisle", async function () {
+  const shown = await this.list.columnLabels();
+  assert.ok(shown.includes('Aisle'), `the list shows ${shown.join(', ')}, not Aisle`);
+});
+
+Then("the user does not see each shelf's label", async function () {
+  const shown = await this.list.columnLabels();
+  assert.ok(!shown.includes('Label'), `the list shows ${shown.join(', ')}`);
+});
+
+Then('the app is not installed', async function () {
+  assert.notEqual(this.installed.status, 201, 'the app installed');
+  const apps = await this.withApi(async (api) => (await api.call('GET', '/api/apps', undefined, [200], 'list apps')).json());
+  const listed = apps.installed.map((a) => a.name);
+  assert.ok(!listed.includes(SHELF_APP), 'the app is listed as installed');
+});
+
+Then('the user is told the shelf table has no column {string}', async function (column) {
+  assert.match(this.installed.body, new RegExp(`shelf[^"]*${column}|${column}[^"]*shelf`, 'i'),
+    `the refusal says: ${this.installed.body}`);
+});
+
+Then('no table called {string} is in Featherbase', async function (name) {
+  const status = await this.withApi(async (api) => (await api.call('GET', `/api/table/${encodeURIComponent(name)}:meta`)).status());
+  assert.equal(status, 404, `a table called ${name} exists`);
 });
 
 Then('the user does not see when each shelf was created', async function () {
