@@ -68,7 +68,7 @@ export async function enabledPeople(ids: string[], viewer: string): Promise<stri
     if (!(err instanceof AppError && err.type === 'PermissionError')) throw err
     return []
   }
-  const rows = await sql`select p.row_id from ${sql(scoped.table)} p where ${scoped.where} and p.replaced_by is null order by p.row_id`
+  const rows = await sql`select row_id from ${sql(scoped.table)} where ${scoped.where} and replaced_by is null order by row_id`
   return rows.map((row) => String(row.row_id))
 }
 

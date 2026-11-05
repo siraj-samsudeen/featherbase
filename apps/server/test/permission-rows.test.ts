@@ -5,6 +5,7 @@ import { sql } from '../src/db'
 import { installApp, registerApp, uninstallApp } from '../src/apps'
 import { permittedColumns, sameStoredValue } from '../src/permissions'
 import { childColumns } from '../src/row-readers'
+import { enabledPeople } from '../src/people-directory'
 import { readLegacyPermission } from '../src/app-permission-format'
 
 // #917: a Permission row names one operation and the Columns it reaches; the
@@ -191,6 +192,14 @@ describe('a grant reaches only what its rows allow', () => {
     const path = `/api/table/${encodeURIComponent('Pr Sorted')}?fields=${encodeURIComponent('["title"]')}`
     expect(await reader.get<{ data: unknown[] }>(path)).toMatchObject({ data: [{ title: 'One' }] })
     expect((await reader.fetch(`${path}&order_by=unit_cost`)).status).toBe(417)
+  })
+
+  test('a creator-only reader of Person can still ask who is enabled', async ({ admin }) => {
+    await setup(admin)
+    await insert({ row_id: 'pr-person', ref_table: 'Person', operation: 'read', scope_mode: 'creator' })
+    const person = await holder()
+    await sql`insert into person (row_id, full_name, enabled, created_by) values ('psn_pr_mine', 'Mine', true, ${person}), ('psn_pr_other', 'Other', true, 'Administrator')`
+    expect(await enabledPeople(['psn_pr_mine', 'psn_pr_other'], person)).toEqual(['psn_pr_mine'])
   })
 
   test('an inherited grant naming a parent that does not exist is refused', async ({ admin }) => {
