@@ -9,6 +9,55 @@ export interface ActionListArgs {
   limit_page_length?: number
 }
 
+/** #975: who may approve. The people who can sign in, else the holders of the roles; never the maker. */
+export interface ApproverRequest { people: string[]; fallbackRoles: string[] }
+export type ChangeProposalState = 'Pending' | 'Applied' | 'Rejected' | 'Needs fresh review'
+export interface ProposalRequest {
+  table: string
+  /** The row to end and replace; null for a new row. */
+  row: string | null
+  changes: Record<string, string | null>
+  approvers: ApproverRequest
+  about?: Record<string, unknown>
+}
+export interface ProposalFilter { ids?: string[]; states?: ChangeProposalState[]; makers?: string[]; limit?: number }
+export interface ChangeProposal {
+  row_id: string
+  app: string
+  target_table: string
+  target_row: string | null
+  maker: string
+  state: ChangeProposalState
+  about: Record<string, unknown> | null
+  decided_by: string | null
+  decided_at: string | null
+  decision_reason: string | null
+  result_row: string | null
+  created_at: string
+  changes: { column_name: string; original_value: string | null; proposed_value: string | null; review_base_value: string | null }[]
+  /** Who it waits for: named people, or else roles. */
+  route: { people: string[]; roles: string[] }
+}
+export interface DecisionNote { approvers: ApproverRequest; reason: string }
+export interface DecisionApproval {
+  approvers: ApproverRequest
+  /** The day the new row starts; the old row ends the day before. */
+  effectiveOn: string
+  /** Declared `stamp` columns for the new row, such as its identifier. */
+  newRow?: Record<string, string | null>
+}
+/** #975: declared base Tables, read as the app: the fields named must be declared. */
+export interface BaseTablesHelper {
+  list(table: string, args: ActionListArgs & { fields: string[] }): Promise<ActionRow[]>
+}
+export interface ChangeProposalsReader { list(filter?: ProposalFilter): Promise<ChangeProposal[]> }
+export interface ChangeProposalsHelper extends ChangeProposalsReader {
+  propose(request: ProposalRequest): Promise<ChangeProposal>
+  approve(id: string, decision: DecisionApproval): Promise<ChangeProposal>
+  reject(id: string, decision: DecisionNote): Promise<ChangeProposal>
+  needsFreshReview(id: string, decision: DecisionNote): Promise<ChangeProposal>
+}
+
 // Structural package API: no core exception, SQL handle or identity override.
 export interface RuntimeActionContext {
   readonly user: string
@@ -38,6 +87,8 @@ export interface RuntimeActionContext {
     activity(table: string, rowId: string): Promise<{ comments: ActionRow[]; versions: ActionRow[] }>
     deletionState(table: string, rowId: string): Promise<{ comments: number; versions: number; references: number; files: number; shares: number }>
   }
+  readonly baseTables: BaseTablesHelper
+  readonly changeProposals: ChangeProposalsHelper
 }
 
 export type RuntimeActionHandler = (context: RuntimeActionContext) => unknown | Promise<unknown>
@@ -54,8 +105,10 @@ export interface DatasetAnswer {
   readonly rows: DatasetRow[]
 }
 
-export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'documents'> {
+export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'documents' | 'changeProposals'> {
   readonly documents: Pick<RuntimeActionContext['documents'], 'get' | 'list' | 'activity'>
+  /** #975: a read can list proposals, never make or decide one. */
+  readonly changeProposals: ChangeProposalsReader
   /** #625 (E3): the app's declared datasets, limited to the reader's places. */
   readonly datasets: {
     /** The active snapshot's rows, or null when none has built yet (the ask is recorded). */

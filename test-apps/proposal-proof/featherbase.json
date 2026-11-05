@@ -1,0 +1,30 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "proposalproof",
+  "title": "Change proposal proof",
+  "entryTable": "proposalproof.entry",
+  "server": "server.mjs",
+  "settings": [{ "name": "linked_tables", "required": false }],
+  "baseTables": {
+    "read": { "Placement": ["label", "site", "starts_on", "ends_on"], "Hidden Base": ["label"] },
+    "propose": {
+      "Placement": { "columns": ["label", "site"], "stamp": ["placement_id", "source"], "startsOn": "starts_on", "endsOn": "ends_on" }
+    }
+  },
+  "actions": {
+    "version": 2,
+    "tables": ["proposalproof.entry"],
+    "operations": { "probe": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } } }
+  },
+  "reads": {
+    "version": 1,
+    "tables": ["proposalproof.entry"],
+    "operations": { "look": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } } }
+  },
+  "tables": [
+    { "name": "proposalproof.entry", "label": "Entry", "columns": [{ "column_name": "title", "column_type": "Data" }] }
+  ],
+  "permissions": [{ "table": "proposalproof.entry", "role": "All", "can_read": true }],
+  "migrations": []
+}

@@ -26,6 +26,8 @@ interface BarControl {
   picker: string
   sets: string
   options: BarOption[]
+  /** #975: stays away from a page whose address carries this key. */
+  hiddenWhen?: string
 }
 
 export function BarControls({ app }: { app: string }) {
@@ -34,7 +36,11 @@ export function BarControls({ app }: { app: string }) {
     queryFn: () => api.get<{ controls: BarControl[] }>(`/api/app_bar/${encodeURIComponent(app)}`),
     retry: false,
   })
-  const controls = (bar.data?.controls ?? []).filter((control) => control.options.length > 0)
+  const page = useBarAddress()
+  const location = useRouterState({ select: (state) => state.location })
+  const address = new URLSearchParams(page ? page.search : location.searchStr)
+  const controls = (bar.data?.controls ?? []).filter((control) =>
+    control.options.length > 0 && !(control.hiddenWhen && address.has(control.hiddenWhen)))
   if (controls.length === 0) return null
   return (
     <div className="flex min-w-0 shrink items-center gap-2 max-sm:pl-1" data-testid="bar-controls">
