@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { AppError } from '../errors'
 import { importRows, writeImportLog } from '../actions/collection-import'
 import { actionTransaction } from '../action-transaction'
+import { appOperation, assertStillServing, servingIdentity } from '../app-lifecycle'
 import { sql } from '../db'
 import { getMeta, type TableMeta } from '../meta'
 import { createTable, tableRelation } from '../table-engine'
@@ -93,7 +94,7 @@ export async function createCopy(
     return mapped
   }
   const select = input.columns.map(c => `${quoteIdentifier(c.source)} as ${quoteIdentifier(c.column_name)}`).join(', ')
-  return withSourceRows(cfg, `select ${select} from ${relation(input.database, input.schema, input.table)}`, keyColumn.column_name, (folder, parts) => actionTransaction(async () => {
+  return withSourceRows(cfg, `select ${select} from ${relation(input.database, input.schema, input.table)}`, keyColumn.column_name, (folder, parts) => appOperation(() => actionTransaction(async () => {
     await createTable({
       name: input.name,
       id_pattern: 'prompt',
@@ -115,7 +116,7 @@ export async function createCopy(
               values (${input.name}, ${input.source}, ${input.database}, ${input.schema}, ${input.table}, ${keyColumn.column_name})`
     const result = await applyCopy(user, input.name, (await copyInfo(input.name))!, await getMeta(input.name), folder, parts)
     return { table: input.name, result }
-  }))
+  })))
 }
 
 export async function copyInfo(target: string) {
@@ -125,12 +126,20 @@ export async function copyInfo(target: string) {
 
 /** Stage one bounded source observation, then apply one undoable transaction.
  * The lock-only transaction follows dataset-snapshot's idiom: source I/O is
- * outside the app transaction, while manual and scheduled callers serialize. */
+ * outside the app transaction, while manual and scheduled callers serialize.
+ * #971: the read holds no lifecycle lock, however long it takes (both callers
+ * reach here outside one: the request middleware and the job runner let them).
+ * The apply takes it, after this table's own lock, so nothing holding the
+ * lifecycle lock ever waits for that one. Whatever may have changed during the
+ * read is checked under it: applyCopy's mapping check, and here the owning app. */
 export async function copyAgain(user: SessionUser, target: string): Promise<CopyResult> {
   return sql.begin(async lock => {
     await lock`select pg_advisory_xact_lock(hashtext('table-copy:' || ${target}))`
     const copy = await copyInfo(target)
     if (!copy) throw new AppError('NotFoundError', `${target} was not copied from a data source`)
+    // Recorded before the metadata the read relies on: an upgrade after this is caught.
+    const owner = target.includes('.') ? target.split('.')[0] : null
+    const identity = owner ? await servingIdentity(owner) : null
     const cfg = await getSource(String(copy.data_source))
     assertAllowed(cfg, `${copy.database}.${copy.source_schema}`, String(copy.source_table))
     const meta = await getMeta(target)
@@ -139,7 +148,13 @@ export async function copyAgain(user: SessionUser, target: string): Promise<Copy
     if (!key?.source_column) throw new AppError('ValidationError', `The key column ${copy.key_column} of ${target} is missing`)
     const select = columns.map(c => `${quoteIdentifier(c.source_column!)} as ${quoteIdentifier(c.column_name)}`).join(', ')
     return withSourceRows(cfg, `select ${select} from ${relation(String(copy.database), String(copy.source_schema), String(copy.source_table))}`, key.column_name,
-      (folder, parts) => actionTransaction(() => applyCopy(user, target, copy, meta, folder, parts)))
+      async (folder, parts) => {
+        const apply = () => actionTransaction(() => applyCopy(user, target, copy, meta, folder, parts))
+        if (!owner) return appOperation(apply)
+        let result!: CopyResult
+        await assertStillServing(owner, identity!, async () => { result = await apply() })
+        return result
+      })
   })
 }
 
