@@ -1,6 +1,6 @@
-# Feather Dash
+# Dash
 
-Feather Dash is a client app built for JeyaRama on Featherbase: the store
+Dash is a client app built for JeyaRama on Featherbase: the store
 staff's month-to-date sales-against-target report, the store org chart that
 decides who sees which sections, and the scope provider that turns the org
 chart into each reader's places. Its app id is `feather_dash`, so its Tables are

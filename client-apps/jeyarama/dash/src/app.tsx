@@ -101,7 +101,7 @@ export function FeatherDash() {
 
   return (
     <div className="fd-shell">
-    {createElement('featherbase-sidebar', { 'aria-label': 'Feather Dash navigation' },
+    {createElement('featherbase-sidebar', { 'aria-label': 'Dash navigation' },
       <a href={`${window.location.pathname}${window.location.search}`} aria-current="page">
         <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18M7 14v3m5-8v8m5-12v12" /></svg>
         <span>Sales report</span>
@@ -187,7 +187,7 @@ function NoAccess() {
   if (help.kind === 'not_set_up')
     return (
       <Notice testid="not-set-up">
-        <p><strong>Feather Dash isn't set up on this instance yet</strong>, so no store's report can open.</p>
+        <p><strong>Dash isn't set up on this instance yet</strong>, so no store's report can open.</p>
         <p data-testid="setup-missing">It lacks: {help.missing.join(', ')}.</p>
         {help.fix && <p>{help.fix}</p>}
         {help.command && (
@@ -202,7 +202,7 @@ function NoAccess() {
     )
   return (
     <Notice testid="manager-no-store">
-      <p><strong>Feather Dash is set up, but your account covers no store</strong>, so it has no report to show you.</p>
+      <p><strong>Dash is set up, but your account covers no store</strong>, so it has no report to show you.</p>
       <p>The report opens for people with the Feather Dash Reader role and a job in the store org chart. Give yourself or someone else those, or sign in as someone who has them.</p>
       {help.command && (
         <p>On this machine, <code data-testid="next-command">{help.command}</code> prints made-up people to sign in as. reader-sm@example.test is a made-up Store Manager.</p>

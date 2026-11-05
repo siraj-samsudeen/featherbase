@@ -35,7 +35,7 @@ export const FEATHERBASE_ADMIN_DESTINATION = {
 // target report, a Featherbase page rather than an installed app. The server
 // routes and names its address from this; the shared top bar names the page.
 export const INTERIM_APPS: Record<string, { root: string; title: string; tabs?: readonly AppTab[] }> = {
-  feather_dash: { root: '/featherbase/sales-target', title: 'Feather Dash' },
+  feather_dash: { root: '/featherbase/sales-target', title: 'Dash' },
 }
 
 // #380 task 4.4: an app may declare the tabs its staff move between on a

@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "platformVersion": "2026-10",
   "name": "feather_dash",
-  "title": "Feather Dash",
+  "title": "Dash",
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "feather_dash.store_rollout",
@@ -1269,6 +1269,12 @@
       "id": "platform_look",
       "fromVersion": "0.10.2",
       "toVersion": "0.10.3",
+      "operations": []
+    },
+    {
+      "id": "shows_as_dash",
+      "fromVersion": "0.10.3",
+      "toVersion": "0.10.4",
       "operations": []
     }
   ]

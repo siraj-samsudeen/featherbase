@@ -249,7 +249,7 @@ install and configure the apps of a named instance, name it explicitly:
 
 ```bash
 featherbase start jeyarama/dash
-# Or, to see Feather Dash using made-up data instead of a real warehouse:
+# Or, to see Dash using made-up data instead of a real warehouse:
 featherbase start jeyarama/dash --made-up-data
 ```
 
