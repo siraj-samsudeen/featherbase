@@ -76,6 +76,8 @@ export interface AnyTableBacklink { table: string; column: string; table_column:
  *  held in a Table's own rows, or in a Sub-table's rows (`via`), reached from
  *  each Table that holds that Sub-table. */
 export async function anyTableBacklinks(tx: typeof sql, target: string): Promise<AnyTableBacklink[]> {
+  const [def] = await tx<{ kind: string; data_source: string | null }[]>`select kind, data_source from table_def where name = ${target}`
+  if (!def || !linkableTable(def)) return []
   const links = await tx<{ parent: string; column_name: string; table_column: string; choices: string | null; kind: string }[]>`
     select cd.parent, cd.column_name, cd.table_column, cd.choices, td.kind from column_def cd
     join table_def td on td.name = cd.parent
@@ -90,7 +92,7 @@ export async function anyTableBacklinks(tx: typeof sql, target: string): Promise
     }
     const owners = await tx<{ parent: string }[]>`
       select distinct cd.parent from column_def cd join table_def td on td.name = cd.parent
-      where cd.column_type = 'Sub-table' and cd.row_table = ${link.parent} and td.kind = 'table'
+      where cd.column_type = 'Sub-table' and cd.row_table = ${link.parent} and td.kind = 'table' and td.data_source is null
       order by 1`
     for (const owner of owners) found.push({ table: owner.parent, column: link.column_name, table_column: link.table_column, via: link.parent })
   }

@@ -211,6 +211,9 @@ describe('a column that links to a row of any Table', () => {
     await makeTable(admin, { name: `${DECISION} Any`, columns: shapes('') })
     const withAny = (await admin.get<{ connections: Connection[] }>(`${row(PLANT, '8151')}:connections`)).connections
     expect(withAny.find((c) => c.table === `${DECISION} Any`)?.count).toBe(0)
+    // A row no link can point at (a settings Table's) lists none of them.
+    const settings = (await admin.get<{ connections: Connection[] }>(`${row('System Settings', 'System Settings')}:connections`)).connections
+    expect(settings.filter((c) => c.column === 'shapes')).toEqual([])
     // Each connection's filters open exactly those rows.
     const listed = await admin.get<{ data: { row_id: string }[] }>(`${url('Atl Plan')}?filters=${encodeURIComponent(JSON.stringify(plans.filters))}`)
     expect(listed.data.map((r) => r.row_id)).toEqual([plan.row_id])
