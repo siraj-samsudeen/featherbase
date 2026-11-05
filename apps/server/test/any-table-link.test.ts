@@ -192,4 +192,32 @@ describe('a column that links to a row of any Table', () => {
     await admin.post('/api/save_row', { table: UNIT, row: { row_id: '8151', label: 'Palakkad unit' } })
     expect((await patch({ shapes_table: UNIT })).status).toBe(200)
   })
+
+  test("the linked row's Connections count the rows linking to it, in a Table or in a Sub-table", async ({ admin, createUser }) => {
+    await setup(admin)
+    await makeTable(admin, { name: 'Atl Step', kind: 'sub_table', columns: shapes() })
+    await makeTable(admin, { name: 'Atl Plan', columns: [{ column_name: 'steps', column_type: 'Sub-table', row_table: 'Atl Step' }] })
+    await decide(admin, { shapes_table: PLANT, shapes: '8151' })
+    await decide(admin, { shapes_table: PLANT, shapes: '8151' })
+    await decide(admin, { shapes_table: UNIT, shapes: 'PKN-GOLD' })
+    const plan = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Atl Plan', row: { steps: [{ title: 'Close', shapes_table: PLANT, shapes: '8151' }] } })
+    await admin.post('/api/save_row', { table: 'Atl Plan', row: { steps: [{ title: 'Grow', shapes_table: UNIT, shapes: 'PKN-GOLD' }] } })
+    type Connection = { table: string; column: string; via: string | null; count: number; filters: unknown[] }
+    const connections = (await admin.get<{ connections: Connection[] }>(`${row(PLANT, '8151')}:connections`)).connections
+    const decisions = connections.find((c) => c.table === DECISION && c.column === 'shapes')!
+    const plans = connections.find((c) => c.table === 'Atl Plan' && c.via === 'Atl Step')!
+    expect([decisions.count, plans.count]).toEqual([2, 1])
+    // A link allowing any Table may point here too, though none does yet.
+    await makeTable(admin, { name: `${DECISION} Any`, columns: shapes('') })
+    const withAny = (await admin.get<{ connections: Connection[] }>(`${row(PLANT, '8151')}:connections`)).connections
+    expect(withAny.find((c) => c.table === `${DECISION} Any`)?.count).toBe(0)
+    // Each connection's filters open exactly those rows.
+    const listed = await admin.get<{ data: { row_id: string }[] }>(`${url('Atl Plan')}?filters=${encodeURIComponent(JSON.stringify(plans.filters))}`)
+    expect(listed.data.map((r) => r.row_id)).toEqual([plan.row_id])
+    // Someone who can't read Decisions doesn't see them counted.
+    await grantRole(admin, { role: 'Atl Plant Reader', table: PLANT, can_read: true })
+    const reader = await createUser({ roles: ['Atl Plant Reader'] })
+    const theirs = (await reader.get<{ connections: Connection[] }>(`${row(PLANT, '8151')}:connections`)).connections
+    expect(theirs.filter((c) => c.column === 'shapes')).toEqual([])
+  })
 })
