@@ -2,6 +2,7 @@ import { expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { resolve } from 'node:path'
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { grantRole } from './fixtures'
 import { discoverPackages } from '../src/runtime-packages'
 
@@ -199,4 +200,20 @@ test('a person with no places says so, and an instance with no scope provider sh
   await withPlaces(admin)
   expect((await admin.get<Explanation>(pageOf(person.user!))).scope)
     .toEqual({ app: 'placeroster', title: 'Place roster proof', problem: 'scope', places: [] })
+})
+
+test('a scope provider that is not set up yet says so, and the rest of the page still shows', async ({ admin, createUser }) => {
+  // The place-roster fixture, declaring an identifier system the instance lacks.
+  const copy = await mkdtemp(resolve('test/.access-provider-'))
+  try {
+    await cp(resolve('../..', 'test-apps/fixtures/place-roster'), copy, { recursive: true })
+    const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
+    await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify({ ...manifest, scopeProvider: { ...manifest.scopeProvider, identifiers: ['ae-missing-code'] } }))
+    expect(await discoverPackages([copy])).toEqual([])
+    await admin.post('/api/install_app', { name: 'placeroster' })
+    const person = await createUser({ roles: [] })
+    const page = await admin.get<Explanation>(pageOf(person.user!))
+    expect(page.scope).toEqual({ app: 'placeroster', title: 'Place roster proof', problem: 'configuration', places: [] })
+    expect(page.person).toBe(person.user)
+  } finally { await rm(copy, { recursive: true, force: true }) }
 })

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { ShownName } from '../lib/people'
-import { Card, Notice, fmtInstantIST } from '@featherbase/shop-floor'
+import { Card, Notice, fmtDate, fmtInstantIST } from '@featherbase/shop-floor'
 
 // #628: "What can this person see, and why". The platform's own reasons, from
 // GET /api/access_explanation/:person: roles, the Tables they reach, the Data
@@ -19,6 +19,27 @@ interface Explanation {
   change: TableReach[]
   limits: { table: string; value: string; title: string | null; set_by: string; set_at: string }[]
   shares: { table: string; row_id: string; title: string | null; write: boolean; reshare: boolean; shared_by: string; shared_at: string }[]
+  scope: {
+    app: string
+    title: string
+    problem: 'configuration' | 'provider' | 'scope' | null
+    places: { label: string; reasons: { text: string; since: string | null; until: string | null }[] }[]
+  } | null
+}
+
+/** Why an app gives no places, in words. */
+const NO_PLACES = {
+  configuration: 'is not set up yet, so it gives no places.',
+  provider: 'could not answer, so it gives no places.',
+  scope: 'gives them no places.',
+} as const
+
+function Reason({ text, since, until }: { text: string; since: string | null; until: string | null }) {
+  return (
+    <span className="text-ink-muted">
+      {text}{since && ` from ${fmtDate(since)}`}{until && ` until ${fmtDate(until)}`}
+    </span>
+  )
 }
 
 /** The built-in All role is every account's: it reads as that. */
@@ -123,6 +144,22 @@ export function AccessExplanation({ person }: { person: string }) {
               ))}
             </ul>
           </Section>
+          {data.scope && (
+            <Section title={`Places from ${data.scope.title}`} testid="access-places"
+              empty={data.scope.problem ? `${data.scope.title} ${NO_PLACES[data.scope.problem]}` : null}>
+              <ul className="space-y-1 text-sm">
+                {data.scope.places.map((p) => (
+                  <li key={p.label} data-testid="access-place">
+                    <span className="font-medium text-ink">{p.label}</span>
+                    {' — '}
+                    {p.reasons.length
+                      ? p.reasons.map((r, i) => <span key={i}>{i > 0 && '; '}<Reason {...r} /></span>)
+                      : <span className="text-ink-muted">no reason given by {data.scope!.title}</span>}
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
           <Section title="Shared with them" testid="access-shares" empty={data.shares.length ? null : 'No rows are shared directly with them.'}>
             <ul className="space-y-1 text-sm">
               {data.shares.map((s) => (
