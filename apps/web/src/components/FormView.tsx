@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
-import { choiceLabel, idFromColumn, namingColumn, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, rowDisplayTitle, tableSchemaToZod, zodFieldErrors } from 'shared'
+import { choiceLabel, idFromColumn, tableHref, namingColumn, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, rowDisplayTitle, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
 import { changeOverride, overrideControl } from '../lib/metadata-override-editor'
@@ -9,7 +9,7 @@ import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
 import { UNSEEN_ROW, useLinkTitle } from '../lib/relations'
 import { useRowCapabilities } from '../lib/row-capabilities'
-import { useWhoAmI } from '../lib/session'
+import { useIsSystemManager, useWhoAmI } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
@@ -989,6 +989,7 @@ function FieldControl({
       {hint}
       {managedNote}
       {unlinkedNote}
+      {meta.name === 'Person' && field.column_name === 'roles' && <EveryoneRolesNote />}
       {preview}
       {err}
     </div>
@@ -1704,5 +1705,25 @@ function AttachControl({
         <p className="mt-1 text-xs text-negative">{uploadError}</p>
       )}
     </div>
+  )
+}
+
+// #923: the roles System Settings gives everyone who signs in are held by this
+// person too, though they are not in the list above. A System Manager, who can
+// change both, sees them named here.
+function EveryoneRolesNote() {
+  const isManager = useIsSystemManager()
+  const { data } = useQuery({
+    queryKey: ['doc', 'System Settings', 'System Settings'],
+    enabled: isManager,
+    queryFn: () => api.get<{ everyone_roles?: string | null }>('/api/table/System%20Settings/System%20Settings'),
+  })
+  const roles = String(data?.everyone_roles ?? '').split('\n').map((r) => r.trim()).filter(Boolean)
+  if (!roles.length) return null
+  return (
+    <p className="mt-1 text-xs text-ink-muted" data-testid="everyone-roles-note">
+      Everyone who signs in also holds {roles.join(', ')}, set in{' '}
+      <RouterLink to={tableHref('System Settings')} className="text-action hover:underline">System Settings</RouterLink>.
+    </p>
   )
 }

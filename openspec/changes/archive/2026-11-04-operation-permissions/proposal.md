@@ -43,7 +43,7 @@ upgrades that add or widen grants (E).
 
 ## Impact
 
-- Platform schema: migration `0142_operation_permissions` rewrites every Permission row.
+- Platform schema: migration `0143_operation_permissions` rewrites every Permission row.
   It must be rehearsed on a restored snapshot before a live instance takes it
   (`docs/DEPLOY.md`).
 - Server permission checks, the app manifest permission contract, the grant matrix

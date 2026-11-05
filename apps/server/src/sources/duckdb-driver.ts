@@ -14,6 +14,7 @@ import type {
   SourceFilter,
   SourceRow,
 } from './types'
+import { orderClause } from './order'
 
 // M3: the duckdb/MotherDuck driver — strictly read-only (the warehouse
 // browser). The connection string comes from the env var named by url_env:
@@ -311,7 +312,7 @@ export const duckdbDriver: SourceDriver = {
   async getList(bind, spec: ListSpec) {
     const cols = [...new Set([bind.pk, ...spec.columns])].map(quoteIdent).join(', ')
     const { text, values } = buildWhere(spec.filters)
-    const order = `${quoteIdent(spec.order.column)} ${spec.order.dir === 'desc' ? 'desc' : 'asc'}`
+    const order = orderClause(spec.order, bind.pk, quoteIdent)
     const rows = await run(
       bind.source,
       `select ${cols} from ${relation(bind)} where ${text}

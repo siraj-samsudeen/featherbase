@@ -2,7 +2,8 @@ import { sql } from '../db'
 import { assertNotPlatformRelation } from './platform-guard'
 import { AppError } from '../errors'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
-import { MAX_RELATED_DEPTH, MAX_RELATED_HOPS, parseRelatedSpec } from '../related-filter'
+import { MAX_RELATED_DEPTH } from 'shared'
+import { MAX_RELATED_HOPS, parseRelatedSpec } from '../related-filter'
 import {
   getScopeMap,
   includesColumn,

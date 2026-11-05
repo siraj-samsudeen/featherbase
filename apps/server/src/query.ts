@@ -8,7 +8,8 @@ import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, childColumns, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 import { mandatoryWhere, needsMandatoryRowRead } from './mandatory-access'
-import { MAX_RELATED_DEPTH, MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
+import { MAX_RELATED_DEPTH, RELATED_OPS } from 'shared'
+import { MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
 
 export type { Filter } from './related-filter'
 
@@ -20,7 +21,7 @@ interface ListArgs {
   limit_page_length?: number
 }
 
-const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', 'related', 'not related'] as const
+const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', ...RELATED_OPS] as const
 
 // NAV-002: the 'related' operator — the ONE relationship-shaped filter the
 // list language understands. It constrains rows by a relationship to
@@ -611,7 +612,7 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
   // paging pushed down to the driver (spec EDS-5).
   const boundMeta = await getMeta(table)
   if (isBound(boundMeta)) return boundGetList(boundMeta, args, user)
-  const { meta, table: tbl, cols, where, readExpression } = await scopedWhere(table, user, args.filters ?? [])
+  const { meta, table: tbl, cols, where, phys, readExpression } = await scopedWhere(table, user, args.filters ?? [])
 
   const fields = args.fields?.length ? args.fields : [ROW_KEY]
   for (const f of fields) assertColumn(cols, f, 'selected')
@@ -637,7 +638,7 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
   const rows = await sql`
     select ${selection} from ${sql(tbl)}
     where ${where}
-    order by ${readExpression(orderField)} ${orderDir === 'desc' ? sql`desc` : sql`asc`}
+    order by ${readExpression(orderField)} ${orderDir === 'desc' ? sql`desc` : sql`asc`}${orderField === ROW_KEY ? sql`` : sql`, ${sql(phys(ROW_KEY))} asc`}
     limit ${limit} offset ${offset}`
   const [{ count }] = await sql`
     select count(*)::int as count from ${sql(tbl)} where ${where}`

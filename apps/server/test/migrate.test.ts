@@ -53,7 +53,7 @@ describe('migrate: a new database', () => {
     try {
       const db = await import('../src/db')
       await scratch.migrate.ensureLedger()
-      for (const file of allMigrations().filter((file) => file < '0142'))
+      for (const file of allMigrations().filter((file) => file < '0143'))
         await db.withTransaction(() => scratch.migrate.applyMigrationFile(file))
       const { createTable, tableRelation } = await import('../src/table-engine')
       await createTable({ name: 'Legacy Contact Note', kind: 'sub_table', columns: [
