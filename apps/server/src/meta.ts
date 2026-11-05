@@ -1,4 +1,4 @@
-import { tableSlug } from 'shared'
+import { fmtDayIST, tableSlug } from 'shared'
 import { sql, whenTransactionEnds } from './db'
 import { AppError } from './errors'
 import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
@@ -320,6 +320,18 @@ export async function resolveTableName(input: string): Promise<string> {
   return matches[0] ?? input
 }
 
+/** #958: who a deletion's testimony names. The Access Log holds an id, which
+ *  means nothing to a reader; the id is only the last resort, for one that no
+ *  longer names anybody. Guarded like the testimony it completes. */
+async function principalLabel(id: string): Promise<string> {
+  const [row] = await sql`
+    select coalesce(
+      (select coalesce(nullif(trim(full_name), ''), '@' || nullif(username, ''), nullif(email, ''))
+       from person where row_id = ${id}),
+      (select nullif(trim(label), '') from service_account where row_id = ${id})) as name`.catch(() => [])
+  return (row?.name as string | null | undefined) ?? id
+}
+
 export async function getMeta(name: string): Promise<TableMeta> {
   await assertAppAvailable(name)
   const cached = cache.get(name)
@@ -342,7 +354,7 @@ export async function getMeta(name: string): Promise<TableMeta> {
       where operation in ('delete_table', 'rename_table') and ref_table = ${name}
       order by created_at desc limit 1`.catch(() => [])
     if (grave) {
-      const by = `by ${grave.user as string} on ${new Date(grave.created_at as string).toISOString().slice(0, 10)}`
+      const by = `by ${await principalLabel(grave.user as string)} on ${fmtDayIST(grave.created_at as string)}`
       throw new AppError(
         'NotFoundError',
         grave.operation === 'rename_table'
