@@ -10,7 +10,7 @@ import { describe, expect, test } from 'vitest'
 
 const ROOT = join(__dirname, '..', '..', '..')
 const PLATFORM_SOURCES = ['apps/server/src', 'apps/web/src', 'packages/shared/src']
-const APP_NAMES = /feather_dash|INTERIM_APPS/
+const APP_NAMES = /\bdash\b|INTERIM_APPS/
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap(entry => {

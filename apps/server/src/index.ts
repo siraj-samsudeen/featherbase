@@ -763,6 +763,14 @@ app.use('/api/*', async (c, next) => {
 // key by the resolved user and read their budget).
 app.use('/api/*', rateLimit)
 
+/** A request that reaches only the copy actions, whichever way its path is
+ *  encoded (a colon may arrive as %3A): any other suffix or verb takes the lock. */
+function isCopyRequest(method: string, path: string): boolean {
+  if (method !== 'POST' || !path.startsWith('/api/table/')) return false
+  try { return /:copy_(?:again|create)$/.test(decodeURIComponent(path)) }
+  catch { return false }
+}
+
 // Lock the complete request, including internal SQL and post-commit work.
 // Lifecycle endpoints take the exclusive counterpart inside their handlers
 // (the upgrade preview too since #651: it runs the steps to count losses).
@@ -777,7 +785,8 @@ app.use('/api/*', async (c, next) => {
     // on an outside call holds no lifecycle connection.
     // #642: the top bar's options are app reads too (Codex round 1 on #643).
     const appRead = c.req.path.startsWith('/api/app_reads/') || c.req.path.startsWith('/api/app_bar/')
-    return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appRead ? next() : appOperation(next))
+    // #971: a copy reads its source with no lifecycle lock and takes it to apply.
+    return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appRead || isCopyRequest(c.req.method, c.req.path) ? next() : appOperation(next))
   } catch (error) {
     const protectedOperation = /^\/api\/app_(?:reads|actions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)
     if (protectedOperation) return recordAppAccessRefusal(who(c), protectedOperation[1], protectedOperation[2], 'identity')
@@ -1299,7 +1308,7 @@ app.get('/api/people/waiting_for_access/count', async (c) => {
 })
 
 // #955: a page that found the person has no access to it (Featherbase's
-// no-access page, Feather Dash's) says so here; opening it is the request.
+// no-access page, Dash's) says so here; opening it is the request.
 app.post('/api/access_request', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { app?: unknown }
   const answer = typeof body.app === 'string' ? await requestAccess(who(c), body.app) : null

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Local development only (README, "Local development"). The platform
 # fingerprints the whole app folder, so after a server-module edit the
-# featherbase dev server restarts and finds the installed feather_dash no
+# featherbase dev server restarts and finds the installed dash no
 # longer matching its folder: the app is unavailable. This re-pins the dev
 # database's install to the folder as it is now, then nudges the dev server
 # to restart and pick it up. It never runs against a database that is not
@@ -31,17 +31,17 @@ field() { node -e 'process.stdout.write(String(JSON.parse(process.argv[1])[proce
 version="$(field version)"; digest="$(field digest)"
 
 same="$(echo "select (manifest - 'packageName' - 'packageVersion' - 'migrations') = (:'manifest'::jsonb - 'migrations')
-  from featherbase.installed_app where name = 'feather_dash' and package_version = :'version'" |
+  from featherbase.installed_app where name = 'dash' and package_version = :'version'" |
   q -v manifest="$(cat "$app/featherbase.json")" -v version="$version")"
 case "$same" in
   t) ;;
   f) echo "!! featherbase.json differs from the installed manifest; recreate the dev database (README)" >&2; exit 1 ;;
-  *) echo "!! feather_dash $version is not installed on this database; install it first (README)" >&2; exit 1 ;;
+  *) echo "!! dash $version is not installed on this database; install it first (README)" >&2; exit 1 ;;
 esac
 
 echo "update featherbase.installed_app set artifact_digest = :'digest'
-  where name = 'feather_dash' and package_version = :'version'" | q -v digest="$digest" -v version="$version" >/dev/null
+  where name = 'dash' and package_version = :'version'" | q -v digest="$digest" -v version="$version" >/dev/null
 # The dev server (tsx watch) imported dist/server.mjs, so touching it restarts
 # the server, whose discovery now finds the folder matching its install.
 touch "$app/dist/server.mjs"
-echo "feather_dash $version re-pinned to ${digest:0:12}; the dev server restarts and serves it"
+echo "dash $version re-pinned to ${digest:0:12}; the dev server restarts and serves it"

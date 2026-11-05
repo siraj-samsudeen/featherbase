@@ -55,7 +55,7 @@ export async function closeWarehouse() {
 
 /** The instance's `motherduck` Data Source, which the app's datasets name. */
 export const addSource = (admin: TestClient) =>
-  admin.post('/api/table/Data%20Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'FEATHER_DASH_TEST_DUCKDB', access: 'read_only' })
+  admin.post('/api/table/Data%20Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'DASH_TEST_DUCKDB', access: 'read_only' })
 
 /** A month with a target for each of four subcategories: the good refresh the tests start from. */
 export const FOUR_TARGETS = { '010101001': 1000, '010101003': 500, '010909001': 200, '010303001': 100 }

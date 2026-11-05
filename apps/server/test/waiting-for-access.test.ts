@@ -111,10 +111,10 @@ describe('opening something without access is the request', () => {
     expect(await count(admin)).toBe(1)
   })
 
-  test('opening Feather Dash without its role is a request for Feather Dash', async ({ admin, createUser }) => {
+  test('opening Dash without its role is a request for Dash', async ({ admin, createUser }) => {
     const priya = await createUser({ email: 'priya.dash@example.com', roles: [] })
-    expect(await (await ask(priya, 'feather_dash')).json()).toEqual({ state: 'waiting', title: 'Feather Dash' })
-    expect((await list(admin)).rows).toMatchObject([{ person: priya.user, app: 'Feather Dash' }])
+    expect(await (await ask(priya, 'dash')).json()).toEqual({ state: 'waiting', title: 'Dash' })
+    expect((await list(admin)).rows).toMatchObject([{ person: priya.user, app: 'Dash' }])
   })
 
   test('something they can open is not a request', async ({ admin }) => {
@@ -184,7 +184,7 @@ describe('the waiting list', () => {
     await installOther(admin)
     await viewerRole()
     const priya = await createUser({ email: 'priya.two@example.com', roles: [] })
-    await ask(priya, 'feather_dash')
+    await ask(priya, 'dash')
     await ask(priya, 'other')
     expect(await count(admin)).toBe(2)
     await giveRole(priya.user!, VIEWER)
@@ -207,12 +207,12 @@ describe('the waiting list', () => {
     const asha = await createUser({ email: 'asha@example.com', roles: [] })
     const bala = await createUser({ email: 'bala@example.com', roles: [] })
     await ask(asha, 'featherbase')
-    await ask(bala, 'feather_dash')
+    await ask(bala, 'dash')
     await ask(bala, 'featherbase')
     await sql`update access_request set created_at = now() - interval '2 days' where person = ${asha.user}`
     expect((await list(admin)).rows.map((r) => r.person)).toEqual([bala.user, bala.user, asha.user])
     expect((await list(admin, [['app', '=', 'Featherbase']])).rows.map((r) => r.person)).toEqual([bala.user, asha.user])
-    expect((await list(admin, [['app', '=', 'Feather Dash']])).rows.map((r) => r.person)).toEqual([bala.user])
+    expect((await list(admin, [['app', '=', 'Dash']])).rows.map((r) => r.person)).toEqual([bala.user])
   })
 
   test('the list and the count are System Manager only', async ({ admin, createUser }) => {
@@ -234,8 +234,8 @@ describe('the email alert to System Managers', () => {
   test('one email to each enabled System Manager with an address per person and app', async ({ createUser }) => {
     await managers()
     const priya = await createUser({ email: `priya@${DOMAIN}`, fullName: 'Priya Raman', roles: [] })
-    await ask(priya, 'feather_dash')
-    await ask(priya, 'feather_dash')
+    await ask(priya, 'dash')
+    await ask(priya, 'dash')
     await ask(priya, 'featherbase')
     const mails = await mailsTo('manager.one@example.com')
     expect(mails).toHaveLength(2)
@@ -243,7 +243,7 @@ describe('the email alert to System Managers', () => {
     const bodies = mails.map((m) => String(m.body)).join('\n')
     expect(bodies).toContain('Priya Raman')
     expect(bodies).toContain(`Email domain: ${DOMAIN}`)
-    expect(bodies).toContain('App: Feather Dash')
+    expect(bodies).toContain('App: Dash')
     expect(bodies).toContain('App: Featherbase')
     expect(bodies).toContain('/featherbase/admin/waiting-for-access')
     expect(bodies).not.toContain('priya@')
@@ -353,7 +353,7 @@ describe('the reminder a day later', () => {
     await managers()
     const old = await makePerson({ full_name: 'Waited Long', email: 'waited@example.com' })
     await requestAccess(old, 'featherbase')
-    await requestAccess(old, 'feather_dash')
+    await requestAccess(old, 'dash')
     await requestAccess(await makePerson({ full_name: null }), 'featherbase')
     await ageRequests('25 hours')
     await requestAccess(await makePerson({ full_name: 'Just Asked' }), 'featherbase')
@@ -363,7 +363,7 @@ describe('the reminder a day later', () => {
     expect(mails).toHaveLength(1)
     expect(mails[0].body).toContain('These 3 requests have waited more than a day')
     expect(mails[0].body).toContain('- Waited Long, Featherbase')
-    expect(mails[0].body).toContain('- Waited Long, Feather Dash')
+    expect(mails[0].body).toContain('- Waited Long, Dash')
     expect(mails[0].body).toContain('- not given, Featherbase')
     expect(mails[0].body).not.toContain('Just Asked')
     expect(mails[0].body).toContain('/featherbase/admin/waiting-for-access')
@@ -380,14 +380,14 @@ describe('the reminder a day later', () => {
     await viewerRole()
     const priya = await createUser({ email: 'priya.late@example.com', fullName: 'Priya Late', roles: [] })
     const sam = await createUser({ email: 'sam.late@example.com', fullName: 'Sam Late', roles: [] })
-    await ask(priya, 'feather_dash')
-    await ask(sam, 'feather_dash')
+    await ask(priya, 'dash')
+    await ask(sam, 'dash')
     await ageRequests('2 days')
     await giveRole(sam.user!, VIEWER)
     expect(await remindAccessRequests()).toBe(1)
     const [mail] = await mailsTo('manager.one@example.com', REMINDER_SUBJECT)
     expect(mail.body).toContain('This request has waited more than a day')
-    expect(mail.body).toContain('- Priya Late, Feather Dash')
+    expect(mail.body).toContain('- Priya Late, Dash')
     expect(mail.body).not.toContain('Sam Late')
   })
 

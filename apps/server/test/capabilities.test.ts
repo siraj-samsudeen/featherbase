@@ -124,9 +124,9 @@ describe('whoami lists the installed apps the person can open', () => {
     const { resolve } = await import('node:path')
     try {
       expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/dash-stand-in')])).toEqual([])
-      await admin.post('/api/install_app', { name: 'feather_dash' })
+      await admin.post('/api/install_app', { name: 'dash' })
       const reader = await createUser({ email: 'dash.whoami@example.com' })
-      expect((await reader.get<{ apps: unknown }>('/api/whoami')).apps).toEqual([{ name: 'feather_dash', title: 'Dash stand-in' }])
+      expect((await reader.get<{ apps: unknown }>('/api/whoami')).apps).toEqual([{ name: 'dash', title: 'Dash stand-in' }])
     } finally {
       // The installed app stays loaded in this process after its rows roll back.
       await discoverPackages([])
@@ -140,11 +140,11 @@ describe('whoami lists the installed apps the person can open', () => {
     const { resolve } = await import('node:path')
     try {
       expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/dash-stand-in')])).toEqual([])
-      await admin.post('/api/install_app', { name: 'feather_dash' })
-      await admin.post('/api/set_app_enabled', { name: 'feather_dash', enabled: false })
+      await admin.post('/api/install_app', { name: 'dash' })
+      await admin.post('/api/set_app_enabled', { name: 'dash', enabled: false })
       const reader = await createUser({ email: 'dash.whoami.disabled@example.com' })
       const whoami = await reader.get<{ apps: unknown; installed_apps: string[] }>('/api/whoami')
-      expect({ apps: whoami.apps, installed: whoami.installed_apps?.includes('feather_dash') }).toEqual({ apps: [], installed: true })
+      expect({ apps: whoami.apps, installed: whoami.installed_apps?.includes('dash') }).toEqual({ apps: [], installed: true })
     } finally {
       await discoverPackages([])
     }

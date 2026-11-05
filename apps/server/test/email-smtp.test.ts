@@ -173,7 +173,7 @@ describe('EHLO name: never the container hostname', () => {
   test('SMTP_NAME wins, then the MAIL_FROM domain, then the host of the address marked for emails', () => {
     const INSTANCE_ADDRESSES = JSON.stringify([
       { address: 'https://admin.example.test', opens: 'admin' },
-      { address: 'https://dash.example.test:8443', opens: 'feather_dash', emails: true },
+      { address: 'https://dash.example.test:8443', opens: 'dash', emails: true },
     ])
     expect(name({ SMTP_NAME: 'mail.jeyarama.com', MAIL_FROM: FROM, INSTANCE_ADDRESSES })).toBe('mail.jeyarama.com')
     expect(name({ MAIL_FROM: 'Feather Dash <noreply@Jeyarama.COM>', INSTANCE_ADDRESSES })).toBe('jeyarama.com')

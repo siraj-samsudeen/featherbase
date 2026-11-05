@@ -392,7 +392,7 @@ function SalesTargetReport() {
       {/* #489: the shared top bar. The identity line and the store switcher
           sit below it, inside the page (Stage B moves the switcher into the
           bar as a declared control). */}
-      <TopBar home="feather_dash" />
+      <TopBar home="dash" />
       <div className="flex flex-wrap items-center justify-between gap-3 px-3 pt-3" data-testid="report-identity">
         <div className="flex min-w-0 items-center gap-3">
           <div>
@@ -650,9 +650,9 @@ function SalesTargetReport() {
   )
 }
 
-/** #955: finding no access to Feather Dash is the request for it. */
+/** #955: finding no access to Dash is the request for it. */
 function NoReportAccess() {
-  const asked = useAccessRequest('feather_dash')
+  const asked = useAccessRequest('dash')
   if (asked?.state === 'waiting')
     return (
       <>

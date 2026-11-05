@@ -32,12 +32,12 @@ export interface Place {
 }
 
 const APP = {
-  rollout: 'feather_dash.store_rollout',
-  floors: 'feather_dash.store_floor',
-  departments: 'feather_dash.department',
-  sections: 'feather_dash.section',
-  placements: 'feather_dash.section_subcategory',
-  jobs: 'feather_dash.job_assignment',
+  rollout: 'dash.store_rollout',
+  floors: 'dash.store_floor',
+  departments: 'dash.department',
+  sections: 'dash.section',
+  placements: 'dash.section_subcategory',
+  jobs: 'dash.job_assignment',
 } as const
 
 /** Every Table the provider reads: featherbase.json's scopeProvider.tables. */

@@ -169,7 +169,7 @@ export default defineConfig({
             // served as a single address, exactly as before.
             INSTANCE_ADDRESSES: JSON.stringify([
               { address: `http://admin.localhost:${webPort}`, opens: 'admin', emails: true },
-              { address: `http://dash.localhost:${webPort}`, opens: 'feather_dash' },
+              { address: `http://dash.localhost:${webPort}`, opens: 'dash' },
               // #642: an installed app's own address, for its top-bar picker.
               { address: `http://barproof.localhost:${webPort}`, opens: 'barproof' },
             ]),
