@@ -241,6 +241,31 @@ describe('Scheduled copied-table refresh', () => {
     expect(await sql`select 1 from background_job where method = 'copy_refresh_conflict_notice' and job_status = 'queued'`).toEqual([])
   })
 
+  test('a refresh whose notice cannot even wait in a job still is not retried (#934)', async ({ admin, createUser }) => {
+    await changeStandin(dir, 'sales', ['create table keep_stores as select * from stores'])
+    await makeCopy(admin, 'keep_stores')
+    await createUser({ email: 'copy.keep934@example.test', roles: ['System Manager'] })
+    const row = await admin.get<{ updated_at: string }>('/api/table/Scheduled%20Stores/S001')
+    await admin.post('/api/save_row', { table: 'Scheduled Stores', row: { row_id: 'S001', title: 'Personal correction', updated_at: row.updated_at } })
+    await changeStandin(dir, 'sales', ["update keep_stores set name = 'New source value' where code in ('S001', 'S002')"])
+    invalidateSources('refresh-test')
+    await sql`create function featherbase.refuse_refresh_notice() returns trigger language plpgsql as $$
+      begin raise exception 'notice queue unavailable'; end $$`
+    await sql`create trigger refuse_refresh_notice before insert on featherbase.email_queue
+      for each row execute function featherbase.refuse_refresh_notice()`
+    await sql`create trigger refuse_notice_job before insert on featherbase.background_job
+      for each row when (new.method = 'copy_refresh_conflict_notice') execute function featherbase.refuse_refresh_notice()`
+    await sql`delete from background_job`
+    const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
+    await sql`update background_job set run_at = now() where method = ${schedule.method}`
+    await runOneJob()
+    const [execution] = await sql`select outcome, result from job_execution where method = ${schedule.method}`
+    expect(execution.outcome).toBe('success')
+    expect(execution.result).toContain('Conflict notice could not be queued or kept for later')
+    const queued = await sql`select attempts, run_at > now() as future from background_job where method = ${schedule.method} and job_status = 'queued'`
+    expect(queued).toEqual([{ attempts: 0, future: true }])
+  })
+
   test('a scheduled change is an undoable system observation', async ({ admin }) => {
     await changeStandin(dir, 'sales', ['create table actor_stores as select * from stores'])
     await makeCopy(admin, 'actor_stores')
