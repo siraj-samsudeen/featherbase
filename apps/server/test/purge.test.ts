@@ -377,3 +377,28 @@ describe('#859 delete permanently, Codex review round 9', () => {
     expect(seen).toContain(`row:${STORE}:S-A updated`)
   })
 })
+
+describe('#859 delete permanently, Codex review round 10', () => {
+  test('the record keeps replies, and files on comments; a reply is removed too', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    const [c] = await sql`select row_id from comment where ref_table = ${BU} and ref_name = 'BU-T'`
+    await admin.post('/api/table/Comment', { ref_table: 'Comment', ref_name: c.row_id, content: 'a reply' })
+    await purge(admin, bu, { ids: ['BU-T'] })
+    const [rec] = await sql`select snapshot from access_log where operation = 'purge' and ref_table = ${BU} and reference_name = 'BU-T'`
+    expect(rec.snapshot._comments[0]).toMatchObject({ content: 'made by mistake', _comments: [expect.objectContaining({ content: 'a reply' })] })
+    expect(await sql`select 1 from comment where ref_table = 'Comment' and ref_name = ${c.row_id}`).toHaveLength(0)
+  })
+
+  test('two fields sharing a sub-table keep their own lines in the record', async ({ admin }) => {
+    await makeTable(admin, { name: 'Pg Twin Line', kind: 'sub_table', columns: ['label'] })
+    const doc = await makeTable(admin, { name: 'Pg Twin', id_pattern: 'prompt', columns: [
+      { column_name: 'left_side', column_type: 'Sub-table', row_table: 'Pg Twin Line' },
+      { column_name: 'right_side', column_type: 'Sub-table', row_table: 'Pg Twin Line' },
+    ] })
+    await admin.post(doc.url, { row_id: 'T-1', left_side: [{ label: 'L' }], right_side: [{ label: 'R' }] })
+    await purge(admin, doc, { ids: ['T-1'] })
+    const [rec] = await sql`select snapshot from access_log where operation = 'purge' and ref_table = 'Pg Twin' and reference_name = 'T-1'`
+    expect(rec.snapshot.left_side.map((l: { label: string }) => l.label)).toEqual(['L'])
+    expect(rec.snapshot.right_side.map((l: { label: string }) => l.label)).toEqual(['R'])
+  })
+})

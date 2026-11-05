@@ -315,6 +315,18 @@ export async function purgePreview(table: string, args: Record<string, unknown>,
 
 const MAX_REASON = 1000
 
+/** What a row's comments and files said, replies and files on them included,
+ *  for its deletion record: nothing is silently lost. */
+async function activitySnapshot(db: Db, table: string, rowId: string, depth = 0): Promise<{ _comments: Row[]; _files: Row[] }> {
+  const read = async (kind: string, relation: string, columns: string[]) => {
+    const rows = await db`select row_id, ${db(columns)} from ${db(`${PLATFORM_SCHEMA}.${relation}`)} where ref_table = ${table} and ref_name = ${rowId} order by created_at`
+    const out: Row[] = []
+    for (const r of rows) out.push({ ...r, ...(depth < 8 ? await activitySnapshot(db, kind, String(r.row_id), depth + 1) : {}) })
+    return out
+  }
+  return { _comments: await read('Comment', 'comment', ['created_by', 'created_at', 'content']), _files: await read('File', 'file', ['created_by', 'created_at', 'file_name', 'file_url']) }
+}
+
 /** Removes every platform record naming a row: its comments, history, files,
  *  shares, tags and the rest (ROW_ID_HOLDERS), all but the Access Log. */
 async function forgetRow(db: Db, table: string, rowId: string, files: string[]) {
@@ -415,7 +427,7 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
       const snapshots = new Map<string, Row>()
       for (const line of group) {
         const [row] = await db`select * from ${db(await tableRelation(line.table))} where ${db(ROW_KEY)} = ${line.row_id}`
-        if (row) snapshots.set(line.row_id, row as Row)
+        if (row) snapshots.set(line.row_id, { ...(row as Row), ...(await activitySnapshot(db, line.table, line.row_id)) })
       }
       await saveSurviving(parenttype, parent, async (_doc, docMeta) => {
         const values: Row = {}
@@ -433,9 +445,6 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
       }
     }
 
-    // What is attached to attached rows first (a reply on a comment).
-    for (const a of [...plan.attached].reverse()) await forgetRow(db, a.table, a.row_id, files)
-
     // Dependents before the rows they point at; the asked-for rows last.
     for (const r of [...plan.rows].reverse()) {
       const meta = await getMeta(r.table)
@@ -444,22 +453,29 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
       if (!row) continue
       await assertRowNotManaged(db, meta, r.row_id, user)
       await runHooks('on_trash', { row: row as Row, meta, user, isNew: false, tx: db })
+      // The record is taken before anything goes: replies, and the lines' own activity, included.
+      const activity = await activitySnapshot(db, r.table, r.row_id)
       const ownLines: Record<string, Row[]> = {}
       for (const f of meta.columns) {
         if (f.column_type !== 'Sub-table') continue
         const childRel = await tableRelation(f.row_table!)
-        ownLines[f.column_name] = (await db`delete from ${db(childRel)} where parent = ${r.row_id} and parenttype = ${r.table} returning *`) as Row[]
-        for (const line of ownLines[f.column_name]) await forgetRow(db, f.row_table!, String(line[ROW_KEY]), files)
+        const held = (await db`select * from ${db(childRel)} where parent = ${r.row_id} and parenttype = ${r.table} and parentfield = ${f.column_name} order by position`) as Row[]
+        ownLines[f.column_name] = []
+        for (const line of held) {
+          ownLines[f.column_name].push({ ...line, ...(await activitySnapshot(db, f.row_table!, String(line[ROW_KEY]))) })
+          await forgetRow(db, f.row_table!, String(line[ROW_KEY]), files)
+        }
+        await db`delete from ${db(childRel)} where parent = ${r.row_id} and parenttype = ${r.table} and parentfield = ${f.column_name}`
       }
-      // The record keeps what the row's own activity said; nothing is silently lost.
-      const said = await db`select created_by, created_at, content from ${db(`${PLATFORM_SCHEMA}.comment`)} where ref_table = ${r.table} and ref_name = ${r.row_id} order by created_at`
-      const stored = await db`select created_by, created_at, file_name, file_url from ${db(`${PLATFORM_SCHEMA}.file`)} where ref_table = ${r.table} and ref_name = ${r.row_id} order by created_at`
       await forgetRow(db, r.table, r.row_id, files)
       await db`delete from ${db(rel)} where ${db(meta.row_key)} = ${r.row_id}`
-      await record(db, user, r.table, r.row_id, reason, { ...(row as Row), ...ownLines, _comments: [...said], _files: [...stored] }, run, root)
+      await record(db, user, r.table, r.row_id, reason, { ...(row as Row), ...ownLines, ...activity }, run, root)
       events.push({ table: r.table, row_id: r.row_id, event: 'deleted' })
       deleted++
     }
+
+    // Then what was attached to attached rows (a reply on a comment).
+    for (const a of [...plan.attached].reverse()) await forgetRow(db, a.table, a.row_id, files)
 
     // Nothing may still point at a removed row: a reference written while
     // this ran refuses the whole delete rather than dangle.
