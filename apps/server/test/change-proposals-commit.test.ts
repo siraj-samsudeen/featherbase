@@ -61,7 +61,7 @@ prove('real commits: two approvers approving at once apply it once', async () =>
     const adds = [await act(people[0], { op: 'propose', request: { table: TABLE, row: null, changes: { label: 'Only one', site: 'East' }, approvers } }),
       await act(people[1], { op: 'propose', request: { table: TABLE, row: null, changes: { label: 'Only one', site: 'West' }, approvers } })]
     await Promise.all(adds.map(({ result }, index) =>
-      act(people[2 - index], { op: 'add_once', key: 'only-one', label: 'Only one', id: result.row_id, decision: { approvers, effectiveOn: '2026-11-05', newRow: { placement_id: `O-${index}` } } })))
+      act(people[index + 1], { op: 'add_once', key: 'only-one', label: 'Only one', id: result.row_id, decision: { approvers, effectiveOn: '2026-11-05', newRow: { placement_id: `O-${index}` } } })))
     expect((await sql`select count(*)::int as n from ${sql(await tableRelation(TABLE))} where label = 'Only one'`)[0].n).toBe(1)
   } finally {
     // A disposable database: nothing here is cleaned up but the app's hold on it.
