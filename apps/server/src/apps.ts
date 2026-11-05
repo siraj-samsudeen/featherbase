@@ -301,7 +301,9 @@ export async function provisionGrants(
         const meta = await getMeta(table)
         const columns = Array.isArray(selection) ? meta.columns.filter((column) =>
           selection.some((name) => name === column.column_name || name.startsWith(`${column.column_name}.`))) : []
-        if (Array.isArray(selection) && selection.some((name) => !columns.some((column) => name.split('.')[0] === column.column_name)))
+        // A dotted name goes through a grid; recursion checks the rest of it.
+        if (Array.isArray(selection) && selection.some((name) => !columns.some((column) => name.split('.')[0] === column.column_name
+          && (!name.includes('.') || column.column_type === 'Sub-table'))))
           throw new AppError('ValidationError', `Permission on ${table} names an unknown Column`)
         const rule = selection === '*' ? 'every' : Array.isArray(selection) ? 'listed' : 'basic'
         const saved = await saveDoc('Permission', {

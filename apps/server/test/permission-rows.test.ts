@@ -86,6 +86,8 @@ describe('an app grant naming Columns', () => {
   test('a listed Column the Table lacks refuses the install; a listed one is all it reaches', async () => {
     registerApp({ name: 'pr-bad-columns', tables: [], roles: ['Pr Lister'], permissions: [{ table: 'Comment', role: 'Pr Lister', operations: { read: ['no_such_column'] } }] })
     await expect(installApp('pr-bad-columns')).rejects.toMatchObject({ message: expect.stringContaining('unknown Column') })
+    registerApp({ name: 'pr-dotted-columns', tables: [], roles: ['Pr Lister'], permissions: [{ table: 'Comment', role: 'Pr Lister', operations: { read: ['content.nested'] } }] })
+    await expect(installApp('pr-dotted-columns')).rejects.toMatchObject({ message: expect.stringContaining('unknown Column') })
     registerApp({ name: 'pr-columns', tables: [], roles: ['Pr Lister'], permissions: [{ table: 'Comment', role: 'Pr Lister', operations: { read: ['content'] } }] })
     await installApp('pr-columns')
     try {
