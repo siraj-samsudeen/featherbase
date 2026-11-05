@@ -53,6 +53,13 @@ later sign-in uses that account.
 - **WHEN** the user who signed in that way signs in again
 - **THEN** they are signed in to the same account and no other account is made
 
+#### Scenario: The HR system later answers for someone else
+
+- **WHEN** the user signs in again, and the HR system confirms the password but
+  names a different record than the one their account was linked to
+- **THEN** they are refused as for a wrong password, and their account stays as
+  it was
+
 #### Scenario: Two first sign-ins at once
 
 - **WHEN** the same user's first sign-in is sent twice at the same moment

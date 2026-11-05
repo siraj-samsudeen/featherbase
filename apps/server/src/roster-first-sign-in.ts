@@ -15,7 +15,7 @@ import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { runAsSystemActor } from './system-actor'
 import { signInActor } from 'shared'
-import { checkWithProvider, rosterFrom, type DelegatedLoginConfig, type RosterLink } from './delegated-login'
+import { ROSTER_LINK, checkWithProvider, rosterFrom, type DelegatedLoginConfig, type RosterLink } from './delegated-login'
 import { auditIdentity, newIdentityId, type SignInMethod } from './identities'
 import { addIdentifier, writeThroughIdentity } from './person-identifiers'
 import { normaliseValue, type IdentifierKind, type NormaliseRule } from './identifiers'
@@ -169,7 +169,7 @@ interface Linked {
 async function winner(method: SignInMethod, row: { record: string; person: string | null }): Promise<Linked | null> {
   const [won] = await sql`
     select id, person_id from sign_in_identity
-    where method = ${method.key} and subject = ${row.record} and ended_at is null and linked_by = 'roster-first-sign-in'`
+    where method = ${method.key} and subject = ${row.record} and ended_at is null and linked_by = ${ROSTER_LINK}`
   if (!won || (row.person && String(won.person_id) !== row.person)) return null
   return { user: String(won.person_id), identity: String(won.id), created: false }
 }
@@ -202,7 +202,7 @@ async function link(method: SignInMethod, roster: Roster, id: string, asked: Ros
       subject: row.record,
       sign_in_name: row.sign_in_id,
       display_name: row.name,
-      linked_by: 'roster-first-sign-in',
+      linked_by: ROSTER_LINK,
       last_used_at: new Date(),
     })}`
     await writeThroughIdentity(identity)

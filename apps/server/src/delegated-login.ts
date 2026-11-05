@@ -12,7 +12,8 @@
 // an unrecognised shape is "could not confirm", never a sign-in. A body that
 // says the person has left is refused even with a right password — StyleHR
 // keeps authenticating leavers (data-warehouse report_server/stylehr_auth.py,
-// whose rules this ports). Binding never depends on the body.
+// whose rules this ports). Binding depends on the body only for a link a roster
+// first sign-in made (#970), which must name its record.
 //
 // The password is held for one outbound request and never stored, logged,
 // thrown or echoed. Failures are logged as label + outcome only.
@@ -110,6 +111,9 @@ export interface RosterLink {
   provider_record_key: string
   identifiers: Record<string, string>
 }
+
+/** `linked_by` on a link a roster first sign-in made. */
+export const ROSTER_LINK = 'roster-first-sign-in'
 
 const COLUMN_NAME = /^[a-z][a-z0-9_]*$/
 const ROSTER_COLUMNS = ['sign_in_id_column', 'record_number_column', 'person_column', 'name_column', 'status_column'] as const
@@ -304,6 +308,12 @@ export async function checkWithProvider(
     logOutcome(cfg, 'rejected', `http_${res.status}_error_body ${keys}`)
     return 'rejected'
   }
+  // Before the left check: an answer about somebody else says nothing about this person.
+  const named = mustName && ls.map((o) => o[mustName.key]).find(filled)
+  if (mustName && named !== undefined && String(named).trim() !== mustName.record) {
+    logOutcome(cfg, 'another_record', `http_${res.status} ${keys}`)
+    return 'another_record'
+  }
   if (ls.some((o) => saysLeft(o, cfg.wire))) {
     logOutcome(cfg, 'left', `http_${res.status} ${keys}`)
     return 'left'
@@ -312,13 +322,10 @@ export async function checkWithProvider(
     logOutcome(cfg, 'unavailable', `http_${res.status}_unrecognised_success ${keys}`)
     return 'unavailable'
   }
-  if (mustName) {
-    // The first filled value wins, top level first; a blank or missing one is no match.
-    const named = ls.map((o) => o[mustName.key]).find(filled)
-    if (named === undefined || String(named).trim() !== mustName.record) {
-      logOutcome(cfg, 'another_record', `http_${res.status} ${keys}`)
-      return 'another_record'
-    }
+  // A yes that names no record is not a yes for this one.
+  if (mustName && named === undefined) {
+    logOutcome(cfg, 'another_record', `http_${res.status} ${keys}`)
+    return 'another_record'
   }
   return 'verified'
 }
@@ -356,6 +363,28 @@ function eligibleOne(cfg: DelegatedLoginConfig, rows: Record<string, unknown>[])
   if (!rows[0].enabled || rows[0].privileged)
     throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   return { user: String(rows[0].row_id), identity: String(rows[0].identity) }
+}
+
+/** What a sign-in through this link must have the provider name (#970): a link
+ *  a roster first sign-in made is keyed on the row's record, and stays held to
+ *  it on every sign-in, so an ID that comes to answer for someone else cannot
+ *  open this person's account. Refused when the method no longer says where
+ *  the provider names it, rather than stop checking. */
+export async function recordToName(cfg: DelegatedLoginConfig, identity: string | null): Promise<{ key: string; record: string } | undefined> {
+  if (!identity) return undefined
+  const [link] = await sql`select subject, linked_by from sign_in_identity where id = ${identity}`
+  if (link?.linked_by !== ROSTER_LINK) return undefined
+  let roster: RosterLink | null = null
+  try {
+    roster = rosterFrom(cfg.method.settings)
+  } catch {
+    /* malformed: the same as none */
+  }
+  if (!roster) {
+    console.warn(`[delegated-login] ${cfg.label}: a roster-made link refused, the method has no roster to check it with`)
+    throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
+  }
+  return { key: roster.provider_record_key, record: String(link.subject) }
 }
 
 /** Does no live link carry this sign-in name? Then the method's rule for people

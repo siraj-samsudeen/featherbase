@@ -8,7 +8,7 @@ Alternatives: a hard-coded `Employee` Table (the platform would name a client's 
 
 ### What links the row: the service must name the record
 
-StyleHR takes the employee number and uses the first record carrying it, and some numbers are on two records. A yes for a shared number can therefore belong to somebody else. So `provider_record_key` is required, and a yes that does not carry the row's record number is not a yes. This narrows "binding never depends on the body" in `delegated-login.ts`, which keeps holding for people already linked: their person was found before the service was asked.
+StyleHR takes the employee number and uses the first record carrying it, and some numbers are on two records. A yes for a shared number can therefore belong to somebody else. So `provider_record_key` is required, and a yes that does not carry the row's record number is not a yes. The same check holds on every later sign-in through a link this rule made, ahead of the leaver check, so an answer about somebody else neither signs this person in nor disables them. This narrows "binding never depends on the body" in `delegated-login.ts`, which keeps holding for links an administrator made: their subject need not be the record the service names.
 
 Alternative: trust the yes because the number matched one row. Rejected: the roster holds only part of StyleHR, so a collision with someone outside it would be invisible and would give one person another's login.
 

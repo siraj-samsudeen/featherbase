@@ -27,7 +27,7 @@ import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview
 import { resolvePreviewPerson } from './preview-person'
 import { personByEmail, pickPeople, principalNames, tableMembers } from './people-directory'
 import { countWaitingForAccess } from './waiting-for-access'
-import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser, noLinkCarries } from './delegated-login'
+import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser, noLinkCarries, recordToName } from './delegated-login'
 import { rosterFirstSignIn } from './roster-first-sign-in'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { sendInvitation } from './invitation-email'
@@ -281,8 +281,7 @@ app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
     const account = await linkedUser(cfg, id)
     // The shared pipeline (sign-in.ts) does the rest: an outage never falls
     // back to another way in, and a leaver is disabled everywhere.
-    const status = await checkWithProvider(cfg, id, pwd)
-    // Only a call with mustName can answer another_record.
+    const status = await checkWithProvider(cfg, id, pwd, await recordToName(cfg, account.identity))
     issued = await completeSignIn(cfg.method, { status: status === 'another_record' ? 'rejected' : status }, account, { testMode: delegatedTestMode(), ipAddress: clientAddress(c) })
   }
   const session = { token: issued.token, user: issued.user }
