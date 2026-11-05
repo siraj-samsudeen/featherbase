@@ -3,7 +3,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { installApp, provisionGrants, registerApp, uninstallApp } from '../src/apps'
-import { permittedColumns, sameStoredValue } from '../src/permissions'
+import { permittedColumns, sameStoredValue, tableAccessFor } from '../src/permissions'
 import { childColumns } from '../src/row-readers'
 import { enabledPeople } from '../src/people-directory'
 import { invalidateMeta } from '../src/meta'
@@ -177,6 +177,12 @@ describe('a grant reaches only what its rows allow', () => {
     const person = await holder()
     expect([...await childColumns(person, DT, 'Pr Line', link, 'read', 'someone-else')]).toEqual(['@basic'])
     expect((await childColumns(person, DT, 'Pr Line', link, 'read', person)).has('*')).toBe(true)
+  })
+
+  test('a grant to read identifiers alone opens no Admin', async ({ admin }) => {
+    await setup(admin)
+    await insert({ row_id: 'pr-ids', ref_table: 'Person', operation: 'read_identifiers', column_rule: 'every' })
+    expect(await tableAccessFor(await holder(), [ROLE])).toMatchObject({ readable: expect.not.arrayContaining(['Person']), ownGrant: false, admin: false })
   })
 
   test('provisioning the same app grant again adds nothing', async ({ admin }) => {

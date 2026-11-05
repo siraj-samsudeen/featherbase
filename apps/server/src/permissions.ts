@@ -216,7 +216,9 @@ export async function tableAccessFor(
       (p.operation = 'create' and not d.system_written) as can_create
     from permission p
     join table_def d on d.name = p.ref_table and d.kind = 'table'
-    where p.parent_permission is null and p.requires_permission is null and p.role in ${sql(roles)}`
+    where p.parent_permission is null and p.requires_permission is null and p.role in ${sql(roles)}
+      -- Reading identifiers says nothing about using a Table: it opens no Admin.
+      and p.operation <> 'read_identifiers'`
   const active = rows.filter(
     (r) => r.owner_app == null || activeApps.has(String(r.owner_app)),
   )
