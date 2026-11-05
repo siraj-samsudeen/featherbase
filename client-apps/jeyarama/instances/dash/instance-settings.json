@@ -96,6 +96,10 @@
             "value": {
               "env": "SERVICE_ACCOUNT"
             }
+          },
+          {
+            "row_id": "feather_dash.linked_tables",
+            "value": "[\"Employee\", \"Job Assignment\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site Master\"]"
           }
         ]
       }
