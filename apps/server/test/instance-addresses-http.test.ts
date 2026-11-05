@@ -6,8 +6,7 @@ import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
 import { saveDoc } from '../src/document'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { methodOfKind } from '../src/identities'
-import { alertNewArrival } from '../src/waiting-for-access'
+import { alertAccessRequest } from '../src/waiting-for-access'
 import { makePerson } from './fixtures'
 import { setPasswordFromShell } from '../src/auth'
 import { preAuthPolicy } from '../src/pre-auth-rate-limit'
@@ -578,7 +577,7 @@ describe('emailed links use the address marked for emails', () => {
   test('the waiting-for-access alert, an Admin page, links to the admin address even when emails use an app address', async () => {
     await makePerson({ email: 'manager.488@example.com', full_name: 'Manager', roles: [{ role: 'System Manager' }] })
     const arrival = await makePerson({ full_name: 'New Arrival', email: 'new.arrival@staff.example.com' })
-    await alertNewArrival(arrival, (await methodOfKind('google'))!)
+    await alertAccessRequest(arrival, { name: 'featherbase', title: 'Featherbase' })
     const [mail] = await sql`select body from email_queue where lower(recipient) = 'manager.488@example.com'`
     expect(String(mail.body)).toContain(`${ADMIN}/featherbase/admin/waiting-for-access`)
   })
