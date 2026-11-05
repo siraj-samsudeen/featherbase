@@ -243,6 +243,11 @@ describe('a column made a Choice by hand: choiceOptions', () => {
     for (const [value] of coerceRows([{ column_name: 'c', column_type: 'Choice' }], [[' b'], [2]]).map((r) => Object.values(r.values)))
       expect(options).toContain(value)
   })
+  test('a date is an option in the form it is sent', () => {
+    const day = new Date(2026, 10, 5)
+    const [sent] = coerceRows([{ column_name: 'c', column_type: 'Choice' }], [[day]]).map((r) => r.values.c)
+    expect(choiceOptions([day])).toEqual([sent])
+  })
   test('leaves out a value holding a line break, since options are one per line', () => {
     expect(choiceOptions(['a', 'b\nc'])).toEqual(['a'])
   })
