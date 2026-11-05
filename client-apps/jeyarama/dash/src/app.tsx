@@ -132,7 +132,7 @@ export function FeatherDash() {
           {view.why === 'no_sections' && (
             <>
               <span>This store has no sections set up yet, so there is nothing to show.</span>
-              <a href={SECTIONS_ADDRESS} data-testid="fix-link">Open your sections to put this right</a>
+              <a href={SECTIONS_ADDRESS} data-testid="fix-link">Open Your sections to see what is set against you</a>
             </>
           )}
           {view.why === 'not_built' && 'The figures are being prepared. Try again in a few minutes.'}
@@ -187,7 +187,7 @@ function NoAccess() {
     return (
       <Notice testid="no-access">
         <span>You don't have access to any store's report yet. Ask your Store Manager if you think you should.</span>
-        <a href={SECTIONS_ADDRESS} data-testid="fix-link">See what is mapped to you, and correct it</a>
+        <a href={SECTIONS_ADDRESS} data-testid="fix-link">Open Your sections to see what is set against you, and correct it</a>
       </Notice>
     )
   const health = <p><a href="/featherbase/admin/instance-health">Open instance health</a></p>

@@ -118,6 +118,7 @@ describe('Your sections', () => {
     await page.choose(page.q('pick-section')!.querySelector('select')!, 'silk-row')
     await page.click('Send for approval')
     expect(calls.find(c => c.kind === 'actions')).toEqual({ kind: 'actions', name: 'propose_move', payload: { job: 'job-row', to_section: 'silk-row', placement: 'placement-row' } })
+    expect(page.q('sent-note')?.textContent).toContain('Sent to Mani Manager')
     await page.done()
   })
 
@@ -162,16 +163,22 @@ describe('Your sections', () => {
     page = await render('YourSections')
     expect(page.q('store-no-sections')?.textContent).toContain('This store has no sections set up yet')
     await page.done()
+    answers.my_sections = { state: 'ok', name: 'Asha', jobs: [{ ...job, is_store: false, reports_to: null, section: null, subcategories: [], other_sections: [] }], proposals: [] }
+    page = await render('YourSections')
+    expect(page.q('store-no-sections')?.textContent).toBe('This job is not in a store, so it has no sections.')
+    await page.done()
   })
 
   it('offers the approvals page only when something waits', async () => {
-    answers.my_sections = { state: 'ok', name: 'Asha', jobs: [], proposals: [] }
+    answers.my_sections = { state: 'ok', name: 'Asha', jobs: [], proposals: [], waiting_for_me: 0 }
     let page = await render('YourSections')
     expect(page.q('approvals-link')).toBeNull()
+    expect(page.q('approvals-notice')).toBeNull()
     await page.done()
-    answers.approvals = { state: 'ok', proposals: [pending] }
+    answers.my_sections = { state: 'ok', name: 'Asha', jobs: [], proposals: [], waiting_for_me: 1 }
     page = await render('YourSections')
     expect(page.q('approvals-link')?.textContent).toContain('Waiting for your approval (1)')
+    expect(page.q('approvals-notice')?.textContent).toBe('1 change is waiting for your approval')
     await page.done()
   })
 })
@@ -202,12 +209,37 @@ describe('Waiting for your approval', () => {
     await page.done()
   })
 
-  it('a stale proposal says nothing was done', async () => {
+  it('a stale proposal says nothing was done, and a refusal refreshes the list', async () => {
     answers.approvals = { state: 'ok', proposals: [pending] }
     answers.decide = { ...pending, state: 'Needs fresh review' }
-    const page = await render('Approvals')
+    let page = await render('Approvals')
     await page.click('Approve')
-    expect(page.q('approval-stale')?.textContent).toContain('nothing was done')
+    expect(page.q('decision-note')?.textContent).toContain('nothing was done')
+    await page.done()
+    answers.decide = new Error('This has already been decided')
+    page = await render('Approvals')
+    const before = calls.filter(c => c.name === 'approvals').length
+    await page.click('Approve')
+    expect(page.q('decision-note')?.textContent).toBe('This has already been decided')
+    expect(calls.filter(c => c.name === 'approvals').length).toBeGreaterThan(before)
+    await page.done()
+  })
+
+  it('the sidebar count follows the list', async () => {
+    answers.approvals = { state: 'ok', proposals: [pending, { ...pending, id: 'p2' }] }
+    const page = await render('Approvals')
+    expect(page.q('approvals-link')?.textContent).toContain('(2)')
+    answers.approvals = { state: 'ok', proposals: [{ ...pending, id: 'p2' }] }
+    answers.decide = { ...pending, state: 'Applied' }
+    await page.click('Approve')
+    expect(page.q('approvals-link')?.textContent).toContain('(1)')
+    await page.done()
+  })
+
+  it('a section proposal reads as being about them', async () => {
+    answers.approvals = { state: 'ok', proposals: [{ ...pending, kind: 'section', what: 'Staff at Lakeside', from: 'No section', to: 'Silk' }] }
+    const page = await render('Approvals')
+    expect(page.q('approval-what')?.textContent).toBe('Set their section to Silk')
     await page.done()
   })
 

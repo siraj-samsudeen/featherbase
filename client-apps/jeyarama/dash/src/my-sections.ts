@@ -88,6 +88,8 @@ const inForce = (row: Row, today: string) => {
   const ends = day(row.ends_on)
   return (!starts || starts <= today) && (!ends || ends >= today)
 }
+/** Not over yet: in force today, or set to start later. */
+const notOver = (row: Row, today: string) => !day(row.ends_on) || day(row.ends_on) >= today
 const JOB_FIELDS = ['employee', 'job', 'site', 'floor', 'section', 'reports_to', 'starts_on', 'ends_on']
 const PLACEMENT_FIELDS = ['placement_id', 'site', 'subcategory', 'section', 'starts_on', 'ends_on']
 const SECTION_FIELDS = ['section_name', 'site', 'floor', 'section_status']
@@ -118,6 +120,13 @@ async function approversOf(ctx: BaseContext, job: Row | undefined): Promise<{ ap
   const person = exact(manager?.employee_status) === 'Current' ? exact(manager?.person) : ''
   return { approvers: { people: person ? [person] : [], fallbackRoles: [FALLBACK_ROLE] }, manager: person ? text(manager.employee_name) : null, reportsTo: text(manager?.employee_name) || null }
 }
+
+/** A later placement of this subcategory here: an open-ended new row would overlap it. */
+async function scheduledLater(ctx: BaseContext, site: string, subcategory: string, today: string): Promise<boolean> {
+  const rows = await list(ctx, T.placement, PLACEMENT_FIELDS, [['site', '=', site], ['subcategory', '=', subcategory]])
+  return rows.some(row => notOver(row, today) && day(row.starts_on) > today)
+}
+const SCHEDULED = 'A change to that subcategory is already planned here. Ask the master data team to look at it'
 
 const about = (proposal: ChangeProposal) => (proposal.about ?? {}) as unknown as About
 const VIEW_LIMIT = 50
@@ -162,6 +171,8 @@ export const reads = {
     const placements = held.length ? (await all(ctx, T.placement, PLACEMENT_FIELDS, [['section', 'in', held]])).filter(row => inForce(row, today)) : []
     const names = placements.length ? byId(await all(ctx, T.subcategory, ['subcategory'], [['row_id', 'in', unique(placements.map(p => exact(p.subcategory)))]])) : new Map<string, Row>()
     const floorName = (section: Row | undefined) => text(floors.get(exact(section?.floor))?.floor_name) || null
+    const mine = await ctx.changeProposals.list({ makers: [ctx.user], limit: VIEW_LIMIT })
+    const waitingOn = new Map(mine.filter(p => p.state === 'Pending' && about(p).kind === 'move').map(p => [about(p).subcategory, view(p).waiting_for]))
     const views = []
     for (const job of jobs) {
       const site = exact(job.site)
@@ -173,14 +184,13 @@ export const reads = {
         waiting_for: manager ?? MASTER_DATA_TEAM,
         section: section ? { id: exact(section.row_id), name: text(section.section_name), floor: floorName(section) } : null,
         subcategories: section ? placements.filter(p => exact(p.section) === exact(section.row_id))
-          .map(p => ({ id: exact(p.row_id), name: text(names.get(exact(p.subcategory))?.subcategory) || 'Unnamed subcategory' }))
+          .map(p => ({ id: exact(p.row_id), name: text(names.get(exact(p.subcategory))?.subcategory) || 'Unnamed subcategory', waiting_for: waitingOn.get(exact(p.subcategory)) ?? null }))
           .sort((a, b) => a.name.localeCompare(b.name)) : [],
         other_sections: sections.filter(s => exact(s.site) === site && isActive(s) && exact(s.row_id) !== exact(job.section))
           .map(s => ({ id: exact(s.row_id), name: text(s.section_name), floor: floorName(s) }))
           .sort((a, b) => a.name.localeCompare(b.name)),
       })
     }
-    const mine = await ctx.changeProposals.list({ makers: [ctx.user], limit: VIEW_LIMIT })
     return { state: 'ok' as const, name: text(employees[0].employee_name), jobs: views, proposals: mine.map(view), waiting_for_me: (await waitingForMe(ctx)).length }
   },
 
@@ -192,19 +202,28 @@ export const reads = {
     const today = istToday()
     const job = (await myJobs(ctx, await myEmployees(ctx), today)).find(row => exact(row.row_id) === jobId)
     if (!job) ctx.reject('That is not a job of yours')
-    const found = (await list(ctx, T.subcategory, ['subcategory', 'deleted_at_source'],
-      [['subcategory', 'like', `%${typed}%`], ['is_merchandise', '=', true]], 40)).filter(row => row.deleted_at_source !== true)
-    if (!found.length) return []
-    const codes = found.map(row => exact(row.row_id))
-    const placed = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['site', '=', exact(job!.site)], ['subcategory', 'in', codes]])).filter(row => inForce(row, today))
-    const where = new Map(placed.map(row => [exact(row.subcategory), exact(row.section)]))
-    const sections = placed.length ? byId(await list(ctx, T.section, SECTION_FIELDS, [['row_id', 'in', unique(placed.map(row => exact(row.section)))]])) : new Map<string, Row>()
-    return found
-      .filter(row => where.get(exact(row.row_id)) !== exact(job!.section))
-      .map(row => {
-        const section = where.get(exact(row.row_id))
-        return { code: exact(row.row_id), name: text(row.subcategory), now_in: section ? text(sections.get(section)?.section_name) : null }
-      })
+    const asked = new Set((await ctx.changeProposals.list({ makers: [ctx.user], states: ['Pending'], limit: 500 })).map(p => about(p).subcategory))
+    // Page by page until enough are left: what is already in this section isn't an answer, so a limit first could hide every real one.
+    const shown: { code: string; name: string; now_in: string | null; asked: boolean }[] = []
+    for (let start = 0; shown.length < 20; start += 100) {
+      const page = await ctx.baseTables.list(T.subcategory, { fields: ['row_id', 'subcategory', 'deleted_at_source'],
+        filters: [['subcategory', 'like', `%${typed}%`], ['is_merchandise', '=', true]], order_by: 'row_id asc', limit_start: start, limit_page_length: 100 })
+      const found = page.filter(row => row.deleted_at_source !== true)
+      if (found.length) {
+        const codes = found.map(row => exact(row.row_id))
+        const placed = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['site', '=', exact(job!.site)], ['subcategory', 'in', codes]])).filter(row => inForce(row, today))
+        const where = new Map(placed.map(row => [exact(row.subcategory), exact(row.section)]))
+        const sections = placed.length ? byId(await list(ctx, T.section, SECTION_FIELDS, [['row_id', 'in', unique(placed.map(row => exact(row.section)))]])) : new Map<string, Row>()
+        for (const row of found) {
+          const code = exact(row.row_id)
+          if (where.get(code) === exact(job!.section)) continue
+          const section = where.get(code)
+          shown.push({ code, name: text(row.subcategory), now_in: section ? text(sections.get(section)?.section_name) : null, asked: asked.has(code) })
+        }
+      }
+      if (page.length < 100) break
+    }
+    return shown
       // The store's own first: an unplaced subcategory is the rarer correction.
       .sort((a, b) => Number(!a.now_in) - Number(!b.now_in) || a.name.localeCompare(b.name))
       .slice(0, 20)
@@ -251,6 +270,7 @@ export const actions = {
       ctx.reject('That subcategory is not in your section')
     const to = await sectionInStore(ctx, payload.to_section, exact(job.site))
     if (exact(to.row_id) === exact(from.row_id)) ctx.reject('That is already its section')
+    if (await scheduledLater(ctx, exact(job.site), exact(placement.subcategory), today)) ctx.reject(SCHEDULED)
     const [name] = await list(ctx, T.subcategory, ['subcategory'], [['row_id', '=', exact(placement.subcategory)]])
     const { approvers, ...base } = await aboutTheJob(ctx, job, employee)
     const proposal = await ctx.changeProposals.propose({ table: T.placement, row: exact(placement.row_id), changes: { section: exact(to.row_id) }, reviewed: ['site', 'subcategory'], approvers,
@@ -269,6 +289,7 @@ export const actions = {
     const [subcategory] = code ? await list(ctx, T.subcategory, ['subcategory', 'is_merchandise', 'deleted_at_source'], [['row_id', '=', code]]) : []
     if (!subcategory || subcategory.is_merchandise !== true || subcategory.deleted_at_source === true) ctx.reject('Pick a subcategory from the list')
     const site = exact(job.site)
+    if (await scheduledLater(ctx, site, code, today)) ctx.reject(SCHEDULED)
     const placed = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['site', '=', site], ['subcategory', '=', code]])).filter(row => inForce(row, today))
     if (placed.some(row => exact(row.section) === exact(section.row_id))) ctx.reject('That subcategory is already in your section')
     if (placed.length > 1) ctx.reject('That subcategory is in more than one section here. Ask the master data team to look at it')
@@ -304,10 +325,12 @@ export const actions = {
     const [proposal] = typeof payload.proposal === 'string' && payload.proposal ? await ctx.changeProposals.list({ ids: [payload.proposal] }) : []
     if (!proposal) ctx.reject('That proposal no longer exists')
     const a = about(proposal)
-    // Authority holds still until this commits: the job, then its manager, then the read.
+    // Authority holds still until this commits: the job, then its people, then the reads.
     await ctx.changeProposals.lockRow(T.job, a.job_assignment)
     const [job] = await list(ctx, T.job, JOB_FIELDS, [['row_id', '=', a.job_assignment]])
-    if (exact(job?.reports_to)) await ctx.changeProposals.lockRow(T.employee, exact(job.reports_to))
+    // The people in one order, so two decisions can't wait on each other's; then what the rules below read.
+    for (const person of unique([exact(job?.reports_to), exact(job?.employee)]).sort()) await ctx.changeProposals.lockRow(T.employee, person)
+    await ctx.changeProposals.lockRow(T.section, a.to_section)
     const { approvers } = await approversOf(ctx, job)
     if (payload.decision === 'reject')
       return view(await ctx.changeProposals.reject(proposal.row_id, { approvers, reason: typeof payload.reason === 'string' ? payload.reason : '' }))
@@ -342,9 +365,10 @@ async function whyStale(ctx: ActionContext, proposal: ChangeProposal, a: About, 
   if (!isActive(to) || exact(to?.site) !== a.site) return 'The section it would go to is no longer open.'
   if (a.kind === 'move' && exact(job.section) !== a.from_section) return 'The person who asked no longer holds that section.'
   if (a.kind === 'add' && exact(job.section) !== a.to_section) return 'The person who asked no longer holds that section.'
-  if (a.kind === 'add' && !a.from_section) {
-    const placed = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['site', '=', a.site], ['subcategory', '=', a.subcategory]])).filter(row => inForce(row, today))
-    if (placed.length) return 'That subcategory has since been put in a section.'
+  if (a.kind !== 'section') {
+    const rows = await list(ctx, T.placement, PLACEMENT_FIELDS, [['site', '=', a.site], ['subcategory', '=', exact(a.subcategory)]])
+    if (rows.some(row => notOver(row, today) && day(row.starts_on) > today)) return 'A change to that subcategory is already planned.'
+    if (a.kind === 'add' && !a.from_section && rows.some(row => notOver(row, today))) return 'That subcategory has since been put in a section.'
   }
   return null
 }

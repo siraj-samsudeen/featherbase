@@ -199,8 +199,9 @@ describe('what an app may propose', () => {
     await expect(probe(maker, ask(manager.user, { label: 'Silk' }, 'NOT-A-ROW'))).rejects.toMatchObject({ status: expect.any(Number) })
     await expect(probe(maker, ask(manager.user, { label: 'Sarees' }))).rejects.toMatchObject({ status: 417 })
     const first = await probe(maker, ask(manager.user))
-    // Asking for the same again is refused; a different ask on the same row is allowed.
+    // Asking for the same again is refused, whatever unchanged column it also names; a different ask on the same row is allowed.
     await expect(probe(maker, ask(manager.user))).rejects.toMatchObject({ status: 417 })
+    await expect(probe(maker, ask(manager.user, { label: 'Silk', site: 'North' }))).rejects.toMatchObject({ status: 417 })
     await probe(maker, ask(manager.user, { label: 'Linen' }))
     const stampless = decision(manager.user, { effectiveOn: '2026-11-05', newRow: { placement_id: 'P-9', secret: 'smuggled' } })
     await expect(probe(manager, { op: 'approve', id: first.row_id, decision: stampless })).rejects.toMatchObject({ status: 417 })

@@ -258,7 +258,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
       if (!route) reject('Nobody else can approve this, so it cannot be sent')
       const same = await proposalsWhere(app, { states: ['Pending'], makers: [user], limit: 500 })
       const key = (list: { column_name: string; proposed_value: string | null }[]) => JSON.stringify([...list].sort((a, b) => a.column_name.localeCompare(b.column_name)).map(c => [c.column_name, c.proposed_value]))
-      const asked = key(entries.map(([column_name, proposed_value]) => ({ column_name, proposed_value })))
+      const asked = key(entries.filter(([column, value]) => !current || before(column) !== value).map(([column_name, proposed_value]) => ({ column_name, proposed_value })))
       // Only what the proposal changes: the reviewed columns hold still.
       const askedOf = (p: ChangeProposal) => key(p.changes.filter(c => p.target_row === null || c.proposed_value !== c.review_base_value))
       if (same.some(p => p.target_table === table && (p.target_row ?? null) === (row ?? null) && askedOf(p) === asked)) reject('You have already asked for this')
@@ -295,7 +295,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
           // A planned end that has since passed: the row isn't in force, though nobody changed it.
           || (asText(current[declared.endsOn], 'Date') ?? '9999') < effective
         if (stale) {
-          await close(proposal.row_id, 'Needs fresh review', { reason: 'The row changed after this was asked for.' })
+          await close(proposal.row_id, 'Needs fresh review', { reason: 'It changed after this was asked for.' })
           return oneProposal(app, id)
         }
       }
@@ -313,7 +313,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
         await saveDoc(meta.name, { row_id: proposal.target_row, updated_at: current.updated_at, [declared.endsOn]: dayBefore(effective) }, proposal.maker, 'upsert', { skipPermissions: true })
         await note(proposal.row_id, meta.name, proposal.target_row!, proposal.maker)
         // #627 Q6: the row they were reviewed against has ended.
-        await sql`update change_proposal set proposal_state = 'Needs fresh review', decision_reason = 'Another change to this row was approved first.', updated_at = now(), updated_by = ${user}
+        await sql`update change_proposal set proposal_state = 'Needs fresh review', decision_reason = 'Another change to this was approved first.', updated_at = now(), updated_by = ${user}
           where app = ${app} and target_table = ${meta.name} and target_row = ${proposal.target_row} and proposal_state = 'Pending' and row_id <> ${proposal.row_id}`
       }
       await note(proposal.row_id, meta.name, result, proposal.maker)

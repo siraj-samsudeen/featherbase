@@ -33,7 +33,7 @@ export class FeatherbaseSidebar extends HTMLElement {
       @media (max-width:700px) {
         .sidebar-frame { display:block; min-height:0; border-right:0; border-bottom:1px solid var(--color-border); }
         slot { display:flex; overflow-x:auto; }
-        ::slotted(button), ::slotted(a) { width:auto !important; flex:0 0 auto; }
+        ::slotted(button), ::slotted(a) { width:auto !important; flex:0 0 auto; min-height:44px !important; }
       }`
     this.setAttribute('role', 'navigation')
     if (!this.hasAttribute('aria-label')) this.setAttribute('aria-label', 'Application navigation')

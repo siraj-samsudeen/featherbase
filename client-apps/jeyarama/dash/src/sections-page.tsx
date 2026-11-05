@@ -13,6 +13,7 @@ export const SECTIONS_ADDRESS = '?view=sections'
 export const APPROVALS_ADDRESS = '?view=approvals'
 
 interface Named { id: string; name: string }
+interface Placed extends Named { waiting_for: string | null }
 interface SectionChoice extends Named { floor: string | null }
 interface Job {
   id: string
@@ -22,7 +23,7 @@ interface Job {
   reports_to: string | null
   waiting_for: string
   section: SectionChoice | null
-  subcategories: Named[]
+  subcategories: Placed[]
   other_sections: SectionChoice[]
 }
 interface Proposal {
@@ -39,9 +40,9 @@ interface Proposal {
   decided_on: string
   who?: string
 }
-type Mine = { state: 'not_set_up' | 'unknown_person' } | { state: 'ok'; name: string; jobs: Job[]; proposals: Proposal[] }
+type Mine = { state: 'not_set_up' | 'unknown_person' } | { state: 'ok'; name: string; jobs: Job[]; proposals: Proposal[]; waiting_for_me: number }
 type Waiting = { state: 'not_set_up' } | { state: 'ok'; proposals: Proposal[] }
-interface Found { code: string; name: string; now_in: string | null }
+interface Found { code: string; name: string; now_in: string | null; asked: boolean }
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : 'That did not go through. Try again.')
 const sectionLabel = (section: SectionChoice) => (section.floor ? `${section.name} · ${section.floor}` : section.name)
@@ -54,6 +55,13 @@ export function askedFor(proposal: Pick<Proposal, 'kind' | 'what' | 'from' | 'to
   return nowhere ? `Add ${what} to ${to}` : `Move ${what} from ${from} to ${to}`
 }
 
+/** The same, as the approver reads it about someone else. */
+export function askedOfApprover(proposal: Pick<Proposal, 'kind' | 'what' | 'from' | 'to'>): string {
+  const { kind, from, to } = proposal
+  if (kind !== 'section') return askedFor(proposal)
+  return from === 'No section' ? `Set their section to ${to}` : `Change their section from ${from} to ${to}`
+}
+
 /** The proposal's state, as the pill says it. */
 export function outcome(proposal: Pick<Proposal, 'state' | 'waiting_for'>): { tone: StatusTone; label: string } {
   if (proposal.state === 'Applied') return { tone: 'positive', label: 'Approved' }
@@ -62,14 +70,19 @@ export function outcome(proposal: Pick<Proposal, 'state' | 'waiting_for'>): { to
   return { tone: 'caution', label: `Waiting for ${proposal.waiting_for}` }
 }
 
-/** The app's navigation. The approvals row appears only when something waits for this person. */
-export function DashSidebar({ current }: { current: DashView }) {
-  const [waiting, setWaiting] = useState(0)
+const approvalsLabel = (waiting: number) => (waiting === 1 ? '1 change is waiting for your approval' : `${waiting} changes are waiting for your approval`)
+
+/** The app's navigation. The approvals row appears only when something waits for this person.
+ *  A page that already knows the count passes it, so the row follows what the page shows. */
+export function DashSidebar({ current, count }: { current: DashView; count?: number }) {
+  const [fromRead, setWaiting] = useState(0)
+  const waiting = count ?? fromRead
   useEffect(() => {
+    if (count !== undefined) return
     let live = true
     read<Waiting>('approvals').then(answer => { if (live && answer.state === 'ok') setWaiting(answer.proposals.length) }, () => {})
     return () => { live = false }
-  }, [])
+  }, [count])
   const here = (view: DashView) => (current === view ? { 'aria-current': 'page' as const } : {})
   return createElement('featherbase-sidebar', { 'aria-label': 'Dash navigation' },
     <a href={current === 'report' ? `${window.location.pathname}${window.location.search}` : window.location.pathname} {...here('report')}>
@@ -83,15 +96,16 @@ export function DashSidebar({ current }: { current: DashView }) {
     (waiting > 0 || current === 'approvals') && (
       <a href={APPROVALS_ADDRESS} {...here('approvals')} data-testid="approvals-link">
         <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6 9 17l-5-5" /></svg>
-        <span>Waiting for your approval{waiting > 0 ? ` (${waiting})` : ''}</span>
+        <span className="max-sm:hidden">Waiting for your approval{waiting > 0 ? ` (${waiting})` : ''}</span>
+        <span className="sm:hidden">Approve{waiting > 0 ? ` (${waiting})` : ''}</span>
       </a>
     ))
 }
 
-function Shell({ current, title, testid, children }: { current: DashView; title: string; testid: string; children: ReactNode }) {
+function Shell({ current, count, title, testid, children }: { current: DashView; count?: number; title: string; testid: string; children: ReactNode }) {
   return (
     <div className="fd-shell">
-      <DashSidebar current={current} />
+      <DashSidebar current={current} count={count} />
       <main className="fd-page" data-testid={testid}>
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
           <h1 className="fd-title">{title}</h1>
@@ -127,7 +141,7 @@ const NotSetUp = () => (
 export function YourSections() {
   const { answer, failed, load } = useAnswer<Mine>('my_sections')
   return (
-    <Shell current="sections" title="Your sections" testid="your-sections">
+    <Shell current="sections" count={answer?.state === 'ok' ? answer.waiting_for_me : undefined} title="Your sections" testid="your-sections">
       {!answer && !failed && <Loading />}
       {failed && <LoadFailed onRetry={load} />}
       {answer?.state === 'not_set_up' && <NotSetUp />}
@@ -139,6 +153,9 @@ export function YourSections() {
       {answer?.state === 'ok' && (
         <>
           <p className="fd-muted" data-testid="person-name">{answer.name}. If something here is wrong, say so. Nothing changes until it is approved.</p>
+          {answer.waiting_for_me > 0 && (
+            <Notice tone="caution"><a href={APPROVALS_ADDRESS} data-testid="approvals-notice">{approvalsLabel(answer.waiting_for_me)}</a></Notice>
+          )}
           {answer.jobs.length === 0 && (
             <Card data-testid="no-job"><EmptyState title="You have no current job on the staff list" body="Ask your manager to check it with HR." /></Card>
           )}
@@ -153,25 +170,30 @@ export function YourSections() {
 function JobCard({ job, onSent }: { job: Job; onSent: () => Promise<unknown> }) {
   // One correction open at a time on a job, so a phone never holds two forms.
   const [open, setOpen] = useState<{ kind: 'section' | 'missing' } | { kind: 'move'; subcategory: Named } | null>(null)
+  const [sentNote, setSentNote] = useState(false)
   const close = () => setOpen(null)
-  const sent = async () => { close(); await onSent() }
+  const sent = async () => { close(); setSentNote(true); await onSent() }
+  const start = (next: NonNullable<typeof open>) => { setSentNote(false); setOpen(next) }
   return (
     <Card data-testid="job-card" title={`${job.job} · ${job.store}`}>
       <div className="flex flex-col gap-3 p-4">
         <p className="fd-muted" data-testid="reports-to">{job.reports_to ? `You report to ${job.reports_to}` : 'No manager is set against this job'}</p>
-        {!job.is_store && <p className="fd-muted">This job is not in a store, so it may have no sections.</p>}
+        {sentNote && <Notice tone="positive"><span data-testid="sent-note">Sent to {job.waiting_for}. Nothing changes until it is approved.</span></Notice>}
         {job.section ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-semibold" data-testid="section-name">{sectionLabel(job.section)}</p>
-            {job.other_sections.length > 0 && <Button variant="quiet" onClick={() => setOpen({ kind: 'section' })}>My section is wrong</Button>}
+            {job.other_sections.length > 0 && <Button variant="quiet" className="-mx-3" onClick={() => start({ kind: 'section' })}>My section is wrong</Button>}
           </div>
         ) : job.other_sections.length > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-2" data-testid="no-section">
             <p>No section is set against your job.</p>
-            <Button variant="quiet" onClick={() => setOpen({ kind: 'section' })}>Say which section is yours</Button>
+            <Button variant="quiet" className="-mx-3" onClick={() => start({ kind: 'section' })}>Say which section is yours</Button>
           </div>
         ) : (
-          <p data-testid="store-no-sections">This store has no sections set up yet. Tell your manager, so they can ask for them to be set up.</p>
+          <p data-testid="store-no-sections">
+            {!job.is_store ? 'This job is not in a store, so it has no sections.'
+              : `This store has no sections set up yet. Tell ${job.reports_to ? 'your manager' : 'the master data team'}, so they can be set up.`}
+          </p>
         )}
         {open?.kind === 'section' && <PickSection job={job} action="propose_section" label="Your correct section" payload={{}} onCancel={close} onSent={sent} />}
         {job.section && (
@@ -183,7 +205,9 @@ function JobCard({ job, onSent }: { job: Job; onSent: () => Promise<unknown> }) 
                   <li key={subcategory.id} className="py-1">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="min-w-0 break-words">{subcategory.name}</span>
-                      {job.other_sections.length > 0 && <Button variant="quiet" onClick={() => setOpen({ kind: 'move', subcategory })}>Not in my section</Button>}
+                      {subcategory.waiting_for
+                        ? <StatusPill tone="caution" className="max-w-full whitespace-normal">Waiting for {subcategory.waiting_for}</StatusPill>
+                        : job.other_sections.length > 0 && <Button variant="quiet" className="-mx-3" onClick={() => start({ kind: 'move', subcategory })}>Not in my section</Button>}
                     </div>
                     {open?.kind === 'move' && open.subcategory.id === subcategory.id && (
                       <PickSection job={job} action="propose_move" label={`Which section is ${subcategory.name} in?`} payload={{ placement: subcategory.id }} onCancel={close} onSent={sent} />
@@ -192,7 +216,7 @@ function JobCard({ job, onSent }: { job: Job; onSent: () => Promise<unknown> }) 
                 ))}
               </ul>
             )}
-            <div><Button onClick={() => setOpen({ kind: 'missing' })}>A subcategory is missing</Button></div>
+            <div><Button onClick={() => start({ kind: 'missing' })}>A subcategory is missing</Button></div>
             {open?.kind === 'missing' && <FindSubcategory job={job} onCancel={close} onSent={sent} />}
           </>
         )}
@@ -276,7 +300,9 @@ function FindSubcategory({ job, onCancel, onSent }: { job: Job; onCancel: () => 
                 {row.name}
                 <span className="block text-sm text-ink-muted">{row.now_in ? `Now in ${row.now_in}` : 'Not in any section here'}</span>
               </span>
-              <Button variant="primary" loading={busy === row.code} disabled={busy !== null} onClick={() => add(row.code)}>Ask to add</Button>
+              {row.asked
+                ? <StatusPill tone="caution">Already asked</StatusPill>
+                : <Button variant="primary" loading={busy === row.code} disabled={busy !== null} onClick={() => add(row.code)}>Ask to add</Button>}
             </li>
           ))}
         </ul>
@@ -296,7 +322,7 @@ function YourProposals({ proposals }: { proposals: Proposal[] }) {
             <li key={proposal.id} className="flex flex-col gap-1 py-3" data-testid="your-proposal">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="min-w-0 break-words">{askedFor(proposal)}</span>
-                <StatusPill tone={tone}>{label}</StatusPill>
+                <StatusPill tone={tone} className="max-w-full whitespace-normal">{label}</StatusPill>
               </div>
               <p className="text-sm text-ink-muted">Asked on {fmtDate(proposal.asked_on)}{proposal.decided_on ? ` · Decided on ${fmtDate(proposal.decided_on)}` : ''}</p>
               {proposal.reason && <p className="text-sm" data-testid="proposal-reason">{proposal.reason}</p>}
@@ -311,40 +337,44 @@ function YourProposals({ proposals }: { proposals: Proposal[] }) {
 
 export function Approvals() {
   const { answer, failed, load } = useAnswer<Waiting>('approvals')
+  // What just happened stays said after the card has gone from the list.
+  const [note, setNote] = useState<{ tone: 'positive' | 'negative' | 'caution'; text: string } | null>(null)
+  const after = (next: NonNullable<typeof note>) => { setNote(next); return load() }
   return (
-    <Shell current="approvals" title="Waiting for your approval" testid="approvals">
+    <Shell current="approvals" count={answer?.state === 'ok' ? answer.proposals.length : undefined} title="Waiting for your approval" testid="approvals">
+      {note && <Notice tone={note.tone}><span data-testid="decision-note">{note.text}</span></Notice>}
       {!answer && !failed && <Loading />}
       {failed && <LoadFailed onRetry={load} />}
       {answer?.state === 'not_set_up' && <NotSetUp />}
       {answer?.state === 'ok' && answer.proposals.length === 0 && (
         <Card data-testid="nothing-waiting">
-          <EmptyState title="Nothing is waiting for you" body="When someone who reports to you asks to correct their sections, it shows here." />
+          <EmptyState title="Nothing is waiting for you" body="When someone asks to correct their sections and it needs you, it shows here." />
         </Card>
       )}
-      {answer?.state === 'ok' && answer.proposals.map(proposal => <ApprovalCard key={proposal.id} proposal={proposal} onDecided={load} />)}
+      {answer?.state === 'ok' && answer.proposals.map(proposal => <ApprovalCard key={proposal.id} proposal={proposal} onDone={after} />)}
     </Shell>
   )
 }
 
-function ApprovalCard({ proposal, onDecided }: { proposal: Proposal; onDecided: () => Promise<unknown> }) {
+function ApprovalCard({ proposal, onDone }: { proposal: Proposal; onDone: (note: { tone: 'positive' | 'negative' | 'caution'; text: string }) => Promise<unknown> }) {
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
   const [reasonError, setReasonError] = useState<string | null>(null)
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [stale, setStale] = useState(false)
   async function decide(decision: 'approve' | 'reject') {
     if (decision === 'reject' && !reason.trim()) return setReasonError('Say why, so they know what to do next')
     setBusy(decision)
-    setError(null)
     setReasonError(null)
     try {
       const after = await act<Proposal>('decide', { proposal: proposal.id, decision, ...(decision === 'reject' ? { reason: reason.trim() } : {}) })
-      if (after.state === 'Needs fresh review') { setStale(true); setBusy(null); return }
-      await onDecided()
+      const name = proposal.who ?? 'They'
+      await onDone(after.state === 'Needs fresh review'
+        ? { tone: 'caution', text: `Things changed after ${name} asked, so nothing was done. They can ask again.` }
+        : after.state === 'Rejected' ? { tone: 'positive', text: `Rejected. ${name} can see your reason.` }
+        : { tone: 'positive', text: `Approved. ${askedOfApprover(proposal)} is done.` })
     } catch (failure) {
-      setError(messageOf(failure))
-      setBusy(null)
+      // Decided elsewhere, or no longer theirs: the list as it is now, with the reason.
+      await onDone({ tone: 'negative', text: messageOf(failure) })
     }
   }
   return (
@@ -352,16 +382,10 @@ function ApprovalCard({ proposal, onDecided }: { proposal: Proposal; onDecided: 
       <div className="flex flex-col gap-3 p-4">
         <div>
           <p className="font-semibold" data-testid="approval-who">{proposal.who} · {proposal.store}</p>
-          <p data-testid="approval-what">{askedFor({ ...proposal, kind: proposal.kind === 'section' ? 'move' : proposal.kind, what: proposal.kind === 'section' ? 'their section' : proposal.what })}</p>
+          <p data-testid="approval-what">{askedOfApprover(proposal)}</p>
           <p className="text-sm text-ink-muted">Asked on {fmtDate(proposal.asked_on)}</p>
         </div>
-        {error && <Notice tone="negative">{error}</Notice>}
-        {stale ? (
-          <Notice tone="caution">
-            <span data-testid="approval-stale">Things changed after they asked, so nothing was done. They can ask again.</span>
-            <div className="mt-2"><Button onClick={onDecided}>OK</Button></div>
-          </Notice>
-        ) : rejecting ? (
+        {rejecting ? (
           <div className="flex flex-col gap-3">
             <Field label="Why are you rejecting this?" error={reasonError}>
               <TextInput value={reason} onChange={event => setReason(event.target.value)} />

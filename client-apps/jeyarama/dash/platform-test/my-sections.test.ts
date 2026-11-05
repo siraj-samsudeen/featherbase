@@ -94,10 +94,13 @@ describe('what a person sees', () => {
     const { maker } = await world(admin, createUser)
     const found = await read(maker, 'subcategory_search', { job: 'JA-1', query: 'sar' })
     expect(found).toEqual([
-      { code: '010101003', name: 'Silk Sarees', now_in: 'Silk' },
-      { code: '010101004', name: 'Sari Blouses', now_in: null },
+      { code: '010101003', name: 'Silk Sarees', now_in: 'Silk', asked: false },
+      { code: '010101004', name: 'Sari Blouses', now_in: null, asked: false },
     ])
     expect(await read(maker, 'subcategory_search', { job: 'JA-1', query: 's' })).toEqual([])
+    // What they already asked for says so, and what is already theirs never crowds out the rest.
+    await act(maker, 'propose_add', { job: 'JA-1', subcategory: '010101004' })
+    expect(await read(maker, 'subcategory_search', { job: 'JA-1', query: 'sari' })).toEqual([{ code: '010101004', name: 'Sari Blouses', now_in: null, asked: true }])
     await expect(read(maker, 'subcategory_search', { job: 'JA-4', query: 'sar' })).rejects.toMatchObject({ status: 417 })
   })
 })
@@ -108,7 +111,9 @@ describe('what a person may propose', () => {
     const proposal = await act(maker, 'propose_move', move())
     expect(proposal).toMatchObject({ kind: 'move', what: 'Sarees', from: 'Ladies Wear', to: 'Silk', store: 'Lakeside', state: 'Pending', waiting_for: 'Mani Manager' })
     expect(await row('Section Subcategory', 'LKS-1')).toMatchObject({ section: 'LKS-S1', ends_on: null })
-    expect((await read(maker, 'my_sections')).proposals).toEqual([expect.objectContaining({ id: proposal.id, state: 'Pending' })])
+    const seen = await read(maker, 'my_sections')
+    expect(seen.proposals).toEqual([expect.objectContaining({ id: proposal.id, state: 'Pending' })])
+    expect(seen.jobs[0].subcategories.find((s: any) => s.name === 'Sarees').waiting_for).toBe('Mani Manager')
   })
 
   test('refused: another store, a closed section, not their section, not their job', async ({ admin, createUser }) => {
@@ -129,6 +134,15 @@ describe('what a person may propose', () => {
     expect(await act(maker, 'propose_add', { job: 'JA-1', subcategory: '010101004' })).toMatchObject({ kind: 'add', what: 'Sari Blouses', from: 'No section', to: 'Ladies Wear' })
     await expect(act(maker, 'propose_add', { job: 'JA-1', subcategory: '010101001' })).rejects.toMatchObject({ status: 417 })
     await expect(act(maker, 'propose_add', { job: 'JA-1', subcategory: '990101001' })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('a change already planned for later is not overlapped', async ({ admin, createUser }) => {
+    const { maker, manager, save } = await world(admin, createUser)
+    const asked = await act(maker, 'propose_add', { job: 'JA-1', subcategory: '010101003' })
+    await save('Section Subcategory', { placement_id: 'LATER', site: 'LKS', subcategory: '010101004', section: 'LKS-S2', starts_on: '2099-01-01' })
+    await expect(act(maker, 'propose_add', { job: 'JA-1', subcategory: '010101004' })).rejects.toMatchObject({ status: 417 })
+    await save('Section Subcategory', { placement_id: 'LATER2', site: 'LKS', subcategory: '010101003', section: 'LKS-S1', starts_on: '2099-01-01' })
+    expect(await act(manager, 'decide', { proposal: asked.id, decision: 'approve' })).toMatchObject({ state: 'Needs fresh review' })
   })
 
   test('with nobody else to approve, it is refused saying so', async ({ admin, createUser }) => {
