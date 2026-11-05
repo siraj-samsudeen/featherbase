@@ -285,6 +285,14 @@ describe('Master sync (#927)', { timeout: 60_000 }, () => {
     expect(await pinned.get('/api/table/actionproof.work/W1')).toMatchObject({ title: 'Asha R' })
   })
 
+  test('a copied column named gone is only a column', async ({ admin }) => {
+    const { rule } = await world(admin, 'staff_named_gone')
+    await admin.post('/api/table_def/Sync%20Staff%20Copy/rename_column', { from: 'role', to: 'gone' })
+    await admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, columns: { ...rule.columns, floor_role: { source: 'gone', owner: 'featherbase' } } } })
+    expect(await run(admin)).toMatchObject({ applied: 0, ticket_errors: [] })
+    expect(await person(admin, 'P1')).toMatchObject({ employment_status: 'Active' })
+  })
+
   test('the scheduled refresh of a copy runs its sync rule after the copy', async ({ admin }) => {
     const { source } = await world(admin, 'staff_scheduled')
     await run(admin)

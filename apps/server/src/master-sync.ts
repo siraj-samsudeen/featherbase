@@ -265,6 +265,8 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
 }
 
 async function applyRule(actor: string, copied: string, rule: MasterSyncRule): Promise<Omit<MasterSyncResult, 'tickets' | 'ticket_errors'>> {
+  // Two copies feeding one master take turns, so they never lock its rows in opposite orders.
+  await sql`select pg_advisory_xact_lock(hashtext('master-sync-master:' || ${rule.master_table}))`
   const [copiedMeta, master, link] = await Promise.all([getMeta(copied), getMeta(rule.master_table), getMeta(rule.link.table)])
   if (!master.track_changes) throw new AppError('ValidationError', `${master.name} keeps no history, so a synced change could not say where it came from`)
   const runId = `sync-${randomUUID()}`
@@ -282,7 +284,7 @@ async function applyRule(actor: string, copied: string, rule: MasterSyncRule): P
     linked.set(key, (linked.get(key) ?? new Set()).add(String(l.master_row)))
   }
   const sourceColumns = [...new Set(Object.values(rule.columns).map(c => c.source))]
-  const copiedRows = await sql`select row_id, ${sql(DELETED_AT_SOURCE)} as gone, ${sql(sourceColumns)} from ${sql(await tableRelation(copiedMeta.name))} order by row_id`
+  const copiedRows = await sql`select row_id, ${sql(DELETED_AT_SOURCE)}, ${sql(sourceColumns)} from ${sql(await tableRelation(copiedMeta.name))} order by row_id`
   const snapshots = new Map((await sql`select source_key, master_row, source_values from featherbase.master_sync_snapshot where copied_table = ${copied}`)
     .map(s => [String(s.source_key), s as { master_row: string; source_values: Record<string, Value> }]))
   const masterRel = sql(await tableRelation(master.name))
@@ -292,7 +294,7 @@ async function applyRule(actor: string, copied: string, rule: MasterSyncRule): P
     const key = String(row.row_id)
     const targets = linked.get(key)
     if (!targets) {
-      if (!row.gone) differences.push({ kind: 'unlinked', source_key: key, master_row: null, column_name: null, source_value: null, featherbase_value: null })
+      if (!row[DELETED_AT_SOURCE]) differences.push({ kind: 'unlinked', source_key: key, master_row: null, column_name: null, source_value: null, featherbase_value: null })
       continue
     }
     if (targets.size > 1) {
@@ -316,7 +318,7 @@ async function applyRule(actor: string, copied: string, rule: MasterSyncRule): P
         if (before?.master_row === target && Object.hasOwn(before.source_values, field)) seen![field] = before.source_values[field]
         else delete seen![field]
       }
-      if (row.gone) {
+      if (row[DELETED_AT_SOURCE]) {
         // Never delete: mark inactive when the rule says how, else ask.
         if (!rule.inactive) differences.push({ kind: 'gone', source_key: key, master_row: target, column_name: null, source_value: null, featherbase_value: null })
         else {
