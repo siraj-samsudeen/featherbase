@@ -9,6 +9,11 @@
       "path": "example-apps/tickets",
       "version": "0.1.0",
       "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/7113aac39d370c84cb6646575c1d20b262f7fce6"
+    },
+    {
+      "path": "example-apps/tasker",
+      "version": "3.0.1",
+      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/ace7d8f12fc53dc595f7dbd74e5a46448c7a5bbf"
     }
   ],
   "madeUpData": "client-apps/jeyarama/dash/scripts/seed-made-up.mts"
