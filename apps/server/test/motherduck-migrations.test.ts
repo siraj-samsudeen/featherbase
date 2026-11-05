@@ -29,7 +29,7 @@ const branchHistory = {
 }
 const additions = ['0007_motherduck_pasted_token.sql', '0008_table_copy.sql', '0009_table_copy_lifecycle.sql']
 const laterMain = ['0012_table_settings_storage_identity.sql', '0013_reading_presentation.sql',
-  '0014_series_per_table.sql', '0015_metadata_override_editor.sql', '0138_mandatory_access.sql', '0140_data_source_sentence_labels.sql',
+  '0014_series_per_table.sql', '0015_metadata_override_editor.sql', '0018_row_retirement.ts', '0019_deletion_record.sql', '0138_mandatory_access.sql', '0140_data_source_sentence_labels.sql',
   '0141_any_table_link.sql']
 const pendingAfterLabels = [...additions, '0010_copy_refresh_schedule.sql', ...laterMain]
 const allMigrations = [...Object.keys(mainHistory), ...pendingAfterLabels]
@@ -156,7 +156,13 @@ it('upgrades the historical branch ledger without replacing its data', async () 
     const before = await snapshot()
     expect(await scratch.migrate.pendingMigrations()).toEqual(['0006_readable_labels.sql', ...pendingAfterLabels])
     expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
-    expect(await snapshot()).toEqual(before)
+    // #859: the upgrade adds three empty retirement columns; every value stays.
+    const held = (snap: Record<string, readonly Record<string, unknown>[]>) => Object.fromEntries(Object.entries(snap).map(([k, rows]) =>
+      [k, rows.map(({ retired_at, retired_by, retired_reason, ...row }) => {
+        expect([retired_at ?? null, retired_by ?? null, retired_reason ?? null]).toEqual([null, null, null])
+        return row
+      })]))
+    expect(held(await snapshot() as never)).toEqual(held(before as never))
     expect(await ledger(scratch)).toEqual([...allMigrations, ...Object.keys(branchHistory)].sort())
     await expectCurrent(scratch)
     expect(await scratch.db`select column_name, count(*)::int as count from featherbase.column_def

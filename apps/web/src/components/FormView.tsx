@@ -794,7 +794,7 @@ export function FormView({
               id="delete-row-title"
               className="mb-2 text-base font-semibold text-ink"
             >
-              Delete {table}: <RowTitle table={table} rowId={name} />?
+              Delete {table} {name}?
             </h2>
             <p className="mb-3 text-sm text-ink-muted">
               This cannot be undone.
@@ -840,8 +840,9 @@ export function FormView({
               >
                 Cancel
               </button>
-              {/* After a refusal, Delete would only be refused again. */}
-              {!deleteError && <button
+              {/* A refusal with a way out would only be refused again; a failed
+                  request (say, offline) can still be retried from here. */}
+              {!deleteOffersRetire && <button
                 onClick={deleteRow}
                 disabled={deleteBusy}
                 className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint disabled:opacity-40' })}
