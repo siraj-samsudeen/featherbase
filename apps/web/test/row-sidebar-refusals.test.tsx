@@ -127,7 +127,7 @@ test('a workflow action someone else already took is refused with the reason', a
     },
   })
   await admin.post(`/api/table/${ENC}`, { row_id: 'rsr-1', title: 'approve me' })
-  await openRow(admin, 'rsr-1', 'Work')
+  await openRow(admin, 'rsr-1', 'Form')
   const actions = await screen.findByTestId('workflow-actions')
   await within(actions).findByRole('button', { name: 'Approve' })
   await admin.post(`/api/table/${ENC}/rsr-1:apply_workflow_action`, { action: 'Approve' })

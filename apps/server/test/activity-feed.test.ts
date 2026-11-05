@@ -300,7 +300,7 @@ describe('#101: GET /api/activity_feed', () => {
       events: [{ kind: 'row', key: 'row:Feed Merch Map/1517|040802006', label: '1517|040802006', sub: 'Feed Merch Map', path: '/featherbase/admin/Feed%20Merch%20Map/1517%7C040802006' }],
     })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine')
-    expect(feed.items[0]).toMatchObject({ kind: 'row', title: '1517 · Kurti Z', sub: 'Feed Merch Map' })
+    expect(feed.items[0]).toMatchObject({ kind: 'row', title: 'Kurti Z · 1517', sub: 'Feed Merch Map' })
   })
 
   test("'mine' titles an old slug-labelled page from the catalog, query string and all", async ({ admin }) => {

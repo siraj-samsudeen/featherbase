@@ -52,7 +52,6 @@ const COVERAGE: Record<string, string> = {
   '/featherbase/admin/table/$table/naming': 'requires a selected Table',
   '/featherbase/admin/table/$table/permissions': 'requires a selected Table',
   '/featherbase/admin/explore': 'page catalogue',
-  '/featherbase/admin/table/$table/row/$name/map': 'requires an existing row',
 }
 
 it('#737 every actual router family has a destination provider or a contextual exclusion', () => {

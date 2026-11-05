@@ -1,5 +1,7 @@
 'use strict';
 
+const { expect } = require('playwright/test');
+
 // A table's list, with its "Show columns" menu and what changes the list
 // for everyone.
 
@@ -121,6 +123,76 @@ class ListPage {
   /** Opens the first row's form from the list. */
   async openFirstRow() {
     await this.rows().first().locator('a').first().click();
+  }
+
+  // ---- One row, the drill pane and the list's filters (#910) ----
+
+  /** The line of the row whose name (its title, a link) is `name`. */
+  rowNamed(name) {
+    const title = this.page.getByRole('link', { name, exact: true }).or(this.page.getByRole('button', { name, exact: true }));
+    return this.rows().filter({ has: title }).first();
+  }
+
+  /** Selects a row, by clicking its line where nothing else is to be clicked. */
+  async select(name) {
+    const row = this.rowNamed(name);
+    await row.waitFor({ timeout: 10_000 });
+    const plain = row.getByRole('cell')
+      .filter({ hasNot: this.page.getByRole('link') })
+      .filter({ hasNot: this.page.getByRole('button') })
+      .filter({ hasNot: this.page.getByRole('checkbox') });
+    await plain.last().click();
+  }
+
+  /** Clicks a linked row's name in a row's line: "Kerala" in Enchakkal's line. */
+  async clickLinkIn(name, linked) {
+    const row = this.rowNamed(name);
+    await row.waitFor({ timeout: 10_000 });
+    await row.getByRole('link', { name: linked, exact: true })
+      .or(row.getByRole('button', { name: linked, exact: true })).first().click();
+  }
+
+  /** What the list is showing: its address, its rows and its filters. */
+  async snapshot() {
+    await this.rows().first().waitFor({ timeout: 10_000 });
+    // Settled: every linked row's name has arrived (an ellipsis stands in until then).
+    await expect.poll(async () => (await this.rowTexts()).some((t) => t.includes('…')), { timeout: 10_000 }).toBe(false);
+    return { at: new URL(this.page.url()).pathname, rows: await this.rowTexts(), filters: await this.filterWords() };
+  }
+
+  /** The words of each filter in use. */
+  async filterWords() {
+    return (await this.page.getByTestId('filter-chip').allTextContents()).map((t) => t.replace('×', '').trim());
+  }
+
+  /** The control that removes a filter in use. */
+  removeFilterControls() {
+    return this.page.getByTestId('filter-chip').getByRole('button', { name: 'Remove filter', exact: true });
+  }
+
+  /** The list's layouts, buttons whose chosen state is aria-pressed: "Table", "Compact", "Tree" (the
+   *  list header's "Tree of all", #910 checklist 19). */
+  layout(name) {
+    const label = name === 'Tree' ? { name: /^Tree( of all)?$/ } : { name, exact: true };
+    return this.page.getByRole('group', { name: /layout|view/i }).getByRole('button', label)
+      .or(this.page.getByRole('main').getByRole('button', label).and(this.page.locator('[aria-pressed]')))
+      .first();
+  }
+
+  /** Switches the list's layout and waits until the choice is saved for this person. */
+  async chooseLayout(name) {
+    const choice = this.layout(name);
+    await choice.waitFor({ timeout: 10_000 });
+    await this.saving(() => choice.click());
+  }
+
+  async layoutChosen(name) {
+    return (await this.layout(name).getAttribute('aria-pressed', { timeout: 10_000 })) === 'true';
+  }
+
+  /** The labels of the column headers the list shows. */
+  async columnHeaders() {
+    return (await this.page.getByRole('main').getByRole('columnheader').allInnerTexts()).map((t) => t.replace(/[↑↓]/g, '').trim());
   }
 
   // ---- "Show columns" ----
