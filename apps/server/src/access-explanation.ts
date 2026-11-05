@@ -1,7 +1,9 @@
 import { sql } from './db'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
-import { OPEN_ROLES, PLATFORM_ROLES, assertSystemManager } from './permissions'
+import { OPEN_ROLES, PLATFORM_ROLES, getRoles } from './permissions'
+import { coversPersonScope, resolvePersonScope } from './person-scope'
+import { findScopeProvider } from './runtime-packages'
 import { principalReach, type TableReach } from './token-reach'
 import { rowTitles } from './row-titles'
 import { everyoneRoles } from './everyone-roles'
@@ -37,6 +39,31 @@ export interface AccessExplanation {
 
 const iso = (value: unknown) => (value as Date).toISOString()
 
+/** The built-in role whose holders may open anyone's page (#628). */
+export const ACCESS_AUDITOR = 'Access Auditor'
+
+/** Who may open someone else's page: a System Manager, an Access Auditor, or
+ *  (C1, owner 4 Nov) a viewer whose places cover every place of the person.
+ *  A person with no places is never covered: resolvePersonScope refuses an
+ *  empty scope, for either side. */
+async function assertMayExplain(person: string, viewer: string) {
+  if (person === viewer || viewer === 'Administrator') return
+  const roles = await getRoles(viewer)
+  if (roles.includes('System Manager') || roles.includes(ACCESS_AUDITOR)) return
+  if (await coversPlaces(viewer, person)) return
+  throw new AppError('PermissionError', 'Only the person, a System Manager, an Access Auditor or someone whose places cover theirs may open this page')
+}
+
+async function coversPlaces(viewer: string, person: string): Promise<boolean> {
+  const binding = await findScopeProvider()
+  // No usable scope on either side (NoPersonScope), or anything else that
+  // stops the answer, refuses: this only ever widens who may look.
+  // One after the other: each answer runs in the request's transaction.
+  return resolvePersonScope(person, binding)
+    .then(async (theirs) => coversPersonScope(theirs, await resolvePersonScope(viewer, binding)))
+    .catch(() => false)
+}
+
 /** Who gave each role the person holds, and when, from the Person's history:
  *  #830 records a Person's roles as one field, the names joined by ", ". The
  *  latest entry that added a role wins, so a role removed and given again
@@ -62,7 +89,7 @@ async function roleGrants(person: string): Promise<Map<string, { by: string; at:
 
 export async function explainAccess(person: string, viewer: string): Promise<AccessExplanation> {
   // Refuse before saying whether the person exists.
-  if (person !== viewer) await assertSystemManager(viewer)
+  await assertMayExplain(person, viewer)
   const [found] = await sql`
     select 1 from person where row_id = ${person}
     union all select 1 from service_account where row_id = ${person}`
