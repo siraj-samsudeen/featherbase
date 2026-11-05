@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isOpaqueId, usePrincipalName } from '../lib/people'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
+import { useWhoAmI } from '../lib/session'
 import { buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
 
 interface CommentRow {
@@ -42,6 +43,9 @@ export function activityQuery(table: string, name: string) {
 export function Comments({ table, name }: { table: string; name: string }) {
   const queryClient = useQueryClient()
   const me = getSessionUser()
+  // #909: the box names the person by name, never by an internal id.
+  const whoami = useWhoAmI().data
+  const myName = whoami?.full_name?.trim() || (me && !isOpaqueId(me.row_id) ? me.row_id : null)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [posting, setPosting] = useState(false)
@@ -135,7 +139,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
           value={draft}
           onChange={onChange}
           rows={2}
-          placeholder={`Comment as ${me?.row_id ?? 'you'}… use @ to mention`}
+          placeholder={myName ? `Comment as ${myName}… use @ to mention` : 'Write a comment… use @ to mention'}
           className={inputClasses('resize-none')}
           data-testid="comment-input"
         />
