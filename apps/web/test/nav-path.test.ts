@@ -122,6 +122,17 @@ describe('encodePath / decodePath', () => {
     expect(decodePath(encodePath(path))).toEqual(path)
   })
 
+  it("round-trips a group's relationship filter through a sub-table", () => {
+    // The :connections filter for a backlink through a sub-table (row-connections.ts).
+    const contains: NavStep = {
+      screen: 'list',
+      table: 'Purchase Order',
+      filters: [['row_id', 'related', { via: 'PO Line', column: 'item', table: 'Item', filters: [['row_id', '=', 'item-3']] }]],
+    }
+    const path = walk(sites, contains)
+    expect(decodePath(encodePath(path))).toEqual(path)
+  })
+
   it('accepts the already-parsed value a router hands over', () => {
     const path = walk(sites, kerala)
     expect(decodePath(JSON.parse(encodePath(path)))).toEqual(path)
@@ -148,6 +159,12 @@ describe('encodePath / decodePath', () => {
     ['a list with a row page centre', { screen: 'list', table: 'Site', row: 'site-1' }],
     ['filters that are not triples', { screen: 'list', table: 'Site', filters: [['state', '=']] }],
     ['a filter value that is an object', { screen: 'list', table: 'Site', filters: [['state', '=', { a: 1 }]] }],
+    ['a relationship filter on an ordinary operator', { screen: 'list', table: 'PO', filters: [['row_id', '=', { table: 'Item' }]] }],
+    ['a relationship filter without its table', { screen: 'list', table: 'PO', filters: [['row_id', 'related', { via: 'PO Line', column: 'item' }]] }],
+    ['a relationship filter with an unknown key', { screen: 'list', table: 'PO', filters: [['row_id', 'related', { table: 'Item', title: 'Widget' }]] }],
+    ['a relationship filter with via but no column', { screen: 'list', table: 'PO', filters: [['row_id', 'related', { table: 'Item', via: 'PO Line' }]] }],
+    ['a relationship filter with malformed inner filters', { screen: 'list', table: 'PO', filters: [['row_id', 'related', { table: 'Item', filters: [['row_id', '=']] }]] }],
+    ['a relationship filter nested too deep', { screen: 'list', table: 'PO', filters: [['a', 'related', { table: 'B', filters: [['b', 'related', { table: 'C', filters: [['c', 'related', { table: 'D', filters: [['d', 'related', { table: 'E' }]] }]] }]] }]] }],
     ['a pane without its row', { screen: 'list', table: 'Site', pane: { table: 'Site' } }],
     ['a group without its column', { screen: 'list', table: 'Site', pane: { table: 'Site', row: 'r', group: { table: 'Plant' } } }],
     ['an unknown pane tab', { screen: 'list', table: 'Site', pane: { table: 'Site', row: 'r', tab: 'map' } }],
