@@ -129,6 +129,10 @@ export interface TableMeta {
   system_written?: boolean
   // #559: the Table's rows decide which places people cover.
   decides_scope?: boolean
+  // #905: archived: readable, never written, out of everyday menus.
+  archived_at?: string | Date | null
+  archived_by?: string | null
+  archived_note?: string | null
   // EDS-3: set when this Table is bound to an external Data Source. A bound
   // Table has no local physical table, no DDL, no RLS; reads and writes
   // dispatch through sources/ (see sources/dispatch.ts).

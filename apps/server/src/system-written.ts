@@ -18,6 +18,20 @@ export function assertNotSystemWritten(
     )
 }
 
+/** The gate on every row write: never a system-written Table's, and (#905)
+ *  never an archived Table's, whoever asks, until a System Manager
+ *  un-archives it. Its columns, name and deletion are not row writes: they
+ *  keep assertNotSystemWritten alone, so an archived Table can still be
+ *  deleted later. */
+export function assertRowsWritable(
+  meta: Pick<TableMeta, 'name' | 'system_written' | 'archived_at'>,
+  action: string,
+): void {
+  assertNotSystemWritten(meta, action)
+  if (meta.archived_at)
+    throw new AppError('PermissionError', `${meta.name} is archived; its rows cannot be ${action}. A System Manager can un-archive it.`)
+}
+
 // #432: configuration that acts on another Table (a Server Script, Metadata
 // Override, Workflow or Custom Field) may not name a system-written one —
 // each would let a person reshape or rewrite the audit trail from the side.

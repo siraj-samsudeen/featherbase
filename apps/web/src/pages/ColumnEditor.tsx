@@ -27,7 +27,7 @@ import { ApiError, api } from '../lib/api'
 import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { RESERVED, SNAKE, TARGET_REQUIRED_TYPES, slugify } from '../lib/column-rules'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
-import { useShellTables } from '../lib/session'
+import { usePickableTables } from '../lib/session'
 
 interface NewColumn {
   label: string
@@ -158,7 +158,7 @@ function LinkRow({ def, column, onDone }: {
   onDone: (message: string) => void
 }) {
   const queryClient = useQueryClient()
-  const tables = useShellTables()
+  const tables = usePickableTables()
   const [open, setOpen] = useState(false)
   const [target, setTarget] = useState('')
   const name = column.column_name
