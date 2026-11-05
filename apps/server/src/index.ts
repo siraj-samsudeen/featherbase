@@ -55,6 +55,7 @@ import './actions/collection-import-revert'
 import './actions/source-actions'
 import './actions/motherduck-actions'
 import './actions/copy-refresh-actions'
+import './actions/master-sync-actions'
 import './actions/row-connections'
 import './actions/collection-aggregate'
 import './actions/collection-summary'
@@ -848,7 +849,7 @@ app.get('*', async (c, next) => {
         404,
       )
     }
-    const { file, bytes, catalog, clientEntry, frameOrigins } = resource
+    const { file, bytes, catalog, clientEntry, frameOrigins, accent } = resource
     if (path.extname(file) === '.html') c.set('frameOrigins', frameOrigins)
     const types: Record<string, string> = {
       '.html': 'text/html',
@@ -860,7 +861,7 @@ app.get('*', async (c, next) => {
       '.woff2': 'font/woff2',
     }
     const html = bytes.toString('utf8')
-    const shellOf = (entry: (typeof catalog)[number]) => ({ name, title: entry.title, tabs: Boolean(entry.tabs?.length) })
+    const shellOf = (entry: (typeof catalog)[number]) => ({ name, title: entry.title, tabs: Boolean(entry.tabs?.length), accent })
     const body = path.extname(file) !== '.html' || !clientEntry ? new Uint8Array(bytes)
       : new TextEncoder().encode(composeRuntimeShell(html, shellOf(catalog.find((entry) => entry.name === name)!)))
     return new Response(body, {

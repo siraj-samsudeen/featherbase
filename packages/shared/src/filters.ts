@@ -5,6 +5,11 @@
 // feed says "filtered" exactly when the list did (#440).
 export type ListFilter = [string, string, unknown]
 
+// The relationship filter: the one operator whose value is an object, and how
+// deep it may nest. The server enforces these; the web path accepts the same.
+export const RELATED_OPS = ['related', 'not related'] as const
+export const MAX_RELATED_DEPTH = 3
+
 export function parseFilters(raw: string | undefined): ListFilter[] {
   if (!raw) return []
   let value: unknown

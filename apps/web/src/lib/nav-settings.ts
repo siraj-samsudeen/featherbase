@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { PanePlaceValue } from '@featherbase/shop-floor'
-import { api } from './api'
+import { api, getToken } from './api'
 import { decodeRecent, encodePath, rememberWalk, type NavPath } from './nav-path'
 
 // #910 D2: what one person chose for walking between rows, kept in their
@@ -17,6 +17,12 @@ interface Stored {
 }
 
 const KEY = ['user-settings', NAVIGATION_SETTINGS]
+
+// Saves carry whole snapshots (every recent walk), and every pane and path
+// bar holds this hook, so one chain for them all keeps the writes in
+// interaction order, as ListView's persist does: a slower earlier save
+// cannot land after a newer one and bring back an older walk.
+let settingsWrite: Promise<unknown> = Promise.resolve()
 const PLACES: PanePlaceValue[] = ['auto', 'right', 'bottom']
 
 export function useNavigationSettings() {
@@ -32,7 +38,14 @@ export function useNavigationSettings() {
     queryClient.setQueryData(KEY, { settings: { ...settings, ...next } })
     // A save merges into the person's record; one that fails keeps the
     // choice for this visit only.
-    api.put(`/api/user_settings/${NAVIGATION_SETTINGS}`, next).catch(() => {})
+    const token = getToken()
+    settingsWrite = settingsWrite
+      .then(() => {
+        // A queued save belongs to the sign-in that made it.
+        if (getToken() !== token) return
+        return api.put(`/api/user_settings/${NAVIGATION_SETTINGS}`, next)
+      })
+      .catch(() => {})
   }
   const recent = decodeRecent(settings.recentPaths)
   return {

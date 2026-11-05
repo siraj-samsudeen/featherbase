@@ -4,6 +4,7 @@ import { activeApps } from './app-lifecycle'
 import { OPEN_ROLES, PLATFORM_ROLES, assertSystemManager } from './permissions'
 import { principalReach, type TableReach } from './token-reach'
 import { rowTitles } from './row-titles'
+import { everyoneRoles } from './everyone-roles'
 
 // #628: "What can this person see, and why". The platform's own reasons for a
 // person's access, as one answer: their roles (who gave each, and when), the
@@ -18,6 +19,8 @@ export interface ExplainedRole {
   app: string | null
   /** The person's own role it comes through, for an app role. */
   through: string | null
+  /** #923: held because System Settings gives it to everyone who signs in. */
+  everyone: boolean
   given_by: string | null
   given_at: string | null
 }
@@ -74,11 +77,15 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
     const role = String(r.role)
     // A role given before history recorded roles falls back to its row.
     const from = given.get(role) ?? { by: String(r.created_by), at: iso(r.created_at) }
-    return { role, app: null, through: null, given_by: from.by, given_at: from.at }
+    return { role, app: null, through: null, everyone: false, given_by: from.by, given_at: from.at }
   })
+  // #923: a person also holds the roles given to everyone who signs in.
+  const [isPerson] = await sql`select 1 from person where row_id = ${person} and row_id <> 'Guest'`
+  for (const role of isPerson ? await everyoneRoles(sql) : [])
+    if (!roles.some((r) => r.role === role)) roles.push({ role, app: null, through: null, everyone: true, given_by: null, given_at: null })
   // App roles bound to the person's own roles (#620), from available apps only,
   // the same rule getRoles applies.
-  const own = held.map((r) => String(r.role))
+  const own = roles.map((r) => r.role)
   if (own.length) {
     const bound = await sql`
       select distinct b.app_role, b.app, b.bound_role from app_role_binding b
@@ -89,7 +96,7 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
         and b.app = any(${[...activeApps]}::text[])
       order by b.app, b.app_role, b.bound_role`
     for (const b of bound)
-      roles.push({ role: String(b.app_role), app: String(b.app), through: String(b.bound_role), given_by: null, given_at: null })
+      roles.push({ role: String(b.app_role), app: String(b.app), through: String(b.bound_role), everyone: false, given_by: null, given_at: null })
   }
 
   const reach = await principalReach(person)

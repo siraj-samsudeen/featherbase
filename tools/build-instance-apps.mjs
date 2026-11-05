@@ -14,7 +14,7 @@
 import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildApp, DevError, resolveInstance } from './dev.mjs'
 
@@ -41,6 +41,23 @@ export function copyShipped(appRoot, output) {
   return { name, version: pkg.version, target }
 }
 
+/**
+ * The workspace packages an app takes by path (`file:../../packages/x`), by
+ * name. An archive holds their source but not their dependencies, which the
+ * workspace install gives them, so a previous version installs them first.
+ */
+export function workspaceDependencies(appRoot, sourceRoot) {
+  const pkg = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8'))
+  const names = []
+  for (const spec of Object.values({ ...pkg.dependencies, ...pkg.devDependencies })) {
+    if (typeof spec !== 'string' || !spec.startsWith('file:')) continue
+    const folder = resolve(appRoot, spec.slice('file:'.length))
+    if (!folder.startsWith(resolve(sourceRoot) + sep)) throw new DevError(`${spec} is outside the archive`)
+    names.push(JSON.parse(readFileSync(join(folder, 'package.json'), 'utf8')).name)
+  }
+  return names
+}
+
 async function buildPrevious(entry, output, env) {
   const response = await fetch(entry.archive)
   if (!response.ok) throw new DevError(`${entry.archive} answered HTTP ${response.status}`)
@@ -53,6 +70,12 @@ async function buildPrevious(entry, output, env) {
   if (!existsSync(join(appRoot, 'package.json'))) throw new DevError(`${entry.archive} has no ${entry.path}`)
   const { version } = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8'))
   if (version !== entry.version) throw new DevError(`${entry.archive} holds ${entry.path} ${version}, not ${entry.version}`)
+  const packages = workspaceDependencies(appRoot, work)
+  if (packages.length) {
+    const filters = packages.flatMap((name) => ['--filter', `${name}...`])
+    const installed = spawnSync('pnpm', ['install', '--frozen-lockfile', ...filters], { cwd: work, env, stdio: 'inherit' })
+    if (installed.status !== 0) throw new DevError(`Could not install ${packages.join(', ')} from ${entry.archive}`)
+  }
   buildApp({ root: appRoot }, env)
   return copyShipped(appRoot, output)
 }
