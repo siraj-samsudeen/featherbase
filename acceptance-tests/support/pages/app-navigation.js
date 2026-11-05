@@ -83,6 +83,8 @@ class AppNavigation {
   }
   async expectAppsOnly() {
     await this.page.getByTestId('session-user').waitFor();
+    // The switcher holds only the current app until the catalog answers.
+    await this.choices().locator('option', { hasText: 'Tasker' }).waitFor({ state: 'attached' });
     const options = await this.choices().locator('option').allTextContents();
     assert.deepEqual(options.sort(), ['Dash', 'Tasker']);
   }
