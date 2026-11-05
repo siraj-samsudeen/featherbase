@@ -83,6 +83,12 @@ Everyone refused sees the same wording as a wrong password.
 - **THEN** they are refused as for a wrong password, and the HR system is not
   asked
 
+#### Scenario: Someone the HR system says has left
+
+- **WHEN** someone's roster row is still current, but the HR system confirms the
+  password and says they have left
+- **THEN** they are refused as for a wrong password, and no account is made
+
 ### Requirement: Doubtful cases go to an administrator, never a guess
 
 When an ID is on two roster rows, when its row or its values already belong to

@@ -232,6 +232,8 @@ export async function rosterFirstSignIn(cfg: DelegatedLoginConfig, id: string, p
     await hold(method.key, row.row_id, 'service_named_another_record')
     throw refused()
   }
+  // Saying "has left" here would confirm a password for someone with no account.
+  if (status === 'left') throw refused()
   if (status !== 'verified') return completeSignIn(method, { status }, null, { ipAddress })
   let linked: Linked | HeldReason
   try {
