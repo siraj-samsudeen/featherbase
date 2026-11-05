@@ -1837,15 +1837,12 @@ app.post('/api/permissions/:table', async (c) => {
       const contributions = existing.filter((row) => row.operation === operation)
       if (!body[flag]) {
         for (const row of contributions) {
-          // Revoking the basic grant also ends what depends on it, as clearing
-          // the old flag left its restricted Row reaching nothing.
-          const dependents = await sql`with recursive dependent(row_id, depth) as (
-              select row_id, 1 from permission where requires_permission = ${String(row.row_id)} or parent_permission = ${String(row.row_id)}
-              union
-              select p.row_id, d.depth + 1 from permission p join dependent d
-                on p.requires_permission = d.row_id or p.parent_permission = d.row_id where d.depth < 16)
-            select row_id, max(depth) as depth from dependent group by row_id order by max(depth) desc`
-          for (const dependent of dependents) await deleteDoc('Permission', String(dependent.row_id), user)
+          // A deeper grant that needs this one would be gone for good, where
+          // clearing the old flag left it to work again when ticked back.
+          const dependents = await sql`select distinct role from permission
+            where requires_permission = ${String(row.row_id)} or parent_permission = ${String(row.row_id)} order by role`
+          if (dependents.length)
+            throw new AppError('ValidationError', `Deeper access of ${dependents.map((d) => String(d.role)).join(', ')} needs this grant: edit the individual Permission Rows`)
           await deleteDoc('Permission', String(row.row_id), user)
         }
       } else if (!contributions.length) {

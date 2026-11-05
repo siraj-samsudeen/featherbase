@@ -106,6 +106,11 @@ the matrix refuses to clear the last tick of a creator-only or app-owned grant; 
 done on the Permission rows. An operation it adds beside an app's grant goes on the app's
 install ledger, so uninstalling removes it.
 
+It also refuses to revoke a grant another grant depends on: that grant would be gone for
+good, where clearing the old flag left a restricted row to work again when ticked back.
+Release preflight refuses a pre-conversion row with nothing ticked that is creator-only
+or app-owned, since the conversion has no way to keep that restriction.
+
 *Rejected:* letting it clear and defaulting the next tick to all rows and no app, which
 silently widens the grant.
 

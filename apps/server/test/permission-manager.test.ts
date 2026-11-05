@@ -101,15 +101,19 @@ describe('SET-003: permission manager endpoints', () => {
       .toEqual([{ operation: 'read', column_rule: 'every' }])
   })
 
-  test('the matrix shows only basic Rows and revokes a basic grant with what depends on it', async ({ admin }) => {
+  test('the matrix shows only basic Rows and will not revoke a grant another depends on', async ({ admin }) => {
     await setup(admin)
     const base = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: ROLE, operation: 'read' } })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Matrix Detail' } })
     await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: 'Matrix Detail', operation: 'read', column_rule: 'every', requires_permission: base.row_id } })
     const matrix = await admin.get<{ perms: { role: string; can_read: boolean }[] }>(`/api/permissions/${encodeURIComponent(DT)}`)
     expect(matrix.perms.find((p) => p.role === 'Matrix Detail')).toMatchObject({ can_read: false })
-    await admin.post(`/api/permissions/${encodeURIComponent(DT)}`, { role: ROLE, can_read: false })
-    expect(await sql`select role from permission where ref_table = ${DT}`).toEqual([])
+    const revoked = await admin.fetch(`/api/permissions/${encodeURIComponent(DT)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: ROLE, can_read: false }),
+    })
+    expect(revoked.status).toBe(417)
+    expect(((await revoked.json()) as { error: { message: string } }).error.message).toMatch(/Deeper access of Matrix Detail/)
+    expect((await sql`select role from permission where ref_table = ${DT} order by role`).map((row) => row.role)).toEqual(['Matrix Detail', ROLE].sort())
   })
 
   test('is gated to System Managers (non-SM gets 403 on read and write)', async ({

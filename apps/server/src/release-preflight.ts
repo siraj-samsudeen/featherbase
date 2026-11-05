@@ -374,6 +374,15 @@ async function assertAccessConfiguration(environment: string): Promise<string[]>
       if (granted.length)
         problems.push(`Permission ${String(r.row_id)} grants role "${String(r.role)}" on "${String(r.ref_table)}" (${granted.join(', ')}): give these Tables to named roles only, and delete the row`)
     }
+    // A flag row with nothing ticked converts to no grant, and with it would go
+    // the creator restriction or app ownership the next tick would have kept.
+    if (!schema.operations) {
+      const dormant = await sql`select row_id, role, ref_table from permission
+        where (own_rows_only or owner_app is not null) and not (${sql.unsafe(ACTION_FLAGS.map((a) => `coalesce(can_${a}, false)`).join(' or '))})
+        order by row_id`
+      for (const r of dormant)
+        problems.push(`Permission ${String(r.row_id)} for role "${String(r.role)}" on "${String(r.ref_table)}" grants nothing but carries a creator restriction or an app: delete it, or tick what it should grant, before this release`)
+    }
     const rows = await sql`
       select row_id, kind, new_person, allowed_email_domains as domains
       from sign_in_method order by row_id`

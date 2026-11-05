@@ -104,6 +104,10 @@ describe('migrate: a new database', () => {
       const { preflightRelease } = await import('../src/release-preflight')
       await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/grants role "All" on "Person" \(read\)/)
       await db.sql`delete from permission where row_id = 'legacy-open'`
+      // A row with nothing ticked would lose its restriction in the conversion.
+      await db.sql`insert into permission (row_id, ref_table, role, tier, own_rows_only) values ('legacy-dormant', 'Legacy Contact', 'Legacy Reader', 'basic', true)`
+      await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/legacy-dormant.*grants nothing but carries a creator restriction/)
+      await db.sql`delete from permission where row_id = 'legacy-dormant'`
       expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
       await db.sql`insert into permission (row_id, ref_table, role, operation, scope_mode, column_rule) values ('now-open', 'Person', 'All', 'read', 'all', 'basic')`
       await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/grants role "All" on "Person" \(read\)/)
