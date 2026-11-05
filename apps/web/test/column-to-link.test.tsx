@@ -31,7 +31,9 @@ async function openEditor(admin: Admin) {
 
 async function linkFloorTo(table: string) {
   await userEvent.click(await screen.findByRole('button', { name: 'Turn floor into a link' }))
-  await userEvent.selectOptions(await screen.findByRole('combobox', { name: 'Table floor links to' }), table)
+  const picker = await screen.findByRole('combobox', { name: 'Table floor links to' })
+  await within(picker).findByRole('option', { name: table })
+  await userEvent.selectOptions(picker, table)
   await userEvent.click(screen.getByTestId('ce-link-go-floor'))
 }
 
