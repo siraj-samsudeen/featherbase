@@ -139,8 +139,6 @@ export function decideColumn(owner: 'source' | 'featherbase', snapshot: Value | 
 }
 
 export async function masterSyncRule(copied: string): Promise<MasterSyncRule | null> {
-  const [schema] = await sql`select to_regclass('featherbase.master_sync') as relation`
-  if (!schema.relation) return null
   const [row] = await sql`select rule from featherbase.master_sync where copied_table = ${copied}`
   return row ? masterSyncRuleSchema.parse(row.rule) : null
 }
@@ -226,14 +224,7 @@ interface Difference {
 export const SYNC_ACCOUNT_LABEL = 'svc-master-sync'
 async function syncActor(by: string): Promise<string> {
   const [found] = await sql`select row_id from service_account where lower(label) = lower(${SYNC_ACCOUNT_LABEL})`
-  if (found) return String(found.row_id)
-  try { return (await createServiceAccount(SYNC_ACCOUNT_LABEL, ['All'], by)).row_id }
-  catch (error) {
-    // Another sync created it first.
-    const [raced] = await sql`select row_id from service_account where lower(label) = lower(${SYNC_ACCOUNT_LABEL})`
-    if (raced) return String(raced.row_id)
-    throw error
-  }
+  return found ? String(found.row_id) : (await createServiceAccount(SYNC_ACCOUNT_LABEL, ['All'], by)).row_id
 }
 
 /** Every refresh of a copy, manual or scheduled, brings its master Table in step. */
@@ -363,7 +354,7 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
 }
 
 function ticketPayload(rule: MasterSyncRule, master: TableMeta, d: Difference) {
-  const label = d.column_name ? (master.columns.find(c => c.column_name === d.column_name)?.label || d.column_name) : undefined
+  const label = d.column_name ? master.columns.find(c => c.column_name === d.column_name)!.label : undefined
   const where = d.master_row ? `${master.name} ${d.master_row}` : `${rule.source_system} ${d.source_key}`
   const title = d.column_name ? `${rule.source_system} · ${where}: ${label}` : `${rule.source_system} · ${where}`
   const lines = [KIND_TEXT[d.kind], `Source: ${rule.source_system} key ${d.source_key}.`,
@@ -388,15 +379,16 @@ async function raiseTickets(actor: string, copied: string): Promise<{ tickets: s
       // Platform work on the app's behalf names its installed version, not the caller's client.
       const [installed] = await sql`select package_version from installed_app where name = ${app}`
       const answer = await runAsSystemActor(actor, () => withAppIdentity(app, String(installed?.package_version ?? ''), () => runPackageAction(app, 'create',
-        { idempotencyKey: `master-sync-${d.fingerprint}`, payload: d.ticket_payload }, actor))) as { result?: { ticket?: { row_id?: string } } }
-      const ticket = String(answer?.result?.ticket?.row_id ?? '')
-      await sql`update featherbase.master_sync_difference set ticket = ${ticket || null}, ticket_error = null
+        { idempotencyKey: `master-sync-${d.fingerprint}`, payload: d.ticket_payload }, actor))) as { result: { ticket: { row_id: string } } }
+      // An app that answers without a ticket is an error, kept and retried like any other.
+      const ticket = String(answer.result.ticket.row_id)
+      await sql`update featherbase.master_sync_difference set ticket = ${ticket}, ticket_error = null
         where copied_table = ${copied} and fingerprint = ${String(d.fingerprint)}`
-      if (ticket) tickets.push(ticket)
+      tickets.push(ticket)
     } catch (error) {
       // The sync's own changes are committed; a ticket that could not be
       // raised stays pending and is retried on the next run.
-      const message = error instanceof Error ? error.message : String(error)
+      const message = String(error)
       ticket_errors.push(message)
       await sql`update featherbase.master_sync_difference set ticket_error = ${message.slice(0, 500)}
         where copied_table = ${copied} and fingerprint = ${String(d.fingerprint)}`

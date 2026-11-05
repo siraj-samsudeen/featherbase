@@ -7,6 +7,7 @@ import { resolve } from 'node:path'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
+import { tableRelation } from '../src/table-engine'
 import { overrideVariable } from '../src/env'
 import { invalidateSources } from '../src/sources/registry'
 import { discoverPackages } from '../src/runtime-packages'
@@ -69,6 +70,14 @@ describe('the three-way rule for one column', () => {
     expect(normalize('')).toBeNull()
     expect(normalize(undefined)).toBeNull()
     expect(normalize(7)).toBe('7')
+    expect(normalize({ a: 1 })).toBe('{"a":1}')
+    expect(normalize(new Date('2026-11-04T00:00:00Z'), 'Date')).toBe('2026-11-04')
+    expect(normalize('abc', 'Int')).toBe('abc')
+    expect(normalize('not a date', 'Date')).toBe('not a date')
+    expect(normalize('2026-13-01T00:00:00', 'Datetime')).toBe('2026-13-01T00:00:00')
+    expect(normalize(null, 'JSON')).toBeNull()
+    expect(toMaster('', 'Data')).toBeNull()
+    expect(toMaster(null, 'JSON')).toBeNull()
     expect(normalize(true)).toBe('true')
     expect(normalize(new Date('2026-11-04T00:00:00Z'))).toBe('2026-11-04T00:00:00.000Z')
   })
@@ -123,7 +132,7 @@ async function sourceChanges(admin: TestClient, source: string, statements: stri
   return admin.post<Row>(`${COPY}:copy_again`, {})
 }
 
-describe('Master sync (#927)', () => {
+describe('Master sync (#927)', { timeout: 60_000 }, () => {
   test('a first run agrees, and only the new source row is raised: never auto-linked', async ({ admin }) => {
     await world(admin, 'staff_first')
     const first = await run(admin)
@@ -175,7 +184,7 @@ describe('Master sync (#927)', () => {
   test('a row gone from the source marks the master row inactive and deletes nothing; without an inactive column it asks', async ({ admin }) => {
     const { source, rule } = await world(admin, 'staff_gone')
     await run(admin)
-    expect((await sourceChanges(admin, source, [`delete from $T where emp_id in ('E2', 'E3')`])).master_sync).toMatchObject({ applied: 2 })
+    expect((await sourceChanges(admin, source, [`delete from $T where emp_id in ('E2', 'E3', 'E4')`])).master_sync).toMatchObject({ applied: 2 })
     expect(await person(admin, 'P2')).toMatchObject({ employment_status: 'Inactive', full_name: 'Bala' })
     expect(await run(admin)).toMatchObject({ applied: 0, raised: 0 })
     await admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, inactive: undefined } })
@@ -277,6 +286,68 @@ describe('Master sync (#927)', () => {
     const [ticket] = await sql`select row_id, kind, ticket_state, assigned_to, title from tickets.ticket where row_id = ${result.tickets[0]}`
     expect(ticket).toMatchObject({ kind: 'source_change', ticket_state: 'Raised', assigned_to: contact.user })
     expect(ticket.title).toMatch(/StyleHR/)
+  })
+
+  test('a rule is read, removed and checked against the Tables it names', async ({ admin }) => {
+    const { rule } = await world(admin, 'staff_rules')
+    expect((await admin.get<Row>(`${COPY}:master_sync`)).rule).toMatchObject({ master_table: 'Sync Person' })
+    await makeTable(admin, { name: 'Sync Locked', id_pattern: 'prompt', columns: [{ column_name: 'locked', column_type: 'Data', read_only: true }, 'grade:Int'] })
+    const set = (changes: Row) => admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, ...changes } })
+    const columns = { locked: { source: 'name', owner: 'source' } }
+    for (const [changes, message] of [
+      [{ master_table: 'Sync Staff Copy' }, /its own master/],
+      [{ master_table: 'Sync Locked', columns, inactive: undefined }, /read-only/],
+      [{ master_table: 'Sync Locked', columns: { grade: { source: 'phone', owner: 'source' } }, inactive: { column: 'locked', value: 'x' } }, /read-only/],
+      [{ master_table: 'Sync Locked', columns: { grade: { source: 'phone', owner: 'source' } }, inactive: { column: 'grade', value: 'x' } }, /does not fit/],
+      [{ link: { ...rule.link, kind: undefined } }, /kind/],
+      [{ columns: {} }, /at least one column/],
+    ] as [Row, RegExp][])
+      await expect(set(changes)).rejects.toThrow(message)
+    await expect(admin.post(`${COPY}:set_master_sync`, {})).rejects.toMatchObject({ status: 417 })
+    await expect(admin.post(`${COPY}:set_master_sync`, { rule: 'not a rule' })).rejects.toMatchObject({ status: 417 })
+    // A column may come from the copied row's own key; a link may name no key kind.
+    await set({ columns: { phone: { source: 'row_id', owner: 'featherbase' } } })
+    await admin.post(`${COPY}:set_master_sync`, { rule: null })
+    expect((await admin.get<Row>(`${COPY}:master_sync`)).rule).toBeNull()
+    await expect(run(admin)).rejects.toMatchObject({ status: 404 })
+    expect((await admin.post<Row>(`${COPY}:copy_again`, {})).master_sync).toBeUndefined()
+  })
+
+  test('awkward links and values: an empty link is skipped, two links are raised, a value that does not fit is raised', async ({ admin }) => {
+    const { rule } = await world(admin, 'staff_awkward')
+    await run(admin)
+    await admin.post('/api/save_row', { table: 'Sync Source Link', row: { source_system: 'StyleHR', key_kind: 'Employee ID', source_key: 'E9', person: '' } })
+    await admin.post('/api/save_row', { table: 'Sync Source Link', row: { source_system: 'StyleHR', key_kind: 'Employee ID', source_key: 'E2', person: 'P3' } })
+    await admin.post('/api/save_row', { table: 'Sync Source Link', row: { source_system: 'StyleHR', key_kind: 'Employee ID', source_key: 'E4', person: 'P-gone' } })
+    const result = await run(admin)
+    expect(result).toMatchObject({ ticket_errors: [] })
+    const originals = (await sunk()).map(t => t.payload.original).join('\n')
+    expect(originals).toMatch(/more than one Featherbase row/)
+    expect(originals).toMatch(/does not exist/)
+    await makeTable(admin, { name: 'Sync Graded', id_pattern: 'prompt', columns: ['grade:Int'] })
+    await admin.post('/api/save_row', { table: 'Sync Graded', row: { row_id: 'P1' } })
+    await admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, master_table: 'Sync Graded', columns: { grade: { source: 'name', owner: 'source' } }, inactive: undefined,
+      link: { table: rule.link.table, system_column: rule.link.system_column, key_column: rule.link.key_column, master_column: rule.link.master_column },
+      tickets: { app: rule.tickets.app, type: rule.tickets.type } } })
+    const graded = await run(admin)
+    expect(graded).toMatchObject({ applied: 0, ticket_errors: [] })
+    expect((await sunk()).map(t => t.payload.original).join('\n')).toMatch(/does not fit the Featherbase column/)
+  })
+
+  test('a run refuses a master that stopped keeping history, and a failure that is not a refused value stops the run', async ({ admin }) => {
+    const { source } = await world(admin, 'staff_failures')
+    await run(admin)
+    await sql`update table_def set track_changes = false where name = 'Sync Person'`
+    invalidateMeta('Sync Person')
+    await expect(run(admin)).rejects.toMatchObject({ status: 417 })
+    await sql`update table_def set track_changes = true where name = 'Sync Person'`
+    invalidateMeta('Sync Person')
+    await changeStandin(dir, 'sales', [`update ${source} set phone = '114' where emp_id = 'E1'`])
+    await admin.post(`${SOURCES}/ms-${source.replaceAll('_', '-')}:refresh_tables`, { database: 'sales' })
+    await sql.unsafe(`create function featherbase.ms_refuse() returns trigger language plpgsql as $$ begin raise exception 'Injected save failure'; end $$`)
+    await sql.unsafe(`create trigger ms_refuse before update on ${await tableRelation('Sync Person')} for each row execute function featherbase.ms_refuse()`)
+    await expect(admin.post(`${COPY}:copy_again`, {})).rejects.toBeDefined()
+    expect(await person(admin, 'P1')).toMatchObject({ phone: '111' })
   })
 
   test('a ticket that cannot be raised is kept and raised on the next run; only a System Manager sets or runs a rule', async ({ admin, createUser }) => {
