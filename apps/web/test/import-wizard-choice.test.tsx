@@ -123,15 +123,45 @@ test('a bad column name is named by the row the person sees; a bad Table name as
   clearSession()
 }, 30000)
 
-test('a one-sheet import with refused rows stays and lists them; a clean one goes to the Table', async ({ admin }) => {
+test('a one-sheet import with some rows refused stays, lists them, and does not call itself complete', async ({ admin }) => {
+  const user = await singleSheet('Iwc Partial', [['Zone', 'Code'], [1, 'x'], ['text', 'y']], admin)
+  await user.selectOptions(typeOf('Zone'), 'Int')
+  await user.click(screen.getByTestId('iw-import'))
+  expect(await screen.findByTestId('iw-result-0', {}, { timeout: 10000 })).toHaveTextContent('1 failed')
+  await waitFor(() => expect(screen.getByTestId('iw-done')).toHaveTextContent('Imported, but 1 row was refused. See above.'), { timeout: 8000 })
+  expect(screen.getByTestId('iw-done')).toHaveClass('text-negative')
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  expect(screen.getByTestId('iw-result-0')).toBeInTheDocument()
+  clearSession()
+}, 30000)
+
+test('when every row is refused nothing has landed: it says so, and correcting the column and importing again works', async ({ admin }) => {
   const user = await singleSheet('Iwc Refused', [['Zone', 'Code'], ...Array.from({ length: 3 }, (_, i) => [`text${i}`, `c${i}`])], admin)
   await user.selectOptions(typeOf('Zone'), 'Int')
   await user.click(screen.getByTestId('iw-import'))
-  expect(await screen.findByTestId('iw-result-0', {}, { timeout: 10000 })).toHaveTextContent('3 failed')
-  // The run is over only once the button comes back; the rows must still be on screen then.
-  await waitFor(() => expect(screen.getByTestId('iw-result-0')).toBeInTheDocument(), { timeout: 3000 })
-  await new Promise((resolve) => setTimeout(resolve, 1500))
-  expect(screen.getByTestId('iw-result-0')).toHaveTextContent('3 failed')
+  const failure = await screen.findByTestId('iw-failure-0', {}, { timeout: 10000 })
+  expect(failure).toHaveTextContent('Iwc Refused failed — all 3 rows were refused (first: row 2:')
+  expect(screen.queryByTestId('iw-result-0')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('iw-import')).toBeEnabled(), { timeout: 8000 })
+  await user.selectOptions(typeOf('Zone'), 'Data')
+  await user.click(screen.getByTestId('iw-import'))
+  await waitFor(async () => expect(await admin.get('/api/table/Iwc%20Refused:count')).toMatchObject({ count: 3 }), { timeout: 10000 })
+  const meta = await admin.get<{ columns: { column_name: string; column_type: string }[] }>('/api/table/Iwc%20Refused:meta')
+  expect(meta.columns.find((c) => c.column_name === 'zone')?.column_type).toBe('Data')
+  clearSession()
+}, 30000)
+
+test('joining two columns keeps what was set by hand on the others', async ({ admin }) => {
+  const user = await mergedInto('Iwc Join', BOOK, admin)
+  await user.selectOptions(typeOf('Section'), 'Choice')
+  const label = (name: string) => [...document.querySelectorAll<HTMLElement>('[data-columnrow]')].findIndex((r) => r.querySelector<HTMLInputElement>('[data-rowfield="label"]')?.value === name)
+  await user.click(screen.getByTestId(`iw-combine-pick-0-${label('Store')}`))
+  await user.click(screen.getByTestId(`iw-combine-pick-0-${label('Lob')}`))
+  await user.click(await screen.findByTestId('iw-combine-rule-first-0'))
+  await user.click(screen.getByTestId('iw-combine-go-0'))
+  await waitFor(() => expect(rowOf('Lob')).toBeUndefined())
+  expect(typeOf('Section')).toHaveValue('Choice')
+  expect((rowOf('Section').querySelector('[data-rowfield="choices"]') as HTMLElement).title.split(', ')).toHaveLength(12)
   clearSession()
 }, 30000)
 
@@ -183,7 +213,7 @@ describe('trying again after the connection dropped once the Table was made', ()
     restore()
     await user.click(screen.getByTestId('iw-import'))
     await waitFor(() => expect(screen.getByTestId('iw-failure-0')).toHaveTextContent(
-      'Iwc Landed already holds 1 row from the attempt that stopped. Undo it under Past imports, then import again.',
+      'Iwc Landed already holds 1 row from the attempt that stopped. Delete it under Past imports, then import again.',
     ), { timeout: 10000 })
     expect(await admin.get('/api/table/Iwc%20Landed:count')).toMatchObject({ count: 1 })
     clearSession()

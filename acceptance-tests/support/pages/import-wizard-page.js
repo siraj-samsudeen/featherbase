@@ -207,12 +207,6 @@ class ImportWizardPage {
     return failure.innerText();
   }
 
-  /** The first target's result line, once the run has ended. */
-  async resultText() {
-    await this.page.getByTestId('iw-done').waitFor({ timeout: 30_000 });
-    return this.page.getByTestId('iw-result-0').innerText();
-  }
-
   /** Clicks "Tick all" above the In list column. */
   async tickAllInList() {
     const tickAll = this.card.getByText('Tick all', { exact: true });

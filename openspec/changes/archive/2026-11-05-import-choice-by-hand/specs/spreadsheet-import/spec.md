@@ -45,19 +45,21 @@ Then the import says the table failed because Column "Zone" must be snake_case
 
 ### Requirement: Refused rows on a one-sheet import stay on screen
 
-A one-sheet import with any refused row SHALL stay on the wizard and report the refused rows. An import with none still goes straight to the table's list.
+A one-sheet import with any refused row SHALL stay on the wizard and report the refused rows, and SHALL not call itself complete. When every row of a new table is refused nothing has landed, so the target counts as failed and can be corrected and imported again. An import with none refused still goes straight to the table's list.
 
 #### Scenario: Every row is refused
 
 ```gherkin
 Given a sheet whose Zone column holds only words
 When the user imports it as a new table with Zone switched to Int
-Then the wizard stays open and reports the rows as failed
+Then the import says every row was refused
+When the user switches Zone back to Data and imports again
+Then the new table holds every row
 ```
 
 ### Requirement: Trying again after a dropped connection
 
-If the connection drops after an import has made its new table, importing again SHALL work when no row landed, using the columns as they are now. When rows landed it SHALL refuse, saying how many and where to undo them, so that they are not doubled.
+If the connection drops after an import has made its new table, importing again SHALL work when no row landed, using the columns as they are now. When rows landed it SHALL refuse, saying how many and where to delete them, so that they are not doubled.
 
 #### Scenario: No row landed
 
@@ -78,6 +80,6 @@ And the connection drops after one row has landed
 When the user imports it as a new table
 Then the import says the table failed
 When the connection is back and the user imports again
-Then the import says the table already holds 1 row and to undo it under Past imports
+Then the import says the table already holds 1 row and to delete it under Past imports
 And the new table holds 1 row
 ```

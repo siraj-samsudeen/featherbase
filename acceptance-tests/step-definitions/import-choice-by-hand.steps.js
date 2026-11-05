@@ -61,7 +61,7 @@ When('the user imports it as a new table with Zone\'s column name changed to {st
 When('the user imports it as a new table with Zone switched to Int', async function () {
   const wizard = await dropped(this);
   await wizard.setType('Zone', 'Int');
-  await wizard.page.getByTestId('iw-import').click();
+  this.failure = await wizard.importExpectingFailure();
 });
 
 Given('the connection drops while the import is sending its rows', function () {
@@ -99,14 +99,17 @@ Then('the wizard shows the first {int} options and says {int} more', async funct
 Then('the import says the table failed because Column {string} must be snake_case', function (column) {
   assert.match(this.failure, new RegExp(`failed — Invalid Table definition — Column .${column}.: column_name must be snake_case`));
 });
-Then('the wizard stays open and reports the rows as failed', async function () {
-  assert.match(await this.wizard.resultText(), /2 failed/);
-  assert.ok(await this.wizard.page.getByTestId('import-wizard').isVisible());
+Then('the import says every row was refused', function () {
+  assert.match(this.failure, /failed — all 2 rows were refused/);
+});
+When('the user switches Zone back to Data and imports again', async function () {
+  await this.wizard.setType('Zone', 'Data');
+  await this.wizard.page.getByTestId('iw-import').click();
 });
 Then('the import says the table failed', function () {
   assert.match(this.failure, /failed — Request failed \(502\)/);
 });
-Then('the import says the table already holds {int} row and to undo it under Past imports', async function (n) {
+Then('the import says the table already holds {int} row and to delete it under Past imports', async function (n) {
   const text = await this.wizard.failureAfter(this.failure);
-  assert.match(text, new RegExp(`already holds ${n} row from the attempt that stopped\\. Undo it under Past imports`));
+  assert.match(text, new RegExp(`already holds ${n} row from the attempt that stopped\\. Delete it under Past imports`));
 });

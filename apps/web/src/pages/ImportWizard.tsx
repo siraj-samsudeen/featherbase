@@ -776,6 +776,7 @@ export function ImportWizard() {
     imported: number
     failed: string[]
     remaining: number
+    refused?: number
   } | null>(null)
   // #199: the wizard is two steps now. 'overview' answers "what is in this
   // file?"; 'columns' is the existing per-sheet work, over the chosen sheets
@@ -1192,8 +1193,12 @@ export function ImportWizard() {
         const next = { ...p, combines }
         const cols = mergedColumnsFor(next)
         const rows = mergeSheetRows(cols, next.members.map((m) => sheets[m].rows))
-        const inferred = inferTableDef(next.table, cols.map((c) => c.label), rows)
-        return { ...next, inferred, include: inferred.columns.map(() => true), list_ticks: undefined, check: null, result: null }
+        const fresh = inferTableDef(next.table, cols.map((c) => c.label), rows)
+        // A column this combine leaves alone keeps what the person set on it.
+        const before = mergedColumnsFor(p)
+        const untouched = (ci: number) => (cols[ci].combinedKeys ? -1 : before.findIndex((b) => b.key === cols[ci].key && !b.combinedKeys))
+        const inferred = { ...fresh, columns: fresh.columns.map((c, ci) => p.inferred.columns[untouched(ci)] ?? c) }
+        return { ...next, inferred, include: inferred.columns.map((_, ci) => p.include[untouched(ci)] ?? true), list_ticks: undefined, check: null, result: null }
       }),
     )
   }
@@ -1388,7 +1393,7 @@ export function ImportWizard() {
       const address = encodeURIComponent(plan.table)
       const held = await api.get<{ count: number }>(`/api/table/${address}:count`).catch(() => null)
       if (held?.count)
-        throw new ApiError(409, 'ConflictError', `${plan.table} already holds ${fmtCount(held.count)} ${held.count === 1 ? 'row' : 'rows'} from the attempt that stopped. Undo it under Past imports, then import again.`)
+        throw new ApiError(409, 'ConflictError', `${plan.table} already holds ${fmtCount(held.count)} ${held.count === 1 ? 'row' : 'rows'} from the attempt that stopped. Delete it under Past imports, then import again.`)
       if (held) await api.delete(`/api/table_def/${address}`)
     }
     const inList = listTicks(plan)
@@ -1553,7 +1558,7 @@ export function ImportWizard() {
       // unreported, and skipped the completion block — taking with it the only
       // link to the Import Log. Each target now fails on its own.
       let imported = 0
-      let rowsRefused = false
+      let rowsRefused = 0
       const failedTargets: string[] = []
       const ran: number[] = []
       for (const [i, plan] of plans.entries()) {
@@ -1613,8 +1618,13 @@ export function ImportWizard() {
           total.inserted += report.inserted
           failed.push(...report.failed.map((f) => ({ ...f, sheetIndex: m })))
         }
-        if (failed.length) rowsRefused = true
         failed.sort((a, b) => plan.members.indexOf(a.sheetIndex) - plan.members.indexOf(b.sheetIndex) || a.sourceIndex - b.sourceIndex)
+        // Every row refused into a Table made for them: nothing landed, and its
+        // columns may be why. So this target failed, and can be corrected and
+        // imported again rather than leaving an empty Table with the wrong columns.
+        if (plan.mode === 'new' && failed.length && !total.inserted && !total.updated)
+          throw new ApiError(417, 'ValidationError', `${failed.length === 1 ? 'the 1 row was' : `all ${fmtCount(failed.length)} rows were`} refused (first: ${failLabel(plan, failed[0])})`)
+        rowsRefused += failed.length
         setPlans((ps) =>
           ps.map((p, j) =>
             j === i
@@ -1650,7 +1660,7 @@ export function ImportWizard() {
       // #202: "Import complete." after target 1 of 3 would be a lie. The run
       // still always reports when it STOPS (#203) — it just reports what it
       // actually did and what is left.
-      setRunOutcome({ imported, failed: failedTargets, remaining: stillToGo })
+      setRunOutcome({ imported, failed: failedTargets, remaining: stillToGo, refused: rowsRefused })
       const finished = failedTargets.length === 0 && activeIndexes.every(landed)
       setDone(finished)
       // #204: and drop the saved session with it, so the next visit is a
@@ -2894,14 +2904,16 @@ export function ImportWizard() {
       )}
       {runOutcome && !needsFile && (
         <p
-          className={`mt-2 text-sm ${runOutcome.failed.length ? 'text-negative' : 'text-positive'}`}
+          className={`mt-2 text-sm ${runOutcome.failed.length || runOutcome.refused ? 'text-negative' : 'text-positive'}`}
           data-testid="iw-done"
         >
           {runOutcome.failed.length > 0
             ? `Imported ${fmtCount(runOutcome.imported)}; ${fmtCount(runOutcome.failed.length)} failed: ${runOutcome.failed.join(', ')}.`
             : runOutcome.remaining > 0
               ? `Imported ${fmtCount(runOutcome.imported)}; ${fmtCount(runOutcome.remaining)} still to import.`
-              : 'Import complete.'}
+              : runOutcome.refused
+                ? `Imported, but ${runOutcome.refused === 1 ? '1 row was' : `${fmtCount(runOutcome.refused)} rows were`} refused. See above.`
+                : 'Import complete.'}
         </p>
       )}
 
