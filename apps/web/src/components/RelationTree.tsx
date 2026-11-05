@@ -236,17 +236,29 @@ export function TreeOfAll({ table, filters, expanded, onExpandedChange, onOpen }
   const [pages, setPages] = useState(1)
   const meta = useQuery(metaQuery(table)).data
   const fields = meta ? listFields(viewColumns(meta, {})) : []
-  const rows = useQuery({ ...groupRowsQuery({ table, filters }, { fields, limit: pages * TREE_PAGE }), enabled: Boolean(meta), placeholderData: keepPreviousData })
-  const data = rows.data
-  if (!meta || !data) return <p className="text-sm text-ink-subtle">Loading…</p>
-  const roots = data.data.map((r) => {
+  // One read per page of 20, from its own offset: a single growing read
+  // would stop at the server's cap of 500 rows.
+  const reads = useQueries({
+    queries: Array.from({ length: pages }, (_, i) => ({
+      ...groupRowsQuery({ table, filters }, { fields, limit: TREE_PAGE, start: i * TREE_PAGE }),
+      enabled: Boolean(meta),
+      placeholderData: keepPreviousData,
+    })),
+  })
+  const first = reads[0]?.data
+  if (!meta || !first) return <p className="text-sm text-ink-subtle">Loading…</p>
+  // The pages read so far, in order, up to the first still on its way.
+  const loaded = reads.findIndex((r) => !r.data)
+  const shown = (loaded === -1 ? reads : reads.slice(0, loaded)).flatMap((r) => r.data!.data)
+  const total = reads[(loaded === -1 ? reads.length : loaded) - 1].data!.total
+  const roots = shown.map((r) => {
     const rowId = String(r.row_id)
     const label = rowDisplayTitle(meta, r, rowId)
     return { table, row: rowId, label, code: shownCode(meta, rowId, label) }
   })
   return <TableRelationTree roots={roots} label={`Every ${table} row`} expanded={expanded}
     onExpandedChange={onExpandedChange} onOpen={onOpen}
-    footer={data.total > roots.length && <div className="mt-3">
+    footer={total > roots.length && loaded === -1 && <div className="mt-3">
       <Button onClick={() => setPages(pages + 1)}>Show more</Button>
     </div>} />
 }

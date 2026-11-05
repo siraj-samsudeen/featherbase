@@ -1,5 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { sql } from '../src/db'
+import { tableName } from '../src/platform-schema'
 import { createUserWithRole, grantRole, expectApiError } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 
@@ -105,6 +107,24 @@ describe('DOC-010: get_list with filters, fields, order_by, pagination', () => {
     expect(page1.total).toBe(4)
     expect(page1.data.map((r: { title: string }) => r.title)).toEqual(['alpha', 'gamma'])
     expect(page2.data.map((r: { title: string }) => r.title)).toEqual(['beta', 'delta'])
+  })
+
+  test('rows tied on the sort value page in row id order, so no read repeats or skips one', async ({ admin }) => {
+    await setup(admin)
+    await sql.unsafe(`delete from featherbase.${tableName(DT)}`)
+    // Written newest key first, so the table's own order is not the key's.
+    await sql.unsafe(
+      `insert into featherbase.${tableName(DT)} (row_id, title, updated_at)
+       select 'tied-' || n, 'same', timestamp '2026-01-01' from generate_series(5, 1, -1) n`,
+    )
+    const pages: string[] = []
+    for (let start = 0; start < 5; start++) {
+      const page = await admin.get<{ data: { row_id: string }[] }>(
+        listPath({ fields: '["row_id"]', limit_page_length: '1', limit_start: String(start) }),
+      )
+      pages.push(...page.data.map((r) => r.row_id))
+    }
+    expect(pages).toEqual(['tied-1', 'tied-2', 'tied-3', 'tied-4', 'tied-5'])
   })
 
   test('errors cleanly on unknown filter/select/order fields and bad operators', async ({

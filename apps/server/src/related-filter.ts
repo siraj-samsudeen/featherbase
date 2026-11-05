@@ -1,7 +1,6 @@
 import { AppError } from './errors'
 
 export type Filter = [string, string, unknown]
-export const MAX_RELATED_DEPTH = 3
 export const MAX_RELATED_HOPS = 16
 
 interface RelatedSpec {

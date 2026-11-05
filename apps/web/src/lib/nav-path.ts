@@ -1,4 +1,4 @@
-import type { ListFilter } from 'shared'
+import { MAX_RELATED_DEPTH, RELATED_OPS, type ListFilter } from 'shared'
 
 // #910 D1/D2: the navigation path. Every drill and every filter is a step;
 // each step is the whole screen state at that moment, as identities only
@@ -75,12 +75,39 @@ function isScalar(v: unknown): v is Scalar {
   return typeof v === 'string' && v.length <= MAX_STRING
 }
 
-function readFilters(v: unknown): ListFilter[] | null {
+// The one filter whose value is an object: the server's relationship filter
+// (query.ts NAV-002), which a group linked through a sub-table opens as
+// (row-connections.ts). Only its own keys, nested no deeper than the server
+// allows.
+const RELATED_KEYS = ['table', 'via', 'column', 'parentfield', 'filters'] as const
+
+function readRelated(v: unknown, depth: number): Obj | null {
+  if (!isObj(v) || !onlyKeys(v, RELATED_KEYS) || !isId(v.table)) return null
+  for (const k of ['via', 'column', 'parentfield'] as const) if (v[k] !== undefined && !isId(v[k])) return null
+  if ((v.via === undefined) !== (v.column === undefined)) return null
+  if (v.parentfield !== undefined && v.via === undefined) return null
+  const out: Obj = { table: v.table }
+  for (const k of ['via', 'column', 'parentfield'] as const) if (v[k] !== undefined) out[k] = v[k]
+  if (v.filters !== undefined) {
+    const filters = readFilters(v.filters, depth + 1)
+    if (!filters) return null
+    out.filters = filters
+  }
+  return out
+}
+
+function readFilters(v: unknown, depth = 0): ListFilter[] | null {
   if (!Array.isArray(v) || v.length > MAX_FILTERS) return null
   const out: ListFilter[] = []
   for (const f of v) {
     if (!Array.isArray(f) || f.length !== 3 || !isId(f[0]) || !isId(f[1])) return null
     const value: unknown = f[2]
+    if ((RELATED_OPS as readonly string[]).includes(f[1])) {
+      const related = depth < MAX_RELATED_DEPTH ? readRelated(value, depth) : null
+      if (!related) return null
+      out.push([f[0], f[1], related])
+      continue
+    }
     const ok = Array.isArray(value) ? value.length <= MAX_LIST && value.every(isScalar) : isScalar(value)
     if (!ok) return null
     out.push([f[0], f[1], Array.isArray(value) ? [...value] : value])
