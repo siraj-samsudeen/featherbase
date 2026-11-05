@@ -172,10 +172,10 @@ type Router = Awaited<ReturnType<typeof openList>>
 /** The filters the page address holds: the current step of its walk (#910)
  *  once the page has changed them, else the link's own `filters`. */
 function addressFilters(router: Router): unknown[] {
-  const params = new URLSearchParams((router.state as { location: { searchStr: string } }).location.searchStr)
-  const path = decodePath(params.get('path'))
+  const { location } = router.state as { location: { searchStr: string; search: { filters?: string } } }
+  const path = decodePath(new URLSearchParams(location.searchStr).get('path'))
   if (path) return path.steps[path.at].filters ?? []
-  const raw = params.get('filters')
+  const raw = location.search.filters
   return raw ? (JSON.parse(raw) as unknown[]) : []
 }
 
