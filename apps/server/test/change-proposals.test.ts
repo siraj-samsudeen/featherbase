@@ -5,6 +5,7 @@ import { makeClient, type TestClient, type CreateUserFn } from 'feather-testing-
 import { test as pgTest } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
 import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
 import { tableRelation } from '../src/table-engine'
 
 // #975: the first slice of #627's Change Proposal, through a proof app that hands each helper
@@ -37,6 +38,8 @@ async function setUp(admin: TestClient, createUser: CreateUserFn) {
   const maker = await createUser({ email: `maker-${randomUUID()}@example.test` })
   const manager = await createUser({ email: `manager-${randomUUID()}@example.test` })
   const other = await createUser({ email: `other-${randomUUID()}@example.test` })
+  // Each can sign in with a password: an approver must have a working way in.
+  await sql`update person set password_hash = 'made-up' where row_id in ${sql([maker.user!, manager.user!, other.user!])}`
   return { row, maker, manager, other }
 }
 
@@ -155,6 +158,20 @@ describe('who may decide', () => {
     expect(asDay((await placement('P-1')).ends_on)).toBe('2026-11-04')
   })
 
+  test('a manager with no working way to sign in falls to the role too', async ({ admin, createUser }) => {
+    const { maker, manager, other } = await setUp(admin, createUser)
+    await sql`update person set password_hash = null where row_id = ${manager.user!}`
+    await giveRole(admin, other.user, 'Proof Editor')
+    expect((await probe(maker, ask(manager.user))).route).toEqual({ people: [], roles: ['Proof Editor'] })
+  })
+
+  test('a role whose only holder cannot sign in leaves nobody to approve', async ({ admin, createUser }) => {
+    const { maker, other } = await setUp(admin, createUser)
+    await giveRole(admin, other.user, 'Proof Editor')
+    await sql`update person set password_hash = null where row_id = ${other.user!}`
+    await expect(probe(maker, ask(null))).rejects.toMatchObject({ status: 417 })
+  })
+
   test('with nobody else to approve, the proposal is refused saying why', async ({ admin, createUser }) => {
     const { maker } = await setUp(admin, createUser)
     await giveRole(admin, maker.user, 'Proof Editor')
@@ -255,6 +272,24 @@ describe('stale proposals', () => {
     await expect(probe(other, { op: 'needs_fresh_review', id: proposal.row_id, decision: decision(manager.user, { reason: 'x' }) })).rejects.toMatchObject({ status: 417 })
     const outcome = await probe(manager, { op: 'needs_fresh_review', id: proposal.row_id, decision: decision(manager.user, { reason: 'The section closed' }) })
     expect(outcome).toMatchObject({ state: 'Needs fresh review', decision_reason: 'The section closed' })
+  })
+})
+
+describe('holding authority still', () => {
+  test('only a declared and listed row can be locked', async ({ admin, createUser }) => {
+    const { maker } = await setUp(admin, createUser)
+    expect(await probe(maker, { op: 'lock', table: 'Placement', row: 'P-1', key: 'a' })).toBe(true)
+    await expect(probe(maker, { op: 'lock', table: 'Hidden Base', row: 'x', key: 'a' })).rejects.toMatchObject({ status: 417 })
+    await expect(probe(maker, { op: 'lock', table: 'Person', row: 'x', key: 'a' })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('a read-only column keeps its value on the new row', async ({ admin, createUser }) => {
+    const { maker, manager } = await setUp(admin, createUser)
+    await sql`update column_def set read_only = true where parent = 'Placement' and column_name = 'secret'`
+    await invalidateMeta()
+    const proposal = await probe(maker, ask(manager.user))
+    await probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(manager.user) })
+    expect((await placement('P-2')).secret).toBe('kept')
   })
 })
 

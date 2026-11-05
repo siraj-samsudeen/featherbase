@@ -34,6 +34,8 @@ async function world(admin: TestClient, createUser: CreateUserFn) {
   const save = (table: string, values: Record<string, unknown>) => saveRow(admin, table, values)
   const person = (name: string, roles = READER.roles) => createUser({ email: `${name}-${randomUUID()}@example.test`, roles })
   const [maker, manager, editor, stranger, otherStaff] = await Promise.all(['maker', 'manager', 'editor', 'stranger', 'other'].map(n => person(n)))
+  // Each can sign in: an approver must have a working way in.
+  await sql`update person set password_hash = 'made-up' where row_id in ${sql([maker, manager, editor, stranger, otherStaff].map(p => p.user!))}`
   await sql`insert into has_role (row_id, parent, parenttype, parentfield, role) values (${randomUUID()}, ${editor.user!}, 'Person', 'roles', 'Master Data Editor')`
   for (const [site_code, site_name] of [['LKS', 'Lakeside'], ['HIL', 'Hillview']]) await save('Site Master', { site_code, site_name, is_store: true })
   await save('Store Floor', { floor_id: 'LKS-F1', floor_name: 'First floor', site: 'LKS' })

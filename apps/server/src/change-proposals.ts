@@ -9,6 +9,7 @@ import { sql } from './db'
 import { getDoc, hashRowId, saveDoc, saveSystemRow } from './document'
 import { AppError } from './errors'
 import { getMeta, type TableMeta } from './meta'
+import { canSignInNow } from './identities'
 import { getRoles } from './permissions'
 import { getList } from './query'
 import { holdBeforeRowLock } from './row-lock-order'
@@ -46,7 +47,10 @@ function sequential() {
       }
       const work = fn()
       pending = work
-      try { return JSON.parse(JSON.stringify(await work)) as T }
+      try {
+        const value = await work
+        return value === undefined ? value : JSON.parse(JSON.stringify(value)) as T
+      }
       catch (error) { failure = error; throw error }
       finally { pending = undefined }
     },
@@ -114,12 +118,16 @@ function checkedApprovers(value: unknown): ApproverRequest {
 /** Who may approve now: the named people who can sign in, else the holders of the roles. Never the maker. */
 async function resolveRoute(request: ApproverRequest, maker: string): Promise<{ people: string[]; roles: string[] } | null> {
   const named = request.people.filter(person => person !== maker)
-  const people = named.length ? (await sql`select row_id from person where enabled and row_id in ${sql(named)} order by row_id`).map(row => String(row.row_id)) : []
+  const enabled = named.length ? (await sql`select row_id from person where enabled and row_id in ${sql(named)} order by row_id`).map(row => String(row.row_id)) : []
+  const people: string[] = []
+  // A person with no working way in could never act, so a proposal must not wait for them.
+  for (const person of enabled) if (await canSignInNow(person)) people.push(person)
   if (people.length) return { people, roles: [] }
   if (!request.fallbackRoles.length) return null
-  const [holder] = await sql`select 1 from has_role r join person p on p.row_id = r.parent
-    where r.parenttype = 'Person' and r.role in ${sql(request.fallbackRoles)} and p.enabled and p.row_id <> ${maker} limit 1`
-  return holder ? { people: [], roles: [...request.fallbackRoles] } : null
+  const holders = await sql`select distinct p.row_id from has_role r join person p on p.row_id = r.parent
+    where r.parenttype = 'Person' and r.role in ${sql(request.fallbackRoles)} and p.enabled and p.row_id <> ${maker} order by p.row_id`
+  for (const holder of holders) if (await canSignInNow(String(holder.row_id))) return { people: [], roles: [...request.fallbackRoles] }
+  return null
 }
 
 async function proposalsWhere(app: string, filter: ProposalFilter): Promise<ChangeProposal[]> {
@@ -217,6 +225,20 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
     list: (filter: ProposalFilter = {}) => guard.run(() => proposalsWhere(app, filter)),
     mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers)),
 
+    // Who may decide comes from rows the app reads first. These hold still what it read until
+    // the decision commits, so authority can't change while the decision waits for a lock.
+    lockRow: (table: string, rowId: string) => guard.run(async () => {
+      const meta = await reachable(app, table, !!(declaration?.read[table] || declaration?.propose[table]), linked)
+      if (typeof rowId !== 'string' || !rowId) reject('A row is required')
+      await holdBeforeRowLock(sql, meta, user, { [meta.row_key]: rowId })
+      await sql`select 1 from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = ${rowId} for update`
+    }),
+    // For a rule no row can hold, such as "one placement per store and subcategory".
+    serialize: (key: string) => guard.run(async () => {
+      if (typeof key !== 'string' || !key) reject('A key is required')
+      await sql`select pg_advisory_xact_lock(hashtextextended(${`change-proposal:${app}:${key}`}, 0))`
+    }),
+
     propose: (request: ProposalRequest) => guard.run(async () => {
       const { table, row, changes, about, reviewed: mustStay = [] } = request ?? ({} as ProposalRequest)
       const { declared, meta } = await rule(table)
@@ -282,7 +304,10 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
         if (['Sub-table', 'Section Break', 'Column Break'].includes(column.column_type) || column.column_name === meta.row_key) continue
         copied[column.column_name] = current[column.column_name]
       }
-      const added = await saveDoc(meta.name, { ...copied, ...proposed, ...Object.fromEntries(stamp), [declared.startsOn]: effective }, proposal.maker, 'insert', { skipPermissions: true })
+      // A read-only column is copied as it stands: only the platform's trusted path can set one.
+      const values: ActionRow = { ...copied, ...proposed, ...Object.fromEntries(stamp), [declared.startsOn]: effective }
+      const managedValues = Object.fromEntries(meta.columns.filter(column => column.read_only && column.column_name in values).map(column => [column.column_name, values[column.column_name]]))
+      const added = await saveDoc(meta.name, values, proposal.maker, 'insert', { skipPermissions: true, managedValues: managedValues as never })
       const result = String(added.row_id)
       if (current) {
         await saveDoc(meta.name, { row_id: proposal.target_row, updated_at: current.updated_at, [declared.endsOn]: dayBefore(effective) }, proposal.maker, 'upsert', { skipPermissions: true })

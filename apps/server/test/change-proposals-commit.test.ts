@@ -30,7 +30,9 @@ prove('real commits: two approvers approving at once apply it once', async () =>
     await saveDoc('Role', { row_id: 'Proof Editor' }, 'Administrator', 'insert')
     for (const who of ['maker', 'first', 'second']) {
       const email = `${who}-${randomUUID()}@example.test`
-      people.push(String((await saveDoc('Person', { email, full_name: who, enabled: true }, 'Administrator', 'insert')).row_id))
+      const { row_id } = await saveDoc('Person', { email, full_name: who, enabled: true }, 'Administrator', 'insert')
+      await sql`update person set password_hash = 'made-up' where row_id = ${String(row_id)}`
+      people.push(String(row_id))
     }
     for (const person of people.slice(1)) await sql`insert into has_role (row_id, parent, parenttype, parentfield, role) values (${randomUUID()}, ${person}, 'Person', 'roles', 'Proof Editor')`
     await saveDoc(TABLE, { placement_id: 'R-1', label: 'Sarees', site: 'North', starts_on: '2026-10-01' }, 'Administrator', 'insert')
@@ -54,6 +56,13 @@ prove('real commits: two approvers approving at once apply it once', async () =>
     for (const settled of both) if (settled.status === 'rejected') expect(String(settled.reason.message)).toContain('already been decided')
     const states = (await sql`select proposal_state from change_proposal where target_row = 'S-1'`).map(r => String(r.proposal_state)).sort()
     expect(states).toEqual(['Applied', 'Needs fresh review'])
+
+    // Two new rows that a rule says can't both exist, and no row to queue at: they queue on the key.
+    const adds = [await act(people[0], { op: 'propose', request: { table: TABLE, row: null, changes: { label: 'Only one', site: 'East' }, approvers } }),
+      await act(people[1], { op: 'propose', request: { table: TABLE, row: null, changes: { label: 'Only one', site: 'West' }, approvers } })]
+    await Promise.all(adds.map(({ result }, index) =>
+      act(people[2 - index], { op: 'add_once', key: 'only-one', label: 'Only one', id: result.row_id, decision: { approvers, effectiveOn: '2026-11-05', newRow: { placement_id: `O-${index}` } } })))
+    expect((await sql`select count(*)::int as n from ${sql(await tableRelation(TABLE))} where label = 'Only one'`)[0].n).toBe(1)
   } finally {
     // A disposable database: nothing here is cleaned up but the app's hold on it.
     await uninstallApp('proposalproof').catch(() => {})

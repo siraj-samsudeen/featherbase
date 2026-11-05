@@ -508,6 +508,11 @@ async function waysIn(user: string, db: Sql | TxSql, excluding?: string, proof: 
   return Number(row.n)
 }
 
+/** #975: whether this person has a working way to sign in now. */
+export async function canSignInNow(user: string): Promise<boolean> {
+  return (await waysIn(user, sql)) > 0
+}
+
 /** An administrator who can sign in now must still be able to afterwards. */
 async function assertUserKeepsWayIn(user: string, db: Sql | TxSql, excluding: string): Promise<void> {
   const c = await candidate(user, db)

@@ -58,6 +58,10 @@ export interface ChangeProposalsReader {
   mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
 }
 export interface ChangeProposalsHelper extends ChangeProposalsReader {
+  /** Holds a declared base row until the action commits. */
+  lockRow(table: string, rowId: string): Promise<void>
+  /** Queues decisions that share this key until the action commits. */
+  serialize(key: string): Promise<void>
   propose(request: ProposalRequest): Promise<ChangeProposal>
   approve(id: string, decision: DecisionApproval): Promise<ChangeProposal>
   reject(id: string, decision: DecisionNote): Promise<ChangeProposal>

@@ -20,6 +20,8 @@ interface ChangeProposalsReader {
   mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
 }
 interface ChangeProposalsHelper extends ChangeProposalsReader {
+  lockRow(table: string, rowId: string): Promise<void>
+  serialize(key: string): Promise<void>
   propose(request: { table: string; row: string | null; changes: Record<string, string | null>; reviewed?: string[]; approvers: ApproverRequest; about: Record<string, unknown> }): Promise<ChangeProposal>
   approve(id: string, decision: { approvers: ApproverRequest; effectiveOn: string; newRow: Record<string, string | null> }): Promise<ChangeProposal>
   reject(id: string, decision: { approvers: ApproverRequest; reason: string }): Promise<ChangeProposal>
@@ -302,12 +304,17 @@ export const actions = {
     const [proposal] = typeof payload.proposal === 'string' && payload.proposal ? await ctx.changeProposals.list({ ids: [payload.proposal] }) : []
     if (!proposal) ctx.reject('That proposal no longer exists')
     const a = about(proposal)
+    // Authority holds still until this commits: the job, then its manager, then the read.
+    await ctx.changeProposals.lockRow(T.job, a.job_assignment)
     const [job] = await list(ctx, T.job, JOB_FIELDS, [['row_id', '=', a.job_assignment]])
+    if (exact(job?.reports_to)) await ctx.changeProposals.lockRow(T.employee, exact(job.reports_to))
     const { approvers } = await approversOf(ctx, job)
     if (payload.decision === 'reject')
       return view(await ctx.changeProposals.reject(proposal.row_id, { approvers, reason: typeof payload.reason === 'string' ? payload.reason : '' }))
     if (payload.decision !== 'approve') ctx.reject('Approve or reject')
     const today = istToday()
+    // A subcategory in no section yet has no row to queue at, so two adds queue on what they share.
+    if (a.kind === 'add' && !a.from_section) await ctx.changeProposals.serialize(`${a.site}:${a.subcategory}`)
     const stale = await whyStale(ctx, proposal, a, job, today)
     if (stale) return view(await ctx.changeProposals.needsFreshReview(proposal.row_id, { approvers, reason: stale }))
     const newRow: Record<string, string> = a.kind === 'section'
