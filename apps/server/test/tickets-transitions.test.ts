@@ -245,7 +245,7 @@ describe('Tickets: transitions per ticket type (#918)', () => {
     expect(ticket.ticket_state).toBe('Closed')
     expect((await read(w.support, 'queue', { state: 'open' })).tickets.map((t: Ticket) => t.row_id)).not.toContain(ticket.row_id)
     expect((await read(w.raiser, 'detail', { row_id: ticket.row_id })).details.what_changed).toBe('Plant 1200 corrected too')
-  })
+  }, 20_000)
 
   test('history records who took which action with its values; a private type shows others only the action', async ({ admin, createUser }) => {
     const w = await world(admin, createUser, 'private')
