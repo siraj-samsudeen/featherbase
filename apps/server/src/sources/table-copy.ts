@@ -49,15 +49,16 @@ async function withSourceRows<T>(cfg: SourceConfig, query: string, key: string, 
   } finally { await rm(folder, { recursive: true, force: true }) }
 }
 
+const READ_STATUS = new Set(['conn_status', 'last_checked_at', 'last_error', 'updated_at', 'updated_by'])
+
 /** #971: a Data Source's settings as they stand, without the status every read
  *  updates. A deploy may change them while a copy reads, so the apply compares. */
-async function sourceSettings(name: string): Promise<string> {
+async function sourceSettings(name: string): Promise<string | undefined> {
   const [row] = await sql`select * from data_source where row_id = ${name}`
-  const { conn_status, last_checked_at, last_error, updated_at, updated_by, ...settings } = row ?? {}
-  return JSON.stringify(settings)
+  return JSON.stringify(row, (key, value) => READ_STATUS.has(key) ? undefined : value)
 }
 
-async function assertSourceUnchanged(name: string, settings: string): Promise<void> {
+async function assertSourceUnchanged(name: string, settings: string | undefined): Promise<void> {
   if (await sourceSettings(name) !== settings)
     throw new AppError('ConflictError', `Data source ${name} changed while the source was read; try the copy again`)
 }

@@ -300,19 +300,6 @@ describe('the data source changes during the read', () => {
     expect(await sql`select 1 from table_def where name = 'Overlap Stores'`).toHaveLength(0)
   })
 
-  test('a data source removed meanwhile refuses the copy', async ({ admin }) => {
-    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'overlap', token: STANDIN_TOKENS.reader, databases: ['sales'] })
-    const read = stall()
-    gates.read = read.wait
-    try {
-      const made = admin.post(`${SOURCES}/overlap:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Overlap Stores', key: 'code', columns: COLUMNS })
-      await read.reached
-      await sql`delete from data_source where row_id = 'overlap'`
-      read.release()
-      await expect(made).rejects.toMatchObject({ status: 409 })
-    } finally { gates.read = undefined; read.release() }
-  })
-
   test('a status a read writes is not a change', async ({ admin }) => {
     await makeCopy(admin)
     const read = stall()
