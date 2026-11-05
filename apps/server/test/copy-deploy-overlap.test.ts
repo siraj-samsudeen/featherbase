@@ -9,6 +9,7 @@ import { DEPLOY_LOCK_WAIT, instanceDeployOperation, type DeployLockWait } from '
 import { overrideVariable } from '../src/env'
 import { invalidateMeta } from '../src/meta'
 import { tableRelation } from '../src/table-engine'
+import { registerController, unregisterController } from '../src/controllers'
 import { invalidateSources } from '../src/sources/registry'
 import { runOneJob } from '../src/jobs'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
@@ -229,6 +230,31 @@ describe('a copy and a deploy at the same time', () => {
     // Either the copy applied over the save, or it was refused and observed nothing.
     if (row.title === 'Saved meanwhile') expect(await sql`select count(*)::int as n from import_log where ref_table = 'Overlap Stores'`).toEqual([{ n: 1 }])
     else expect(latest.values).toMatchObject({ title: 'Harbour Road' })
+  })
+
+  test('a copy takes the locks a save takes before its rows, so it cannot deadlock with a save', async ({ admin }) => {
+    await makeCopy(admin)
+    await changeStandin(dir, 'sales', ["update stores set name = 'Harbour Road North' where code = 'S001'"])
+    invalidateSources('overlap')
+    const controller = { table: 'Overlap Stores', hooks: { before_lock: async ({ tx }: { tx: typeof sql }) => { await tx`select pg_advisory_xact_lock(971)` } } }
+    registerController(controller as never)
+    const relation = sql(await tableRelation('Overlap Stores'))
+    try {
+      // An ordinary save: its before_lock taken, its row lock still to come.
+      const copyDone = await sql.begin(async (tx) => {
+        await tx`select pg_advisory_xact_lock(971)`
+        const copy = admin.post<{ changed: number }>(AGAIN, {})
+        await new Promise((done) => setTimeout(done, 400))
+        await tx.unsafe(`set local lock_timeout = '1s'`)
+        // The copy waits at the same lock, holding no row the save needs.
+        await tx`select 1 from ${relation} where row_id = 'S002' for update`
+        return { copy }
+      })
+      expect((await copyDone.copy).changed).toBe(1)
+    } finally {
+      unregisterController(controller as never)
+      await changeStandin(dir, 'sales', ["update stores set name = 'Harbour Road' where code = 'S001'"])
+    }
   })
 
   test('the standing wait outlasts the slowest copy seen on staging', () => {

@@ -155,6 +155,8 @@ export async function observeUnchangedRows(meta: TableMeta, inputs: { row_id: st
   const unchanged = new Set<string>()
   if (!inputs.length) return unchanged
   const ids = inputs.map(i => i.row_id)
+  // #693: the locks a save takes before its row, before any row of this run.
+  for (const { values } of inputs) await holdBeforeRowLock(sql, meta, user, { ...values })
   // Locked to the end of the run, as a save would: a value another writer commits
   // while this run decides is either seen here or waits, so the observation
   // below can never be newer than a value it did not see.
