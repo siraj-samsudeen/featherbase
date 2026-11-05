@@ -7,7 +7,7 @@
 
 ADR review completed for this change. The highest existing sequence was 0018. This change creates one repository-level ADR:
 
-- [0019: Apps colour themselves only through the platform's named accents](../../../adr/0019-apps-colour-themselves-through-named-accents.md), from design D1 and D2.
+- [0019: Apps colour themselves only through the platform's named accents](../../../../adr/0019-apps-colour-themselves-through-named-accents.md), from design D1 and D2.
 
 ## In-Force ADRs Reviewed
 
