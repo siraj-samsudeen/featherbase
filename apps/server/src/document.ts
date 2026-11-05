@@ -827,7 +827,15 @@ const ENGINE_MANAGED = new Set(['Table', 'Column'])
 // The import action refuses source-bound Tables before it gets here.
 // Returns the id the row will take, when known now, so the import check can
 // spot one repeated within the file.
-export async function checkRowForInsert(meta: TableMeta, values: RowValues): Promise<string> {
+export async function checkRowForInsert(meta: TableMeta, values: RowValues, user: string): Promise<string> {
+  // The real save refuses a value outside the caller's reach; so must the rehearsal.
+  const reach = await insertColumns(user, meta.name)
+  stripUnwritableFields(meta.columns, reach, pickFieldValues(meta, values))
+  for (const link of meta.columns.filter((column) => column.column_type === 'Sub-table' && Array.isArray(values[column.column_name]))) {
+    const childMeta = await getMeta(link.row_table!)
+    const childReach = await childWriteColumns(user, reach, meta.name, childMeta.name, link.row_id, 'create', user)
+    for (const line of values[link.column_name] as RowValues[]) stripUnwritableFields(childMeta.columns, childReach, pickFieldValues(childMeta, line))
+  }
   validateValues(meta, applyDefaults(meta, pickFieldValues(meta, values)), 'insert')
   // #231: the real import inserts through saveDoc, so the dry run has to
   // apply the same required-children rule or it would pass rows the import

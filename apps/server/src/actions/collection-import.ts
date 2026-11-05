@@ -392,7 +392,7 @@ export async function importRows({ table, args, user }: CollectionActionContext,
             actions.push('update')
             continue
           }
-          const name = await checkRowForInsert(meta, row as Record<string, unknown>)
+          const name = await checkRowForInsert(meta, row as Record<string, unknown>, user.row_id)
           if (name && seenNames.has(name))
             throw new AppError('ConflictError', `Duplicate name ${name} within the import`)
           if (name) seenNames.add(name)

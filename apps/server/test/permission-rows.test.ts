@@ -6,7 +6,8 @@ import { installApp, provisionGrants, registerApp, uninstallApp } from '../src/a
 import { permittedColumns, sameStoredValue, tableAccessFor } from '../src/permissions'
 import { childColumns } from '../src/row-readers'
 import { enabledPeople } from '../src/people-directory'
-import { invalidateMeta } from '../src/meta'
+import { getMeta, invalidateMeta } from '../src/meta'
+import { checkRowForInsert } from '../src/document'
 import { readLegacyPermission } from '../src/app-permission-format'
 
 // #917: a Permission row names one operation and the Columns it reaches; the
@@ -177,6 +178,23 @@ describe('a grant reaches only what its rows allow', () => {
     const person = await holder()
     expect([...await childColumns(person, DT, 'Pr Line', link, 'read', 'someone-else')]).toEqual(['@basic'])
     expect((await childColumns(person, DT, 'Pr Line', link, 'read', person)).has('*')).toBe(true)
+  })
+
+  test('an insert rehearsal refuses what the real save would, line items included', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Pr Cost Line', kind: 'sub_table', columns: [
+      { column_name: 'note', column_type: 'Data' }, { column_name: 'cost', column_type: 'Data', tier: 'restricted' },
+    ] })
+    await admin.post('/api/table_def', { name: 'Pr Costed', columns: [
+      { column_name: 'title', column_type: 'Data' }, { column_name: 'margin', column_type: 'Data', tier: 'restricted' },
+      { column_name: 'lines', column_type: 'Sub-table', row_table: 'Pr Cost Line' },
+    ] })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await insert({ row_id: 'pr-cost', ref_table: 'Pr Costed', operation: 'create' })
+    const person = await holder()
+    const meta = await getMeta('Pr Costed')
+    expect(await checkRowForInsert(meta, { title: 'Fine', lines: [{ note: 'ok' }] }, person)).toBe('')
+    await expect(checkRowForInsert(meta, { title: 'No', margin: '9' }, person)).rejects.toThrow(/No write permission on column margin/)
+    await expect(checkRowForInsert(meta, { title: 'No', lines: [{ cost: '9' }] }, person)).rejects.toThrow(/No write permission on column cost/)
   })
 
   test('a grant to read identifiers alone opens no Admin', async ({ admin }) => {
