@@ -8,7 +8,8 @@ import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 import { mandatoryWhere, needsMandatoryRowRead } from './mandatory-access'
-import { MAX_RELATED_DEPTH, MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
+import { MAX_RELATED_DEPTH, RELATED_OPS } from 'shared'
+import { MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
 
 export type { Filter } from './related-filter'
 
@@ -33,7 +34,7 @@ export function hideRetired(meta: TableMeta, filters: Filter[], withRetired = fa
   return [...filters, ['retired_at', '=', null]]
 }
 
-const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', 'related', 'not related'] as const
+const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', ...RELATED_OPS] as const
 
 // NAV-002: the 'related' operator — the ONE relationship-shaped filter the
 // list language understands. It constrains rows by a relationship to
@@ -626,7 +627,7 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
   const rows = await sql`
     select ${selection} from ${sql(tbl)}
     where ${where}
-    order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}
+    order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}${orderField === ROW_KEY ? sql`` : sql`, ${sql(phys(ROW_KEY))} asc`}
     limit ${limit} offset ${offset}`
   const [{ count }] = await sql`
     select count(*)::int as count from ${sql(tbl)} where ${where}`

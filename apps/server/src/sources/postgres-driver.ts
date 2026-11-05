@@ -14,6 +14,7 @@ import type {
   SourceFilter,
   SourceRow,
 } from './types'
+import { orderClause } from './order'
 
 // EDS-5/6: the postgres driver. One bounded pool per source (EDS-1), every
 // identifier quoted, every value a bound parameter (IV2/IV4). This pool is
@@ -284,7 +285,7 @@ export const postgresDriver: SourceDriver = {
   async getList(bind, spec: ListSpec) {
     const cols = [...new Set([bind.pk, ...spec.columns])].map(quoteIdent).join(', ')
     const { text, values } = buildWhere(spec.filters)
-    const order = `${quoteIdent(spec.order.column)} ${spec.order.dir === 'desc' ? 'desc' : 'asc'}`
+    const order = orderClause(spec.order, bind.pk, quoteIdent)
     const rows = await run(
       bind.source,
       `select ${cols} from ${relation(bind)} where ${text}

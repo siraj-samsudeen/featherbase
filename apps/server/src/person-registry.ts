@@ -86,6 +86,12 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   data_source_secret: { '*': code },
   table_copy: { '*': code },
   copy_refresh_schedule: { '*': code },
+  // #927: a master sync's rule, the source values last seen and the differences
+  // raised. A master row may be a Person, and source values may name people:
+  // both are left as free text, never read as identifiers.
+  master_sync: { '*': code },
+  master_sync_snapshot: { copied_table: code, source_key: code, master_row: text, source_values: text },
+  master_sync_difference: { '*': code, master_row: text, source_value: text, featherbase_value: text, ticket_payload: text, ticket_error: text },
   // #625: an app dataset's rows: warehouse figures, no person in them.
   app_dataset_row: { '*': code },
   dataset_miss: { '*': code },

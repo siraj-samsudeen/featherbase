@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "ticketsink",
+  "title": "Ticket sink (master sync tests)",
+  "entryTable": "ticketsink.ticket",
+  "server": "server.mjs",
+  "actions": {"version": 2, "operations": {
+    "create": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
+  }, "tables": ["ticketsink.ticket"]},
+  "tables": [
+    {"name": "ticketsink.ticket", "label": "Sunk ticket", "id_pattern": "hash", "columns": [
+      {"column_name": "title", "column_type": "Data", "reqd": true},
+      {"column_name": "kind", "column_type": "Data"},
+      {"column_name": "payload", "column_type": "Text"}
+    ]}
+  ],
+  "permissions": [
+    {"table": "ticketsink.ticket", "role": "All", "can_read": true, "can_create": true}
+  ]
+}

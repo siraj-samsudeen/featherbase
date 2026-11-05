@@ -77,8 +77,45 @@ const SAFE_TYPE_CHANGES: Readonly<Record<string, Readonly<Record<string, string 
   Check: { Int: 'bigint' },
 }
 
+/** #911: a text column becomes a link, and back, in place. Both store the same
+ *  text, so nothing converts; text becomes a link only once every value names a
+ *  row of the target (`assertValuesNameRows`). */
+export function isLinkTypeChange(from: string, to: string): boolean {
+  return (from === 'Data' && to === 'Reference') || (from === 'Reference' && to === 'Data')
+}
+
 export function isSafeTypeChange(from: string, to: string): boolean {
-  return Object.hasOwn(SAFE_TYPE_CHANGES, from) && Object.hasOwn(SAFE_TYPE_CHANGES[from], to)
+  return isLinkTypeChange(from, to) || (Object.hasOwn(SAFE_TYPE_CHANGES, from) && Object.hasOwn(SAFE_TYPE_CHANGES[from], to))
+}
+
+/** #911: before a text column becomes a link to `target`, every non-empty value
+ *  must be the id of a row there. Refuses naming the values that are not, and
+ *  turns empty text into no value, which is how a link says empty. */
+async function assertValuesNameRows(
+  tx: { unsafe: (q: string) => Promise<unknown> },
+  relation: string,
+  table: string,
+  column: string,
+  target: string,
+): Promise<void> {
+  const targetMeta = await getMeta(target)
+  if (targetMeta.data_source || targetMeta.kind === 'settings')
+    throw new AppError('ValidationError', `${table}.${column} can only become a link to a Table whose rows are stored here`, {
+      [column]: `${target} rows are not stored here`,
+    })
+  const col = quoteIdent(column)
+  const missing = (await tx.unsafe(
+    `select distinct t.${col} as value from ${relation} t
+     where t.${col} is not null and t.${col} <> ''
+       and not exists (select 1 from ${quoteRelation(await tableRelation(target))} r where r.row_id = t.${col})
+     order by 1 limit 20`,
+  )) as unknown as { value: string }[]
+  if (missing.length) {
+    // The first 20 are enough to see the pattern and start fixing.
+    const why = `${missing.map((m) => m.value).join(', ')} ${missing.length === 1 ? 'names' : 'name'} no ${target} row`
+    throw new AppError('ValidationError', `${table}.${column} cannot become a link: ${why}`, { [column]: why })
+  }
+  await tx.unsafe(`update ${relation} set ${col} = null where ${col} = ''`)
 }
 
 export function pgType(columnType: string): string | null {
@@ -507,7 +544,9 @@ export async function updateTable(
   const errors: Record<string, string> = {}
   for (const [column_name, f] of after) {
     const old = before.get(column_name)
-    if (old && old.column_type !== f.column_type)
+    if (old && old.column_type !== f.column_type && !(
+      isLinkTypeChange(old.column_type, f.column_type) && existing.kind !== 'settings' && !existing.data_source &&
+      (f.column_type !== 'Reference' || (f.reference_table && !f.table_column))))
       errors[column_name] = `column_type cannot change (${old.column_type} -> ${f.column_type})`
   }
   if (Object.keys(errors).length)
@@ -608,6 +647,13 @@ export async function updateTable(
           )
         }
       } else {
+        if (old.column_type !== f.column_type) {
+          // #911: the only type changes that reach here are text ⇄ link.
+          if (f.column_type === 'Reference')
+            await assertValuesNameRows(tx, relation, name, f.column_name, f.reference_table!)
+          else row.reference_table = null
+          row.column_type = f.column_type
+        }
         await tx`update column_def set ${tx(row)}
           where parent = ${name} and column_name = ${f.column_name}`
         const type = pgType(f.column_type)
@@ -1298,7 +1344,8 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
 
 // #651: change a column's type where every stored value converts as it is
 // (SAFE_TYPE_CHANGES); anything else is refused.
-export async function changeColumnType(table: string, column: string, to: string): Promise<TableMeta> {
+export async function changeColumnType(table: string, column: string, to: string,
+  opts: { reference_table?: string | null } = {}): Promise<TableMeta> {
   const meta = await getMeta(table)
   if (policyColumns(meta.access_policy).includes(column))
     throw new AppError('PermissionError', 'A column that defines mandatory access cannot change type')
@@ -1311,8 +1358,24 @@ export async function changeColumnType(table: string, column: string, to: string
   if (from === to) return meta
   if (!isSafeTypeChange(from, to))
     throw new AppError('ValidationError', `${meta.name}.${column}: ${from} to ${to} is not a safe conversion; add a new column, copy the data, then drop the old one`)
-  const cast = SAFE_TYPE_CHANGES[from][to]
   const relation = quoteRelation(await tableRelation(meta.name))
+  if (isLinkTypeChange(from, to)) {
+    if (current.table_column)
+      throw new AppError('ValidationError', `${meta.name}.${column} is a link to a row of any Table, so it does not turn into text`)
+    const target = to === 'Reference' ? opts.reference_table ?? null : null
+    if (to === 'Reference') {
+      if (!target) throw new AppError('ValidationError', `${meta.name}.${column}: a link needs the Table it links to`)
+      await assertLinkTargetsExist({ name: meta.name } as TableDef, [{ column_name: column, column_type: 'Reference', reference_table: target }])
+    }
+    await sql.begin(async (tx) => {
+      if (target) await assertValuesNameRows(tx, relation, meta.name, column, target)
+      await tx`update column_def set column_type = ${to}, reference_table = ${target}
+        where parent = ${meta.name} and column_name = ${column}`
+    })
+    invalidateMeta(meta.name)
+    return getMeta(meta.name)
+  }
+  const cast = SAFE_TYPE_CHANGES[from][to]
   await sql.begin(async (tx) => {
     const col = quoteIdent(column)
     if (cast && meta.kind !== 'settings')
