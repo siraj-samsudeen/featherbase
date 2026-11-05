@@ -1,4 +1,4 @@
-import type { ListFilter } from 'shared'
+import { MAX_RELATED_DEPTH, RELATED_OPS, type ListFilter } from 'shared'
 
 // #910 D1/D2: the navigation path. Every drill and every filter is a step;
 // each step is the whole screen state at that moment, as identities only
@@ -79,9 +79,7 @@ function isScalar(v: unknown): v is Scalar {
 // (query.ts NAV-002), which a group linked through a sub-table opens as
 // (row-connections.ts). Only its own keys, nested no deeper than the server
 // allows.
-const RELATED_OPS = ['related', 'not related']
 const RELATED_KEYS = ['table', 'via', 'column', 'parentfield', 'filters'] as const
-const MAX_RELATED_DEPTH = 3
 
 function readRelated(v: unknown, depth: number): Obj | null {
   if (!isObj(v) || !onlyKeys(v, RELATED_KEYS) || !isId(v.table)) return null
@@ -104,7 +102,7 @@ function readFilters(v: unknown, depth = 0): ListFilter[] | null {
   for (const f of v) {
     if (!Array.isArray(f) || f.length !== 3 || !isId(f[0]) || !isId(f[1])) return null
     const value: unknown = f[2]
-    if (RELATED_OPS.includes(f[1])) {
+    if ((RELATED_OPS as readonly string[]).includes(f[1])) {
       const related = depth < MAX_RELATED_DEPTH ? readRelated(value, depth) : null
       if (!related) return null
       out.push([f[0], f[1], related])

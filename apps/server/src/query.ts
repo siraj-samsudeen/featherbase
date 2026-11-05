@@ -8,7 +8,8 @@ import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 import { mandatoryWhere, needsMandatoryRowRead } from './mandatory-access'
-import { MAX_RELATED_DEPTH, MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
+import { MAX_RELATED_DEPTH, RELATED_OPS } from 'shared'
+import { MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
 
 export type { Filter } from './related-filter'
 
@@ -20,7 +21,7 @@ interface ListArgs {
   limit_page_length?: number
 }
 
-const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', 'related', 'not related'] as const
+const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', ...RELATED_OPS] as const
 
 // NAV-002: the 'related' operator — the ONE relationship-shaped filter the
 // list language understands. It constrains rows by a relationship to

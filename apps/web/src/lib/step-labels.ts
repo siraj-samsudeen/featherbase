@@ -1,5 +1,5 @@
 import { useQueries } from '@tanstack/react-query'
-import { choiceLabel } from 'shared'
+import { choiceLabel, RELATED_OPS } from 'shared'
 import type { ListFilter } from 'shared'
 import { metaQuery, type TableMeta } from './meta'
 import { stepKind, stepRefs, type NavStep } from './nav-path'
@@ -32,11 +32,9 @@ export function filterRefs(table: string, meta: TableMeta | undefined, [column, 
     .map((v) => ({ table: target, row_id: String(v) }))
 }
 
-const RELATED = ['related', 'not related']
-
 /** A relationship filter's target (nav-path.ts validates its shape). */
 function relatedTarget(op: string, value: unknown): { table: string; filters?: ListFilter[] } | undefined {
-  return RELATED.includes(op) && typeof value === 'object' && value !== null && !Array.isArray(value)
+  return (RELATED_OPS as readonly string[]).includes(op) && typeof value === 'object' && value !== null && !Array.isArray(value)
     ? value as { table: string; filters?: ListFilter[] } : undefined
 }
 
