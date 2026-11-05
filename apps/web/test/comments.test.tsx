@@ -157,3 +157,13 @@ test('a person with neither a username nor a name is never offered, so a mention
   expect(shown).toContain('Named One · @named.one')
   expect(shown.some((t) => /psn_|Unnamed/.test(t) || t.trim() === '')).toBe(false)
 })
+
+// #909: the box names the person writing by their name, never by an id.
+test('the comment box says who is commenting by name', async ({ admin, createUser }) => {
+  const rowId = await seedRow(admin)
+  const priya = await createUser({ email: 'priya.cmt@example.com', fullName: 'Priya Commenter', roles: ['System Manager'] })
+  expect(priya.user).toMatch(/^psn_/)
+  await openRow(priya, rowId)
+  await waitFor(() => expect(input().placeholder).toBe('Comment as Priya Commenter… use @ to mention'))
+  expect(input().placeholder).not.toContain('psn_')
+})
