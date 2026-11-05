@@ -74,8 +74,14 @@ function registerCopyRefresh(method: string): void {
         // The copy is committed: a mail outage must not retry the import.
         // The notice waits in its own job instead (#934), since a later
         // refresh never reports these conflicts again.
-        await appOperation(() => retryConflictNotice(String(link.target_table), result.conflicts, 1))
-        ctx.setResult(`${summary} · Conflict notice could not be queued; it will be tried again`)
+        try {
+          await appOperation(() => retryConflictNotice(String(link.target_table), result.conflicts, 1))
+          ctx.setResult(`${summary} · Conflict notice could not be queued; it will be tried again`)
+        } catch {
+          // Not even the job could be kept: still no re-import. The
+          // conflicts stay in the table's Import conflicts.
+          ctx.setResult(`${summary} · Conflict notice could not be queued or kept for later`)
+        }
       }
     }
     // #971: reads with no lifecycle lock; copyAgain and the sync take it to apply.
@@ -103,7 +109,8 @@ const NOTICE_RETRY_MINUTES = 15
 const NOTICE_TRIES = 96
 
 async function retryConflictNotice(table: string, conflicts: number, tries: number): Promise<void> {
-  await enqueue(CONFLICT_NOTICE_JOB, { table, conflicts, tries }, { maxAttempts: 1, runAt: new Date(Date.now() + NOTICE_RETRY_MINUTES * 60_000) })
+  // Its own transaction, so a refused insert leaves the caller's work alone.
+  await actionTransaction(() => enqueue(CONFLICT_NOTICE_JOB, { table, conflicts, tries }, { maxAttempts: 1, runAt: new Date(Date.now() + NOTICE_RETRY_MINUTES * 60_000) }))
 }
 
 registerJob(CONFLICT_NOTICE_JOB, async (payload, ctx) => {
