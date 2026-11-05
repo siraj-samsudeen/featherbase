@@ -169,8 +169,9 @@ export async function setMasterSync(user: SessionUser, copied: string, input: un
   return asInstalledApps([rule.master_table, rule.link.table], () => checkAndSaveRule(user, copied, rule))
 }
 
-async function checkAndSaveRule(user: SessionUser, copied: string, rule: MasterSyncRule) {
-  const [copiedMeta, master, link] = await Promise.all([getMeta(copied), getMeta(rule.master_table), getMeta(rule.link.table)])
+/** Checked when a rule is set and again on every run: Tables change after a rule is
+ *  written, and a save silently drops a column that has become read-only. */
+function checkRule(rule: MasterSyncRule, copiedMeta: TableMeta, master: TableMeta, link: TableMeta) {
   if (master.name === copiedMeta.name) throw new AppError('ValidationError', 'A copied table cannot be its own master')
   // Provenance lives on the history row: a master without history cannot say where a change came from.
   if (!master.track_changes) throw new AppError('ValidationError', `${master.name} keeps no history, so a synced change could not say where it came from`)
@@ -187,6 +188,11 @@ async function checkAndSaveRule(user: SessionUser, copied: string, rule: MasterS
     if (inactive?.read_only) throw new AppError('ValidationError', `${master.name}.${rule.inactive.column} is read-only`)
     if (isNotFitting(toMaster(rule.inactive.value, inactive?.column_type))) throw new AppError('ValidationError', `The inactive value does not fit ${master.name}.${rule.inactive.column}`)
   }
+}
+
+async function checkAndSaveRule(user: SessionUser, copied: string, rule: MasterSyncRule) {
+  const [copiedMeta, master, link] = await Promise.all([getMeta(copied), getMeta(rule.master_table), getMeta(rule.link.table)])
+  checkRule(rule, copiedMeta, master, link)
   await actionTransaction(async () => {
     // Serialized with runs. A rule that matches rows differently starts again
     // from Featherbase: the last values seen belong to the old matching.
@@ -268,7 +274,7 @@ async function applyRule(actor: string, copied: string, rule: MasterSyncRule): P
   // Two copies feeding one master take turns, so they never lock its rows in opposite orders.
   await sql`select pg_advisory_xact_lock(hashtext('master-sync-master:' || ${rule.master_table}))`
   const [copiedMeta, master, link] = await Promise.all([getMeta(copied), getMeta(rule.master_table), getMeta(rule.link.table)])
-  if (!master.track_changes) throw new AppError('ValidationError', `${master.name} keeps no history, so a synced change could not say where it came from`)
+  checkRule(rule, copiedMeta, master, link)
   const runId = `sync-${randomUUID()}`
   const result = { run_id: runId, linked: 0, applied: 0, unchanged: 0, raised: 0, already_raised: 0 }
 

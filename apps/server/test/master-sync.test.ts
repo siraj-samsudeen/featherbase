@@ -394,6 +394,12 @@ describe('Master sync (#927)', { timeout: 60_000 }, () => {
     await expect(run(admin)).rejects.toMatchObject({ status: 417 })
     await sql`update table_def set track_changes = true where name = 'Sync Person'`
     invalidateMeta('Sync Person')
+    // A column that became read-only is refused too: a save would silently drop it and the baseline would move on.
+    await sql`update column_def set read_only = true where parent = 'Sync Person' and column_name = 'phone'`
+    invalidateMeta('Sync Person')
+    await expect(run(admin)).rejects.toMatchObject({ status: 417 })
+    await sql`update column_def set read_only = false where parent = 'Sync Person' and column_name = 'phone'`
+    invalidateMeta('Sync Person')
     await changeStandin(dir, 'sales', [`update ${source} set phone = '114' where emp_id = 'E1'`])
     await admin.post(`${SOURCES}/ms-${source.replaceAll('_', '-')}:refresh_tables`, { database: 'sales' })
     await sql.unsafe(`create function featherbase.ms_refuse() returns trigger language plpgsql as $$ begin raise exception 'Injected save failure'; end $$`)
