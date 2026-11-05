@@ -185,12 +185,12 @@ class BaseInstall {
       const button = this.page.getByRole('navigation', { name: 'Available apps' }).getByRole('button', { name: new RegExp(name) });
       assert.match(await button.innerText(), /Needs preparation/);
     }
-    for (const app of await this.catalog()) if (['tasker', 'feather_dash'].includes(app.name)) assert.equal(app.preparation.state, 'needed');
+    for (const app of await this.catalog()) if (['tasker', 'dash'].includes(app.name)) assert.equal(app.preparation.state, 'needed');
   }
   async noInstalledApps() {
     const result = await this.call('GET', '/api/apps');
     assert.deepEqual(result.installed, []);
-    const tables = await acceptanceSql("select table_name from information_schema.tables where table_schema = 'featherbase' and (table_name like 'tasker.%' or table_name like 'feather_dash.%')");
+    const tables = await acceptanceSql("select table_name from information_schema.tables where table_schema = 'featherbase' and (table_name like 'tasker.%' or table_name like 'dash.%')");
     assert.equal(tables.length, 0);
   }
   async noFixtures() {
@@ -331,15 +331,15 @@ class BaseInstall {
     await expect.poll(() => options.allTextContents()).toContain('Tasker');
   }
   async configureDash() {
-    await this.inspect('feather_dash');
+    await this.inspect('dash');
     await this.details('Dash').getByRole('link', { name: 'Configure settings', exact: true }).click();
   }
   async manageDashIdentifier() {
-    await this.applySettings({ 'App Setting': [{ row_id: 'feather_dash.dive_id', value: 'acceptance-report' }] });
-    await this.call('POST', '/api/save_row', { table: 'App Setting', row: { row_id: 'feather_dash.embed_service_account', value: 'initial-account' } }, [201]);
+    await this.applySettings({ 'App Setting': [{ row_id: 'dash.dive_id', value: 'acceptance-report' }] });
+    await this.call('POST', '/api/save_row', { table: 'App Setting', row: { row_id: 'dash.embed_service_account', value: 'initial-account' } }, [201]);
   }
   async editableAccount() {
-    await this.open(`${ADMIN}/table/app-setting/row/feather_dash.embed_service_account`);
+    await this.open(`${ADMIN}/table/app-setting/row/dash.embed_service_account`);
     const input = this.page.getByLabel('Value', { exact: true });
     assert.equal(await input.isEnabled(), true);
     await input.fill('acceptance-account');
@@ -347,23 +347,23 @@ class BaseInstall {
     await this.page.getByRole('button', { name: 'Save', exact: true }).click();
     const response = await saved;
     assert.ok(response.ok(), await response.text());
-    const row = await this.api.row('App Setting', 'feather_dash.embed_service_account');
+    const row = await this.api.row('App Setting', 'dash.embed_service_account');
     assert.equal(row.value, 'acceptance-account');
   }
   async lockedIdentifier() {
-    await this.open(`${ADMIN}/table/app-setting/row/feather_dash.dive_id`);
+    await this.open(`${ADMIN}/table/app-setting/row/dash.dive_id`);
     const input = this.page.getByLabel('Value', { exact: true });
     await input.waitFor();
     assert.ok(await input.isDisabled() || await input.getAttribute('readonly') !== null);
     await this.textContains('settings file');
   }
   async readOnlyDeclaration() {
-    await this.inspect('feather_dash');
+    await this.inspect('dash');
     await this.detailsContain('packaged declarations are read-only', 'Dash');
     assert.equal(await this.details('Dash').locator('input,textarea').count(), 0);
   }
   async missingSecret() {
-    const app = await this.app('feather_dash');
+    const app = await this.app('dash');
     assert.deepEqual(app.secrets.find(secret => secret.name === 'MOTHERDUCK_TOKEN'), { name: 'MOTHERDUCK_TOKEN', optional: false, present: false });
     await this.detailsContain('MOTHERDUCK_TOKEN', 'Dash');
     await this.detailsContain('Missing', 'Dash');

@@ -24,7 +24,7 @@ let dom: InstanceType<typeof JSDOM>
 const originals = new Map<string, PropertyDescriptor | undefined>()
 
 beforeAll(() => {
-  dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/feather_dash/' })
+  dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/dash/' })
   const globals: Record<string, unknown> = {
     window: dom.window, document: dom.window.document, navigator: dom.window.navigator,
     location: dom.window.location, history: dom.window.history,
@@ -65,8 +65,8 @@ const test = sandboxed.extend<{ browser: void }>({
   browser: [async ({ db: _db }, use) => {
     token = undefined
     requests.length = 0
-    dom.reconfigure({ url: 'http://localhost/feather_dash/' })
-    history.replaceState(null, '', '/feather_dash/')
+    dom.reconfigure({ url: 'http://localhost/dash/' })
+    history.replaceState(null, '', '/dash/')
     document.body.innerHTML = '<div id="root"></div>'
     await use()
     await act(async () => root?.unmount())
@@ -81,7 +81,7 @@ const installed = test.extend<{ dash: Awaited<ReturnType<typeof setupDash>> }>({
   dash: async ({ admin, createUser, browser: _browser }, use) => {
     const dash = await setupDash(admin, createUser)
     token = dash.reader.token
-    history.replaceState(null, '', '/feather_dash/?store=9901')
+    history.replaceState(null, '', '/dash/?store=9901')
     await use(dash)
   },
 })
@@ -90,9 +90,9 @@ async function open() {
   // Mount the public page; main.tsx stays in the denominator even though this
   // component harness owns the root so it can unmount before sandbox rollback.
   const { createRoot } = await import('react-dom/client')
-  const { FeatherDash } = await import('../src/app')
+  const { Dash } = await import('../src/app')
   root = createRoot(document.getElementById('root')!)
-  await act(async () => root!.render(<FeatherDash />))
+  await act(async () => root!.render(<Dash />))
 }
 
 async function waitForText(text: string, timeout = 5000) {
@@ -112,10 +112,10 @@ async function waitForQuickView(timeout = 5000) {
 
 describe('Feather Dash against the real platform', () => {
   test('offers a sign-in link preserving the report address after the server refuses anonymous reads', async () => {
-    history.replaceState(null, '', '/feather_dash/?store=9901')
+    history.replaceState(null, '', '/dash/?store=9901')
     await open()
     await waitForText('Sign in to open your report.')
-    expect(document.querySelector('[data-testid=signed-out] a')?.getAttribute('href')).toBe('/featherbase/login?next=%2Ffeather_dash%2F%3Fstore%3D9901')
+    expect(document.querySelector('[data-testid=signed-out] a')?.getAttribute('href')).toBe('/featherbase/login?next=%2Fdash%2F%3Fstore%3D9901')
     expect(requests.filter(r => r.path.includes('/app_reads/')).every(r => r.status === 401)).toBe(true)
     expect(requests.length).toBeGreaterThanOrEqual(3)
   })
@@ -127,8 +127,8 @@ describe('Feather Dash against the real platform', () => {
     expect(document.querySelector('[data-testid=manager-no-store] a')?.getAttribute('href')).toBe('/featherbase/admin/instance-health')
     expect(document.querySelector('code')?.textContent).toBe('pnpm dev jeyarama/dash --made-up-data')
     expect([...requests].sort((a, b) => a.path.localeCompare(b.path))).toEqual([
-      { path: '/api/app_reads/feather_dash/embed_session', status: 403 },
-      { path: '/api/app_reads/feather_dash/report', status: 403 },
+      { path: '/api/app_reads/dash/embed_session', status: 403 },
+      { path: '/api/app_reads/dash/report', status: 403 },
       { path: '/api/instance-health', status: 200 },
       { path: '/api/whoami', status: 200 },
     ])
@@ -144,9 +144,9 @@ describe('Feather Dash against the real platform', () => {
       while (!requests.some(r => r.path === path) && Date.now() < deadline)
         await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
       expect(requests.find(r => r.path === path)?.status).toBe(200)
-      expect(document.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('no_access')
+      expect(document.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('no_access')
       expect(document.body.textContent).toContain('Opening your report…')
-      expect(document.querySelector('[data-testid=feather-dash] a')).toBeNull()
+      expect(document.querySelector('[data-testid=dash] a')).toBeNull()
       await act(async () => root!.unmount())
       root = undefined
       await act(async () => {
@@ -187,9 +187,9 @@ describe('Feather Dash against the real platform', () => {
     token = (await createUser({ email: 'dash-ui-reader@example.test' })).token
     await open()
     await waitForText('Ask your Store Manager')
-    expect(document.querySelector('[data-testid=feather-dash] a')).toBeNull()
+    expect(document.querySelector('[data-testid=dash] a')).toBeNull()
     expect(requests.map(r => r.path).sort()).toEqual([
-      '/api/app_reads/feather_dash/embed_session', '/api/app_reads/feather_dash/report', '/api/whoami',
+      '/api/app_reads/dash/embed_session', '/api/app_reads/dash/report', '/api/whoami',
     ])
   })
 
@@ -213,13 +213,13 @@ describe('Feather Dash against the real platform', () => {
       for (const detail of [undefined, { key: 'other', value: '9902' }, { key: 'store', value: '' }, { key: 'store', value: '9901' }])
         window.dispatchEvent(new dom.window.CustomEvent('featherbase:bar-change', { detail }))
       window.dispatchEvent(new dom.window.PopStateEvent('popstate'))
-      history.replaceState(null, '', '/feather_dash/')
+      history.replaceState(null, '', '/dash/')
       window.dispatchEvent(new dom.window.PopStateEvent('popstate'))
-      window.dispatchEvent(new dom.window.MessageEvent('message', { origin: 'https://untrusted.example', data: { type: 'feather-dash:dive-ready' } }))
-      window.dispatchEvent(new dom.window.MessageEvent('message', { origin: 'https://embed-motherduck.com', data: { type: 'feather-dash:dive-ready' } }))
+      window.dispatchEvent(new dom.window.MessageEvent('message', { origin: 'https://untrusted.example', data: { type: 'dash:dive-ready' } }))
+      window.dispatchEvent(new dom.window.MessageEvent('message', { origin: 'https://embed-motherduck.com', data: { type: 'dash:dive-ready' } }))
     })
     expect(requests.length).toBe(count)
-    expect(document.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(document.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
 
     // An actual deployment-input failure, not a synthetic API rejection:
     // remove the app's required secret, reload, then repair it and retry.
@@ -237,7 +237,7 @@ describe('Feather Dash against the real platform', () => {
   for (const state of ['not_built', 'no_data_yet', 'unconfirmed', 'no_sections'] as const) {
     installed(`explains ${state} without presenting missing figures as zero`, async ({ dash }) => {
       if (state === 'not_built')
-        await sql`update dataset_snapshot set state = 'superseded' where dataset = 'feather_dash.sales_to_date'`
+        await sql`update dataset_snapshot set state = 'superseded' where dataset = 'dash.sales_to_date'`
       if (state === 'no_data_yet') await dash.snapshot([dash.fact('010101001', { period_start: '2020-01-01', data_through: '2020-01-15' })])
       if (state === 'unconfirmed') {
         await dash.snapshot([])
@@ -247,7 +247,7 @@ describe('Feather Dash against the real platform', () => {
         await dash.save('store_rollout', { store: '9902', live_since: '2026-01-01' })
         await dash.save('job_assignment', { person: dash.reader.user, job: 'Store Manager', store: '9902', starts_on: '2026-01-01' })
         await dash.snapshot([dash.fact('010101001', { store_code: '9902' })])
-        history.replaceState(null, '', '/feather_dash/?store=9902')
+        history.replaceState(null, '', '/dash/?store=9902')
       }
       await open()
       const text = state === 'no_data_yet' ? "This month's figures haven't arrived yet."
@@ -359,7 +359,7 @@ describe('Feather Dash against the real platform', () => {
       await busy
       while (inFlight.size) await Promise.all([...inFlight])
     })
-    expect(requests).toEqual([{ path: '/api/app_reads/feather_dash/stores', status: 403 }])
+    expect(requests).toEqual([{ path: '/api/app_reads/dash/stores', status: 403 }])
     expect(document.getElementById('root')?.childElementCount).toBe(0)
   })
 
@@ -384,7 +384,7 @@ describe('Feather Dash against the real platform', () => {
   installed('the public identity read uses the installed version and session without a payload override', async ({ dash }) => {
     const { read } = await import('../src/api')
     expect(await read('me')).toEqual({ user: dash.reader.user })
-    expect(requests).toEqual([{ path: '/api/app_reads/feather_dash/me', status: 200 }])
+    expect(requests).toEqual([{ path: '/api/app_reads/dash/me', status: 200 }])
   })
 
   for (const count of [2, 3, 4]) {
@@ -433,7 +433,7 @@ describe('Feather Dash against the real platform', () => {
     await dash.snapshot([dash.fact('020202002', { store_code: '9902', store_name: null, short_code: null, subcategory: 'Assigned cloth' })])
     await dash.snapshot([], 'sales_month')
     token = person.token
-    history.replaceState(null, '', '/feather_dash/?store=9902')
+    history.replaceState(null, '', '/dash/?store=9902')
     await open()
     await waitForQuickView()
     expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Your store')
@@ -460,14 +460,14 @@ describe('Feather Dash against the real platform', () => {
       expect(requests.filter(r => r.path.endsWith('/stores'))).toHaveLength(1)
       if (signedIn) expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
       else {
-        expect(document.querySelector('[data-testid=feather-dash] a')).toBeNull()
+        expect(document.querySelector('[data-testid=dash] a')).toBeNull()
         expect(requests.filter(r => r.path.includes('/app_reads/')).map(r => r.status)).toEqual([403, 403, 403])
       }
     })
   }
 
   installed('a cached-read database deadline stays failed when late answers arrive, then Try again loads fresh totals', async ({ dash: _dash }) => {
-    history.replaceState(null, '', '/feather_dash/')
+    history.replaceState(null, '', '/dash/')
     const busy = sql`select pg_sleep(16)`.execute()
     await open()
     await act(async () => window.dispatchEvent(new dom.window.CustomEvent('featherbase:bar-change', { detail: { key: 'store', value: '9901' } })))
@@ -478,7 +478,7 @@ describe('Feather Dash against the real platform', () => {
       while (inFlight.size) await Promise.all([...inFlight])
     })
     expect(requests.map(r => r.status)).toEqual([200, 200])
-    expect(document.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('failed')
+    expect(document.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('failed')
     expect(document.querySelector('table')).toBeNull()
     await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
     await waitForQuickView()
@@ -489,13 +489,13 @@ describe('Feather Dash against the real platform', () => {
   for (const missing of [false, true]) {
     installed(`a hosted manager sees ${missing ? 'missing setup guidance' : 'no-store guidance'} without a local-machine command`, async ({ dash: _dash, admin }) => {
       token = admin.token
-      dom.reconfigure({ url: 'https://dash.example.test/feather_dash/' })
+      dom.reconfigure({ url: 'https://dash.example.test/dash/' })
       await withNamedVariable('MOTHERDUCK_TOKEN', missing ? undefined : 'made-up-local-ui-test-token', async () => {
         await open()
         await waitForText(missing ? "Dash isn't set up on this instance yet" : 'your account covers no store')
         expect(document.querySelector('code')).toBeNull()
         expect(document.body.textContent).not.toContain('this machine')
-        expect(document.querySelector('[data-testid=feather-dash] a')?.getAttribute('href')).toBe('/featherbase/admin/instance-health')
+        expect(document.querySelector('[data-testid=dash] a')?.getAttribute('href')).toBe('/featherbase/admin/instance-health')
       })
     })
   }
@@ -521,11 +521,11 @@ describe('Feather Dash against the real platform', () => {
   })
 
   installed('an address outside the real reader scope waits for correction, then opens only their default store', async ({ dash: _dash }) => {
-    history.replaceState(null, '', '/feather_dash/?store=9909')
+    history.replaceState(null, '', '/dash/?store=9909')
     await open()
     await waitForQuickView()
     expect(requests.filter(r => r.path.endsWith('/stores'))).toEqual([
-      { path: '/api/app_reads/feather_dash/stores', status: 200 },
+      { path: '/api/app_reads/dash/stores', status: 200 },
     ])
     expect(requests.filter(r => r.path.endsWith('/report'))).toHaveLength(1)
     expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('LKS · Sarees')
@@ -548,7 +548,7 @@ describe('Feather Dash against the real platform', () => {
       await dash.snapshot(['020202001', '020202002'].map(code => dash.fact(code, { store_code: '9902', subcategory: `Cloth ${code}` })))
       await dash.snapshot([], 'sales_month')
       token = person.token
-      history.replaceState(null, '', '/feather_dash/?store=9902')
+      history.replaceState(null, '', '/dash/?store=9902')
       await open()
       await waitForQuickView()
       expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('LKS · Cotton')

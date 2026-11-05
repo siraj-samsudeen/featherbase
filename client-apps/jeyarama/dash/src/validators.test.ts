@@ -15,14 +15,14 @@ function save(table: string, row: Row, old?: Row): Row {
 }
 
 const STORE_TABLES: [string, Row][] = [
-  ['feather_dash.store_floor', { floor_name: 'Ground' }],
-  ['feather_dash.department', { department_key: 'dm-P-107' }],
-  ['feather_dash.section', { section_name: 'Sarees', team_leaders_allowed: 1 }],
-  ['feather_dash.section_subcategory', { subcategory: '010101001', section: 's1', starts_on: '2026-08-01' }],
-  ['feather_dash.display_location', { subcategory: '010101001', location_name: 'Billing counter', starts_on: '2026-08-01' }],
-  ['feather_dash.job_assignment', { person: 'psn_101', job: 'Store Manager', assignment_type: 'Primary', percentage: 100, starts_on: '2026-08-01' }],
-  ['feather_dash.section_alias', { source: 'hr', alias: 'Saree', section: 's1' }],
-  ['feather_dash.floor_alias', { source: 'hr', alias: 'GF', floor: 'f1' }],
+  ['dash.store_floor', { floor_name: 'Ground' }],
+  ['dash.department', { department_key: 'dm-P-107' }],
+  ['dash.section', { section_name: 'Sarees', team_leaders_allowed: 1 }],
+  ['dash.section_subcategory', { subcategory: '010101001', section: 's1', starts_on: '2026-08-01' }],
+  ['dash.display_location', { subcategory: '010101001', location_name: 'Billing counter', starts_on: '2026-08-01' }],
+  ['dash.job_assignment', { person: 'psn_101', job: 'Store Manager', assignment_type: 'Primary', percentage: 100, starts_on: '2026-08-01' }],
+  ['dash.section_alias', { source: 'hr', alias: 'Saree', section: 's1' }],
+  ['dash.floor_alias', { source: 'hr', alias: 'GF', floor: 'f1' }],
 ]
 
 describe('every Table with a store', () => {
@@ -32,13 +32,13 @@ describe('every Table with a store', () => {
 })
 
 describe('canonical codes, refused rather than rewritten', () => {
-  it.each([...STORE_TABLES, ['feather_dash.store_rollout', { live_since: '2026-10-01' }] as [string, Row]])(
+  it.each([...STORE_TABLES, ['dash.store_rollout', { live_since: '2026-10-01' }] as [string, Row]])(
     '%s refuses a store code padded with spaces', (table, row) => {
       expect(() => save(table, { ...row, store: ' 9901 ' })).toThrow(/exactly four digits, with no spaces/)
     })
 
-  it.each([['feather_dash.section_subcategory', { store: '9901', section: 's1', starts_on: '2026-08-01' }],
-    ['feather_dash.display_location', { store: '9901', location_name: 'Counter', starts_on: '2026-08-01' }]] as [string, Row][])(
+  it.each([['dash.section_subcategory', { store: '9901', section: 's1', starts_on: '2026-08-01' }],
+    ['dash.display_location', { store: '9901', location_name: 'Counter', starts_on: '2026-08-01' }]] as [string, Row][])(
     '%s refuses a subcategory padded with spaces', (table, row) => {
       expect(() => save(table, { ...row, subcategory: ' 010101001 ' })).toThrow('A subcategory code is exactly nine digits, with no spaces')
     })
@@ -46,7 +46,7 @@ describe('canonical codes, refused rather than rewritten', () => {
 
 describe('store_floor', () => {
   it('keys a floor by its store and its name, trimmed and case-folded', () => {
-    expect(save('feather_dash.store_floor', { store: '9901', floor_name: ' Ground  Floor ' }).floor_key).toBe('9901/ground floor')
+    expect(save('dash.store_floor', { store: '9901', floor_name: ' Ground  Floor ' }).floor_key).toBe('9901/ground floor')
   })
 })
 
@@ -54,37 +54,37 @@ describe('department', () => {
   const department = { store: '9901', department_key: 'dm-P-107' }
 
   it('keys a department by its store and its department_key', () => {
-    expect(save('feather_dash.department', department).department_store_key).toBe('9901/dm-P-107')
+    expect(save('dash.department', department).department_store_key).toBe('9901/dm-P-107')
   })
 
   it('keys a named department by its store and its name', () => {
-    expect(save('feather_dash.department', { ...department, name: 'Ladies  Ethnic' }).name_store_key).toBe('9901/ladies ethnic')
+    expect(save('dash.department', { ...department, name: 'Ladies  Ethnic' }).name_store_key).toBe('9901/ladies ethnic')
   })
 
   it('leaves the name key empty while the name is blank, so unnamed departments never collide', () => {
-    expect(save('feather_dash.department', { ...department, name: '  ' }).name_store_key).toBeNull()
+    expect(save('dash.department', { ...department, name: '  ' }).name_store_key).toBeNull()
   })
 
   it('shows the key while the name is blank', () => {
-    expect(save('feather_dash.department', department).display_name).toBe('dm-P-107')
+    expect(save('dash.department', department).display_name).toBe('dm-P-107')
   })
 
   it('shows the name once it is given', () => {
-    expect(save('feather_dash.department', { ...department, name: 'Ladies Ethnic' }).display_name).toBe('Ladies Ethnic')
+    expect(save('dash.department', { ...department, name: 'Ladies Ethnic' }).display_name).toBe('Ladies Ethnic')
   })
 
   it('refuses a change to department_key', () => {
-    expect(() => save('feather_dash.department', { ...department, department_key: 'dm-P-200' }, department)).toThrow(/never changes/)
+    expect(() => save('dash.department', { ...department, department_key: 'dm-P-200' }, department)).toThrow(/never changes/)
   })
 })
 
 describe('section', () => {
   it('keys a section by its store and its name, trimmed and case-folded', () => {
-    expect(save('feather_dash.section', { store: '9901', section_name: 'Women Tops ', team_leaders_allowed: 1 }).section_key).toBe('9901/women tops')
+    expect(save('dash.section', { store: '9901', section_name: 'Women Tops ', team_leaders_allowed: 1 }).section_key).toBe('9901/women tops')
   })
 
   it('refuses fewer than one Team Leader allowed', () => {
-    expect(() => save('feather_dash.section', { store: '9901', section_name: 'Tops', team_leaders_allowed: 0 })).toThrow(/at least 1/)
+    expect(() => save('dash.section', { store: '9901', section_name: 'Tops', team_leaders_allowed: 0 })).toThrow(/at least 1/)
   })
 })
 
@@ -92,29 +92,29 @@ describe('section_subcategory', () => {
   const placement = { store: '9901', subcategory: '010101001', section: 's1', starts_on: '2026-08-01' }
 
   it('keys a placement by its store, subcategory and start', () => {
-    expect(save('feather_dash.section_subcategory', placement).placement_key).toBe('9901/010101001/2026-08-01')
+    expect(save('dash.section_subcategory', placement).placement_key).toBe('9901/010101001/2026-08-01')
   })
 
   it('keys a placement by its start day when the start arrives as a timestamp', () => {
-    expect(save('feather_dash.section_subcategory', { ...placement, starts_on: '2026-08-01T00:00:00.000Z' }).placement_key).toBe('9901/010101001/2026-08-01')
+    expect(save('dash.section_subcategory', { ...placement, starts_on: '2026-08-01T00:00:00.000Z' }).placement_key).toBe('9901/010101001/2026-08-01')
   })
 
   it('refuses a subcategory that is not nine digits', () => {
-    expect(() => save('feather_dash.section_subcategory', { ...placement, subcategory: '1010' })).toThrow(/nine digits/)
+    expect(() => save('dash.section_subcategory', { ...placement, subcategory: '1010' })).toThrow(/nine digits/)
   })
 
   it('refuses an end on or before the start', () => {
-    expect(() => save('feather_dash.section_subcategory', { ...placement, ends_on: '2026-08-01' })).toThrow(/after starts_on/)
+    expect(() => save('dash.section_subcategory', { ...placement, ends_on: '2026-08-01' })).toThrow(/after starts_on/)
   })
 })
 
 describe('display_location', () => {
   it('refuses a subcategory that is not nine digits', () => {
-    expect(() => save('feather_dash.display_location', { store: '9901', subcategory: 'scarf', location_name: 'Counter', starts_on: '2026-08-01' })).toThrow(/nine digits/)
+    expect(() => save('dash.display_location', { store: '9901', subcategory: 'scarf', location_name: 'Counter', starts_on: '2026-08-01' })).toThrow(/nine digits/)
   })
 
   it('refuses an end before the start', () => {
-    expect(() => save('feather_dash.display_location', { store: '9901', subcategory: '010101001', location_name: 'Counter', starts_on: '2026-08-02', ends_on: '2026-08-01' })).toThrow(/after starts_on/)
+    expect(() => save('dash.display_location', { store: '9901', subcategory: '010101001', location_name: 'Counter', starts_on: '2026-08-02', ends_on: '2026-08-01' })).toThrow(/after starts_on/)
   })
 })
 
@@ -131,7 +131,7 @@ describe('job_assignment', () => {
     ['Team Leader', { section: 's1' }],
     ['Staff', { section: 's1' }],
   ])('accepts a %s naming only its own level of the layout', (job, place) => {
-    expect(() => save('feather_dash.job_assignment', { ...base, job, ...place })).not.toThrow()
+    expect(() => save('dash.job_assignment', { ...base, job, ...place })).not.toThrow()
   })
 
   it.each([
@@ -151,23 +151,23 @@ describe('job_assignment', () => {
     ['Store Manager', { percentage: 120 }, /more than 0 and at most 100/],
     ['Store Manager', { percentage: null }, /more than 0 and at most 100/],
   ])('refuses a %s of the wrong shape (%o)', (job, place, message) => {
-    expect(() => save('feather_dash.job_assignment', { ...base, job, ...place })).toThrow(message)
+    expect(() => save('dash.job_assignment', { ...base, job, ...place })).toThrow(message)
   })
 
   it('refuses an end on or before the start', () => {
-    expect(() => save('feather_dash.job_assignment', { ...base, job: 'Store Manager', ends_on: '2026-07-01' })).toThrow(/after starts_on/)
+    expect(() => save('dash.job_assignment', { ...base, job: 'Store Manager', ends_on: '2026-07-01' })).toThrow(/after starts_on/)
   })
 })
 
 describe('people', () => {
   it('refuses an approved headcount that is not a whole number', () => {
-    expect(() => save('feather_dash.section', { store: '9901', section_name: 'Sarees', team_leaders_allowed: 1, approved_headcount_min: 2.5 })).toThrow(/whole number/)
-    expect(() => save('feather_dash.section', { store: '9901', section_name: 'Sarees', team_leaders_allowed: 1, approved_headcount_max: -1 })).toThrow(/whole number/)
+    expect(() => save('dash.section', { store: '9901', section_name: 'Sarees', team_leaders_allowed: 1, approved_headcount_min: 2.5 })).toThrow(/whole number/)
+    expect(() => save('dash.section', { store: '9901', section_name: 'Sarees', team_leaders_allowed: 1, approved_headcount_max: -1 })).toThrow(/whole number/)
   })
 
   it('refuses an employment code padded with spaces, before reading any other row', () => {
-    expect(() => save('feather_dash.employment', { employee: 'e1', legal_company: ' DEMO-CO', employee_number: 'DEMO-0101', joined_on: '2026-01-01' })).toThrow(/no spaces/)
-    expect(() => save('feather_dash.employment', { employee: 'e1', legal_company: 'DEMO-CO', employee_number: 'DEMO-0101', joined_on: '2026-01-01' })).not.toThrow()
+    expect(() => save('dash.employment', { employee: 'e1', legal_company: ' DEMO-CO', employee_number: 'DEMO-0101', joined_on: '2026-01-01' })).toThrow(/no spaces/)
+    expect(() => save('dash.employment', { employee: 'e1', legal_company: 'DEMO-CO', employee_number: 'DEMO-0101', joined_on: '2026-01-01' })).not.toThrow()
   })
 
   it('reads every page of a person\'s stints before deciding', async () => {
@@ -176,27 +176,27 @@ describe('people', () => {
     const calls: unknown[] = []
     const documents = { get: async () => ({}), list: async (_table: string, args: unknown) => { calls.push(args); return pages.shift() ?? [] } }
     const row = { employee: 'e1', legal_company: 'DEMO-CO', employee_number: 'DEMO-0101', joined_on: '2026-01-01' }
-    await expect(Promise.resolve(validators['feather_dash.employment']({ row, user: 'admin@example.test', isNew: true, documents,
+    await expect(Promise.resolve(validators['dash.employment']({ row, user: 'admin@example.test', isNew: true, documents,
       reject(message: string): never { throw new Refused(message) } }))).rejects.toThrow(/overlaps/)
     expect(calls).toHaveLength(3)
   })
 
   it('keys a designation by its folded title, and an alias by its source and alias', () => {
-    expect(save('feather_dash.designation', { title: ' Assistant  Manager ' }).title_key).toBe('assistant manager')
-    expect(save('feather_dash.designation_alias', { source: 'hr', alias: 'ASST MGR', designation: 'd1' }).alias_key).toBe('hr/asst mgr')
+    expect(save('dash.designation', { title: ' Assistant  Manager ' }).title_key).toBe('assistant manager')
+    expect(save('dash.designation_alias', { source: 'hr', alias: 'ASST MGR', designation: 'd1' }).alias_key).toBe('hr/asst mgr')
   })
 })
 
 describe('aliases', () => {
   it('keys a section alias by its store, source and alias', () => {
-    expect(save('feather_dash.section_alias', { store: '9901', source: 'hr', alias: ' Saree ', section: 's1' }).alias_key).toBe('9901/hr/saree')
+    expect(save('dash.section_alias', { store: '9901', source: 'hr', alias: ' Saree ', section: 's1' }).alias_key).toBe('9901/hr/saree')
   })
 
   it('keys a floor alias by its store, source and alias', () => {
-    expect(save('feather_dash.floor_alias', { store: '9901', source: 'hr', alias: 'Ground floor', floor: 'f1' }).alias_key).toBe('9901/hr/ground floor')
+    expect(save('dash.floor_alias', { store: '9901', source: 'hr', alias: 'Ground floor', floor: 'f1' }).alias_key).toBe('9901/hr/ground floor')
   })
 
   it('keys a job alias by its source and the whole designation', () => {
-    expect(save('feather_dash.job_alias', { source: 'stylehr', alias: 'Warehouse - Team Leader', job: 'Team Leader' }).alias_key).toBe('stylehr/warehouse - team leader')
+    expect(save('dash.job_alias', { source: 'stylehr', alias: 'Warehouse - Team Leader', job: 'Team Leader' }).alias_key).toBe('stylehr/warehouse - team leader')
   })
 })

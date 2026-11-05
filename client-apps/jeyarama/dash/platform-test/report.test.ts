@@ -46,10 +46,10 @@ async function seedSnapshot(rows: Record<string, unknown>[], name = 'sales_to_da
   const dataset = datasetsDeclaration.parse(manifest.datasets).find(d => d.name === name)!
   // As the platform keys it (featherbase app-datasets.ts): a guard is not part of the definition.
   const version = createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16)
-  await sql`update dataset_snapshot set state = 'superseded' where dataset = ${`feather_dash.${name}`} and state = 'active'`
+  await sql`update dataset_snapshot set state = 'superseded' where dataset = ${`dash.${name}`} and state = 'active'`
   const id = randomUUID()
   await sql`insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, activated_at, row_count)
-    values (${id}, ${`feather_dash.${name}`}, ${version}, 'active', now(), now(), ${rows.length})`
+    values (${id}, ${`dash.${name}`}, ${version}, 'active', now(), now(), ${rows.length})`
   for (const row of rows) await sql`insert into app_dataset_row (snapshot_id, row) values (${id}, ${sql.json(row)})`
 }
 
@@ -86,7 +86,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn, facts?: Record
 }
 
 const report = (client: TestClient, payload: Record<string, unknown> = { store: '9901' }) =>
-  client.post<{ result: { state: string; rows: { code: string; section: string | null }[] } }>('/api/app_reads/feather_dash/report', { payload }).then(a => a.result)
+  client.post<{ result: { state: string; rows: { code: string; section: string | null }[] } }>('/api/app_reads/dash/report', { payload }).then(a => a.result)
 
 describe('the report reads on the platform', () => {
   test("give a Store Manager every cached row of their store, each in its section", async ({ admin, createUser }) => {
@@ -104,7 +104,7 @@ describe('the report reads on the platform', () => {
   // #4486: the places' `basis` survives the platform's narrowing into the read, so the page can say why.
   test("say why each reader sees the store, from the bases on their places", async ({ admin, createUser }) => {
     const { manager, leader } = await setup(admin, createUser)
-    const heading = (client: TestClient) => client.post<{ result: { heading: unknown } }>('/api/app_reads/feather_dash/report', { payload: { store: '9901' } })
+    const heading = (client: TestClient) => client.post<{ result: { heading: unknown } }>('/api/app_reads/dash/report', { payload: { store: '9901' } })
       .then(a => a.result.heading)
     expect(await heading(manager)).toEqual({ name: 'Lakeside', sections: ['Lehenga', 'Sarees'], reasons: [{ basis: 'store_manager', sections: ['Lehenga', 'Sarees'] }] })
     expect(await heading(leader)).toEqual({ name: 'Lakeside', sections: ['Sarees'], reasons: [{ basis: 'team_leader', sections: ['Sarees'] }] })
@@ -131,7 +131,7 @@ describe('the report reads on the platform', () => {
 
   test("fill the bar's store picker with the reader's stores, and its month picker with this month and last (#750)", async ({ admin, createUser }) => {
     const { manager } = await setup(admin, createUser)
-    expect(await manager.get('/api/app_bar/feather_dash')).toEqual({ controls: [
+    expect(await manager.get('/api/app_bar/dash')).toEqual({ controls: [
       { picker: 'Store', sets: 'store', options: [{ value: '9901', label: 'Lakeside' }] },
       { picker: 'Month', sets: 'month', options: [{ value: 'this', label: `This month · ${monthName(periodStart)}` },
         { value: 'last', label: `Last month · ${monthName(lastMonthStart)}` }] },
@@ -152,7 +152,7 @@ describe('the report reads on the platform', () => {
 
   test('say the Dive is not set up while the instance has no Dive settings, so the page shows the quick view', async ({ admin, createUser }) => {
     const { leader } = await setup(admin, createUser)
-    expect(await leader.post('/api/app_reads/feather_dash/embed_session', { payload: { store: '9901' } })).toEqual({ result: { not_set_up: true } })
+    expect(await leader.post('/api/app_reads/dash/embed_session', { payload: { store: '9901' } })).toEqual({ result: { not_set_up: true } })
   })
 
   test('answer "not set up" to every read while the MotherDuck token is missing', async ({ admin, createUser }) => {
@@ -166,7 +166,7 @@ describe('the report reads on the platform', () => {
     const { leader } = await setup(admin, createUser)
     await report(leader)
     const [logged] = await sql`select ref_table, method from access_log where "user" = ${leader.user} and operation = 'view_report'`
-    expect(logged).toMatchObject({ ref_table: 'feather_dash.sales_to_date', method: 'cached' })
+    expect(logged).toMatchObject({ ref_table: 'dash.sales_to_date', method: 'cached' })
   })
 })
 
@@ -176,7 +176,7 @@ describe('the report reads on the platform', () => {
 // drops compare within one period_start (featherbase #676), as the old check did by keying its
 // snapshots by month; the total catches a mart rebuilt for only some days.
 describe("a refresh of the sales figures, checked like the old report's", () => {
-  const SALES = 'feather_dash.sales_to_date'
+  const SALES = 'dash.sales_to_date'
   beforeEach(openWarehouse)
   afterEach(closeWarehouse)
 
@@ -206,7 +206,7 @@ describe("a refresh of the sales figures, checked like the old report's", () => 
     await drainJobs()
     const [run] = await sql`select outcome, error from job_execution where method = 'refresh_datasets'`
     expect([run.outcome, run.error]).toEqual(['error', expect.stringContaining(
-      'feather_dash.sales_to_date: refused — sales_to_date: every target value is empty or zero (4 rows)')])
+      'dash.sales_to_date: refused — sales_to_date: every target value is empty or zero (4 rows)')])
   })
 
   // The dataset's definition does not change with the month, so the first refresh of a month is

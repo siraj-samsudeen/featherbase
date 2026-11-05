@@ -216,7 +216,7 @@ describe("the Dive's ready signal (required only when the instance's `dive_ready
   it('keeps "Opening your report…" up after the frame loads, until the ready message', async () => {
     const { loader, ready } = await opened()
     const before = ready()
-    loader.message({ origin: 'https://embed-motherduck.com', source: frameWindow, data: { type: 'feather-dash:dive-ready' } }, frameWindow)
+    loader.message({ origin: 'https://embed-motherduck.com', source: frameWindow, data: { type: 'dash:dive-ready' } }, frameWindow)
     expect([before, ready()]).toEqual([false, true])
   })
 
@@ -228,21 +228,21 @@ describe("the Dive's ready signal (required only when the instance's `dive_ready
 
   it('keeps the Dive once the ready message arrives from the Dive\'s origin and frame', async () => {
     const { loader, view } = await opened()
-    loader.message({ origin: 'https://embed-motherduck.com', source: frameWindow, data: { type: 'feather-dash:dive-ready' } }, frameWindow)
+    loader.message({ origin: 'https://embed-motherduck.com', source: frameWindow, data: { type: 'dash:dive-ready' } }, frameWindow)
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
     expect(view()).toMatchObject({ kind: 'dive' })
   })
 
   it('ignores a ready message from another origin', async () => {
     const { loader, view } = await opened()
-    loader.message({ origin: 'https://elsewhere.example', source: frameWindow, data: { type: 'feather-dash:dive-ready' } }, frameWindow)
+    loader.message({ origin: 'https://elsewhere.example', source: frameWindow, data: { type: 'dash:dive-ready' } }, frameWindow)
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
     expect(view()).toEqual({ kind: 'quick' })
   })
 
   it('ignores a ready message from another window, even on the right origin', async () => {
     const { loader, view } = await opened()
-    loader.message({ origin: 'https://embed-motherduck.com', source: {}, data: { type: 'feather-dash:dive-ready' } }, frameWindow)
+    loader.message({ origin: 'https://embed-motherduck.com', source: {}, data: { type: 'dash:dive-ready' } }, frameWindow)
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
     expect(view()).toEqual({ kind: 'quick' })
   })

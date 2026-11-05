@@ -32,12 +32,12 @@ function documents(tables: Record<string, Row[]>, reads: string[] = []) {
 function instance(jobs: Row[], extra: Record<string, Row[]> = {}): Record<string, Row[]> {
   const org = chart(jobs)
   return {
-    'feather_dash.store_rollout': [{ row_id: '9901', store: '9901', live_since: '2026-10-01' }],
-    'feather_dash.store_floor': org.floors,
-    'feather_dash.department': org.departments,
-    'feather_dash.section': org.sections,
-    'feather_dash.section_subcategory': org.placements,
-    'feather_dash.job_assignment': org.jobs,
+    'dash.store_rollout': [{ row_id: '9901', store: '9901', live_since: '2026-10-01' }],
+    'dash.store_floor': org.floors,
+    'dash.department': org.departments,
+    'dash.section': org.sections,
+    'dash.section_subcategory': org.placements,
+    'dash.job_assignment': org.jobs,
     'Section Merchandise Map': [
       { store_code: '9902', material_group: '010404001', mch_subcategory: 'Belts', section_name: 'Accessories' },
       { store_code: '9902', material_group: '010404002', mch_subcategory: 'Wallets', section_name: 'Accessories' },
@@ -103,7 +103,7 @@ describe('the org_chart scope provider', () => {
 
   it('leaves out a place whose sections own no subcategory on the date', async () => {
     const tables = instance([job('psn_103', 'Team Leader', { section: 's-silk' })])
-    tables['feather_dash.section_subcategory'] = []
+    tables['dash.section_subcategory'] = []
     expect(await provide(tables)).toEqual([])
   })
 
@@ -125,7 +125,7 @@ describe('the org_chart scope provider', () => {
 
   it('keeps a store on the old rules until its live date arrives', async () => {
     const tables = instance([job('psn_103', 'Team Leader', { section: 's-sarees' })])
-    tables['feather_dash.store_rollout'] = [{ row_id: '9901', store: '9901', live_since: '2026-10-16' }]
+    tables['dash.store_rollout'] = [{ row_id: '9901', store: '9901', live_since: '2026-10-16' }]
     expect(await provide(tables)).toEqual([])
   })
 
@@ -206,7 +206,7 @@ describe('the org_chart scope provider', () => {
 
   it('gives nothing from a section whose store code is padded, as the comparison does', async () => {
     const tables = instance([job('psn_103', 'Team Leader', { section: 's-sarees' })])
-    tables['feather_dash.section'] = tables['feather_dash.section'].map(s => s.row_id === 's-sarees' ? { ...s, store: ' 9901 ' } : s)
+    tables['dash.section'] = tables['dash.section'].map(s => s.row_id === 's-sarees' ? { ...s, store: ' 9901 ' } : s)
     expect(await provide(tables)).toEqual([])
   })
 

@@ -19,7 +19,7 @@ Given('the user is a System Manager on an instance with no available apps', { ti
 Given('the user is a System Manager viewing an unbuilt Tasker package', { timeout: 180_000 }, async function () { await fresh(this, { source: 'unbuilt' }); await this.baseInstall.inspect(); });
 Given('the user is a System Manager viewing a Tasker package that cannot be built', { timeout: 180_000 }, async function () { await fresh(this, { source: 'broken' }); await this.baseInstall.inspect(); });
 Given('the user is a colleague without System Manager access', async function () { await fresh(this); await this.baseInstall.colleague(); });
-Given('the user is a System Manager with Dash installed', { timeout: 180_000 }, async function () { await fresh(this); await this.baseInstall.install('feather_dash'); });
+Given('the user is a System Manager with Dash installed', { timeout: 180_000 }, async function () { await fresh(this); await this.baseInstall.install('dash'); });
 Given('its report identifier is file-managed while its report account is editable', async function () { await this.baseInstall.manageDashIdentifier(); });
 Given('its required warehouse secret has not been supplied by the operator', function () { assert.equal(this.baseInstall.env.MOTHERDUCK_TOKEN, ''); });
 Given('the user is a System Manager with Tasker installed', { timeout: 180_000 }, async function () { await fresh(this); await this.baseInstall.install(); });
@@ -31,14 +31,14 @@ When('the user chooses to install Tasker', async function () { await this.baseIn
 When('the user explicitly chooses to prepare and install Tasker', async function () { await this.baseInstall.chooseInstall(); });
 When('the user tries to install Tasker', async function () { await this.baseInstall.attemptForbiddenInstall(); });
 When('the user configures Dash', async function () { await this.baseInstall.configureDash(); });
-When("the user inspects Dash's setup", async function () { await this.baseInstall.inspect('feather_dash'); });
+When("the user inspects Dash's setup", async function () { await this.baseInstall.inspect('dash'); });
 
 Then('the user sees its version, required platform version, additions, permissions and setup requirements', async function () {
   const app = await this.baseInstall.app();
   for (const text of [app.version, app.platformVersion, 'What it adds', 'Permissions', 'Instance setup']) await this.baseInstall.detailsContain(text);
 });
 Then('Tasker is identified as not installed', async function () { assert.equal((await this.baseInstall.app()).installed, false); await this.baseInstall.detailsContain('Not installed'); });
-Then('both Tasker and Dash can be inspected', async function () { await this.baseInstall.inspect(); await this.baseInstall.detailsContain('Tasker'); await this.baseInstall.inspect('feather_dash'); await this.baseInstall.detailsContain('Dash', 'Dash'); });
+Then('both Tasker and Dash can be inspected', async function () { await this.baseInstall.inspect(); await this.baseInstall.detailsContain('Tasker'); await this.baseInstall.inspect('dash'); await this.baseInstall.detailsContain('Dash', 'Dash'); });
 Then('the user can tell that each package needs preparation before installation', async function () { await this.baseInstall.preparationsShown(); });
 Then('neither app is installed automatically', async function () { await this.baseInstall.noInstalledApps(); });
 Then('test fixtures are not offered as user apps', async function () { await this.baseInstall.noFixtures(); });
@@ -59,7 +59,7 @@ Then('the user is directed to supply it through the host environment', async fun
 Then('no secret value is returned to the browser', async function () { await this.baseInstall.secretsAbsent(); });
 
 Given('the user has a new local instance using built-in defaults', async function () { await fresh(this); });
-Given('the user has a local development instance without email or a warehouse', { timeout: 180_000 }, async function () { await fresh(this); await this.baseInstall.install('feather_dash'); });
+Given('the user has a local development instance without email or a warehouse', { timeout: 180_000 }, async function () { await fresh(this); await this.baseInstall.install('dash'); });
 Given('the user has a hosted instance missing required notice recipients', async function () { await fresh(this, { hosted: true }); });
 Given('the user has chosen file-managed configuration for an instance', async function () { await fresh(this, { managed: true }); });
 Given('its settings file has never been successfully applied', async function () { await this.baseInstall.assertNeverApplied(); });
@@ -85,7 +85,7 @@ When('the user signs in to follow a saved app link', async function () { await t
 Then('the user is told the instance is ready to explore', async function () { await this.baseInstall.ready(); });
 Then('choosing a managed settings file is offered as an optional next step, not a fault', async function () { await this.baseInstall.optionalConfiguration(); });
 Then('absent optional services are explained without being counted as operational faults', async function () { assert.equal(this.baseInstall.report.failing, 0); await this.baseInstall.textContains('development'); });
-Then('any installed app still identifies the setup it needs', async function () { const check = this.baseInstall.check('app-setup:feather_dash'); assert.ok(check.missing.includes('secret MOTHERDUCK_TOKEN')); await this.baseInstall.textContains('MOTHERDUCK_TOKEN'); });
+Then('any installed app still identifies the setup it needs', async function () { const check = this.baseInstall.check('app-setup:dash'); assert.ok(check.missing.includes('secret MOTHERDUCK_TOKEN')); await this.baseInstall.textContains('MOTHERDUCK_TOKEN'); });
 Then('the user sees that shared use is not ready and how to complete that setup', async function () { await this.baseInstall.hostedReadiness(); });
 Then('the unapplied configuration is reported with the action needed to apply it', async function () { await this.baseInstall.configurationFinding('settings-applied'); });
 Then('the differing setting is reported with the action needed to reconcile it', async function () { await this.baseInstall.configurationFinding('settings-match-file'); });

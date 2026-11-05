@@ -21,9 +21,9 @@ const test = pgTest.extend<{ admin: TestClient }>({ admin: async ({ admin }, use
 
 async function binding() {
   const manifest = JSON.parse(await readFile(resolve(APP_DIR, 'featherbase.json'), 'utf8'))
-  const digest = availableRuntimeVersions().find(p => p.name === 'feather_dash')!.digest
+  const digest = availableRuntimeVersions().find(p => p.name === 'dash')!.digest
   const module = await import(`${pathToFileURL(resolve(APP_DIR, 'dist/server.mjs')).href}?artifact=${digest}`)
-  return { app: 'feather_dash', title: manifest.title, version: VERSION, tables: manifest.scopeProvider.tables,
+  return { app: 'dash', title: manifest.title, version: VERSION, tables: manifest.scopeProvider.tables,
     identifiers: manifest.scopeProvider.identifiers ?? [], provide: module.scopeProviders.org_chart }
 }
 
@@ -104,7 +104,7 @@ describe('the org_chart scope provider on the platform', () => {
 
     // Model a stale imported link on the real database: even without a target
     // section, it cannot grant a place named after an opaque row id.
-    await sql.unsafe(`update ${await tableRelation('feather_dash.section_subcategory')}
+    await sql.unsafe(`update ${await tableRelation('dash.section_subcategory')}
       set section = $1 where row_id = $2`, ['missing-section', invalid.row_id as string])
     expect(await resolvePersonScope(people['p-103'], await binding())).toEqual(expected)
   })
