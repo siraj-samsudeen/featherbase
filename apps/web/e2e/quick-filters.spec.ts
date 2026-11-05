@@ -86,7 +86,7 @@ test('Switching a column on and off makes its box appear and go', async ({ sessi
 })
 
 test('Filtering a column and hiding it keeps the filter on', async ({ session }) => {
-  await session.visit(`/admin/${enc(SWITCH)}`).assertHas('[data-testid="list-total"]', { text: '3 total' })
+  await session.visit(`${tableHref(SWITCH)}`).assertHas('[data-testid="list-total"]', { text: '3 total' })
   await session.step('tick Ground in the Floor box', async ({ page }) => {
     // #820: a Choice box is a list of choices to tick.
     await page.getByTestId('std-filter-floor').click()
@@ -108,7 +108,7 @@ test('Filtering a column and hiding it keeps the filter on', async ({ session })
 })
 
 test('Ticking a Choice in Add filter narrows the rows', async ({ session }) => {
-  await session.visit(`/admin/${enc(BOXES)}`).assertHas('[data-testid="list-total"]', { text: '4 total' })
+  await session.visit(`${tableHref(BOXES)}`).assertHas('[data-testid="list-total"]', { text: '4 total' })
   await session.step('add Floor in Ground by ticking, not typing', async ({ page }) => {
     await page.getByTestId('filter-field').selectOption('floor')
     await expect(page.getByTestId('filter-op').locator('option')).toHaveText(['in'])

@@ -2,6 +2,7 @@
 // and each Choice column has at most one filter, shared by Add filter, the
 // quick filter box and the chip. Against the real in-process server.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -42,7 +43,7 @@ async function seed(admin: Admin) {
 }
 
 async function openList(admin: Admin, filters?: unknown[]) {
-  const { router } = await renderApp(`/featherbase/admin/${enc(T)}${filters ? `?filters=${enc(JSON.stringify(filters))}` : ''}`, admin)
+  const { router } = await renderApp(`${tableHref(T)}${filters ? `?filters=${enc(JSON.stringify(filters))}` : ''}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   await screen.findByTestId('list-rows')
   await waitFor(() => expect(codes().length).toBeGreaterThan(0))
