@@ -4,7 +4,7 @@
 // chart Tables' save rules are its `validators`.
 export { validators } from './validators.ts'
 import { orgChartProvider, type Place } from './provider.ts'
-import { EMBED_STATE_LIMIT_BYTES, MONTH_CHOICES, buildReport, monthLabel, headingOf, initialState, istToday, needsShortCodes, periodOf, scopeIn, storeLabels, storeShortName, storesOf, type CachedAnswer, type Month, type MonthChoice, type SalesRow, type StateFormat } from './report.ts'
+import { EMBED_STATE_LIMIT_BYTES, MONTH_CHOICES, buildReport, monthLabel, headingOf, initialState, istToday, needsShortCodes, periodOf, storeLabels, storeShortName, storesOf, type CachedAnswer, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { gzipBase64 } from './compress.ts'
 
 /** The places each person covers (featherbase B2), per store: the new org chart or today's derivation. */
@@ -96,48 +96,6 @@ export function appOrigin(value: unknown): string | null {
   }
 }
 
-/**
- * The Dives known to read the compact whole-store state (#4453), by Dive id and the versions of
- * that Dive: a version number means something only for its own Dive. A Dive before v12 reads a
- * missing `material_groups` as "every store", so anything not listed gets the legacy state.
- *
- * The Sales Target Dive reads it from v13, its published cached-first version. v12 on MotherDuck
- * is an older wording-only version that does not, so it is not listed.
- */
-export const COMPACT_DIVES: Readonly<Record<string, readonly number[]>> = Object.freeze({ '9022f10f-be83-4fba-a729-5399c18d150e': [13, 14] })
-
-/**
- * The Dives known to show the month Feather Dash asks for (#750): they cap their anchor day at the
- * state's `period_end` (data-warehouse#4630, Sales Target Dive v14). Any other pin always shows the
- * latest month, so last month opens as the cached table instead.
- */
-export const MONTH_DIVES: Readonly<Record<string, readonly number[]>> = Object.freeze({ '9022f10f-be83-4fba-a729-5399c18d150e': [14] })
-
-// Swappable for the tests, like the compact map.
-let monthDives: Readonly<Record<string, readonly number[]>> = MONTH_DIVES
-export function setMonthDives(known: Readonly<Record<string, readonly number[]>> | null) {
-  monthDives = known ?? MONTH_DIVES
-}
-
-/** Whether the pinned Dive shows the month it is asked for: a known Dive id at a known version (digits only). */
-export function showsChosenMonth(diveId: string | undefined, version: string | undefined,
-  known: Readonly<Record<string, readonly number[]>> = monthDives): boolean {
-  if (!diveId || !version || !/^\d+$/.test(version)) return false
-  return Object.hasOwn(known, diveId) && known[diveId].includes(Number(version))
-}
-
-// Swappable for the tests, which exercise the compact path with a map of their own.
-let compactDives: Readonly<Record<string, readonly number[]>> = COMPACT_DIVES
-export function setCompactDives(known: Readonly<Record<string, readonly number[]>> | null) {
-  compactDives = known ?? COMPACT_DIVES
-}
-
-/** The state the pinned Dive gets: compact only for a known Dive id at a known version (digits only). */
-export function stateFormat(diveId: string | undefined, version: string | undefined,
-  known: Readonly<Record<string, readonly number[]>> = compactDives): StateFormat {
-  if (!diveId || !version || !/^\d+$/.test(version)) return 'legacy'
-  return Object.hasOwn(known, diveId) && known[diveId].includes(Number(version)) ? 'compact' : 'legacy'
-}
 
 async function cachedRows(ctx: ScopedContext, store: string | undefined, month: MonthChoice): Promise<CachedAnswer> {
   const answer = await ctx.datasets.active(DATASETS[month].sales, store ? { store_code: store } : undefined)
@@ -244,10 +202,10 @@ export const reads = {
     const ctx = context as ScopedContext
     const store = chosenStore(ctx)
     const choice = chosenMonth(ctx)
-    const { dive_id: diveId, dive_version: version, embed_service_account: account } = ctx.settings
-    if (!diveId || !version || !account) return { not_set_up: true }
-    // A Dive that always shows the latest month must never be opened under last month's header.
-    if (choice !== 'this' && !showsChosenMonth(diveId, version)) return { month_unsupported: true }
+    // The latest saved Dive, always (#937): MotherDuck renders it when no version is asked for,
+    // so publishing a Dive is its release, and the Dive reads every state this app sends.
+    const { dive_id: diveId, embed_service_account: account } = ctx.settings
+    if (!diveId || !account) return { not_set_up: true }
     let answer: CachedAnswer = null
     let month: Month | null = null
     try {
@@ -256,21 +214,10 @@ export const reads = {
     } catch {
       // The Dive reads the warehouse itself; without a cached copy it opens without one.
     }
-    const format = stateFormat(diveId, version)
-    // Legacy: a whole-store reader's Dive must not lose the store's unplaced subcategories when the
-    // cache is missing: the cached rows of any month name them, else the warehouse itself does.
-    let storeCodes = (answer?.rows ?? []).filter(r => r.store_code === store).map(r => r.subcategory_code)
-    if (format === 'legacy' && scopeIn(placesOf(ctx), store).wholeStore && !storeCodes.length) {
-      try {
-        storeCodes = ((await ctx.datasets.live(DATASETS[choice].sales, { store_code: store })).rows as SalesRow[]).map(r => r.subcategory_code)
-      } catch {
-        // The Dive still gets `whole_store`, and the places' own subcategories.
-      }
-    }
     const today = istToday()
     const report = buildReport({ store, places: placesOf(ctx), answer, month, today, choice })
     const origin = appOrigin((ctx.payload as { app_origin?: unknown } | undefined)?.app_origin)
-    const state = initialState(report, answer, placesOf(ctx), today, { appOrigin: origin, compress: gzipBase64, format, storeCodes })
+    const state = initialState(report, answer, placesOf(ctx), today, { appOrigin: origin, compress: gzipBase64, format: 'compact' })
     // Past MotherDuck's cap the session would be refused: never trimmed, the page shows the cached
     // table. The operator log names the store, never the person.
     const stateBytes = new TextEncoder().encode(JSON.stringify(state)).length
@@ -279,7 +226,7 @@ export const reads = {
         message: `Store ${store}'s interactive report exceeds the embed size limit; readers see the cached table.` }))
       return { too_large: true }
     }
-    const body = JSON.stringify({ username: account, version: Number(version), initial_state: state })
+    const body = JSON.stringify({ username: account, initial_state: state })
     let failure: string
     const abort = new AbortController()
     const timer = setTimeout(() => abort.abort(), EMBED_API_TIMEOUT_MS)

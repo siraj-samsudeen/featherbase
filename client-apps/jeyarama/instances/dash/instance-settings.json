@@ -92,12 +92,6 @@
             }
           },
           {
-            "row_id": "feather_dash.dive_version",
-            "value": {
-              "env": "DIVE_VERSION"
-            }
-          },
-          {
             "row_id": "feather_dash.embed_service_account",
             "value": {
               "env": "SERVICE_ACCOUNT"
@@ -119,12 +113,6 @@
             "row_id": "feather_dash.dive_id",
             "value": {
               "env": "DIVE_ID"
-            }
-          },
-          {
-            "row_id": "feather_dash.dive_version",
-            "value": {
-              "env": "DIVE_VERSION"
             }
           },
           {
