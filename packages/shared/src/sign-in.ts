@@ -5,7 +5,10 @@
 export const SIGN_IN_METHOD_KINDS = ['password', 'google', 'delegated_password'] as const
 export type SignInMethodKind = (typeof SIGN_IN_METHOD_KINDS)[number]
 
-export const NEW_PERSON_RULES = ['refuse', 'create_if_email_domain_allowed', 'create'] as const
+// #970: create_if_on_roster makes a person only when the ID they typed is one
+// current row of the staff Table the method's settings name, and the service
+// confirms the sign-in.
+export const NEW_PERSON_RULES = ['refuse', 'create_if_email_domain_allowed', 'create', 'create_if_on_roster'] as const
 export type NewPersonRule = (typeof NEW_PERSON_RULES)[number]
 
 // #829: a person a sign-in rule creates is recorded as created by the
@@ -17,6 +20,7 @@ export const signInActor = (kind: SignInMethodKind): string => `${kind.replace(/
 export const SYSTEM_ACTOR_LABELS: Readonly<Record<string, string>> = {
   [signInActor('google')]: 'Google sign-in',
   [signInActor('password')]: 'Password sign-in',
+  [signInActor('delegated_password')]: 'Connected service sign-in',
 }
 
 // #835: who is waiting for access, as a filter on the standard Person list.

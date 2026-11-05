@@ -24,6 +24,30 @@
         "new_person": "create_if_email_domain_allowed",
         "allowed_email_domains": "jeyarama.com",
         "self_link": false
+      },
+      {
+        "row_id": "stylehr",
+        "kind": "delegated_password",
+        "label": "StyleHR",
+        "enabled": false,
+        "service_url": "https://stylehr.in/api/login/",
+        "new_person": "create_if_on_roster",
+        "self_link": false,
+        "settings": {
+          "roster": {
+            "table": "Employee",
+            "sign_in_id_column": "employee_number",
+            "record_number_column": "stylehr_id",
+            "person_column": "person",
+            "name_column": "employee_name",
+            "status_column": "employee_status",
+            "current_status": "Current",
+            "provider_record_key": "employee_id",
+            "identifiers": {
+              "stylehr-employee-code": "employee_number"
+            }
+          }
+        }
       }
     ],
     "Scheduled Job": [

@@ -8,10 +8,11 @@ import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
-import { _setDelegatedFetch } from '../src/delegated-login'
+import { _setDelegatedFetch, delegatedLoginConfig } from '../src/delegated-login'
+import { rosterFirstSignIn } from '../src/roster-first-sign-in'
 import { _setAlertSender } from '../src/waiting-for-access'
 import { applyInstanceSettings } from '../src/instance-settings'
-import { makeTable, patchDoc } from './fixtures'
+import { makeTable } from './fixtures'
 import { configureDelegated, giveEmployeeCode, linkDelegated } from './identity-fixtures'
 
 const TABLE = 'Crew List'
@@ -63,7 +64,7 @@ function provider(answer: () => Response | Promise<Response> = () => Response.js
 const signIn = (api: TestClient, usr = CODE, pwd = PASSWORD, method = 'stylehr') =>
   api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr, pwd, method }) })
 
-const crew = (no = CODE) => sql`select * from crew_list where crew_no = ${no} order by row_id`
+const crew = (no = CODE) => sql`select * from featherbase.crew_list where crew_no = ${no} order by row_id`
 const peopleCount = async () => Number((await sql`select count(*)::int as n from person`)[0].n)
 const heldNotes = async () => (await sql`select operation from activity_log where operation like 'first_sign_in_held %'`).map((r) => String(r.operation))
 
@@ -294,34 +295,24 @@ describe('the service is not asked, and the refusal says nothing', () => {
 })
 
 describe('two first sign-ins at once', () => {
-  test('side by side make one person', async ({ api, admin }) => {
-    await setUp(admin)
-    provider()
-    const before = await peopleCount()
-    const [a, b] = await Promise.all([signIn(api), signIn(api)])
-    expect([a.status, b.status]).toEqual([200, 200])
-    const [ua, ub] = await Promise.all([a.json(), b.json()]) as { user: { row_id: string } }[]
-    expect(ua.user.row_id).toBe(ub.user.row_id)
-    expect(await peopleCount()).toBe(before + 1)
-  })
-
   test('the one that loses, having already been asked about, signs in as the winner', async ({ api, admin }) => {
     await setUp(admin)
     const before = await peopleCount()
     let nested = false
-    let inner: Response | undefined
+    let inner: { user: { row_id: string } | string } | undefined
     provider(async () => {
       if (!nested) {
+        // The other sign-in, finishing while this one waits on the service. Called
+        // directly: the sandbox takes HTTP requests one at a time. The real race,
+        // across commits, is in first-sign-in-link-commit.test.ts.
         nested = true
-        inner = await signIn(api)
+        inner = await rosterFirstSignIn((await delegatedLoginConfig('stylehr'))!, CODE, PASSWORD, null)
       }
       return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
     })
     const outer = await signIn(api)
-    expect(inner!.status).toBe(200)
     expect(outer.status).toBe(200)
-    const [i, o] = (await Promise.all([inner!.json(), outer.json()])) as { user: { row_id: string } }[]
-    expect(o.user.row_id).toBe(i.user.row_id)
+    expect(((await outer.json()) as { user: { row_id: string } }).user.row_id).toBe(typeof inner!.user === 'string' ? inner!.user : inner!.user.row_id)
     expect(await peopleCount()).toBe(before + 1)
   })
 
@@ -330,7 +321,7 @@ describe('two first sign-ins at once', () => {
     await setUp(admin)
     const before = await peopleCount()
     provider(async () => {
-      await sql`update crew_list set login = ${other.user!} where crew_no = ${CODE}`
+      await sql`update featherbase.crew_list set login = ${other.user!} where crew_no = ${CODE}`
       return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
     })
     const res = await signIn(api)
@@ -359,19 +350,24 @@ describe('two first sign-ins at once', () => {
 
 describe('the rule is configuration', () => {
   const method = { row_id: 'hr_two', kind: 'delegated_password', label: 'HR Two', enabled: false }
+  const METHODS = `/api/table/${encodeURIComponent('Sign In Method')}`
+  async function patchMethod(admin: TestClient, key: string, change: Record<string, unknown>) {
+    const [r] = await sql`select updated_at from sign_in_method where row_id = ${key}`
+    return admin.fetch(`${METHODS}/${key}`, { method: 'PATCH', body: JSON.stringify({ ...change, updated_at: r.updated_at }) })
+  }
 
   test('only a delegated method may take it, and only with a whole roster', async ({ admin }) => {
-    const post = (body: Record<string, unknown>) => admin.fetch('/api/sign_in_method', { method: 'POST', body: JSON.stringify(body) })
+    const post = (body: Record<string, unknown>) => admin.fetch(METHODS, { method: 'POST', body: JSON.stringify(body) })
     expect((await post({ ...method, new_person: 'create_if_on_roster' })).status).toBe(417)
     expect((await post({ ...method, new_person: 'create_if_on_roster', settings: JSON.stringify({ roster: { table: TABLE } }) })).status).toBe(417)
     expect((await post({ ...method, new_person: 'create_if_on_roster', settings: JSON.stringify({ roster: ROSTER }) })).status).toBe(201)
-    await expect(patchDoc(admin, 'Sign In Method', 'password', { new_person: 'create_if_on_roster' })).rejects.toMatchObject({ status: 417 })
-    await expect(patchDoc(admin, 'Sign In Method', 'google', { new_person: 'create_if_on_roster' })).rejects.toMatchObject({ status: 417 })
+    expect((await patchMethod(admin, 'password', { new_person: 'create_if_on_roster' })).status).toBe(417)
+    expect((await patchMethod(admin, 'google', { new_person: 'create_if_on_roster' })).status).toBe(417)
   })
 
   test('an administrator cannot leave a roster method without its roster', async ({ admin }) => {
     await setUp(admin)
-    await expect(patchDoc(admin, 'Sign In Method', 'stylehr', { settings: JSON.stringify({}) })).rejects.toMatchObject({ status: 417 })
+    expect((await patchMethod(admin, 'stylehr', { settings: JSON.stringify({}) })).status).toBe(417)
   })
 
   test('the instance file ships the method off, needing no variable', async () => {
@@ -383,7 +379,7 @@ describe('the rule is configuration', () => {
     expect(stylehr).toMatchObject({ kind: 'delegated_password', enabled: false, new_person: 'create_if_on_roster' })
     for (const section of Object.values(file.environments))
       expect((section.settings['Sign In Method'] ?? []).some((m) => m.row_id === 'stylehr')).toBe(false)
-    await applyInstanceSettings({ settings: { 'Sign In Method': [stylehr!] } }, { serverEnvironment: 'test' })
+    await applyInstanceSettings({ settings: { 'Sign In Method': [stylehr!] } }, { by: 'Administrator' })
     const [row] = await sql`select enabled, new_person from sign_in_method where row_id = 'stylehr'`
     expect(row).toEqual({ enabled: false, new_person: 'create_if_on_roster' })
   })

@@ -804,6 +804,16 @@ form's Sign-in methods panel or `POST /api/people/<person>/identities`.
 without it, and a redirected POST loses its body). Another HR system is a new
 row with its own `settings` JSON, not code.
 
+**Staff who sign in for the first time.** With `new_person` set to
+`create_if_on_roster`, someone with no link can sign in if their ID is on one
+current row of the staff Table named in the row's `settings.roster`, and the
+service confirms them and names that row's record. Their first sign-in makes
+their person with no roles, links them and writes the person onto the row. Any
+other ID is refused without the service being asked. Rows an administrator must
+settle are in the Activity Log as `first_sign_in_held <method> <row> <reason>`.
+The rule needs the method's `identifier_system` (the seed pack sets it once the
+row exists) and refuses everyone until it is set. Test mode never makes anyone.
+
 **`DELEGATED_LOGIN_TEST_MODE=trust-any-password` lets anyone sign in as any
 linked staff member by employee code, with no password.** It is allowed only
 on `development`, `test` and `staging`; never set it where real users sign in,
