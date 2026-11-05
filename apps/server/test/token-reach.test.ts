@@ -78,13 +78,13 @@ test('a grant for its own rows only is marked as such; a full grant on the same 
   } })
   await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Order Own Writer'] })
   const own = await admin.get<Reach>(reachOf(account.row_id))
-  expect(own.change.find((t) => t.table === 'Reach Order')).toEqual({ table: 'Reach Order', own_rows: true })
+  expect(own.change.find((t) => t.table === 'Reach Order')).toEqual({ table: 'Reach Order', own_rows: true, roles: ['Order Own Writer'] })
 
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Order Writer' } })
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Reach Order', role: 'Order Writer', can_read: true, can_write: true } })
   await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['Order Own Writer', 'Order Writer'] })
   const full = await admin.get<Reach>(reachOf(account.row_id))
-  expect(full.change.find((t) => t.table === 'Reach Order')).toEqual({ table: 'Reach Order', own_rows: false })
+  expect(full.change.find((t) => t.table === 'Reach Order')).toEqual({ table: 'Reach Order', own_rows: false, roles: ['Order Own Writer', 'Order Writer'] })
 })
 
 test('a role that grants nothing reaches nothing beyond what every account can', async ({ admin }) => {

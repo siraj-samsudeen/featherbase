@@ -443,6 +443,12 @@ export function FormView({
       {/* person-identities: the one platform Table whose rows sign in. */}
       {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
       {table === 'Person' && <PersonSignInMethods user={name} />}
+      {/* #628: what this person can see, and why. */}
+      {table === 'Person' && (
+        <RouterLink to="/featherbase/account/access/$person" params={{ person: name }} className="text-sm text-action hover:underline" data-testid="person-access-explanation">
+          What they can see
+        </RouterLink>
+      )}
       {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
     </aside>}
   </div>
