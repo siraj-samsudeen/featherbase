@@ -75,7 +75,7 @@ export async function mayPurge(user: string, meta: TableMeta): Promise<boolean> 
 const titleOf = (meta: TableMeta, row: Row) => rowDisplayTitle(meta, row, String(row[meta.row_key] ?? row[ROW_KEY]))
 
 /** The rows one import run added that are still there. */
-async function runRows(db: Db, table: string, runId: string): Promise<string[]> {
+async function runRows(db: Db, table: string, runId: string, lock = false): Promise<string[]> {
   const parts = await db`
     select touched from ${db(platformRelation(tableName('Import Log')))}
     where ref_table = ${table} and run_id = ${runId}
@@ -87,15 +87,16 @@ async function runRows(db: Db, table: string, runId: string): Promise<string[]> 
       if (t.action === 'inserted' && t.stamp) inserted.set(String(t.row_id), Date.parse(t.stamp))
   if (!inserted.size) return []
   const meta = await getMeta(table)
-  const present = await db`select ${db(meta.row_key)} as id, created_at from ${db(await tableRelation(table))} where ${db(meta.row_key)} = any(${[...inserted.keys()]})`
+  const present = await db`select ${db(meta.row_key)} as id, created_at from ${db(await tableRelation(table))} where ${db(meta.row_key)} = any(${[...inserted.keys()]}) ${lock ? db`for update` : db``}`
   // A row is born with created_at equal to the stamp the import recorded. A
   // later row that reuses the id after this one was deleted is not its row.
   return present.filter((r) => new Date(r.created_at as string).getTime() === inserted.get(String(r.id))).map((r) => String(r.id))
 }
 
 /** The ids a request names: `{ ids }` or `{ run_id }`. */
-export async function purgeTargets(db: Db, table: string, args: Record<string, unknown>): Promise<string[]> {
-  if (typeof args.run_id === 'string' && args.run_id) return runRows(db, table, args.run_id)
+export async function purgeTargets(db: Db, table: string, args: Record<string, unknown>, lock = false): Promise<string[]> {
+  // Locked while judged, so the row judged is the row deleted.
+  if (typeof args.run_id === 'string' && args.run_id) return runRows(db, table, args.run_id, lock)
   let ids = args.ids
   if (typeof ids === 'string') {
     try { ids = JSON.parse(ids) } catch { throw new AppError('BadRequestError', 'ids must be a JSON list') }
@@ -354,7 +355,7 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
   const events: { table: string; row_id: string; event: 'deleted' | 'updated' }[] = []
   const result = await afterCommitOf(() => sql.begin(async (tx) => {
     const db = tx as unknown as Db
-    const ids = await purgeTargets(db, table, args)
+    const ids = await purgeTargets(db, table, args, true)
     if (!ids.length) return { deleted: 0, cleared: 0 }
     const plan = await planPurge(db, table, ids, links, user, true)
     if (plan.blocked)
