@@ -9,6 +9,12 @@ export function allowedTables(choices: string | null | undefined): string[] {
   return (choices ?? '').split('\n').map((name) => name.trim()).filter(Boolean)
 }
 
+/** May a link with these allowed Tables name `table`? None listed allows any. */
+export function linksTo(choices: string | null | undefined, table: string): boolean {
+  const allowed = allowedTables(choices)
+  return !allowed.length || allowed.includes(table)
+}
+
 /** Only a stored Table's rows can be linked to: never a Sub-table's rows, a
  *  settings Table or a Table kept in a connected database (#881 Q2, Q3). */
 export function linkableTable(def: { kind?: unknown; data_source?: unknown }): boolean {
@@ -62,4 +68,33 @@ export async function repointAnyTableLinks(tx: typeof sql, table: string, oldId:
   for (const link of await anyTableLinkColumns(tx))
     await tx`update ${tx(await tableRelation(link.parent))} set ${tx(link.column_name)} = ${newId}
       where ${tx(link.table_column)} = ${table} and ${tx(link.column_name)} = ${oldId}`
+}
+
+export interface AnyTableBacklink { table: string; column: string; table_column: string; via: string | null }
+
+/** #881: the links to a row of any Table that may point at `target`'s rows:
+ *  held in a Table's own rows, or in a Sub-table's rows (`via`), reached from
+ *  each Table that holds that Sub-table. */
+export async function anyTableBacklinks(tx: typeof sql, target: string): Promise<AnyTableBacklink[]> {
+  const [def] = await tx<{ kind: string; data_source: string | null }[]>`select kind, data_source from table_def where name = ${target}`
+  if (!def || !linkableTable(def)) return []
+  const links = await tx<{ parent: string; column_name: string; table_column: string; choices: string | null; kind: string }[]>`
+    select cd.parent, cd.column_name, cd.table_column, cd.choices, td.kind from column_def cd
+    join table_def td on td.name = cd.parent
+    where cd.column_type = 'Reference' and cd.table_column is not null
+      and td.kind <> 'settings' and td.data_source is null
+    order by 1, 2`
+  const found: AnyTableBacklink[] = []
+  for (const link of links.filter((l) => linksTo(l.choices, target))) {
+    if (link.kind !== 'sub_table') {
+      found.push({ table: link.parent, column: link.column_name, table_column: link.table_column, via: null })
+      continue
+    }
+    const owners = await tx<{ parent: string }[]>`
+      select distinct cd.parent from column_def cd join table_def td on td.name = cd.parent
+      where cd.column_type = 'Sub-table' and cd.row_table = ${link.parent} and td.kind = 'table' and td.data_source is null
+      order by 1`
+    for (const owner of owners) found.push({ table: owner.parent, column: link.column_name, table_column: link.table_column, via: link.parent })
+  }
+  return found
 }
