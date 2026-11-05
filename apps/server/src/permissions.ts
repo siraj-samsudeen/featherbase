@@ -19,7 +19,17 @@ export async function getRoles(principal: string): Promise<string[]> {
   const rows = await sql`
     with held as (
       select role from has_role
-      where parent = ${principal} and parenttype in ('Person', 'Service Account'))
+      where parent = ${principal} and parenttype in ('Person', 'Service Account')
+      -- #923: a person (never a service account) also holds the roles
+      -- System Settings gives everyone who signs in, one per line.
+      union
+      -- Only a role that still exists, and never a platform role, whatever
+      -- the stored text says.
+      select ro.row_id from single_value s, regexp_split_to_table(s.value, E'\n') r
+      join role ro on ro.row_id = btrim(r)
+      where s.table_name = 'System Settings' and s.field = 'everyone_roles'
+        and ro.row_id not in ${sql(PLATFORM_ROLES)}
+        and exists (select 1 from person where row_id = ${principal}))
     select role, null as app from held
     union all
     select distinct b.app_role as role, b.app from app_role_binding b

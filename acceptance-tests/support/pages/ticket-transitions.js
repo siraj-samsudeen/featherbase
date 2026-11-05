@@ -62,21 +62,21 @@ class TicketTransitions {
   }
   async workflow(actor) {
     const page = await this.types.page(actor);
-    await page.getByPlaceholder(/Search public summaries/).fill(this.t.ticket.row_id);
+    await page.getByLabel('Search tickets').fill(this.t.ticket.row_id);
     await page.locator('.ticket-id', { hasText: this.t.ticket.row_id }).first().click();
-    await page.locator('.detail-kicker').waitFor();
+    await page.locator('.ticket-kicker').waitFor();
     await page.getByRole('tab', { name: 'Workflow' }).click();
     await page.getByRole('heading', { name: 'Next step' }).waitFor();
     return page;
   }
   async confirmInPage() {
     const page = this.page ?? await this.workflow('Bala');
-    await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+    await page.locator('section.ticket-actions').getByRole('button', { name: 'Confirm', exact: true }).click();
     await page.getByLabel('What will be fixed *').fill(plan.fix_what);
     await page.getByLabel('Where it will be fixed *').fill(plan.fix_where);
     await page.getByLabel('Target date *').fill(plan.target_date);
     await page.locator('.ticket-actions form').getByRole('button', { name: 'Confirm' }).click();
-    await page.locator('.detail-kicker').getByText('Fix Planned', { exact: false }).waitFor();
+    await page.locator('.ticket-kicker').getByText('Fix Planned', { exact: false }).waitFor();
     this.t.ticket = (await this.t.open('Bala')).ticket;
   }
 }

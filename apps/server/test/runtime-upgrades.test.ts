@@ -26,6 +26,23 @@ async function targetPackage() {
 }
 
 describe('runtime upgrades', () => {
+  // #941 (ADR 0019): an accent outside the platform's set is refused on the
+  // way in by an upgrade too, not only by an install.
+  test('upgrading to a version that names an accent the platform does not provide is refused', async ({ admin }) => {
+    const source = resolve('../..', 'test-apps/other')
+    const { directory, manifest } = await targetPackage()
+    await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify({ ...manifest, accent: 'purple' }))
+    try {
+      await discoverPackages([source])
+      await admin.post('/api/install_app', { name: 'other' })
+      await discoverPackages([source, directory])
+      await loadInstalledApps()
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({
+        status: 417, message: "417 ValidationError: App other names the accent 'purple'; Featherbase provides: blue, green",
+      })
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   test('an upgrade adds mandatory privacy without rewriting existing rows', async ({ admin, createUser }) => {
     const source = resolve('../..', 'test-apps/other')
     const { directory, manifest } = await targetPackage()
