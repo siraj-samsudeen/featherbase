@@ -303,6 +303,7 @@ export async function importRows({ table, args, user }: CollectionActionContext,
         const matches = await resolveRows(meta, rows, column)
         // A single blank, duplicate or ambiguous key invalidates the column.
         if (matches.some((r) => r.action === 'fail')) continue
+        let hidden = false
         try {
           for (const match of matches) {
             if (match.action !== 'update') continue
@@ -310,13 +311,13 @@ export async function importRows({ table, args, user }: CollectionActionContext,
             // and drops the Columns this caller may not read on that row: a
             // key matched on a hidden value would disclose it.
             const readable = await getDoc(table, match.row_id!, user.row_id)
-            if (column !== ROW_KEY && !Object.hasOwn(readable, column))
-              throw new AppError('PermissionError', `No read permission on column ${column}`)
+            hidden ||= column !== ROW_KEY && !Object.hasOwn(readable, column)
           }
         } catch (err) {
           if (err instanceof AppError && err.type === 'PermissionError') continue
           throw err
         }
+        if (hidden) continue
         // Readable overlap still matters to an append-only caller. Whether
         // this key can authorize an upsert is a separate permission fact.
         let can_match = reaches(writeColumns, definition)

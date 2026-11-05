@@ -2,10 +2,11 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { installApp, registerApp, uninstallApp } from '../src/apps'
+import { installApp, provisionGrants, registerApp, uninstallApp } from '../src/apps'
 import { permittedColumns, sameStoredValue } from '../src/permissions'
 import { childColumns } from '../src/row-readers'
 import { enabledPeople } from '../src/people-directory'
+import { invalidateMeta } from '../src/meta'
 import { readLegacyPermission } from '../src/app-permission-format'
 
 // #917: a Permission row names one operation and the Columns it reaches; the
@@ -178,10 +179,50 @@ describe('a grant reaches only what its rows allow', () => {
     expect((await childColumns(person, DT, 'Pr Line', link, 'read', person)).has('*')).toBe(true)
   })
 
+  test('provisioning the same app grant again adds nothing', async ({ admin }) => {
+    await setup(admin)
+    const grant = [{ table: DT, role: ROLE, operations: { read: '*' as const } }]
+    expect((await provisionGrants({ name: 'pr_rerun', roles: [], runtime_package: true }, grant)).perms).toHaveLength(1)
+    expect((await provisionGrants({ name: 'pr_rerun', roles: [], runtime_package: true }, grant)).perms).toEqual([])
+  })
+
+  test('a related filter through a grid outside the listed Columns is refused', async ({ admin, createUser }) => {
+    await admin.post('/api/table_def', { name: 'Pr Ref', columns: [{ column_name: 'code', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { name: 'Pr Ref Line', kind: 'sub_table', columns: [{ column_name: 'who', column_type: 'Reference', reference_table: 'Pr Ref' }] })
+    await admin.post('/api/table_def', { name: 'Pr Holder', columns: [
+      { column_name: 'title', column_type: 'Data' }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Pr Ref Line' },
+    ] })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pr Lister' } })
+    const [{ row_id: title }] = await sql`select row_id from column_def where parent = 'Pr Holder' and column_name = 'title'`
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: 'Pr Holder', role: 'Pr Lister', operation: 'read', column_rule: 'listed', columns: [{ target_column: title }],
+    } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Pr Ref', role: 'Pr Lister', operation: 'read' } })
+    const reader = await createUser({ roles: ['Pr Lister'] })
+    const filters = JSON.stringify([['row_id', 'related', { via: 'Pr Ref Line', column: 'who', table: 'Pr Ref', filters: [['row_id', '=', 'x']] }]])
+    const response = await reader.fetch(`/api/table/${encodeURIComponent('Pr Holder')}?filters=${encodeURIComponent(filters)}`)
+    expect(response.status).toBe(403)
+    expect(((await response.json()) as { error: { message: string } }).error.message).toMatch(/No read permission on Pr Ref Line.who/)
+  })
+
+  test('a blank listed Column and a missing parent Column are refused', async ({ admin }) => {
+    const link = await withLines(admin)
+    await expect(admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, operation: 'read', column_rule: 'listed', columns: [{}],
+    } })).rejects.toMatchObject({ status: 417 })
+    const parent = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Permission', row: { ref_table: DT, role: ROLE, operation: 'read' } })
+    expect(link).toBeTruthy()
+    await expect(admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: 'Pr Line', role: ROLE, operation: 'read', parent_permission: parent.row_id,
+    } })).rejects.toMatchObject({ status: 417 })
+  })
+
   test('a reader of listed Columns can list a Table sorted by one they cannot read', async ({ admin, createUser }) => {
-    await admin.post('/api/table_def', { name: 'Pr Sorted', sort_column: 'unit_cost', sort_order: 'asc', columns: [
+    await admin.post('/api/table_def', { name: 'Pr Sorted', columns: [
       { column_name: 'title', column_type: 'Data' }, { column_name: 'unit_cost', column_type: 'Data' },
     ] })
+    await sql`update table_def set sort_column = 'unit_cost', sort_order = 'asc' where name = 'Pr Sorted'`
+    invalidateMeta()
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } }).catch(() => {})
     await admin.post('/api/save_row', { table: 'Pr Sorted', row: { title: 'One', unit_cost: '5' } })
     const [{ row_id: title }] = await sql`select row_id from column_def where parent = 'Pr Sorted' and column_name = 'title'`
@@ -192,6 +233,11 @@ describe('a grant reaches only what its rows allow', () => {
     const path = `/api/table/${encodeURIComponent('Pr Sorted')}?fields=${encodeURIComponent('["title"]')}`
     expect(await reader.get<{ data: unknown[] }>(path)).toMatchObject({ data: [{ title: 'One' }] })
     expect((await reader.fetch(`${path}&order_by=unit_cost`)).status).toBe(417)
+    // A reader who can read the sort Column gets the Table's own order.
+    await admin.post('/api/save_row', { table: 'Pr Sorted', row: { title: 'Two', unit_cost: '3' } })
+    expect(await admin.get<{ data: unknown[] }>(path)).toMatchObject({ data: [{ title: 'Two' }, { title: 'One' }] })
+    await admin.post('/api/save_row', { table: 'Pr Sorted', row: { title: 'Three', unit_cost: '9' } })
+    expect(await admin.get<{ data: unknown[] }>(path)).toMatchObject({ data: [{ title: 'Two' }, { title: 'One' }, { title: 'Three' }] })
   })
 
   test('a creator-only reader of Person can still ask who is enabled', async ({ admin }) => {
