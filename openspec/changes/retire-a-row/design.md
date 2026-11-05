@@ -98,15 +98,25 @@ row removed; bulk and per-import; non-admins keep the history rule; never on pla
     only System Managers read it, so a snapshot of a restricted column is no wider than before.
     A cleared link is recorded on the dependent as a history entry, like any edit. Rejected: a new
     "Deletion Record" Table (one more platform Table to permission, for the same four facts).
-12. **What goes with a row.** Its sub-table lines, and every platform record that names it
+12. **Surviving documents change only through the engine's update.** A cleared link, and a
+    line removed from a document that stays, are saved with `saveDoc` bound to the purge's
+    transaction (`usingTransaction`), so validation, hooks and scripts run and their changes are
+    kept, history and revision move, and a refusal rolls the whole delete back. Every row the
+    graph reaches is locked as it is reached, and a last scan refuses the delete if anything still
+    points at a removed row. A save that validated its link before the delete and commits after
+    it can still dangle, as for every ordinary delete today; #947 takes that up in link
+    validation itself.
+12a. **What goes with a row.** Its sub-table lines, and every platform record that names it
     (comments, history, attachments and their stored files, shares, tags, assignments,
     notifications, queued email, workflow actions, import sources and conflicts, data scopes):
     the ROW_ID_HOLDERS list, except the Access Log itself. `on_trash` hooks run for each row, so a
     controller can still refuse; any refusal rolls the whole transaction back.
 13. **Where it is refused.** Not a System Manager; a Table that cannot retire rows (decision 3)
     or that is one of the platform's own (`system`, which covers Person and sign-in records);
-    a row locked by instance settings; a submitted row is no exception for a System Manager
-    (setup clean-up). Rejected: allowing app-owned Tables only through an app rule (no such rule
+    a Table with an access policy (private work: its deletion record could not stay readable
+    once the row is gone, as mandatory access needs the row); a row private to someone else
+    anywhere in the graph; a row locked by instance settings. A submitted row is no exception
+    for a System Manager (setup clean-up). Rejected: allowing app-owned Tables only through an app rule (no such rule
     exists yet; an app's data Tables are deletable like any Table, its Settings tables are not).
 14. **Downstream.** Featherbase's own Postgres is the warehouse's source. A permanent delete is
     an ordinary `DELETE` there, so the CDC capture sees a delete event and the bronze copy flags
