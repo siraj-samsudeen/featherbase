@@ -332,7 +332,7 @@ describe('#859 links to a row of any Table (#881)', () => {
     const plan = await preview(admin, bu, ['BU-T'], 'clear')
     expect(plan.groups.find((g) => g.table === 'Pg Decision')).toMatchObject({ count: 1, action: 'clear' })
     await purge(admin, bu, { ids: ['BU-T'], links: 'clear' })
-    expect(await admin.get<Record<string, unknown>>(decision.rowUrl(onBu.row_id))).toMatchObject({ about_table: null, about_row: null })
+    expect(await admin.get<Record<string, unknown>>(decision.rowUrl(onBu.row_id))).toMatchObject({ about_table: BU, about_row: null })
     expect(await admin.get<Record<string, unknown>>(decision.rowUrl(onStore.row_id))).toMatchObject({ about_table: STORE, about_row: 'S-K' })
     await purge(admin, store, { ids: ['S-K'] })
     expect((await admin.fetch(decision.rowUrl(onStore.row_id))).status).toBe(404)
@@ -400,5 +400,18 @@ describe('#859 delete permanently, Codex review round 10', () => {
     const [rec] = await sql`select snapshot from access_log where operation = 'purge' and ref_table = 'Pg Twin' and reference_name = 'T-1'`
     expect(rec.snapshot.left_side.map((l: { label: string }) => l.label)).toEqual(['L'])
     expect(rec.snapshot.right_side.map((l: { label: string }) => l.label)).toEqual(['R'])
+  })
+})
+
+describe('#859 delete permanently, Codex review round 11', () => {
+  test('an old import run never reaches a later row that reuses an id', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    const run = await admin.post<{ run_id: string }>(`${bu.url}:import`, { rows: [{ row_id: 'BU-Z', bu_name: 'Imported' }] })
+    await purge(admin, bu, { run_id: run.run_id })
+    await new Promise((r) => setTimeout(r, 5))
+    await admin.post(bu.url, { row_id: 'BU-Z', bu_name: 'A different unit' })
+    expect((await admin.get<{ rows: unknown[] }>(`${bu.url}:purge_preview?run_id=${run.run_id}`)).rows).toEqual([])
+    expect(await purge(admin, bu, { run_id: run.run_id })).toEqual({ deleted: 0, cleared: 0 })
+    expect(await exists('pg_business_unit', 'BU-Z')).toBe(true)
   })
 })

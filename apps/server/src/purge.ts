@@ -81,12 +81,16 @@ async function runRows(db: Db, table: string, runId: string): Promise<string[]> 
     where ref_table = ${table} and run_id = ${runId}
       and created_at >= (select created_at from table_def where name = ${table})`
   if (!parts.length) throw new AppError('NotFoundError', `No import run ${runId} on ${table}`)
-  const ids = parts.flatMap((p) => (Array.isArray(p.touched) ? p.touched : []))
-    .filter((t: { action?: string }) => t.action === 'inserted').map((t: { row_id: string }) => String(t.row_id))
-  if (!ids.length) return []
+  const inserted = new Map<string, number>()
+  for (const part of parts)
+    for (const t of (Array.isArray(part.touched) ? part.touched : []) as { action?: string; row_id: string; stamp?: string }[])
+      if (t.action === 'inserted' && t.stamp) inserted.set(String(t.row_id), Date.parse(t.stamp))
+  if (!inserted.size) return []
   const meta = await getMeta(table)
-  const present = await db`select ${db(meta.row_key)} as id from ${db(await tableRelation(table))} where ${db(meta.row_key)} = any(${ids})`
-  return present.map((r) => String(r.id))
+  const present = await db`select ${db(meta.row_key)} as id, created_at from ${db(await tableRelation(table))} where ${db(meta.row_key)} = any(${[...inserted.keys()]})`
+  // A row is born with created_at equal to the stamp the import recorded. A
+  // later row that reuses the id after this one was deleted is not its row.
+  return present.filter((r) => new Date(r.created_at as string).getTime() === inserted.get(String(r.id))).map((r) => String(r.id))
 }
 
 /** The ids a request names: `{ ids }` or `{ run_id }`. */
@@ -396,7 +400,9 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
         if (g.table_column) all.push(...((await db`select * from ${db(rel)} where ${db(g.table_column)} = ${t} and ${db(g.column)} = any(${list})`) as Row[]))
         else if (t === String(col.reference_table)) all.push(...((await db`select * from ${db(rel)} where ${db(g.column)} = any(${list})`) as Row[]))
       }
-      const cleared_values = { [g.column]: null, ...(g.table_column ? { [g.table_column]: null } : {}) }
+      // Only the row half of a link to any Table: its Table column may be
+      // required, or shared with another link.
+      const cleared_values = { [g.column]: null }
       // A row being deleted itself (or a line of one) keeps its link to the
       // end, so its deletion record holds the row as it was.
       const holders = all.filter((h) => g.lines
