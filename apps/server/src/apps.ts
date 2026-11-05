@@ -283,10 +283,11 @@ export async function provisionGrants(
         `Permission on ${p.table} names unknown role ${p.role} — declare it in the manifest's roles`,
       )
     // Existing manual configuration, whatever its scope, is kept as it is: the
-    // app must not add a wider grant beside a creator-only one.
+    // app must not add a wider grant beside a creator-only one. What this install
+    // just created is not existing configuration.
     const [adopted] = await sql`
       select 1 from permission where ref_table = ${p.table} and role = ${p.role} and owner_app is null
-        and parent_permission is null and requires_permission is null limit 1`
+        and parent_permission is null and requires_permission is null and row_id <> all(${perms}::text[]) limit 1`
     if (adopted) continue
     for (const [operation, selection] of Object.entries(p.operations)) {
       const scope = p.scope_mode ?? 'all'

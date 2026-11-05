@@ -173,6 +173,20 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     }
   })
 
+  test('separate declarations for one Table and role can give each operation its own rows', async () => {
+    registerApp(manifest({ permissions: [
+      { table: DT, role: ROLE, operations: { read: '*' } },
+      { table: DT, role: ROLE, scope_mode: 'creator', operations: { create: '*' } },
+    ] }))
+    try {
+      await installApp(APP)
+      expect(await sql`select operation, scope_mode from permission where ref_table = ${DT} and role = ${ROLE} order by operation`)
+        .toEqual([{ operation: 'create', scope_mode: 'creator' }, { operation: 'read', scope_mode: 'all' }])
+    } finally {
+      await unwire()
+    }
+  })
+
   test('uninstall removes exactly what install created', async () => {
     registerApp(
       manifest({
