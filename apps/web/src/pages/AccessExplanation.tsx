@@ -82,7 +82,7 @@ export function AccessExplanation({ person }: { person: string }) {
       </div>
       {refused && (
         <div data-testid="access-explanation-refused">
-          <Notice tone="negative">You can open only your own page. A System Manager can open anyone's.</Notice>
+          <Notice tone="negative">You can't open this page. It opens for the person themselves, System Managers, Access Auditors, and anyone whose places cover theirs.</Notice>
         </div>
       )}
       {missing && <Notice tone="negative">There is no such person.</Notice>}

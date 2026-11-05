@@ -1,5 +1,5 @@
 import { useQueries } from '@tanstack/react-query'
-import { choiceLabel } from 'shared'
+import { choiceLabel, RELATED_OPS } from 'shared'
 import type { ListFilter } from 'shared'
 import { metaQuery, type TableMeta } from './meta'
 import { stepKind, stepRefs, type NavStep } from './nav-path'
@@ -19,6 +19,8 @@ const MANY = ['in', 'not in']
 /** The rows a filter names: a link column's (or the row id's) value, or each
  *  of its values for `in` and `not in`. */
 export function filterRefs(table: string, meta: TableMeta | undefined, [column, op, value]: ListFilter): Ref[] {
+  const related = relatedTarget(op, value)
+  if (related) return (related.filters ?? []).flatMap((f) => filterRefs(related.table, undefined, f))
   const col = meta?.columns.find((c) => c.column_name === column)
   const target = column === 'row_id' ? table
     : col?.column_type === 'Reference' && col.reference_table ? col.reference_table
@@ -30,11 +32,24 @@ export function filterRefs(table: string, meta: TableMeta | undefined, [column, 
     .map((v) => ({ table: target, row_id: String(v) }))
 }
 
+/** A relationship filter's target (nav-path.ts validates its shape). */
+function relatedTarget(op: string, value: unknown): { table: string; filters?: ListFilter[] } | undefined {
+  return (RELATED_OPS as readonly string[]).includes(op) && typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as { table: string; filters?: ListFilter[] } : undefined
+}
+
 /** A filter as its step reads: "Region: Kerala · KL", "Region in Kerala · KL,
  *  Tamil Nadu · TN". Until the table's columns are known, its value is a
  *  placeholder, since it may be a row's id. */
 export function filterText(table: string, meta: TableMeta | undefined, filter: ListFilter, name: (r: Ref) => string): string {
   const [column, op, value] = filter
+  // A relationship filter reads as the rows it relates to: "Nv Site: Enchakkal · ENK".
+  const related = relatedTarget(op, value)
+  if (related) {
+    const refs = filterRefs(table, meta, filter)
+    const named = `${related.table}${refs.length ? `: ${refs.map(name).join(', ')}` : ''}`
+    return op === 'related' ? named : `not ${named}`
+  }
   const col = meta?.columns.find((c) => c.column_name === column)
   const label = column === 'row_id' ? 'Row ID' : col?.label ?? column
   const refs = filterRefs(table, meta, filter)

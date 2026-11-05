@@ -8,7 +8,9 @@ import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 import { mandatoryWhere, needsMandatoryRowRead } from './mandatory-access'
-import { MAX_RELATED_DEPTH, MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
+import { MAX_RELATED_DEPTH, RELATED_OPS } from 'shared'
+import { MAX_RELATED_HOPS, parseRelatedSpec, type Filter } from './related-filter'
+import { linksTo } from './any-table-link'
 
 export type { Filter } from './related-filter'
 
@@ -20,7 +22,7 @@ interface ListArgs {
   limit_page_length?: number
 }
 
-const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', 'related', 'not related'] as const
+const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', ...RELATED_OPS] as const
 
 // NAV-002: the 'related' operator — the ONE relationship-shaped filter the
 // list language understands. It constrains rows by a relationship to
@@ -239,11 +241,13 @@ export async function scopedWhere(
       if (!owns)
         throw new AppError('ValidationError', `${meta.name} has no sub-table ${spec.via}`)
       const viaMeta = await getMeta(spec.via)
+      // #881: or a link to a row of any Table that may name spec.table; its
+      // Table column must then name it too.
       const viaCol = viaMeta.columns.find(
         (f) =>
           f.column_name === spec.column &&
           f.column_type === 'Reference' &&
-          f.reference_table === spec.table,
+          (f.reference_table === spec.table || (!!f.table_column && linksTo(f.choices, spec.table))),
       )
       if (!viaCol)
         throw new AppError(
@@ -266,7 +270,8 @@ export async function scopedWhere(
       // Depth-indexed alias: self-referential or repeated-table nesting
       // resolves by construction, not by lexical-scoping luck (#106 review).
       const v = sql(`v${relatedDepth}`)
-      const inTarget = sql`${v}.${sql(spec.column!)} in (select ${sql(target.meta.row_key)} from ${sql(target.table)} where ${target.where})`
+      const inRows = sql`${v}.${sql(spec.column!)} in (select ${sql(target.meta.row_key)} from ${sql(target.table)} where ${target.where})`
+      const inTarget = viaCol.table_column ? sql`${v}.${sql(viaCol.table_column)} = ${spec.table} and ${inRows}` : inRows
       // `parent` holds the OWNING row's id, so it joins against this table's
       // own row key.
       const owner = sql`${sql(tbl)}.${sql(meta.row_key)}`
@@ -610,7 +615,7 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
   const rows = await sql`
     select ${selection} from ${sql(tbl)}
     where ${where}
-    order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}
+    order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}${orderField === ROW_KEY ? sql`` : sql`, ${sql(phys(ROW_KEY))} asc`}
     limit ${limit} offset ${offset}`
   const [{ count }] = await sql`
     select count(*)::int as count from ${sql(tbl)} where ${where}`

@@ -240,3 +240,17 @@ test('the map drawing never shrinks below its own size; a narrow frame scrolls i
   expect(svg.getAttribute('class')).toMatch(/\bmin-w-\[56rem\]/)
   expect(svg.parentElement!.className).toMatch(/\boverflow-x-auto\b/)
 })
+
+test('a link to a row of any Table shows the row it points at (#881)', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/table_def', {
+    name: 'Rm Decision', id_pattern: 'prompt',
+    columns: [
+      { column_name: 'about_table', label: 'About Table', column_type: 'Reference', reference_table: 'Table' },
+      { column_name: 'about', label: 'About', column_type: 'Reference', table_column: 'about_table', choices: 'Rm Customer' },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Rm Decision', row: { row_id: 'dec-1', about_table: 'Rm Customer', about: 'cust-1' } })
+  await openMap(admin, 'Rm Decision', 'dec-1')
+  expect(await screen.findByTestId('map-forward-Rm Customer')).toHaveTextContent('About · Rm Customer')
+})
