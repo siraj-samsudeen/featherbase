@@ -44,5 +44,5 @@ Rows that do not change no longer fire hooks, scripts, webhooks or email rules. 
 
 ## Risks
 
-- A copy's read and its apply no longer see one lifecycle state. The checks at apply cover the mapping, the columns and the owning app's identity.
+- A copy's read and its apply no longer see one lifecycle state. The checks at apply cover the data source's settings, the mapping, the columns and the owning app's identity.
 - Job bookkeeping for a copy runs outside the lifecycle lock. It only writes platform job rows, one statement at a time.

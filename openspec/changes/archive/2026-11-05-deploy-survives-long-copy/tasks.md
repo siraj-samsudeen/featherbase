@@ -21,5 +21,5 @@ Skipped: `acceptance-tests/` already exists. The promises here are about concurr
 
 ## 5. Check and archive
 
-- [ ] 5.1 Server suite and checks pass; Codex review
-- [ ] 5.2 Sync the specs and archive
+- [x] 5.1 Server suite and checks pass; Codex review
+- [x] 5.2 Sync the specs and archive
