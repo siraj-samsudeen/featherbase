@@ -29,6 +29,13 @@ if (process.env.SETTINGS_LOCK_COMMIT_PROOF === '1') {
     throw new Error('Settings lock committed proof requires explicit DATABASE_URL naming featherbase_<worker>_settings_commit_e2e')
 }
 
+if (process.env.LINK_LOCK_COMMIT_PROOF === '1') {
+  const url = process.env.DATABASE_URL
+  const name = url ? decodeURIComponent(new URL(url).pathname.slice(1)) : ''
+  if (!/^featherbase_[a-z0-9_]+_links_commit_e2e$/.test(name))
+    throw new Error('Link lock committed proof requires explicit DATABASE_URL naming featherbase_<worker>_links_commit_e2e')
+}
+
 // Opt-in committed writes must reject shared/default databases before global
 // setup migrates or clears test telemetry. Each reviewer chooses their own DB.
 if (process.env.TASKER_UPGRADE_ACTION_PROOF === '1') {

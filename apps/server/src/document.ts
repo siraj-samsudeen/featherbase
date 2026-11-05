@@ -323,7 +323,7 @@ async function validateLinks(
     const [row] = await tx`
       select ${mandatory ? tx`*` : tx`1`} from ${tx(await tableRelation(target))}
       where ${tx(physicalRowKey(target))} = ${String(value)}
-      ${target.includes('.') ? tx`for key share` : tx``}`
+      for key share`
     if (mandatory) {
       if (!row) throw new AppError('PermissionError', 'This work is not available to you')
       await assertMandatoryAccess(user, await getMeta(target), row)
@@ -1234,8 +1234,11 @@ async function updateDoc(
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
       await holdBeforeRowLock(stx, meta, user, { ...values, [meta.row_key]: name })
+      // #947: a save keeps the row's key, so it takes the lock a link's key
+      // share does not wait on; only a delete or a rename waits for the saves
+      // that link to this row.
       const [existing] = await tx`
-        select * from ${tx(table)} where ${tx(meta.row_key)} = ${name} for update`
+        select * from ${tx(table)} where ${tx(meta.row_key)} = ${name} for no key update`
       if (!existing)
         throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
       previous = { ...(existing as RowValues) }
@@ -1440,7 +1443,7 @@ async function setStatus(
     const stx = tx as unknown as typeof sql
     await runHooks('before_lock', { row: { [meta.row_key]: name }, meta, user, isNew: false, tx: stx })
     const [existing] = await tx`
-      select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
+      select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for no key update`
     if (!existing)
       throw new AppError('NotFoundError', `${table} ${name} not found`)
     await assertDocPermission(
