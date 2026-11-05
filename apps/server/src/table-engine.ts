@@ -1055,7 +1055,7 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
 // silent data loss, which is why this is its own operation with its own DDL.
 /** #932: every Copy again finds the deleted-at-source marker by its name, so
  *  while the Table is copied from a data source it keeps that name. */
-async function assertNotCopyMarker(table: string, column: string, verb: 'renamed' | 'removed'): Promise<void> {
+async function assertNotCopyMarker(table: string, column: string, verb: 'renamed' | 'removed' | 'changed'): Promise<void> {
   if (column !== DELETED_AT_SOURCE) return
   const [copied] = await sql`select 1 from featherbase.table_copy where target_table = ${table}`
   if (copied)
@@ -1360,6 +1360,7 @@ export async function changeColumnType(table: string, column: string, to: string
     throw new AppError('ValidationError', `${meta.name}'s column types are not changed here`)
   const current = meta.columns.find((c) => c.column_name === column)
   if (!current) throw new AppError('NotFoundError', `${meta.name} has no column ${column}`)
+  if (current.column_type !== to) await assertNotCopyMarker(meta.name, column, 'changed')
   const from = current.column_type
   if (from === to) return meta
   if (!isSafeTypeChange(from, to))
