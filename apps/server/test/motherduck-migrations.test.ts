@@ -145,6 +145,7 @@ it('upgrades the historical branch ledger without replacing its data', async () 
              ('ticked-other', 'duckdb', 'OTHER_WAREHOUSE', null, 'read_only', true),
              ('local-file', 'duckdb', 'LOCAL_DUCK_FILE', null, 'read_only', false),
              ('pg-rw', 'postgres', 'PG_URL', null, 'read_write', false)`
+    await scratch.db`insert into featherbase.table_def (name, data_source, external_schema) values ('Via Variable Sales', 'via-variable', 'marts.sales')`
     await scratch.db`update featherbase.data_source set access = 'read_write', databases = '[{"name":"fixture","address":"md:fixture","owner":"This account","account":"someone"}]' where row_id = 'migration-fixture'`
     await scratch.db`insert into featherbase.data_source_catalog (data_source, database, tables)
       values ('migration-fixture', 'fixture', '[{"name":"people"}]')`
@@ -178,6 +179,11 @@ it('upgrades the historical branch ledger without replacing its data', async () 
       { row_id: 'ticked-other', engine: 'motherduck', url_env: null, access: 'read_only', default_schema: null },
       { row_id: 'via-variable', engine: 'motherduck', url_env: null, access: 'read_only', default_schema: 'gold.main' },
     ]))
+    // Its databases come from its default schema and its connected tables.
+    expect(await scratch.db`select row_id, databases from featherbase.data_source where row_id in ('via-variable', 'ticked-other') order by row_id`).toEqual([
+      { row_id: 'ticked-other', databases: null },
+      { row_id: 'via-variable', databases: [{ name: 'gold' }, { name: 'marts' }] },
+    ])
     expect(await ledger(scratch)).toEqual([...allMigrations, ...Object.keys(branchHistory)].sort())
     await expectCurrent(scratch)
     expect(await scratch.db`select column_name, read_only from featherbase.column_def

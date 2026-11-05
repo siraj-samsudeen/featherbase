@@ -8,7 +8,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { overrideVariable } from '../src/env'
 import { invalidateMeta } from '../src/meta'
-import { getSource, invalidateSources } from '../src/sources/registry'
+import { getSource, invalidateSources, testSource } from '../src/sources/registry'
 import { duckdbDriver, run, stream } from '../src/sources/duckdb-driver'
 import { readMotherDuck } from '../src/sources/motherduck'
 import { addStandinTable, buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
@@ -290,6 +290,13 @@ describe('Requests a warehouse source refuses', () => {
   test('a source of another engine has no warehouse actions', async ({ admin }) => {
     await admin.post(SOURCES, { row_id: 'md-plain-pg', engine: 'postgres', url_env: 'MD_PLAIN_UNSET_URL', access: 'read_only' })
     await expect(admin.get(`${SOURCES}/md-plain-pg:tables?database=sales`)).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('a MotherDuck source with no databases says so, and its connection test fails', async ({ admin }) => {
+    await admin.post(SOURCES, { row_id: 'md-empty', engine: 'motherduck', access: 'read_only' })
+    const tested = await testSource('md-empty')
+    expect(tested.ok).toBe(false)
+    expect(tested.error).toMatch(/reads no database yet/)
   })
 
   test('a MotherDuck source on an instance with no token says which variable is missing', async ({ admin }) => {

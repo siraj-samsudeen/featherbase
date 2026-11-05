@@ -87,6 +87,9 @@ function localFile(cfg: SourceConfig): string {
 // #969: the session key is the token plus the chosen databases, so a new token
 // or new databases open a fresh session.
 function motherDuckCredentials(cfg: SourceConfig): { token: string; key: string } {
+  // Without this, Test Connection would pass and every table read would then fail.
+  if (!cfg.databases.length)
+    throw new AppError('ValidationError', `Data source ${cfg.name} reads no database yet; name the databases it reads`)
   const token = instanceToken()
   return { token, key: `${token}|${JSON.stringify(cfg.databases.map((d) => d.name))}` }
 }
