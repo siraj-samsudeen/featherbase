@@ -12,7 +12,7 @@ import { useMeta } from '../lib/meta'
 // reason and a typed confirmation. The server enforces every rule again.
 
 interface PurgeRow { table: string; row_id: string; title: string; parent?: { table: string; row_id: string } }
-interface PurgeGroup { table: string; column: string; lines: boolean; count: number; rows: PurgeRow[]; action: 'delete' | 'clear' | 'blocked'; why?: string }
+interface PurgeGroup { table: string; column: string; lines: boolean; parent_table?: string; count: number; rows: PurgeRow[]; action: 'delete' | 'clear' | 'blocked'; why?: string }
 interface PurgePlan {
   rows: PurgeRow[]
   groups: PurgeGroup[]
@@ -52,7 +52,7 @@ function GroupLine({ g }: { g: PurgeGroup }) {
   return (
     <li data-testid="purge-group" data-action={g.action}>
       <div>
-        <span className="font-medium text-ink">{g.table}</span>{g.lines ? ' (lines)' : ''}: {fmtCount(g.count)}{' '}
+        <span className="font-medium text-ink">{g.table}</span>{g.lines ? ` (lines in ${g.parent_table ?? 'documents'})` : ''}: {fmtCount(g.count)}{' '}
         <span className={g.action === 'blocked' ? 'text-negative' : 'text-ink-muted'} data-testid="purge-group-action">
           {g.action === 'delete' ? '— will be deleted' : g.action === 'clear' ? `— ${label} will be cleared` : `— cannot be deleted or unlinked here: ${g.why}`}
         </span>
@@ -166,7 +166,7 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
                   </label>
                 </fieldset>
                 <ul className="space-y-2 text-sm">
-                  {data.groups.map((g) => <GroupLine key={`${g.table}.${g.column}`} g={g} />)}
+                  {data.groups.map((g) => <GroupLine key={`${g.table}.${g.column}.${g.parent_table ?? ''}`} g={g} />)}
                 </ul>
                 {removedWith > 0 && <p className="mt-1 text-xs text-ink-muted">{plural(removedWith, 'row', 'rows')} in all {removedWith === 1 ? 'goes' : 'go'} with {asked.length === 1 ? 'it' : 'them'}.</p>}
               </section>

@@ -165,11 +165,15 @@ describe('#859 delete permanently, Codex review round 4', () => {
     expect(await sql.unsafe('select 1 from featherbase.pg_line where parent = $1', ['O-1'])).toHaveLength(0)
   })
 
-  test('the row limit counts every row, the asked-for ones included', async ({ admin }) => {
+  test('the row limit counts every row: those asked for, and what cascades', async ({ admin }) => {
     const { bu } = await setup(admin)
-    const rows = Array.from({ length: 1001 }, (_, i) => ({ row_id: `BU-M${i}`, bu_name: `Many ${i}` }))
-    const run = await admin.post<{ run_id: string }>(`${bu.url}:import`, { rows })
-    await expectApiError(admin.get(`${bu.url}:purge_preview?run_id=${run.run_id}`), { status: 417, message: expect.stringContaining('more than 1000') })
+    const many = Array.from({ length: 1001 }, (_, i) => `BU-M${i}`)
+    await expectApiError(purge(admin, bu, { ids: many }), { status: 417, message: expect.stringContaining('more than 1000') })
+    // One row asked for, a thousand and more reached through it.
+    await sql.unsafe(`insert into featherbase.pg_store (row_id, store_name, business_unit)
+      select 'S-M' || g, 'Many ' || g, 'BU-K' from generate_series(1, 1001) g`)
+    await expectApiError(purge(admin, bu, { ids: ['BU-K'] }), { status: 417, message: expect.stringContaining('more than 1000') })
+    expect(await exists('pg_business_unit', 'BU-K')).toBe(true)
   }, 60_000)
 
   test('clearing a link runs the holder\'s save hooks, and a refusal rolls everything back', async ({ admin }) => {
@@ -273,5 +277,41 @@ describe('#859 delete permanently, Codex review round 7', () => {
     await admin.post('/api/table/Comment', { ref_table: 'Comment', ref_name: c.row_id, content: 'reply on the comment' })
     await purge(admin, bu, { ids: ['BU-T'] })
     expect(await sql`select 1 from comment where ref_table = 'Comment' and ref_name = ${c.row_id}`).toHaveLength(0)
+  })
+})
+
+describe('#859 Codex review round 8', () => {
+  test('retire hooks see the whole document, its lines included', async ({ admin }) => {
+    await makeTable(admin, { name: 'Pg Step', kind: 'sub_table', columns: ['label'] })
+    const flow = await makeTable(admin, { name: 'Pg Flow', id_pattern: 'prompt', columns: [{ column_name: 'steps', column_type: 'Sub-table', row_table: 'Pg Step' }] })
+    await admin.post(flow.url, { row_id: 'F-1', steps: [{ label: 'one' }] })
+    const needsSteps: TableController = {
+      table: 'Pg Flow',
+      hooks: { validate: ({ row }) => { if (!Array.isArray(row.steps) || !row.steps.length) throw new AppError('ValidationError', 'A flow needs a step') } },
+    }
+    registerController(needsSteps)
+    try {
+      expect(await admin.post<{ retired_reason: string }>(`${flow.rowUrl('F-1')}:retire`, { reason: 'Replaced' })).toMatchObject({ retired_reason: 'Replaced' })
+    } finally { unregisterController(needsSteps) }
+  })
+
+  test('lines of a private document in a shared sub-table are never swept along', async ({ admin, createUser }) => {
+    const { bu } = await setup(admin)
+    await makeTable(admin, { name: 'Pg Shared Line', kind: 'sub_table', columns: [{ column_name: 'unit', column_type: 'Reference', reference_table: BU }] })
+    const pub = await makeTable(admin, { name: 'Pg Pub Doc', id_pattern: 'prompt', columns: [{ column_name: 'items', column_type: 'Sub-table', row_table: 'Pg Shared Line' }] })
+    const priv = await makeTable(admin, {
+      name: 'Pg Priv Doc', access_policy: { version: 1, roles: ['Pg Priv Member'], shared_column: 'shared' },
+      columns: ['shared:Check', { column_name: 'items', column_type: 'Sub-table', row_table: 'Pg Shared Line' }],
+    })
+    const { grantRole } = await import('./fixtures')
+    await grantRole(admin, { table: priv.name, role: 'Pg Priv Member', can_read: true, can_create: true, can_write: true })
+    const owner = await createUser({ roles: ['Pg Priv Member', 'System Manager'] })
+    await admin.post(pub.url, { row_id: 'PUB-1', items: [{ unit: 'BU-T' }] })
+    const mine = await owner.post<{ row_id: string }>('/api/save_row', { table: priv.name, row: { items: [{ unit: 'BU-T' }] } })
+    const plan = await preview(owner, bu, ['BU-T'])
+    const lineGroups = plan.groups.filter((g) => g.table === 'Pg Shared Line')
+    expect(lineGroups.map((g) => [(g as unknown as { parent_table: string }).parent_table, g.action]).sort()).toEqual([['Pg Priv Doc', 'blocked'], ['Pg Pub Doc', 'delete']])
+    await expectApiError(purge(owner, bu, { ids: ['BU-T'] }), { status: 417 })
+    expect(await sql.unsafe('select 1 from featherbase.pg_shared_line where parent = $1', [mine.row_id])).toHaveLength(1)
   })
 })

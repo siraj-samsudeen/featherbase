@@ -1752,9 +1752,11 @@ async function setRetirement(
     // hooks and scripts see the row as it will be, and may refuse it (a
     // Table whose controller refuses generic writes refuses this too). Only
     // the retirement columns are written, whatever a hook changes.
+    // Hooks see the whole document, its lines included, as on any save.
+    const whole = await loadChildren(meta, { table: meta.name, ...(existing as RowValues) })
     const pre: HookContext = {
-      row: { ...(existing as RowValues), retired_at: retire ? at : null, retired_by: retire ? user : null, retired_reason: reason },
-      old: existing as RowValues, meta, user, isNew: false, tx: stx,
+      row: { ...whole, retired_at: retire ? at : null, retired_by: retire ? user : null, retired_reason: reason },
+      old: whole, meta, user, isNew: false, tx: stx,
     }
     await runHooks('before_validate', pre)
     await runHooks('validate', pre)
@@ -1777,7 +1779,7 @@ async function setRetirement(
       ref_name: name,
       data: { changed: [], retirement: retire ? { action: 'retired', reason } : { action: 'reactivated' } } as unknown as string,
     })}`
-    const ctx: HookContext = { row: { ...(updated as RowValues) }, old: existing as RowValues, meta, user, isNew: false, tx: stx }
+    const ctx: HookContext = { row: { ...whole, ...(updated as RowValues) }, old: whole, meta, user, isNew: false, tx: stx }
     await runHooks('after_save', ctx)
     await runHooks('on_update', ctx)
     await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)

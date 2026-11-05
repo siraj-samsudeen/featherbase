@@ -35,6 +35,8 @@ export interface PurgeGroup {
   column: string
   /** A sub-table's lines: the documents holding them are named in `rows`. */
   lines: boolean
+  /** For lines, the Table of the documents holding them (each decides for its own). */
+  parent_table?: string
   count: number
   /** Up to 50, to name them. */
   rows: (PurgeRow & { parent?: { table: string; row_id: string } })[]
@@ -111,6 +113,8 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
   const rootMeta = await getMeta(table)
   const refused = purgeRefusal(rootMeta)
   if (refused) throw new AppError('ValidationError', refused)
+  if (ids.length > MAX_PURGE_ROWS)
+    throw new AppError('ValidationError', `This would delete more than ${MAX_PURGE_ROWS} rows; delete fewer at a time`)
   const forUpdate = lock ? db`for update` : db``
   const removed = new Map<string, Set<string>>() // table -> ids being removed (documents and lines)
   const rows: PurgeRow[] = []
@@ -196,34 +200,45 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
       const live = hits.filter((h) => !isRemoved(holder, String(h[meta.row_key]))
         && !(isLines && isRemoved(String(h.parenttype), String(h.parent))))
       if (!live.length) continue
-      const parentMeta = isLines ? await getMeta(String(live[0].parenttype)).catch(() => null) : null
-      const canDelete = isLines ? Boolean(parentMeta) && purgeRefusal(parentMeta!) === null : purgeRefusal(meta) === null
-      const canClear = !ref.reqd && !meta.system && !meta.system_written
-      const action: PurgeGroup['action'] = links === 'cascade'
-        ? (canDelete ? 'delete' : canClear ? 'clear' : 'blocked')
-        : (canClear ? 'clear' : canDelete ? 'delete' : 'blocked')
-      const named: PurgeGroup['rows'] = []
-      for (const h of live) {
-        // Every dependent, a blocked one too: a private row is never named.
-        await visible(meta, h)
-        if (named.length >= 50) continue
-        if (isLines) {
-          const pm = await getMeta(String(h.parenttype)).catch(() => null)
-          const [p] = pm ? await db`select * from ${db(await tableRelation(pm.name))} where ${db(pm.row_key)} = ${String(h.parent)}` : []
-          named.push({ table: holder, row_id: String(h[ROW_KEY]), title: pm && p ? titleOf(pm, p) : String(h.parent), parent: { table: String(h.parenttype), row_id: String(h.parent) } })
-        } else named.push({ table: holder, row_id: String(h[meta.row_key]), title: titleOf(meta, h) })
+      // A sub-table can serve several parent Tables: each parent decides for
+      // its own lines, so a private parent's lines are never swept along.
+      const buckets: [string | null, Row[]][] = []
+      if (!isLines) buckets.push([null, live])
+      else for (const h of live) {
+        const at = buckets.find(([t]) => t === String(h.parenttype))
+        if (at) at[1].push(h)
+        else buckets.push([String(h.parenttype), [h]])
       }
-      group({
-        lines: isLines, count: live.length, rows: named, action,
-        ...(action === 'blocked' ? { why: ref.reqd ? `${holder}.${column} is required and ${holder} rows cannot be deleted here` : `${holder} rows cannot be changed here` } : {}),
-      })
-      if (action === 'delete') {
-        const next: string[] = []
-        for (const h of live) {
-          if (isLines) await addLine(holder, h)
-          else if (await addDoc(meta, h)) next.push(String(h[meta.row_key]))
+      for (const [parentTable, bucket] of buckets) {
+        const parentMeta = parentTable ? await getMeta(parentTable).catch(() => null) : null
+        const canDelete = isLines ? Boolean(parentMeta) && purgeRefusal(parentMeta!) === null : purgeRefusal(meta) === null
+        const canClear = !ref.reqd && !meta.system && !meta.system_written
+          && !(isLines && (!parentMeta || parentMeta.system || parentMeta.system_written || parentMeta.access_policy))
+        const action: PurgeGroup['action'] = links === 'cascade'
+          ? (canDelete ? 'delete' : canClear ? 'clear' : 'blocked')
+          : (canClear ? 'clear' : canDelete ? 'delete' : 'blocked')
+        const named: PurgeGroup['rows'] = []
+        for (const h of bucket) {
+          // Every dependent, a blocked one too: a private row is never named.
+          await visible(meta, h)
+          if (named.length >= 50) continue
+          if (isLines) {
+            const [p] = parentMeta ? await db`select * from ${db(await tableRelation(parentMeta.name))} where ${db(parentMeta.row_key)} = ${String(h.parent)}` : []
+            named.push({ table: holder, row_id: String(h[ROW_KEY]), title: parentMeta && p ? titleOf(parentMeta, p) : String(h.parent), parent: { table: String(h.parenttype), row_id: String(h.parent) } })
+          } else named.push({ table: holder, row_id: String(h[meta.row_key]), title: titleOf(meta, h) })
         }
-        if (next.length) queue.push({ table: holder, ids: next })
+        group({
+          lines: isLines, ...(parentTable ? { parent_table: parentTable } : {}), count: bucket.length, rows: named, action,
+          ...(action === 'blocked' ? { why: ref.reqd ? `${holder}.${column} is required and ${parentTable ?? holder} rows cannot be deleted here` : `${parentTable ?? holder} rows cannot be changed here` } : {}),
+        })
+        if (action === 'delete') {
+          const next: string[] = []
+          for (const h of bucket) {
+            if (isLines) await addLine(holder, h)
+            else if (await addDoc(meta, h)) next.push(String(h[meta.row_key]))
+          }
+          if (next.length) queue.push({ table: holder, ids: next })
+        }
       }
     }
   }
@@ -320,7 +335,7 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
       // A row being deleted itself (or a line of one) keeps its link to the
       // end, so its deletion record holds the row as it was.
       const holders = all.filter((h) => g.lines
-        ? !owned.has(`${h.parenttype}/${h.parent}`) && !removedIds.get(g.table)?.includes(String(h[ROW_KEY]))
+        ? (!g.parent_table || String(h.parenttype) === g.parent_table) && !owned.has(`${h.parenttype}/${h.parent}`) && !removedIds.get(g.table)?.includes(String(h[ROW_KEY]))
         : !owned.has(`${g.table}/${h[meta.row_key]}`))
       for (const h of holders) {
         if (g.lines) {
