@@ -81,6 +81,11 @@ export function baseTablesReader(app: string, declaration: BaseTablesDeclaration
       const unknown = args.fields.find(field => field !== 'row_id' && !columns!.includes(field))
       if (unknown) reject(`The app has not declared column ${unknown} of Table ${table}`)
       if (args.filters?.some(([, operator]) => operator === 'related' || operator === 'not related')) reject('Base Table reads do not support related filters')
+      // A filter or a sort on a column reveals it as surely as selecting it.
+      const named = [...(args.filters ?? []).map(([column]) => column),
+        ...String(args.order_by ?? '').split(',').map(part => part.trim().split(/\s+/)[0]).filter(Boolean)]
+      const hidden = named.find(column => column !== 'row_id' && !columns!.includes(String(column)))
+      if (hidden !== undefined) reject(`The app has not declared column ${String(hidden)} of Table ${table}`)
       return (await getList(table, args)).data as ActionRow[]
     }),
   })
@@ -124,7 +129,7 @@ async function proposalsWhere(app: string, filter: ProposalFilter): Promise<Chan
       ${filter.ids ? sql`and row_id in ${sql(filter.ids.length ? filter.ids : [''])}` : sql``}
       ${filter.states ? sql`and proposal_state in ${sql(filter.states.length ? filter.states : [''])}` : sql``}
       ${filter.makers ? sql`and maker in ${sql(filter.makers.length ? filter.makers : [''])}` : sql``}
-    order by created_at desc, row_id limit ${Math.min(filter.limit ?? 200, 500)}`
+    order by created_at desc, row_id limit ${Math.min(filter.limit ?? 200, 500)} offset ${filter.start ?? 0}`
   if (!rows.length) return []
   const ids = rows.map(row => String(row.row_id))
   const changes = await sql`select parent, column_name, original_value, proposed_value, review_base_value from change_proposal_column where parent in ${sql(ids)} order by "position", column_name`
@@ -187,9 +192,13 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
     return (await resolveRoute(checkedApprovers(approvers), proposal.maker))!
   }
 
-  /** The proposal, locked, still Pending. Pre-row locks first, then the proposal, then the row. */
+  /** The proposal, locked, still Pending. Pre-row locks first, then the row, then the proposal:
+   *  approvals on one row queue at the row, so none holds a proposal another is waiting to close. */
   async function lockPending(id: unknown, meta?: TableMeta, targetRow?: string | null) {
-    if (meta && targetRow) await holdBeforeRowLock(sql, meta, user, { [meta.row_key]: targetRow })
+    if (meta && targetRow) {
+      await holdBeforeRowLock(sql, meta, user, { [meta.row_key]: targetRow })
+      await sql`select 1 from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = ${targetRow} for update`
+    }
     await sql`select 1 from change_proposal where row_id = ${id as string} and app = ${app} for update`
     const proposal = await oneProposal(app, id)
     if (proposal.state !== 'Pending') reject('This has already been decided')
@@ -209,7 +218,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
     mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers)),
 
     propose: (request: ProposalRequest) => guard.run(async () => {
-      const { table, row, changes, about } = request ?? ({} as ProposalRequest)
+      const { table, row, changes, about, reviewed: mustStay = [] } = request ?? ({} as ProposalRequest)
       const { declared, meta } = await rule(table)
       const entries = Object.entries(changes ?? {})
       if (!entries.length) reject('A proposal changes at least one column')
@@ -217,11 +226,10 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
         if (!declared.columns.includes(column) || !typeOf(meta, column)) reject(`The app has not declared column ${column} of Table ${table}`)
         if (value !== null && typeof value !== 'string') reject('Proposed values are text')
       }
+      for (const column of mustStay)
+        if (!declared.columns.includes(column) || !typeOf(meta, column) || column in (changes ?? {})) reject(`Column ${column} of Table ${table} cannot be reviewed here`)
       let current: ActionRow | null = null
-      if (row !== null && row !== undefined) {
-        current = await getDoc(table, String(row)) as ActionRow
-        if (asText(current[declared.endsOn], 'Date')) reject('That row has already ended')
-      }
+      if (row !== null && row !== undefined) current = await getDoc(table, String(row)) as ActionRow
       const before = (column: string) => current ? asText(current[column], typeOf(meta, column)) : null
       if (current && entries.every(([column, value]) => before(column) === value)) reject('That is already the case')
       const route = await resolveRoute(checkedApprovers(request.approvers), user)
@@ -229,12 +237,15 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
       const same = await proposalsWhere(app, { states: ['Pending'], makers: [user], limit: 500 })
       const key = (list: { column_name: string; proposed_value: string | null }[]) => JSON.stringify([...list].sort((a, b) => a.column_name.localeCompare(b.column_name)).map(c => [c.column_name, c.proposed_value]))
       const asked = key(entries.map(([column_name, proposed_value]) => ({ column_name, proposed_value })))
-      if (same.some(p => p.target_table === table && (p.target_row ?? null) === (row ?? null) && key(p.changes.filter(c => c.column_name !== declared.endsOn)) === asked)) reject('You have already asked for this')
+      // Only what the proposal changes: the reviewed columns hold still.
+      const askedOf = (p: ChangeProposal) => key(p.changes.filter(c => p.target_row === null || c.proposed_value !== c.review_base_value))
+      if (same.some(p => p.target_table === table && (p.target_row ?? null) === (row ?? null) && askedOf(p) === asked)) reject('You have already asked for this')
       const saved = await saveSystemRow('Change Proposal', { app, target_table: table, target_row: row ?? null, maker: user, proposal_state: 'Pending', about: (about ?? null) as never }, user)
       const id = String(saved.row_id)
-      // The end date is reviewed with the values, though it is never proposed: a row ended meanwhile is stale.
+      // The end date and the app's reviewed columns are compared at approval, though never
+      // proposed: a row that ended, or now holds something else, is not what was reviewed.
       const reviewed = [...entries.map(([column, value]) => [column, before(column), value] as const),
-        ...(current ? [[declared.endsOn, before(declared.endsOn), before(declared.endsOn)] as const] : [])]
+        ...(current ? [...mustStay, declared.endsOn].map(column => [column, before(column), before(column)] as const) : [])]
       for (const [position, [column_name, original, proposed]] of reviewed.entries())
         await sql`insert into change_proposal_column ${sql({ row_id: hashRowId(), created_by: user, updated_by: user, position, parent: id,
           parenttype: 'Change Proposal', parentfield: 'changes', column_name, original_value: original, proposed_value: proposed, review_base_value: original } as unknown as Record<string, never>)}`
@@ -253,13 +264,14 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
       if (unknown) reject(`The app has not declared column ${unknown[0]} as one it may set on a new row`)
       await writeRoute(proposal.row_id, route, user)
       const effective = decision.effectiveOn
-      const proposed = Object.fromEntries(proposal.changes.filter(c => c.column_name !== declared.endsOn).map(c => [c.column_name, c.proposed_value]))
+      const proposed = Object.fromEntries(proposal.changes.filter(c => !proposal.target_row || c.proposed_value !== c.review_base_value).map(c => [c.column_name, c.proposed_value]))
       let current: ActionRow | null = null
       if (proposal.target_row) {
-        await sql`select 1 from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = ${proposal.target_row} for update`
         current = await getDoc(meta.name, proposal.target_row) as ActionRow
         const stale = proposal.changes.some(c => asText(current![c.column_name], typeOf(meta, c.column_name)) !== (c.review_base_value ?? null))
           || (asText(current[declared.startsOn], 'Date') ?? '') > effective
+          // A planned end that has since passed: the row isn't in force, though nobody changed it.
+          || (asText(current[declared.endsOn], 'Date') ?? '9999') < effective
         if (stale) {
           await close(proposal.row_id, 'Needs fresh review', { reason: 'The row changed after this was asked for.' })
           return oneProposal(app, id)

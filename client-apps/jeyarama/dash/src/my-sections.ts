@@ -13,14 +13,14 @@ interface ChangeProposal {
   row_id: string; maker: string; state: string; about: unknown; decision_reason: string | null
   created_at: string; decided_at: string | null; route: { people: string[]; roles: string[] }
 }
-interface ProposalList { ids?: string[]; states?: string[]; makers?: string[]; limit?: number }
+interface ProposalList { ids?: string[]; states?: string[]; makers?: string[]; limit?: number; start?: number }
 interface BaseTablesHelper { list(table: string, args: { fields: string[]; filters?: Filter[]; order_by?: string; limit_start?: number; limit_page_length?: number }): Promise<Row[]> }
 interface ChangeProposalsReader {
   list(filter?: ProposalList): Promise<ChangeProposal[]>
   mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
 }
 interface ChangeProposalsHelper extends ChangeProposalsReader {
-  propose(request: { table: string; row: string | null; changes: Record<string, string | null>; approvers: ApproverRequest; about: Record<string, unknown> }): Promise<ChangeProposal>
+  propose(request: { table: string; row: string | null; changes: Record<string, string | null>; reviewed?: string[]; approvers: ApproverRequest; about: Record<string, unknown> }): Promise<ChangeProposal>
   approve(id: string, decision: { approvers: ApproverRequest; effectiveOn: string; newRow: Record<string, string | null> }): Promise<ChangeProposal>
   reject(id: string, decision: { approvers: ApproverRequest; reason: string }): Promise<ChangeProposal>
   needsFreshReview(id: string, decision: { approvers: ApproverRequest; reason: string }): Promise<ChangeProposal>
@@ -130,16 +130,17 @@ function view(proposal: ChangeProposal) {
 
 /** The pending proposals this caller may decide now. */
 async function waitingForMe(ctx: ReadContext): Promise<ChangeProposal[]> {
-  const pending = await ctx.changeProposals.list({ states: ['Pending'], limit: 500 })
-  const others = pending.filter(proposal => proposal.maker !== ctx.user)
-  if (!others.length) return []
-  const jobs = byId(await list(ctx, T.job, JOB_FIELDS, [['row_id', 'in', unique(others.map(p => about(p).job_assignment))]]))
   const mine: ChangeProposal[] = []
-  for (const proposal of others) {
-    const { approvers } = await approversOf(ctx, jobs.get(about(proposal).job_assignment))
-    if (await ctx.changeProposals.mayDecide(proposal.maker, approvers)) mine.push(proposal)
+  for (let start = 0; ; start += 500) {
+    const pending = await ctx.changeProposals.list({ states: ['Pending'], limit: 500, start })
+    const others = pending.filter(proposal => proposal.maker !== ctx.user)
+    const jobs = others.length ? byId(await list(ctx, T.job, JOB_FIELDS, [['row_id', 'in', unique(others.map(p => about(p).job_assignment))]])) : new Map<string, Row>()
+    for (const proposal of others) {
+      const { approvers } = await approversOf(ctx, jobs.get(about(proposal).job_assignment))
+      if (await ctx.changeProposals.mayDecide(proposal.maker, approvers)) mine.push(proposal)
+    }
+    if (pending.length < 500) return mine
   }
-  return mine
 }
 
 export const reads = {
@@ -250,7 +251,7 @@ export const actions = {
     if (exact(to.row_id) === exact(from.row_id)) ctx.reject('That is already its section')
     const [name] = await list(ctx, T.subcategory, ['subcategory'], [['row_id', '=', exact(placement.subcategory)]])
     const { approvers, ...base } = await aboutTheJob(ctx, job, employee)
-    const proposal = await ctx.changeProposals.propose({ table: T.placement, row: exact(placement.row_id), changes: { section: exact(to.row_id) }, approvers,
+    const proposal = await ctx.changeProposals.propose({ table: T.placement, row: exact(placement.row_id), changes: { section: exact(to.row_id) }, reviewed: ['site', 'subcategory'], approvers,
       about: { ...base, kind: 'move', what: text(name?.subcategory), from: text(from.section_name), to: text(to.section_name), subcategory: exact(placement.subcategory), from_section: exact(from.row_id), to_section: exact(to.row_id) } })
     return view(proposal)
   },
@@ -273,7 +274,8 @@ export const actions = {
     const [other] = elsewhere ? await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', exact(elsewhere.section)]]) : []
     const { approvers, ...base } = await aboutTheJob(ctx, job, employee)
     const proposal = await ctx.changeProposals.propose({ table: T.placement, row: elsewhere ? exact(elsewhere.row_id) : null,
-      changes: elsewhere ? { section: exact(section.row_id) } : { site, subcategory: code, section: exact(section.row_id) }, approvers,
+      changes: elsewhere ? { section: exact(section.row_id) } : { site, subcategory: code, section: exact(section.row_id) },
+      reviewed: elsewhere ? ['site', 'subcategory'] : [], approvers,
       about: { ...base, kind: 'add', what: text(subcategory.subcategory), from: elsewhere ? text(other?.section_name) : 'No section', to: text(section.section_name), subcategory: code, from_section: exact(elsewhere?.section), to_section: exact(section.row_id) } })
     return view(proposal)
   },
@@ -289,7 +291,7 @@ export const actions = {
     // A job carrying a floor keeps it true to its section; most jobs carry none and stay so.
     const changes: Record<string, string | null> = { section: exact(to.row_id) }
     if (exact(job.floor)) changes.floor = exact(to.floor) || null
-    const proposal = await ctx.changeProposals.propose({ table: T.job, row: exact(job.row_id), changes, approvers,
+    const proposal = await ctx.changeProposals.propose({ table: T.job, row: exact(job.row_id), changes, reviewed: ['employee', 'site', 'job', ...(changes.floor === undefined ? ['floor'] : [])], approvers,
       about: { ...base, kind: 'section', what: `${text(job.job)} at ${base.store}`, from: from ? text(from.section_name) : 'No section', to: text(to.section_name), from_section: exact(job.section), to_section: exact(to.row_id) } })
     return view(proposal)
   },

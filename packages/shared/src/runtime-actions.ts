@@ -17,10 +17,12 @@ export interface ProposalRequest {
   /** The row to end and replace; null for a new row. */
   row: string | null
   changes: Record<string, string | null>
+  /** Declared columns that must still hold their value at approval, though not changed: what makes it this row. */
+  reviewed?: string[]
   approvers: ApproverRequest
   about?: Record<string, unknown>
 }
-export interface ProposalFilter { ids?: string[]; states?: ChangeProposalState[]; makers?: string[]; limit?: number }
+export interface ProposalFilter { ids?: string[]; states?: ChangeProposalState[]; makers?: string[]; limit?: number; start?: number }
 export interface ChangeProposal {
   row_id: string
   app: string

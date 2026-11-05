@@ -59,6 +59,10 @@ describe('an app reads only what it declares and an administrator lists', () => 
     await expect(probe(maker, { op: 'list', table: 'Hidden Base', args: { fields: ['label'] } })).rejects.toMatchObject({ status: 417 })
     // A column it did not declare.
     await expect(probe(maker, { op: 'list', table: 'Placement', args: { fields: ['secret'] } })).rejects.toMatchObject({ status: 417 })
+    // A filter or a sort on it reveals it just the same.
+    await expect(probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label'], filters: [['secret', 'like', 'k%']] } })).rejects.toMatchObject({ status: 417 })
+    await expect(probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label'], order_by: 'secret asc' } })).rejects.toMatchObject({ status: 417 })
+    expect(await probe(maker, { op: 'list', table: 'Placement', args: { fields: ['label'], filters: [['site', '=', 'North']], order_by: 'row_id asc' } })).toEqual([{ label: 'Sarees' }])
     // No field list means no read.
     await expect(probe(maker, { op: 'list', table: 'Placement', args: {} })).rejects.toMatchObject({ status: 417 })
     // A Table it never declared, even a listed one.
@@ -202,6 +206,27 @@ describe('stale proposals', () => {
     expect(outcome).toMatchObject({ state: 'Needs fresh review' })
     expect(await placement('P-1')).toMatchObject({ label: 'Changed meanwhile', ends_on: null })
     expect(await placement('P-2')).toBeUndefined()
+  })
+
+  test('a reviewed column the proposal does not change must hold still too, and is not rewritten', async ({ admin, createUser }) => {
+    const { maker, manager, row } = await setUp(admin, createUser)
+    const request = ask(manager.user)
+    const proposal = await probe(maker, { ...request, request: { ...request.request, reviewed: ['site'] } })
+    await admin.post('/api/save_row', { table: 'Placement', row: { row_id: 'P-1', updated_at: row.updated_at, site: 'South' } })
+    expect((await probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(manager.user) })).state).toBe('Needs fresh review')
+    await expect(probe(maker, { ...request, request: { ...request.request, reviewed: ['secret'] } })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('a row with a planned end can be corrected; the new row keeps the plan, and a plan that has passed is stale', async ({ admin, createUser }) => {
+    const { maker, manager } = await setUp(admin, createUser)
+    await admin.post('/api/save_row', { table: 'Placement', row: { placement_id: 'P-PLAN', label: 'Cotton', starts_on: '2026-10-01', ends_on: '2026-12-31' } })
+    const proposal = await probe(maker, ask(manager.user, { label: 'Silk' }, 'P-PLAN'))
+    await probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(manager.user, 'P-NEXT') })
+    expect(asDay((await placement('P-PLAN')).ends_on)).toBe('2026-11-04')
+    expect(asDay((await placement('P-NEXT')).ends_on)).toBe('2026-12-31')
+    await admin.post('/api/save_row', { table: 'Placement', row: { placement_id: 'P-OVER', label: 'Cotton', starts_on: '2026-10-01', ends_on: '2026-11-01' } })
+    const late = await probe(maker, ask(manager.user, { label: 'Silk' }, 'P-OVER'))
+    expect((await probe(manager, { op: 'approve', id: late.row_id, decision: approval(manager.user, 'P-LATE') })).state).toBe('Needs fresh review')
   })
 
   test('a row ended meanwhile is stale too, and an unrelated column is not', async ({ admin, createUser }) => {

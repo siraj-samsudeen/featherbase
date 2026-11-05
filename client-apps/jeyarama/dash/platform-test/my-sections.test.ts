@@ -217,6 +217,15 @@ describe('what an approver decides', () => {
     expect((await read(maker, 'my_sections')).proposals.every((p: any) => p.state === 'Needs fresh review')).toBe(true)
   })
 
+  test('a placement that now holds another subcategory is not what was reviewed', async ({ admin, createUser }) => {
+    const { maker, manager } = await world(admin, createUser)
+    const proposal = await act(maker, 'propose_move', move())
+    const [placement] = await sql`select updated_at from ${sql(await tableRelation('Section Subcategory'))} where row_id = 'LKS-1'`
+    await saveRow(admin, 'Section Subcategory', { row_id: 'LKS-1', updated_at: placement.updated_at, subcategory: '010101004' })
+    expect(await act(manager, 'decide', { proposal: proposal.id, decision: 'approve' })).toMatchObject({ state: 'Needs fresh review' })
+    expect(await row('Section Subcategory', 'LKS-1')).toMatchObject({ section: 'LKS-S1', ends_on: null })
+  })
+
   test('the same day twice: the new rows do not collide, and today has one answer', async ({ admin, createUser }) => {
     const { maker, manager } = await world(admin, createUser)
     const first = await act(maker, 'propose_section', { job: 'JA-1', to_section: 'LKS-S2' })

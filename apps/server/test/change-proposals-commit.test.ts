@@ -44,6 +44,16 @@ prove('real commits: two approvers approving at once apply it once', async () =>
     expect(rows).toHaveLength(2)
     const [row] = await sql`select proposal_state, decided_by from change_proposal where row_id = ${proposal.row_id}`
     expect(row.proposal_state).toBe('Applied')
+
+    // Two proposals on one row, approved at once: they queue at the row, with no deadlock. One
+    // applies; the other finds it was sent back for a fresh review.
+    await saveDoc(TABLE, { placement_id: 'S-1', label: 'Cotton', site: 'South', starts_on: '2026-10-01' }, 'Administrator', 'insert')
+    const asks = await Promise.all(['Linen', 'Wool'].map(label => act(people[0], { op: 'propose', request: { table: TABLE, row: 'S-1', changes: { label }, approvers } })).map(p => p))
+    const both = await Promise.allSettled(asks.map(({ result }, index) =>
+      act(people[index + 1], { op: 'approve', id: result.row_id, decision: { approvers, effectiveOn: '2026-11-05', newRow: { placement_id: `S-${index + 2}` } } })))
+    for (const settled of both) if (settled.status === 'rejected') expect(String(settled.reason.message)).toContain('already been decided')
+    const states = (await sql`select proposal_state from change_proposal where target_row = 'S-1'`).map(r => String(r.proposal_state)).sort()
+    expect(states).toEqual(['Applied', 'Needs fresh review'])
   } finally {
     // A disposable database: nothing here is cleaned up but the app's hold on it.
     await uninstallApp('proposalproof').catch(() => {})
