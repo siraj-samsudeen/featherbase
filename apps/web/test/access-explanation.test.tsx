@@ -59,7 +59,7 @@ test('#628 a colleague\'s page is refused', async ({ createUser }) => {
   const person = await createUser({ roles: [] })
   const colleague = await createUser({ roles: [] })
   await renderApp(pageOf(person.user!), colleague)
-  expect(await screen.findByTestId('access-explanation-refused', {}, WAIT)).toHaveTextContent('You can open only your own page')
+  expect(await screen.findByTestId('access-explanation-refused', {}, WAIT)).toHaveTextContent("You can't open this page")
   expect(screen.queryByTestId('access-roles')).not.toBeInTheDocument()
 })
 
