@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect } from 'vitest'
 import { act } from 'react'
 import type { Root } from 'react-dom/client'
 import { app } from '../../../../apps/server/src/index'
-import { test as sandboxed, isSandboxOpen } from '../../../../apps/server/test/pg-test-shared'
+import { test as sandboxed, isTestDatabaseOpen } from '../../../../apps/server/test/pg-test-shared'
 import { sql } from '../../../../apps/server/src/db'
 import { withNamedVariable } from '../../../../apps/server/src/env'
 import { setupDash } from './dash'
@@ -30,7 +30,7 @@ beforeAll(() => {
     location: dom.window.location, history: dom.window.history,
     IS_REACT_ACT_ENVIRONMENT: true,
     fetch: async (input: string, init?: RequestInit) => {
-      if (!isSandboxOpen()) throw new Error('Dash fetch outside SQLSandbox refused')
+      if (!isTestDatabaseOpen()) throw new Error('Dash fetch outside SQLSandbox refused')
       if (!input.startsWith('/api/')) throw new Error(`Unexpected external fetch: ${input}`)
       const headers = new Headers(init?.headers)
       if (token) headers.set('Authorization', `Bearer ${token}`)
