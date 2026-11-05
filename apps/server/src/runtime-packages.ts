@@ -669,16 +669,8 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
         // Only the grants this app owns: an adopted, pre-existing grant stays.
         // Withdrawn first, under the names the Tables have before any rename.
         for (const p of prepared.withdrawn) {
-          // Someone's deeper grant needs this one: deleting it would end that
-          // too, with nothing to show for it. Refused while nothing has changed.
-          const held = await sql`select distinct d.role from permission d join permission g
-              on d.requires_permission = g.row_id or d.parent_permission = g.row_id
-            where g.owner_app = ${name} and g.ref_table = ${p.table} and g.role = ${p.role}
-              and g.scope_mode = ${p.scope_mode ?? 'all'} and g.operation in ${sql(Object.keys(p.operations))}
-              and d.owner_app is distinct from ${name} order by d.role`
-          if (held.length)
-            refuse(`Deeper access of ${held.map((d) => String(d.role)).join(', ')} depends on the grant to ${p.role} on ${p.table} that this upgrade withdraws. Remove those Permission Rows first, then upgrade`)
-          const gone = await sql`
+          // The app's grant and its own line-item grants under it.
+          const closure = (await sql`
             with recursive withdrawn as (
               select row_id from permission
               where owner_app = ${name} and ref_table = ${p.table} and role = ${p.role}
@@ -687,8 +679,15 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
               select p.row_id from permission p join withdrawn w on p.parent_permission = w.row_id
                 where p.owner_app = ${name}
             )
-            delete from permission where row_id in (select row_id from withdrawn)
-            returning row_id`
+            select row_id from withdrawn`).map((row) => String(row.row_id))
+          // Someone's deeper grant needs one of these: deleting it would end that
+          // too, with nothing to show for it. Refused while nothing has changed.
+          const held = closure.length ? await sql`select distinct role from permission
+            where (requires_permission in ${sql(closure)} or parent_permission in ${sql(closure)})
+              and owner_app is distinct from ${name} order by role` : []
+          if (held.length)
+            refuse(`Deeper access of ${held.map((d) => String(d.role)).join(', ')} depends on the grant to ${p.role} on ${p.table} that this upgrade withdraws. Remove those Permission Rows first, then upgrade`)
+          const gone = closure.length ? await sql`delete from permission where row_id in ${sql(closure)} returning row_id` : []
           for (const g of gone) {
             await sql`delete from featherbase.permission_column where parent = ${String(g.row_id)}`
             await sql`update installed_app set perms = perms - ${String(g.row_id)} where name = ${name}`

@@ -377,7 +377,10 @@ export async function importRows({ table, args, user }: CollectionActionContext,
             // the mapped values as the update they will become. The insert
             // checks (name conflicts, reqd columns) do not apply.
             checkRowForUpdate(meta, row as Record<string, unknown>, resolution, upsert!)
-            const current = await getDoc(table, resolution.row_id!, user.row_id)
+            // Refused if this person cannot read the row. The rehearsal then compares
+            // with what is stored, as the real import does; only counts leave here.
+            await getDoc(table, resolution.row_id!, user.row_id)
+            const current = await getDoc(table, resolution.row_id!)
             const plan = await planImport(meta, current, updateValues(row as Record<string, unknown>, upsert!, resolution), user.row_id)
             fieldsUpdated += plan.fields_updated
             fieldsKept += plan.fields_kept

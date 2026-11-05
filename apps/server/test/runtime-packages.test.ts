@@ -687,6 +687,13 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       expect(await sql`select 1 from permission where row_id = 'manual-detail'`).toHaveLength(1)
       expect(await everyoneReadsPerson()).toHaveLength(1)
       expect(await sql`select package_version from installed_app where name = 'tasker'`).toEqual([{ package_version: from }])
+      // The same when it depends on one of the app's line-item grants under that grant.
+      await sql`insert into permission (row_id, ref_table, role, operation, scope_mode, column_rule, parent_permission, owner_app)
+        values ('app-line', 'Comment', 'All', 'read', 'all', 'every', ${String(base.row_id)}, 'tasker')`
+      await sql`update permission set requires_permission = 'app-line' where row_id = 'manual-detail'`
+      await expect(admin.post('/api/upgrade_app', { name: 'tasker', version: to, planId: plan.planId }))
+        .rejects.toMatchObject({ status: 417, message: expect.stringMatching(/Deeper access of Manual Detail/) })
+      expect(await sql`select 1 from permission where row_id in ('manual-detail', 'app-line')`).toHaveLength(2)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

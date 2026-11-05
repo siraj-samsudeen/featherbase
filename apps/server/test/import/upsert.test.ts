@@ -982,6 +982,22 @@ describe('#851 permission-safe matching suggestions', () => {
     expect(await importState()).toEqual(before)
   })
 
+  test('a rehearsal accepts an unchanged value the person cannot read, as the real import does', async ({ admin, createUser }) => {
+    await setup(admin, { columns: [
+      { column_name: 'zone', column_type: 'Data' },
+      { column_name: 'pop', column_type: 'Int', tier: 'restricted' },
+    ] })
+    await admin.post(PATH, { rows: [{ zone: 'Alpha', pop: 12000 }] })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true, can_write: true, can_create: true })
+    const user = await createUser({ roles: [ROLE] })
+    const run = { key_column: 'zone', columns: ['zone', 'pop'], rows: [{ zone: 'Alpha', pop: 12000 }] }
+    const rehearsal = await user.post<{ failed: unknown[] }>(PATH, { ...run, dry_run: true })
+    expect(rehearsal.failed).toEqual([])
+    const real = await user.post<{ failed: unknown[] }>(PATH, run)
+    expect(real.failed).toEqual([])
+  })
+
   test('analysis does not disclose overlap with another person’s rows', async ({ admin, createUser }) => {
     await setup(admin)
     await seed(admin)
