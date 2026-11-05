@@ -14,6 +14,7 @@ import {
   read,
   ApiError,
   type Ticket,
+  canManageApps,
   type Session,
   type Detail,
   type RecordData,
@@ -528,6 +529,7 @@ function Field({
 const SETTINGS_HREF = `/featherbase/admin/table/app-setting?filters=${encodeURIComponent(
   JSON.stringify([['app', '=', 'tickets']]),
 )}`
+const BUILT_IN_STATES = ['New', 'Needs verification', 'Awaiting approval', 'Approved', 'Rejected', 'Policy review', 'In progress', 'Resolved']
 const isDone = (ticket: Ticket) =>
   configuredTypes[ticket.kind]
     ? configuredTypes[ticket.kind].done.includes(ticket.ticket_state)
@@ -563,6 +565,7 @@ function availableActions(now: {
   state: string
   canDecide: boolean
   editable: boolean
+  rewordable: boolean
   // #918: the moves this ticket's type allows the viewer now (null when the
   // type declares none); the server decides which, for requesters too.
   transitions: TicketAction[] | null
@@ -574,6 +577,8 @@ function availableActions(now: {
     target: 'action-transition',
     transition,
   }))
+  if (now.rewordable)
+    actions.push({ key: 'wording', label: 'Correct the wording', tab: 'Request', target: 'action-wording' })
   if (!now.support) return actions
   const workflow = (key: string, label: string): HeaderAction => ({
     key,
@@ -672,14 +677,12 @@ function TypeActions({ actions, state, mutate, busy, open, setOpen }: {
 }
 // #918: the requester or support corrects the request's wording; the
 // earlier wording stays in the ticket's history.
-function Reword({ original, mutate, busy }: { original: string; mutate: Mutate; busy: boolean }) {
-  const [open, setOpen] = useState(false)
-  if (!open) return <button className="secondary" type="button" onClick={() => setOpen(true)}>Correct the wording</button>
+function Reword({ original, mutate, busy, close }: { original: string; mutate: Mutate; busy: boolean; close: () => void }) {
   return (
-    <form className="card" onSubmit={async (e) => {
+    <form id="action-wording" className="card" onSubmit={async (e) => {
       e.preventDefault()
       const text = String(new FormData(e.currentTarget).get('original') ?? '')
-      if (await mutate('edit', { original: text })) setOpen(false)
+      if (await mutate('edit', { original: text })) close()
     }}>
       <fieldset disabled={busy}>
         <Label title="Original message">
@@ -687,7 +690,7 @@ function Reword({ original, mutate, busy }: { original: string; mutate: Mutate; 
         </Label>
         <p className="fine">The earlier wording is kept in the ticket's history.</p>
         <div className="actions">
-          <button type="button" onClick={() => setOpen(false)}>Cancel</button>
+          <button type="button" onClick={close}>Cancel</button>
           <button className="primary">Save wording</button>
         </div>
       </fieldset>
@@ -734,8 +737,13 @@ function CaseFile({
     support &&
     (approvalAllowed || state === 'awaiting_approval') &&
     verification?.active === true
+  const canReword =
+    Boolean(detail.details) &&
+    (support || ticket.owner === (typeof session.user === 'string' ? session.user : session.user.row_id))
+  const [rewording, setRewording] = useState(false)
   const actions = availableActions({
     support,
+    rewordable: canReword,
     capabilities: session.capabilities,
     access,
     resolved,
@@ -788,6 +796,7 @@ function CaseFile({
             if (move) setTypeOpen(move.action)
             setTab(chosen.tab)
             if (chosen.key === 'edit') setEditing(true)
+            if (chosen.key === 'wording') setRewording(true)
             setFocus({ target: chosen.target, at: Date.now() })
           }}
         />
@@ -825,8 +834,8 @@ function CaseFile({
                 <p className="request-body">
                   {display(detail.details.original)}
                 </p>
-                {(support || ticket.owner === (typeof session.user === 'string' ? session.user : session.user.row_id)) && (
-                  <Reword original={String(detail.details.original ?? '')} mutate={mutate} busy={busy} />
+                {rewording && canReword && (
+                  <Reword original={String(detail.details.original ?? '')} mutate={mutate} busy={busy} close={() => setRewording(false)} />
                 )}
                 {Array.isArray(detail.originalHistory) && detail.originalHistory.length > 0 && (
                   <details className="fine">
@@ -1098,12 +1107,14 @@ function CaseFile({
                         title="Manual fulfillment reference"
                       />
                     </ActionForm>
-                    <p className="fine">
-                      Missing memberships or routes?{' '}
-                      <a href={SETTINGS_HREF}>
-                        Configure Tickets settings
-                      </a>
-                    </p>
+                    {session.canManage && (
+                      <p className="fine">
+                        Missing memberships or routes?{' '}
+                        <a href={SETTINGS_HREF}>
+                          Configure Tickets settings
+                        </a>
+                      </p>
+                    )}
                   </>
                 ) : (
                   <div className="card">
@@ -1313,10 +1324,10 @@ function App() {
         : 'Could not load Tickets. Please try again.',
     )
   useEffect(() => {
-    Promise.all([read<Session>('session'), read<{ types: unknown }>('form')])
-      .then(([value, form]) => {
+    Promise.all([read<Session>('session'), read<{ types: unknown }>('form'), canManageApps()])
+      .then(([value, form, manage]) => {
         learnTypes(form.types)
-        setSession(value)
+        setSession({ ...value, canManage: manage })
       })
       .catch((e) => {
         report(e)
@@ -1460,6 +1471,10 @@ function App() {
       ...(kind ? [kind] : []),
     ]),
   ]
+  // The states the list can hold: the chosen type's own, else every type's.
+  const stateOptions = configuredTypes[kind]
+    ? configuredTypes[kind].states
+    : [...new Set([...BUILT_IN_STATES, ...Object.values(configuredTypes).flatMap((type) => type.states)])]
   const connections =
     session?.connections && typeof session.connections === 'object'
       ? (session.connections as Record<string, unknown>)
@@ -1527,7 +1542,7 @@ function App() {
                 aria-hidden="true"
               />
               {unconfigured.length ? 'Connections not set up' : 'Connections ready'}
-              {unconfigured.length > 0 && session.capabilities.support && (
+              {unconfigured.length > 0 && session.canManage && (
                 <>
                   {' · '}
                   <a href={SETTINGS_HREF}>Set up</a>
@@ -1552,14 +1567,14 @@ function App() {
             onChange={(e) => setSearch(e.target.value)}
           />
           <select
-            aria-label="Filter by status"
+            aria-label="Filter by state"
             value={state}
             onChange={(e) => setState(e.target.value)}
           >
             <option value="">
-              {view === 'assigned' ? 'Open work' : 'All statuses'}
+              {view === 'assigned' ? 'Open work' : 'All states'}
             </option>
-            {['New', 'Needs verification', 'Awaiting approval', 'Approved', 'Rejected', 'Policy review', 'In progress', 'Resolved'].map((value) => (
+            {stateOptions.map((value) => (
               <option key={value} value={value}>
                 {value}
               </option>

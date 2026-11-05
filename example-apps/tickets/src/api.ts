@@ -14,6 +14,8 @@ export type Session = {
   capabilities: { support: boolean; verify: boolean; fulfill: boolean }
   connections: unknown
   people?: { row_id: string; full_name: string }[]
+  // From the platform's whoami: this person can open Tickets' settings in Admin.
+  canManage?: boolean
 }
 export type RecordData = Record<string, unknown>
 export type Detail = {
@@ -71,4 +73,14 @@ export function action(name: string, payload: object) {
     idempotencyKey: crypto.randomUUID(),
     payload,
   })
+}
+export async function canManageApps(): Promise<boolean> {
+  const token = localStorage.getItem('fc_token')
+  const response = await fetch('/api/whoami', {
+    credentials: 'same-origin',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).catch(() => null)
+  if (!response?.ok) return false
+  const user = (await response.json()) as { capabilities?: { manage?: boolean } }
+  return user.capabilities?.manage === true
 }

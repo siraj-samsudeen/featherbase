@@ -12,9 +12,11 @@ export class FeatherbaseSidebar extends HTMLElement {
     const style = document.createElement('style')
     style.textContent = `${shadowCss(platformCss)}
       :host { position:static; z-index:auto; min-width:0; height:100%; }
-      .sidebar-frame { min-height:calc(100vh - var(--featherbase-bar-height, 48px)); height:100%; padding:12px;
+      .sidebar-frame { display:flex; flex-direction:column; min-height:calc(100vh - var(--featherbase-bar-height, 48px)); height:100%; padding:12px;
         border-right:1px solid var(--color-border); background:var(--color-surface);
         color:var(--color-ink); font:14px/1.45 var(--font-sans); }
+      /* A row keeps its height; one with margin-top:auto sits at the foot. */
+      ::slotted(*) { flex-shrink:0; }
       ::slotted(button), ::slotted(a) {
         display:flex !important; align-items:center !important; gap:10px !important;
         box-sizing:border-box !important; width:100% !important; min-height:40px !important;
@@ -29,7 +31,7 @@ export class FeatherbaseSidebar extends HTMLElement {
         color:var(--color-action) !important; font-weight:600 !important; }
       ::slotted(:focus-visible) { outline:2px solid var(--color-focus) !important; outline-offset:1px !important; }
       @media (max-width:700px) {
-        .sidebar-frame { min-height:0; border-right:0; border-bottom:1px solid var(--color-border); }
+        .sidebar-frame { display:block; min-height:0; border-right:0; border-bottom:1px solid var(--color-border); }
         slot { display:flex; overflow-x:auto; }
         ::slotted(button), ::slotted(a) { width:auto !important; flex:0 0 auto; }
       }`
