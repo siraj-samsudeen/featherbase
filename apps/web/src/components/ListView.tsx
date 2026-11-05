@@ -1759,7 +1759,7 @@ function StandardFilters({
           <ChoiceBox key={f.column_name} column={f} filters={filters} onChange={onChange} />
         ) : f.column_type === 'Reference' && f.reference_table ? (
           // #793: a link filters by picking a row by its name, not by typing its id.
-          <label key={f.column_name} className="flex flex-col gap-0.5">
+          <label key={f.column_name} className={box}>
             <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
