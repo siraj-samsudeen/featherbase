@@ -799,6 +799,17 @@ describe('Data Source rows (#703)', () => {
     expect((await sql`select databases from data_source where row_id = 'migrated-warehouse'`)[0].databases).toEqual(databases)
   })
 
+  // The migration converts only a source it can tell is MotherDuck; another one
+  // holding a MotherDuck address under its own variable converts by saying so.
+  test('the file converts a DuckDB source with its own variable by clearing the variable', async () => {
+    await sql`insert into data_source (row_id, engine, url_env, access) values ('own-variable', 'duckdb', 'MADE_UP_DELETED_VARIABLE', 'read_only')`
+    const databases = [{ name: 'gold' }]
+    const keeps = await problemsOf(applyInstanceSettings({ settings: { 'Data Source': [{ row_id: 'own-variable', engine: 'motherduck', databases }] } }, { by: 'Administrator' }))
+    expect(keeps.message).toContain('A MotherDuck source names no variable')
+    await applyInstanceSettings({ settings: { 'Data Source': [{ row_id: 'own-variable', engine: 'motherduck', url_env: null, databases }] } }, { by: 'Administrator' })
+    expect((await sql`select engine, url_env, databases from data_source where row_id = 'own-variable'`)[0]).toEqual({ engine: 'motherduck', url_env: null, databases })
+  })
+
   test('the Feather Dash file applies: its warehouse reads gold and marts with the one token', async () => {
     const file = JSON.parse(readFileSync(new URL('../../../client-apps/jeyarama/instances/dash/instance-settings.json', import.meta.url), 'utf8'))
     const [warehouse] = file.settings['Data Source']

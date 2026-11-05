@@ -125,7 +125,7 @@ async function main() {
       `live warm ${ms(median(totalWarm))}, live cold ${ms(median(totalLive))}`,
   )
   heldConn.closeSync()
-  instance.closeSync()
+  session.close()
 
   console.log('\n## Correctness against the shared baseline\n')
   const expected = expectedTotals()

@@ -60,7 +60,10 @@ MotherDuck source names the databases it reads, and that token must be able to
 read them; a share created hidden is not listed, so it cannot be named. Featherbase
 only reads the warehouse, even when the token has write rights: every session
 attaches its databases read-only, and no setting changes that (ADR 0020). To
-rotate the token, change the variable and restart.
+rotate the token, change the variable and restart. A DuckDB source that held a
+MotherDuck address under another variable name is refused until a settings file or
+an admin makes it a MotherDuck source, with `"url_env": null`; the upgrade converts
+only a source using `MOTHERDUCK_URL` or marked as holding a read-scaling token.
 
 <!-- generated:variables:start — from apps/server/src/env.ts by `pnpm --filter server generate:env`; do not edit -->
 
