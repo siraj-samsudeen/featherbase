@@ -142,7 +142,7 @@ test("a person whose only grant is on an installed app's Table gets the no-acces
 })
 
 test('a failed refresh of whoami keeps the shell the person already has', () => {
-  const caps = { manage: false, report: false, admin: true, own_grant: true, tables: ['Shelf Note'], creatable: [] }
+  const caps = { manage: false, report: false, admin: true, own_grant: true, tables: ['Shelf Note'], creatable: [], archived: [] }
   expect(shellKindOf({ isError: true, data: { capabilities: caps } })).toBe('admin')
   expect(shellKindOf({ isError: true, data: undefined })).toBe('failed')
   expect(shellKindOf({ isError: false, data: undefined })).toBe('loading')
