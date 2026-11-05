@@ -85,7 +85,7 @@ describe('the report in the manifest', () => {
 
   it('reads the Dive from optional settings, so an instance without one gets the quick view', () => {
     expect(manifest.settings).toEqual([
-      { name: 'dive_id', required: false }, { name: 'dive_version', required: false }, { name: 'embed_service_account', required: false },
+      { name: 'dive_id', required: false }, { name: 'embed_service_account', required: false },
       { name: 'dive_ready_signal', required: false }])
   })
 

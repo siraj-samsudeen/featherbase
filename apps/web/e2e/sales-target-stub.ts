@@ -12,7 +12,7 @@ export interface StubRecord {
   seq: number
   dive_id: string
   username: string
-  version: number
+  version?: number
   initial_state: unknown
 }
 
@@ -51,7 +51,7 @@ export function startStub(port: number): Promise<Stub> {
           res.writeHead(401, { 'content-type': 'application/json' })
           return res.end(JSON.stringify({ message: 'missing bearer' }))
         }
-        const parsed = JSON.parse(body) as { username: string; version: number; initial_state: unknown }
+        const parsed = JSON.parse(body) as { username: string; version?: number; initial_state: unknown }
         const record: StubRecord = {
           seq: ++counter,
           dive_id: url.pathname.split('/')[3],

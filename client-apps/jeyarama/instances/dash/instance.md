@@ -21,9 +21,10 @@ The base applies everywhere. `local`, `dev` and `prod` hold what differs:
 - **Google sign-in.** The client id is set on dev and prod and empty locally,
   so the development mock sign-in serves. The client secret is never in the
   file; it is the `GOOGLE_CLIENT_SECRET` deployment variable.
-- **The Dive.** `DIVE_ID`, `DIVE_VERSION` and `SERVICE_ACCOUNT` are read when
-  dev or prod settings are applied and saved into the App Settings. Local boots
-  with none of them.
+- **The Dive.** `DIVE_ID` and `SERVICE_ACCOUNT` are read when dev or prod
+  settings are applied and saved into the App Settings. Local boots with neither.
+  No version is pinned: the report opens the Dive's latest saved version, so
+  saving a Dive releases it (#937).
 - **Refreshing the cached figures.** Off locally: there is no warehouse to
   refresh from, and a refresh would only fail.
 - **The warehouse.** The `motherduck` Data Source names the variable holding its
