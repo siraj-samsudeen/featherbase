@@ -202,6 +202,10 @@ _Avoid_: site, tenant, deployment (as the layer name)
 
 ## Extension
 
+**Change Proposal**:
+A change to a row that waits for approval: which row, each changed column's original and proposed value, who may approve it, and how it ended (Pending, Applied, Rejected, Needs fresh review). The row doesn't change until it is approved. Written only by the platform. First built for Dash (#975), in the shape of #627.
+_Avoid_: section change request, approval ticket
+
 **Workflow**:
 A role-gated state machine over a Table, whose states map to a Row's status.
 _Avoid_: state machine (as the user-facing word), approval chain
