@@ -632,20 +632,6 @@ export function ListView({
           className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:basis-64 sm:justify-end"
           data-testid="list-toolbar"
         >
-          {retirable && (
-            <label className={buttonClasses({ className: 'cursor-pointer gap-2' })} data-testid="list-show-retired">
-              <input
-                type="checkbox"
-                checked={showRetired}
-                onChange={(e) => {
-                  setShowRetired(e.target.checked)
-                  setStart(0)
-                }}
-                data-testid="list-show-retired-toggle"
-              />
-              Show retired
-            </label>
-          )}
           <div className="relative">
             <button
               onClick={() => setColPickerOpen((o) => !o)}
@@ -703,6 +689,20 @@ export function ListView({
               </div>
             )}
           </div>
+          {retirable && (
+            <label className={buttonClasses({ className: 'cursor-pointer gap-2' })} data-testid="list-show-retired">
+              <input
+                type="checkbox"
+                checked={showRetired}
+                onChange={(e) => {
+                  setShowRetired(e.target.checked)
+                  setStart(0)
+                }}
+                data-testid="list-show-retired-toggle"
+              />
+              Show retired
+            </label>
+          )}
           {/* TLC-R1 (docs/specs/0007-table-lifecycle.md): the create
               affordance is metadata-gated and lives HERE, in the toolbar of
               the list the user is already looking at. It used to exist only
@@ -966,14 +966,6 @@ export function ListView({
           >
             Delete rows
           </button>}
-          {canPurge && <button
-            onClick={() => setPurging(true)}
-            disabled={bulkBusy}
-            className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
-            data-testid="bulk-purge"
-          >
-            Delete permanently
-          </button>}
           <button onClick={() => setSelected(new Set())} disabled={bulkBusy} className={buttonClasses()}>Clear selection</button>
           {canBulkEdit && <span className="flex flex-wrap items-center gap-2">
             <select
@@ -1011,6 +1003,14 @@ export function ListView({
               </>
             )}
           </span>}
+          {canPurge && <button
+            onClick={() => setPurging(true)}
+            disabled={bulkBusy}
+            className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+            data-testid="bulk-purge"
+          >
+            Delete permanently
+          </button>}
           {bulkError && (
             <span className="text-xs text-negative" data-testid="bulk-error">
               {bulkError}
