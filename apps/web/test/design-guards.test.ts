@@ -13,6 +13,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, test } from 'vitest'
+import { APP_ACCENTS, DEFAULT_APP_ACCENT } from 'shared'
 
 const WEB = join(__dirname, '..')
 const CSS = readFileSync(join(WEB, '../../packages/shop-floor/src/styles.css'), 'utf8')
@@ -32,15 +33,55 @@ function colourBlock(opener: string): Record<string, string> {
 const light = colourBlock('@theme static {')
 const darkOnly = colourBlock("\n  [data-theme='dark'] {")
 const dark = { ...light, ...darkOnly }
-// One palette: the light tokens and their dark values are the whole colour set.
+
+// #941 (ADR 0019): an app may name an accent, one of the platform's set. The
+// default (blue) is the tokens above; every other accent re-values only the
+// action and focus tokens, in a light block and a dark one. Cascade order in
+// styles.css: the tokens, the dark block, the accent's own block (same
+// specificity as dark, later), then the accent's dark block (two attributes).
+const ACCENT_TOKENS = ['action', 'action-hover', 'action-ink', 'action-tint', 'focus']
+const OTHER_ACCENTS = APP_ACCENTS.filter((accent) => accent !== DEFAULT_APP_ACCENT)
+const accentOpener = (accent: string) => `[data-featherbase-accent='${accent}'] {`
+const accentDarkOpener = (accent: string) => `[data-featherbase-accent='${accent}'][data-theme='dark'] {`
+const accentBlocks = OTHER_ACCENTS.map((accent) => ({
+  accent, own: colourBlock(accentOpener(accent)), ownDark: colourBlock(accentDarkOpener(accent)),
+}))
+
+// One palette, plus the accents: these blocks are the whole colour set.
 const themes: [string, Record<string, string>][] = [
   ['light', light],
   ['dark', dark],
+  ...accentBlocks.flatMap(({ accent, own, ownDark }): [string, Record<string, string>][] => [
+    [`${accent} light`, { ...light, ...own }],
+    [`${accent} dark`, { ...dark, ...own, ...ownDark }],
+  ]),
 ]
 
-test('there is one palette: no palette selector, and every colour token is in the light or dark block', () => {
+test('there is one palette: no palette selector, and every colour token is in the light, dark or an accent block', () => {
   expect(CSS).not.toContain('data-palette')
-  expect(CSS.match(/--color-[a-z0-9-]+:/g)?.length).toBe(Object.keys(light).length + Object.keys(darkOnly).length)
+  const accentCount = accentBlocks.reduce((n, { own, ownDark }) => n + Object.keys(own).length + Object.keys(ownDark).length, 0)
+  expect(CSS.match(/--color-[a-z0-9-]+:/g)?.length).toBe(Object.keys(light).length + Object.keys(darkOnly).length + accentCount)
+})
+
+describe.each(OTHER_ACCENTS)('the %s accent', (accent) => {
+  const { own, ownDark } = accentBlocks.find((block) => block.accent === accent)!
+  test('re-values exactly the action and focus tokens, in light', () => {
+    expect(Object.keys(own).sort()).toEqual([...ACCENT_TOKENS].sort())
+  })
+
+  test('re-values exactly the action and focus tokens, in dark', () => {
+    expect(Object.keys(ownDark).sort()).toEqual([...ACCENT_TOKENS].sort())
+  })
+
+  test('its dark block comes after the dark tokens and its own light block', () => {
+    const at = CSS.indexOf(accentDarkOpener(accent))
+    expect(at).toBeGreaterThan(CSS.indexOf("\n  [data-theme='dark'] {"))
+    expect(at).toBeGreaterThan(CSS.indexOf(accentOpener(accent)))
+  })
+
+  test('its dark block reaches the screen only', () => {
+    expect(printOnly(CSS.replace(/\/\*[\s\S]*?\*\//g, ''))).not.toContain(accentDarkOpener(accent))
+  })
 })
 
 function luminance(hex: string): number {

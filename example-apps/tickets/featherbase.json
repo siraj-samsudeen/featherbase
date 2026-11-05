@@ -3,6 +3,7 @@
   "platformVersion": "2026-10",
   "name": "tickets",
   "title": "Tickets",
+  "accent": "green",
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "tickets.ticket",
@@ -110,7 +111,8 @@
       {"kind": "addColumn", "table": "tickets.request", "column": {"column_name": "original_history", "label": "Earlier wording of the request (JSON)", "column_type": "Text", "hidden": true}},
       {"kind": "addTable", "table": {"name": "tickets.open_request", "label": "Open request", "module": "Tickets", "columns": [{"column_name": "original", "label": "Original request", "column_type": "Text", "reqd": true}, {"column_name": "details_json", "label": "Structured request", "column_type": "Text"}, {"column_name": "original_history", "label": "Earlier wording of the request (JSON)", "column_type": "Text", "hidden": true}]}},
       {"kind": "addTable", "table": {"name": "tickets.open_event", "label": "Open history", "module": "Tickets", "id_pattern": "FTO-.########", "columns": [       {"column_name": "ticket", "label": "Ticket", "column_type": "Reference", "reference_table": "tickets.ticket"},       {"column_name": "operation", "label": "Operation", "column_type": "Data"},       {"column_name": "text", "label": "Event", "column_type": "Text"},       {"column_name": "by", "label": "Actor", "column_type": "Data"},       {"column_name": "at", "label": "Time", "column_type": "Data"}     ]}}
-    ]}
+    ]},
+    {"id": "platform_shell", "fromVersion": "0.2.0", "toVersion": "0.2.1", "operations": []}
   ],
   "permissions": [
     {"table": "tickets.ticket", "role": "All", "can_read": true, "can_write": true, "can_create": true},

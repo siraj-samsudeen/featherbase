@@ -7,7 +7,7 @@ import { ApiError } from '../lib/api'
 import { BarAddressContext, useDocumentAddress } from '../lib/bar-address'
 import { paintSavedTheme } from '../lib/theme'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
-import { paintOnto } from '@featherbase/shop-floor/theme'
+import { APP_ACCENT_ATTRIBUTE, paintOnto } from '@featherbase/shop-floor/theme'
 import platformCss from '../index.css?inline'
 import { shadowCss } from './style'
 
@@ -46,6 +46,10 @@ export function mountBar(host: HTMLElement, { leave = (href) => window.location.
   const root = document.createElement('div')
   root.dataset.testid = 'bar-theme-root'
   root.className = 'font-sans text-ink'
+  // #941 (ADR 0019): the app's accent, from the host the server wrote, goes on
+  // the element that carries the painted theme, so the accent's dark block
+  // (both attributes on one element) matches after a theme switch.
+  if (host.dataset.accent) root.setAttribute(APP_ACCENT_ATTRIBUTE, host.dataset.accent)
   shadow.replaceChildren(style, root)
   paintOnto(root)
   paintSavedTheme()
