@@ -56,6 +56,22 @@ export async function principalNames(ids: unknown, viewer: string): Promise<Reco
   return out
 }
 
+/** #963: which of these ids are enabled people, read as the viewer: never a
+ *  built-in or merged-away account, and a service account is not a Person. */
+export async function enabledPeople(ids: string[], viewer: string): Promise<string[]> {
+  const wanted = [...new Set(ids)].slice(0, MAX_NAMES)
+  if (!wanted.length) return []
+  let scoped
+  try {
+    scoped = await scopedWhere('Person', viewer, [['row_id', 'in', wanted], ['enabled', '=', true], ['built_in', '=', false]])
+  } catch (error) {
+    if (error instanceof AppError && error.type === 'PermissionError') return []
+    throw error
+  }
+  const rows = await sql`select p.row_id from ${sql(scoped.table)} p where ${scoped.where} and p.replaced_by is null order by p.row_id`
+  return rows.map((row) => String(row.row_id))
+}
+
 /** The person an email address belongs to, read as the viewer (like the
  *  picker): never a built-in or merged-away account, and nobody when the
  *  viewer may not read Person or its email (so an address can't be probed

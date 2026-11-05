@@ -13,9 +13,19 @@ class TicketsRaiser {
     await page.goto(`${BASE_URL}/tickets/`);
     this.t.ids[name] = await page.evaluate(() => JSON.parse(localStorage.getItem('fc_user')).row_id);
   }
-  async disable(name) { await acceptanceSql('update person set enabled = false where row_id = $1', [this.t.ids[name]]); }
+  async disable(name) { await acceptanceSql('update featherbase.person set enabled = false where row_id = $1', [this.t.ids[name]]); }
+  // A scenario's people have no names until given them; a person's name reaches Tickets when they act.
+  async name(...people) {
+    for (const person of people) {
+      await acceptanceSql('update featherbase.person set full_name = $1 where row_id = $2', [person, this.t.ids[person]]);
+      await acceptanceSql('update tickets.member set full_name = $1 where row_id = $2', [person, this.t.ids[person]]);
+    }
+  }
   async change(actor, person, reason) {
-    if (actor === 'Manager') await this.known('Manager', ['System Manager']);
+    if (actor === 'Manager') {
+      await this.known('Manager', ['System Manager']);
+      await this.name('Anjali', 'Colleague', 'Manager');
+    }
     this.reason = reason;
     return this.t.action('change_raiser', { new_raiser: this.t.ids[person], reason }, actor, true);
   }
@@ -35,9 +45,8 @@ class TicketsRaiser {
     const event = this.page.locator('.event').filter({ hasText: 'Change Raiser' });
     await event.waitFor();
     const text = await event.innerText();
-    for (const expected of ['Old Raiser', 'New Raiser', this.reason]) if (!text.includes(expected)) throw new Error(`"${expected}" missing from: ${text}`);
+    for (const expected of ['Old Raiser', 'New Raiser', 'Anjali', 'Colleague', 'Manager', this.reason]) if (!text.includes(expected)) throw new Error(`"${expected}" missing from: ${text}`);
     for (const id of [this.t.ids.Anjali, this.t.ids.Colleague, this.t.ids.Manager]) if (text.includes(id)) throw new Error(`A raw id is shown: ${text}`);
-    if (text.includes('Unnamed person')) throw new Error(`A person has no name: ${text}`);
   }
 }
 

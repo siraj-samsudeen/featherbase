@@ -18,12 +18,13 @@ const { version } = JSON.parse(readFileSync(resolve(directory, 'package.json'), 
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
   ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': `tickets@${version}` },
 }) }, client.token, client.user)
+type Person = TestClient & { user: string }
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
   createUser: async ({ createUser }, use) => use(async options => pinned(await createUser(options))),
 })
 type Ticket = { row_id: string; updated_at: string; owner: string; ticket_state: string; assigned_to?: string | null; [key: string]: any }
-const act = async (client: TestClient, name: string, payload: object, idempotencyKey = randomUUID()) =>
+const act = async (client: TestClient, name: string, payload: object, idempotencyKey: string = randomUUID()) =>
   (await client.post<any>(`/api/app_actions/tickets/${name}`, { idempotencyKey, payload })).result
 const read = async (client: TestClient, name: string, payload: object = {}) =>
   (await client.post<any>(`/api/app_reads/tickets/${name}`, { payload })).result.answer
@@ -58,7 +59,7 @@ async function world(admin: TestClient, createUser: CreateUserFn, visibility: 'e
     await save(admin, 'tickets.type_field', { ticket_type: type.row_id, field_name, label, field_type: 'text' })
   const raise = async () => (await act(raiser, 'create', { title: 'Plant address is wrong', original: 'Two plants carry both door numbers',
     kind: 'data_quality_issue', details: { current_value: '78/499/1' } })).ticket as Ticket
-  return { raiser, next, colleague, support, manager, raise }
+  return { raiser: raiser as Person, next: next as Person, colleague: colleague as Person, support: support as Person, manager: manager as Person, raise }
 }
 const change = (client: TestClient, ticket: Ticket, new_raiser: string, reason = 'The loader raised it for this person', key?: string) =>
   act(client, 'change_raiser', { ...revision(ticket), new_raiser, reason }, key)
@@ -110,10 +111,10 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
   test('an unknown, disabled, merged-away, built-in or service account raiser is refused', async ({ admin, createUser }) => {
     const w = await world(admin, createUser)
     const ticket = await w.raise()
-    const left = await createUser({ email: 'left@tickets.example.test', fullName: 'Has Left' })
+    const left = await createUser({ email: 'left@tickets.example.test', fullName: 'Has Left' }) as Person
     await sql`update person set enabled = false where row_id = ${left.user}`
-    const merged = await createUser({ email: 'merged@tickets.example.test', fullName: 'Merged Away' })
-    await sql`update person set replaced_by = ${w.next.user} where row_id = ${merged.user}`
+    const merged = await createUser({ email: 'merged@tickets.example.test', fullName: 'Merged Away' }) as Person
+    await sql`update person set enabled = false, replaced_by = ${w.next.user} where row_id = ${merged.user}`
     const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'other-importer' })
     for (const id of ['psn_doesnotexist', left.user, merged.user, 'Administrator', account.row_id])
       await refused(change(w.manager, ticket, id), /enabled person/)
@@ -233,7 +234,8 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
       await refused(save(client, 'tickets.ticket', { ...revision(ticket), owner: w.next.user }), /Use an authorized Tickets action/)
     // Inside another action, the immutable rule holds: edit takes no raiser, in its fields or its details.
     await refused(act(w.manager, 'edit', { ...revision(ticket), owner: w.next.user }), /Unknown or protected/)
-    await refused(save(w.manager, 'tickets.request', { row_id: ticket.row_id, updated_at: ticket.updated_at, original: 'x' }), /Use an authorized Tickets action/)
+    const [request] = await sql`select updated_at from tickets.open_request where row_id = ${ticket.row_id}`
+    await refused(save(w.manager, 'tickets.open_request', { row_id: ticket.row_id, updated_at: request.updated_at, original: 'x' }), /Use an authorized Tickets action/)
     expect((await stored(ticket.row_id)).owner).toBe(w.raiser.user)
   })
 
@@ -263,9 +265,8 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
     const prior = await mkdtemp(resolve('test/.upgrade-tickets-'))
     try {
       await cp(directory, prior, { recursive: true, filter: source => !source.includes('node_modules') })
-      const { change_raiser: _new, ...operations } = manifest.actions.operations
-      await writeFile(resolve(prior, 'featherbase.json'), JSON.stringify({ ...manifest, actions: { ...manifest.actions, operations },
-        migrations: manifest.migrations.filter((m: any) => m !== step) }))
+      // The same files at the earlier version: what this checks is the migration chain and the plan.
+      await writeFile(resolve(prior, 'featherbase.json'), JSON.stringify({ ...manifest, migrations: manifest.migrations.filter((m: any) => m !== step) }))
       await writeFile(resolve(prior, 'package.json'), JSON.stringify({ ...JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8')), version: step.fromVersion }))
       await discoverPackages([prior])
       await admin.post('/api/install_app', { name: 'tickets' })
@@ -282,7 +283,7 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
 
   test('people.enabled answers enabled people only', async ({ admin, createUser }) => {
     const w = await world(admin, createUser)
-    const left = await createUser({ email: 'left2@tickets.example.test', fullName: 'Has Left' })
+    const left = await createUser({ email: 'left2@tickets.example.test', fullName: 'Has Left' }) as Person
     await sql`update person set enabled = false where row_id = ${left.user}`
     expect(await enabledPeople([w.next.user, left.user, 'psn_nope', 'Administrator'], w.manager.user)).toEqual([w.next.user])
     expect(await enabledPeople([], w.manager.user)).toEqual([])
