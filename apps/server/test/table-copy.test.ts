@@ -12,6 +12,7 @@ import { committedTest } from './pg-test-shared'
 import { overrideVariable } from '../src/env'
 import { invalidateSources } from '../src/sources/registry'
 import { invalidateMeta } from '../src/meta'
+import { registerController, unregisterController } from '../src/controllers'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
 import { grantRole } from './fixtures'
 
@@ -129,6 +130,21 @@ describe('Copy a warehouse table into Featherbase', () => {
       const counted = await counts()
       await expect(admin.post(`${PATH}:copy_again`, {})).rejects.toMatchObject({ status: 403 })
       expect(await counts()).toEqual(counted)
+    })
+
+    test('a hook that writes a row already judged unchanged refuses the whole copy', async ({ admin }) => {
+      await quietCopy(admin)
+      const relation = sql(await tableRelation('Quiet Stores'))
+      const controller = { table: 'Quiet Stores', hooks: { after_save: async ({ row, tx }: { row: Record<string, unknown>; tx: typeof sql }) => {
+        if (row.store_code === 'S001') await tx`update ${relation} set display_name = 'Written by a hook', updated_at = clock_timestamp() where row_id = 'S002'`
+      } } }
+      registerController(controller as never)
+      try {
+        await source("update quiet_stores set name = 'Harbour Road North' where code = 'S001'")
+        await expect(admin.post(`${PATH}:copy_again`, {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('The row changed while this import ran') })
+      } finally { unregisterController(controller as never) }
+      expect(await admin.get(`${PATH}/S001`)).toMatchObject({ display_name: 'Harbour Road' })
+      expect(await admin.get(`${PATH}/S002`)).toMatchObject({ display_name: 'Hill Street' })
     })
 
     test('only the changed row is rewritten', async ({ admin }) => {

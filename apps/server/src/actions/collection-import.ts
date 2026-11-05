@@ -467,6 +467,14 @@ export async function importRows({ table, args, user }: CollectionActionContext,
         })
       }
     }
+    // A hook on a row saved above may have written a row already judged
+    // unchanged: as its own save would have, that row fails on its old stamp.
+    if (unchanged.size && (inserted || updated > unchanged.size)) {
+      const after = new Map((await sql`select ${sql(meta.row_key)} as row_id, updated_at from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = any(${[...unchanged]})`).map(r => [String(r.row_id), stampOf(r.updated_at)]))
+      for (const [index, resolution] of (resolutions ?? []).entries())
+        if (resolution.action === 'update' && unchanged.has(resolution.row_id!) && after.get(resolution.row_id!) !== stampOf(resolution.updated_at))
+          failed.push({ index, message: 'The row changed while this import ran' })
+    }
     await writeImportLog(table, user.row_id, { inserted, updated, upsert }, failed, { ...context, run_id: runId }, touched)
     // #687: every writing run names its run ID, so the caller can undo it.
     if (!upsert) return { inserted, failed, run_id: runId }
