@@ -14,9 +14,12 @@
 //     PUT /api/table_def matches columns BY name — a changed name there reads
 //     as delete-plus-add, which the server refuses (#250).
 //
-// Type changes and deletions are not offered. The server refuses a type
-// change outright, and dropping a column is destructive in a way that
-// belongs with Table deletion rather than beside a rename.
+// Type changes and deletions are not offered, with one exception (#911): a
+// text column whose values are codes of another Table's rows becomes a link to
+// it, and a link becomes text again. Both store the same text, so the column
+// keeps its name, values and history; the server refuses the link while any
+// value names no row. Dropping a column is destructive in a way that belongs
+// with Table deletion rather than beside a rename.
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -24,6 +27,7 @@ import { ApiError, api } from '../lib/api'
 import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { RESERVED, SNAKE, TARGET_REQUIRED_TYPES, slugify } from '../lib/column-rules'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { useShellTables } from '../lib/session'
 
 interface NewColumn {
   label: string
@@ -142,6 +146,99 @@ function RenameRow({ table, column }: { table: string; column: { column_name: st
           {rename.error instanceof ApiError ? rename.error.message : 'Could not rename'}
         </span>
       )}
+    </span>
+  )
+}
+
+/** #911: turn a text column into a link to the Table its values name, or a
+ *  link back into text. */
+function LinkRow({ def, column, onDone }: {
+  def: TableMeta
+  column: TableMeta['columns'][number]
+  onDone: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const tables = useShellTables()
+  const [open, setOpen] = useState(false)
+  const [target, setTarget] = useState('')
+  const name = column.column_name
+  const change = useMutation({
+    mutationFn: (to: { column_type: string; reference_table: string | null }) =>
+      api.put<TableMeta>(`/api/table_def/${encodeURIComponent(def.name)}`, {
+        ...def,
+        columns: def.columns.map((c) => (c.column_name === name ? { ...c, ...to } : c)),
+      }),
+    onSuccess: async (_meta, to) => {
+      setOpen(false)
+      onDone(to.column_type === 'Reference' ? `${name} now links to ${to.reference_table}` : `${name} is now text`)
+      await queryClient.invalidateQueries({ queryKey: ['meta', def.name] })
+      await queryClient.invalidateQueries({ queryKey: ['import-targets'] })
+    },
+  })
+  const error = change.isError && (
+    <span className="text-negative" data-testid={`ce-link-error-${name}`}>
+      {change.error instanceof ApiError ? change.error.fields?.[name] ?? change.error.message : 'Could not change the column'}
+    </span>
+  )
+
+  if (column.column_type === 'Reference' && column.reference_table && !column.table_column)
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1">
+        <button
+          type="button"
+          className={touchLinkClasses('underline')}
+          aria-label={`Turn ${name} into text`}
+          disabled={change.isPending}
+          onClick={() => change.mutate({ column_type: 'Data', reference_table: null })}
+        >
+          Make text
+        </button>
+        {error}
+      </span>
+    )
+  if (column.column_type !== 'Data') return null
+  if (!open)
+    return (
+      <button
+        type="button"
+        className={touchLinkClasses('underline')}
+        aria-label={`Turn ${name} into a link`}
+        onClick={() => {
+          change.reset()
+          setOpen(true)
+        }}
+      >
+        Make link
+      </button>
+    )
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <select
+        className={inputClasses('w-44 py-0.5')}
+        aria-label={`Table ${name} links to`}
+        value={target}
+        onChange={(e) => setTarget(e.target.value)}
+      >
+        <option value="">Choose a Table…</option>
+        {(tables ?? []).map((t) => (
+          <option key={t.row_id} value={t.row_id}>
+            {t.row_id}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className={buttonClasses({ variant: 'primary', className: 'py-0.5' })}
+        data-testid={`ce-link-go-${name}`}
+        disabled={change.isPending || !target}
+        onClick={() => change.mutate({ column_type: 'Reference', reference_table: target })}
+      >
+        {change.isPending ? 'Checking…' : 'Make link'}
+      </button>
+      <button type="button" className={buttonClasses({ className: 'py-0.5' })} onClick={() => setOpen(false)}>
+        Cancel
+      </button>
+      {error}
     </span>
   )
 }
@@ -338,7 +435,14 @@ export function ColumnEditor({ table }: { table: string }) {
                   <td className="pr-2 font-mono text-xs text-ink-muted">{column.column_name}</td>
                   <td className="pr-2 text-xs text-ink-muted">{column.column_type}</td>
                   <td className="text-xs">
-                    {!def.system && <RenameRow table={def.name} column={column} />}
+                    {!def.system && (
+                      <span className="inline-flex flex-wrap items-center gap-3">
+                        <RenameRow table={def.name} column={column} />
+                        {!def.data_source && def.kind !== 'settings' && (
+                          <LinkRow def={def} column={column} onDone={setSaved} />
+                        )}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -437,8 +541,9 @@ export function ColumnEditor({ table }: { table: string }) {
           )}
           <p className="mt-2 text-xs text-ink-muted">
             The new column is empty on every row that already exists. A column's type cannot be
-            changed after it is made, and columns are not deleted here — delete the Table if that
-            is what you mean.
+            changed after it is made, except that a text column of codes can become a link to the
+            Table they name, and back. Columns are not deleted here — delete the Table if that is
+            what you mean.
           </p>
         </div>
       )}
