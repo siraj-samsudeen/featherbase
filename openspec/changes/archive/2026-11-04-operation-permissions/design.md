@@ -47,6 +47,10 @@ contributes Columns only while its prerequisite is active and held, and inherits
 creator restriction from it. A restricted Person read also becomes `read_identifiers`.
 A create grant's Columns still include those its holder's edit grants reach.
 
+A line-item Table cannot be saved directly, and what a new line may hold came from the
+parent's reach and the line items' edit flag, never their create flag. So a restricted
+create flag on a line-item Table converts to nothing.
+
 *Rejected:* merging restricted rows into their basic rows, which would combine a
 creator-scoped basic grant with a wider restricted one into one broader grant.
 
@@ -93,6 +97,17 @@ server's read path.
 *Rejected:* the old rule (any basic read grant), which let a creator-scoped grant or a
 basic grant on a Table with restricted Columns read every row and Column directly. The
 Featherbase server itself does not use this path. Narrowed direct views are #921.
+
+### 7. The coarse matrix cannot forget a restriction
+
+Clearing a flag row's last tick used to keep the row, with its creator restriction and
+app ownership. With one row per operation the last row is the only record of them, so
+the matrix refuses to clear the last tick of a creator-only or app-owned grant; that is
+done on the Permission rows. An operation it adds beside an app's grant goes on the app's
+install ledger, so uninstalling removes it.
+
+*Rejected:* letting it clear and defaulting the next tick to all rows and no app, which
+silently widens the grant.
 
 ## Risks / Trade-offs
 

@@ -282,9 +282,10 @@ export async function provisionGrants(
         'ValidationError',
         `Permission on ${p.table} names unknown role ${p.role} — declare it in the manifest's roles`,
       )
+    // Existing manual configuration, whatever its scope, is kept as it is: the
+    // app must not add a wider grant beside a creator-only one.
     const [adopted] = await sql`
-      select 1 from permission where ref_table = ${p.table} and role = ${p.role}
-        and scope_mode = ${p.scope_mode ?? 'all'} and owner_app is null
+      select 1 from permission where ref_table = ${p.table} and role = ${p.role} and owner_app is null
         and parent_permission is null and requires_permission is null limit 1`
     if (adopted) continue
     for (const [operation, selection] of Object.entries(p.operations)) {
@@ -292,7 +293,7 @@ export async function provisionGrants(
       const [have] = await sql`
         select row_id from permission
         where ref_table = ${p.table} and role = ${p.role} and operation = ${operation}
-          and scope_mode = ${scope} and parent_permission is null and requires_permission is null
+          and parent_permission is null and requires_permission is null
           and (owner_app is null or owner_app = ${manifest.name})`
       if (have) continue
       // A level ('*', '@basic') keeps following the Table's Columns and line

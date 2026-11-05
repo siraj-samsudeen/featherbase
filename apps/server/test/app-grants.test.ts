@@ -157,6 +157,22 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     }
   })
 
+  test('a creator-only manual grant is adopted, so installing adds no all-rows grant', async ({ admin }) => {
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: 'ToDo', role: ROLE, operation: 'read', scope_mode: 'creator' },
+    })
+    registerApp(manifest({ permissions: [{ table: 'ToDo', role: ROLE, operations: { read: '*', update: '*' } }] }))
+    try {
+      expect((await installApp(APP)).perms).toEqual([])
+      expect(await sql`select operation, scope_mode from permission where ref_table = 'ToDo' and role = ${ROLE}`)
+        .toEqual([{ operation: 'read', scope_mode: 'creator' }])
+    } finally {
+      await unwire()
+    }
+  })
+
   test('uninstall removes exactly what install created', async () => {
     registerApp(
       manifest({
