@@ -25,7 +25,9 @@ export function useOpenAdmin() {
 }
 
 /** The same native application-name dropdown on platform and app pages. */
-export function AppSwitcher({ app }: { app?: { name: string; title: string } }) {
+/** `compact`: on a phone, only the logo and the list's chevron (#983), for an
+ *  app whose pickers share the bar. The list still opens and switches. */
+export function AppSwitcher({ app, compact = false }: { app?: { name: string; title: string }; compact?: boolean }) {
   const whoami = useWhoAmI().data
   const catalog = useQuery({
     queryKey: ['app-catalog'],
@@ -49,13 +51,13 @@ export function AppSwitcher({ app }: { app?: { name: string; title: string } }) 
         if (app && href === FEATHERBASE_ADMIN_DESTINATION.href) void open()
         else window.location.assign(href)
       }}
-      wrapperClassName="min-w-0 flex-1 sm:w-52 sm:flex-none md:w-auto md:flex-1"
-      className="truncate pl-2.5 pr-8 font-semibold max-sm:min-h-11"
+      wrapperClassName={compact ? 'max-sm:w-11 max-sm:flex-none min-w-0 sm:w-52 sm:flex-none md:w-auto md:flex-1' : 'min-w-0 flex-1 sm:w-52 sm:flex-none md:w-auto md:flex-1'}
+      className={`truncate pl-2.5 pr-8 font-semibold max-sm:min-h-11 ${compact ? 'max-sm:pl-0 max-sm:pr-0 max-sm:text-transparent' : ''}`}
       data-testid="top-bar-name"
     >
-      {(!app || whoami?.capabilities.admin) && <option value={FEATHERBASE_ADMIN_DESTINATION.href}>{FEATHERBASE_ADMIN_DESTINATION.label}</option>}
-      {app && !catalog.data && <option value={current}>{app.title}</option>}
-      {(catalog.data ?? []).map((entry) => <option key={entry.name} value={entry.href}>{entry.title}</option>)}
+      {(!app || whoami?.capabilities.admin) && <option className="text-ink" value={FEATHERBASE_ADMIN_DESTINATION.href}>{FEATHERBASE_ADMIN_DESTINATION.label}</option>}
+      {app && !catalog.data && <option className="text-ink" value={current}>{app.title}</option>}
+      {(catalog.data ?? []).map((entry) => <option className="text-ink" key={entry.name} value={entry.href}>{entry.title}</option>)}
     </Select>
   </>
 }

@@ -30,17 +30,23 @@ interface BarControl {
   hiddenWhen?: string
 }
 
-export function BarControls({ app }: { app: string }) {
+/** The controls the bar shows for `app`: those with at least one option, on a page they apply to. */
+export function useBarControls(app: string | undefined) {
   const bar = useQuery({
     queryKey: ['app_bar', app],
-    queryFn: () => api.get<{ controls: BarControl[] }>(`/api/app_bar/${encodeURIComponent(app)}`),
+    queryFn: () => api.get<{ controls: BarControl[] }>(`/api/app_bar/${encodeURIComponent(app!)}`),
+    enabled: Boolean(app),
     retry: false,
   })
   const page = useBarAddress()
   const location = useRouterState({ select: (state) => state.location })
   const address = new URLSearchParams(page ? page.search : location.searchStr)
-  const controls = (bar.data?.controls ?? []).filter((control) =>
+  return (bar.data?.controls ?? []).filter((control) =>
     control.options.length > 0 && !(control.hiddenWhen && address.has(control.hiddenWhen)))
+}
+
+export function BarControls({ app }: { app: string }) {
+  const controls = useBarControls(app)
   if (controls.length === 0) return null
   return (
     <div className="flex min-w-0 shrink items-center gap-2 max-sm:pl-1" data-testid="bar-controls">
