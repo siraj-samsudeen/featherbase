@@ -2,15 +2,17 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { DuckDBConnection } from '@duckdb/node-api'
 import { rmSync } from 'node:fs'
-import { makeClient } from 'feather-testing-postgres'
+import { makeClient, type TestClient } from 'feather-testing-postgres'
 import { app } from '../src/index'
 import { issueSession } from '../src/auth'
-import { deleteTable } from '../src/table-engine'
+import { deleteTable, tableRelation } from '../src/table-engine'
 import { sql } from '../src/db'
 import { test } from './pg-test'
 import { committedTest } from './pg-test-shared'
 import { overrideVariable } from '../src/env'
 import { invalidateSources } from '../src/sources/registry'
+import { invalidateMeta } from '../src/meta'
+import { registerController, unregisterController } from '../src/controllers'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
 import { grantRole } from './fixtures'
 
@@ -74,6 +76,153 @@ describe('Copy a warehouse table into Featherbase', () => {
     // A string longer than Data's 140 characters copies whole; only the key stays bounded.
     const meta = await admin.get<{ columns: { column_name: string; column_type: string }[] }>('/api/table/Typed%20Copy:meta')
     expect(Object.fromEntries(meta.columns.map(c => [c.column_name, c.column_type]))).toMatchObject({ code: 'Data', note: 'Text' })
+  })
+
+  // #971: a refresh that finds nothing new rewrites nothing.
+  describe('a refresh that finds nothing new', () => {
+    const PATH = '/api/table/Quiet%20Stores'
+    const counts = async () => (await sql`select
+      (select count(*)::int from version where ref_table = 'Quiet Stores') as versions,
+      (select count(*)::int from featherbase.import_source where ref_table = 'Quiet Stores') as observations,
+      (select count(*)::int from featherbase.import_conflict where ref_table = 'Quiet Stores' and closed is not true) as open_conflicts,
+      (select count(*)::int from import_log where ref_table = 'Quiet Stores') as runs`)[0]
+    async function quietCopy(admin: TestClient) {
+      await changeStandin(dir, 'sales', ['create or replace table quiet_stores as select * from stores'])
+      await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-quiet', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+      await admin.post(`${SOURCES}/tc-quiet:copy_create`, { database: 'sales', schema: 'main', table: 'quiet_stores', name: 'Quiet Stores', key: 'code', columns: STORES })
+    }
+    const source = async (statement: string) => {
+      await changeStandin(dir, 'sales', [statement])
+      invalidateSources('tc-quiet')
+    }
+    const correct = async (admin: TestClient, name: string) => {
+      const row = await admin.get<{ updated_at: string }>(`${PATH}/S001`)
+      await admin.post('/api/save_row', { table: 'Quiet Stores', row: { row_id: 'S001', display_name: name, updated_at: row.updated_at } })
+    }
+
+    test('no row is rewritten; the report and Past imports still show the run', async ({ admin }) => {
+      await quietCopy(admin)
+      const before = await admin.get<{ updated_at: string }>(`${PATH}/S001`)
+      const counted = await counts()
+      const run = await admin.post<{ run_id: string }>(`${PATH}:copy_again`, {})
+      expect(run).toMatchObject({ inserted: 0, updated: 3, changed: 0, unchanged: 3, conflicts: 0 })
+      expect((await admin.get<{ updated_at: string }>(`${PATH}/S001`)).updated_at).toBe(before.updated_at)
+      // Every run keeps its own observation of each row: undoing one must not lose what another saw.
+      expect(await counts()).toEqual({ ...counted, runs: counted.runs + 1, observations: counted.observations + 3 })
+      expect(await sql`select 1 from import_log where ref_table = 'Quiet Stores' and run_id = ${run.run_id}`).toHaveLength(1)
+    })
+
+    test('a row that does not change runs no automation', async ({ admin }) => {
+      await quietCopy(admin)
+      await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'refuse-quiet-row', script_type: 'Document Event', ref_table: 'Quiet Stores', event: 'before_save', script: 'throw new Error("A save ran")', enabled: true } })
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ unchanged: 3 })
+      await source("update quiet_stores set name = 'Harbour Road North' where code = 'S001'")
+      await expect(admin.post(`${PATH}:copy_again`, {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('A save ran') })
+    })
+
+    test('a row the person may not reach still refuses the run, though it did not change', async ({ admin }) => {
+      await quietCopy(admin)
+      // Private until shared (any false column serves as the flag), and created by
+      // someone else: an admitted manager still may not reach the row.
+      await sql`update table_def set access_policy = ${sql.json({ version: 1, roles: ['System Manager'], shared_column: 'deleted_at_source' })} where name = 'Quiet Stores'`
+      await sql`update ${sql(await tableRelation('Quiet Stores'))} set created_by = 'someone-else' where row_id = 'S002'`
+      invalidateMeta('Quiet Stores')
+      const counted = await counts()
+      await expect(admin.post(`${PATH}:copy_again`, {})).rejects.toMatchObject({ status: 403 })
+      expect(await counts()).toEqual(counted)
+    })
+
+    test('a hook that writes a row already judged unchanged refuses the whole copy', async ({ admin }) => {
+      await quietCopy(admin)
+      const relation = sql(await tableRelation('Quiet Stores'))
+      const controller = { table: 'Quiet Stores', hooks: { after_save: async ({ row, tx }: { row: Record<string, unknown>; tx: typeof sql }) => {
+        if (row.store_code === 'S001') await tx`update ${relation} set display_name = 'Written by a hook', updated_at = clock_timestamp() where row_id = 'S002'`
+      } } }
+      registerController(controller as never)
+      try {
+        await source("update quiet_stores set name = 'Harbour Road North' where code = 'S001'")
+        await expect(admin.post(`${PATH}:copy_again`, {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('The row changed while this import ran') })
+      } finally { unregisterController(controller as never) }
+      expect(await admin.get(`${PATH}/S001`)).toMatchObject({ display_name: 'Harbour Road' })
+      expect(await admin.get(`${PATH}/S002`)).toMatchObject({ display_name: 'Hill Street' })
+    })
+
+    test('a Table that keeps no history records no observation', async ({ admin }) => {
+      await quietCopy(admin)
+      await sql`update table_def set track_changes = false where name = 'Quiet Stores'`
+      invalidateMeta('Quiet Stores')
+      const counted = await counts()
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ unchanged: 3 })
+      expect((await counts()).observations).toBe(counted.observations)
+    })
+
+    test('only the changed row is rewritten', async ({ admin }) => {
+      await quietCopy(admin)
+      const others = await admin.get<{ updated_at: string }>(`${PATH}/S002`)
+      await source("update quiet_stores set name = 'Harbour Road North' where code = 'S001'")
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ updated: 3, changed: 1, unchanged: 2 })
+      await source("insert into quiet_stores values ('S009', 'New Lane', 'Upton', '33')")
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ inserted: 1, updated: 3, changed: 0, unchanged: 3 })
+      expect(await admin.get(`${PATH}/S001`)).toMatchObject({ display_name: 'Harbour Road North' })
+      expect((await admin.get<{ updated_at: string }>(`${PATH}/S002`)).updated_at).toBe(others.updated_at)
+    })
+
+    test('a run with nothing new can be undone without disturbing an earlier run', async ({ admin }) => {
+      await quietCopy(admin)
+      await source("update quiet_stores set name = 'Harbour Road North' where code = 'S001'")
+      const changing = await admin.post<{ run_id: string }>(`${PATH}:copy_again`, {})
+      const quiet = await admin.post<{ run_id: string }>(`${PATH}:copy_again`, {})
+      expect(await admin.post(`${PATH}:import-revert`, { run_id: quiet.run_id })).toMatchObject({ restored: 0, deleted: 0 })
+      // The quiet run moved no row, so undoing the run before it still finds them untouched.
+      expect(await admin.post(`${PATH}:import-revert`, { run_id: changing.run_id })).toMatchObject({ restored: 1 })
+      expect(await admin.get(`${PATH}/S001`)).toMatchObject({ display_name: 'Harbour Road' })
+    })
+
+    test('a row back at the source is not mistaken for unchanged', async ({ admin }) => {
+      await quietCopy(admin)
+      await source("delete from quiet_stores where code = 'S003'")
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ deleted_at_source: 1 })
+      await source("insert into quiet_stores values ('S003', 'Market Lane', 'Port Town', '32')")
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ back_at_source: 1 })
+      expect(await admin.get(`${PATH}/S003`)).toMatchObject({ deleted_at_source: false })
+    })
+
+    test('a source that comes to agree with a correction closes its conflict; going back raises a new one', async ({ admin }) => {
+      await quietCopy(admin)
+      await correct(admin, 'Corrected Road')
+      await source("update quiet_stores set name = 'New Source Road' where code = 'S001'")
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ conflicts: 1 })
+      await source("update quiet_stores set name = 'Corrected Road' where code = 'S001'")
+      await admin.post(`${PATH}:copy_again`, {})
+      expect((await counts()).open_conflicts).toBe(0)
+      await source("update quiet_stores set name = 'New Source Road' where code = 'S001'")
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ conflicts: 1 })
+      expect(await admin.get(`${PATH}/S001`)).toMatchObject({ display_name: 'Corrected Road' })
+    })
+
+    test('undoing the run that first agreed with a correction keeps what a later run observed', async ({ admin }) => {
+      await quietCopy(admin)
+      await correct(admin, 'Corrected Road')
+      await source("update quiet_stores set name = 'Corrected Road' where code = 'S001'")
+      const agreeing = await admin.post<{ run_id: string }>(`${PATH}:copy_again`, {})
+      await admin.post(`${PATH}:copy_again`, {})
+      await admin.post(`${PATH}:import-revert`, { run_id: agreeing.run_id })
+      await source("update quiet_stores set name = 'Harbour Road' where code = 'S001'")
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ conflicts: 1 })
+    })
+
+    test('with no conflict open, agreeing with a correction is still observed, so going back raises one', async ({ admin }) => {
+      await quietCopy(admin)
+      await correct(admin, 'Corrected Road')
+      // The source still says what it said: the correction stands with no conflict.
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ conflicts: 0 })
+      await source("update quiet_stores set name = 'Corrected Road' where code = 'S001'")
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ conflicts: 0 })
+      // Back to the original: what the source said last was the correction.
+      await source("update quiet_stores set name = 'Harbour Road' where code = 'S001'")
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ conflicts: 1 })
+      expect(await admin.get(`${PATH}/S001`)).toMatchObject({ display_name: 'Corrected Road' })
+    })
   })
 
   test('copy, correct, copy again: the correction is kept, a changed source raises a conflict, a gone row is marked', async ({ admin }) => {
@@ -207,7 +356,7 @@ describe('Copy a warehouse table into Featherbase', () => {
     const before = await snapshot()
     const history = await admin.get('/api/import/batches')
     const provenance = await admin.get('/api/table/Atomic%20Copy:copy_info')
-    await changeStandin(dir, 'sales', ["update atomic_stores set name = 'Changed before refusal' where code = 'S001'"])
+    await changeStandin(dir, 'sales', ["update atomic_stores set name = 'Changed before refusal' where code in ('S001', 'S003')"])
     await admin.post(`${SOURCES}/tc-atomic:refresh_tables`, { database: 'sales' })
     await expect(admin.post('/api/table/Atomic%20Copy:copy_again', {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Third store refused') })
     expect(await snapshot()).toEqual(before)

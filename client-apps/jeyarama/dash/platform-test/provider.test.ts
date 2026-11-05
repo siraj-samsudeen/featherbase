@@ -21,9 +21,9 @@ const test = pgTest.extend<{ admin: TestClient }>({ admin: async ({ admin }, use
 
 async function binding() {
   const manifest = JSON.parse(await readFile(resolve(APP_DIR, 'featherbase.json'), 'utf8'))
-  const digest = availableRuntimeVersions().find(p => p.name === 'feather_dash')!.digest
+  const digest = availableRuntimeVersions().find(p => p.name === 'dash')!.digest
   const module = await import(`${pathToFileURL(resolve(APP_DIR, 'dist/server.mjs')).href}?artifact=${digest}`)
-  return { app: 'feather_dash', title: manifest.title, version: VERSION, tables: manifest.scopeProvider.tables,
+  return { app: 'dash', title: manifest.title, version: VERSION, tables: manifest.scopeProvider.tables,
     identifiers: manifest.scopeProvider.identifiers ?? [], provide: module.scopeProviders.org_chart }
 }
 
@@ -80,7 +80,8 @@ describe('the org_chart scope provider on the platform', () => {
     const { people } = await setup(admin, createUser)
     expect(await resolvePersonScope(people['p-103'], await binding())).toEqual([{
       label: '9901 / Section: Sarees', filters: { store: ['9901'], subcategory: ['010101001'] },
-      basis: 'team_leader', confirmation: { store: { '9901': 'confirmed' }, subcategory: { '010101001': 'confirmed' } },
+      basis: 'team_leader', reasons: [{ text: 'Team Leader job assignment', since: '2026-01-01' }],
+      confirmation: { store: { '9901': 'confirmed' }, subcategory: { '010101001': 'confirmed' } },
     }])
   })
 
@@ -98,13 +99,14 @@ describe('the org_chart scope provider on the platform', () => {
     })
     const expected = [{
       label: '9901 / Section: Sarees', filters: { store: ['9901'], subcategory: ['010101001'] },
-      basis: 'team_leader', confirmation: { store: { '9901': 'confirmed' }, subcategory: { '010101001': 'confirmed' } },
+      basis: 'team_leader', reasons: [{ text: 'Team Leader job assignment', since: '2026-01-01' }],
+      confirmation: { store: { '9901': 'confirmed' }, subcategory: { '010101001': 'confirmed' } },
     }]
     expect(await resolvePersonScope(people['p-103'], await binding())).toEqual(expected)
 
     // Model a stale imported link on the real database: even without a target
     // section, it cannot grant a place named after an opaque row id.
-    await sql.unsafe(`update ${await tableRelation('feather_dash.section_subcategory')}
+    await sql.unsafe(`update ${await tableRelation('dash.section_subcategory')}
       set section = $1 where row_id = $2`, ['missing-section', invalid.row_id as string])
     expect(await resolvePersonScope(people['p-103'], await binding())).toEqual(expected)
   })
@@ -150,6 +152,7 @@ describe('the org_chart scope provider on the platform', () => {
     const expected = [{
       label: '9902 / Section: Accessories', filters: { store: ['9902'], subcategory: ['010404001', '010404002'] },
       basis: 'assignment, team_leader',
+      reasons: [{ text: 'Sales Target Assignment, by the old rules' }, { text: 'Team Leader, by the old rules' }],
       confirmation: { store: { '9902': 'assumed' }, subcategory: { '010404001': 'assumed', '010404002': 'assumed' } },
     }]
     expect(await resolvePersonScope(people['p-131'], await binding())).toEqual(expected)
@@ -166,9 +169,11 @@ describe('the org_chart scope provider on the platform', () => {
     })
     expect(await resolvePersonScope(people['p-131'], await binding())).toEqual([{
       label: '9902 / Section: Accessories', filters: { store: ['9902'], subcategory: ['010404001', '010404002'] }, basis: 'assignment, store_manager',
+      reasons: [{ text: 'Sales Target Assignment, by the old rules' }, { text: 'Store Manager, by the old rules' }],
       confirmation: { store: { '9902': 'assumed' }, subcategory: { '010404001': 'assumed', '010404002': 'assumed' } },
     }, {
       label: '9902 / Section: Footwear', filters: { store: ['9902'], subcategory: ['010505001'] }, basis: 'store_manager',
+      reasons: [{ text: 'Store Manager, by the old rules' }],
       confirmation: { store: { '9902': 'assumed' }, subcategory: { '010505001': 'assumed' } },
     }])
   })

@@ -224,6 +224,36 @@ for (const scheme of ['light', 'dark'] as const) {
         expect(await barLook(page)).toEqual(here)
       })
     })
+
+    // #983: Feather Dash's report declares a Store and a Month picker. Here the
+    // bar's answer is given both, as Dash's is.
+    test('with two pickers the app switcher, both pickers and the Account menu sit side by side', async ({ session, page, request }) => {
+      const email = await reader(request, `Bar Two ${scheme}`)
+      await page.route('**/api/app_bar/barproof', (route) => route.fulfill({ json: { controls: [
+        { picker: 'Store', sets: 'store', options: STORES.map(([label, value]) => ({ value, label })) },
+        { picker: 'Month', sets: 'month', options: [{ value: 'this', label: "This month · Nov'26" }, { value: 'last', label: "Last month · Oct'26" }] },
+      ] } }))
+      await onAppPage(page, email)
+      await page.goto(`${PAGE}?store=S101&month=this`)
+      await expect(picker(page)).toHaveText('Riverside and Station Square Junction')
+      const month = page.getByRole('combobox', { name: 'Month' })
+      await expect(month).toBeVisible()
+      await session.step('nothing overlaps, and the switcher is not a blank box', async () => {
+        const switcher = page.getByRole('combobox', { name: 'Switch application' })
+        const [logo, apps, store, when, account] = await Promise.all(
+          [page.getByRole('link', { name: 'Bar proof' }), switcher, picker(page), month, page.getByTestId('session-user')].map(async (l) => (await l.boundingBox())!),
+        )
+        const after = (a: { x: number; width: number }, b: { x: number }) => b.x >= a.x + a.width - 0.5
+        expect([after(logo, apps), after(apps, store), after(store, when), after(when, account)]).toEqual([true, true, true, true])
+        expect(account.x + account.width).toBeLessThanOrEqual(375)
+        expect(apps.width).toBeGreaterThanOrEqual(36)
+        expect(await noSidewaysScroll(page)).toBe(true)
+        if (SHOTS && scheme === 'light') await page.screenshot({ path: `${SHOTS}/app-bar-375-two-pickers-${scheme}.png` })
+      })
+      await session.step('the switcher still switches applications', async () => {
+        await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveValue(/\/barproof\//)
+      })
+    })
   })
 }
 

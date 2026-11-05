@@ -222,7 +222,7 @@ export const reads = {
     // table. The operator log names the store, never the person.
     const stateBytes = new TextEncoder().encode(JSON.stringify(state)).length
     if (stateBytes > EMBED_STATE_LIMIT_BYTES) {
-      console.warn(JSON.stringify({ event: 'feather_dash_embed_state_too_large', store, bytes: stateBytes, limit: EMBED_STATE_LIMIT_BYTES,
+      console.warn(JSON.stringify({ event: 'dash_embed_state_too_large', store, bytes: stateBytes, limit: EMBED_STATE_LIMIT_BYTES,
         message: `Store ${store}'s interactive report exceeds the embed size limit; readers see the cached table.` }))
       return { too_large: true }
     }
@@ -238,7 +238,7 @@ export const reads = {
       const answered = await response.json().catch(() => null) as { session?: unknown } | null
       if (response.ok && typeof answered?.session === 'string') {
         await ctx.recordView({ dataset: DATASETS[choice].sales })
-        // `dive_ready_signal: on`: the Dive posts { type: 'feather-dash:dive-ready' } once it has drawn
+        // `dive_ready_signal: on`: the Dive posts { type: 'dash:dive-ready' } once it has drawn
         // (B7), and the page waits for it rather than trusting the frame's load event.
         return { frame: `${EMBED_ORIGIN}/sandbox/#session=${encodeURIComponent(answered.session)}`,
           ...(ctx.settings.dive_ready_signal === 'on' ? { ready_signal: true } : {}) }
@@ -251,7 +251,7 @@ export const reads = {
       clearTimeout(timer)
     }
     // For whoever runs the instance: the person's opaque id and the status, never the token or the upstream text.
-    console.error(JSON.stringify({ event: 'feather_dash_embed_session_failed', person: ctx.user, message: failure }))
+    console.error(JSON.stringify({ event: 'dash_embed_session_failed', person: ctx.user, message: failure }))
     return { unreachable: true }
   },
 }

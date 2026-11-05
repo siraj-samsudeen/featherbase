@@ -18,7 +18,7 @@ const DASH = 'https://dash.example.com'
 const ADMIN = 'https://featherbase.example.com'
 const ADDRESSES = parseInstanceAddresses(
   JSON.stringify([
-    { address: DASH, opens: 'feather_dash', emails: true },
+    { address: DASH, opens: 'dash', emails: true },
     { address: ADMIN, opens: 'admin' },
   ]),
   'test',
@@ -35,7 +35,7 @@ const brandOf = async (api: TestClient, url: string) => (await (await api.fetch(
 
 describe('/api/brand says what the address opens', () => {
   test("on an app's address, the app", async ({ api }) => {
-    expect((await brandOf(api, `${DASH}/api/brand`)).opens).toBe('feather_dash')
+    expect((await brandOf(api, `${DASH}/api/brand`)).opens).toBe('dash')
   })
 
   test('on the admin address, admin', async ({ api }) => {

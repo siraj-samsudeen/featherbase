@@ -17,8 +17,8 @@ describe('the column descriptions people read', () => {
 
   it('names the subcategory code in each subcategory column', () => {
     expect(columns.filter(c => c.column_name === 'subcategory').map(c => [c.table, c.description])).toEqual([
-      ['feather_dash.section_subcategory', "SAP's nine-digit subcategory code (`material_group_code`)."],
-      ['feather_dash.display_location', "SAP's nine-digit subcategory code (`material_group_code`)."],
+      ['dash.section_subcategory', "SAP's nine-digit subcategory code (`material_group_code`)."],
+      ['dash.display_location', "SAP's nine-digit subcategory code (`material_group_code`)."],
     ])
   })
 })

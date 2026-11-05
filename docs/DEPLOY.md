@@ -86,7 +86,7 @@ only a source using `MOTHERDUCK_URL` or marked as holding a read-scaling token.
 | `SMTP_PORT` | no | no | `587` | `587` = STARTTLS, `465` = implicit TLS. On every port but 465, STARTTLS is required |
 | `SMTP_USER` | no | no |  | a Workspace user in the domain; turns on SMTP AUTH |
 | `SMTP_PASSWORD` | no | yes |  | that user's **app password**; required when `SMTP_USER` is set. Google's grouped display (`abcd efgh ijkl mnop`) has its spaces removed |
-| `MAIL_FROM` | no | no |  | the From of every SMTP message (`Feather Dash <noreply@example.com>`); it wins over any Email Account address. Unset, the default Email Account's address is used |
+| `MAIL_FROM` | no | no |  | the From of every SMTP message (`Dash <noreply@example.com>`); it wins over any Email Account address. Unset, the default Email Account's address is used |
 | `SMTP_NAME` | no | no |  | the `EHLO` hostname. Unset, the domain of `MAIL_FROM`, then the host of the `INSTANCE_ADDRESSES` entry marked for emails, then the sender's domain |
 | `PREAUTH_WINDOW_MS` | no | no | `900000` | pre-auth fixed window, in milliseconds |
 | `PREAUTH_LOGIN_MAX` | no | no | `60` | password and delegated sign-in submissions per source and window |
@@ -131,7 +131,7 @@ only a source using `MOTHERDUCK_URL` or marked as holding a read-scaling token.
 entry is one web address of this instance:
 
 ```json
-[{ "address": "https://dash.example.com", "opens": "feather_dash", "emails": true },
+[{ "address": "https://dash.example.com", "opens": "dash", "emails": true },
  { "address": "https://featherbase.example.com", "opens": "admin" }]
 ```
 
@@ -237,10 +237,15 @@ stopping at the first problem so that the old deployment keeps serving:
 
 Steps 2 to 4 are one transaction, and they hold the apps' lifecycle lock from
 start to end. While they run, the old deployment's API requests and jobs wait,
-usually for a few seconds. To take the lock, the step waits up to 60 seconds for
-requests already running. If they keep the apps busy longer than that, the deploy
-fails and changes nothing; deploy again. Inside the transaction, a lock wait over
-60 seconds, or 5 minutes idle, also fails the deploy.
+usually for a few seconds. To take the lock, the step makes up to 20 tries of 15
+seconds each, 15 seconds apart (just under 10 minutes), and logs each one with who
+is holding the apps. New requests queue behind a try, so they can stall for up to
+15 seconds while it waits; during the pause they run. If the apps are still busy
+after the last try, the deploy fails and changes nothing; deploy again. Railway
+sets no time limit on the pre-deploy step unless the service has a Pre-deploy
+Timeout; keep any such limit above 10 minutes plus the release's own time. Inside
+the transaction, a lock wait over 60 seconds, or 5 minutes idle, also fails the
+deploy.
 
 **Variables.** The table above, and for a client instance:
 

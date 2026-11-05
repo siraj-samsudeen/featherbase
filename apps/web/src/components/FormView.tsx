@@ -36,6 +36,7 @@ import { GlossaryHelp } from './GlossaryHelp'
 import { ReadingPresentation } from './ReadingPresentation'
 import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
+import { ArchivedBanner } from './ArchiveTable'
 import { ContentTabs, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
@@ -537,6 +538,7 @@ export function FormView({
         <span aria-hidden="true">/</span>
         <span className="min-w-0 text-ink">{isNew ? 'New' : <RowTitle table={table} rowId={name} />}</span>
       </nav>
+      <ArchivedBanner table={table} meta={meta.data} canUnarchive={false} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 max-w-full">
           <h1 className="text-xl font-semibold text-ink">

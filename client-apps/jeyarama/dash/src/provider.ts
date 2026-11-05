@@ -20,20 +20,24 @@ interface ProviderContext {
   readonly person: { readonly id: string; readonly email: string | null; readonly identifiers?: Readonly<Record<string, readonly Readonly<{ value: string; shared: boolean }>[]>> }
   readonly documents: Documents
 }
+export interface Reason { text: string; since?: string; until?: string }
+
 export interface Place {
   label: string
   filters: Record<string, string[]>
   basis?: string
+  /** featherbase#628: why the person has the place, and from and to when. */
+  reasons?: Reason[]
   confirmation?: Record<string, Record<string, 'confirmed' | 'assumed'>>
 }
 
 const APP = {
-  rollout: 'feather_dash.store_rollout',
-  floors: 'feather_dash.store_floor',
-  departments: 'feather_dash.department',
-  sections: 'feather_dash.section',
-  placements: 'feather_dash.section_subcategory',
-  jobs: 'feather_dash.job_assignment',
+  rollout: 'dash.store_rollout',
+  floors: 'dash.store_floor',
+  departments: 'dash.department',
+  sections: 'dash.section',
+  placements: 'dash.section_subcategory',
+  jobs: 'dash.job_assignment',
 } as const
 
 /** Every Table the provider reads: featherbase.json's scopeProvider.tables. */
@@ -113,20 +117,30 @@ function confirmation(filters: Record<string, string[]>, status: 'confirmed' | '
     .map(name => [name, Object.fromEntries(filters[name].map(value => [value, status]))]))
 }
 
-/** Places by label: places with one label merge their filters and bases; listed by label. */
+/** The old rules' bases, as the reasons page says them. */
+const LEGACY_REASON: Record<string, string> = {
+  store_manager: 'Store Manager', department_manager: 'Department Manager', team_leader: 'Team Leader',
+  section_staff: 'Section staff', assignment: 'Sales Target Assignment',
+}
+
+/** Places by label: places with one label merge their filters, bases and reasons; listed by label. */
+type Merged = { filters: Record<string, Set<string>>; basis: Set<string>; reasons: Map<string, Reason> }
+
 class Places {
-  private merged = new Map<string, { filters: Record<string, Set<string>>; basis: Set<string> }>()
-  add(label: string, store: string, subcategories: string[] | null, basis: string[]) {
-    const place = this.merged.get(label) ?? { filters: { store: new Set() }, basis: new Set() }
+  private merged = new Map<string, Merged>()
+  add(label: string, store: string, subcategories: string[] | null, basis: string[], reasons: Reason[]) {
+    const place: Merged = this.merged.get(label) ?? { filters: { store: new Set() }, basis: new Set(), reasons: new Map() }
     place.filters.store.add(store)
     if (subcategories) for (const code of subcategories) (place.filters.subcategory ??= new Set()).add(code)
     for (const b of basis) if (b) place.basis.add(b)
+    for (const r of reasons) place.reasons.set(JSON.stringify(r), r)
     this.merged.set(label, place)
   }
   list(status: 'confirmed' | 'assumed'): Place[] {
     return [...this.merged].sort(([a], [b]) => a.localeCompare(b)).map(([label, place]) => {
       const filters = Object.fromEntries(Object.entries(place.filters).map(([name, values]) => [name, [...values].sort()]))
-      return { label, filters, basis: [...place.basis].sort().join(', '), confirmation: confirmation(filters, status) }
+      const reasons = [...place.reasons].sort(([a], [b]) => a.localeCompare(b)).map(([, r]) => r)
+      return { label, filters, basis: [...place.basis].sort().join(', '), reasons, confirmation: confirmation(filters, status) }
     })
   }
 }
@@ -143,11 +157,13 @@ function chartPlaces(units: CoveredUnit[], chart: OrgChart, on: string): Place[]
   const places = new Places()
   for (const unit of units) {
     const basis = `${unit.acting ? 'acting_' : ''}${BASIS[unit.job]}`
-    if (unit.wholeStore) places.add(unit.store, unit.store, null, [basis])
+    const reason: Reason = { text: `${unit.acting ? 'Acting ' : ''}${unit.job} job assignment`, since: unit.startsOn,
+      ...(unit.endsOn ? { until: unit.endsOn } : {}) }
+    if (unit.wholeStore) places.add(unit.store, unit.store, null, [basis], [reason])
     for (const section of unit.sections) {
       const codes = owned.get(section) ?? []
       // ownedOn credits only sections in this same chart, so their names exist.
-      if (codes.length) places.add(sectionLabel(unit.store, names.get(section)!), unit.store, codes, [basis])
+      if (codes.length) places.add(sectionLabel(unit.store, names.get(section)!), unit.store, codes, [basis], [reason])
     }
   }
   return places.list('confirmed')
@@ -164,8 +180,9 @@ function legacyPlaces(stores: LegacyStore[]): Place[] {
     for (const code of store.material_groups) {
       const section = store.section_by_material_group[code]
       // legacyCoverage creates each group's basis alongside material_groups.
+      const bases = store.basis_by_material_group[code]
       places.add(section ? sectionLabel(store.plant_code, section) : store.plant_code, store.plant_code, [code],
-        store.basis_by_material_group[code])
+        bases, bases.map(b => ({ text: `${LEGACY_REASON[b]}, by the old rules` })))
     }
   }
   return places.list('assumed')

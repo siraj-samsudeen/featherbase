@@ -10,7 +10,7 @@ import { sql } from '../src/db'
 
 const directory = resolve('../..', 'example-apps/tickets')
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
-  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.2.1' },
+  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.2.3' },
 }) }, client.token, client.user)
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -69,7 +69,7 @@ describe('Tickets independently installed product contract (#810)', () => {
     const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
     const pkg = JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8'))
     expect(manifest).toMatchObject({ name: 'tickets', entryTable: 'tickets.ticket' })
-    expect(pkg.version).toBe('0.2.1')
+    expect(pkg.version).toBe('0.2.3')
   })
 
   test('app-free discovery has no tickets; explicit install has no samples or fake integrations', async ({ admin, createUser }) => {
@@ -216,7 +216,7 @@ describe('Tickets independently installed product contract (#810)', () => {
     try { await create(owner, 'generic', {}) } catch (error) { failure = error }
     expect(failure?.status).toBe(403)
     expect(failure.message).not.toContain('Application access refused')
-    expect(failure.message).toMatch(/tickets 0\.2\.1.*files changed.*same version/i)
+    expect(failure.message).toMatch(/tickets 0\.2\.3.*files changed.*same version/i)
     expect(failure.message).toMatch(/new version|install-app tickets/)
     const listed = (await listInstalledApps()).find(app => app.name === 'tickets')
     expect(listed).toMatchObject({ active: false })
@@ -243,6 +243,27 @@ describe('Tickets independently installed product contract (#810)', () => {
     expect((await read(w.owner, 'session')).people).toBeUndefined()
     // Names come only from the platform, for the person acting: no generic write can set one.
     await refused(w.other.post('/api/table/tickets.member', { row_id: w.other.user, full_name: 'bala' }))
+  })
+
+  test('people listed as assignable are offered for assignment without support rights (#964)', async ({ admin, createUser }) => {
+    const w = await setup(admin, createUser)
+    // Names are known for people who have used Tickets.
+    let ticket = await create(w.owner, 'generic', {})
+    ticket = (await act(w.support, 'edit', { ...revision(ticket), public_update: 'Checking' })).ticket
+    await create(w.other, 'generic', {})
+    const offered = async () => ((await read(w.support, 'session')).people as { row_id: string }[]).map(p => p.row_id)
+    // An empty setting changes nothing: support is offered, a requester is not.
+    expect(await offered()).toContain(w.support.user)
+    expect(await offered()).not.toContain(w.other.user)
+    await settings(admin, { assignees: [w.other.user] })
+    expect(await offered()).toEqual(expect.arrayContaining([w.other.user, w.support.user]))
+    ticket = (await act(w.support, 'edit', { ...revision(ticket), assigned_to: w.other.user })).ticket
+    expect(ticket.assigned_to).toBe(w.other.user)
+    // Being assignable gives no support rights.
+    const session = await read(w.other, 'session')
+    expect(session.capabilities.support).toBe(false)
+    expect(session.people).toBeUndefined()
+    await refused(act(w.other, 'edit', { ...revision(ticket), public_update: 'Looking' }))
   })
 
   test("after the requester's own scope change only re-approval is needed; a recipient change needs verification", async ({ admin, createUser }) => {

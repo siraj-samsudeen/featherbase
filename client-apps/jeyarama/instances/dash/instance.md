@@ -1,6 +1,6 @@
 # The `jeyarama/dash` instance
 
-This folder is how JeyaRama's Feather Dash instance is set up. It holds no code
+This folder is how JeyaRama's Dash instance is set up. It holds no code
 and no secret: passwords, tokens and connection strings stay in the host's
 variables.
 
