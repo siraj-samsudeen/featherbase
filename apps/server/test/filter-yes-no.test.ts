@@ -111,11 +111,25 @@ describe('Filtering a yes or no column finds its rows', () => {
     }
   })
 
+  // The owner's decision (05-Nov-2026): 1 and 0 are this project's yes and no
+  // too (a Check default is "1"; the tickets app routes by `primary = 1`).
+  test('1 and 0, as a number or as text, find the yes and the no rows', async ({ admin }) => {
+    const table = await normalTable(admin)
+    for (const one of [1, '1']) {
+      expect(await titles(admin, table, [['active', '=', one]])).toEqual(ACTIVE)
+      expect(await titles(admin, table, [['active', '!=', one]])).toEqual(INACTIVE)
+    }
+    for (const zero of [0, '0']) {
+      expect(await titles(admin, table, [['active', '=', zero]])).toEqual(INACTIVE)
+      expect(await titles(admin, table, [['active', '!=', zero]])).toEqual(ACTIVE)
+    }
+  })
+
   test('A link saying Active is "maybe" finds no rows, with = and with !=', async ({ admin }) => {
     const table = await normalTable(admin)
     expect(await titles(admin, table, [['active', '=', 'maybe']])).toEqual([])
     expect(await titles(admin, table, [['active', '!=', 'maybe']])).toEqual([])
-    expect(await titles(admin, table, [['active', '=', 1]])).toEqual([])
+    expect(await titles(admin, table, [['active', '=', 2]])).toEqual([])
     // Words the database would read by itself, but the rule doesn't.
     expect(await titles(admin, table, [['active', '=', 'on']])).toEqual([])
   })
@@ -147,6 +161,7 @@ describe('Filtering a yes or no column finds its rows', () => {
     expect(await titles(admin, table, [['active', '=', 'Yes']])).toEqual(ACTIVE)
     expect(await titles(admin, table, [['active', '!=', 'yes']])).toEqual(INACTIVE)
     expect(await titles(admin, table, [['active', '=', 'FALSE']])).toEqual(INACTIVE)
+    expect(await titles(admin, table, [['active', '=', 1]])).toEqual(ACTIVE)
     expect(await titles(admin, table, [['active', '=', true]])).toEqual(ACTIVE)
     expect(await titles(admin, table, [['active', '=', 'maybe']])).toEqual([])
     expect(await titles(admin, table, [['active', '!=', 'maybe']])).toEqual([])
