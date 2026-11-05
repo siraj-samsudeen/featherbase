@@ -4,6 +4,8 @@
 // stays centred; unreadable rows are never named.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { tableHref } from 'shared'
+import { sql } from 'server/src/db'
+import { tableName } from 'server/src/platform-schema'
 import { createUserWithRole, grantRole } from 'server/test/fixtures'
 import { test, expect, renderApp } from './pg-test'
 import { PLANT, PROFIT, REGION, SITE, seedSites, type Admin } from './relational-fixture'
@@ -125,6 +127,25 @@ test('Tree of all shows 20 rows at a time, with Show more', async ({ admin }) =>
   fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
   await waitFor(() => expect(topLines(t)).toHaveLength(25))
 })
+
+test('Show more reveals rows past one read\'s cap of 500, then goes away', async ({ admin }) => {
+  await seedSites(admin, { profitCentres: 0 })
+  // 510 centres, written straight into the table's storage inside this test's transaction.
+  await sql.unsafe(
+    `insert into featherbase.${tableName(PROFIT)} (row_id, centre_name, plant)
+     select 'pc-' || lpad(n::text, 3, '0'), 'Centre ' || lpad(n::text, 3, '0'), '1503' from generate_series(1, 510) n`,
+  )
+  await renderApp(tableHref(PROFIT), admin)
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }))
+  const t = await tree()
+  await waitFor(() => expect(topLines(t)).toHaveLength(20))
+  for (let shown = 20; shown < 510; shown += 20) {
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
+    await waitFor(() => expect(topLines(t)).toHaveLength(Math.min(shown + 20, 510)))
+  }
+  expect(new Set(topLines(t).map((item) => item.textContent)).size).toBe(510)
+  expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument()
+}, 120_000)
 
 test("a group of code-named rows lists them in code order, so a group's first 20 are its lowest codes", async ({ admin }) => {
   await seedSites(admin)

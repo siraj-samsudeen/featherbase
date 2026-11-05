@@ -378,3 +378,15 @@ describe('history must explain the final declaration', () => {
     expect(final).toEqual(before)
   })
 })
+
+// #911: a link to a row of any Table keeps its Table in a second column, so it
+// does not turn into text.
+test('a link to a row of any Table does not replay into text', () => {
+  const audit = item([
+    { column_name: 'about_table', label: 'About Table', column_type: 'Reference', reference_table: 'Table' },
+    { column_name: 'about', label: 'About', column_type: 'Reference', table_column: 'about_table' },
+  ])
+  const [op] = step([{ kind: 'alterColumn', table: 'shop.item', column: 'about',
+    from: { column_type: 'Reference', reference_table: null }, to: { column_type: 'Data', reference_table: null } }]).operations
+  expect(refusal(() => replayForward('shop', [audit], [op]))).toMatch(/a link to a row of any Table does not turn into text/)
+})

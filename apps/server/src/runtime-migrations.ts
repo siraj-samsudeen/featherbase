@@ -6,7 +6,7 @@ import { AppError } from './errors'
 import { sql, withTransaction } from './db'
 import { provisionApp } from './app-lifecycle'
 import { namingColumn, renameNamingColumn, tableSchemaToZod } from 'shared'
-import { changeColumnType, columnSchema, createTable, deleteTable, isSafeTypeChange, pgType, quoteRelation, renameColumn, renameTable, STANDARD_COLUMNS, storedRelation, tableDefSchema, updateTable, type TableDef } from './table-engine'
+import { changeColumnType, columnSchema, createTable, deleteTable, isLinkTypeChange, isSafeTypeChange, pgType, quoteRelation, renameColumn, renameTable, STANDARD_COLUMNS, storedRelation, tableDefSchema, updateTable, type TableDef } from './table-engine'
 import { ensureHomePageForTable } from './home-pages'
 import { COLUMN_TYPE_VALUES, defaultValueFor, invalidateMeta, physicalRowKey } from './meta'
 
@@ -44,6 +44,8 @@ const alterable = z.object({
   hidden: z.boolean().nullable(),
   description: z.string().nullable(),
   column_type: z.enum(COLUMN_TYPE_VALUES),
+  // #911: named only when a text column becomes a link, or a link text.
+  reference_table: z.string().nullable(),
 }).partial().strict()
 // What only changes what people read: a step naming nothing else writes the
 // definition and no row (#663).
@@ -77,6 +79,17 @@ export const migrationSchema = z.object({
     const from = Object.keys(op.from).sort().join(',')
     if (!from || from !== Object.keys(op.to).sort().join(','))
       ctx.addIssue({ code: 'custom', path: ['operations', index], message: 'alterColumn names the same properties in from and to' })
+    // #911: a link's Table is named only as a text column becomes a link.
+    const linking = Boolean(op.from.column_type && op.to.column_type && isLinkTypeChange(op.from.column_type, op.to.column_type))
+    if ('reference_table' in op.to && !linking)
+      ctx.addIssue({ code: 'custom', path: ['operations', index, 'to', 'reference_table'],
+        message: "a link's Table changes only when a text column becomes a link" })
+    if (linking && !('reference_table' in op.to))
+      ctx.addIssue({ code: 'custom', path: ['operations', index, 'to'], message: 'a change between text and link names the Table it links to and from' })
+    else if (linking && op.to.column_type === 'Reference' && !op.to.reference_table)
+      ctx.addIssue({ code: 'custom', path: ['operations', index, 'to', 'reference_table'], message: 'a link needs the Table it links to' })
+    else if (linking && op.to.column_type === 'Data' && op.to.reference_table !== null)
+      ctx.addIssue({ code: 'custom', path: ['operations', index, 'to', 'reference_table'], message: 'text links to no Table: reference_table is null' })
     if (op.backfill !== undefined && displayOnly(op.to))
       ctx.addIssue({ code: 'custom', path: ['operations', index, 'backfill'],
         message: 'alterColumn changes only what people read (label, description, hidden), so it takes no backfill' })
@@ -219,6 +232,8 @@ function forward(app: string, state: TableDef[], op: Operation) {
       const toType = op.to.column_type
       if (fromType && toType && fromType !== toType && !isSafeTypeChange(fromType, toType))
         refuse(`${what}: ${fromType} to ${toType} is not a safe conversion; add a new column, copy the data, then drop the old one`)
+      if (fromType && toType && isLinkTypeChange(fromType, toType) && target.table_column)
+        refuse(`${what}: a link to a row of any Table does not turn into text`)
       setProperties(target, op.to)
       checkColumns(app, state, table, [target], what)
       if (target.unique && op.backfill !== undefined) refuse(`${what}: a unique column cannot be backfilled with one value`)
@@ -525,7 +540,7 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
         await updateTable(op.table, def, clearing)
         return null
       }
-      if (op.to.column_type) await changeColumnType(op.table, op.column, op.to.column_type)
+      if (op.to.column_type) await changeColumnType(op.table, op.column, op.to.column_type, { reference_table: op.to.reference_table })
       found = await owned(op.table, owner, what)
       let loss: Loss | null = null
       if (narrowsChoices(op)) {
