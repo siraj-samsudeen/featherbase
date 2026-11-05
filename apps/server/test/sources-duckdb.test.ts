@@ -275,6 +275,7 @@ describe('Browsing a warehouse before connecting a table', () => {
       'warehouse.main.daily_sales',
       'warehouse.main.kitchen',
       'warehouse.main.nullable_groups',
+      'warehouse.main.tied_rows',
     ])
     const everything = await introspect(admin, '')
     expect(everything.tables.map((t) => t.table)).toEqual(expect.arrayContaining(['daily_sales', 'kitchen', 'nullable_groups']))
