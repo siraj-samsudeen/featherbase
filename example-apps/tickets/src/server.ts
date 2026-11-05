@@ -15,7 +15,7 @@ interface ReadContext {
   userName: string
   /** #918: the caller's own roles. */
   roles?: readonly string[]
-  people: { names(ids: string[]): Promise<Record<string, string | null>> }
+  people: { names(ids: string[]): Promise<Record<string, string | null>>; enabled(ids: string[]): Promise<string[]> }
   payload: unknown
   settings: Readonly<Record<string, string>>
   reject(message: string, fields?: Record<string, string>): never
@@ -28,6 +28,7 @@ interface Context extends ReadContext {
   documents: ReadContext['documents'] & {
     create(table: string, row: Row): Promise<Row>
     update(table: string, row: Row): Promise<Row>
+    handOver(table: string, id: string, person: string): Promise<void>
   }
 }
 interface Validation {
@@ -44,11 +45,13 @@ function validate(table: string, ctx: Validation) {
   if (!allowed || allowed.user !== ctx.user) ctx.reject('Use an authorized Tickets action')
   if ((table === 'event' || table === 'open_event' || table === 'progress') && !ctx.isNew) ctx.reject('History is append-only')
   // Each person writes only their own name, which the platform supplies.
-  if (table === 'member' && ctx.row.row_id !== ctx.user) ctx.reject('A person may record only their own name')
+  // #963: changing the raiser also records the new raiser's name, for those who may not read Person.
+  if (table === 'member' && ctx.row.row_id !== ctx.user && !(allowed?.operation === 'change_raiser' && ctx.isNew)) ctx.reject('A person may record only their own name')
   // The wording is corrected only through the edit action, which keeps the earlier wording in history.
   if ((table === 'request' || table === 'open_request') && ctx.old && ctx.row.original !== ctx.old.original && allowed?.operation !== 'edit')
     ctx.reject('The original request is changed only by editing the ticket')
-  if (ctx.old && ctx.row.owner !== ctx.old.owner) ctx.reject('The requester is immutable')
+  // #963: change_raiser checks its caller is a System Manager before it writes.
+  if (ctx.old && ctx.row.owner !== ctx.old.owner && !(table === 'ticket' && allowed?.operation === 'change_raiser')) ctx.reject('The requester is immutable')
 }
 const kinds = ['generic', 'access', 'freshness', 'quality', 'report', 'source', 'schema', 'pipeline', 'backfill']
 // Keys a configured field may never take: they carry the request or its gates.
@@ -321,7 +324,7 @@ function idsIn(value: unknown, out: Set<string>) {
   if (typeof value === 'string') out.add(value)
   else if (Array.isArray(value)) for (const item of value) idsIn(item, out)
   else if (value && typeof value === 'object') for (const [key, item] of Object.entries(value))
-    if (['owner', 'by', 'assigned_to', 'replaced_by'].includes(key)) idsIn(item, out)
+    if (['owner', 'by', 'assigned_to', 'replaced_by', 'old_raiser', 'new_raiser'].includes(key)) idsIn(item, out)
     else if (key === 'text' && typeof item === 'string') idsIn(parse(item), out)
     else if (item && typeof item === 'object') idsIn(item, out)
 }
@@ -332,7 +335,7 @@ async function names(ctx: ReadContext, ...values: unknown[]): Promise<Record<str
   const rows = await all(ctx, 'tickets.member', ['row_id', 'full_name'], [['row_id', 'in', [...ids]]])
   const known: Record<string, string> = Object.fromEntries(rows.map(row => [String(row.row_id), String(row.full_name)]))
   // Anyone else (a "raised for" person who never used Tickets), as the viewer may see them.
-  const rest = [...ids].filter(id => !known[id] && /^(psn|sa)_/.test(id))
+  const rest = [...ids].filter(id => !known[id] && /^(psn|sa|svc)_/.test(id))
   if (rest.length) for (const [id, name] of Object.entries(await ctx.people.names(rest))) if (name) known[id] = name
   return known
 }
@@ -574,6 +577,26 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const events = await all(ctx, PRIVATE.event, eventFields, [['ticket', '=', ticket.row_id]])
     for (const e of events) await ctx.documents.create(OPEN.event, { ticket: ticket.row_id, operation: e.operation, text: e.text, by: e.by, at: e.at })
     return { ticket, opened: true, events: events.length }
+  },
+  // #963: the raiser protects the audit trail, so this is for a System Manager
+  // only, never Tickets support. A private request is reached through an
+  // own-rows grant, so it moves with the raiser; the rest of the ticket stays.
+  async change_raiser(ctx) {
+    const p = input(ctx, ['row_id', 'updated_at', 'new_raiser', 'reason'])
+    if (!(ctx.roles ?? []).includes('System Manager')) ctx.reject('Only a System Manager may change who raised a ticket')
+    const ticket = await ctx.documents.get('tickets.ticket', text(ctx, p.row_id, 'Ticket'))
+    if (String(ticket.updated_at) !== text(ctx, p.updated_at, 'Revision')) ctx.reject('This ticket changed; reload before trying again')
+    const reason = text(ctx, p.reason, 'Reason')
+    const raiser = text(ctx, p.new_raiser, 'New raiser')
+    if (raiser === ticket.owner) ctx.reject('That person is already the raiser')
+    if (!(await ctx.people.enabled([raiser])).includes(raiser)) ctx.reject('The new raiser must be an enabled person')
+    const [kept] = await ctx.documents.list(PRIVATE.request, { fields: ['row_id'], filters: [['row_id', '=', String(ticket.row_id)]], limit_page_length: 1 })
+    if (kept) await ctx.documents.handOver(PRIVATE.request, String(kept.row_id), raiser)
+    const [known] = await ctx.documents.list('tickets.member', { fields: ['row_id'], filters: [['row_id', '=', raiser]], limit_page_length: 1 })
+    const name = (await ctx.people.names([raiser]))[raiser]
+    if (!known && name) await ctx.documents.create('tickets.member', { row_id: raiser, full_name: name })
+    await event(ctx, ticket, 'change_raiser', { old_raiser: ticket.owner, new_raiser: raiser, reason })
+    return { ticket: await bump(ctx, ticket, { owner: raiser }) }
   },
   async reopen(ctx) {
     const p = input(ctx, ['row_id', 'updated_at', 'reason'])

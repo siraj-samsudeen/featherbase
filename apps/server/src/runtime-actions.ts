@@ -1,11 +1,11 @@
-import { ownDisplayName, principalNames, tableMembers } from './people-directory'
+import { enabledPeople, ownDisplayName, principalNames, tableMembers } from './people-directory'
 import { z } from 'zod'
 import type { ActionRow, AppAuthorizationContext, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler } from 'shared'
 import { inAppTransaction, sql } from './db'
 import { appOperation, assertAppAvailable, assertStillServing, servingIdentity } from './app-lifecycle'
 import { canonicalJson, recordAppAccessRefusal, withAppAuthorization, type DeclaredAppOperation } from './app-access'
 import { AppError } from './errors'
-import { getRoles } from './permissions'
+import { assertSystemManager, getRoles } from './permissions'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { assertUserPermissions, deleteDoc, getDoc, saveDoc } from './document'
@@ -51,7 +51,10 @@ export function linkedTables(settings: Readonly<Record<string, string>>): string
 
 /** #912: names of people, read as the caller (the Person permission applies). */
 function callerPeople(user: string): RuntimeActionContext['people'] {
-  return Object.freeze({ names: (ids: string[]) => principalNames(ids, user) })
+  return Object.freeze({
+    names: (ids: string[]) => principalNames(ids, user),
+    enabled: (ids: string[]) => enabledPeople(ids, user),
+  })
 }
 
 // #918: the caller's own roles, so an app can let a role take a step.
@@ -142,6 +145,17 @@ export function callerDocuments(app: string, allowed: string[], user: string, li
     update: (table, values) => operation(() => save(table, values, false)),
     activity: (table, id) => operation(async () => { await (readOnly(table) ? metaFor(table).then(() => getDoc(table, id, user)) : locked(table, id)); return documentActivity(table, id, user) }),
     deletionState: (table, id) => operation(async () => { await metaFor(table, false, true); return state(table, id) }),
+    // #963: an own-rows grant follows a row's creator, which no save can set.
+    // The privilege is judged here, so an app's bug cannot hand a row away for
+    // an ordinary caller. Saves' validators don't run: the row's fields stay.
+    handOver: (table, id, person) => operation(async () => {
+      const meta = await metaFor(table, false, true)
+      if (meta.owner_app !== app) reject('Actions may hand over only their owned rows')
+      await assertSystemManager(user)
+      if (!(await enabledPeople([person], user)).length) reject('A row is handed over only to an enabled person')
+      await locked(table, id)
+      await sql`update ${sql(await tableRelation(table))} set created_by = ${person}, updated_by = ${user}, updated_at = now() where ${sql(meta.row_key)} = ${id}`
+    }),
     delete: (table, id, updatedAt) => operation(async () => {
       if ((await metaFor(table, false, true)).owner_app !== app) reject('Actions may delete only their owned rows')
       await locked(table, id)

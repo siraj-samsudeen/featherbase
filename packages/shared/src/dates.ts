@@ -86,3 +86,8 @@ export function fmtInstantIST(value: string | Date | null | undefined): string {
     `${pad(ist.getUTCHours())}:${pad(ist.getUTCMinutes())} IST`
   )
 }
+
+/** The same instant as just its day, `DD-Mon-YYYY`, on India's calendar. */
+export function fmtDayIST(value: string | Date | null | undefined): string {
+  return fmtInstantIST(value).slice(0, 11)
+}

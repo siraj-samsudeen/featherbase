@@ -80,7 +80,12 @@ export interface RuntimeActionContext {
   readonly roles: readonly string[]
   /** #912: display names for person ids, as the caller may see them: a
    *  person the caller may not read maps to null. Never contact data. */
-  readonly people: { names(ids: string[]): Promise<Record<string, string | null>> }
+  readonly people: {
+    names(ids: string[]): Promise<Record<string, string | null>>
+    /** #963: which of these ids are enabled people, as the caller may see them:
+     *  never a built-in or merged-away account, nor a service account. */
+    enabled(ids: string[]): Promise<string[]>
+  }
   readonly payload: unknown
   readonly authorization: AppAuthorizationContext
   /** #620: the app's declared settings that hold a value on this instance. */
@@ -98,6 +103,9 @@ export interface RuntimeActionContext {
     delete(table: string, rowId: string, updatedAt: string): Promise<void>
     activity(table: string, rowId: string): Promise<{ comments: ActionRow[]; versions: ActionRow[] }>
     deletionState(table: string, rowId: string): Promise<{ comments: number; versions: number; references: number; files: number; shares: number }>
+    /** #963: makes an enabled person the creator of one row of the app's own
+     *  Table, so an own-rows grant follows the row. Only for a System Manager. */
+    handOver(table: string, rowId: string, person: string): Promise<void>
   }
   readonly baseTables: BaseTablesHelper
   readonly changeProposals: ChangeProposalsHelper
