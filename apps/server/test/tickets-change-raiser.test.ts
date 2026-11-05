@@ -99,6 +99,12 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
     expect(event.by).toBe(account.row_id)
   })
 
+  test('the built-in Administrator holds the System Manager role, so may change it', async ({ admin, createUser }) => {
+    const w = await world(admin, createUser)
+    const ticket = await w.raise()
+    expect((await change(admin, ticket, w.next.user)).ticket.owner).toBe(w.next.user)
+  })
+
   test('Tickets support, the raiser and anyone else without System Manager are refused', async ({ admin, createUser }) => {
     const w = await world(admin, createUser)
     const ticket = await w.raise()
@@ -287,6 +293,8 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
     await sql`update person set enabled = false where row_id = ${left.user}`
     expect(await enabledPeople([w.next.user, left.user, 'psn_nope', 'Administrator'], w.manager.user)).toEqual([w.next.user])
     expect(await enabledPeople([], w.manager.user)).toEqual([])
+    // Someone with no Person access is told nothing, and nothing breaks.
+    expect(await enabledPeople([w.next.user, left.user], w.colleague.user)).not.toContain(left.user)
   })
 
   test('handOver is refused unless the caller is a System Manager and the Table is the app\'s own', async ({ admin, createUser }) => {
