@@ -1,3 +1,4 @@
+import { useAccessRequest } from '../lib/access-request'
 import { useEffect, useRef, useState } from 'react'
 import { Button, Notice, Select, cardClasses } from '@featherbase/shop-floor'
 import { ApiError, api, clearSession, getSessionUser, getToken } from '../lib/api'
@@ -624,14 +625,7 @@ function SalesTargetReport() {
                 </p>
               </>
             )}
-            {embed.kind === 'no-access' && (
-              <>
-                <p className="font-medium text-ink">You don't have access to this report</p>
-                <p className="mt-1 text-ink-muted">
-                  Ask your manager or administrator to give you access.
-                </p>
-              </>
-            )}
+            {embed.kind === 'no-access' && <NoReportAccess />}
             {embed.kind === 'not-configured' && (
               // Quiet, not red: this deployment simply has no live Dive. The numbers
               // above came from the snapshot and are unaffected.
@@ -653,5 +647,25 @@ function SalesTargetReport() {
         )}
       </main>
     </div>
+  )
+}
+
+/** #955: finding no access to Dash is the request for it. */
+function NoReportAccess() {
+  const asked = useAccessRequest('dash')
+  if (asked?.state === 'waiting')
+    return (
+      <>
+        <p className="font-medium text-ink">You don't have access to {asked.title} yet</p>
+        <p className="mt-1 text-ink-muted">An admin has been told.</p>
+      </>
+    )
+  return (
+    <>
+      <p className="font-medium text-ink">You don't have access to this report</p>
+      <p className="mt-1 text-ink-muted">
+        Ask your manager or administrator to give you access.
+      </p>
+    </>
   )
 }

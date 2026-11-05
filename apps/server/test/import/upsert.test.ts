@@ -680,6 +680,11 @@ describe('UPS-R5: the key is remembered per Table', () => {
   test('UPS-R5: a keyed run stores its key and choice; a keyless run records updated 0 and no key configuration', async ({
     admin,
   }) => {
+    // #979: one test is one transaction, so now() dates every import alike.
+    // Date the later runs forward so "the latest" has one answer.
+    const dateForward = (minutes: number, isThisRun: ReturnType<typeof sql>) =>
+      sql`update featherbase.import_log set created_at = created_at + ${minutes} * interval '1 minute'
+          where ref_table = ${DT} and ${isThisRun}`
     await setup(admin)
     await seed(admin)
     await admin.post(PATH, {
@@ -688,25 +693,28 @@ describe('UPS-R5: the key is remembered per Table', () => {
       columns: ['zone', 'pop'],
       rows: [{ zone: 'Alpha', pop: 1 }],
     })
+    await dateForward(1, sql`key_column is not null`)
     await admin.post(PATH, { rows: [{ zone: 'Later keyless', pop: 2 }] })
+    await dateForward(2, sql`key_column is null and inserted = 1`)
 
     const logs = await admin.get<{ data: Record<string, unknown>[] }>(
       `/api/table/${encodeURIComponent('Import Log')}?fields=${encodeURIComponent(
-        '["key_column","empty_cells","inserted","updated","created_at"]',
+        '["key_column","empty_cells","updated","created_at"]',
       )}&filters=${encodeURIComponent(
         JSON.stringify([['ref_table', '=', DT]]),
       )}&order_by=${encodeURIComponent('created_at desc')}`,
     )
     expect(logs.data.length).toBe(3) // seed request + keyed run + keyless run
-    // The keyless run records the truthful zero count but no match-key
-    // configuration. It is found by what it wrote: this test runs in one
-    // transaction, so all three rows share one created_at and have no order.
-    const keyless = logs.data.filter((l) => l.inserted === 1)
-    expect(keyless).toHaveLength(1)
-    expect(keyless[0].updated).not.toBeNull()
-    expect(keyless[0].updated).toBe(0)
-    expect(keyless[0].key_column).toBeNull()
-    expect(keyless[0].empty_cells).toBeNull()
+    // A keyless run records the truthful zero count but no match-key
+    // configuration… (the runs share one created_at in a test transaction,
+    // so they are picked by what they hold, not by their order)
+    const keyless = logs.data.filter((l) => l.key_column == null)
+    expect(keyless).toHaveLength(2)
+    for (const log of keyless) {
+      expect(log.updated).not.toBeNull()
+      expect(log.updated).toBe(0)
+      expect(log.empty_cells).toBeNull()
+    }
     // …and the wizard's lookup — newest row WITH a key — still finds the
     // remembered pair, so a keyless run never erases the suggestion.
     const remembered = logs.data.find((l) => l.key_column != null)

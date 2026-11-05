@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calendarDay, fmtInstantIST, isCalendarDay, isLocalMidnight, isUtcMidnight } from '../src/dates'
+import { calendarDay, fmtDayIST, fmtInstantIST, isCalendarDay, isLocalMidnight, isUtcMidnight } from '../src/dates'
 
 it('accepts real calendar days without normalising an overflowing month, day or year zero', () => {
   expect(isCalendarDay(2024, 2, 29)).toBe(true)
@@ -55,5 +55,17 @@ describe('fmtInstantIST', () => {
     expect(fmtInstantIST(undefined)).toBe('—')
     expect(fmtInstantIST('')).toBe('—')
     expect(fmtInstantIST('not a date')).toBe('—')
+  })
+})
+
+// #958: the day alone, for a message that says when something happened.
+describe('fmtDayIST', () => {
+  it('renders the day in India, which can be the next day in UTC', () => {
+    expect(fmtDayIST('2026-11-05T03:50:20Z')).toBe('05-Nov-2026')
+    expect(fmtDayIST(new Date('2026-12-31T19:00:00Z'))).toBe('01-Jan-2027')
+  })
+  it('renders nothing known as a dash', () => {
+    expect(fmtDayIST(null)).toBe('—')
+    expect(fmtDayIST('not a date')).toBe('—')
   })
 })

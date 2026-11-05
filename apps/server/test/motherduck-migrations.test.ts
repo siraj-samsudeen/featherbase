@@ -32,7 +32,8 @@ const laterMain = ['0012_table_settings_storage_identity.sql', '0013_reading_pre
   '0014_series_per_table.sql', '0015_metadata_override_editor.sql',
   '0016_master_sync.sql',
   '0138_mandatory_access.sql', '0140_data_source_sentence_labels.sql',
-  '0141_any_table_link.sql', '0142_everyone_roles.sql']
+  '0141_any_table_link.sql', '0142_everyone_roles.sql', '0143_access_auditor_role.sql',
+  '0144_access_request.sql']
 const pendingAfterLabels = [...additions, '0010_copy_refresh_schedule.sql', ...laterMain]
 const allMigrations = [...Object.keys(mainHistory), ...pendingAfterLabels]
 const oldLabels = { postgres: 'PostgreSQL', mysql: 'MySQL', duckdb: 'DuckDB', 'csv-folder': 'CSV folder' }

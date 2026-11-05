@@ -30,17 +30,6 @@ System Manager SHALL be shown as reaching every Table.
 - **THEN** the page lists the limit to Site "North" with who set it and when,
   and the shared row with who shared it, when, and whether it may be changed
 
-### Requirement: Only the person and System Managers open the page
-
-A person SHALL be able to open their own page. A System Manager SHALL be able
-to open anyone's. Anyone else SHALL be refused.
-
-#### Scenario: A colleague is refused
-
-- **WHEN** a person without the System Manager role asks for a colleague's page
-- **THEN** the request is refused, and nothing about the colleague's access is
-  shown
-
 ### Requirement: The page never shows data the viewer cannot read
 
 The page SHALL show that access exists and why, never the data itself. A row
@@ -52,3 +41,74 @@ otherwise it SHALL show only its Table and id.
 - **WHEN** a person is limited by a Data Scope row to the Site with id "N1",
   titled "North", cannot read the Table "Site", and opens their own page
 - **THEN** the limit shows as Site "N1", without the title "North"
+
+### Requirement: Who may open a person's page
+
+A person SHALL be able to open their own page. A System Manager or a holder of
+the built-in Access Auditor role SHALL be able to open anyone's. A viewer
+whose places, as the instance's scope provider gives them, cover every place
+of the person SHALL be able to open that person's page. A person with no
+places SHALL never be covered. Anyone else SHALL be refused, before anything
+says whether the person exists.
+
+#### Scenario: An Access Auditor opens anyone's page
+
+- **WHEN** a holder of Access Auditor asks for a colleague's page
+- **THEN** the page is shown
+
+#### Scenario: A manager opens the page of a person in their places
+
+- **GIVEN** a manager whose places cover store N1, kids and mens
+- **AND** a person whose one place is store N1, kids
+- **WHEN** the manager asks for the person's page
+- **THEN** the page is shown
+
+#### Scenario: A person with a place outside the manager's is refused
+
+- **GIVEN** a person with places in store N1 and store S1
+- **AND** a manager whose places cover only store N1
+- **WHEN** the manager asks for the person's page
+- **THEN** the request is refused
+
+#### Scenario: A person with no places is never covered
+
+- **WHEN** someone other than a System Manager or an Access Auditor asks for
+  the page of a person with no places
+- **THEN** the request is refused
+
+#### Scenario: A colleague is refused
+
+- **WHEN** a person who is neither a System Manager, an Access Auditor nor
+  someone whose places cover the colleague's asks for a colleague's page
+- **THEN** the request is refused, and nothing about the colleague's access is
+  shown
+
+### Requirement: The page lists the places an app gives the person, with reasons
+
+When an app provides people's scope, the page SHALL list each place it gives
+the person today, by its label, with the reasons the app gives for it and the
+days each reason holds from and to where the app knows them. A place the app
+gives no reason for SHALL say so. The page SHALL never show a place's filter
+values. When the app gives the person no places, the page SHALL say why: it
+is not set up yet, it could not answer, or it gives them none.
+
+#### Scenario: A place with a dated reason
+
+- **GIVEN** the scope app places a person in South / Mens because of a Team
+  Leader job assignment from 6 Aug 2026
+- **WHEN** someone who may open the person's page opens it
+- **THEN** it lists "South / Mens — Team Leader job assignment from
+  06-Aug-2026"
+
+#### Scenario: A place with no reason
+
+- **GIVEN** the scope app places a person in North / Kids and gives no reason
+- **WHEN** the page is opened
+- **THEN** it lists "North / Kids — no reason given by" the app
+
+#### Scenario: The app is not set up yet
+
+- **GIVEN** the scope app needs an identifier system the instance lacks
+- **WHEN** the page is opened
+- **THEN** it says the app is not set up yet, and still shows the person's
+  roles, Tables, limits and shares
