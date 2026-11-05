@@ -182,6 +182,54 @@ describe('a positive answer is required, and must name the same record', () => {
   })
 })
 
+describe('every later sign-in must name the same record too', () => {
+  const firstThen = async (api: TestClient, admin: TestClient, answer: () => Response) => {
+    await setUp(admin)
+    provider()
+    const first = (await (await signIn(api)).json()) as { user: { row_id: string } }
+    provider(answer)
+    const res = await signIn(api)
+    const [person] = await sql`select enabled from person where row_id = ${first.user.row_id}`
+    return { res, person }
+  }
+
+  test('a yes naming another record signs nobody in', async ({ api, admin }) => {
+    const { res, person } = await firstThen(api, admin, () => Response.json({ access: 'opaque', employee_id: 7002 }))
+    expect(res.status).toBe(401)
+    expect(((await res.json()) as { error: { message: string } }).error.message).toBe(REFUSED)
+    expect(res.headers.getSetCookie().find((c) => c.startsWith('sid='))).toBeUndefined()
+    expect(person.enabled).toBe(true)
+  })
+
+  test('a yes naming no record signs nobody in', async ({ api, admin }) => {
+    const { res } = await firstThen(api, admin, () => Response.json({ access: 'opaque', id: 99 }))
+    expect(res.status).toBe(401)
+  })
+
+  test('another record having left does not disable this person', async ({ api, admin }) => {
+    const { res, person } = await firstThen(api, admin, () => Response.json({ access: 'opaque', employee_id: 7002, is_active: false }))
+    expect(res.status).toBe(401)
+    expect(person.enabled).toBe(true)
+  })
+
+  test('with the roster taken off the method, it refuses rather than stop checking', async ({ api, admin }) => {
+    await setUp(admin)
+    provider()
+    await signIn(api)
+    await sql`update sign_in_method set new_person = 'refuse', settings = null where row_id = 'stylehr'`
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await expectRefusedWithoutAsking(api, provider())
+  })
+
+  test('a person linked by an administrator is not held to it', async ({ api, admin, createUser }) => {
+    const other = await createUser({ email: 'other.crew@example.test' })
+    await setUp(admin)
+    await linkDelegated(other.user!, 'TT-5555', { subject: '7555' })
+    provider(() => Response.json({ access: 'opaque', id: 99 }))
+    expect((await signIn(api, 'TT-5555')).status).toBe(200)
+  })
+})
+
 describe('the service is not asked, and the refusal says nothing', () => {
   test('an ID on no roster row', async ({ api, admin }) => {
     await setUp(admin)
