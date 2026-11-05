@@ -1,5 +1,6 @@
 import { tableSlug } from 'shared'
 import { test, expect, adminToken, bearer, type APIRequestContext, type Page } from './fixtures'
+import { urlFilters } from './nav-url'
 
 const DT = 'SavedView DT'
 const DOC = 'sv-target-row'
@@ -123,7 +124,7 @@ test('#101 P6: three applications trigger the nudge; the saved view lives as a c
     // From a clean list, the chip re-applies the whole filter set.
     await page.goto(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
     await chip.click()
-    await expect(page).toHaveURL(/filters=/)
+    await expect.poll(() => urlFilters(page.url())).toContainEqual(['note', '=', 'hot'])
     await expect(page.getByTestId('table-page')).toContainText(DOC)
 
     // Share it (control shows on the active own chip), then delete it.

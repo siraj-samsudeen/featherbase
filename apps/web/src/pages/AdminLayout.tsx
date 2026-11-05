@@ -24,7 +24,6 @@ import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
 import { AppSwitcher } from '../components/AppSwitcher'
 import { PHONE_QUERY, TopBar } from '../components/TopBar'
-import { PeekProvider } from '../components/Peek'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { metaQuery, type TableMeta } from '../lib/meta'
@@ -696,7 +695,7 @@ function AdminShell({ wide }: { wide: boolean }) {
   )
 
   return (
-    <PeekProvider>
+    <>
     <div className="flex h-full flex-col">
       {/* #465 D8: System Managers only, while a health check fails; above the
           top bar, beside the preview banner. */}
@@ -890,13 +889,13 @@ function AdminShell({ wide }: { wide: boolean }) {
 
         {/* Page canvas */}
         <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:p-6${wide ? ' flex flex-col' : ''}`}>
-          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : 'mx-auto max-w-5xl'}>
+          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : 'mx-auto max-w-5xl has-data-[pane=right]:max-w-none'}>
             <Outlet />
           </div>
         </main>
       </div>
     </div>
-    </PeekProvider>
+    </>
   )
 }
 

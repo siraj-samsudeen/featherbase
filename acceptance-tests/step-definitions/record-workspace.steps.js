@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { Given, When, Then } = require('@cucumber/cucumber');
-const { RecordWorkspace, RelatedWorkspace } = require('../support/pages/record-workspace');
+const { RecordWorkspace } = require('../support/pages/record-workspace');
 
 async function plant(world) {
   world.table = 'Plant';
@@ -79,64 +79,3 @@ Then('the tag is saved and the other empty collaboration features stay absent', 
 Given('Tenkasi has a discussion and a recorded edit', async function () { await collaborate(this); });
 When('the user consults its activity', async function () { await this.workspace.openRow(); await this.workspace.area('Activity'); });
 Then('the discussion and edit appear together once', async function () { await this.workspace.singleDiscussion(); });
-
-async function related(world) {
-  await world.withApi(async api => {
-    await api.removeTableIfPresent('Lab Task');
-    await api.createTable({ name: 'Lab Project', id_pattern: 'prompt', title_column: 'name', columns: [
-      { column_name: 'name', column_type: 'Data', label: 'Name', in_list_view: true },
-      { column_name: 'region', column_type: 'Data', label: 'Region' },
-    ] }, [
-      { row_id: 'lab-north', name: 'North workshop', region: 'North' },
-      { row_id: 'lab-south', name: 'South studio', region: 'South' },
-    ]);
-    await api.createTable({ name: 'Lab Task', id_pattern: 'prompt', title_column: 'name', columns: [
-      { column_name: 'name', column_type: 'Data', label: 'Name', in_list_view: true },
-      { column_name: 'project', column_type: 'Reference', reference_table: 'Lab Project', label: 'Project', in_list_view: true },
-      { column_name: 'review_project', column_type: 'Reference', reference_table: 'Lab Project', label: 'Review project', in_list_view: true },
-    ] }, [
-      { row_id: 'lab-task-1', name: 'Prepare workshop', project: 'lab-north' },
-      { row_id: 'lab-task-2', name: 'Review materials', project: 'lab-north' },
-      { row_id: 'lab-task-3', name: 'Review budget', project: 'lab-south', review_project: 'lab-south' },
-    ]);
-  });
-  world.workspace = new RelatedWorkspace(await world.actor());
-}
-
-Given('North workshop has two readable Lab Task relationships through project and review_project', async function () { await related(this); });
-Given('project has two related rows while review_project has none', function () {});
-When('the user selects review_project in Related', async function () { await this.workspace.selectPath('review_project'); });
-Then('the native list shows no rows for review_project', async function () { await this.workspace.emptyPath(); });
-Then('the single relationship selector keeps both paths available with their separate counts', async function () { await this.workspace.distinctPaths(); });
-Given("review_project is selected among North workshop's two Lab Task relationships", async function () { await related(this); await this.workspace.selectPath('review_project'); });
-When('the user searches relationships for review', async function () { await this.workspace.searchRelationships('review'); });
-Then('the selector shows one matching relationship out of two', async function () { await this.workspace.oneRelationship(); });
-Then('the selected review_project list still shows zero rows', async function () { await this.workspace.emptyPath(); });
-Given('North workshop has Prepare workshop and Review materials through project', async function () { await related(this); });
-Given('another project has Review budget through project', function () {});
-When("the user searches North workshop's project relationship for Review", async function () { await this.workspace.selectPath('project'); await this.workspace.searchRecords('Review'); });
-Then('only Review materials is listed', async function () { await this.workspace.matchingRecord(); });
-Then("clearing record search restores only North workshop's project rows", async function () { await this.workspace.clearRecordSearch(); });
-Given('the user can edit North workshop', async function () { await related(this); });
-When('the user changes its region to Unfinished North and consults Related before returning to Work', async function () { await this.workspace.consultRelatedWithEdit(); });
-Then('Unfinished North remains present as an unsaved edit', async function () { await this.workspace.retainedEdit(); });
-Then('the saved region has not changed', async function () { assert.equal((await this.withApi(api => api.row('Lab Project', 'lab-north'))).region, 'North'); });
-Given("the user can read North workshop's project relationship and create related Lab Task rows", async function () { await related(this); });
-When('the user consults that relationship', async function () { await this.workspace.selectPath('project'); });
-Then('breadcrumbs identify North workshop, Related and the project path without a second Home root', async function () { await this.workspace.context(); });
-Then("Open full list and permitted peek retain the project relationship's filters", async function () { await this.workspace.scopedNavigation(); });
-Then("new related-row navigation prefills project with North workshop's row identifier", async function () { await this.workspace.prefilledNew(); });
-Given('the user may read only one of two Lab Task rows related to North workshop and may not create Lab Task rows', async function () {
-  await related(this);
-  const roles = await this.withApi(async api => [await api.readerRoleFor('Lab Project'), await api.readerRoleFor('Lab Task')]);
-  const person = await this.person('the user', roles);
-  await this.withApi(async api => {
-    const res = await api.call('GET', `/api/table/Person?filters=${encodeURIComponent(JSON.stringify([['email', '=', person.email]]))}`, undefined, [200], 'find fixture reader');
-    const user = (await res.json()).data[0].row_id;
-    await api.saveRow('Data Scope', { person: user, allow_table: 'Lab Task', for_value: 'lab-task-1' });
-  });
-  this.workspace = new RelatedWorkspace(await this.actor());
-});
-When("the user consults North workshop's project relationship", async function () { await this.workspace.selectPath('project'); });
-Then('the relationship count and native list include only the readable row', async function () { await this.workspace.onlyReadableRow(); });
-Then('no related-row creation is offered', async function () { await this.workspace.noCreation(); });

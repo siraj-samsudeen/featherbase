@@ -26,6 +26,8 @@ import {
 import { fmtCount, fmtINR, fmtPct } from '@featherbase/shop-floor'
 import { ChartColumn, ExternalLink, House, ListChecks, Moon, Plus, Sun, UserRound } from '@featherbase/shop-floor'
 
+import { ChipsDemo, DrillPaneDemo, FieldGridDemo, PathBarDemo, TreeDemo, ViewToggleDemo } from './RelationalExamples'
+
 const ExampleSearch = createContext('')
 const EXAMPLES: Record<string, { files: string[]; keywords?: string }> = {
   Buttons: { files: ['Button'], keywords: 'primary secondary danger quiet' },
@@ -36,6 +38,13 @@ const EXAMPLES: Record<string, { files: string[]; keywords?: string }> = {
   'List (a table when wide, cards on a phone)': { files: ['DataList'] },
   'Content navigation': { files: ['Breadcrumbs', 'ContentTabs', 'SearchableList'] },
   'Tab bar (phone only)': { files: ['TabBar'] }, Toasts: { files: ['Toast'] },
+  // Relational navigation (#910): the pieces the list, row page, map and tree compose.
+  'Drill pane': { files: ['DrillPane', 'PanePlace', 'Segmented'], keywords: 'relational navigation pane place auto right bottom split points at pointed at by' },
+  'Path bar': { files: ['PathBar'], keywords: 'relational navigation path back forward copy link recent paths breadcrumb' },
+  'Link and group chips': { files: ['LinkChip', 'GroupChip'], keywords: 'relational navigation link go there filter name code count not visible' },
+  'Field grid': { files: ['FieldGrid'], keywords: 'relational navigation fields label value empty fields show more read only' },
+  'Tree outline': { files: ['TreeOutline'], keywords: 'relational navigation tree links to linked from expand focus here show all' },
+  'Table or compact': { files: ['ViewToggle', 'Segmented'], keywords: 'relational navigation view toggle compact table segmented' },
 }
 
 function matchesExample(title: string, query: string) {
@@ -48,7 +57,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   if (!matchesExample(title, query)) return null
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-xs font-bold uppercase tracking-wide text-ink-muted">{title}</h2>
+      <h2 className="text-base font-semibold text-ink">{title}</h2>
       {EXAMPLES[title].files.map((file) => <code key={file} className="text-xs text-ink-subtle">packages/shop-floor/src/{file}.tsx</code>)}
       {children}
     </section>
@@ -260,6 +269,13 @@ export function Gallery() {
             />
           </div>
         </Section>
+
+        <Section title="Drill pane"><DrillPaneDemo /></Section>
+        <Section title="Path bar"><PathBarDemo /></Section>
+        <Section title="Link and group chips"><ChipsDemo /></Section>
+        <Section title="Field grid"><FieldGridDemo /></Section>
+        <Section title="Tree outline"><TreeDemo /></Section>
+        <Section title="Table or compact"><ViewToggleDemo /></Section>
 
         <Section title="Toasts">
           <ToastDemo />

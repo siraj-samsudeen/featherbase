@@ -83,7 +83,7 @@ test('a quick link filter drops typing that picked nothing and carries no peek o
   fireEvent.mouseDown(within(options).getByTestId('link-option'))
   await waitFor(() => expect(screen.getByTestId('std-filter-customer')).toHaveValue('Globex Ltd'))
   await waitFor(() => expect(listed()).toBe(2))
-  expect(screen.queryByTestId('link-peek-customer')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('link-pane-customer')).not.toBeInTheDocument()
   expect(screen.queryByTestId('link-open-customer')).not.toBeInTheDocument()
 
   const filter = screen.getByTestId('std-filter-customer')

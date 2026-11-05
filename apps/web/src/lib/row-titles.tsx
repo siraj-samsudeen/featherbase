@@ -49,14 +49,18 @@ function loadTitle(ref: Ref): Promise<string | null> {
 
 const TITLE_STALE = 5 * 60_000
 
+/** The one query for a row's title: null when the viewer cannot read it. */
+export function rowTitleQuery(table: string, rowId: string) {
+  return {
+    queryKey: ['row-title', table, rowId],
+    staleTime: TITLE_STALE,
+    queryFn: () => loadTitle({ table, row_id: rowId }),
+  }
+}
+
 /** The row's display title, or null while loading / when it cannot be read. */
 export function useRowTitle(table: string | undefined, rowId: string | undefined): string | null {
-  const q = useQuery({
-    queryKey: ['row-title', table, rowId],
-    enabled: Boolean(table && rowId),
-    staleTime: TITLE_STALE,
-    queryFn: () => loadTitle({ table: table!, row_id: rowId! }),
-  })
+  const q = useQuery({ ...rowTitleQuery(table ?? '', rowId ?? ''), enabled: Boolean(table && rowId) })
   return q.data ?? null
 }
 
@@ -75,11 +79,7 @@ export function useLiveDestinations(entries: Destination[]): Set<string> | null 
     return row ? [[e.key, { key: e.key, ...row }] as const] : []
   })).values()]
   const titles = useQueries({
-    queries: rows.map((r) => ({
-      queryKey: ['row-title', r.table, r.rowId],
-      staleTime: TITLE_STALE,
-      queryFn: () => loadTitle({ table: r.table, row_id: r.rowId }),
-    })),
+    queries: rows.map((r) => rowTitleQuery(r.table, r.rowId)),
   })
   if (titles.some((q) => q.data === undefined)) return null
   const gone = new Set(rows.filter((_, i) => titles[i].data === null).map((r) => r.key))
