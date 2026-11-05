@@ -15,6 +15,8 @@ export interface RuntimeActionContext {
   /** #912: the caller's own display name (full name, else @username), as
    *  they see it themselves. Never another person's name or address. */
   readonly userName: string
+  /** #918: the roles the caller holds (never another person's). */
+  readonly roles: readonly string[]
   /** #912: display names for person ids, as the caller may see them: a
    *  person the caller may not read maps to null. Never contact data. */
   readonly people: { names(ids: string[]): Promise<Record<string, string | null>> }

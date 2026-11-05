@@ -2,13 +2,14 @@
 // fixture is a local .duckdb file (same driver code path as MotherDuck's
 // md: URLs, minus the network); the live MotherDuck warehouse is exercised
 // manually, not from the suite.
-import { afterAll, beforeAll, describe, expect } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { afterAll, beforeAll, describe, expect, vi } from 'vitest'
+import { DuckDBInstance } from '@duckdb/node-api'
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from './pg-test'
-import { invalidateSources } from '../src/sources/registry'
-import { duckdbDriver } from '../src/sources/duckdb-driver'
+import { getSource, invalidateSources } from '../src/sources/registry'
+import { duckdbDriver, run } from '../src/sources/duckdb-driver'
 import type { Binding, SourceFilter } from '../src/sources/types'
 
 const DUCK_URL_ENV = 'DUCK_FIXTURE_URL'
@@ -65,6 +66,48 @@ async function makeDuckSource(admin: {
 }
 
 describe('M3: duckdb read-only source', () => {
+  test('a failed superseded connection preserves the working replacement', async ({ admin }) => {
+    await makeDuckSource(admin)
+    const cfg = await getSource('duck-fixture')
+    invalidateSources('duck-fixture')
+    const originalUrl = process.env[DUCK_URL_ENV]
+    const replacement = path.join(dir, 'replacement.duckdb')
+    copyFileSync(path.join(dir, 'warehouse.duckdb'), replacement)
+    let entered!: () => void
+    let release!: () => void
+    const opening = new Promise<void>(resolve => { entered = resolve })
+    const released = new Promise<void>(resolve => { release = resolve })
+    const create = DuckDBInstance.create
+    let acceptOpens = true
+    const sdk = vi.spyOn(DuckDBInstance, 'create').mockImplementationOnce(async () => {
+      entered()
+      await released
+      return Promise.reject('Superseded connection refused')
+    }).mockImplementation((...args) => {
+      if (!acceptOpens) throw new Error('New connections unavailable')
+      return create.apply(DuckDBInstance, args)
+    })
+    const old = run(cfg, 'select count(*)::int as n from daily_sales', [])
+    const refused = expect(old).rejects.toMatchObject({ type: 'DataSourceError', message: expect.stringContaining('Superseded connection refused') })
+    try {
+      await opening
+      process.env[DUCK_URL_ENV] = replacement
+      expect(await run(cfg, 'select sum(qty)::int as n from daily_sales', [])).toEqual([{ n: 29 }])
+      acceptOpens = false
+      release()
+      await refused
+      // The external service no longer accepts new sessions. An already
+      // established replacement must still serve reads after the old failure.
+      expect(await run(cfg, 'select sum(qty)::int as n from daily_sales', [])).toEqual([{ n: 29 }])
+    } finally {
+      release()
+      await Promise.allSettled([old, refused])
+      sdk.mockRestore()
+      process.env[DUCK_URL_ENV] = originalUrl
+      invalidateSources('duck-fixture')
+    }
+  })
+
   test('introspects and reflects a warehouse table (no declared pk → first column)', async ({
     admin,
   }) => {
@@ -128,7 +171,7 @@ describe('Read and write through a connected table: a warehouse', () => {
 // see, on the same file and the same read-only connection the Admin browses with.
 describe('An app dataset query on a warehouse', () => {
   const cfg = { name: 'duck-fixture', engine: 'duckdb' as const, url_env: DUCK_URL_ENV, root_path: null, default_schema: null,
-    access: 'read_only' as const, pool_max: 1, statement_timeout_ms: 10000, allowlist: null }
+    access: 'read_only' as const, pool_max: 1, statement_timeout_ms: 10000, allowlist: null, databases: [] }
   const columns = [{ name: 'store', type: 'text' }, { name: 'business_date', type: 'date' }, { name: 'amount', type: 'money' }]
   const kklOnSecond = () => duckdbDriver.query!(cfg, 'select store, business_date, amount from daily_sales', columns, {
     any: [[{ column: 'store', values: ['KKL'] }], [{ column: 'store', values: ['NOWHERE'] }]],
@@ -258,7 +301,7 @@ describe('Filtering rows read from a warehouse', () => {
     source: {
       name: 'duck-fixture', engine: 'duckdb', url_env: DUCK_URL_ENV, root_path: null,
       default_schema: null, access: 'read_only', pool_max: 1,
-      statement_timeout_ms: 10000, allowlist: null,
+      statement_timeout_ms: 10000, allowlist: null, databases: [],
     },
     schema: 'warehouse.main', table: 'nullable_groups', pk: 'id', modified: null,
     columns: [{ column_name: 'qty', source_column: 'qty', column_type: 'Int' }],
@@ -334,6 +377,7 @@ describe('Filtering rows read from a warehouse', () => {
         pool_max: 5,
         statement_timeout_ms: 10000,
         allowlist: null,
+        databases: [],
       },
       schema: 'warehouse.main',
       table: 'daily_sales',

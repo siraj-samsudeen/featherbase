@@ -8,6 +8,8 @@ import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
+import { allowedTables, anyTableLinkHolder, linkableTable, repointAnyTableLinks } from './any-table-link'
+import { EVERYONE_ROLES_FIELD, checkEveryoneRoles, parseEveryoneRoles } from './everyone-roles'
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, seriesKey, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
@@ -26,6 +28,7 @@ import { assertSecurityWriter, isSecurityTable, securityRefusal } from './securi
 import {
   assertDocPermission,
   assertPermission,
+  assertSystemManager,
   checkUserPermissions,
   filterReadFields,
   getScopeMap,
@@ -195,11 +198,11 @@ async function nextInSeries(
 // Filter incoming values to real data columns; reject unknown keys so typos
 // fail loudly instead of silently dropping data. read_only columns are
 // system-managed (META-010): client-sent values for them are ignored.
-function pickFieldValues(meta: TableMeta, values: RowValues): RowValues {
+function pickFieldValues(meta: TableMeta, values: RowValues, managedValues: RowValues = {}): RowValues {
   const known = new Map(meta.columns.map((f) => [f.column_name, f]))
   const out: RowValues = {}
   const errors: Record<string, string> = {}
-  for (const [key, value] of Object.entries(values)) {
+  for (const [key, value] of Object.entries({ ...values, ...managedValues })) {
     if (key === 'table') continue
     if ((STANDARD_COLUMNS as readonly string[]).includes(key)) continue
     const field = known.get(key)
@@ -208,7 +211,7 @@ function pickFieldValues(meta: TableMeta, values: RowValues): RowValues {
       continue
     }
     if (NO_COLUMN_TYPES.has(field.column_type)) continue
-    if (field.read_only) continue
+    if (field.read_only && !Object.hasOwn(managedValues, key)) continue
     out[key] = value ?? null
   }
   if (Object.keys(errors).length)
@@ -287,12 +290,18 @@ async function validateLinks(
   fieldValues: RowValues,
   user: string,
   prefix = '',
+  old?: RowValues,
 ) {
   const errors: Record<string, string> = {}
   for (const f of meta.columns) {
     if (f.column_type !== 'Reference') continue
     const value = own(fieldValues, f.column_name)
     if (value == null || value === '') continue
+    if (f.table_column) {
+      const problem = await anyTableLinkProblem(tx, f, fieldValues, user, old)
+      if (problem) errors[prefix + f.column_name] = problem
+      continue
+    }
     const target = f.reference_table
     if (!target) continue
     // select *: early migrations save rows before table_def has data_source.
@@ -324,6 +333,35 @@ async function validateLinks(
   }
   if (Object.keys(errors).length)
     throw new AppError('ValidationError', `Invalid links for ${meta.name}`, errors)
+}
+
+// #881: a link to a row of any Table. Its Table comes from the row's own Table
+// column, must be one the column allows and one whose rows can be linked to,
+// and the row must exist. A new or changed link must also be to a row the
+// person saving can read: nobody links what they cannot see.
+async function anyTableLinkProblem(tx: typeof sql, f: TableMeta['columns'][number], row: RowValues, user: string, old?: RowValues): Promise<string | null> {
+  const value = String(own(row, f.column_name))
+  const table = own(row, f.table_column!)
+  if (table == null || table === '') return 'Choose its Table first'
+  const target = String(table)
+  const allowed = allowedTables(f.choices)
+  if (allowed.length && !allowed.includes(target)) return `${target} is not one of the Tables this column links to`
+  const [def] = await tx`select kind, data_source from table_def where name = ${target}`
+  if (!def || !linkableTable(def)) return `${target} cannot be linked to`
+  const targetMeta = await getMeta(target)
+  const [found] = await tx`select 1 from ${tx(await tableRelation(target))}
+    where ${tx(targetMeta.row_key)} = ${value} for key share`
+  if (!found) return `${target} ${value} does not exist`
+  const unchanged = old != null && [f.column_name, f.table_column!].every((c) => String(own(old, c)) === String(own(row, c)))
+  if (!unchanged) {
+    try {
+      await getDoc(target, value, user)
+    } catch (err) {
+      if (err instanceof AppError) return `${target} ${value} does not exist`
+      throw err
+    }
+  }
+  return null
 }
 
 async function lockCoreDocumentTargets(tx: typeof sql, meta: TableMeta, row: RowValues, user: string, old?: RowValues) {
@@ -803,6 +841,9 @@ interface SaveOptions {
   // Only the upload route supplies the exact path returned by storage.
   // Never derive this option from a client row or request body.
   uploadedFileUrl?: string
+  // Trusted import/copy writers and version-backed undo only. This is NOT
+  // read from HTTP args; permissions, tiers, validation and hooks still run.
+  managedValues?: RowValues
 }
 
 function assertStoredFileUrl(meta: TableMeta, row: RowValues, allowed: unknown) {
@@ -882,7 +923,7 @@ async function writeDoc(
     if (exists) {
       if (mode === 'insert')
         throw new AppError('ConflictError', `${table} ${values[ROW_KEY]} already exists`)
-      return updateDoc(meta, String(values[ROW_KEY]), values, user, Boolean(opts.skipPermissions))
+      return updateDoc(meta, String(values[ROW_KEY]), values, user, Boolean(opts.skipPermissions), opts.managedValues)
     }
     // In upsert mode an unknown name on a generated-id Table is almost
     // certainly a mistyped update — refuse it. Insert mode is different:
@@ -900,7 +941,7 @@ async function writeDoc(
     : await insertTiers(user, table)
   const fieldValues = validateValues(
     meta,
-    applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
+    applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values, opts.managedValues))),
     'insert',
   )
   assertRequiredChildren(meta, values, 'insert')
@@ -1148,6 +1189,7 @@ async function updateDoc(
   values: RowValues,
   user: string,
   trusted = false,
+  managedValues: RowValues = {},
 ): Promise<RowValues> {
   const table = await tableRelation(meta.name)
   if (values.updated_at == null)
@@ -1162,7 +1204,7 @@ async function updateDoc(
     : await permittedTiers(user, meta.name, 'write')
   const fieldValues = validateValues(
     meta,
-    stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values)),
+    stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values, managedValues)),
     'update',
   )
   assertRequiredChildren(meta, values, 'update')
@@ -1249,7 +1291,7 @@ async function updateDoc(
         updated_by: user,
       }
       await lockCoreDocumentTargets(stx, meta, { ...existing, ...dbRow }, user, existing as RowValues)
-      await validateLinks(stx, meta, dbRow, user)
+      await validateLinks(stx, meta, dbRow, user, '', existing as RowValues)
       attemptedRow = dbRow
       const [updated] = await tx`
         update ${tx(table)} set ${tx(dbRow)} where ${tx(meta.row_key)} = ${name} returning *`
@@ -1583,6 +1625,9 @@ async function deleteDocImpl(
         )
       }
     }
+    // #881: and so does a link to a row of any Table naming this row.
+    const anyHolder = await anyTableLinkHolder(stx, table, name)
+    if (anyHolder) throw new AppError('ValidationError', `Cannot delete ${table} ${name}: it is linked from ${anyHolder}`)
 
     const ctx: HookContext = {
       row: existing as RowValues,
@@ -1761,6 +1806,8 @@ async function renameDocImpl(
         where ${tx(col)} = ${oldName}`
     }
 
+    // #881: every link to it from a link to a row of any Table.
+    await repointAnyTableLinks(stx, table, oldName, target)
     // #509: and every record that names the row by id in plain text.
     await repointRowActivity(stx, table, oldName, target)
   })
@@ -1921,6 +1968,18 @@ function coerceSingleValue(columnType: string, raw: string | null): unknown {
   }
 }
 
+// #923: the roles everyone who signs in holds are stored one per line, each
+// a role that exists. Changing them changes what every person may do, so only
+// a System Manager may (the rest of System Settings stays as its Permission
+// rows allow).
+async function settleEveryoneRoles(tx: typeof sql, clean: RowValues, before: Record<string, string | null>, user: string) {
+  const roles = parseEveryoneRoles(clean[EVERYONE_ROLES_FIELD])
+  clean[EVERYONE_ROLES_FIELD] = roles.join('\n') || null
+  if ((clean[EVERYONE_ROLES_FIELD] ?? null) === (before[EVERYONE_ROLES_FIELD] ?? null)) return
+  await assertSystemManager(user)
+  await checkEveryoneRoles(tx, roles)
+}
+
 // SET-001: persist a Settings Table's values into the EAV store.
 export function saveSingle(...args: Parameters<typeof saveSingleImpl>) {
   return appOperation(() => saveSingleImpl(...args))
@@ -1949,6 +2008,7 @@ async function saveSingleImpl(
       (await stx`select field, value from single_value where table_name = ${table}`).map((r) => [r.field as string, r.value as string | null]))
     await holdManagedSet(stx, table)
     const before = await stored()
+    if (table === 'System Settings' && EVERYONE_ROLES_FIELD in clean) await settleEveryoneRoles(stx, clean, before, user)
     for (const [field, value] of Object.entries(clean)) {
       const text = value == null ? null : typeof value === 'boolean' ? (value ? '1' : '0') : typeof value === 'object' && !(value instanceof Date) ? JSON.stringify(value) : String(value)
       await stx`

@@ -18,10 +18,6 @@
       "required": false
     },
     {
-      "name": "dive_version",
-      "required": false
-    },
-    {
       "name": "embed_service_account",
       "required": false
     },
@@ -1267,6 +1263,12 @@
       "id": "shared_app_navigation",
       "fromVersion": "0.10.1",
       "toVersion": "0.10.2",
+      "operations": []
+    },
+    {
+      "id": "platform_look",
+      "fromVersion": "0.10.2",
+      "toVersion": "0.10.3",
       "operations": []
     }
   ]

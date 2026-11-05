@@ -1,7 +1,7 @@
 // What the report page shows, decided from what its two reads answered, and
 // how it writes figures. Kept apart from the React code so it can be tested.
 export type Answer<T> = { ok: true; value: T } | { ok: false; status?: number }
-type Embed = { frame?: string; not_set_up?: boolean; unreachable?: boolean; too_large?: boolean; month_unsupported?: boolean; ready_signal?: boolean }
+type Embed = { frame?: string; not_set_up?: boolean; unreachable?: boolean; too_large?: boolean; ready_signal?: boolean }
 
 /** Where the Dive is served from (featherbase.json's `frameOrigins`), and the message it posts once it has drawn (B7). */
 export const DIVE_ORIGIN = 'https://embed-motherduck.com'
@@ -11,11 +11,8 @@ type ReportState = { state: string }
 export type View =
   | { kind: 'opening' }
   | { kind: 'dive'; src: string }
-  /**
-   * `too_large`: the store's Dive state would pass MotherDuck's cap (#4453). `month_unsupported`:
-   * last month was chosen and the pinned Dive shows only the latest month (#750).
-   */
-  | { kind: 'quick'; why?: 'too_large' | 'month_unsupported' }
+  /** `too_large`: the store's Dive state would pass MotherDuck's cap (#4453). */
+  | { kind: 'quick'; why?: 'too_large' }
   | { kind: 'empty'; why: 'no_data_yet' | 'no_sections' | 'not_built' }
   | { kind: 'no_access' }
   | { kind: 'signed_out' }
@@ -44,8 +41,7 @@ export function pageView({ embed, report, frameFailed = false }: {
   if ((!embed && !frameFailed) || !report) return { kind: 'opening' }
   if (!report.ok) return { kind: 'failed' }
   if (state === 'not_built' || state === 'unconfirmed') return { kind: 'empty', why: 'not_built' }
-  if (embed?.ok && embed.value.too_large) return { kind: 'quick', why: 'too_large' }
-  return embed?.ok && embed.value.month_unsupported ? { kind: 'quick', why: 'month_unsupported' } : { kind: 'quick' }
+  return embed?.ok && embed.value.too_large ? { kind: 'quick', why: 'too_large' } : { kind: 'quick' }
 }
 
 /** What the platform tells a person about their own rights and this app's setup. */
@@ -442,6 +438,12 @@ function sectionsNamed(sections: readonly string[], join: (names: readonly strin
 export function headingTitle({ name, sections }: { name: string | null; sections: readonly string[] }): string {
   const named = sectionsNamed(sections, names => names.join(' · '))
   return [name ?? 'Your store', ...(named ? [named] : [])].join(' · ')
+}
+
+/** The title split for the page: the count, when sections are counted, is what opens their full list. */
+export function headingParts({ name, sections }: { name: string | null; sections: readonly string[] }): { lead: string; count: string | null } {
+  if (sections.length <= 3) return { lead: headingTitle({ name, sections }), count: null }
+  return { lead: `${name ?? 'Your store'} · `, count: `${sections.length} sections` }
 }
 
 /**

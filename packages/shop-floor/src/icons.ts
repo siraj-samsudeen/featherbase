@@ -8,6 +8,7 @@ export {
   BookOpen,
   Braces,
   Check,
+  Cable,
   CalendarClock,
   CalendarDays,
   ChartColumn,

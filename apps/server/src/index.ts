@@ -21,6 +21,7 @@ import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, renameServiceAccount, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { principalReach } from './token-reach'
+import { explainAccess } from './access-explanation'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
@@ -31,6 +32,7 @@ import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirec
 import { sendInvitation } from './invitation-email'
 import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
+import { buildInfo } from './build-info'
 import { assertPermission, assertSystemManager, getRoles, permissionScope, permittedTiers, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
@@ -51,6 +53,8 @@ import './actions/core-row-actions'
 import './actions/collection-import'
 import './actions/collection-import-revert'
 import './actions/source-actions'
+import './actions/motherduck-actions'
+import './actions/copy-refresh-actions'
 import './actions/row-connections'
 import './actions/collection-aggregate'
 import './actions/collection-summary'
@@ -1464,6 +1468,11 @@ app.post('/api/access_tokens', async (c) => {
   return c.json(await issueAccessToken(owner, body.label, expiresAt), 201)
 })
 
+// #628: what a person can see, and why. Their own, or anyone's for a System
+// Manager; never the data itself.
+app.get('/api/access_explanation/:person', async (c) =>
+  c.json(await explainAccess(c.req.param('person'), who(c))))
+
 // #852: what a token for this owner could reach, shown before it is issued.
 // The same rule as issuing: your own reach, or anyone's for a System Manager.
 app.get('/api/access_tokens/reach', async (c) => {
@@ -1824,7 +1833,7 @@ app.post('/api/permissions/:table', async (c) => {
 app.get('/api/apps', async (c) => {
   await assertSystemManager(who(c))
   c.header('Cache-Control', 'no-store')
-  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), versions: availableRuntimeVersions(), actions: declaredPackageActions(), catalog: await appLibraryCatalog(),
+  return c.json({ build: buildInfo(), available: getAvailableApps(), installed: await listInstalledApps(), versions: availableRuntimeVersions(), actions: declaredPackageActions(), catalog: await appLibraryCatalog(),
     failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
 })
 app.post('/api/apps/prepare-install', async c => {

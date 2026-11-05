@@ -84,7 +84,7 @@ export async function appLibraryCatalog() {
     const row = installed.find(app => app.name === manifest.name)
     const { tables, roles, permissions, entryTable, settings, roleDefaults, datasets, actions, reads, jobs, scopeProvider, frameOrigins, glossary, tabs, bar } = manifest
     return {
-      name: manifest.name, title: manifest.title, version, platformVersion: manifest.platformVersion,
+      name: manifest.name, title: manifest.title, version, platformVersion: manifest.platformVersion, releaseNotes: manifest.releaseNotes ?? [],
       declarations: { tables, roles: roles ?? [], permissions, entryTable, settings: settings ?? [], roleDefaults, datasets, actions, reads, jobs, scopeProvider, frameOrigins, glossary, tabs, bar },
       secrets: (manifest.secrets ?? []).map(secret => {
         const name = typeof secret === 'string' ? secret : secret.name

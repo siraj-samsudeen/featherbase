@@ -29,6 +29,7 @@ import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { metaQuery, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
 import { KindIcon } from '../lib/kind-icons'
+import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
@@ -844,6 +845,8 @@ function AdminShell({ wide }: { wide: boolean }) {
               ...(canManage ? [{ to: '/featherbase/admin/imports', label: 'Past imports', icon: History, testid: 'past-imports-link' }] : []),
             ]}
           />
+          {/* #772: each data source and the databases it reads; System Managers only. */}
+          {canManage && <DataSourcesSidebar />}
           <SidebarGroup
             heading="People and access"
             icon={ShieldLock}

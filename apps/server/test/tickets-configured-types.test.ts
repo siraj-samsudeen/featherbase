@@ -10,7 +10,7 @@ import { discoverPackages } from '../src/runtime-packages'
 // configuration rows, not app code. The rules are checked on synthetic rows.
 const directory = resolve('../..', 'example-apps/tickets')
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
-  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.1.0' },
+  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.2.0' },
 }) }, client.token, client.user)
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -57,6 +57,8 @@ async function world(admin: TestClient, createUser: CreateUserFn) {
   // Configuration only: a type, its fields, its states and its routing.
   const dq = await save(admin, 'tickets.ticket_type', { type_key: 'data_quality_issue', label: 'Data Quality Issue', enabled: true,
     states: 'Open\nIn progress\nFixed in source\nWon\'t fix\nReopened', done_states: 'Fixed in source\nWon\'t fix', reopen_state: 'Reopened',
+    // #918: these checks are about a type whose details are private.
+    details_visible_to: 'private',
     routing: JSON.stringify({ field: 'source_system', table: 'Example System Owner', match: 'source_system', person: 'person', primary: 'is_primary' }) })
   const field = (position: number, row: object) => save(admin, 'tickets.type_field', { ticket_type: dq.row_id, field_order: position, ...row })
   await field(1, { field_name: 'source_system', label: 'Source system', field_type: 'link', link_table: 'Example System', link_label: 'system_name', required: true })

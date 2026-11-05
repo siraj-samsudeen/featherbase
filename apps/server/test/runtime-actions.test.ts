@@ -5,6 +5,7 @@ import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { describe, expect } from 'vitest'
 import { makeClient, type TestClient, type CreateUserFn } from 'feather-testing-postgres'
 import { test as pgTest } from './pg-test'
+import { committedTest } from './pg-test-shared'
 import { discoverPackages, availableRuntimeVersions, runPackageAction } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
@@ -100,7 +101,8 @@ describe('declared transactional runtime actions', () => {
     expect(await admin.post(action + 'discard', { ...guard, payload: { ...guard.payload, explain: true } })).toEqual({ result: { deleted: false, counts: { comments: 1, versions: 0, references: 0, files: 0, shares: 0 } } })
   })
 
-  test('effects wait for result commit, never run on rollback/replay, and disable waits through a failed effect', async ({ admin }) => {
+  committedTest('effects wait for result commit, never run on rollback/replay, and disable waits through a failed effect', async ({ admin: unpinnedAdmin }) => {
+    const admin = pinned(unpinnedAdmin)
     await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
     const source = await admin.post<any>('/api/save_row', { table: 'actionproof.work', row: { row_id: 'tail', title: '41 units' } })
     let entered!: () => void
@@ -142,7 +144,8 @@ describe('declared transactional runtime actions', () => {
     const request = { idempotencyKey: 'probe', payload: { operation: 'shape' } }
     expect((await app.request(action + 'probe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) })).status).toBe(401)
     await expect(admin.post(action + 'constructor', request)).rejects.toMatchObject({ status: 404 })
-    expect(await admin.post(action + 'probe', request)).toEqual({ result: ['authorization', 'documents', 'payload', 'people', 'reject', 'secrets', 'settings', 'user', 'userName'] })
+    expect(await admin.post(action + 'probe', request)).toEqual({ result: ['authorization', 'documents', 'payload', 'people', 'reject', 'roles', 'secrets', 'settings', 'user', 'userName'] })
+    expect(await admin.post(action + 'probe', { idempotencyKey: 'roles', payload: { operation: 'roles' } })).toEqual({ result: expect.arrayContaining(['System Manager']) })
     for (const table of ['Permission', 'runtime_action_result', 'other.task']) {
       await expect(admin.post(action + 'probe', { idempotencyKey: table, payload: { operation: 'create', table, values: { row_id: 'forbidden' } } })).rejects.toMatchObject({ status: 417 })
     }

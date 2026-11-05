@@ -2,6 +2,7 @@
 // a list shows all its columns by default; Compact leads with each row's name
 // and a few key values, and the choice is kept for that person on that table.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 import { PLANT, SITE, seedSites } from './relational-fixture'
@@ -30,8 +31,11 @@ test('Compact leads with the name and two key values', async ({ admin }) => {
 test('the compact choice is kept for that table alone, after signing in again', async ({ admin }) => {
   await seedSites(admin)
   const first = await renderApp(tableHref(SITE), admin)
-  fireEvent.click(within(await layout()).getByRole('button', { name: 'Compact' }))
+  // A click before the person's saved list settings arrive cannot overwrite
+  // them (list-settings.test.tsx), so choose Compact until one is saved;
+  // choosing it again once it is on changes nothing.
   await waitFor(async () => {
+    fireEvent.click(within(await layout()).getByRole('button', { name: 'Compact' }))
     const { settings } = await admin.get<{ settings: { compact?: boolean } | null }>(`/api/user_settings/${encodeURIComponent(SITE)}`)
     expect(settings?.compact).toBe(true)
   })
@@ -41,4 +45,29 @@ test('the compact choice is kept for that table alone, after signing in again', 
   again.unmount()
   await renderApp(tableHref(PLANT), admin)
   expect(within(await layout()).getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test("Compact clicked before the person's saved list settings arrive cannot overwrite them", async ({ admin }) => {
+  await seedSites(admin)
+  // Saved settings exist (a column shown, not compact), and they arrive late.
+  await admin.put(`/api/user_settings/${encodeURIComponent(SITE)}`, { shownCols: ['rent'] })
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  const real = globalThis.fetch
+  const held = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes(`/api/user_settings/${encodeURIComponent(SITE)}`) && (!init?.method || init.method === 'GET')) await gate
+    return real(input, init)
+  })
+  try {
+    await renderApp(tableHref(SITE), admin)
+    fireEvent.click(within(await layout()).getByRole('button', { name: 'Compact' }))
+    release()
+    await waitFor(async () => expect(within(await layout()).getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'true'))
+    const { settings } = await admin.get<{ settings: { compact?: boolean; shownCols?: string[] } | null }>(`/api/user_settings/${encodeURIComponent(SITE)}`)
+    expect(settings?.compact).toBeFalsy()
+    expect(settings?.shownCols).toEqual(['rent'])
+  } finally {
+    release()
+    held.mockRestore()
+  }
 })

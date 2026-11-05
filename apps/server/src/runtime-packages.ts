@@ -125,6 +125,13 @@ const manifestSchema = z.object({
   // only the grants it declares.
   jobs: jobsDeclaration.optional(),
   migrations: z.array(migrationSchema).default([]),
+  // #938: what changed in each version, newest first, written by hand and
+  // shown to System Managers on Admin → Apps. "#123" in a change links to
+  // that issue.
+  releaseNotes: z.array(z.object({
+    version: z.string().min(1),
+    changes: z.array(z.string().min(1)).min(1),
+  }).strict()).optional(),
 }).strict()
 
 interface RuntimePackage {

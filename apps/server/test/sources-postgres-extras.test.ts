@@ -222,7 +222,7 @@ describe('Filtering rows read from Postgres', () => {
       source: {
         name: 'ext-extra-membership', engine: 'postgres', url_env: URL_ENV, root_path: null,
         default_schema: 'ext_extra', access: 'read_only', pool_max: 2,
-        statement_timeout_ms: 10000, allowlist: null,
+        statement_timeout_ms: 10000, allowlist: null, databases: [],
       },
       schema: 'ext_extra', table: 'plain', pk: 'id', modified: null, columns: [],
     }
@@ -247,6 +247,7 @@ describe('Filtering rows read from Postgres', () => {
         pool_max: 2,
         statement_timeout_ms: 10000,
         allowlist: null,
+        databases: [],
       },
       schema: 'ext_extra',
       table: 'plain',
@@ -293,7 +294,7 @@ describe('Writing to a Postgres table that has only defaults', () => {
       source: {
         name: 'ext-extra-null-groups', engine: 'postgres', url_env: URL_ENV, root_path: null,
         default_schema: null, access: 'read_only', pool_max: 2,
-        statement_timeout_ms: 10000, allowlist: null,
+        statement_timeout_ms: 10000, allowlist: null, databases: [],
       },
       schema: 'ext_extra', table: 'nullable_groups', pk: 'id', modified: null, columns: [],
     }
@@ -314,7 +315,7 @@ describe('Writing to a Postgres table that has only defaults', () => {
       source: {
         name: 'ext-extra-missing-update', engine: 'postgres', url_env: URL_ENV, root_path: null,
         default_schema: null, access: 'read_write', pool_max: 2,
-        statement_timeout_ms: 10000, allowlist: null,
+        statement_timeout_ms: 10000, allowlist: null, databases: [],
       },
       schema: 'ext_extra', table: 'missing_update', pk: 'id', modified: null, columns: [],
     }
@@ -338,7 +339,7 @@ describe('Writing to a Postgres table that has only defaults', () => {
       source: {
         name: 'ext-extra-delete', engine: 'postgres', url_env: URL_ENV, root_path: null,
         default_schema: null, access: 'read_write', pool_max: 2,
-        statement_timeout_ms: 10000, allowlist: null,
+        statement_timeout_ms: 10000, allowlist: null, databases: [],
       },
       schema: 'ext_extra', table: 'revision_delete', pk: 'id', modified: 'changed_at',
       columns: [{ column_name: 'note', source_column: 'note', column_type: 'Text' }],
@@ -372,6 +373,7 @@ describe('Connection variables and the table allowlist', () => {
     pool_max: 2,
     statement_timeout_ms: 10000,
     allowlist: null,
+    databases: [],
     ...over,
   })
 
