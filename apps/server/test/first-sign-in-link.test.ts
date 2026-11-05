@@ -11,7 +11,6 @@ import { saveDoc } from '../src/document'
 import { invalidateMeta } from '../src/meta'
 import { _setDelegatedFetch, delegatedLoginConfig } from '../src/delegated-login'
 import { rosterFirstSignIn } from '../src/roster-first-sign-in'
-import { _setAlertSender } from '../src/waiting-for-access'
 import { applyInstanceSettings } from '../src/instance-settings'
 import { getSignInMethod } from '../src/identities'
 import { makeTable } from './fixtures'
@@ -81,7 +80,6 @@ async function expectRefusedWithoutAsking(api: TestClient, calls: Call[], usr = 
 
 afterEach(() => {
   _setDelegatedFetch(null)
-  _setAlertSender(null)
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
 })
@@ -111,15 +109,12 @@ describe('a first sign-in links the roster row', () => {
     ])
   })
 
-  test('a new person holds no role, and shows up as waiting for access', async ({ api, admin }) => {
+  test('a new person holds no role', async ({ api, admin }) => {
     await setUp(admin)
     provider()
-    const mailed: unknown[] = []
-    _setAlertSender(async (m) => void mailed.push(m))
     const res = await signIn(api)
     const { user } = (await res.json()) as { user: { row_id: string } }
     expect(await sql`select role from has_role where parent = ${user.row_id}`).toEqual([])
-    expect(await sql`select 1 from activity_log where operation = ${`access_alert for ${user.row_id}`}`).toHaveLength(1)
   })
 
   test('the ID may differ in case and surrounding spaces', async ({ api, admin }) => {

@@ -45,8 +45,7 @@ later sign-in uses that account.
   current roster row that nobody holds, and the HR system confirms the password
   and names that row's record
 - **THEN** the user is signed in to a new account with no roles, which is linked
-  to the row and holds their employee identifiers, and an administrator can see
-  them waiting for access
+  to the row and holds their employee identifiers
 
 #### Scenario: A later sign-in
 

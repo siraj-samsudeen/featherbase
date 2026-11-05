@@ -20,7 +20,6 @@ import { auditIdentity, newIdentityId, type SignInMethod } from './identities'
 import { addIdentifier, writeThroughIdentity } from './person-identifiers'
 import { normaliseValue, type IdentifierKind, type NormaliseRule } from './identifiers'
 import { completeSignIn } from './sign-in'
-import { alertNewArrival } from './waiting-for-access'
 
 type HeldReason = 'duplicate_id' | 'row_has_person' | 'no_record_number' | 'already_linked' | 'service_named_another_record' | 'link_failed'
 
@@ -163,7 +162,6 @@ async function problemWith(method: SignInMethod, roster: Roster, row: RosterRow)
 interface Linked {
   user: string
   identity: string
-  created: boolean
 }
 
 /** The live link a concurrent first sign-in just made for this very record. */
@@ -172,7 +170,7 @@ async function winner(method: SignInMethod, row: { record: string; person: strin
     select id, person_id from sign_in_identity
     where method = ${method.key} and subject = ${row.record} and ended_at is null and linked_by = ${ROSTER_LINK}`
   if (!won || String(won.person_id) !== row.person) return null
-  return { user: String(won.person_id), identity: String(won.id), created: false }
+  return { user: String(won.person_id), identity: String(won.id) }
 }
 
 /** All or nothing, with the row locked so two sign-ins take turns; everything
@@ -213,7 +211,7 @@ async function link(method: SignInMethod, roster: Roster, id: string, asked: Ros
         await addIdentifier(user, { system, value, valid_from: String(today) }, actor, { internal: { source: 'first-sign-in', verified: true }, db: sql })
     await runAsSystemActor(actor, () => saveDoc(config.table, { row_id: row.row_id, updated_at: row.updated_at, [config.person_column]: user }, actor))
     await auditIdentity(user, 'linked', user, method.key, identity)
-    return { user, identity, created: true }
+    return { user, identity }
   })
 }
 
@@ -246,7 +244,5 @@ export async function rosterFirstSignIn(cfg: DelegatedLoginConfig, id: string, p
     await hold(method.key, row.row_id, linked)
     throw refused()
   }
-  const issued = await completeSignIn(method, { status }, { user: linked.user, identity: linked.identity }, { ipAddress })
-  if (linked.created) await alertNewArrival(linked.user, method)
-  return issued
+  return completeSignIn(method, { status }, linked, { ipAddress })
 }

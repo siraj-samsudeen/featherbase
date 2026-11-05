@@ -5,7 +5,6 @@ import { expect, test, vi } from 'vitest'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { _setDelegatedFetch } from '../src/delegated-login'
-import { _setAlertSender } from '../src/waiting-for-access'
 import { app } from '../src/index'
 import { applySeedPack } from '../src/seed-packs'
 import { createTable } from '../src/table-engine'
@@ -52,7 +51,6 @@ prove('sign-ins that were all confirmed at once make one person, and all land on
   }, 'Administrator', 'insert')
   await applySeedPack('jeyarama')
   await saveDoc(TABLE, { crew_name: 'Made Up Crew', crew_no: 'TT-2001', hr_record: '8001', crew_state: 'Working' }, 'Administrator', 'insert')
-  _setAlertSender(async () => {})
 
   // The stand-in holds every sign-in until all of them have been asked, so all
   // of them passed the check before asking and race for the row together.
@@ -99,6 +97,5 @@ prove('sign-ins that were all confirmed at once make one person, and all land on
     logged.mockRestore()
   } finally {
     _setDelegatedFetch(null)
-    _setAlertSender(null)
   }
 }))
