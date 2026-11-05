@@ -186,8 +186,18 @@ class TicketsWorkspace {
     const status = this.sidebar().getByText(/not set up/i).first();
     await status.waitFor({ timeout: SHORT }).catch(() => { throw new Error('the shared navigation shows no "not set up" connection status'); });
     assert.ok((await status.innerText()).trim().length <= 80, 'the connection status is not short');
-    const hrefs = await this.sidebar().locator('a').evaluateAll(links => links.map(a => a.getAttribute('href') ?? ''));
+  }
+
+  async statusLinks() {
+    await this.sidebar().getByText(/not set up/i).first().waitFor({ timeout: SHORT });
+    return this.sidebar().locator('a').evaluateAll(links => links.map(a => a.getAttribute('href') ?? ''));
+  }
+  async expectStatusLeadsToSettings() {
+    const hrefs = await this.statusLinks();
     assert.ok(hrefs.some(href => SETTINGS_LINK.test(href)), `the status leads nowhere near Tickets' settings: ${JSON.stringify(hrefs)}`);
+  }
+  async expectStatusLeadsNowhere() {
+    assert.deepEqual(await this.statusLinks(), [], 'the status offers a link this person cannot open');
   }
 
   async expectNoConnectionsBanner() {

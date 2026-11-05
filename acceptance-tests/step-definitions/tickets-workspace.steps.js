@@ -38,6 +38,7 @@ steps(When, [
   ['the user opens Tickets and selects that ticket', async (w, world) => { await opened(w, world); await w.select(w.selected); }],
   ['the user opens Tasker', (w, world) => opened(w, world, TASKER, null)],
   ['a System Manager installs that app', w => w.install()],
+  ['a System Manager opens Tickets', (w, world) => opened(w, world, undefined, null)],
 ]);
 
 steps(Then, [
@@ -49,6 +50,8 @@ steps(Then, [
   ['the actions the user can take on it now are offered beside them', w => w.expectActionsBeside()],
   ['a short status in the navigation says the connections are not set up', w => w.expectConnectionStatus()],
   ['no connections banner is shown above the queue', w => w.expectNoConnectionsBanner()],
+  ["the status leads to Tickets' settings", w => w.expectStatusLeadsToSettings()],
+  ['the status leads nowhere', w => w.expectStatusLeadsNowhere()],
   ["Tickets' main buttons and its selected view in the shared navigation are green", w => w.expectAccent('light')],
   ["they are the dark theme's green", w => w.expectAccent('dark')],
   ["Tasker's selected view in the shared navigation is Featherbase's own blue", w => w.expectOwnBlue()],
