@@ -79,6 +79,11 @@ export function errorResponse(c: Context, err: unknown) {
   // path mapped is a conflict, not a server fault.
   if ((err as { code?: string })?.code === '23P01')
     return c.json({ error: { type: 'ConflictError', message: 'That value is already held for an overlapping period' } }, 409)
+  // #947: two writes waited on each other's rows (a rename racing a save
+  // that links to the renamed row). Postgres undid one of them; trying again
+  // succeeds.
+  if ((err as { code?: string })?.code === '40P01')
+    return c.json({ error: { type: 'ConflictError', message: 'Someone else changed a linked row at the same moment. Try again.' } }, 409)
   // A SyntaxError here means c.req.json() failed on a malformed body — a
   // client error, not a server fault.
   if (err instanceof SyntaxError) {

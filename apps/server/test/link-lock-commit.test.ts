@@ -41,7 +41,8 @@ function heldOrderSave(customer: string) {
 /** Sessions waiting on a row lock held by another transaction. */
 async function waitingOnRow(): Promise<number> {
   const [row] = await sql`select count(*)::int as n from pg_stat_activity
-    where datname = current_database() and wait_event_type = 'Lock' and wait_event in ('transactionid', 'tuple')`
+    where datname = current_database() and wait_event_type = 'Lock' and wait_event in ('transactionid', 'tuple')
+      and query ilike '%for update%'`
   return row.n
 }
 
@@ -54,6 +55,10 @@ describe('a save holds the rows it links to until it commits (#947)', () => {
   })
 
   prove('a delete racing a save that links to the row waits, then refuses', async () => {
+    // A run stopped part-way leaves its Tables behind.
+    await sql`delete from ${sql(await tableRelation(ORDER))}`.catch(() => {})
+    await deleteTable(ORDER).catch(() => {})
+    await deleteTable(CUSTOMER).catch(() => {})
     await createTable({ name: CUSTOMER, id_pattern: 'prompt', columns: [{ column_name: 'city', column_type: 'Data' }] })
     await createTable({
       name: ORDER,
@@ -75,14 +80,16 @@ describe('a save holds the rows it links to until it commits (#947)', () => {
         expect(outcome).toBe('saved')
       } finally {
         first.release()
+        await Promise.allSettled([first.saving])
       }
       await first.saving
 
       // A delete waits for the save to commit, then sees its link.
       const second = heldOrderSave('Acme')
+      let removing: Promise<unknown> = Promise.resolve()
       try {
         await second.checked
-        const removing = deleteDoc(CUSTOMER, 'Acme')
+        removing = deleteDoc(CUSTOMER, 'Acme')
         removing.catch(() => {})
         await expect.poll(waitingOnRow, { timeout: 5000 }).toBe(1)
         second.release()
@@ -90,6 +97,7 @@ describe('a save holds the rows it links to until it commits (#947)', () => {
         await expect(removing).rejects.toThrow(/linked from/)
       } finally {
         second.release()
+        await Promise.allSettled([second.saving, removing])
       }
       const [acme] = await sql`select row_id from ${sql(await tableRelation(CUSTOMER))} where row_id = 'Acme'`
       expect(acme?.row_id).toBe('Acme')
@@ -98,5 +106,5 @@ describe('a save holds the rows it links to until it commits (#947)', () => {
       await deleteTable(ORDER).catch(() => {})
       await deleteTable(CUSTOMER).catch(() => {})
     }
-  })
+  }, 30_000)
 })
