@@ -3,7 +3,7 @@ import { tableHref } from 'shared'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
 // imports this file — a strict useSearch would need the route object back)
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminPageTitle } from 'shared'
 import { DEFAULT_ID_PATTERN, applyColumnCombines, autoMapImportColumns, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
@@ -692,7 +692,7 @@ function RunHistory({ table }: { table: string }) {
   const meta = useMeta(table)
   const canPurge = isSystemManager && tableCanPurge(meta.data)
   const [purgeRun, setPurgeRun] = useState<string | null>(null)
-  const [purgedRuns, setPurgedRuns] = useState<Set<string>>(new Set())
+  const queryClient = useQueryClient()
   const runs = useQuery({
     queryKey: ['iw-run-history', table],
     staleTime: 10_000,
@@ -734,7 +734,17 @@ function RunHistory({ table }: { table: string }) {
       return [...byRun.values()].slice(0, 5)
     },
   })
+  // Whether a run's added rows are still there, from the server, so a reload
+  // tells the same story.
+  const remaining = useQueries({
+    queries: (runs.data ?? []).map((r) => ({
+      queryKey: ['iw-run-remaining', table, r.run_id],
+      enabled: canPurge && r.inserted > 0,
+      queryFn: () => api.get<{ remaining: number }>(`/api/table/${encodeURIComponent(table)}:purge_run_remaining?run_id=${encodeURIComponent(r.run_id)}`),
+    })),
+  })
   if (!runs.data?.length) return null
+  const gone = (r: RunEntry, idx: number) => canPurge && r.inserted > 0 && remaining[idx]?.data?.remaining === 0
   return (
     <div className={cardClasses('mt-4 p-3')} data-testid="iw-run-history">
       {purgeRun && (
@@ -743,9 +753,9 @@ function RunHistory({ table }: { table: string }) {
           runId={purgeRun}
           onClose={() => setPurgeRun(null)}
           onDone={() => {
-            setPurgedRuns((s) => new Set([...s, purgeRun]))
             setPurgeRun(null)
             void runs.refetch()
+            void queryClient.invalidateQueries({ queryKey: ['iw-run-remaining', table] })
           }}
         />
       )}
@@ -760,14 +770,15 @@ function RunHistory({ table }: { table: string }) {
             {r.file_name ?? 'API import'} — {fmtCount(r.updated)} processed matches · {fmtCount(r.inserted)} added · {fmtCount(r.failed)}{' '}
             failed
           </span>
-          {purgedRuns.has(r.run_id) ? (
-            <span className="text-xs text-ink-subtle" data-testid={`iw-run-purged-${idx}`}>its added rows were deleted permanently</span>
-          ) : r.reverted_at ? (
+          {gone(r, idx) && (
+            <span className="text-xs text-ink-subtle" data-testid={`iw-run-purged-${idx}`}>its added rows are gone</span>
+          )}
+          {gone(r, idx) && r.updated === 0 ? null : r.reverted_at ? (
             <span className="text-xs text-ink-subtle">reverted</span>
           ) : (
             <RevertControl i={`h${idx}`} table={table} runId={r.run_id} />
           )}
-          {canPurge && r.inserted > 0 && !purgedRuns.has(r.run_id) && (
+          {canPurge && r.inserted > 0 && !r.reverted_at && remaining[idx]?.data?.remaining ? (
             <button
               className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
               onClick={() => setPurgeRun(r.run_id)}
@@ -775,7 +786,7 @@ function RunHistory({ table }: { table: string }) {
             >
               Delete its rows permanently
             </button>
-          )}
+          ) : null}
         </div>
       ))}
     </div>

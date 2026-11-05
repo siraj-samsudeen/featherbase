@@ -1628,7 +1628,12 @@ async function deleteDocImpl(
     }
     // #881: and so does a link to a row of any Table naming this row.
     const anyHolder = await anyTableLinkHolder(stx, table, name)
-    if (anyHolder) throw new AppError('ValidationError', `Cannot delete ${table} ${name}: it is linked from ${anyHolder}`)
+    if (anyHolder)
+      throw new AppError(
+        'ValidationError',
+        `Cannot delete ${table} ${name}: it is linked from ${anyHolder}${canRetire(meta) ? `. ${RETIRE_INSTEAD}` : ''}`,
+        canRetire(meta) ? { retire: 'available' } : undefined,
+      )
 
     const ctx: HookContext = {
       row: existing as RowValues,

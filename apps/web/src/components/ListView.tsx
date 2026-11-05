@@ -525,6 +525,8 @@ export function ListView({
       // #898: the deleted rows' titles go, so recents stop offering them.
       const failed = new Set((result.failed ?? []).map((f) => f.row_id))
       for (const id of selected) if (!failed.has(id)) queryClient.setQueryData(['row-title', table, id], null)
+      // The Recent chips ask again, so a deleted row leaves them at once.
+      void queryClient.invalidateQueries({ queryKey: ['recent-strip-rows', table] })
       await reportPartial('deleted', result.deleted, result.failed ?? [])
     } catch (err) {
       setBulkError(err instanceof ApiError ? refusal(err) : 'Bulk delete failed')

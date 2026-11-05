@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { canRetire } from 'shared'
@@ -101,6 +101,7 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
       for (const r of plan.data?.rows ?? []) queryClient.setQueryData(['row-title', r.table, r.row_id], null)
       const touched = new Set([table, ...(plan.data?.rows ?? []).map((r) => r.table), ...(plan.data?.groups ?? []).map((g) => g.table)])
       await Promise.all([...touched].flatMap((t) => [
+        queryClient.invalidateQueries({ queryKey: ['recent-strip-rows', t] }),
         queryClient.invalidateQueries({ queryKey: ['list', t] }),
         queryClient.invalidateQueries({ queryKey: ['doc', t] }),
       ]))
@@ -112,6 +113,9 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
     }
   }
 
+  // Focus inside, so Escape reaches the dialog however it was opened.
+  const dialog = useRef<HTMLDivElement>(null)
+  useEffect(() => dialog.current?.focus(), [])
   const data = plan.data
   const asked = data ? data.rows.filter((r) => r.table === table) : []
   const removedWith = data ? data.rows.length - asked.length : 0
@@ -124,6 +128,8 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
       onKeyDown={(e) => e.key === 'Escape' && !busy && onClose()}
     >
       <div
+        ref={dialog}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="purge-title"

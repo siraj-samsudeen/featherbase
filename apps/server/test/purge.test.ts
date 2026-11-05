@@ -415,3 +415,38 @@ describe('#859 delete permanently, Codex review round 11', () => {
     expect(await exists('pg_business_unit', 'BU-Z')).toBe(true)
   })
 })
+
+describe('#859 Codex review round 13', () => {
+  test('an ordinary delete refused by a link to any Table offers Retire too', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    await admin.post(bu.url, { row_id: 'BU-L', bu_name: 'Linked' })
+    const decision = await makeTable(admin, { name: 'Pg Mention', columns: [
+      { column_name: 'about_table', column_type: 'Reference', reference_table: 'Table' },
+      { column_name: 'about_row', column_type: 'Reference', table_column: 'about_table' },
+    ] })
+    await admin.post(decision.url, { about_table: BU, about_row: 'BU-L' })
+    await expectApiError(admin.delete(bu.rowUrl('BU-L')), { status: 417, fields: { retire: 'available' } })
+  })
+
+  test('a Settings link to any Table holds only the Table it names', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    const settings = await makeTable(admin, { name: 'Pg Any Default', kind: 'settings', columns: [
+      { column_name: 'on_table', column_type: 'Reference', reference_table: 'Table' },
+      { column_name: 'on_row', column_type: 'Reference', table_column: 'on_table' },
+    ] })
+    await admin.post(bu.url, { row_id: 'S-A', bu_name: 'Same id as a store' })
+    await admin.post('/api/save_row', { table: settings.name, row: { on_table: STORE, on_row: 'S-A' } })
+    expect((await preview(admin, bu, ['S-A'])).blocked).toBe(false)
+  })
+
+  test('how many of a run\'s rows remain, for a System Manager only', async ({ admin, createUser }) => {
+    const { bu } = await setup(admin)
+    const run = await admin.post<{ run_id: string }>(`${bu.url}:import`, { rows: [{ row_id: 'BU-Y', bu_name: 'Imported' }] })
+    const url = `${bu.url}:purge_run_remaining?run_id=${run.run_id}`
+    expect(await admin.get(url)).toEqual({ remaining: 1 })
+    const plain = await createUser({ roles: [] })
+    await expectApiError(plain.get(url), { status: 403 })
+    await purge(admin, bu, { run_id: run.run_id })
+    expect(await admin.get(url)).toEqual({ remaining: 0 })
+  })
+})

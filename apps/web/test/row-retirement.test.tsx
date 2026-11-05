@@ -103,3 +103,15 @@ test('#859 a System Manager deletes a row permanently, seeing what points at it 
   const orders = await admin.get<{ data: { plant: string | null }[] }>(`/api/table/Retire%20Bin%20Order?fields=${encodeURIComponent('["plant"]')}`)
   expect(orders.data).toEqual([{ plant: null }])
 }, 40_000)
+
+test('#859 Escape closes the Delete permanently dialog wherever it was opened, changing nothing', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await renderApp(`${path}/row/${encodeURIComponent('Sample plant')}`, admin)
+  await user.click(await screen.findByRole('button', { name: 'Record actions' }))
+  await user.click(await screen.findByTestId('form-purge', {}, WAIT))
+  await screen.findByTestId('purge-dialog')
+  await user.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByTestId('purge-dialog')).toBeNull(), WAIT)
+  expect((await admin.fetch(`${api}/${encodeURIComponent('Sample plant')}`)).status).toBe(200)
+}, 40_000)

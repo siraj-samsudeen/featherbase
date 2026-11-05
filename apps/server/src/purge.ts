@@ -229,7 +229,9 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
         continue
       }
       if (meta.kind === 'settings') {
-        const held = await db`select 1 from single_value where table_name = ${holder} and field = ${column} and value = any(${step.ids}) limit 1`
+        // A link to any Table counts only when its Table half names this Table.
+        const held = await db`select 1 from single_value v where v.table_name = ${holder} and v.field = ${column} and v.value = any(${step.ids})
+          ${tableColumn ? db`and exists (select 1 from single_value t where t.table_name = ${holder} and t.field = ${tableColumn} and t.value = ${step.table})` : db``} limit 1`
         if (held.length) group({ lines: false, count: held.length, rows: [], action: 'blocked', why: `A setting of ${holder} points at it; change that setting first` })
         continue
       }
@@ -310,6 +312,13 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
     for (const k of Object.keys(activity) as (keyof typeof activity)[]) activity[k] += Number(c[k])
   }
   return { links, rows, lines, attached, groups, blocked: groups.some((g) => g.action === 'blocked'), activity }
+}
+
+/** How many of the rows an import added are still there, so a run whose rows
+ *  have gone stops offering to delete them. */
+export async function purgeRunRemaining(table: string, runId: string, user: string): Promise<{ remaining: number }> {
+  await assertSystemManager(user)
+  return { remaining: (await runRows(sql, table, runId)).length }
 }
 
 export async function purgePreview(table: string, args: Record<string, unknown>, user: string): Promise<PurgePlan> {
