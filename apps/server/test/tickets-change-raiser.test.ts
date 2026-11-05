@@ -294,7 +294,7 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
     expect(await enabledPeople([w.next.user, left.user, 'psn_nope', 'Administrator'], w.manager.user)).toEqual([w.next.user])
     expect(await enabledPeople([], w.manager.user)).toEqual([])
     // Someone with no Person access is told nothing, and nothing breaks.
-    expect(await enabledPeople([w.next.user, left.user], w.colleague.user)).not.toContain(left.user)
+    expect(await enabledPeople([w.next.user, left.user], w.colleague.user)).toEqual([])
   })
 
   test('handOver is refused unless the caller is a System Manager and the Table is the app\'s own', async ({ admin, createUser }) => {

@@ -64,9 +64,9 @@ export async function enabledPeople(ids: string[], viewer: string): Promise<stri
   let scoped
   try {
     scoped = await scopedWhere('Person', viewer, [['row_id', 'in', wanted], ['enabled', '=', true], ['built_in', '=', false]])
-  } catch (error) {
-    if (error instanceof AppError && error.type === 'PermissionError') return []
-    throw error
+  } catch (err) {
+    if (!(err instanceof AppError && err.type === 'PermissionError')) throw err
+    return []
   }
   const rows = await sql`select p.row_id from ${sql(scoped.table)} p where ${scoped.where} and p.replaced_by is null order by p.row_id`
   return rows.map((row) => String(row.row_id))
