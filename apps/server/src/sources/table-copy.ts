@@ -179,7 +179,7 @@ async function applyCopy(user: SessionUser, target: string, copy: NonNullable<Aw
     const part = await importRows({ table: target, user, args: {
       rows, key_column: 'row_id', empty_cells: 'clear', columns: mapped,
       context: { ...context, part: ++partNumber },
-    } }, [DELETED_AT_SOURCE])
+    } }, [DELETED_AT_SOURCE], { skipUnchanged: true })
     if (part.failed?.length)
       throw new AppError('ValidationError', `Copy failed; no rows changed: ${part.failed.slice(0, 5).map(f => `${rows[f.index].row_id}: ${f.message}`).join('; ')}`)
     // This call always selects the real upsert mode, never analyze/dry-run

@@ -73,6 +73,40 @@ describe('a copy and a deploy at the same time', () => {
     } finally { gates.read = undefined; read.release() }
   })
 
+  test('an encoded path gets no lifecycle lock either, so it keeps the same lock order', async ({ admin }) => {
+    await makeCopy(admin)
+    const read = stall()
+    gates.read = read.wait
+    try {
+      const copy = admin.post<{ unchanged: number }>('/api/table/Overlap%20Stores%3Acopy_again', {})
+      await read.reached
+      await expect(deployNow()).resolves.toBe('deployed')
+      read.release()
+      expect((await copy).unchanged).toBe(3)
+    } finally { gates.read = undefined; read.release() }
+  })
+
+  test('any other request still holds the lifecycle lock', async ({ admin }) => {
+    await makeCopy(admin)
+    // A row lock keeps the request open, so it is running when the deploy tries.
+    let release!: () => void
+    let locked!: () => void
+    const holding = new Promise<void>((done) => { locked = done })
+    const held = sql.begin(async (tx) => {
+      await tx`select 1 from featherbase.table_def where name = 'Overlap Stores' for update`
+      locked()
+      await new Promise<void>((done) => { release = done })
+    })
+    await holding
+    const other = admin.post('/api/table_def/Overlap%20Stores/rename_column', { from: 'title', to: 'heading' }).catch(() => {})
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      await expect(deployNow()).rejects.toThrow(/kept the apps busy/)
+    } finally { release() }
+    await held
+    await other
+  })
+
   test('a deploy goes through while a first copy reads the warehouse', async ({ admin }) => {
     await admin.post(`${SOURCES}:motherduck_connect`, { name: 'overlap', token: STANDIN_TOKENS.reader, databases: ['sales'] })
     const read = stall()

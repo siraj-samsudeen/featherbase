@@ -4,20 +4,20 @@ Skipped: `acceptance-tests/` already exists. The promises here are about concurr
 
 ## 2. Deploy retries
 
-- [ ] 2.1 Test: a shared holder, a waiting exclusive and a new shared request: does the new request stall?
-- [ ] 2.2 Test and build: short attempts with pauses, each logged, the same safe failure at the end
-- [ ] 2.3 `docs/DEPLOY.md`
+- [x] 2.1 Test: a shared holder, a waiting exclusive and a new shared request: does the new request stall?
+- [x] 2.2 Test and build: short attempts with pauses, each logged, the same safe failure at the end
+- [x] 2.3 `docs/DEPLOY.md`
 
 ## 3. Copy reads outside the lifecycle lock
 
-- [ ] 3.1 Test and build: a deploy completes during a manual copy's read; the same for the first copy and a scheduled refresh
-- [ ] 3.2 Test and build: an app upgraded during the read is refused and nothing changes
-- [ ] 3.3 Test: overlap: a long copy applying, a deploy starting, the deploy succeeding after it ends
+- [x] 3.1 Test and build: a deploy completes during a manual copy's read; the same for the first copy and a scheduled refresh
+- [x] 3.2 Test and build: an app upgraded during the read is refused and nothing changes
+- [x] 3.3 Test: overlap: a long copy applying, a deploy starting, the deploy succeeding after it ends
 
 ## 4. Apply
 
-- [ ] 4.1 Time read, apply and master sync on 1,519 rows
-- [ ] 4.2 Test and build: a no-change refresh writes no row and keeps history, corrections and conflicts
+- [x] 4.1 Time read, apply and master sync on 1,519 rows
+- [x] 4.2 Test and build: a no-change refresh writes no row and keeps history, corrections and conflicts
 
 ## 5. Check and archive
 

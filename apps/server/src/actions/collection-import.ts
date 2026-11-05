@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { planImport, saveImportedRow } from '../import-corrections'
+import { planImport, saveImportedRow, unchangedImportRows } from '../import-corrections'
 import { getDoc } from '../document'
 import { createHash } from 'node:crypto'
 import { quoteIdent } from '../sql-identifier'
@@ -253,9 +253,11 @@ registerCollectionAction('import', {
   },
 })
 
-// Only trusted server callers supply managedColumns. The registered HTTP
-// handler above deliberately forwards context alone, never caller args here.
-export async function importRows({ table, args, user }: CollectionActionContext, managedColumns: readonly string[] = []) {
+// Only trusted server callers supply managedColumns or skipUnchanged. The
+// registered HTTP handler above deliberately forwards context alone, never
+// caller args here. #971: skipUnchanged leaves a row that would change nothing
+// unsaved, so it runs no automations and its last-updated time stays.
+export async function importRows({ table, args, user }: CollectionActionContext, managedColumns: readonly string[] = [], opts: { skipUnchanged?: boolean } = {}) {
     const rows = args.rows
     if (!Array.isArray(rows) || rows.length === 0)
       throw new AppError('ValidationError', 'Expected { rows: [...] } with at least one row')
@@ -417,6 +419,11 @@ export async function importRows({ table, args, user }: CollectionActionContext,
     // RVT-R1 (spec 0005): record every row this part writes — id, action,
     // and the updated_at stamp the write left — so the run is revertable.
     const touched: TouchedRow[] = []
+    const unchanged = opts.skipUnchanged && upsert && resolutions
+      ? await unchangedImportRows(meta, rows.flatMap((row, index) => resolutions[index].action === 'update' && typeof row === 'object' && row !== null && !Array.isArray(row)
+        ? [{ row_id: resolutions[index].row_id!, values: updateValues(row as Record<string, unknown>, upsert, resolutions[index]) }]
+        : []))
+      : new Set<string>()
     for (const [index, row] of rows.entries()) {
       if (typeof row !== 'object' || row === null || Array.isArray(row)) {
         failed.push({ index, message: 'row must be an object' })
@@ -433,6 +440,11 @@ export async function importRows({ table, args, user }: CollectionActionContext,
           // Validate the incoming payload before protected fields are removed,
           // exactly as the check step does. A conflict cannot legitimize bad data.
           checkRowForUpdate(meta, record, resolution, upsert!)
+          if (unchanged.has(resolution.row_id!)) {
+            updated++
+            touched.push({ row_id: resolution.row_id!, action: 'updated', stamp: stampOf(resolution.updated_at) })
+            continue
+          }
           const { saved, version, changed: rowChanged } = await saveImportedRow(meta, updateValues(record, upsert!, resolution), user.row_id, runId, true, managedColumns)
           updated++
           if (rowChanged) changed++

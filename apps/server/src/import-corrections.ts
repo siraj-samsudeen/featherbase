@@ -143,6 +143,41 @@ export async function saveImportedRow(meta: TableMeta, input: Row, user: string,
   })
 }
 
+/** #971: which of these updates would change nothing at all, decided in a few
+ *  statements rather than a save per row. True only when every value equals the
+ *  stored one, the row has no open conflict for the save to close, and the
+ *  latest observation already says the same: a later conflict is decided from
+ *  that observation (planImport). Anything else takes saveImportedRow as ever. */
+export async function unchangedImportRows(meta: TableMeta, inputs: { row_id: string; values: Row }[]): Promise<Set<string>> {
+  const unchanged = new Set<string>()
+  if (!inputs.length) return unchanged
+  const ids = inputs.map(i => i.row_id)
+  const stored = new Map((await sql`select * from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = any(${ids})`).map(r => [String(r[meta.row_key]), r]))
+  const conflicted = new Set((await sql`select distinct ref_name from featherbase.import_conflict where ref_table = ${meta.name} and ref_name = any(${ids}) and closed is not true`).map(c => String(c.ref_name)))
+  const observed = meta.track_changes
+    ? new Map((await sql`select distinct on (s.ref_name) s.ref_name, s.values, s.created_at from featherbase.import_source s
+        where s.ref_table = ${meta.name} and s.ref_name = any(${ids})
+          and not exists (select 1 from import_log l where l.ref_table = s.ref_table and l.run_id = s.run_id and l.reverted_at is not null)
+        order by s.ref_name, s.created_at desc, s.row_id desc`).map(o => [String(o.ref_name), o]))
+    : null
+  const columns = meta.columns.filter(c => !['Section Break', 'Column Break', 'Sub-table'].includes(c.column_type))
+  for (const { row_id, values } of inputs) {
+    const current = stored.get(row_id)
+    if (!current || conflicted.has(row_id)) continue
+    const mapped = columns.filter(c => Object.hasOwn(values, c.column_name))
+    if (!mapped.every(c => same(current[c.column_name], values[c.column_name], c.column_type))) continue
+    if (observed) {
+      const latest = observed.get(row_id)
+      const said = latest?.values as Row | undefined
+      if (!said || (latest!.created_at as Date) < (current.created_at as Date)) continue
+      // Read-only columns are never source observations (planImport).
+      if (!mapped.filter(c => !c.read_only).every(c => Object.hasOwn(said, c.column_name) && same(said[c.column_name], values[c.column_name], c.column_type))) continue
+    }
+    unchanged.add(row_id)
+  }
+  return unchanged
+}
+
 export async function mayResolve(meta: TableMeta, row: Row, field: string, user: string): Promise<boolean> {
   const column = meta.columns.find(c => c.column_name === field)
   if (!column || column.read_only) return false
