@@ -22,7 +22,7 @@ import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, childColumns, readerFor, restrictRow, seesEveryColumn } from './row-readers'
-import { assertNotSystemWritten } from './system-written'
+import { assertRowsWritable } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
 import {
@@ -901,7 +901,7 @@ async function saveDocImpl(
   mode: 'upsert' | 'insert' = 'upsert',
   opts: SaveOptions = {},
 ): Promise<RowValues> {
-  assertNotSystemWritten(await getMeta(table), mode === 'insert' ? 'created' : 'saved')
+  assertRowsWritable(await getMeta(table), mode === 'insert' ? 'created' : 'saved')
   return writeDoc(table, values, user, mode, opts)
 }
 
@@ -1476,7 +1476,7 @@ async function setStatus(
   user: string,
 ): Promise<RowValues> {
   const meta = await getMeta(table)
-  assertNotSystemWritten(meta, event === 'on_submit' ? 'submitted' : 'cancelled')
+  assertRowsWritable(meta, event === 'on_submit' ? 'submitted' : 'cancelled')
   await assertSecurityWriter(table, user)
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
@@ -1551,7 +1551,7 @@ async function amendDocImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
-  assertNotSystemWritten(meta, 'amended')
+  assertRowsWritable(meta, 'amended')
   await assertSecurityWriter(table, user)
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
@@ -1609,7 +1609,7 @@ async function deleteDocImpl(
   opts: { expectUpdatedAt?: string | null } = {},
 ): Promise<void> {
   const meta = await getMeta(table)
-  assertNotSystemWritten(meta, 'deleted')
+  assertRowsWritable(meta, 'deleted')
   await assertSecurityWriter(table, user)
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
@@ -1786,7 +1786,7 @@ async function renameDocImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
-  assertNotSystemWritten(meta, 'renamed')
+  assertRowsWritable(meta, 'renamed')
   await assertSecurityWriter(table, user)
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be renamed`)
@@ -1884,7 +1884,7 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
       }
     }
     const rowGrant = (action: 'write' | 'delete' | 'submit' | 'cancel' | 'amend') => allowed(async () => {
-      assertNotSystemWritten(meta, 'changed')
+      assertRowsWritable(meta, 'changed')
       await assertSecurityWriter(table, user)
       if (isBound(meta) && (action === 'write' || action === 'delete')) {
         await writableContext(meta)
@@ -1903,13 +1903,13 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
     // Rename deliberately does NOT inherit update's write-share exception.
     const rename = !isBound(meta) && meta.kind === 'table' && !ENGINE_MANAGED.has(table)
       && !meta.id_pattern?.startsWith('opaque:') && await allowed(async () => {
-        assertNotSystemWritten(meta, 'renamed')
+        assertRowsWritable(meta, 'renamed')
         await assertSecurityWriter(table, user)
         await assertDocPermission(user, table, 'write', String(row.created_by))
         await assertUserPermissions(user, meta, row)
       })
     const createIn = (target: string) => allowed(async () => {
-      assertNotSystemWritten(await getMeta(target), 'created')
+      assertRowsWritable(await getMeta(target), 'created')
       await assertSecurityWriter(target, user)
       await assertPermission(user, target, 'create')
     })
@@ -2035,7 +2035,7 @@ async function saveSingleImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
-  assertNotSystemWritten(meta, 'saved')
+  assertRowsWritable(meta, 'saved')
   await assertSecurityWriter(table, user)
   if (meta.kind !== 'settings') throw new AppError('ValidationError', `${table} is not a Settings Table`)
   await assertPermission(user, table, 'write')

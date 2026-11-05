@@ -6,7 +6,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql, withTransaction } from './db'
-import { assertNotSystemWritten } from './system-written'
+import { assertRowsWritable } from './system-written'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
@@ -27,6 +27,7 @@ import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview
 import { resolvePreviewPerson } from './preview-person'
 import { personByEmail, pickPeople, principalNames, tableMembers } from './people-directory'
 import { countWaitingForAccess, noAccessYetPage, requestAccess } from './waiting-for-access'
+import { archiveTable, unarchiveTable } from './table-archive'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { sendInvitation } from './invitation-email'
@@ -894,12 +895,17 @@ app.get('/api/whoami', async (c) => {
   // Table list itself, so none are sent here.
   const manage = user.row_id === 'Administrator' || roles.includes('System Manager')
   const access = manage
-    ? { readable: [], creatable: [], ownGrant: true, admin: true }
+    ? { readable: [] as string[], creatable: [] as string[], ownGrant: true, admin: true }
     : await tableAccessFor(user.row_id, roles)
+  // #905: archived Tables the person can read, so the shell lists them apart
+  // and keeps them out of the pickers.
+  const archived = (await sql`select name from table_def where archived_at is not null order by name`)
+    .map((r) => String(r.name))
+    .filter((name) => manage || access.readable.includes(name))
   return c.json({
     ...user,
     roles,
-    capabilities: { manage, report: roles.includes(VIEWER_ROLE), admin: access.admin, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable },
+    capabilities: { manage, report: roles.includes(VIEWER_ROLE), admin: access.admin, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable, archived },
     // #671: the installed apps this person can open, so the shared top bar can
     // lead to and name them without asking an Admin endpoint.
     apps: (await appCatalog(user.row_id)).map(({ name, title }) => ({ name, title })),
@@ -1624,6 +1630,18 @@ app.post('/api/table_def/:name/rename_column', async (c) => {
   return c.json(await renameColumn(c.req.param('name'), body.from, body.to, who(c)))
 })
 
+// #905: archive a custom Table, or bring it back. Its rows stay readable.
+app.post('/api/table_def/:name/archive', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json().catch(() => ({}))) as { note?: unknown }
+  return c.json(await archiveTable(await resolveTableName(c.req.param('name')), who(c), body.note))
+})
+
+app.post('/api/table_def/:name/unarchive', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json(await unarchiveTable(await resolveTableName(c.req.param('name')), who(c)))
+})
+
 // #871: rename a custom Table, carrying everything that names it.
 app.post('/api/table_def/:name/rename', async (c) => {
   await assertSystemManager(who(c))
@@ -2318,7 +2336,7 @@ app.post('/api/table/:table', async (c) => {
       throw new AppError('NotFoundError', `No writable collection action ":${suffix}"`)
     // #432: one gate for every write action, present and future (import,
     // import-revert, …) — a system-written Table takes none of them.
-    assertNotSystemWritten(await getMeta(table), 'changed')
+    assertRowsWritable(await getMeta(table), 'changed')
     const args = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
     return c.json(await action.handler({ table, args, user }), 201)
   }
@@ -2356,7 +2374,7 @@ app.post('/api/table/:table/:name', async (c) => {
   if (!action || action.effect !== 'write')
     throw new AppError('NotFoundError', `No writable row action ":${suffix}"`)
   // #432: submit, cancel, amend, rename, workflow actions and any later one.
-  assertNotSystemWritten(await getMeta(table), 'changed')
+  assertRowsWritable(await getMeta(table), 'changed')
   const args = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
   const result = await action.handler({ table, name, args, user })
   publishDocEvent(table, name, 'updated')

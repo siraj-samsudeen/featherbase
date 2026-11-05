@@ -359,7 +359,7 @@ async function assertAccessConfiguration(environment: string): Promise<string[]>
   if (await installed()) {
     // #559: a Table marked as deciding scope is a security Table too.
     const marked = (await sql`select name from table_def where decides_scope`).map((r) => String(r.name))
-    // Preflight must inspect both sides of migration 0145 before allowing
+    // Preflight must inspect both sides of migration 0146 before allowing
     // that migration to run. Runtime permission evaluation uses operations only.
     const [schema] = await sql`select exists (select 1 from information_schema.columns
       where table_schema = 'featherbase' and table_name = 'permission' and column_name = 'operation') as operations`

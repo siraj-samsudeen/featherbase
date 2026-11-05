@@ -213,7 +213,8 @@ export async function tableAccessFor(
   const rows = await sql`
     select p.ref_table, p.role, (p.operation = 'read') as can_read, p.owner_app,
       -- #432: a grant never makes a system-written Table creatable.
-      (p.operation = 'create' and not d.system_written) as can_create
+      -- #905: nor an archived one.
+      (p.operation = 'create' and not d.system_written and d.archived_at is null) as can_create
     from permission p
     join table_def d on d.name = p.ref_table and d.kind = 'table'
     where p.parent_permission is null and p.requires_permission is null and p.role in ${sql(roles)}
