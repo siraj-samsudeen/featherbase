@@ -1,7 +1,7 @@
 // Feather Dash's report page (rendered by main.tsx).
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { accessFacts, read } from './api'
-import { MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingTitle, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
+import { MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
 import type { Heading, Report, ReportRow, Totals } from './report'
 
 /** The store the bar's picker keeps in the address (`?store=`). */
@@ -154,12 +154,18 @@ export function FeatherDash() {
 /** The store on show, the period, why the reader sees the store (left out when no reason is known), and what the figures measure. */
 function ReportHeading({ heading, period, wide }: { heading: Heading; period: { period_start: string; period_end: string }; wide: boolean }) {
   const why = whyLine(heading)
+  const { lead, count } = headingParts(heading)
+  const [listOpen, setListOpen] = useState(false)
   return (
     <header className={`fd-heading${wide ? ' fd-heading-wide' : ''}`} data-testid="report-heading">
-      <h1 className="fd-title" data-testid="heading-title">{headingTitle(heading)}</h1>
+      <h1 className="fd-title" data-testid="heading-title">
+        {lead}
+        {count && <button type="button" className="fd-count" aria-expanded={listOpen} onClick={() => setListOpen(open => !open)}>{count}</button>}
+      </h1>
       <p className="fd-muted" data-testid="period-line">{periodLine(period)}</p>
       {why && <p className="fd-muted" data-testid="why-line">{why}</p>}
       <p className="fd-muted" data-testid="measure-line">{MEASURE_LINE}</p>
+      {count && listOpen && <p className="fd-sections" data-testid="sections-list">{heading.sections.join(' · ')}</p>}
     </header>
   )
 }
@@ -267,11 +273,10 @@ function QuickView({ report, why }: { report: Report; why?: 'too_large' }) {
   return (
     <section className="fd-card fd-quick" data-testid="quick-view">
       <header className="fd-quick-head">
-        <h2 className="fd-title">Quick view</h2>
-        <p className="fd-muted" data-testid="quick-label">
-          {quickLabel(why)}
+        <p className="fd-muted fd-quick-line">
+          <span data-testid="quick-label">{quickLabel(why)}</span>
+          <span data-testid="data-line">{dataLine(report)}</span>
         </p>
-        <p className="fd-muted" data-testid="data-line">{dataLine(report)}</p>
         {!report.targets_available && <p className="fd-muted">Targets for {monthWords(report.month)} aren't available yet; sales are shown.</p>}
       </header>
       {body === 'nothing' && <p data-testid="quick-nothing">{report.month === 'last' ? 'Nothing was recorded last month for your section.' : 'Nothing recorded this month for your section yet.'}</p>}
