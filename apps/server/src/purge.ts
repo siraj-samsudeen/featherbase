@@ -18,6 +18,7 @@ import { runHooks } from './controllers'
 import { assertMandatoryAccess } from './mandatory-access'
 import { assertRowNotManaged } from './managed-settings'
 import { deleteStored } from './storage'
+import { publishDocEvent } from './realtime'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { isBound } from './sources/dispatch'
 
@@ -111,7 +112,7 @@ interface PlannedLine { table: string; row_id: string; parent: string; parenttyp
 /** Works out everything a permanent delete would remove or unlink. With
  *  `lock`, every row it reaches is locked as it is reached (inside the
  *  purge's transaction), so the graph cannot change under it. */
-export async function planPurge(db: Db, table: string, ids: string[], links: LinkMode, user: string, lock = false): Promise<PurgePlan & { lines: PlannedLine[] }> {
+export async function planPurge(db: Db, table: string, ids: string[], links: LinkMode, user: string, lock = false): Promise<PurgePlan & { lines: PlannedLine[]; attached: { table: string; row_id: string }[] }> {
   const rootMeta = await getMeta(table)
   const refused = purgeRefusal(rootMeta)
   if (refused) throw new AppError('ValidationError', refused)
@@ -121,6 +122,16 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
   const removed = new Map<string, Set<string>>() // table -> ids being removed (documents and lines)
   const rows: PurgeRow[] = []
   const lines: PlannedLine[] = []
+  // Activity that goes with a removed row: its comments, files, assignments
+  // and the rest. Something can point at those too, so they join the walk.
+  const attached: { table: string; row_id: string }[] = []
+  const tableNames = (await db`select name from table_def`).map((t) => String(t.name))
+  const activityHolders: { table: string; key: string; relation: string; tableColumn: string; nameColumn: string }[] = []
+  for (const h of ROW_ID_HOLDERS) {
+    if (h.relation === 'access_log' || h.relation === 'data_scope') continue
+    const name = tableNames.find((t) => tableName(t) === h.relation)
+    if (name) activityHolders.push({ table: name, key: (await getMeta(name)).row_key, relation: h.relation, tableColumn: h.tableColumn, nameColumn: h.nameColumn })
+  }
   const groups: PurgeGroup[] = []
   const queue: { table: string; ids: string[] }[] = []
   const isRemoved = (t: string, id: string) => removed.get(t)?.has(id) ?? false
@@ -129,7 +140,7 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
     removed.get(t)!.add(id)
   }
   const checkSize = () => {
-    if (rows.length + lines.length > MAX_PURGE_ROWS)
+    if (rows.length + lines.length + attached.length > MAX_PURGE_ROWS)
       throw new AppError('ValidationError', `This would delete more than ${MAX_PURGE_ROWS} rows; delete fewer at a time`)
   }
   // Mandatory privacy holds for a System Manager too: a row private to
@@ -141,6 +152,21 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
       throw err
     }
   }
+  const addAttached = async (t: string, id: string) => {
+    for (const h of activityHolders) {
+      const held = await db`select ${db(h.key)} as id from ${db(`${PLATFORM_SCHEMA}.${h.relation}`)}
+        where ${db(h.tableColumn)} = ${t} and ${db(h.nameColumn)} = ${id} ${forUpdate}`
+      for (const row of held) {
+        const rowId = String(row.id)
+        if (isRemoved(h.table, rowId)) continue
+        mark(h.table, rowId)
+        attached.push({ table: h.table, row_id: rowId })
+        checkSize()
+        queue.push({ table: h.table, ids: [rowId] })
+        await addAttached(h.table, rowId)
+      }
+    }
+  }
   const addLine = async (lineTable: string, line: Row) => {
     const id = String(line[ROW_KEY])
     if (isRemoved(lineTable, id)) return
@@ -148,6 +174,7 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
     lines.push({ table: lineTable, row_id: id, parent: String(line.parent), parenttype: String(line.parenttype) })
     queue.push({ table: lineTable, ids: [id] })
     checkSize()
+    await addAttached(lineTable, id)
   }
   const addDoc = async (meta: TableMeta, row: Row) => {
     const id = String(row[meta.row_key])
@@ -156,6 +183,7 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
     mark(meta.name, id)
     rows.push({ table: meta.name, row_id: id, title: titleOf(meta, row) })
     checkSize()
+    await addAttached(meta.name, id)
     // Its own lines go with it, and something may point at a line too.
     for (const f of meta.columns) {
       if (f.column_type !== 'Sub-table') continue
@@ -254,6 +282,18 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
       }
     }
   }
+  // A Data Scope limits a person to this row. Removing it would leave them
+  // with no limit on the Table at all, which widens what they see, so it
+  // holds the delete until someone reassigns it.
+  for (const [t, set] of removed) {
+    const scopes = await db`select row_id, person, service_account from data_scope where allow_table = ${t} and for_value = any(${[...set]})`
+    if (scopes.length)
+      groups.push({
+        table: 'Data Scope', column: 'for_value', lines: false, count: scopes.length,
+        rows: scopes.slice(0, 50).map((r) => ({ table: 'Data Scope', row_id: String(r.row_id), title: String(r.row_id) })),
+        action: 'blocked', why: `It limits what someone may see of ${t}; deleting it would widen their access, so change these Data Scopes first`,
+      })
+  }
   const activity = { comments: 0, versions: 0, files: 0, shares: 0 }
   for (const [t, set] of removed) {
     const list = [...set]
@@ -264,12 +304,12 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
              (select count(*)::int from share where share_table = ${t} and share_name = any(${list})) as shares`
     for (const k of Object.keys(activity) as (keyof typeof activity)[]) activity[k] += Number(c[k])
   }
-  return { links, rows, lines, groups, blocked: groups.some((g) => g.action === 'blocked'), activity }
+  return { links, rows, lines, attached, groups, blocked: groups.some((g) => g.action === 'blocked'), activity }
 }
 
 export async function purgePreview(table: string, args: Record<string, unknown>, user: string): Promise<PurgePlan> {
   await assertSystemManager(user)
-  const { lines: _lines, ...plan } = await planPurge(sql, table, await purgeTargets(sql, table, args), linkMode(args.links), user)
+  const { lines: _lines, attached: _attached, ...plan } = await planPurge(sql, table, await purgeTargets(sql, table, args), linkMode(args.links), user)
   return plan
 }
 
@@ -277,13 +317,7 @@ const MAX_REASON = 1000
 
 /** Removes every platform record naming a row: its comments, history, files,
  *  shares, tags and the rest (ROW_ID_HOLDERS), all but the Access Log. */
-async function forgetRow(db: Db, table: string, rowId: string, files: string[], depth = 0) {
-  // A comment or a file can itself carry comments and files; they go too.
-  if (depth < 8)
-    for (const [kind, relation] of [['Comment', 'comment'], ['File', 'file']] as const) {
-      const nested = await db`select row_id from ${db(`${PLATFORM_SCHEMA}.${relation}`)} where ref_table = ${table} and ref_name = ${rowId}`
-      for (const n of nested) await forgetRow(db, kind, String(n.row_id), files, depth + 1)
-    }
+async function forgetRow(db: Db, table: string, rowId: string, files: string[]) {
   const attached = await db`select file_url from ${db(`${PLATFORM_SCHEMA}.file`)} where ref_table = ${table} and ref_name = ${rowId}`
   for (const f of attached) if (typeof f.file_url === 'string' && f.file_url) files.push(f.file_url)
   for (const { relation, tableColumn, nameColumn } of ROW_ID_HOLDERS) {
@@ -301,6 +335,7 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
   if (args.confirm !== true) throw new AppError('ValidationError', 'Confirm the permanent delete', { confirm: 'Required' })
   const links = linkMode(args.links)
   const files: string[] = []
+  const events: { table: string; row_id: string; event: 'deleted' | 'updated' }[] = []
   const result = await afterCommitOf(() => sql.begin(async (tx) => {
     const db = tx as unknown as Db
     const ids = await purgeTargets(db, table, args)
@@ -311,7 +346,7 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
     const run = randomUUID()
     const root = `${table} ${ids.length === 1 ? ids[0] : `${ids.length} rows`}`
     const removedIds = new Map<string, string[]>()
-    for (const r of [...plan.rows, ...plan.lines]) removedIds.set(r.table, [...(removedIds.get(r.table) ?? []), r.row_id])
+    for (const r of [...plan.rows, ...plan.lines, ...plan.attached]) removedIds.set(r.table, [...(removedIds.get(r.table) ?? []), r.row_id])
     let cleared = 0
     let deleted = 0
 
@@ -327,6 +362,7 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
       if (!doc) return
       const values = await change(doc as Row, docMeta)
       await usingTransaction(db, () => saveDoc(docTable, { [ROW_KEY]: docId, updated_at: doc.updated_at, ...values }, user))
+      events.push({ table: docTable, row_id: docId, event: 'updated' })
     }
     // A document's lines in the shape a save takes: every own column, by id.
     const linesOf = async (docMeta: TableMeta, docId: string, field: string) => {
@@ -397,6 +433,9 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
       }
     }
 
+    // What is attached to attached rows first (a reply on a comment).
+    for (const a of [...plan.attached].reverse()) await forgetRow(db, a.table, a.row_id, files)
+
     // Dependents before the rows they point at; the asked-for rows last.
     for (const r of [...plan.rows].reverse()) {
       const meta = await getMeta(r.table)
@@ -412,9 +451,13 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
         ownLines[f.column_name] = (await db`delete from ${db(childRel)} where parent = ${r.row_id} and parenttype = ${r.table} returning *`) as Row[]
         for (const line of ownLines[f.column_name]) await forgetRow(db, f.row_table!, String(line[ROW_KEY]), files)
       }
+      // The record keeps what the row's own activity said; nothing is silently lost.
+      const said = await db`select created_by, created_at, content from ${db(`${PLATFORM_SCHEMA}.comment`)} where ref_table = ${r.table} and ref_name = ${r.row_id} order by created_at`
+      const stored = await db`select created_by, created_at, file_name, file_url from ${db(`${PLATFORM_SCHEMA}.file`)} where ref_table = ${r.table} and ref_name = ${r.row_id} order by created_at`
       await forgetRow(db, r.table, r.row_id, files)
       await db`delete from ${db(rel)} where ${db(meta.row_key)} = ${r.row_id}`
-      await record(db, user, r.table, r.row_id, reason, { ...(row as Row), ...ownLines }, run, root)
+      await record(db, user, r.table, r.row_id, reason, { ...(row as Row), ...ownLines, _comments: [...said], _files: [...stored] }, run, root)
+      events.push({ table: r.table, row_id: r.row_id, event: 'deleted' })
       deleted++
     }
 
@@ -433,6 +476,8 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
     }
     return { deleted, cleared }
   }))
+  // Other sessions with these rows open or listed refresh, as for any delete.
+  for (const e of events) publishDocEvent(e.table, e.row_id, e.event)
   // Stored bytes go only after the commit, and only when no File row still
   // names them (as a Table's delete does, DEL-R7).
   await afterDocumentCommit(async () => {

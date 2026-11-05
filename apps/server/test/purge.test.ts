@@ -338,3 +338,42 @@ describe('#859 links to a row of any Table (#881)', () => {
     expect((await admin.fetch(decision.rowUrl(onStore.row_id))).status).toBe(404)
   })
 })
+
+describe('#859 delete permanently, Codex review round 9', () => {
+  test('a Data Scope naming the row holds the delete, so no one\'s access widens', async ({ admin, createUser }) => {
+    const { bu } = await setup(admin)
+    const scoped = await createUser({ roles: [] })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: scoped.user, allow_table: BU, for_value: 'BU-T' } })
+    const plan = await preview(admin, bu, ['BU-T'])
+    expect(plan.blocked).toBe(true)
+    expect(plan.groups).toContainEqual(expect.objectContaining({ table: 'Data Scope', count: 1, action: 'blocked' }))
+    await expectApiError(purge(admin, bu, { ids: ['BU-T'] }), { status: 417, message: expect.stringContaining('widen their access') })
+    expect(await sql`select 1 from data_scope where allow_table = ${BU} and for_value = 'BU-T'`).toHaveLength(1)
+    expect(await exists('pg_business_unit', 'BU-T')).toBe(true)
+  })
+
+  test('a link to a comment on the row is found and cleared, and the record keeps what the comment said', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    const [c] = await sql`select row_id from comment where ref_table = ${BU} and ref_name = 'BU-T'`
+    const decision = await makeTable(admin, { name: 'Pg Ruling', columns: [
+      { column_name: 'about_table', column_type: 'Reference', reference_table: 'Table' },
+      { column_name: 'about_row', column_type: 'Reference', table_column: 'about_table' },
+    ] })
+    const d = await admin.post<{ row_id: string }>(decision.url, { about_table: 'Comment', about_row: c.row_id })
+    await purge(admin, bu, { ids: ['BU-T'], links: 'clear' })
+    expect(await admin.get<Record<string, unknown>>(decision.rowUrl(d.row_id))).toMatchObject({ about_row: null })
+    const [rec] = await sql`select snapshot from access_log where operation = 'purge' and ref_table = ${BU} and reference_name = 'BU-T'`
+    expect(rec.snapshot._comments).toEqual([expect.objectContaining({ content: 'made by mistake' })])
+  })
+
+  test('other sessions hear about the deleted rows and the documents that changed', async ({ admin }) => {
+    const { onEvent } = await import('../src/realtime')
+    const { bu } = await setup(admin)
+    const seen: string[] = []
+    const stop = onEvent((e) => seen.push(`${e.channel} ${e.event}`))
+    try { await purge(admin, bu, { ids: ['BU-T'], links: 'clear' }) } finally { stop() }
+    expect(seen).toContain(`row:${BU}:BU-T deleted`)
+    expect(seen).toContain(`list:${BU} deleted`)
+    expect(seen).toContain(`row:${STORE}:S-A updated`)
+  })
+})
