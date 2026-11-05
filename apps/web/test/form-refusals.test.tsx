@@ -175,13 +175,13 @@ test('primary lifecycle actions reach the amended draft from a cancelled row', a
   })
   const path = `/api/table/${enc('Frf Lifecycle')}/${enc(saved.row_id)}`
   await renderApp(rowHref('Frf Lifecycle', saved.row_id), admin)
-  await user.click(await screen.findByRole('tab', { name: 'Related' }))
+  await user.click(await screen.findByRole('tab', { name: 'Map' }))
   await user.click(await screen.findByRole('button', { name: 'Submit' }))
   await user.click(await screen.findByRole('button', { name: 'Cancel' }))
   await waitFor(async () => expect(await admin.get(path)).toMatchObject({ status: 'cancelled', item: 'tea for north depot' }))
   await user.click(await screen.findByRole('button', { name: 'Amend' }))
   await screen.findByRole('button', { name: 'Submit' })
-  await user.click(screen.getByRole('tab', { name: 'Work' }))
+  await user.click(screen.getByRole('tab', { name: 'Form' }))
   await waitFor(() => expect(field('item')).toHaveValue('tea for north depot'))
   expect(await admin.get(`${path}-1`)).toMatchObject({
     status: 'draft', amended_from: saved.row_id, item: 'tea for north depot',

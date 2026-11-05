@@ -5,7 +5,7 @@ import { useBacklinks, type Backlink } from './connections'
 // points. One pure builder derives every legal chain step for a table —
 // its Sub-table columns (children) plus its Reference backlinks, direct
 // and via-sub-table — and three consumers use it: Explore's StepPicker,
-// ListView's Explore split button, and RelationMap's "Open in Explore".
+// ListView's Explore split button, and the Map tab's "Open in Explore".
 // `parseChain` / `parseSelect` validate the Explore route's URL params the
 // #87 parseFilters way: a URL is user input, so malformed values are
 // discarded, never thrown.

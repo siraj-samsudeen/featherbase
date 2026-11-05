@@ -71,7 +71,12 @@ class TableStoragePage {
   async denied() {
     await this.page.getByRole('heading', { name: 'Table: SAP Plant', exact: true }).waitFor();
     assert.equal(await this.page.getByTestId('table-storage').count(), 0);
-    assert.equal(await this.page.locator('[data-field="module"]').inputValue(), 'Custom');
+    // The definition reads Module: Custom — in its text box to whoever may edit it, or as its
+    // value, read only, to a reader (#795).
+    const input = this.page.locator('[data-field="module"]');
+    const value = this.page.locator('[data-form-field="module"] [data-value]');
+    await input.or(value).first().waitFor();
+    assert.equal(await input.count() ? await input.inputValue() : (await value.innerText()).trim(), 'Custom');
   }
 
   async cleanup() {

@@ -96,7 +96,7 @@ test('a public web form takes a yes/no', async ({ admin }) => {
   expect(row).toMatchObject({ full_name: 'Ada', newsletter: true })
 })
 
-test('a yes/no in the native related rows list reads ✓ or ✗', async ({ admin }) => {
+test('a yes/no in a related group\'s rows reads ✓ or ✗', async ({ admin }) => {
   await admin.post('/api/table_def', { name: 'Rfg Store', columns: [{ column_name: 'label', column_type: 'Data', in_list_view: true }] })
   await admin.post('/api/table_def', {
     name: 'Rfg Audit',
@@ -109,11 +109,10 @@ test('a yes/no in the native related rows list reads ✓ or ✗', async ({ admin
   await admin.post('/api/save_row', { table: 'Rfg Audit', row: { store: store.row_id, passed: true } })
   await admin.post('/api/save_row', { table: 'Rfg Audit', row: { store: store.row_id, passed: false } })
   await renderApp(`/featherbase/admin/table/rfg-store/row/${store.row_id}`, admin)
-  await userEvent.click(await screen.findByRole('tab', { name: 'Related' }))
-  const relationships = await screen.findByRole('navigation', { name: 'Relationships' })
-  await userEvent.click(within(relationships).getByRole('button', { name: /^Rfg Audit · store\s*2$/ }))
-  const related = await screen.findByRole('region', { name: 'Related rows' })
-  const embedded = await within(related).findByTestId('list-view')
+  // #910: the row's groups lead its page; a group's rows open in the drill pane.
+  const chips = await screen.findByRole('region', { name: 'Connections' })
+  await userEvent.click(await within(chips).findByRole('button', { name: /^Rfg Audit\s*2$/ }))
+  const embedded = await within(await screen.findByRole('complementary', { name: 'ATK' })).findByRole('table')
   await waitFor(() => expect(embedded.querySelectorAll('tbody tr')).toHaveLength(2))
   expect([...embedded.querySelectorAll('tbody tr')].map((r) => r.textContent).join(' ')).toMatch(/✓[\s\S]*✗|✗[\s\S]*✓/)
 })

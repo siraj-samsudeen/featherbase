@@ -6,10 +6,10 @@ import { listFields } from '../lib/list-view-columns'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { stepKey, useStepOptions, type Step } from '../lib/explore-steps'
 import { adminPageTitle } from 'shared'
-import { usePeek } from '../components/Peek'
+import { useNavigation } from '../lib/navigation'
 import { cardClasses, inputClasses, pillClasses, touchTargetClasses } from '@featherbase/shop-floor'
 import { fmtCount, fmtShowing } from '@featherbase/shop-floor'
-import { RowTitle } from '../lib/row-titles'
+import { LinkedTitle } from '../lib/row-name'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -150,7 +150,7 @@ export function ExploreView({
       </p>
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+          <span className="text-xs font-semibold text-ink-subtle">
             Find a table
           </span>
           <input
@@ -166,7 +166,7 @@ export function ExploreView({
           />
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+          <span className="text-xs font-semibold text-ink-subtle">
             Start from
           </span>
           <select
@@ -292,7 +292,7 @@ function StepPicker({
   const { options } = useStepOptions(table)
   return (
     <label className="flex flex-col gap-0.5">
-      <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+      <span className="text-xs font-semibold text-ink-subtle">
         {label}
       </span>
       <select
@@ -366,7 +366,9 @@ function Pane({
 }) {
   const meta = useMeta(table)
   const settings = useSettings()
-  const peek = usePeek()
+  // #910: opening a row shows it in the drill pane beside Explore.
+  const nav = useNavigation()
+  const openPane = nav ? (row: string) => nav.push({ ...nav.step, pane: { table, row } }) : undefined
   const columns = useMemo(() => (meta.data ? listColumns(meta.data) : []), [meta.data])
   // Headline: hash-named tables (sub-tables, mostly) lead with their first
   // real column instead of an opaque row id.
@@ -433,13 +435,9 @@ function Pane({
             selected={selected.has(String(r.row_id))}
             onToggle={() => {
               if (onToggle) onToggle(String(r.row_id))
-              else if (peek.available) peek.push({ kind: 'record', table, name: String(r.row_id) })
+              else openPane?.(String(r.row_id))
             }}
-            onPeek={
-              peek.available
-                ? () => peek.push({ kind: 'record', table, name: String(r.row_id) })
-                : undefined
-            }
+            onOpenPane={openPane ? () => openPane(String(r.row_id)) : undefined}
           />
         ))}
         {!rows.length && (
@@ -467,7 +465,7 @@ type CardColumn = { column_name: string; label: string; column_type: string; ref
 function cellText(c: CardColumn, row: Row, settings: Settings) {
   const value = row[c.column_name]
   if (c.column_type === 'Reference' && c.reference_table && value != null && value !== '')
-    return <RowTitle table={c.reference_table} rowId={String(value)} />
+    return <LinkedTitle table={c.reference_table} rowId={String(value)} />
   return formatValue(c.column_type, value, settings)
 }
 
@@ -477,14 +475,14 @@ function PaneRow({
   settings,
   selected,
   onToggle,
-  onPeek,
+  onOpenPane,
 }: {
   row: Row
   columns: CardColumn[]
   settings: Settings
   selected: boolean
   onToggle: () => void
-  onPeek?: () => void
+  onOpenPane?: () => void
 }) {
   const [first, ...rest] = columns
   return (
@@ -509,13 +507,13 @@ function PaneRow({
         <span className="truncate text-sm font-medium text-ink">
           {cellText(first, row, settings) || String(row.row_id)}
         </span>
-        {onPeek && (
+        {onOpenPane && (
           <button
             onClick={(e) => {
               e.stopPropagation()
-              onPeek()
+              onOpenPane()
             }}
-            title="Peek"
+            title="Show in the pane"
             className="invisible text-ink-subtle hover:text-action group-hover:visible"
           >
             ◎
