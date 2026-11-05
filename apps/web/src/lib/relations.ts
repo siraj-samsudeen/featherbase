@@ -31,9 +31,12 @@ export function forwardLinks(meta: TableMeta, row: Row): ForwardLink[] {
   const links: ForwardLink[] = []
   if (meta.kind === 'sub_table' && typeof row.parenttype === 'string' && !isBlank(row.parent))
     links.push({ column: 'parent', label: 'Parent', table: row.parenttype, row_id: String(row.parent) })
-  for (const c of dataColumns(meta))
-    if (c.column_type === 'Reference' && c.reference_table && !isBlank(row[c.column_name]))
-      links.push({ column: c.column_name, label: c.label ?? c.column_name, table: c.reference_table, row_id: String(row[c.column_name]) })
+  for (const c of dataColumns(meta)) {
+    if (c.column_type !== 'Reference' || isBlank(row[c.column_name])) continue
+    // #881: a link to a row of any Table points into the Table its row names.
+    const table = c.reference_table ?? (c.table_column && !isBlank(row[c.table_column]) ? String(row[c.table_column]) : null)
+    if (table) links.push({ column: c.column_name, label: c.label ?? c.column_name, table, row_id: String(row[c.column_name]) })
+  }
   return links
 }
 
