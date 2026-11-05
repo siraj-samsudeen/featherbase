@@ -214,6 +214,9 @@ describe('Master sync (#927)', { timeout: 60_000 }, () => {
     expect(result).toMatchObject({ applied: 2, raised: 0, ticket_errors: [] })
     expect(await admin.get<Row>('/api/table/Sync%20Member/P1')).toMatchObject({ full_name: 'Asha R', mobile: '999' })
     expect(await admin.get<Row>('/api/table/Sync%20Member/P2')).toMatchObject({ standing: 'Inactive' })
+    // Renaming the copied table itself raises nothing again either.
+    await renameTable('Sync Staff Copy', 'Sync Crew Copy')
+    expect(await admin.post<Row>('/api/table/Sync%20Crew%20Copy:master_sync_run', {})).toMatchObject({ raised: 0, ticket_errors: [] })
   })
 
   test('a row gone from the source marks the master row inactive and deletes nothing; without an inactive column it asks', async ({ admin }) => {
