@@ -7,6 +7,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { expectApiError, makeTable } from './fixtures'
 import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
 
 const T = 'Arc Old Plant'
 const url = `/api/table/${encodeURIComponent(T)}`
@@ -104,6 +105,10 @@ describe('#905: archiving a Table', () => {
     await expectApiError(archive(admin, 42), { status: 417 })
     await expectApiError(archive(admin, undefined, 'Person'), { status: 417, message: expect.stringContaining('platform table') })
     await expectApiError(archive(admin, undefined, 'System Settings'), { status: 417 })
+    await makeTable(admin, { name: 'Arc Roster', columns: ['person'] })
+    await sql`update table_def set decides_scope = true where name = 'Arc Roster'`
+    invalidateMeta('Arc Roster')
+    await expectApiError(archive(admin, undefined, 'Arc Roster'), { status: 417, message: expect.stringContaining('who can see or do what') })
     await expectApiError(unarchive(admin), { status: 417, message: expect.stringContaining('is not archived') })
     await archive(admin)
     await expectApiError(archive(admin), { status: 417, message: expect.stringContaining('already archived') })

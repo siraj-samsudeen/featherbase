@@ -5,7 +5,7 @@
 A System Manager SHALL be able to archive a custom table, with an optional note of what replaced it, and to
 un-archive it. While archived, its rows and history SHALL stay readable to whoever could read them, and adding,
 changing, deleting, importing or merging its rows SHALL be refused for everyone, administrators included. Platform
-tables, settings, sub-tables and an installed app's tables SHALL NOT be archived.
+tables, settings, sub-tables, an installed app's tables and tables that decide access SHALL NOT be archived.
 
 #### Scenario: Archive a replaced table
 
@@ -29,7 +29,8 @@ tables, settings, sub-tables and an installed app's tables SHALL NOT be archived
 
 #### Scenario: Only a custom table
 
-- **WHEN** someone tries to archive a platform table, a settings table, a sub-table or an installed app's table, or
+- **WHEN** someone tries to archive a platform table, a settings table, a sub-table, an installed app's table or a
+  table that decides who can see what, or
   someone who is not a System Manager tries to archive any table
 - **THEN** it is refused
 
