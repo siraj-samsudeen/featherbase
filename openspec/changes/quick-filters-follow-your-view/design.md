@@ -37,8 +37,9 @@ other column type.
 
 Someone changing a link by hand can put any value in a filter, and the page's dropdown can't stop that, because the link
 skips the page. So one shared check converts or refuses a Yes/No filter value, used by both `compileFilter` and
-`mapFilters`. It understands true, false, yes and no, in any capitals. Any other value finds no rows, as an unknown
-choice does on a Choice filter.
+`mapFilters`. It understands true, false, yes and no, in any capitals, and 1 and 0, as a number or text (added on
+05-Nov-2026: a Check default is "1", and the tickets app routes with `primary = 1`). Any other value finds no rows, as
+an unknown choice does on a Choice filter.
 
 Tested on an in-memory DuckDB, MotherDuck's engine: true, false and the text forms already match the right rows, and
 `"maybe"` gives a raw conversion error. So on MotherDuck the check turns that error into no rows, and keeps one rule on
