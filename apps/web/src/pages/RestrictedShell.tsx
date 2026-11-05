@@ -3,6 +3,7 @@ import { getSessionUser } from '../lib/api'
 import { TopBar } from '../components/TopBar'
 import { Card, EmptyState, Skeleton } from '@featherbase/shop-floor'
 import { useCapabilities } from '../lib/session'
+import { useAccessRequest } from '../lib/access-request'
 
 // #410: the shell shows only what the person can use. The server already
 // refuses everything else; this is the chrome. `useShellKind` reads the
@@ -41,15 +42,24 @@ export function ManageOnly({ children }: { children: React.ReactNode }) {
 
 export function NoAccessPage() {
   const name = personName()
+  // #955: opening Featherbase with no access is the request for it.
+  const asked = useAccessRequest('featherbase')
   return (
     <div className="flex min-h-screen flex-col bg-canvas">
       <TopBar forPerson />
       <main className="flex flex-1 items-center justify-center p-4">
         <Card className="w-full max-w-sm" data-testid="no-access">
-          <EmptyState
-            title="You don't have access to anything here yet"
-            body={`Ask your administrator to give ${name ? `you (${name})` : 'you'} access, then sign in again.`}
-          />
+          {asked?.state === 'waiting' ? (
+            <EmptyState
+              title={`You don't have access to ${asked.title} yet`}
+              body="An admin has been told. Once they give you access, sign in again."
+            />
+          ) : (
+            <EmptyState
+              title="You don't have access to anything here yet"
+              body={`Ask your administrator to give ${name ? `you (${name})` : 'you'} access, then sign in again.`}
+            />
+          )}
         </Card>
       </main>
     </div>
