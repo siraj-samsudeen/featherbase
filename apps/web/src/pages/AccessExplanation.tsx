@@ -14,7 +14,7 @@ interface TableReach { table: string; own_rows: boolean; roles: string[] }
 interface Explanation {
   person: string
   every_table: boolean
-  roles: { role: string; app: string | null; through: string | null; given_by: string | null; given_at: string | null }[]
+  roles: { role: string; app: string | null; through: string | null; everyone?: boolean; given_by: string | null; given_at: string | null }[]
   read: TableReach[]
   change: TableReach[]
   limits: { table: string; value: string; title: string | null; set_by: string; set_at: string }[]
@@ -96,7 +96,9 @@ export function AccessExplanation({ person }: { person: string }) {
                   <span className="font-medium text-ink">{r.role}</span>
                   {r.app
                     ? <span className="text-ink-muted"> — from app {r.app}, through {r.through}</span>
-                    : r.given_by && r.given_at && <By who={r.given_by} when={r.given_at} verb="given" />}
+                    : r.everyone
+                      ? <span className="text-ink-muted"> — everyone who signs in holds it (System Settings)</span>
+                      : r.given_by && r.given_at && <By who={r.given_by} when={r.given_at} verb="given" />}
                 </li>
               ))}
             </ul>

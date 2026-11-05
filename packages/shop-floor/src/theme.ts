@@ -29,6 +29,10 @@ const target = () => painted ?? document.documentElement
 // their root's `data-theme` and get neither.
 export const THEME_CHANGE_EVENT = 'featherbase:theme-change'
 export const APP_THEME_ATTRIBUTE = 'data-featherbase-theme'
+// #941 (ADR 0019): the app's accent, written by the server on an app's <html>
+// and copied by the bar and the sidebar onto the element they paint the theme
+// on. styles.css keys the accent's token blocks on it.
+export const APP_ACCENT_ATTRIBUTE = 'data-featherbase-accent'
 type Painted = 'light' | 'dark'
 let announced: Painted | null = null
 

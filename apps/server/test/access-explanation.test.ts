@@ -70,7 +70,7 @@ test('a service account\'s roles, and an app role held through one of them', asy
   const page = await admin.get<Explanation>(pageOf(account.row_id))
   expect(page.roles).toEqual([
     expect.objectContaining({ role: 'Setup Staff', app: null, through: null, given_by: 'Administrator' }),
-    { role: 'Setup Reader', app: 'setupproof', through: 'Setup Staff', given_by: null, given_at: null },
+    { role: 'Setup Reader', app: 'setupproof', through: 'Setup Staff', everyone: false, given_by: null, given_at: null },
   ])
 })
 

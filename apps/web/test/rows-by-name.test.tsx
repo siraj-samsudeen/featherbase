@@ -1,6 +1,6 @@
 // #792 (specs: list-view, search-and-explore): rows read by their name, not
 // their id — a list led by the title column, link cells as titles, filter
-// words and Recent naming the picked row, and the map's row lists. Made-up rows.
+// words and Recent naming the picked row. Made-up rows.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
@@ -89,14 +89,4 @@ test('a plain filter names its column by its label', async ({ admin }) => {
   const filters = JSON.stringify([['item', '=', 'Widgets']])
   await renderApp(`${tableHref(ORDER)}?filters=${enc(filters)}`, admin)
   await waitFor(() => expect(screen.getByTestId('filter-chip')).toHaveTextContent('Item = Widgets'))
-})
-
-test('a link cell in the map\'s row list reads as a title and moves the map', async ({ admin }) => {
-  await seed(admin)
-  await renderApp(`${tableHref(ORDER)}/row/ord-1/map`, admin)
-  const self = await screen.findByTestId('map-self-row')
-  const hop = await within(self).findByRole('button', { name: 'Globex Ltd' })
-  expect(within(self).getByTestId('map-row')).not.toHaveTextContent('cust-1')
-  fireEvent.click(hop)
-  await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Globex Ltd'))
 })

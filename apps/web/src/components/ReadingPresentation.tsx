@@ -1,5 +1,5 @@
 import type { ReadingPresentation as Presentation } from 'shared'
-import type { TableMeta } from '../lib/meta'
+import { ROW_STAMPS, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { useI18n } from '../lib/i18n'
 import { cardClasses } from '@featherbase/shop-floor'
@@ -14,9 +14,7 @@ export function ReadingPresentation({ presentation, meta, values }: {
   const { t } = useI18n()
   function column(name: string) {
     return meta.columns.find(f => f.column_name === name && !f.hidden)
-      ?? (name === 'created_at' || name === 'updated_at'
-        ? { label: name === 'created_at' ? 'Created' : 'Updated', column_type: 'Datetime' }
-        : undefined)
+      ?? (name === 'created_at' || name === 'updated_at' ? ROW_STAMPS[name] : undefined)
   }
   function text(name: string) {
     const field = column(name)

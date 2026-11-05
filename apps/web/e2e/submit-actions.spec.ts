@@ -47,7 +47,9 @@ test('UI-010: draft shows Submit; submitted shows Cancel + locks fields; cancell
     await expect(page.getByTestId('status-badge')).toContainText('Submitted')
     await expect(page.getByTestId('form-cancel')).toBeVisible()
     await expect(page.getByTestId('form-submit')).toHaveCount(0)
-    await expect(page.locator('[data-field=title]')).toBeDisabled()
+    // Locked: the title reads as a value (#795), with no box left to type in.
+    await expect(page.locator('[data-form-field][data-label="Title"] [data-value]')).toHaveText('action doc')
+    await expect(page.locator('[data-field=title]')).toHaveCount(0)
 
     // Cancel -> Cancelled, Amend present
     await page.getByTestId('form-cancel').click()

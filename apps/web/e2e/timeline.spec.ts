@@ -42,7 +42,7 @@ test('UI-019: timeline interleaves an edit (with diff) and a comment in order', 
   await session.step('open Activity, then return to Work', async ({ page }) => {
     await page.getByRole('tab', { name: 'Activity', exact: true }).click()
     await expect(page.getByTestId('activity-timeline')).toBeVisible()
-    await page.getByRole('tab', { name: 'Work', exact: true }).click()
+    await page.getByRole('tab', { name: 'Form', exact: true }).click()
   })
   await session.step('an edit (with diff) and a comment both land in chronological order', async ({ page }) => {
     // Edit the title → produces a version with a diff.

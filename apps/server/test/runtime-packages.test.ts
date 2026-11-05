@@ -935,3 +935,38 @@ describe('An app declares its phone tabs', () => {
     }
   })
 })
+
+// #941 (design D1): an app names its accent, one of the platform's set, and
+// the served document carries it so Shop Floor's accent tokens apply.
+describe('An app names its accent', () => {
+  async function otherWith(fields: Record<string, unknown>) {
+    const directory = await mkdtemp(resolve('test/.app-accent-'))
+    await cp(resolve('../..', 'test-apps/other'), directory, { recursive: true })
+    const file = resolve(directory, 'featherbase.json')
+    await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), ...fields }))
+    return directory
+  }
+
+  // The app is still found, so the System Manager who installs it is told why
+  // it is refused rather than that it is unknown.
+  test('installing an app that names an accent the platform does not provide is refused, naming the ones it does', async ({ admin }) => {
+    const directory = await otherWith({ accent: 'purple' })
+    try {
+      expect(await discoverPackages([directory])).toEqual([])
+      await expect(admin.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({
+        status: 417, type: 'ValidationError', message: "417 ValidationError: App other names the accent 'purple'; Featherbase provides: blue, green",
+      })
+      expect((await admin.get<{ name: string }[]>('/api/app_catalog')).map((entry) => entry.name)).not.toContain('other')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test("the app's page carries its accent", async ({ admin }) => {
+    const directory = await otherWith({ accent: 'green' })
+    try {
+      expect(await discoverPackages([directory])).toEqual([])
+      await admin.post('/api/install_app', { name: 'other' })
+      const html = await (await admin.fetch('/other/', { headers: { accept: 'text/html' } })).text()
+      expect(html).toContain('<html lang="en" data-featherbase-accent="green">')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+})
