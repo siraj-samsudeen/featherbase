@@ -3,6 +3,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { DEFAULT_ID_PATTERN, LIST_COLUMNS_ON_CREATE, coerceRows, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
 import { ApiError, api } from '../lib/api'
+import { describeFieldErrors } from '../lib/table-refusal'
 import { NamingControl } from '../components/NamingControl'
 import { ColumnCards } from '../components/ColumnCards'
 import { PasteColumns, type PastedColumn } from '../components/PasteColumns'
@@ -46,44 +47,6 @@ function keptColumns(columns: BuilderColumn[]): KeptColumn[] {
   return columns
     .map((c, sourceIndex) => ({ ...c, sourceIndex }))
     .filter((c) => c.column_name.trim())
-}
-
-const COLUMN_PATH = /^columns\.(\d+)(?:\..+)?$/
-
-// Paths that are not a column are already plain field names; give them the
-// user's word for the control rather than the payload key.
-const TOP_LEVEL_LABEL: Record<string, string> = {
-  name: 'Table name',
-  module: 'Module',
-  id_pattern: 'Row ID',
-  columns: 'Columns',
-  system: 'Table',
-}
-
-// The user's mental model must never straddle two numbering schemes
-// (2026-08-11 owner directive): a server path like `columns.0.column_name`
-// is translated to the grid row it came from and named by the label the
-// user typed. Returns the per-row errors to mark inline, plus sentences
-// for the banner.
-function describeFieldErrors(
-  fields: Record<string, string>,
-  kept: KeptColumn[],
-): { rows: Record<number, string>; parts: string[] } {
-  const rows: Record<number, string> = {}
-  const parts: string[] = []
-  for (const [path, message] of Object.entries(fields)) {
-    const match = COLUMN_PATH.exec(path)
-    const col = match ? kept[Number(match[1])] : undefined
-    if (!col) {
-      const label = TOP_LEVEL_LABEL[path] ?? (path.includes('.') ? null : path)
-      parts.push(label ? `${label}: ${message}` : message)
-      continue
-    }
-    const who = col.label.trim() || col.column_name.trim()
-    rows[col.sourceIndex] = rows[col.sourceIndex] ? `${rows[col.sourceIndex]}; ${message}` : message
-    parts.push(`Column “${who}”: ${message}`)
-  }
-  return { rows, parts }
 }
 
 interface ImportedFile {
