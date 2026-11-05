@@ -33,6 +33,8 @@ beforeAll(async () => {
     seen timestamp, payload json, label varchar, at_time time)`)
   await conn.run(`create table nullable_groups (id integer primary key, qty integer)`)
   await conn.run(`insert into nullable_groups values (1, null), (2, null), (3, null), (4, 7), (5, 7), (6, 12)`)
+  await conn.run(`create table tied_rows (id integer primary key, label varchar)`)
+  await conn.run(`insert into tied_rows values (3, 'same'), (1, 'same'), (2, 'same')`)
   // #625: a sequence an app's dataset query must not advance.
   await conn.run(`create sequence probe`)
   conn.closeSync()
@@ -273,6 +275,7 @@ describe('Browsing a warehouse before connecting a table', () => {
       'warehouse.main.daily_sales',
       'warehouse.main.kitchen',
       'warehouse.main.nullable_groups',
+      'warehouse.main.tied_rows',
     ])
     const everything = await introspect(admin, '')
     expect(everything.tables.map((t) => t.table)).toEqual(expect.arrayContaining(['daily_sales', 'kitchen', 'nullable_groups']))
@@ -306,6 +309,18 @@ describe('Filtering rows read from a warehouse', () => {
     schema: 'warehouse.main', table: 'nullable_groups', pk: 'id', modified: null,
     columns: [{ column_name: 'qty', source_column: 'qty', column_type: 'Int' }],
   }
+
+  test('rows tied on the sort value page in key order', async () => {
+    const tied: Binding = { ...nullableBinding, table: 'tied_rows' }
+    const ids: unknown[] = []
+    for (const offset of [0, 1, 2]) {
+      const { rows } = await duckdbDriver.getList(tied, {
+        filters: [], columns: ['label'], order: { column: 'label', dir: 'asc' }, limit: 1, offset,
+      })
+      ids.push(...rows.map((r) => r.id))
+    }
+    expect(ids).toEqual([1, 2, 3])
+  })
 
   test('refuses internal relationship filters without returning warehouse rows', async () => {
     const filters: SourceFilter[] = [{ column: 'qty', op: 'related', value: { binding: nullableBinding, filters: [] } }]
