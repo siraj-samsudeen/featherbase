@@ -29,7 +29,14 @@ const controller: TableController = {
         throw new AppError('ValidationError', 'Incomplete table restriction', {
           table_allowlist: guidance,
         })
-      if (engine === 'csv-folder') {
+      // #772: a MotherDuck source connected by a pasted token names no
+      // variable; its token is stored encrypted (ADR 0018).
+      if (engine === 'motherduck') {
+        if (row.access === 'read_write')
+          throw new AppError('ValidationError', 'MotherDuck sources are read-only', {
+            access: 'A warehouse connected by a token can only be read',
+          })
+      } else if (engine === 'csv-folder') {
         if (!String(row.root_path ?? '').trim())
           throw new AppError('ValidationError', 'csv-folder sources need a folder', {
             root_path: 'root_path is required for csv-folder sources',

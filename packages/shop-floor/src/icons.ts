@@ -7,6 +7,7 @@ export {
   Bell,
   BookOpen,
   Check,
+  Cable,
   CalendarClock,
   CalendarDays,
   ChartColumn,

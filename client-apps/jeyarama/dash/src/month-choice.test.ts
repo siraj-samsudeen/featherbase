@@ -72,9 +72,9 @@ describe('opening a month', () => {
 })
 
 describe("the page for last month", () => {
-  it('shows the cached table when the pinned Dive shows only the latest month', () => {
-    expect(pageView({ embed: { ok: true, value: { month_unsupported: true } }, report: { ok: true, value: { state: 'ready' } } }))
-      .toEqual({ kind: 'quick', why: 'month_unsupported' })
+  it('opens the interactive report for last month as for this month', () => {
+    expect(pageView({ embed: { ok: true, value: { frame: 'https://embed-motherduck.com/sandbox/#session=s' } }, report: { ok: true, value: { state: 'ready' } } }))
+      .toEqual({ kind: 'dive', src: 'https://embed-motherduck.com/sandbox/#session=s' })
   })
 
   it("says last month's figures aren't ready, never that this month's haven't arrived", () => {

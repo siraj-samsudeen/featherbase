@@ -8,8 +8,21 @@ class FormPage {
 
   /** Opens a row of a table, by the table's address and the row's id. */
   async open(tableSlug, rowId) {
-    await this.page.goto(`/featherbase/admin/table/${tableSlug}/row/${encodeURIComponent(rowId)}`);
+    await this.page.goto(`/featherbase/admin/table/${encodeURIComponent(tableSlug.toLowerCase().replace(/[-_\s]+/g, ' ').trim().replace(/ /g, '-'))}/row/${encodeURIComponent(rowId)}`);
     await this.page.getByTestId('form-view').waitFor();
+  }
+
+  async value(label) {
+    return this.page.getByTestId('form-view').getByLabel(label, { exact: true }).inputValue();
+  }
+
+  async correct(label, value) {
+    await this.page.getByTestId('form-view').getByLabel(label, { exact: true }).fill(value);
+    const response = this.page.waitForResponse((res) => res.url().endsWith('/api/save_row') && res.request().method() === 'POST');
+    await this.page.getByTestId('form-save').click();
+    const res = await response;
+    if (!res.ok()) throw new Error(`native save refused: ${res.status()} ${await res.text()}`);
+    await this.page.getByTestId('form-status').getByText('Saved', { exact: true }).waitFor();
   }
 
   /** Whether the open form shows a field with this label. */

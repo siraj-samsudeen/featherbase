@@ -3,10 +3,11 @@ import { join, resolve } from 'node:path'
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { test as base } from './pg-test'
+import { committedTest } from './pg-test-shared'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
 import { admitTasker, taskerClient } from './tasker-client'
 import { discoverPackages, findScopeProvider, shippedUpgrades } from '../src/runtime-packages'
-import { loadInstalledApps } from '../src/apps'
+import { loadInstalledApps, uninstallApp } from '../src/apps'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
@@ -312,7 +313,9 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     }
   })
 
-  test('PKG-R3: disable waits for the post-commit tail, including a nested save', async ({ admin }) => {
+  // This race requires independent requests/connections, not the shared
+  // sandbox dispatcher: disable must reach its lock while save is paused.
+  committedTest('PKG-R3: disable waits for the post-commit tail, including a nested save', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'test-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
     let entered!: () => void
@@ -345,6 +348,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       release()
       await Promise.allSettled([save, disable])
       unregisterController(controller)
+      await uninstallApp('other')
     }
   })
 

@@ -17,6 +17,8 @@ export interface TableReach {
   table: string
   /** Reached only for rows the owner created (creator-scoped grants). */
   own_rows: boolean
+  /** #628: the owner's roles whose grants reach it, by name. */
+  roles: string[]
 }
 
 export interface Reach {
@@ -34,7 +36,7 @@ export interface Reach {
 
 const BUILT_IN = new Set(['All', 'Guest'])
 
-type Grant = { all: boolean; own: boolean }
+type Grant = { all: boolean; own: boolean; roles: Set<string> }
 
 export async function principalReach(owner: string): Promise<Reach> {
   const roles = await getRoles(owner)
@@ -55,20 +57,22 @@ export async function principalReach(owner: string): Promise<Reach> {
   let own_reach = false
   const read = new Map<string, Grant>()
   const change = new Map<string, Grant>()
-  const add = (into: Map<string, Grant>, table: string, ownOnly: boolean) => {
-    const grant = into.get(table) ?? { all: false, own: false }
+  const add = (into: Map<string, Grant>, table: string, ownOnly: boolean, role: string) => {
+    const grant = into.get(table) ?? { all: false, own: false, roles: new Set<string>() }
     if (ownOnly) grant.own = true
     else grant.all = true
+    grant.roles.add(role)
     into.set(table, grant)
   }
   for (const row of rows) {
     if (row.policy != null && !accessPolicySchema.parse(row.policy).roles.some((role) => roles.includes(role))) continue
     const table = String(row.name)
     if (!BUILT_IN.has(String(row.role))) own_reach = true
-    if (row.can_read) add(read, table, Boolean(row.own_rows_only))
-    if (row.can_change) add(change, table, Boolean(row.own_rows_only))
+    const role = String(row.role)
+    if (row.can_read) add(read, table, Boolean(row.own_rows_only), role)
+    if (row.can_change) add(change, table, Boolean(row.own_rows_only), role)
   }
   const list = (grants: Map<string, Grant>): TableReach[] =>
-    [...grants].map(([table, g]) => ({ table, own_rows: !g.all }))
+    [...grants].map(([table, g]) => ({ table, own_rows: !g.all, roles: [...g.roles].sort() }))
   return { every_table: false, own_roles, own_reach, read: list(read), change: list(change) }
 }

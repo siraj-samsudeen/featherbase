@@ -28,7 +28,7 @@ interface RowActionContext {
   user: SessionUser
 }
 
-interface CollectionActionContext {
+export interface CollectionActionContext {
   table: string
   args: Record<string, unknown>
   user: SessionUser

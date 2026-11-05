@@ -9,14 +9,13 @@ import { _setEmbedFetch, seedSalesTarget } from 'server/src/sales-target'
 import { _setSourceReader } from 'server/src/datasets/sales-target-mtd'
 import { applySeedPack } from 'server/src/seed-packs'
 import { quoteRelation, tableRelation } from 'server/src/table-engine'
-import { test, expect, renderApp } from './pg-test'
+import { test, committedTest, expect, renderApp } from './pg-test'
 
 const saved = { ...process.env }
 beforeEach(() => {
   process.env.SALES_TARGET_TODAY = '2026-09-17'
   process.env.MOTHERDUCK_TOKEN = 'page-test-token'
   process.env.DIVE_ID = 'dive-under-test'
-  process.env.DIVE_VERSION = '10'
   process.env.SERVICE_ACCOUNT = 'svc'
   process.env.SALES_TARGET_SHARED_ENV = '/nonexistent/sales-target.env'
   _setSourceReader(async () => [])
@@ -25,7 +24,7 @@ beforeEach(() => {
 afterEach(() => {
   _setEmbedFetch(null)
   _setSourceReader(null)
-  for (const k of ['SALES_TARGET_TODAY', 'MOTHERDUCK_TOKEN', 'DIVE_ID', 'DIVE_VERSION', 'SERVICE_ACCOUNT', 'SALES_TARGET_SHARED_ENV'])
+  for (const k of ['SALES_TARGET_TODAY', 'MOTHERDUCK_TOKEN', 'DIVE_ID', 'SERVICE_ACCOUNT', 'SALES_TARGET_SHARED_ENV'])
     if (saved[k] === undefined) delete process.env[k]
     else process.env[k] = saved[k]
 })
@@ -742,7 +741,7 @@ test('Try again on the cached numbers reads them again without reopening the liv
   expect(embedCalls.n).toBe(1)
 })
 
-test('with both cards failing, one press retries both and both show they are working', async ({ admin, api }) => {
+committedTest('with both cards failing, one press retries both and both show they are working', async ({ admin, api }) => {
   let reads = 0
   let embeds = 0
   // Held until released; a release before the read starts sticks, so no request is left open.
@@ -791,7 +790,7 @@ test('a retry where only the live report recovers leaves the numbers card ready 
 })
 
 // #564: a Try again on the cached numbers alone must not cancel a live report still opening.
-test('retrying the cached numbers while the live report is still opening lets the live report finish', async ({ admin, api }) => {
+committedTest('retrying the cached numbers while the live report is still opening lets the live report finish', async ({ admin, api }) => {
   let reads = 0
   let embeds = 0
   let released = false
@@ -818,7 +817,7 @@ test('retrying the cached numbers while the live report is still opening lets th
   expect(embeds).toBe(1)
 })
 
-test('retrying the live report while the cached numbers are still loading lets the numbers finish', async ({ admin, api }) => {
+committedTest('retrying the live report while the cached numbers are still loading lets the numbers finish', async ({ admin, api }) => {
   let embeds = 0
   let released = false
   let wake: () => void = () => {}

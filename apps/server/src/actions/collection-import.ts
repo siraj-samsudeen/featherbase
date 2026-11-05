@@ -7,7 +7,7 @@ import { AppError } from '../errors'
 import { checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
 import { assertDocPermission, assertPermission, permissionScope, permittedColumns, includesColumn } from '../permissions'
-import { registerCollectionAction } from '../actions'
+import { registerCollectionAction, type CollectionActionContext } from '../actions'
 import { sql } from '../db'
 import { tableRelation, quoteRelation } from '../table-engine'
 
@@ -243,7 +243,19 @@ registerCollectionAction('import', {
     "({ updated, inserted, failed, run_id }); empty_cells 'keep'|'clear' picks what " +
     'an empty mapped cell does to a matched row. ' +
     'With dry_run: true, reports per-row actions and writes nothing.',
-  handler: async ({ table, args, user }) => {
+  handler: async (context) => {
+    const result = await importRows(context)
+    if (!context.args.dry_run && 'changed' in result) {
+      const { changed, unchanged, ...response } = result
+      return response
+    }
+    return result
+  },
+})
+
+// Only trusted server callers supply managedColumns. The registered HTTP
+// handler above deliberately forwards context alone, never caller args here.
+export async function importRows({ table, args, user }: CollectionActionContext, managedColumns: readonly string[] = []) {
     const rows = args.rows
     if (!Array.isArray(rows) || rows.length === 0)
       throw new AppError('ValidationError', 'Expected { rows: [...] } with at least one row')
@@ -412,6 +424,7 @@ registerCollectionAction('import', {
     const runId = typeof context.run_id === 'string' && context.run_id ? context.run_id.slice(0, 140) : randomUUID()
     let inserted = 0
     let updated = 0
+    let changed = 0
     const failed: FailedRow[] = []
     // RVT-R1 (spec 0005): record every row this part writes — id, action,
     // and the updated_at stamp the write left — so the run is revertable.
@@ -432,11 +445,12 @@ registerCollectionAction('import', {
           // Validate the incoming payload before protected fields are removed,
           // exactly as the check step does. A conflict cannot legitimize bad data.
           checkRowForUpdate(meta, record, resolution, upsert!)
-          const { saved, version } = await saveImportedRow(meta, updateValues(record, upsert!, resolution), user.row_id, runId, true)
+          const { saved, version, changed: rowChanged } = await saveImportedRow(meta, updateValues(record, upsert!, resolution), user.row_id, runId, true, managedColumns)
           updated++
+          if (rowChanged) changed++
           touched.push({ row_id: String(saved.row_id), action: 'updated', stamp: stampOf(saved.updated_at), ...(version ? { version } : {}) })
         } else {
-          const { saved } = await saveImportedRow(meta, row as Record<string, unknown>, user.row_id, runId, false)
+          const { saved } = await saveImportedRow(meta, row as Record<string, unknown>, user.row_id, runId, false, managedColumns)
           inserted++
           touched.push({
             row_id: String(saved[ROW_KEY]),
@@ -456,9 +470,8 @@ registerCollectionAction('import', {
     await writeImportLog(table, user.row_id, { inserted, updated, upsert }, failed, { ...context, run_id: runId }, touched)
     // #687: every writing run names its run ID, so the caller can undo it.
     if (!upsert) return { inserted, failed, run_id: runId }
-    return { updated, inserted, failed, run_id: runId }
-  },
-})
+    return { updated, changed, unchanged: updated - changed, inserted, failed, run_id: runId }
+}
 
 // RVT-R1: the record of one written row. `version` names the version row an
 // update produced (its before-values are the revert's restore source); an
@@ -506,7 +519,7 @@ function checkRowForUpdate(
 // UPS-R5: a keyed run also records its key_column and empty_cells choice —
 // that stored pair is what the wizard later offers back as the visible
 // "as last time" suggestion. A run with no key stores nothing (nulls).
-async function writeImportLog(
+export async function writeImportLog(
   table: string,
   user: string,
   counts: { inserted: number; updated: number; upsert: UpsertArgs | null },

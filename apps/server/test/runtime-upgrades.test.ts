@@ -2,6 +2,7 @@ import { expect, describe } from 'vitest'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { test } from './pg-test'
+import { committedTest } from './pg-test-shared'
 import { discoverPackages } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql, withTransaction } from '../src/db'
@@ -299,7 +300,7 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
-  test('upgrade waits for admitted post-commit save; queued disable preserves disabled activation', async ({ admin }) => {
+  committedTest('upgrade waits for admitted post-commit save; queued disable preserves disabled activation', async ({ admin }) => {
     const source = resolve('../..', 'test-apps/other')
     const { directory } = await targetPackage()
     let release!: () => void

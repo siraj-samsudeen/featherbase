@@ -14,12 +14,11 @@ import { test, expect, renderApp } from './pg-test'
 type Client = { fetch: (path: string, init?: RequestInit) => Promise<Response> }
 
 const saved = { ...process.env }
-const ENV_KEYS = ['SALES_TARGET_TODAY', 'MOTHERDUCK_TOKEN', 'DIVE_ID', 'DIVE_VERSION', 'SERVICE_ACCOUNT', 'SALES_TARGET_SHARED_ENV']
+const ENV_KEYS = ['SALES_TARGET_TODAY', 'MOTHERDUCK_TOKEN', 'DIVE_ID', 'SERVICE_ACCOUNT', 'SALES_TARGET_SHARED_ENV']
 beforeEach(() => {
   process.env.SALES_TARGET_TODAY = '2026-09-17'
   process.env.MOTHERDUCK_TOKEN = 'scope-test-token'
   process.env.DIVE_ID = 'dive-under-test'
-  process.env.DIVE_VERSION = '10'
   process.env.SERVICE_ACCOUNT = 'svc'
   process.env.SALES_TARGET_SHARED_ENV = '/nonexistent/sales-target.env'
   _setSourceReader(async () => [])

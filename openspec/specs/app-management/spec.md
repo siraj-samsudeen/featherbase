@@ -102,9 +102,9 @@ Secret requirements SHALL be shown by name and presence, never by value.
 
 ```gherkin
 Given the user is a System Manager with Feather Dash installed
-And its report identifier is file-managed while its report version is editable
+And its report identifier is file-managed while its report account is editable
 When the user configures Feather Dash
-Then the user can change the report version
+Then the user can change the report account
 And the report identifier is locked with an explanation
 And the app's packaged declaration is not editable
 ```
@@ -119,3 +119,29 @@ Then the user sees the secret's name and that it is missing
 And the user is directed to supply it through the host environment
 And no secret value is returned to the browser
 ```
+
+### Requirement: See what this instance is running
+
+A System Manager SHALL see, on the Apps page, the commit the instance was built from, linked to it and to the changes up to it, with that commit's title and when the server started. A build that cannot tell its commit SHALL say so rather than guess. Each app SHALL show what changed in its latest versions, newest first, with each issue reference linked to that issue.
+
+#### Scenario: Check which build an instance runs
+
+- **WHEN** a System Manager opens the Apps page on an instance deployed from commit a1b2c3d
+- **THEN** they see commit a1b2c3d linked to that commit, its title with its pull request linked, and when the server started
+- **AND** a link to the changes up to that commit
+
+#### Scenario: A build that does not know its commit
+
+- **WHEN** the server was built without being told its commit and has no git checkout
+- **THEN** the Apps page says the commit is unknown, with no link
+
+#### Scenario: See what changed in an app
+
+- **WHEN** a System Manager chooses Tasker on the Apps page
+- **THEN** they see what changed in Tasker 3.0.2, 3.0.1 and 3.0.0, newest first
+- **AND** each issue a change names links to that issue
+
+#### Scenario: Others cannot see it
+
+- **WHEN** a person who is not a System Manager asks for the Apps page's information
+- **THEN** it is refused

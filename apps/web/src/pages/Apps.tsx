@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { tableHref } from 'shared'
 import { api } from '../lib/api'
-import { Button, Card, EmptyState, Notice, Skeleton, StatusPill, buttonClasses, cx } from '@featherbase/shop-floor'
+import { Button, Card, EmptyState, Notice, Skeleton, StatusPill, buttonClasses, cx, fmtInstant } from '@featherbase/shop-floor'
 
 interface CatalogApp {
   name: string
@@ -25,6 +25,55 @@ interface CatalogApp {
     frameOrigins?: string[]
   }
   secrets: { name: string; optional: boolean; present: boolean }[]
+  releaseNotes: { version: string; changes: string[] }[]
+}
+
+// #938: what this instance runs, from the server's build (null = unknown).
+interface BuildInfo {
+  commit: string | null
+  message: string | null
+  repositoryUrl: string | null
+  commitUrl: string | null
+  historyUrl: string | null
+  startedAt: string
+}
+
+const linkClasses = 'font-medium text-action hover:underline'
+
+/** Text with each issue reference (a hash and its number) linked to that issue, when the repository is known. */
+function WithIssueLinks({ text, repositoryUrl }: { text: string; repositoryUrl: string | null }) {
+  if (!repositoryUrl) return <>{text}</>
+  return <>{text.split(/(#\d+)/).map((part, i) => /^#\d+$/.test(part)
+    ? <a key={i} href={`${repositoryUrl}/issues/${part.slice(1)}`} target="_blank" rel="noreferrer" className={linkClasses}>{part}</a>
+    : part)}</>
+}
+
+/** A merge commit says what it merged on its next line: show that, and the PR. */
+function commitTitle(message: string): string {
+  const lines = message.split('\n').map(line => line.trim()).filter(Boolean)
+  const merged = /^Merge pull request (#\d+)/.exec(lines[0] ?? '')
+  return merged && lines[1] ? `${lines[1]} (${merged[1]})` : lines[0] ?? ''
+}
+
+function ThisBuild({ build }: { build: BuildInfo }) {
+  return (
+    <Card className="p-4">
+      <section aria-labelledby="this-build" className="space-y-1 text-sm">
+        <h2 id="this-build" className="font-semibold text-ink">This build</h2>
+        <p className="text-ink-muted">Commit{' '}
+          {build.commit
+            ? build.commitUrl
+              ? <a href={build.commitUrl} target="_blank" rel="noreferrer" className={cx(linkClasses, 'font-mono')}>{build.commit.slice(0, 7)}</a>
+              : <span className="font-mono text-ink">{build.commit.slice(0, 7)}</span>
+            : <span className="text-ink">unknown: this server was not told which commit it was built from</span>}
+          {build.message && <> · <span className="text-ink"><WithIssueLinks text={commitTitle(build.message)} repositoryUrl={build.repositoryUrl} /></span></>}
+        </p>
+        <p className="text-ink-muted">Running since {fmtInstant(build.startedAt)}
+          {build.historyUrl && <> · <a href={build.historyUrl} target="_blank" rel="noreferrer" className={linkClasses}>Changes up to this build</a></>}
+        </p>
+      </section>
+    </Card>
+  )
 }
 
 const GRANTS = [
@@ -46,7 +95,7 @@ function configurationPath(table: string, app: string) {
   return `${tableHref(table)}?filters=${encodeURIComponent(JSON.stringify([['app', '=', app]]))}`
 }
 
-function AppDetails({ app }: { app: CatalogApp }) {
+function AppDetails({ app, repositoryUrl }: { app: CatalogApp; repositoryUrl: string | null }) {
   const client = useQueryClient()
   const { tables, permissions, roles, settings, roleDefaults, datasets, actions, reads, jobs, scopeProvider, frameOrigins } = app.declarations
   const install = useMutation({
@@ -92,6 +141,18 @@ function AppDetails({ app }: { app: CatalogApp }) {
           </div>
         )}
       </header>
+
+      {app.releaseNotes.length > 0 && <section aria-labelledby="app-release-notes">
+        <h3 id="app-release-notes" className="font-semibold text-ink">What's new</h3>
+        <div className="mt-2 space-y-3 text-sm">
+          {app.releaseNotes.slice(0, 3).map(note => <div key={note.version}>
+            <h4 className="font-medium text-ink">{note.version}</h4>
+            <ul className="mt-1 list-disc space-y-1 pl-5 text-ink-muted">
+              {note.changes.map((change, i) => <li key={i}><WithIssueLinks text={change} repositoryUrl={repositoryUrl} /></li>)}
+            </ul>
+          </div>)}
+        </div>
+      </section>}
 
       <section aria-labelledby="app-additions">
         <h3 id="app-additions" className="font-semibold text-ink">What it adds</h3>
@@ -167,7 +228,7 @@ export function Apps() {
   const [selectedName, setSelectedName] = useState<string | null>(null)
   const apps = useQuery({
     queryKey: ['apps'],
-    queryFn: () => api.get<{ catalog: CatalogApp[] }>('/api/apps'),
+    queryFn: () => api.get<{ catalog: CatalogApp[]; build: BuildInfo }>('/api/apps'),
     refetchInterval: query => query.state.data?.catalog.some(app => app.preparation.state === 'preparing') ? 2000 : false,
   })
   const catalog = apps.data?.catalog ?? []
@@ -175,6 +236,7 @@ export function Apps() {
   return (
     <div className="space-y-4" data-testid="apps-page">
       <header><h1 className="text-lg font-semibold text-ink">Apps</h1><p className="mt-1 text-sm text-ink-muted">Inspect what an app adds and needs, then choose what to install on this instance.</p></header>
+      {apps.data?.build && <ThisBuild build={apps.data.build} />}
       {apps.isPending && <Skeleton label="Loading available apps" />}
       {apps.isError && <Notice tone="negative"><p>Available apps could not be loaded. {apps.error.message}</p><Button variant="secondary" className="mt-2" onClick={() => void apps.refetch()}>Try again</Button></Notice>}
       {apps.isSuccess && catalog.length === 0 && <Card><EmptyState title="No apps available" body="Ask the operator to supply a trusted app package on this server. Discovering a package does not install it." /></Card>}
@@ -191,7 +253,7 @@ export function Apps() {
             <span className="mt-1 block text-xs text-ink-muted">{app.installed ? 'Installed' : app.preparation.state === 'preparing' ? 'Preparing and installing…' : app.preparation.state === 'failed' ? 'Not installed · Preparation failed' : app.preparation.state === 'needed' ? 'Not installed · Needs preparation' : 'Not installed · Ready to install'}</span>
           </button>)}</nav>
         </Card>
-        <AppDetails key={selected.name} app={selected} />
+        <AppDetails key={selected.name} app={selected} repositoryUrl={apps.data?.build.repositoryUrl ?? null} />
       </div>}
     </div>
   )

@@ -584,6 +584,7 @@ const bindFor = (table: string, pk: string, modified: string | null = null): Bin
     pool_max: 2,
     statement_timeout_ms: 10000,
     allowlist: null,
+    databases: [],
   },
   schema: 'ext_mysql',
   table,
