@@ -51,7 +51,7 @@ async function all(documents: ValidatorDocuments, table: string, filters: Filter
   }
 }
 
-const EMPLOYEE = 'feather_dash.employee'
+const EMPLOYEE = 'dash.employee'
 const EMPLOYMENT_FIELDS = ['row_id', 'employee', 'legal_company', 'employee_number', 'joined_on', 'left_on']
 
 /** A whole number, or blank; refused otherwise. */
@@ -89,15 +89,15 @@ function alias(context: ValidatorContext, ...scope: string[]): void {
 }
 
 export const validators: Record<string, Validator> = {
-  'feather_dash.store_rollout'(context) {
+  'dash.store_rollout'(context) {
     store(context)
   },
 
-  'feather_dash.store_floor'(context) {
+  'dash.store_floor'(context) {
     context.row.floor_key = `${store(context)}/${fold(context.row.floor_name)}`
   },
 
-  'feather_dash.department'(context) {
+  'dash.department'(context) {
     const { row, old, reject } = context
     const code = store(context)
     const key = text(row.department_key)
@@ -109,7 +109,7 @@ export const validators: Record<string, Validator> = {
     row.display_name = name || key
   },
 
-  'feather_dash.section'(context) {
+  'dash.section'(context) {
     const { row, reject } = context
     const code = store(context)
     if (!(Number(row.team_leaders_allowed) >= 1))
@@ -120,20 +120,20 @@ export const validators: Record<string, Validator> = {
     row.section_key = `${code}/${fold(row.section_name)}`
   },
 
-  'feather_dash.section_subcategory'(context) {
+  'dash.section_subcategory'(context) {
     const code = store(context)
     const group = subcategory(context)
     period(context)
     context.row.placement_key = `${code}/${group}/${day(context.row.starts_on)}`
   },
 
-  'feather_dash.display_location'(context) {
+  'dash.display_location'(context) {
     store(context)
     subcategory(context)
     period(context)
   },
 
-  'feather_dash.job_assignment'(context) {
+  'dash.job_assignment'(context) {
     const { row, reject } = context
     store(context)
     period(context)
@@ -156,7 +156,7 @@ export const validators: Record<string, Validator> = {
       reject('A percentage is more than 0 and at most 100', { percentage: 'more than 0, at most 100' })
   },
 
-  'feather_dash.employment'(context) {
+  'dash.employment'(context) {
     const { row, reject, documents } = context
     const start = day(row.joined_on)
     const end = day(row.left_on)
@@ -168,31 +168,31 @@ export const validators: Record<string, Validator> = {
       const employee = exact(row.employee)
       // Locks the employee row: two stints of one person are saved one after the other.
       await documents.get(EMPLOYEE, employee)
-      const stints = await all(documents, 'feather_dash.employment', [['employee', '=', employee]], EMPLOYMENT_FIELDS)
-      const holders = await all(documents, 'feather_dash.employment',
+      const stints = await all(documents, 'dash.employment', [['employee', '=', employee]], EMPLOYMENT_FIELDS)
+      const holders = await all(documents, 'dash.employment',
         [['legal_company', '=', exact(row.legal_company)], ['employee_number', '=', exact(row.employee_number)]], EMPLOYMENT_FIELDS)
       const problem = employmentProblem(row, [...stints, ...holders])
       if (problem) reject(problem.message, { [problem.field]: problem.message })
     })()
   },
 
-  'feather_dash.designation'(context) {
+  'dash.designation'(context) {
     context.row.title_key = fold(context.row.title)
   },
 
-  'feather_dash.designation_alias'(context) {
+  'dash.designation_alias'(context) {
     alias(context)
   },
 
-  'feather_dash.section_alias'(context) {
+  'dash.section_alias'(context) {
     alias(context, store(context))
   },
 
-  'feather_dash.floor_alias'(context) {
+  'dash.floor_alias'(context) {
     alias(context, store(context))
   },
 
-  'feather_dash.job_alias'(context) {
+  'dash.job_alias'(context) {
     alias(context)
   },
 }

@@ -18,7 +18,7 @@ import { grantRole } from './fixtures'
 type Caps = { manage: boolean; admin: boolean; own_grant: boolean; tables: string[] }
 
 const DASH_STAND_IN = resolve('../..', 'test-apps/fixtures/dash-stand-in')
-const APP_TABLE = 'feather_dash.note'
+const APP_TABLE = 'dash.note'
 const ROLE = 'Dash Reader'
 
 const capsOf = async (client: TestClient) => (await client.get<{ capabilities: Caps }>('/api/whoami')).capabilities
@@ -27,7 +27,7 @@ const capsOf = async (client: TestClient) => (await client.get<{ capabilities: C
  *  entry Table: the grant every Feather Dash role holds. */
 async function installAppWithReaderRole(admin: TestClient) {
   expect(await discoverPackages([DASH_STAND_IN])).toEqual([])
-  await admin.post('/api/install_app', { name: 'feather_dash' })
+  await admin.post('/api/install_app', { name: 'dash' })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   await grantRole(admin, { table: APP_TABLE, role: ROLE, can_read: true })
 }
@@ -67,13 +67,13 @@ describe("a person whose only grant is on an installed app's Table", () => {
   test('signing in lands them in the app, not the Admin', async ({ admin, createUser }) => {
     const reader = await appReader(admin, createUser, 'app.only.landing@example.com')
     expect(await landingAfterSignIn({ token: 'unused', user: { row_id: reader.user } as never }, 'localhost')).toEqual({
-      landing: '/feather_dash/',
+      landing: '/dash/',
     })
   })
 
   test('the app still opens for them', async ({ admin, createUser }) => {
     const reader = await appReader(admin, createUser, 'app.only.opens@example.com')
-    expect((await reader.get<{ apps: { name: string }[] }>('/api/whoami')).apps.map((a) => a.name)).toEqual(['feather_dash'])
+    expect((await reader.get<{ apps: { name: string }[] }>('/api/whoami')).apps.map((a) => a.name)).toEqual(['dash'])
   })
 
   test("the app's Table still reads for them", async ({ admin, createUser }) => {
@@ -231,7 +231,7 @@ describe('an app without pages of its own', () => {
 // Codex round 1 on #675: the installed-app ledger may hold its Tables as a
 // JSON string of an array (installed-app-ledger.ts reads both shapes).
 describe('an app whose ledger holds its Tables as a JSON string', () => {
-  const doubleEncode = () => sql`update installed_app set tables = to_jsonb(tables::text) where name = 'feather_dash'`
+  const doubleEncode = () => sql`update installed_app set tables = to_jsonb(tables::text) where name = 'dash'`
 
   test("a grant on its Table still does not open the Admin", async ({ admin, createUser }) => {
     await installAppWithReaderRole(admin)
@@ -260,7 +260,7 @@ describe("a client app whose artifact is not loaded after a restart", () => {
       await discoverPackages([])
     },
     'rejected (another fingerprint)': async () => {
-      await sql`update installed_app set artifact_digest = 'another-artifact' where name = 'feather_dash'`
+      await sql`update installed_app set artifact_digest = 'another-artifact' where name = 'dash'`
       await discoverPackages([DASH_STAND_IN])
     },
   }
@@ -298,7 +298,7 @@ describe("a client app whose artifact is not loaded after a restart", () => {
 
   test.for([null, '{invalid', JSON.stringify({ client: { entry: 'index.html' } })])("an installation whose own-pages declaration is stored as %j never exposes ordinary Tables", async (manifest, { admin, createUser }) => {
     await installAppWithReaderRole(admin)
-    await sql`update installed_app set manifest = ${manifest === null ? null : sql.json(manifest)} where name = 'feather_dash'`
+    await sql`update installed_app set manifest = ${manifest === null ? null : sql.json(manifest)} where name = 'dash'`
     const reader = await createUser({ email: 'unreadable.manifest.659@example.com', roles: [ROLE] })
     expect((await capsOf(reader)).admin).toBe(false)
   })
@@ -316,7 +316,7 @@ describe("a client app whose artifact is not loaded after a restart", () => {
 
 test("a disabled app's Tables still do not count towards Admin", async ({ admin, createUser }) => {
   await installAppWithReaderRole(admin)
-  await admin.post('/api/set_app_enabled', { name: 'feather_dash', enabled: false })
+  await admin.post('/api/set_app_enabled', { name: 'dash', enabled: false })
   const reader = await createUser({ email: 'disabled.app.reader@example.com', roles: [ROLE] })
   expect((await capsOf(reader)).admin).toBe(false)
 })

@@ -319,7 +319,7 @@ echo "==> init OK — server :$API_PORT, web :$WEB_PORT"
 # served on one address, as before. To try two addresses, list *.localhost
 # names (they resolve to this machine) on the web port, for example
 #   INSTANCE_ADDRESSES='[{"address":"http://admin.localhost:5173","opens":"admin","emails":true},
-#                        {"address":"http://dash.localhost:5173","opens":"feather_dash"}]' ./init.sh
+#                        {"address":"http://dash.localhost:5173","opens":"dash"}]' ./init.sh
 # The server refuses to boot on an invalid list (docs/DEPLOY.md, "Instance addresses").
 if [ -n "${INSTANCE_ADDRESSES:-}" ]; then
   echo "    addresses: $(node -e 'for (const a of JSON.parse(process.argv[1])) process.stdout.write(`${a.address} opens ${a.opens}${a.emails ? " (emails)" : ""}  `)' "$INSTANCE_ADDRESSES")"

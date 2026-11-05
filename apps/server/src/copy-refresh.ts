@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { COPY_CADENCES } from 'shared'
 import { sql } from './db'
 import { actionTransaction } from './action-transaction'
+import { appOperation } from './app-lifecycle'
 import { AppError } from './errors'
 import { saveDoc } from './document'
 import { assertSystemManager } from './permissions'
@@ -68,7 +69,7 @@ function registerCopyRefresh(method: string): void {
     ctx.setResult(summary)
     if (result.conflicts) {
       try {
-        await actionTransaction(async () => {
+        await appOperation(() => actionTransaction(async () => {
           const recipients = await systemManagerEmails()
           if (!recipients.length) return recordUndeliveredNotice(`copy refresh conflicts: ${String(link.target_table)}`)
           for (const to of recipients) await queueEmail({
@@ -76,13 +77,14 @@ function registerCopyRefresh(method: string): void {
             subject: `Copy refresh conflicts: ${String(link.target_table)}`,
             body: `${String(link.target_table)} has ${result.conflicts} new conflict${result.conflicts === 1 ? '' : 's'} from its scheduled refresh. Personal corrections were kept. Open the table's Import conflicts to review them.`,
           })
-        })
+        }))
       } catch {
         // The copy is committed: a mail outage must not retry the import.
         ctx.setResult(`${summary} · Conflict notice could not be queued`)
       }
     }
-  })
+    // #971: reads with no lifecycle lock; copyAgain and the sync take it to apply.
+  }, undefined, { ownLifecycleLock: true })
 }
 
 export async function registerCopyRefreshJobs(): Promise<void> {

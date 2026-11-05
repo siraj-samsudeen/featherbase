@@ -131,9 +131,9 @@ test('a person with neither the viewer role nor a Table grant lands on a plain n
 test("a person whose only grant is on an installed app's Table gets the no-access page in the Admin", async ({ admin, createUser }) => {
   expect(await discoverPackages([DASH_STAND_IN])).toEqual([])
   try {
-    await admin.post('/api/install_app', { name: 'feather_dash' })
+    await admin.post('/api/install_app', { name: 'dash' })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Dash Reader' } })
-    await grantRole(admin, { table: 'feather_dash.note', role: 'Dash Reader', can_read: true })
+    await grantRole(admin, { table: 'dash.note', role: 'Dash Reader', can_read: true })
     const reader = await createUser({ email: 'dash.reader.shell@example.com', roles: ['Dash Reader'] })
     await renderApp('/featherbase/admin', reader)
     expect(await screen.findByTestId('no-access')).toBeInTheDocument()

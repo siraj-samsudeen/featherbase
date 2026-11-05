@@ -96,7 +96,7 @@ describe('#737 command destinations', () => {
     expect(inventory.pages.map((p) => p.label)).not.toContain('Secret inventory page')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/admin/glossary')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/account/sign-in-methods')
-    expect(inventory.pages).toContainEqual({ label: 'Feather Dash', href: '/featherbase/sales-target', kind: 'Report' })
+    expect(inventory.pages).toContainEqual({ label: 'Dash', href: '/featherbase/sales-target', kind: 'Report' })
   })
 
   test('people without Admin access cannot obtain the Admin inventory', async ({ createUser }) => {

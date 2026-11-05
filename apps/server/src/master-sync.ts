@@ -255,7 +255,7 @@ export async function syncAfterCopy(user: SessionUser, copied: string): Promise<
 /** Compare and apply in one transaction, then raise the new differences as tickets. */
 export async function runMasterSync(user: SessionUser, copied: string): Promise<MasterSyncResult> {
   await assertSystemManager(user.row_id)
-  const actor = await syncActor(user.row_id)
+  const actor = await appOperation(() => syncActor(user.row_id))
   // The app lifecycle lock comes before any row lock, as every save takes them,
   // so a sync can never wait on an upgrade that waits on the sync.
   const outcome = await appOperation(() => runAsSystemActor(actor, () => actionTransaction(() => compareAndApply(actor, copied))))

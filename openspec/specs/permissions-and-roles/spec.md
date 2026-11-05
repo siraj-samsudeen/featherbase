@@ -331,11 +331,11 @@ the app, which keeps working for them as before, and signing in takes them to it
 An app without pages of its own is used through the administration, so its
 tables still count, as do grants on the instance's own tables.
 
-#### Scenario: A store manager who only uses Feather Dash
+#### Scenario: A store manager who only uses Dash
 
-- **WHEN** a store manager whose only grant is to read Feather Dash's own tables
-  opens Feather Dash
-- **THEN** Feather Dash opens with their figures, and nothing offers them the
+- **WHEN** a store manager whose only grant is to read Dash's own tables
+  opens Dash
+- **THEN** Dash opens with their figures, and nothing offers them the
   administration
 - **AND** if they type an administration address, they are told they have no
   access there
@@ -344,7 +344,7 @@ tables still count, as do grants on the instance's own tables.
 
 - **WHEN** the same manager is also given a grant to read one of the instance's
   own tables
-- **THEN** they can open the administration, where Feather Dash's tables are
+- **THEN** they can open the administration, where Dash's tables are
   listed beside that one
 
 #### Scenario: A clerk of an app without pages of its own

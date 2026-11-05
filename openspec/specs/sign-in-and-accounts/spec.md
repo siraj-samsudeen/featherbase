@@ -909,7 +909,7 @@ SHALL load nothing from elsewhere, so an image in the notice shows as a link.
 
 ### Requirement: See who is waiting for access
 
-A person SHALL wait for an app only after opening it without access: an installed app's pages, Feather Dash or
+A person SHALL wait for an app only after opening it without access: an installed app's pages, Dash or
 Featherbase. Opening it SHALL record one request per person and app and say "You don't have access to <App>
 yet. An admin has been told." A System Manager SHALL see them as a standard list, newest first, with each
 person's full email address and an App column to filter by. A request SHALL leave the list once that person can open
@@ -917,9 +917,9 @@ that app; the menu count SHALL count the same rows.
 
 #### Scenario: Opening an app without access
 
-- **WHEN** Priya, who holds only Tasker Member, opens Feather Dash
-- **THEN** she sees "You don't have access to Feather Dash yet. An admin has been told."
-- **AND** a System Manager sees her on the waiting list with App "Feather Dash" and her email address, and the menu
+- **WHEN** Priya, who holds only Tasker Member, opens Dash
+- **THEN** she sees "You don't have access to Dash yet. An admin has been told."
+- **AND** a System Manager sees her on the waiting list with App "Dash" and her email address, and the menu
   count goes up by one
 
 #### Scenario: An app she can open is not a request
@@ -936,13 +936,13 @@ that app; the menu count SHALL count the same rows.
 
 #### Scenario: Opening it again
 
-- **WHEN** Priya opens Feather Dash again while still waiting
-- **THEN** she is listed once for Feather Dash
+- **WHEN** Priya opens Dash again while still waiting
+- **THEN** she is listed once for Dash
 
 #### Scenario: Giving a role takes them off the list
 
-- **WHEN** a System Manager gives Priya a role that opens Feather Dash
-- **THEN** her Feather Dash request no longer shows, and any request of hers for another app still does
+- **WHEN** a System Manager gives Priya a role that opens Dash
+- **THEN** her Dash request no longer shows, and any request of hers for another app still does
 
 #### Scenario: The waiting list works like any list
 
@@ -1178,12 +1178,12 @@ NOT be emailed about then, but SHALL still show on the waiting list and in the n
 
 #### Scenario: One email per person and app
 
-- **WHEN** Priya opens Feather Dash without access twice, then opens Featherbase without access
-- **THEN** each System Manager got exactly two emails about her: one for Feather Dash and one for Featherbase
+- **WHEN** Priya opens Dash without access twice, then opens Featherbase without access
+- **THEN** each System Manager got exactly two emails about her: one for Dash and one for Featherbase
 
 #### Scenario: A reminder after a day
 
-- **WHEN** Priya's Feather Dash request has waited more than a day and the reminder runs twice
+- **WHEN** Priya's Dash request has waited more than a day and the reminder runs twice
 - **THEN** each System Manager got one reminder listing it
 
 #### Scenario: A busy day stops the emails, not the list
@@ -1193,5 +1193,5 @@ NOT be emailed about then, but SHALL still show on the waiting list and in the n
 
 #### Scenario: Mail trouble does not stop the page
 
-- **WHEN** the email cannot be sent as Priya opens Feather Dash
+- **WHEN** the email cannot be sent as Priya opens Dash
 - **THEN** she still sees that an admin has been told, and her request is listed

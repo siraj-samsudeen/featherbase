@@ -148,7 +148,7 @@ jobs:
       - name: The image for a client instance deploys its apps and settings
         run: |
           docker buildx build --builder default --load -f apps/server/Dockerfile --build-arg FEATHERBASE_INSTANCE=jeyarama/dash -t featherbase-instance:ci .
-          docker run --rm featherbase-instance:ci sh -c 'test -e /app/client-apps/jeyarama/instances/dash/instance-settings.json && ls -d /app/instance-apps/feather_dash-* /app/instance-apps/tasker-* /app/instance-apps/tickets-*'
+          docker run --rm featherbase-instance:ci sh -c 'test -e /app/client-apps/jeyarama/instances/dash/instance-settings.json && ls -d /app/instance-apps/dash-* /app/instance-apps/tasker-* /app/instance-apps/tickets-*'
           psql_new() { docker run --rm --network host postgres:17 psql "postgres://postgres:postgres@127.0.0.1:5432/postgres" -c "create database instance_check"; }
           psql_new
           # Made-up values for a database created and destroyed with this job.
@@ -157,6 +157,6 @@ jobs:
             -e GOOGLE_CLIENT_SECRET=made-up -e DIVE_ID=made-up -e SERVICE_ACCOUNT=made-up \
             featherbase-instance:ci pnpm --filter server pre-deploy; }
           run | tee first.log
-          for app in feather_dash tasker tickets; do grep -q "installed $app" first.log || { echo "the first deploy did not install $app"; exit 1; }; done
+          for app in dash tasker tickets; do grep -q "installed $app" first.log || { echo "the first deploy did not install $app"; exit 1; }; done
           run | tee second.log
           grep -q 'settings:apply: nothing changed' second.log

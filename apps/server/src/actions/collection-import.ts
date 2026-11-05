@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { planImport, saveImportedRow } from '../import-corrections'
+import { observeUnchangedRows, planImport, saveImportedRow } from '../import-corrections'
 import { getDoc } from '../document'
 import { createHash } from 'node:crypto'
 import { quoteIdent } from '../sql-identifier'
@@ -253,9 +253,11 @@ registerCollectionAction('import', {
   },
 })
 
-// Only trusted server callers supply managedColumns. The registered HTTP
-// handler above deliberately forwards context alone, never caller args here.
-export async function importRows({ table, args, user }: CollectionActionContext, managedColumns: readonly string[] = []) {
+// Only trusted server callers supply managedColumns or skipUnchanged. The
+// registered HTTP handler above deliberately forwards context alone, never
+// caller args here. #971: skipUnchanged leaves a row that would change nothing
+// unsaved, so it runs no automations and its last-updated time stays.
+export async function importRows({ table, args, user }: CollectionActionContext, managedColumns: readonly string[] = [], opts: { skipUnchanged?: boolean } = {}) {
     const rows = args.rows
     if (!Array.isArray(rows) || rows.length === 0)
       throw new AppError('ValidationError', 'Expected { rows: [...] } with at least one row')
@@ -433,6 +435,12 @@ export async function importRows({ table, args, user }: CollectionActionContext,
     // RVT-R1 (spec 0005): record every row this part writes — id, action,
     // and the updated_at stamp the write left — so the run is revertable.
     const touched: TouchedRow[] = []
+    // Only a keyed run skips, so it has resolutions.
+    const unchanged = opts.skipUnchanged
+      ? await observeUnchangedRows(meta, rows.flatMap((row, index) => resolutions![index].action === 'update'
+        ? [{ row_id: resolutions![index].row_id!, values: updateValues(row as Record<string, unknown>, upsert!, resolutions![index]) }]
+        : []), user.row_id, runId)
+      : new Set<string>()
     for (const [index, row] of rows.entries()) {
       if (typeof row !== 'object' || row === null || Array.isArray(row)) {
         failed.push({ index, message: 'row must be an object' })
@@ -449,6 +457,11 @@ export async function importRows({ table, args, user }: CollectionActionContext,
           // Validate the incoming payload before protected fields are removed,
           // exactly as the check step does. A conflict cannot legitimize bad data.
           checkRowForUpdate(meta, record, resolution, upsert!)
+          if (unchanged.has(resolution.row_id!)) {
+            updated++
+            touched.push({ row_id: resolution.row_id!, action: 'updated', stamp: stampOf(resolution.updated_at) })
+            continue
+          }
           const { saved, version, changed: rowChanged } = await saveImportedRow(meta, updateValues(record, upsert!, resolution), user.row_id, runId, true, managedColumns)
           updated++
           if (rowChanged) changed++
@@ -470,6 +483,14 @@ export async function importRows({ table, args, user }: CollectionActionContext,
           ...(err instanceof AppError && err.fields ? { fields: err.fields } : {}),
         })
       }
+    }
+    // A hook on a row saved above may have written a row already judged
+    // unchanged: as its own save would have, that row fails on its old stamp.
+    if (unchanged.size && (inserted || updated > unchanged.size)) {
+      const after = new Map((await sql`select ${sql(meta.row_key)} as row_id, updated_at from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = any(${[...unchanged]})`).map(r => [String(r.row_id), stampOf(r.updated_at)]))
+      for (const [index, resolution] of resolutions!.entries())
+        if (resolution.action === 'update' && unchanged.has(resolution.row_id!) && after.get(resolution.row_id!) !== stampOf(resolution.updated_at))
+          failed.push({ index, message: 'The row changed while this import ran' })
     }
     await writeImportLog(table, user.row_id, { inserted, updated, upsert }, failed, { ...context, run_id: runId }, touched)
     // #687: every writing run names its run ID, so the caller can undo it.
