@@ -176,6 +176,43 @@ class ImportWizardPage {
     await (await this.columnRow(label)).locator('[data-rowfield=include]').uncheck();
   }
 
+  /** Picks a column's type from its dropdown. */
+  async setType(label, type) {
+    await (await this.columnRow(label)).locator('[data-rowfield=column_type]').selectOption(type);
+  }
+
+  /** Renames a column's machine name. */
+  async setColumnName(label, name) {
+    await (await this.columnRow(label)).locator('[data-rowfield=column_name]').fill(name);
+  }
+
+  /** What the Choices cell shows for a column. */
+  async optionsShown(label) {
+    return (await this.columnRow(label)).locator('[data-rowfield=choices]').innerText();
+  }
+
+  /** Clicks Import and waits for this target's refusal, then for the run to end. */
+  async importExpectingFailure() {
+    await this.page.getByTestId('iw-import').click();
+    const failure = this.page.getByTestId('iw-failure-0');
+    await failure.waitFor({ timeout: 30_000 });
+    await this.page.getByTestId('iw-import').and(this.page.locator(':enabled')).waitFor({ timeout: 30_000 });
+    return failure.innerText();
+  }
+
+  /** The failure on screen once it no longer reads as `previous`. */
+  async failureAfter(previous) {
+    const failure = this.page.getByTestId('iw-failure-0');
+    await failure.and(this.page.locator(`:not(:text-is(${JSON.stringify(previous)}))`)).waitFor({ timeout: 30_000 });
+    return failure.innerText();
+  }
+
+  /** The first target's result line, once the run has ended. */
+  async resultText() {
+    await this.page.getByTestId('iw-done').waitFor({ timeout: 30_000 });
+    return this.page.getByTestId('iw-result-0').innerText();
+  }
+
   /** Clicks "Tick all" above the In list column. */
   async tickAllInList() {
     const tickAll = this.card.getByText('Tick all', { exact: true });
