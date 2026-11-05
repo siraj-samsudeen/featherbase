@@ -58,13 +58,15 @@ describe('the org_chart scope provider', () => {
       label: '9901 / Section: Sarees',
       filters: { store: ['9901'], subcategory: ['010101001', '010303001'] },
       basis: 'team_leader',
+      reasons: [{ text: 'Team Leader job assignment', since: '2026-07-01' }],
       confirmation: { store: { '9901': 'confirmed' }, subcategory: { '010101001': 'confirmed', '010303001': 'confirmed' } },
     }])
   })
 
   it("gives a live store's Store Manager the store itself, with no narrower filter", async () => {
     const [store] = await provide(instance([job('psn_101', 'Store Manager')]), 'psn_101')
-    expect(store).toEqual({ label: '9901', filters: { store: ['9901'] }, basis: 'store_manager', confirmation: { store: { '9901': 'confirmed' } } })
+    expect(store).toEqual({ label: '9901', filters: { store: ['9901'] }, basis: 'store_manager',
+      reasons: [{ text: 'Store Manager job assignment', since: '2026-07-01' }], confirmation: { store: { '9901': 'confirmed' } } })
   })
 
   it("gives a live store's Store Manager each section of the store as a place too, so a report can group by section", async () => {
@@ -96,6 +98,17 @@ describe('the org_chart scope provider', () => {
     expect((await provide(instance(rows))).map(p => [p.label, p.basis])).toEqual([['9901 / Section: Silk Sarees', 'acting_section_staff, team_leader']])
   })
 
+  // featherbase#628: the platform's "What can this person see" page shows why
+  // each place is given, from the job assignments that give it.
+  it('gives each place the job assignments behind it as reasons, with their days', async () => {
+    const rows = [{ ...job('psn_103', 'Team Leader', { section: 's-silk' }), ends_on: '2026-12-31' },
+      { ...job('psn_103', 'Staff', { section: 's-silk' }), acting: true, starts_on: '2026-08-06' }]
+    expect((await provide(instance(rows))).map(p => p.reasons)).toEqual([[
+      { text: 'Acting Staff job assignment', since: '2026-08-06' },
+      { text: 'Team Leader job assignment', since: '2026-07-01', until: '2026-12-31' },
+    ]])
+  })
+
   it('lists places by label, whatever order the rows come in', async () => {
     const rows = [job('psn_107', 'Department Manager', { department: 'd-ethnic' }), job('psn_107', 'Department Manager', { department: 'd-bridal' })]
     expect((await provide(instance(rows), 'psn_107')).map(p => p.label)).toEqual(['9901 / Section: Lehenga', '9901 / Section: Sarees', '9901 / Section: Silk Sarees'])
@@ -110,6 +123,7 @@ describe('the org_chart scope provider', () => {
   it('uses the old rules for a store not yet live, marked assumed, one place per section of the merchandise map', async () => {
     expect(await provide(instance([]), 'psn_120', ['EMP-0120'])).toEqual([{
       label: '9902 / Section: Accessories', filters: { store: ['9902'], subcategory: ['010404001', '010404002'] }, basis: 'store_manager',
+      reasons: [{ text: 'Store Manager, by the old rules' }],
       confirmation: { store: { '9902': 'assumed' }, subcategory: { '010404001': 'assumed', '010404002': 'assumed' } },
     }])
   })
