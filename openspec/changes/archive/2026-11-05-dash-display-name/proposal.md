@@ -5,7 +5,8 @@ The owner wants the app called "Dash", not "Feather Dash", "both in App name and
 ## What Changes
 
 - People see "Dash" in the top bar's app name, the app switcher, the browser tab, Dash's own pages, the sign-in page and invitation emails on its instance, and its privacy notice.
-- The identifier `feather_dash`, its route, Tables and permissions stay. So do the role names and each Table's `module`.
+- The role names and each Table's `module` say "Dash" too. The owner chose this because production is being installed fresh.
+- The identifier `feather_dash`, its route and Table names stay.
 - Dash goes to 0.10.4 with an empty version step.
 
 ## Capabilities
@@ -20,4 +21,5 @@ The owner wants the app called "Dash", not "Feather Dash", "both in App name and
 
 - `client-apps/jeyarama/dash` and its instance's settings and privacy notice.
 - `INTERIM_APPS` in `packages/shared`, which names the app before it is installed, and the tests that read it.
+- An instance that already has Dash installed cannot upgrade to this version: it must be wiped and installed fresh.
 - An instance with an existing `app_name` or `MAIL_FROM` keeps it until its settings are applied or its variable is changed.

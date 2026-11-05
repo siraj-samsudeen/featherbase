@@ -4,14 +4,11 @@ The name reaches people from three places: the manifest's `title` (the switcher,
 
 ## Decisions
 
-### Keep each Table's `module`
+### Rename the roles and each Table's `module`, for fresh installs only
 
-An upgrade refuses a declaration that differs from the installed one replayed through its version steps (`runtime-packages.ts`), and `module` is part of that declaration. No operation changes `module`, so renaming it would refuse the upgrade. Admin's Tables list therefore still groups Dash's Tables under "Feather Dash".
-
-### Keep the role names
-
-Grants and people's roles point at them by name, so renaming one is a data change. The not-set-up copy names the role as it is, because a person has to find it under that name.
+The owner chose this on 05-Nov-2026 because production is being wiped and installed fresh, and later it would be much harder. It breaks the upgrade path on purpose. An upgrade refuses a declaration that differs from the installed one replayed through its version steps, and refuses grants the installed version does not hold (`runtime-packages.ts`). No version step can rename a role or change a `module`. People's roles and grants also point at the role names.
 
 ## Risks / Trade-offs
 
-- Admin shows "Feather Dash" for the role names and the Tables group until the owner decides otherwise.
+- A deploy runs the upgrade, so on any instance that already has Dash installed this version fails the deploy and the old deployment keeps serving. That instance has to be wiped and installed fresh.
+- This has to merge before production's fresh install. After that, the same rename would need new platform work.

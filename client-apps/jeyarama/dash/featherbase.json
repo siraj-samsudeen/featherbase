@@ -7,9 +7,9 @@
   "client": "dist/client",
   "entryTable": "feather_dash.store_rollout",
   "roles": [
-    "Feather Dash Reader",
-    "Feather Dash Section Editor",
-    "Feather Dash Section Reviewer"
+    "Dash Reader",
+    "Dash Section Editor",
+    "Dash Section Reviewer"
   ],
   "roleDefaults": {},
   "settings": [
@@ -324,7 +324,7 @@
     {
       "name": "feather_dash.store_rollout",
       "label": "Store rollout",
-      "module": "Feather Dash",
+      "module": "Dash",
       "description": "Stores whose people are scoped by the new store org chart, and since when. Only a System Manager writes it.",
       "id_pattern": "field:store",
       "title_column": "store",
@@ -351,7 +351,7 @@
     {
       "name": "feather_dash.store_floor",
       "label": "Store floor",
-      "module": "Feather Dash",
+      "module": "Dash",
       "description": "The floors of a store. A section names its floor; a Floor Manager's job assignment names one.",
       "title_column": "floor_name",
       "decides_scope": true,
@@ -389,7 +389,7 @@
     {
       "name": "feather_dash.department",
       "label": "Department",
-      "module": "Feather Dash",
+      "module": "Dash",
       "description": "A named group of sections in one store, which may span floors. A Department Manager's job assignment names one.",
       "title_column": "display_name",
       "decides_scope": true,
@@ -446,7 +446,7 @@
     {
       "name": "feather_dash.section",
       "label": "Section",
-      "module": "Feather Dash",
+      "module": "Dash",
       "description": "One area of one store, named uniquely in that store. Its subcategories come from section_subcategory.",
       "title_column": "section_name",
       "decides_scope": true,
@@ -523,7 +523,7 @@
     {
       "name": "feather_dash.section_subcategory",
       "label": "Section subcategory",
-      "module": "Feather Dash",
+      "module": "Dash",
       "description": "Which section owns a subcategory in a store, from starts_on up to but not including ends_on. All its credit and coverage go to that section.",
       "title_column": "subcategory",
       "decides_scope": true,
@@ -579,7 +579,7 @@
     {
       "name": "feather_dash.display_location",
       "label": "Display location",
-      "module": "Feather Dash",
+      "module": "Dash",
       "description": "An extra place a subcategory is shown, for floor audits. It never moves credit or coverage.",
       "title_column": "location_name",
       "columns": [
@@ -625,7 +625,7 @@
     {
       "name": "feather_dash.job_assignment",
       "label": "Job assignment",
-      "module": "Feather Dash",
+      "module": "Dash",
       "description": "Who holds which job, where and when, with the HR designation beside the job. A person's coverage is worked out from their current rows, acting included.",
       "decides_scope": true,
       "columns": [
@@ -744,7 +744,7 @@
     {
       "name": "feather_dash.section_alias",
       "label": "Section alias",
-      "module": "Feather Dash",
+      "module": "Dash",
       "description": "Another system's name for a section.",
       "title_column": "alias",
       "columns": [
@@ -791,7 +791,7 @@
     {
       "name": "feather_dash.floor_alias",
       "label": "Floor alias",
-      "module": "Feather Dash",
+      "module": "Dash",
       "description": "Another system's name for a floor.",
       "title_column": "alias",
       "columns": [
@@ -838,7 +838,7 @@
     {
       "name": "feather_dash.job_alias",
       "label": "Job alias",
-      "module": "Feather Dash",
+      "module": "Dash",
       "description": "Another system's name for a job, matched as a whole value. Central: the same in every store.",
       "title_column": "alias",
       "columns": [
@@ -877,7 +877,7 @@
     {
       "name": "feather_dash.employee",
       "label": "Employee",
-      "module": "Feather Dash",
+      "module": "Dash",
       "title_column": "name",
       "track_changes": true,
       "description": "A person who works, or has worked, for the group, with their operational contacts. Changes here never change sign-in or account-recovery identifiers. Employee numbers belong to employments, never to the person.",
@@ -914,7 +914,7 @@
     {
       "name": "feather_dash.employment",
       "label": "Employment",
-      "module": "Feather Dash",
+      "module": "Dash",
       "title_column": "employee_number",
       "track_changes": true,
       "description": "One stint of a person working for one legal company, from joined_on up to but not including left_on. A rejoin is a new row; one person's stints at one company never overlap.",
@@ -968,7 +968,7 @@
     {
       "name": "feather_dash.designation",
       "label": "Designation",
-      "module": "Feather Dash",
+      "module": "Dash",
       "title_column": "title",
       "description": "The group's one clean list of HR titles. Each source system's spellings map to a title through designation_alias.",
       "columns": [
@@ -1000,7 +1000,7 @@
     {
       "name": "feather_dash.designation_alias",
       "label": "Designation alias",
-      "module": "Feather Dash",
+      "module": "Dash",
       "title_column": "alias",
       "description": "A source system's spelling of a designation, matched as a whole value. Central: the same in every company and store.",
       "columns": [
@@ -1061,127 +1061,127 @@
   "permissions": [
     {
       "table": "feather_dash.store_rollout",
-      "role": "Feather Dash Reader",
+      "role": "Dash Reader",
       "can_read": true
     },
     {
       "table": "feather_dash.store_rollout",
-      "role": "Feather Dash Section Editor",
+      "role": "Dash Section Editor",
       "can_read": true
     },
     {
       "table": "feather_dash.store_rollout",
-      "role": "Feather Dash Section Reviewer",
+      "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
       "table": "feather_dash.store_floor",
-      "role": "Feather Dash Section Editor",
+      "role": "Dash Section Editor",
       "can_read": true
     },
     {
       "table": "feather_dash.department",
-      "role": "Feather Dash Section Editor",
+      "role": "Dash Section Editor",
       "can_read": true
     },
     {
       "table": "feather_dash.section",
-      "role": "Feather Dash Section Editor",
+      "role": "Dash Section Editor",
       "can_read": true
     },
     {
       "table": "feather_dash.section_subcategory",
-      "role": "Feather Dash Section Editor",
+      "role": "Dash Section Editor",
       "can_read": true
     },
     {
       "table": "feather_dash.display_location",
-      "role": "Feather Dash Section Editor",
+      "role": "Dash Section Editor",
       "can_read": true
     },
     {
       "table": "feather_dash.job_assignment",
-      "role": "Feather Dash Section Editor",
+      "role": "Dash Section Editor",
       "can_read": true
     },
     {
       "table": "feather_dash.section_alias",
-      "role": "Feather Dash Section Editor",
+      "role": "Dash Section Editor",
       "can_read": true
     },
     {
       "table": "feather_dash.floor_alias",
-      "role": "Feather Dash Section Editor",
+      "role": "Dash Section Editor",
       "can_read": true
     },
     {
       "table": "feather_dash.job_alias",
-      "role": "Feather Dash Section Editor",
+      "role": "Dash Section Editor",
       "can_read": true
     },
     {
       "table": "feather_dash.store_floor",
-      "role": "Feather Dash Section Reviewer",
+      "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
       "table": "feather_dash.department",
-      "role": "Feather Dash Section Reviewer",
+      "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
       "table": "feather_dash.section",
-      "role": "Feather Dash Section Reviewer",
+      "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
       "table": "feather_dash.section_subcategory",
-      "role": "Feather Dash Section Reviewer",
+      "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
       "table": "feather_dash.display_location",
-      "role": "Feather Dash Section Reviewer",
+      "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
       "table": "feather_dash.job_assignment",
-      "role": "Feather Dash Section Reviewer",
+      "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
       "table": "feather_dash.section_alias",
-      "role": "Feather Dash Section Reviewer",
+      "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
       "table": "feather_dash.floor_alias",
-      "role": "Feather Dash Section Reviewer",
+      "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
       "table": "feather_dash.job_alias",
-      "role": "Feather Dash Section Reviewer",
+      "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
       "table": "feather_dash.designation",
-      "role": "Feather Dash Section Editor",
+      "role": "Dash Section Editor",
       "can_read": true
     },
     {
       "table": "feather_dash.designation",
-      "role": "Feather Dash Section Reviewer",
+      "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
       "table": "feather_dash.designation_alias",
-      "role": "Feather Dash Section Editor",
+      "role": "Dash Section Editor",
       "can_read": true
     },
     {
       "table": "feather_dash.designation_alias",
-      "role": "Feather Dash Section Reviewer",
+      "role": "Dash Section Reviewer",
       "can_read": true
     }
   ],
@@ -1203,9 +1203,9 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
-            "Feather Dash Reader",
-            "Feather Dash Section Editor",
-            "Feather Dash Section Reviewer"
+            "Dash Reader",
+            "Dash Section Editor",
+            "Dash Section Reviewer"
           ],
           "actionRoles": []
         },
@@ -1225,9 +1225,9 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
-            "Feather Dash Reader",
-            "Feather Dash Section Editor",
-            "Feather Dash Section Reviewer"
+            "Dash Reader",
+            "Dash Section Editor",
+            "Dash Section Reviewer"
           ],
           "actionRoles": []
         },
@@ -1239,9 +1239,9 @@
         "policy": {
           "kind": "person_scope",
           "readRoles": [
-            "Feather Dash Reader",
-            "Feather Dash Section Editor",
-            "Feather Dash Section Reviewer"
+            "Dash Reader",
+            "Dash Section Editor",
+            "Dash Section Reviewer"
           ],
           "actionRoles": []
         },

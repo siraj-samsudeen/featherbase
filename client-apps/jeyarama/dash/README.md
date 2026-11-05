@@ -189,8 +189,7 @@ at the repository root.
     included; a person whose codes are all unshared gets what those codes
     derive plus their explicit rows; a person with no code gets their explicit
     rows (`fromIdentifiers` in `src/provider.ts`). Live stores are unaffected.
-- **Roles:** Feather Dash Reader, Feather Dash Section Editor, Feather Dash
-  Section Reviewer. `roleDefaults` is empty; part 4 adds the stand-in binding.
+- **Roles:** Dash Reader, Dash Section Editor, Dash Section Reviewer. `roleDefaults` is empty; part 4 adds the stand-in binding.
 - **The cached dataset, `sales_to_date`**, on the instance's `motherduck` Data
   Source (which must be marked "Read-scaling token"): one row per store and
   subcategory, month to date in India Standard Time, with target, sales, the

@@ -203,7 +203,7 @@ function NoAccess() {
   return (
     <Notice testid="manager-no-store">
       <p><strong>Dash is set up, but your account covers no store</strong>, so it has no report to show you.</p>
-      <p>The report opens for people with the Feather Dash Reader role and a job in the store org chart. Give yourself or someone else those, or sign in as someone who has them.</p>
+      <p>The report opens for people with the Dash Reader role and a job in the store org chart. Give yourself or someone else those, or sign in as someone who has them.</p>
       {help.command && (
         <p>On this machine, <code data-testid="next-command">{help.command}</code> prints made-up people to sign in as. reader-sm@example.test is a made-up Store Manager.</p>
       )}

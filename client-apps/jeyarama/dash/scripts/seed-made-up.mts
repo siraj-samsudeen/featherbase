@@ -83,7 +83,7 @@ await markScopeTables((path: string, init?: RequestInit) => call(path, init))
 const sourceExists = await call('/api/table/Data%20Source/motherduck').then(() => true, () => false)
 if (!sourceExists) await post('/api/table/Data%20Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'FEATHER_DASH_LOCAL_DUCKDB', access: 'read_only' })
 
-// Made-up people, each a Feather Dash Reader.
+// Made-up people, each a Dash Reader.
 const people: Record<string, string> = {}
 for (const [key, name] of [['many', 'Asha Many-Stores'], ['one', 'Ravi One-Store'], ['none', 'Nila No-Access'], ['bare', 'Kumar Bare-Store'],
   ['quiet', 'Meena Quiet-Section'], ['sm', 'Selvi Store-Manager'], ['tl2', 'Tara Two-Sections'], ['tl4', 'Faiz Four-Sections'],
@@ -93,7 +93,7 @@ for (const [key, name] of [['many', 'Asha Many-Stores'], ['one', 'Ravi One-Store
   const email = `reader-${key}@example.test`
   const [found] = await sql`select row_id from person where lower(email) = ${email}`
   const id = found ? String(found.row_id) : String((await post('/api/table/Person', { email, full_name: name, enabled: true,
-    roles: [{ role: 'Feather Dash Reader' }] })).row_id)
+    roles: [{ role: 'Dash Reader' }] })).row_id)
   await setUserPassword(id, PASSWORD)
   people[key] = id
 }
