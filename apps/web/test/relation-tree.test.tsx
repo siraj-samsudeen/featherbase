@@ -143,6 +143,7 @@ test('Show more reveals rows past one read\'s cap of 500, then goes away', async
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
     await waitFor(() => expect(topLines(t)).toHaveLength(Math.min(shown + 20, 510)))
   }
+  expect(new Set(topLines(t).map((item) => item.textContent)).size).toBe(510)
   expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument()
 }, 120_000)
 
