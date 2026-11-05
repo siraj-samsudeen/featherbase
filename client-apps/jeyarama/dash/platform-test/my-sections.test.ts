@@ -264,6 +264,15 @@ describe('what an approver decides', () => {
     expect(await row('Job Assignment', 'JA-1')).toMatchObject({ section: 'LKS-S1', ends_on: null })
   })
 
+  test('a pending proposal says who it waits for now, as the job changes hands', async ({ admin, createUser }) => {
+    const { maker, otherStaff, job } = await world(admin, createUser)
+    await act(maker, 'propose_move', move())
+    await saveRow(admin, 'Job Assignment', { row_id: 'JA-1', updated_at: job.updated_at, reports_to: '1004' })
+    expect((await read(maker, 'my_sections')).proposals[0].waiting_for).toBe('Other Staff')
+    await sql`update person set enabled = false where row_id = ${otherStaff.user!}`
+    expect((await read(maker, 'my_sections')).proposals[0].waiting_for).toBe('the master data team')
+  })
+
   test('a manager Dash does not open for is passed over, for the master data team', async ({ admin, createUser }) => {
     const { maker, manager, editor } = await world(admin, createUser)
     await sql`delete from has_role where parent = ${manager.user!} and role = 'Feather Dash Reader'`

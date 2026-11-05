@@ -19,6 +19,7 @@ interface BaseTablesHelper { list(table: string, args: { fields: string[]; filte
 interface ChangeProposalsReader {
   list(filter?: ProposalList): Promise<ChangeProposal[]>
   mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
+  routeFor(maker: string, approvers: ApproverRequest): Promise<{ people: string[]; roles: string[] } | null>
 }
 interface ChangeProposalsHelper extends ChangeProposalsReader {
   lockRow(table: string, rowId: string): Promise<void>
@@ -132,6 +133,13 @@ const SCHEDULED = 'A change to that subcategory is already planned here. Ask the
 const about = (proposal: ChangeProposal) => (proposal.about ?? {}) as unknown as About
 const VIEW_LIMIT = 50
 
+/** Who a job's proposal goes to now: authority moves with the job, so this is read fresh. */
+async function waitingOnNow(ctx: ReadContext, job: Row | undefined, maker: string): Promise<string> {
+  const { approvers, manager } = await approversOf(ctx, job)
+  const route = await ctx.changeProposals.routeFor(maker, approvers)
+  return route?.people.length ? (manager ?? MASTER_DATA_TEAM) : MASTER_DATA_TEAM
+}
+
 /** A proposal as a person reads it: names only. */
 function view(proposal: ChangeProposal) {
   const a = about(proposal)
@@ -173,16 +181,21 @@ export const reads = {
     const names = placements.length ? byId(await all(ctx, T.subcategory, ['subcategory'], [['row_id', 'in', unique(placements.map(p => exact(p.subcategory)))]])) : new Map<string, Row>()
     const floorName = (section: Row | undefined) => text(floors.get(exact(section?.floor))?.floor_name) || null
     const mine = await ctx.changeProposals.list({ makers: [ctx.user], limit: VIEW_LIMIT })
-    const waitingOn = new Map(mine.filter(p => p.state === 'Pending' && about(p).kind === 'move').map(p => [about(p).subcategory, view(p).waiting_for]))
+    const pendingJobs = unique(mine.filter(p => p.state === 'Pending').map(p => about(p).job_assignment))
+    const pendingJobRows = pendingJobs.length ? byId(await list(ctx, T.job, JOB_FIELDS, [['row_id', 'in', pendingJobs]])) : new Map<string, Row>()
+    const waitingOnJob = new Map<string, string>()
+    for (const id of pendingJobs) waitingOnJob.set(id, await waitingOnNow(ctx, pendingJobRows.get(id), ctx.user))
+    const shown = mine.map(p => ({ ...view(p), ...(p.state === 'Pending' ? { waiting_for: waitingOnJob.get(about(p).job_assignment) ?? MASTER_DATA_TEAM } : {}) }))
+    const waitingOn = new Map(mine.flatMap((p, index) => p.state === 'Pending' && about(p).kind === 'move' ? [[about(p).subcategory, shown[index].waiting_for] as const] : []))
     const views = []
     for (const job of jobs) {
       const site = exact(job.site)
       const section = sectionsById.get(exact(job.section))
-      const { manager, reportsTo } = await approversOf(ctx, job)
+      const { reportsTo } = await approversOf(ctx, job)
       views.push({
         id: exact(job.row_id), job: text(job.job), store: text(siteRows.get(site)?.site_name), is_store: siteRows.get(site)?.is_store === true,
         reports_to: reportsTo,
-        waiting_for: manager ?? MASTER_DATA_TEAM,
+        waiting_for: await waitingOnNow(ctx, job, ctx.user),
         section: section ? { id: exact(section.row_id), name: text(section.section_name), floor: floorName(section) } : null,
         subcategories: section ? placements.filter(p => exact(p.section) === exact(section.row_id))
           .map(p => ({ id: exact(p.row_id), name: text(names.get(exact(p.subcategory))?.subcategory) || 'Unnamed subcategory', waiting_for: waitingOn.get(exact(p.subcategory)) ?? null }))
@@ -192,7 +205,7 @@ export const reads = {
           .sort((a, b) => a.name.localeCompare(b.name)),
       })
     }
-    return { state: 'ok' as const, name: text(employees[0].employee_name), jobs: views, proposals: mine.map(view), waiting_for_me: (await waitingForMe(ctx)).length }
+    return { state: 'ok' as const, name: text(employees[0].employee_name), jobs: views, proposals: shown, waiting_for_me: (await waitingForMe(ctx)).length }
   },
 
   /** The store's subcategories matching what was typed, each with where it is now. */

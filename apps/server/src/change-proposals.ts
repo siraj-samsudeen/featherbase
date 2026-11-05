@@ -186,6 +186,7 @@ export function proposalsReader(app: string, user: string, entryTable: string) {
   const helper: ChangeProposalsReader = Object.freeze({
     list: (filter: ProposalFilter = {}) => guard.run(() => proposalsWhere(app, filter)),
     mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers, entryTable)),
+    routeFor: (maker: string, approvers: ApproverRequest) => guard.run(() => resolveRoute(checkedApprovers(approvers), maker, entryTable)),
   })
   return { helper, close: guard.close }
 }
@@ -230,6 +231,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
   const helper: ChangeProposalsHelper = Object.freeze({
     list: (filter: ProposalFilter = {}) => guard.run(() => proposalsWhere(app, filter)),
     mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers, entryTable)),
+    routeFor: (maker: string, approvers: ApproverRequest) => guard.run(() => resolveRoute(checkedApprovers(approvers), maker, entryTable)),
 
     // Who may decide comes from rows the app reads first. These hold still what it read until
     // the decision commits, so authority can't change while the decision waits for a lock.

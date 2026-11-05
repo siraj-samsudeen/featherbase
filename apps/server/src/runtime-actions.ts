@@ -272,7 +272,7 @@ function closedDocuments(): never {
 }
 const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, activity: closedDocuments })
 const CLOSED_BASE_TABLES: RuntimeReadContext['baseTables'] = Object.freeze({ list: closedDocuments })
-const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments, mayDecide: closedDocuments })
+const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments, mayDecide: closedDocuments, routeFor: closedDocuments })
 
 interface Frozen { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup; provenance?: DropProvenance }
 

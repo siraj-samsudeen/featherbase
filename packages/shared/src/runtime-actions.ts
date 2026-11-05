@@ -56,6 +56,8 @@ export interface ChangeProposalsReader {
   list(filter?: ProposalFilter): Promise<ChangeProposal[]>
   /** Whether the caller may decide a proposal by this maker, with these approvers. */
   mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
+  /** Who these approvers come to now for this maker; null when nobody can act. */
+  routeFor(maker: string, approvers: ApproverRequest): Promise<{ people: string[]; roles: string[] } | null>
 }
 export interface ChangeProposalsHelper extends ChangeProposalsReader {
   /** Holds a declared base row until the action commits. */
