@@ -227,10 +227,15 @@ stopping at the first problem so that the old deployment keeps serving:
 
 Steps 2 to 4 are one transaction, and they hold the apps' lifecycle lock from
 start to end. While they run, the old deployment's API requests and jobs wait,
-usually for a few seconds. To take the lock, the step waits up to 60 seconds for
-requests already running. If they keep the apps busy longer than that, the deploy
-fails and changes nothing; deploy again. Inside the transaction, a lock wait over
-60 seconds, or 5 minutes idle, also fails the deploy.
+usually for a few seconds. To take the lock, the step makes up to 20 tries of 15
+seconds each, 15 seconds apart (just under 10 minutes), and logs each one with who
+is holding the apps. New requests queue behind a try, so they can stall for up to
+15 seconds while it waits; during the pause they run. If the apps are still busy
+after the last try, the deploy fails and changes nothing; deploy again. Railway
+sets no time limit on the pre-deploy step unless the service has a Pre-deploy
+Timeout; keep any such limit above 10 minutes plus the release's own time. Inside
+the transaction, a lock wait over 60 seconds, or 5 minutes idle, also fails the
+deploy.
 
 **Variables.** The table above, and for a client instance:
 

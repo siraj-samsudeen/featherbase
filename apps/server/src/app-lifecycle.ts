@@ -86,24 +86,59 @@ export function assertStillServing(app: string, identity: string, then: () => Pr
   })
 }
 
+export interface DeployLockWait { attemptSeconds: number; pauseSeconds: number; attempts: number }
+
+/** #971: how a deploy waits for the exclusive lifecycle lock: 585 seconds in
+ *  all. A waiting attempt stalls every new request behind it (Postgres queues
+ *  them; deploy-instance.test.ts proves it), so an attempt is short and the
+ *  pause equal to it: people get at least half the time, and a normal request
+ *  finishes within one attempt. Railway sets no pre-deploy limit by default. */
+export const DEPLOY_LOCK_WAIT: DeployLockWait = { attemptSeconds: 15, pauseSeconds: 15, attempts: 20 }
+
+class DeployLockBusy extends Error {}
+
+/** Who holds the shared lifecycle lock, for the log: a failed try names them. */
+async function lifecycleLockHolders(): Promise<string> {
+  const [row] = await locks`select count(*)::int as n, coalesce(ceil(extract(epoch from max(clock_timestamp() - a.xact_start))), 0)::int as oldest
+    from pg_locks l join pg_stat_activity a on a.pid = l.pid
+    where l.locktype = 'advisory' and l.classid = 296 and l.objid = 1 and l.granted
+      and l.database = (select oid from pg_database where datname = current_database())`
+  return `${row.n} live request${row.n === 1 ? '' : 's'} or job${row.n === 1 ? '' : 's'}, the oldest running for ${row.oldest} seconds`
+}
+
 /** #943: an instance deploy holds the exclusive lifecycle lock from before its
  *  transaction takes any lock until it ends, so it never waits for live
  *  requests while holding a row they wait for: nested app operations (install,
- *  discovery, the settings apply) then run inside it. The wait for the lock is
- *  bounded, and live requests queue behind it, so it is short. */
-export function instanceDeployOperation<T>(fn: () => Promise<T>, waitSeconds: number): Promise<T> {
+ *  discovery, the settings apply) then run inside it.
+ *  #971: each try is its own transaction, so a pause holds nothing and nothing
+ *  queues behind it. Only the wait for this lock is retried: a lock wait inside
+ *  `fn` is the deploy's own failure and has changed nothing, so it just fails. */
+export async function instanceDeployOperation<T>(fn: () => Promise<T>, wait: DeployLockWait, log: (line: string) => void = () => {}): Promise<T> {
   if (scope.getStore()) throw new Error('An instance deploy cannot run inside another app operation')
-  return locks.begin(async (tx) => {
+  const started = Date.now()
+  const elapsed = () => Math.ceil((Date.now() - started) / 1000)
+  for (let attempt = 1; ; attempt++) {
     try {
-      await tx.unsafe(`set local lock_timeout = '${Math.ceil(waitSeconds)}s'`)
-      await tx`select pg_advisory_xact_lock(296, 1)`
+      return await locks.begin(async (tx) => {
+        try {
+          await tx.unsafe(`set local lock_timeout = '${Math.ceil(wait.attemptSeconds * 1000)}ms'`)
+          await tx`select pg_advisory_xact_lock(296, 1)`
+        } catch (error) {
+          if ((error as { code?: string }).code === '55P03') throw new DeployLockBusy()
+          throw error
+        }
+        log(`Deploy: lifecycle lock taken on try ${attempt}, after ${elapsed()} seconds`)
+        return scope.run({ exclusive: true }, fn)
+      }) as T
     } catch (error) {
-      if ((error as { code?: string }).code === '55P03')
-        throw new Error(`The live server kept the apps busy for ${Math.ceil(waitSeconds)} seconds, so the deploy did not start; nothing changed. Deploy again.`)
-      throw error
+      if (!(error instanceof DeployLockBusy)) throw error
     }
-    return scope.run({ exclusive: true }, fn)
-  }) as Promise<T>
+    const holders = await lifecycleLockHolders().catch(() => 'holders unknown')
+    const last = attempt >= wait.attempts
+    log(`Deploy: try ${attempt} of ${wait.attempts}: the live server is still busy (${holders})${last ? '' : `; trying again in ${wait.pauseSeconds} seconds`}`)
+    if (last) throw new Error(`The live server kept the apps busy for ${elapsed()} seconds, so the deploy did not start; nothing changed. Deploy again.`)
+    await new Promise((resolve) => setTimeout(resolve, wait.pauseSeconds * 1000))
+  }
 }
 
 export function provisionApp<T>(name: string, fn: () => Promise<T>): Promise<T> {

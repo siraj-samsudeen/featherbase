@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { uninstallApp } from '../src/apps'
 import { config } from '../src/config'
 import { sql } from '../src/db'
-import { appOperation, instanceDeployOperation } from '../src/app-lifecycle'
+import { appOperation, DEPLOY_LOCK_WAIT, instanceDeployOperation } from '../src/app-lifecycle'
 import { deployInstance, followsAppFiles, instanceFolder, repinChangedApps, settingsSection } from '../src/deploy-instance'
 import { assertInstalledAppsShipped } from '../src/release-preflight'
 import { discoverPackages } from '../src/runtime-packages'
@@ -284,6 +284,41 @@ describe('a newer version in the image', () => {
 // exclusive lifecycle lock (discoverPackages, in the re-pin) and waited on the
 // runner. Postgres sees no cycle (the deploy waits in Node, not in SQL), and
 // every live /api request queued behind the exclusive request.
+/** A live request: holds the shared lifecycle lock until `end()`. */
+async function sharedHolder() {
+  const conn = postgres(config.databaseUrl, { max: 1, prepare: false, onnotice: () => {} })
+  let release!: () => void
+  let held!: () => void
+  const holding = new Promise<void>((done) => { held = done })
+  const done = conn.begin(async (tx) => {
+    await tx`select pg_advisory_xact_lock_shared(296, 1)`
+    held()
+    await new Promise<void>((r) => { release = r })
+  })
+  await holding
+  return { end: async () => { release(); await done; await conn.end() } }
+}
+
+/** How long, in ms, a new request waits for the shared lifecycle lock. */
+async function timeSharedLock() {
+  const conn = postgres(config.databaseUrl, { max: 1, prepare: false, onnotice: () => {} })
+  const started = performance.now()
+  await conn.begin((tx) => tx`select pg_advisory_xact_lock_shared(296, 1)`)
+  const waited = performance.now() - started
+  await conn.end()
+  return waited
+}
+
+async function waitingForExclusive() {
+  for (let i = 0; i < 100; i++) {
+    const [row] = await sql`select count(*)::int as n from pg_locks where locktype = 'advisory' and classid = 296 and objid = 1 and mode = 'ExclusiveLock' and not granted
+      and database = (select oid from pg_database where datname = current_database())`
+    if (row.n > 0) return
+    await new Promise((r) => setTimeout(r, 10))
+  }
+  throw new Error('no deploy is waiting for the lock')
+}
+
 describe('a live server working while the deploy runs (#943)', () => {
   test('a live job waiting on a row the deploy saves does not hang it', async () => {
     await pretendTo('staging')
@@ -327,34 +362,79 @@ describe('a live server working while the deploy runs (#943)', () => {
     }
   }, 30_000)
 
-  test('a live request that keeps the apps busy fails the deploy after the wait, changing nothing', async () => {
+  test('a live request that keeps the apps busy fails the deploy after its tries, changing nothing', async () => {
     await pretendTo('staging')
-    const busy = postgres(config.databaseUrl, { max: 1, prepare: false, onnotice: () => {} })
-    let release!: () => void
-    let held!: () => void
-    const holding = new Promise<void>((done) => { held = done })
-    const done = busy.begin(async (tx) => {
-      await tx`select pg_advisory_xact_lock_shared(296, 1)`
-      held()
-      await new Promise<void>((r) => { release = r })
-    })
+    const busy = await sharedHolder()
+    const out = captureIO()
     try {
-      await holding
-      await expect(deployInstance('acme/board', captureIO().io, { root, lockWaitSeconds: 1 })).rejects.toThrow(/kept the apps busy for 1 seconds, so the deploy did not start/)
+      await expect(deployInstance('acme/board', out.io, { root, lockWait: { attemptSeconds: 0.2, pauseSeconds: 0.1, attempts: 2 } }))
+        .rejects.toThrow(/kept the apps busy for 1 seconds, so the deploy did not start; nothing changed\. Deploy again\./)
       expect(await sql`select 1 from installed_app where name = ${name}`).toHaveLength(0)
-    } finally {
-      release()
-      await done
-      await busy.end()
-    }
+      expect(out.stdout()).toMatch(/try 1 of 2.*still busy.*trying again in 0\.1 seconds/)
+      expect(out.stdout()).toMatch(/try 2 of 2.*still busy/)
+    } finally { await busy.end() }
+  })
+
+  test('a deploy tries again by itself and goes ahead once the live request ends', async () => {
+    await pretendTo('staging')
+    const busy = await sharedHolder()
+    const out = captureIO()
+    const lines: string[] = []
+    const io = { ...out.io, out: (line: string) => {
+      lines.push(line)
+      out.io.out(line)
+      // The live request ends during the first pause.
+      if (/try 1 of/.test(line)) void busy.end()
+    } }
+    await deployInstance('acme/board', io, { root, lockWait: { attemptSeconds: 0.2, pauseSeconds: 0.2, attempts: 5 } })
+    expect(lines.join('\n')).toMatch(/try 1 of 5.*still busy \(1 live request or job/)
+    expect(lines.join('\n')).toMatch(/lock taken on try 2/)
+    expect(await sql`select 1 from installed_app where name = ${name}`).toHaveLength(1)
+  })
+
+  test('between tries a new request runs at once; during a try it waits behind the deploy', async () => {
+    const busy = await sharedHolder()
+    let paused!: () => void
+    const pausing = new Promise<void>((done) => { paused = done })
+    const deploy = instanceDeployOperation(async () => 'ran', { attemptSeconds: 0.5, pauseSeconds: 2, attempts: 2 }, () => paused())
+    try {
+      // A try is waiting: Postgres queues a new shared request behind it, so
+      // the request stalls until the try gives up (the stall #971 asked about).
+      await waitingForExclusive()
+      const during = await timeSharedLock()
+      expect(during).toBeGreaterThan(150)
+      // The try gave up and the deploy is pausing: nothing queues.
+      await pausing
+      expect(await timeSharedLock()).toBeLessThan(150)
+    } finally { await busy.end() }
+    await expect(deploy).resolves.toBe('ran')
+  })
+
+  test('a lock wait inside the deploy is not mistaken for the lifecycle lock being busy', async () => {
+    let runs = 0
+    const wait = { attemptSeconds: 1, pauseSeconds: 0, attempts: 3 }
+    await expect(instanceDeployOperation(async () => {
+      runs++
+      throw Object.assign(new Error('a row lock timed out'), { code: '55P03' })
+    }, wait)).rejects.toThrow('a row lock timed out')
+    expect(runs).toBe(1)
+  })
+
+  test('the standing wait is about ten minutes', () => {
+    const { attemptSeconds, pauseSeconds, attempts } = DEPLOY_LOCK_WAIT
+    const total = attempts * attemptSeconds + (attempts - 1) * pauseSeconds
+    expect(total).toBeGreaterThan(9 * 60)
+    expect(total).toBeLessThanOrEqual(10 * 60)
+    expect(attemptSeconds).toBeLessThanOrEqual(15)
   })
 
   test('the deploy lock is taken outside any other app operation, with a wait Postgres accepts', async () => {
-    await expect(appOperation(() => instanceDeployOperation(async () => 1, 1))).rejects.toThrow(/cannot run inside another app operation/)
-    await expect(instanceDeployOperation(async () => 1, -1)).rejects.toThrow(/lock_timeout/)
+    const wait = { attemptSeconds: 1, pauseSeconds: 0, attempts: 1 }
+    await expect(appOperation(() => instanceDeployOperation(async () => 1, wait))).rejects.toThrow(/cannot run inside another app operation/)
+    await expect(instanceDeployOperation(async () => 1, { ...wait, attemptSeconds: -1 })).rejects.toThrow(/lock_timeout/)
     // Inside a deploy, an install may nest; inside a data operation it may not.
-    await expect(instanceDeployOperation(() => appOperation(async () => 'nested', true), 1)).resolves.toBe('nested')
+    await expect(instanceDeployOperation(() => appOperation(async () => 'nested', true), wait)).resolves.toBe('nested')
     await expect(appOperation(() => appOperation(async () => 1, true))).rejects.toThrow(/cannot run inside a data operation/)
-    await expect(instanceDeployOperation(async () => 'ran', 1)).resolves.toBe('ran')
+    await expect(instanceDeployOperation(async () => 'ran', wait)).resolves.toBe('ran')
   })
 })
