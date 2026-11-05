@@ -5,6 +5,10 @@ import { choiceLabel, parseFilters, rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, getToken, listResource } from '../lib/api'
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
+import { LinkedTitle, RowLink } from '../lib/row-name'
+import { UNSEEN_ROW, useLinkTitle } from '../lib/relations'
+import { useNavigation } from '../lib/navigation'
+import { TreeOfAll } from './RelationTree'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
 import { LinkControl } from './FormView'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
@@ -16,7 +20,7 @@ import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName, usePrincipalLabels } from '../lib/people'
-import { Button, DataCards, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
+import { Button, DataCards, NARROW_QUERY, ViewToggle, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp, ChevronDown } from '@featherbase/shop-floor'
 import { RetiredBadge, tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
@@ -102,6 +106,20 @@ export function Indicator({ value, label = value }: { value: string; label?: str
 }
 
 const NO_FILTERS: Filter[] = []
+// A compact list: the row's name, then this many key values.
+const COMPACT_COLUMNS = 3
+
+/** The link values a filtered list's new rows start with: each "= one row"
+ *  filter on a link column the person may set. */
+function linkPrefill(meta: import('../lib/meta').TableMeta, filters: Filter[]): Record<string, unknown> | undefined {
+  const prefill: Record<string, unknown> = {}
+  for (const [column, op, value] of filters) {
+    const col = meta.columns.find((c) => c.column_name === column)
+    if (op === '=' && col?.column_type === 'Reference' && !col.read_only && !col.hidden && (typeof value === 'string' || typeof value === 'number'))
+      prefill[column] = value
+  }
+  return Object.keys(prefill).length ? prefill : undefined
+}
 
 // UI-002/UI-003: ONE list component renders every Table from its metadata.
 export function ListView({
@@ -136,10 +154,28 @@ export function ListView({
 }) {
   const meta = useMeta(table)
   const settings = useSettings()
+  // #910: on a list page, selecting a row shows it in the drill pane.
+  const navigation = useNavigation()
+  const nav = navigation?.step.screen === 'list' && navigation.step.table === table ? navigation : null
+  const paneRow = nav?.step.pane?.table === table ? nav.step.pane.row : undefined
+  const openPane = nav ? (pane: { table: string; row: string }) => nav.push({ ...nav.step, pane }) : undefined
+  // #910 checklist 19: every row as a folded tree line, kept in the path.
+  const [localTree, setLocalTree] = useState<{ on: boolean; expanded: string[] }>({ on: false, expanded: [] })
+  const treeOn = nav ? nav.step.view === 'tree' : localTree.on
+  const treeExpanded = new Set(nav ? nav.step.expanded ?? [] : localTree.expanded)
+  function setTree(on: boolean, expandedIds: string[] = []) {
+    if (nav) {
+      const { view: _, expanded: __, ...rest } = nav.step
+      nav.replace(on ? { ...rest, view: 'tree', ...(expandedIds.length ? { expanded: expandedIds } : {}) } : rest)
+    } else setLocalTree({ on, expanded: expandedIds })
+  }
   const isSystemManager = useIsSystemManager()
   const caps = useCapabilities()
   // #410: New is offered only to someone the server would let create a row here.
   const canAddRows = newRowPrefill !== null && Boolean(caps?.manage || caps?.creatable.includes(table))
+  // #910: a list narrowed to the rows linking to one row (a drill pane group
+  // opened as a list) starts its new rows linked to that row too.
+  if (newRowPrefill === undefined && meta.data) newRowPrefill = linkPrefill(meta.data, filters)
   const queryClient = useQueryClient()
   // usable-on-any-device "Lists fit a phone": below 40rem the rows are cards.
   const narrow = useMediaQuery(NARROW_QUERY)
@@ -148,6 +184,8 @@ export function ListView({
   // UI-013 / #738: per-user saved settings — sort, and which columns show,
   // kept as columns switched on and off on top of the Table's list columns.
   const [arrangement, setArrangement] = useState<Required<ColumnArrangement>>({ shownCols: [], hiddenCols: [] })
+  // #910 checklist 1: Compact shows each row's name and two key values.
+  const [compact, setCompact] = useState(false)
   const [colPickerOpen, setColPickerOpen] = useState(false)
   // #738: the Show columns menu grows into the space below its button and no
   // further, so it ends on screen; it scrolls inside only when that is short.
@@ -252,7 +290,7 @@ export function ListView({
     setSettingsLoaded(false)
     setSettingsUnsaved(false)
     api
-      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[]; shownCols?: string[] } | null }>(
+      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[]; shownCols?: string[]; compact?: boolean } | null }>(
         `/api/user_settings/${encodeURIComponent(table)}`,
       )
       .then((res) => {
@@ -260,6 +298,7 @@ export function ListView({
         const s = res.settings
         if (s) {
           if (s.sort) setSort(s.sort)
+          setCompact(s.compact === true)
           setArrangement({
             shownCols: Array.isArray(s.shownCols) ? s.shownCols : [],
             hiddenCols: Array.isArray(s.hiddenCols) ? s.hiddenCols : [],
@@ -280,12 +319,13 @@ export function ListView({
   // Persist settings whenever the user changes them (after the initial load).
   // A save that fails is said, not swallowed (#546): the change still shows
   // now, but the list would open the old way next time.
-  function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement> }) {
+  function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement>; compact?: boolean }) {
     if (!settingsLoaded) return
     const token = getToken()
     const snapshot = {
       sort: next.sort !== undefined ? next.sort : sort,
       ...(next.arrangement ?? arrangement),
+      compact: next.compact ?? compact,
     }
     // Settings are whole snapshots. Keep writes in interaction order so a
     // slower earlier request cannot restore an obsolete sort or column set.
@@ -300,7 +340,8 @@ export function ListView({
       .catch(() => { if (getToken() === token) setSettingsUnsaved(true) })
   }
 
-  const columns = meta.data ? viewColumns(meta.data, arrangement) : []
+  const allColumns = meta.data ? viewColumns(meta.data, arrangement) : []
+  const columns = compact ? allColumns.slice(0, COMPACT_COLUMNS) : allColumns
   // #209 / #738: who may shape this Table's columns for everyone — "Edit
   // columns" and "Make this the default for everyone" show exactly here.
   // Not on system Tables (their columns are the platform's) nor bound ones
@@ -977,7 +1018,22 @@ export function ListView({
           )}
         </div>
       )}
-      {narrow ? (
+      {/* #910: the list's layouts, just above it. */}
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+        <ViewToggle label="List layout" value={compact ? 'compact' : 'table'} onChange={(v) => {
+          setCompact(v === 'compact')
+          persist({ compact: v === 'compact' })
+        }} />
+        <Button aria-pressed={treeOn} onClick={() => setTree(!treeOn)}
+          className={treeOn ? 'border-action bg-action-tint text-action' : undefined}>Tree of all</Button>
+      </div>
+      {treeOn ? (
+        <div className={cardClasses('p-3')}>
+          <TreeOfAll table={table} filters={queryFilters} expanded={treeExpanded}
+            onExpandedChange={(next) => setTree(true, [...next])}
+            onOpen={(pane) => openPane?.(pane)} />
+        </div>
+      ) : narrow ? (
         <PhoneList
           table={table}
           titleColumn={meta.data?.title_column}
@@ -1061,6 +1117,8 @@ export function ListView({
                 childFields={childFields}
                 expanded={expanded.has(String(row.row_id))}
                 onToggleExpand={() => toggleExpand(String(row.row_id))}
+                inPane={paneRow === String(row.row_id)}
+                onOpenPane={openPane}
               />
             ))}
             {!rows.length && (
@@ -1122,6 +1180,8 @@ function ListRow({
   childFields,
   expanded,
   onToggleExpand,
+  inPane = false,
+  onOpenPane,
 }: {
   row: Record<string, unknown>
   table: string
@@ -1137,12 +1197,31 @@ function ListRow({
   childFields: import('../lib/meta').ColumnDef[]
   expanded: boolean
   onToggleExpand: () => void
+  /** #910: this row is the one in the drill pane. */
+  inPane?: boolean
+  /** #910: shows a row in the drill pane; absent where there is no pane. */
+  onOpenPane?: (pane: { table: string; row: string }) => void
 }) {
   // A title that is a person's id reads as their name.
   const shownTitle = usePrincipalLabels([title])
+  const rowId = String(row.row_id)
+  // A click on the line itself, not on a link, button or checkbox in it.
+  const select = onOpenPane && ((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('a,button,input,select,label,textarea')) return
+    onOpenPane({ table, row: rowId })
+  })
   return (
     <>
-      <tr className="border-b border-border last:border-0 hover:bg-subtle">
+      <tr onClick={select || undefined} aria-selected={onOpenPane ? inPane : undefined}
+        // #910 checklist 21: a line goes to the pane from the keyboard too;
+        // Enter on a link or control inside it keeps doing its own thing.
+        tabIndex={onOpenPane ? 0 : undefined}
+        onKeyDown={onOpenPane && ((e) => {
+          if (e.key !== 'Enter' || e.target !== e.currentTarget) return
+          e.preventDefault()
+          onOpenPane({ table, row: rowId })
+        })}
+        className={`border-b border-border last:border-0 hover:bg-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${onOpenPane ? 'cursor-pointer' : ''} ${inPane ? 'bg-action-tint' : ''}`}>
         {expandable && (
           <td className="pl-2">
             <button
@@ -1214,6 +1293,9 @@ function ListCell({
   quiet?: boolean
 }) {
   const { t } = useI18n()
+  // #910: a link opens the linked row in the drill pane, over this list.
+  const navigation = useNavigation()
+  const nav = navigation?.step.screen === 'list' && navigation.step.table === table ? navigation : null
   // #881: a link to a row of any Table reads as a link to the row's own Table.
   const anyTable = shownCol.table_column ? row[shownCol.table_column] : undefined
   const col = shownCol.table_column
@@ -1226,9 +1308,7 @@ function ListCell({
         to="/featherbase/admin/table/$table/row/$name"
         search={{ prefill: undefined }}
         params={{ table, name: String(row.row_id) }}
-        className={touchLinkClasses(`font-medium text-action hover:underline ${
-          col.column_name === 'name' ? 'font-mono text-[13px]' : ''
-        }`)}
+        className={touchLinkClasses('font-medium text-action hover:underline')}
       >
         {col.column_name === 'row_id' && isPrincipalTable(table) ? (
           <PrincipalName id={String(row.row_id)} />
@@ -1237,7 +1317,7 @@ function ListCell({
           <PrincipalName id={String(row[col.column_name])} />
         ) : col.column_type === 'Reference' && col.reference_table && !isBlank(row[col.column_name]) ? (
           // A title that links to another row reads as that row's title.
-          <RowTitle table={col.reference_table} rowId={String(row[col.column_name])} />
+          <LinkedTitle table={col.reference_table} rowId={String(row[col.column_name])} />
         ) : col.column_name !== 'row_id' && isBlank(row[col.column_name]) ? (
           // #792: a row with a blank title is led by its id, never a blank; a
           // person's opaque id reads as what identifies them (#835).
@@ -1263,16 +1343,18 @@ function ListCell({
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
         <PrincipalName id={String(value)} />
       ) : col.column_type === 'Reference' && col.reference_table && !isBlank(value) ? (
-        // #792: a link reads as the linked row's title and opens that row.
-        <Link
-          to="/featherbase/admin/table/$table/row/$name"
-          search={{ prefill: undefined }}
-          params={{ table: col.reference_table, name: String(value) }}
-          onClick={(e) => e.stopPropagation()}
-          className="text-action hover:underline"
-        >
-          <RowTitle table={col.reference_table} rowId={String(value)} />
-        </Link>
+        // #792: a link reads as the linked row's title and opens that row;
+        // #910 D5: its code follows when people use one.
+        <RowLink
+          table={col.reference_table}
+          rowId={String(value)}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (!nav || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+            e.preventDefault()
+            nav.push({ ...nav.step, pane: { table: col.reference_table!, row: String(value) } })
+          }}
+        />
       ) : (
         cell(value, col.column_type, settings)
       )}
@@ -1281,6 +1363,20 @@ function ListCell({
 }
 
 const isBlank = (v: unknown) => v == null || String(v).trim() === ''
+
+/** A nested row's link, by its key as before; a row the viewer cannot read
+ *  is neutral words with no link (#910 D3). */
+function NestedLink({ table, rowId }: { table: string; rowId: string }) {
+  const principal = isPrincipalTable(table)
+  const title = useLinkTitle(principal ? undefined : table, rowId)
+  if (!principal && title.state === 'unreadable') return <span className="text-ink-muted">{UNSEEN_ROW}</span>
+  return (
+    <Link to="/featherbase/admin/table/$table/row/$name" search={{ prefill: undefined }}
+      params={{ table, name: rowId }} className="text-action hover:underline">
+      {principal ? <PrincipalName id={rowId} /> : rowId}
+    </Link>
+  )
+}
 
 // usable-on-any-device "Lists fit a phone": the same rows as cards. The first
 // column is the card's title and link, the first Choice its status, and the
@@ -1473,7 +1569,7 @@ function InlineChildGrid({
   const currencyCols = cols.filter((c) => c.column_type === 'Currency')
   return (
     <div className="overflow-hidden rounded-[var(--radius-control)] border border-border bg-surface" data-testid={`inline-children-${field.column_name}`}>
-      <div className="border-b border-border px-3 py-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+      <div className="border-b border-border px-3 py-1 text-xs font-semibold text-ink-muted">
         {field.label ?? field.column_name} ({fmtCount(rows.length)})
       </div>
       <table className="w-full text-xs">
@@ -1492,14 +1588,7 @@ function InlineChildGrid({
               {cols.map((c) => (
                 <td key={c.column_name} className="px-3 py-1 text-ink">
                   {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
-                    <Link
-                      to="/featherbase/admin/table/$table/row/$name"
-                      search={{ prefill: undefined }}
-                        params={{ table: c.reference_table, name: String(r[c.column_name]) }}
-                      className="text-action hover:underline"
-                    >
-                      {isPrincipalTable(c.reference_table) ? <PrincipalName id={String(r[c.column_name])} /> : String(r[c.column_name])}
-                    </Link>
+                    <NestedLink table={c.reference_table} rowId={String(r[c.column_name])} />
                   ) : (
                     c.column_type === 'Choice' && r[c.column_name] != null
                       ? choiceLabel(String(r[c.column_name]), c.choice_labels, t)
@@ -1585,7 +1674,7 @@ function StandardFilters({
         f.column_type === 'Reference' && f.reference_table ? (
           // #793: a link filters by picking a row by its name, not by typing its id.
           <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+            <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
             <span className="flex items-center gap-1">
@@ -1612,7 +1701,7 @@ function StandardFilters({
           </label>
         ) : f.column_type === 'Choice' ? (
           <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+            <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
             <select
@@ -1634,7 +1723,7 @@ function StandardFilters({
           </label>
         ) : (
           <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+            <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
             <input
@@ -1685,7 +1774,7 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
   return (
     <>
       {label} {op}{' '}
-      {linked ? <RowTitle table={col.reference_table!} rowId={String(value)} />
+      {linked ? <LinkedTitle table={col.reference_table!} rowId={String(value)} />
         : (op === '=' || op === '!=') && col?.column_type === 'Choice' ? choiceLabel(String(value), col.choice_labels, t)
         : filterValueLabel(op, value)}
     </>
@@ -1852,7 +1941,7 @@ function RecentStrip({
   if (rows.length === 0 && views.length === 0) return null
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="recent-strip">
-      <span className="text-xs font-semibold uppercase tracking-wider text-ink-subtle">
+      <span className="text-xs font-semibold text-ink-subtle">
         Recent
       </span>
       {rows.map((r) => (
@@ -2029,7 +2118,7 @@ function SavedViewsBar({
     <div className="mb-3" data-testid="saved-views-bar">
       {list.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-ink-subtle">
+          <span className="text-xs font-semibold text-ink-subtle">
             Views
           </span>
           {list.map((v) => {
@@ -2185,7 +2274,7 @@ function ExploreSplitButton({ table }: { table: string }) {
       </div>
       {open && (
         <div className={cardClasses('absolute right-0 z-10 mt-1 w-64 p-2')} data-testid="explore-split-panel">
-          <div className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+          <div className="px-2 pb-1 text-xs font-semibold text-ink-subtle">
             Chain into
           </div>
           {options.map((o) => {

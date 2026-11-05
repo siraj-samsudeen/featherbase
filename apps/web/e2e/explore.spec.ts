@@ -162,11 +162,12 @@ test('ListView split button: pick dependents, Open lands on a chained Explore', 
   })
 })
 
-test('RelationMap: Open in Explore materializes the neighborhood narrowed to the row', async ({
+test("the row page's Map tab: Open in Explore materializes the neighborhood narrowed to the row", async ({
   session,
 }) => {
-  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(VEHICLE))}/row/${encodeURIComponent(v1)}/map`)
+  await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(VEHICLE))}/row/${encodeURIComponent(v1)}`)
   await session.step('open in Explore', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Map', exact: true }).click()
     await page.getByTestId('map-open-explore').click()
   })
 

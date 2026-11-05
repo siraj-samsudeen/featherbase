@@ -54,11 +54,11 @@ test('Last row reads as the row, with its Table beneath — not its internal id'
   rememberRow('Administrator', Date.now() - 1000)
   await renderApp('/featherbase/admin', admin)
   const tile = await screen.findByTestId('resume-tile-row')
-  await waitFor(() => expect(within(tile).getByTestId('resume-tile-title')).toHaveTextContent('1517 · Kurti Z'))
+  await waitFor(() => expect(within(tile).getByTestId('resume-tile-title')).toHaveTextContent('Kurti Z · 1517'))
   expect(within(tile).getByTestId('resume-tile-sub')).toHaveTextContent(MERCH)
   expect(tile).not.toHaveTextContent(MERCH_ROW)
   const recent = await screen.findByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
-  await waitFor(() => expect(recent).toHaveTextContent('1517 · Kurti Z'))
+  await waitFor(() => expect(recent).toHaveTextContent('Kurti Z · 1517'))
   expect(recent).not.toHaveTextContent(MERCH_ROW)
 })
 
@@ -99,7 +99,7 @@ test('My activity titles an opened row from its values', async ({ admin }) => {
   })
   await renderApp('/featherbase/admin', admin)
   const feed = await screen.findByTestId('activity-feed')
-  expect(await within(feed).findByText('1517 · Kurti Z')).toBeInTheDocument()
+  expect(await within(feed).findByText('Kurti Z · 1517')).toBeInTheDocument()
   expect(feed).not.toHaveTextContent(MERCH_ROW)
 })
 
@@ -239,7 +239,7 @@ test('a row whose Table has no title column is headed by its readable values', a
   await seedMerch(admin)
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(MERCH))}/row/${encodeURIComponent(MERCH_ROW)}`, admin)
   const heading = await screen.findByRole('heading', { level: 1 })
-  await waitFor(() => expect(heading).toHaveTextContent(`${MERCH}: 1517 · Kurti Z`))
+  await waitFor(() => expect(heading).toHaveTextContent(`${MERCH}: Kurti Z · 1517`))
 })
 
 test.for(['Person', 'Service Account'] as const)('a %s-valued row title names recents, sidebar, heading and breadcrumb', async (principalTable, { admin }) => {

@@ -127,7 +127,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
 
   return (
     <div className={cardClasses('p-4')} data-testid="comments-panel">
-      <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+      <div className="mb-3 text-xs font-semibold text-ink-subtle">
         Comments
       </div>
 

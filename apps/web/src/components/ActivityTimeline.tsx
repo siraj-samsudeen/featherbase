@@ -41,7 +41,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
 
   return (
     <div className={cardClasses('p-4')} data-testid="activity-timeline">
-      <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+      <div className="mb-3 text-xs font-semibold text-ink-subtle">
         Activity
       </div>
       {activity.isError && <p role="alert" className="text-sm text-negative">Activity could not be read.</p>}
