@@ -85,3 +85,14 @@ test('a text column still cannot become a number', async ({ admin }) => {
   expect(response.status).toBe(417)
   expect((await response.json()).error.fields.sales_org).toMatch(/column_type cannot change/)
 })
+
+test('a link to a settings Table is refused: its rows are not stored as rows', async ({ admin }) => {
+  await seed(admin, ['1150'])
+  await admin.post('/api/table_def', { name: 'Tcl Prefs', kind: 'settings', columns: [{ column_name: 'home', label: 'Home', column_type: 'Data' }] })
+  const response = await admin.fetch(`/api/table_def/${encodeURIComponent(PLANT)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ columns: [{ column_name: 'plant_name', label: 'Plant name', column_type: 'Data' }, { ...salesOrg('Reference'), reference_table: 'Tcl Prefs' }] }),
+  })
+  expect(response.status).toBe(417)
+  expect((await response.json()).error.fields.sales_org).toMatch(/Tcl Prefs rows are not stored here/)
+})

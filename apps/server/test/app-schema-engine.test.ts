@@ -553,6 +553,18 @@ describe('a text column becomes a link', () => {
     await expect(changeColumnType('shop.audit', 'about', 'Data')).rejects.toThrow(/link to a row of any Table/)
   })
 
+  shopTest('a link turns back into text and links to no Table', async () => {
+    await shop()
+    await changeColumnType('shop.order', 'supplier', 'Data')
+    expect(await sql`select column_type, reference_table from column_def where parent = 'shop.order' and column_name = 'supplier'`)
+      .toEqual([{ column_type: 'Data', reference_table: null }])
+  })
+
+  shopTest('the engine refuses a link with no Table', async () => {
+    await shop()
+    await expect(changeColumnType('shop.supplier', 'code', 'Reference')).rejects.toThrow(/a link needs the Table it links to/)
+  })
+
   test("a link's Table cannot be swapped on its own", () => {
     expect(() => step([{ kind: 'alterColumn', table: 'shop.supplier', column: 'code', from: { reference_table: null }, to: { reference_table: 'Role' } }]))
       .toThrow(/changes only when a text column becomes a link/)

@@ -98,11 +98,11 @@ async function assertValuesNameRows(
     `select distinct t.${col} as value from ${relation} t
      where t.${col} is not null and t.${col} <> ''
        and not exists (select 1 from ${quoteRelation(await tableRelation(target))} r where r.row_id = t.${col})
-     order by 1 limit 21`,
+     order by 1 limit 20`,
   )) as unknown as { value: string }[]
   if (missing.length) {
-    const shown = missing.slice(0, 20).map((m) => m.value).join(', ')
-    const why = `${shown}${missing.length > 20 ? ' and more' : ''} ${missing.length === 1 ? 'names' : 'name'} no ${target} row`
+    // The first 20 are enough to see the pattern and start fixing.
+    const why = `${missing.map((m) => m.value).join(', ')} ${missing.length === 1 ? 'names' : 'name'} no ${target} row`
     throw new AppError('ValidationError', `${table}.${column} cannot become a link: ${why}`, { [column]: why })
   }
   await tx.unsafe(`update ${relation} set ${col} = null where ${col} = ''`)
@@ -1353,7 +1353,6 @@ export async function changeColumnType(table: string, column: string, to: string
     const target = to === 'Reference' ? opts.reference_table ?? null : null
     if (to === 'Reference') {
       if (!target) throw new AppError('ValidationError', `${meta.name}.${column}: a link needs the Table it links to`)
-      if (meta.kind === 'settings') throw new AppError('ValidationError', `${meta.name}'s column types are not changed here`)
       await assertLinkTargetsExist({ name: meta.name } as TableDef, [{ column_name: column, column_type: 'Reference', reference_table: target }])
     }
     await sql.begin(async (tx) => {
