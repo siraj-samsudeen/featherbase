@@ -210,7 +210,11 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
     // to commit, so a disable either lands first and refuses this, or waits for it. One route:
     // the one checked is the one recorded.
     const able = await canAct(user, entryTable)
-    const [me] = await sql`select enabled from person where row_id = ${user} for share`
+    // The named people too, in one order: re-enabling a manager either lands first or waits, so
+    // a fallback decision can't take a proposal that has just gone back to them.
+    const named = checkedApprovers(approvers).people
+    await sql`select 1 from person where row_id in ${sql([...new Set([user, ...named])].sort())} order by row_id for share`
+    const [me] = await sql`select enabled from person where row_id = ${user}`
     if (!able || me?.enabled !== true) reject('This proposal is not waiting for you')
     const route = await resolveRoute(checkedApprovers(approvers), proposal.maker, entryTable)
     if (!route || !(await inRoute(user, route))) reject('This proposal is not waiting for you')

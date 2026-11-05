@@ -279,6 +279,7 @@ export const actions = {
     const today = istToday()
     const { job, employee } = await myJob(ctx, payload.job, today)
     const from = await heldSection(ctx, job)
+    if (!isActive(from)) ctx.reject('Your section is no longer open. Say which section is yours first')
     // Held from before it is checked until the proposal has recorded it, so what is checked is what is reviewed.
     if (typeof payload.placement === 'string' && payload.placement) await ctx.changeProposals.lockRow(T.placement, payload.placement)
     const [placement] = typeof payload.placement === 'string' && payload.placement ? await list(ctx, T.placement, PLACEMENT_FIELDS, [['row_id', '=', payload.placement]]) : []
@@ -350,7 +351,8 @@ export const actions = {
     const [job] = await list(ctx, T.job, JOB_FIELDS, [['row_id', '=', a.job_assignment]])
     // The people in one order, so two decisions can't wait on each other's; then what the rules below read.
     for (const person of unique([exact(job?.reports_to), exact(job?.employee)]).sort()) await ctx.changeProposals.lockRow(T.employee, person)
-    await ctx.changeProposals.lockRow(T.section, a.to_section)
+    // In id order, as with the people: two moves between the same two sections can't cross.
+    for (const section of unique([a.to_section, a.kind === 'move' ? exact(a.from_section) : '']).sort()) await ctx.changeProposals.lockRow(T.section, section)
     const { approvers } = await approversOf(ctx, job)
     if (payload.decision === 'reject')
       return view(await ctx.changeProposals.reject(proposal.row_id, { approvers, reason: typeof payload.reason === 'string' ? payload.reason : '' }))
@@ -388,6 +390,10 @@ async function whyStale(ctx: ActionContext, proposal: ChangeProposal, a: About, 
   const floor = proposal.changes.find(change => change.column_name === 'floor' && (change.proposed_value !== null || change.review_base_value !== null))
   if (a.kind === 'section' && floor && floor.proposed_value !== (exact(to.floor) || null)) return 'The section it would go to has moved floor.'
   if (a.kind === 'move' && exact(job.section) !== a.from_section) return 'The person who asked no longer holds that section.'
+  if (a.kind === 'move') {
+    const [from] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', a.from_section ?? '']])
+    if (!isActive(from)) return 'The section it would leave is no longer open.'
+  }
   if (a.kind === 'add' && exact(job.section) !== a.to_section) return 'The person who asked no longer holds that section.'
   if (a.kind === 'add') {
     const [subcategory] = await list(ctx, T.subcategory, ['is_merchandise', 'deleted_at_source'], [['row_id', '=', exact(a.subcategory)]])

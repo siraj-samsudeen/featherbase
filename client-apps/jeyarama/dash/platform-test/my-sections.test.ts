@@ -264,6 +264,15 @@ describe('what an approver decides', () => {
     expect(await row('Job Assignment', 'JA-1')).toMatchObject({ section: 'LKS-S1', ends_on: null })
   })
 
+  test('a section closed behind the person: no move out of it, asked or approved', async ({ admin, createUser }) => {
+    const { maker, manager } = await world(admin, createUser)
+    const asked = await act(maker, 'propose_move', move())
+    const [section] = await sql`select updated_at from ${sql(await tableRelation('Section'))} where row_id = 'LKS-S1'`
+    await saveRow(admin, 'Section', { row_id: 'LKS-S1', updated_at: section.updated_at, section_status: 'Inactive' })
+    await expect(act(maker, 'propose_move', { ...move(), placement: 'LKS-2' })).rejects.toMatchObject({ status: 417 })
+    expect(await act(manager, 'decide', { proposal: asked.id, decision: 'approve' })).toMatchObject({ state: 'Needs fresh review' })
+  })
+
   test('a subcategory retired at source since the ask is not added', async ({ admin, createUser }) => {
     const { maker, manager } = await world(admin, createUser)
     const proposal = await act(maker, 'propose_add', { job: 'JA-1', subcategory: '010101004' })
