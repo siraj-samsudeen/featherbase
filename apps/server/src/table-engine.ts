@@ -4,6 +4,7 @@ import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
 import { renameColumnInSyncRules, renameTableInSyncRules } from './master-sync-names'
+import { DELETED_AT_SOURCE } from './sources/table-copy'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
 import { accessPolicySchema, policyColumns } from './access-policy'
 import { logAccess } from './audit'
@@ -552,6 +553,7 @@ export async function updateTable(
   const relation = quoteRelation(await tableRelation(name))
 
   const removing = new Set(opts.remove_columns ?? [])
+  if (removing.has(DELETED_AT_SOURCE)) await assertNotCopyMarker(existing.name, DELETED_AT_SOURCE, 'removed')
   for (const column_name of removing) {
     if (!before.has(column_name)) errors[column_name] = 'not a column of this Table'
     else if (column_name === 'amended_from' && keptAmendedFrom)
@@ -1051,6 +1053,16 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
 // changed name reads as "delete that one, add this one" — the old physical
 // column is orphaned with its data and the new one arrives empty. That is a
 // silent data loss, which is why this is its own operation with its own DDL.
+/** #932: every Copy again finds the deleted-at-source marker by its name, so
+ *  while the Table is copied from a data source it keeps that name. */
+async function assertNotCopyMarker(table: string, column: string, verb: 'renamed' | 'removed'): Promise<void> {
+  if (column !== DELETED_AT_SOURCE) return
+  const [copied] = await sql`select 1 from featherbase.table_copy where target_table = ${table}`
+  if (copied)
+    throw new AppError('ValidationError',
+      `${column} marks rows deleted at the source while ${table} is copied from a data source, so it cannot be ${verb}`)
+}
+
 export async function renameColumn(
   table: string,
   from: string,
@@ -1063,6 +1075,7 @@ export async function renameColumn(
   assertNotSystemWritten(meta, 'renamed or changed')
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be changed`)
+  await assertNotCopyMarker(meta.name, from, 'renamed')
   // BV1: a bound Table's storage belongs to the source. Renaming its column
   // here would rename nothing real and desynchronise the binding.
   if (meta.data_source)
