@@ -5,6 +5,8 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { rowHref } from 'shared'
+import { resolve } from 'node:path'
+import { discoverPackages } from 'server/src/runtime-packages'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
 
@@ -68,4 +70,21 @@ test('#628 a Person\'s row links to what they can see', async ({ admin, createUs
   await renderApp(rowHref('Person', person.user!), admin)
   const link = await screen.findByRole('link', { name: 'What they can see' }, WAIT)
   expect(link).toHaveAttribute('href', pageOf(person.user!))
+})
+
+test('#628 the places an app gives a person show with their reasons and days', async ({ admin, createUser }) => {
+  expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/place-roster')])).toEqual([])
+  await admin.post('/api/install_app', { name: 'placeroster' })
+  const me = await createUser({ roles: [] })
+  await admin.post('/api/save_row', { table: 'placeroster.position', row: { row_id: `${me.user}-n`, person: me.user, place: 'North / Kids', store: 'N1', section: 'kids' } })
+  await admin.post('/api/save_row', { table: 'placeroster.position', row: {
+    row_id: `${me.user}-s`, person: me.user, place: 'South / Mens', store: 'S1', section: 'mens', reason: 'Team Leader job assignment', since: '2026-08-06',
+  } })
+  await renderApp(pageOf(me.user!), me)
+  const places = await screen.findAllByTestId('access-place', {}, WAIT)
+  expect(places.map((li) => li.textContent)).toEqual([
+    'North / Kids — no reason given by Place roster proof',
+    'South / Mens — Team Leader job assignment from 06-Aug-2026',
+  ])
+  expect(screen.getByTestId('access-places')).toHaveTextContent('Places from Place roster proof')
 })
