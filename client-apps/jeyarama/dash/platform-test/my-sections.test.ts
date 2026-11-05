@@ -253,6 +253,17 @@ describe('what an approver decides', () => {
     expect(await act(manager, 'decide', { proposal: proposal.id, decision: 'approve' })).toMatchObject({ state: 'Needs fresh review' })
   })
 
+  test('a section on the same floor that moves before approval is not what was reviewed either', async ({ admin, createUser }) => {
+    const { manager, maker } = await world(admin, createUser)
+    const { updated_at } = (await sql`select updated_at from ${sql(await tableRelation('Job Assignment'))} where row_id = 'JA-1'`)[0]
+    await saveRow(admin, 'Job Assignment', { row_id: 'JA-1', updated_at, floor: 'LKS-F2' })
+    const proposal = await act(maker, 'propose_section', { job: 'JA-1', to_section: 'LKS-S2' })
+    const [section] = await sql`select updated_at from ${sql(await tableRelation('Section'))} where row_id = 'LKS-S2'`
+    await saveRow(admin, 'Section', { row_id: 'LKS-S2', updated_at: section.updated_at, floor: 'LKS-F3' })
+    expect(await act(manager, 'decide', { proposal: proposal.id, decision: 'approve' })).toMatchObject({ state: 'Needs fresh review' })
+    expect(await row('Job Assignment', 'JA-1')).toMatchObject({ section: 'LKS-S1', ends_on: null })
+  })
+
   test('a manager Dash does not open for is passed over, for the master data team', async ({ admin, createUser }) => {
     const { maker, manager, editor } = await world(admin, createUser)
     await sql`delete from has_role where parent = ${manager.user!} and role = 'Feather Dash Reader'`

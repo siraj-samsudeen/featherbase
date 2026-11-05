@@ -370,8 +370,8 @@ async function whyStale(ctx: ActionContext, proposal: ChangeProposal, a: About, 
   if (exact(employee?.person) !== proposal.maker || exact(employee?.employee_status) !== 'Current') return 'The person who asked no longer holds this job.'
   const [to] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', a.to_section]])
   if (!isActive(to) || exact(to?.site) !== a.site) return 'The section it would go to is no longer open.'
-  // Only when the proposal carries the floor: a job with none has it reviewed, not changed.
-  const floor = proposal.changes.find(change => change.column_name === 'floor' && change.proposed_value !== change.review_base_value)
+  // A job carrying a floor must match the section's, changed or not; a job with none has nothing to match.
+  const floor = proposal.changes.find(change => change.column_name === 'floor' && (change.proposed_value !== null || change.review_base_value !== null))
   if (a.kind === 'section' && floor && floor.proposed_value !== (exact(to.floor) || null)) return 'The section it would go to has moved floor.'
   if (a.kind === 'move' && exact(job.section) !== a.from_section) return 'The person who asked no longer holds that section.'
   if (a.kind === 'add' && exact(job.section) !== a.to_section) return 'The person who asked no longer holds that section.'

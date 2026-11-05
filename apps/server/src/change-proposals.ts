@@ -3,10 +3,11 @@
 // administrator lists it in the app's `linked_tables` setting, and only the declared columns.
 // Reads run as the platform, as a scope provider's do, so staff need no grant on HR's data.
 // Who may decide is checked here, whatever the app says, and no role bypasses it.
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { ActionListArgs, ActionRow, ApproverRequest, BaseTablesHelper, ChangeProposal, ChangeProposalsHelper, ChangeProposalsReader, ChangeProposalState, DecisionApproval, DecisionNote, ProposalFilter, ProposalRequest } from 'shared'
 import { sql } from './db'
-import { getDoc, hashRowId, saveDoc, saveSystemRow } from './document'
+import { getDoc, saveDoc, saveSystemRow } from './document'
 import { AppError } from './errors'
 import { getMeta, type TableMeta } from './meta'
 import { canSignInNow } from './identities'
@@ -166,7 +167,7 @@ async function writeRoute(id: string, route: { people: string[]; roles: string[]
   await sql`delete from change_proposal_approver where parent = ${id}`
   const rows = [...route.people.map(person => ({ person, role: null })), ...route.roles.map(role => ({ person: null, role }))]
   for (const [position, row] of rows.entries())
-    await sql`insert into change_proposal_approver ${sql({ row_id: hashRowId(), created_by: actor, updated_by: actor, position, parent: id,
+    await sql`insert into change_proposal_approver ${sql({ row_id: randomUUID(), created_by: actor, updated_by: actor, position, parent: id,
       parenttype: 'Change Proposal', parentfield: 'approvers', ...row } as unknown as Record<string, never>)}`
 }
 
@@ -274,7 +275,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
       const reviewed = [...entries.map(([column, value]) => [column, before(column), value] as const),
         ...(current ? [...mustStay, declared.endsOn].map(column => [column, before(column), before(column)] as const) : [])]
       for (const [position, [column_name, original, proposed]] of reviewed.entries())
-        await sql`insert into change_proposal_column ${sql({ row_id: hashRowId(), created_by: user, updated_by: user, position, parent: id,
+        await sql`insert into change_proposal_column ${sql({ row_id: randomUUID(), created_by: user, updated_by: user, position, parent: id,
           parenttype: 'Change Proposal', parentfield: 'changes', column_name, original_value: original, proposed_value: proposed, review_base_value: original } as unknown as Record<string, never>)}`
       await writeRoute(id, route!, user)
       return oneProposal(app, id)

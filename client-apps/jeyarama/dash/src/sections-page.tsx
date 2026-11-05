@@ -154,7 +154,7 @@ export function YourSections() {
         <>
           <p className="fd-muted" data-testid="person-name">{answer.name}. If something here is wrong, say so. Nothing changes until it is approved.</p>
           {answer.waiting_for_me > 0 && (
-            <Notice tone="caution"><a href={APPROVALS_ADDRESS} className={touchLinkClasses()} data-testid="approvals-notice">{approvalsLabel(answer.waiting_for_me)}</a></Notice>
+            <Notice tone="caution"><a href={APPROVALS_ADDRESS} className={touchLinkClasses('pointer-coarse:-my-3')} data-testid="approvals-notice">{approvalsLabel(answer.waiting_for_me)}</a></Notice>
           )}
           {answer.jobs.length === 0 && (
             <Card data-testid="no-job"><EmptyState title="You have no current job on the staff list" body="Ask your manager to check it with HR." /></Card>
@@ -377,7 +377,7 @@ function ApprovalCard({ proposal, onDone }: { proposal: Proposal; onDone: (note:
         : { tone: 'positive', text: `Approved: ${askedOfApprover(proposal)}.` })
     } catch (failure) {
       // Decided elsewhere, or no longer theirs: the list as it is now, with the reason.
-      await onDone({ tone: 'negative', text: `${proposal.who}: ${askedOfApprover(proposal)}. ${messageOf(failure)}` })
+      await onDone({ tone: 'caution', text: `${proposal.who}: ${askedOfApprover(proposal)}. ${messageOf(failure).replace(/\.?$/, '.')}` })
     }
   }
   return (

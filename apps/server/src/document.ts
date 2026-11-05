@@ -97,7 +97,7 @@ type RowValues = Record<string, unknown>
 
 const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
-export function hashRowId(): string {
+function hashRowId(): string {
   return randomBytes(5).toString('hex')
 }
 
