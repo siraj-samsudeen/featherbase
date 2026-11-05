@@ -509,3 +509,34 @@ describe('loss preview uses installed ownership', () => {
     expect(await sql`select row_id, title, qty from evolve.item`).toEqual([{ row_id: 'i1', title: 'Keep this item', qty: 3 }])
   })
 })
+
+// #911: an app version turns a code column into a link, in place.
+describe('a text column becomes a link', () => {
+  const linkCode = (to: Record<string, unknown> = { column_type: 'Reference', reference_table: 'Role' }) =>
+    ({ kind: 'alterColumn', table: 'shop.supplier', column: 'code', from: { column_type: 'Data', ...('reference_table' in to ? { reference_table: null } : {}) }, to })
+
+  shopTest('every code names a row, so the column becomes a link and keeps its values', async () => {
+    await registered()
+    await sql`insert into role (row_id) values ('ACME') on conflict do nothing`
+    await run(linkCode())
+    expect(await sql`select column_type, reference_table from column_def where parent = 'shop.supplier' and column_name = 'code'`)
+      .toEqual([{ column_type: 'Reference', reference_table: 'Role' }])
+    expect(await sql`select code from shop.supplier`).toEqual([{ code: 'ACME' }])
+  })
+
+  shopTest('a code with no row refuses the upgrade, naming it, and the column stays text', async () => {
+    await registered()
+    await expect(run(linkCode())).rejects.toThrow(/ACME names no Role row/)
+    expect(await sql`select column_type, reference_table from column_def where parent = 'shop.supplier' and column_name = 'code'`)
+      .toEqual([{ column_type: 'Data', reference_table: null }])
+  })
+
+  test('a link without the Table it links to is refused', () => {
+    expect(() => step([linkCode({ column_type: 'Reference' })])).toThrow(/a link needs the Table it links to/)
+  })
+
+  test("a link's Table cannot be swapped on its own", () => {
+    expect(() => step([{ kind: 'alterColumn', table: 'shop.supplier', column: 'code', from: { reference_table: null }, to: { reference_table: 'Role' } }]))
+      .toThrow(/changes only when a text column becomes a link/)
+  })
+})
