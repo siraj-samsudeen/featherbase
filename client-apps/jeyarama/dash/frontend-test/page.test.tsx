@@ -102,6 +102,14 @@ async function waitForText(text: string, timeout = 5000) {
   expect(document.body.textContent).toContain(text)
 }
 
+/** The cached table is on show (#950: it has no title of its own to wait for). */
+async function waitForQuickView(timeout = 5000) {
+  const deadline = Date.now() + timeout
+  while (!document.querySelector('[data-testid=quick-view]') && Date.now() < deadline)
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+  expect(document.querySelector('[data-testid=quick-view]')).not.toBeNull()
+}
+
 describe('Feather Dash against the real platform', () => {
   test('offers a sign-in link preserving the report address after the server refuses anonymous reads', async () => {
     history.replaceState(null, '', '/feather_dash/?store=9901')
@@ -187,7 +195,7 @@ describe('Feather Dash against the real platform', () => {
 
   installed('renders real cached sales with exact totals and lets the reader reveal and hide quiet subcategories', async ({ dash: _dash }) => {
     await open()
-    await waitForText('Quick view')
+    await waitForQuickView()
     expect(document.body.textContent).toContain('Silk')
     expect(document.body.textContent).not.toContain('Quiet cotton')
     expect(document.querySelector('tfoot')?.textContent).toContain('₹1,000')
@@ -222,7 +230,7 @@ describe('Feather Dash against the real platform', () => {
       expect(requests.slice(-2).map(r => r.status)).toEqual([409, 409])
     })
     await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
-    await waitForText('Quick view')
+    await waitForQuickView()
     expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
   })
 
@@ -261,7 +269,7 @@ describe('Feather Dash against the real platform', () => {
     installed(`distinguishes ${example.name} in the row and exact total`, async ({ dash }) => {
       await dash.snapshot([dash.fact('010101001', example.values)])
       await open()
-      await waitForText('Quick view')
+      await waitForQuickView()
       const row = [...document.querySelectorAll('tbody tr')].find(r => r.querySelector('th')?.textContent === 'Silk')!
       expect([...row.querySelectorAll('td')].map(c => c.textContent)).toEqual(example.cells)
       expect(document.querySelector('tfoot')?.textContent).toBe(example.total)
@@ -288,7 +296,7 @@ describe('Feather Dash against the real platform', () => {
   installed('includes unplaced sales under No section with their own subtotal', async ({ dash }) => {
     await dash.snapshot([...dash.facts, dash.fact('010909009', { subcategory: 'Unplaced silk', target: 50, actual: 80 })])
     await open()
-    await waitForText('Quick view')
+    await waitForQuickView()
     const group = [...document.querySelectorAll('tbody')].find(body => body.textContent?.includes('Unplaced silk'))!
     expect(group.querySelector('[scope=rowgroup]')?.textContent).toBe('No section')
     expect(group.querySelector('.fd-subtotal')?.textContent).toBe('No\u00a0section total₹50.00₹80.00+₹30.00160%')
@@ -307,7 +315,7 @@ describe('Feather Dash against the real platform', () => {
         store: '9901', section: dash.section.row_id, starts_on: '2026-01-01' })
       token = person.token
       await open()
-      await waitForText('Quick view')
+      await waitForQuickView()
       expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('LKS · Sarees')
       expect(document.querySelector('[data-testid=why-line]')?.textContent).toBe(example.sentence)
       expect(document.body.textContent).not.toMatch(/9901|010101001/)
@@ -319,7 +327,7 @@ describe('Feather Dash against the real platform', () => {
     await dash.save('job_assignment', { person: dash.reader.user, job: 'Team Leader', store: '9901', section: dash.section.row_id, starts_on: '2026-01-01' })
     await dash.save('job_assignment', { person: dash.reader.user, job: 'Staff', store: '9901', section: dash.section.row_id, starts_on: '2026-01-01' })
     await open()
-    await waitForText('Quick view')
+    await waitForQuickView()
     expect(document.querySelector('[data-testid=why-line]')?.textContent)
       .toBe('You see LKS because you are its Store Manager, Cluster Manager and Team Leader of Sarees and work in Sarees.')
   })
@@ -334,7 +342,7 @@ describe('Feather Dash against the real platform', () => {
     expect(document.querySelector('table')).toBeNull()
     await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
     await act(async () => { await busy })
-    await waitForText('Quick view')
+    await waitForQuickView()
     expect(requests.filter(r => r.path.endsWith('/stores'))).toHaveLength(2)
     expect(requests.filter(r => r.path.endsWith('/report'))).toHaveLength(1)
     expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
@@ -394,7 +402,7 @@ describe('Feather Dash against the real platform', () => {
       await dash.snapshot(facts)
       token = person.token
       await open()
-      await waitForText('Quick view')
+      await waitForQuickView()
       expect(document.querySelector('[data-testid=heading-title]')?.textContent)
         .toBe(count > 3 ? 'LKS · 4 sections' : `LKS · ${names.join(' · ')}`)
       expect(document.querySelector('[data-testid=why-line]')?.textContent)
@@ -413,7 +421,7 @@ describe('Feather Dash against the real platform', () => {
     await dash.snapshot([...dash.facts, dash.fact('020202002', { subcategory: 'Cotton shirts' })])
     token = person.token
     await open()
-    await waitForText('Quick view')
+    await waitForQuickView()
     expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('LKS · Cotton · Sarees')
     expect(document.querySelector('[data-testid=why-line]')?.textContent)
       .toBe('You see Cotton and Sarees at LKS because you are Team Leader of Sarees and work in Cotton.')
@@ -427,7 +435,7 @@ describe('Feather Dash against the real platform', () => {
     token = person.token
     history.replaceState(null, '', '/feather_dash/?store=9902')
     await open()
-    await waitForText('Quick view')
+    await waitForQuickView()
     expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Your store')
     expect(document.querySelector('[data-testid=why-line]')?.textContent)
       .toBe('You see these subcategories at your store because they are assigned to you.')
@@ -472,7 +480,7 @@ describe('Feather Dash against the real platform', () => {
     expect(document.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('failed')
     expect(document.querySelector('table')).toBeNull()
     await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
-    await waitForText('Quick view')
+    await waitForQuickView()
     expect(requests.filter(r => r.path.endsWith('/report'))).toHaveLength(2)
     expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
   }, 25000)
@@ -495,7 +503,7 @@ describe('Feather Dash against the real platform', () => {
     await dash.save('store_rollout', { store: '9902', live_since: '2026-01-01' })
     await dash.save('job_assignment', { person: dash.reader.user, job: 'Store Manager', store: '9902', starts_on: '2026-01-01' })
     await open()
-    await waitForText('Quick view')
+    await waitForQuickView()
     await act(async () => {
       history.pushState(null, '', '?store=9902')
       window.dispatchEvent(new dom.window.CustomEvent('featherbase:bar-change', { detail: { key: 'store', value: '9902' } }))
@@ -507,14 +515,14 @@ describe('Feather Dash against the real platform', () => {
       history.replaceState(null, '', '?store=9901')
       window.dispatchEvent(new dom.window.PopStateEvent('popstate'))
     })
-    await waitForText('Quick view')
+    await waitForQuickView()
     expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
   })
 
   installed('an address outside the real reader scope waits for correction, then opens only their default store', async ({ dash: _dash }) => {
     history.replaceState(null, '', '/feather_dash/?store=9909')
     await open()
-    await waitForText('Quick view')
+    await waitForQuickView()
     expect(requests.filter(r => r.path.endsWith('/stores'))).toEqual([
       { path: '/api/app_reads/feather_dash/stores', status: 200 },
     ])
@@ -541,7 +549,7 @@ describe('Feather Dash against the real platform', () => {
       token = person.token
       history.replaceState(null, '', '/feather_dash/?store=9902')
       await open()
-      await waitForText('Quick view')
+      await waitForQuickView()
       expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('LKS · Cotton')
       expect(document.querySelector('[data-testid=why-line]')?.textContent).toBe(role === 'staff'
         ? 'You see Cotton at LKS because you work in Cotton and have other subcategories assigned to you.'
