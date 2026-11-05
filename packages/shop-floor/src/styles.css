@@ -143,6 +143,29 @@
   }
 }
 
+/* #941 (ADR 0019): an app's accent, named in its manifest and written by the
+   server as data-featherbase-accent on the app's document (and by the bar and
+   the sidebar on their own roots, beside their painted data-theme). An accent
+   re-values only the action and focus tokens; the meaning colours stay. Blue,
+   the default, is the tokens above and has no block. The dark block names
+   both attributes and comes last, so it wins over the plain dark block. */
+[data-featherbase-accent='green'] {
+  --color-action: #1f6b4f;
+  --color-action-hover: #17533d;
+  --color-action-ink: #ffffff;
+  --color-action-tint: #ecf5f0;
+  --color-focus: #1f6b4f;
+}
+@media screen {
+  [data-featherbase-accent='green'][data-theme='dark'] {
+    --color-action: #5fcf9c;
+    --color-action-hover: #8fe0bb;
+    --color-action-ink: #0b1220;
+    --color-action-tint: #123829;
+    --color-focus: #8fe0bb;
+  }
+}
+
 :root {
   color-scheme: light;
 }
@@ -156,6 +179,13 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+/* #941: on an app's page the shared top bar sits in the flow above the app's
+   root, so the root takes what is left of the window, not all of it; a page
+   sized to the window then never scrolls by the bar's height. */
+featherbase-bar ~ #root {
+  height: calc(100% - var(--featherbase-bar-height, 0px));
 }
 
 body {

@@ -55,3 +55,4 @@ export {
 export { SCOPE_BASES, type ScopeBasis } from './sales-target'
 export { REALTIME_MAX_FRAME_BYTES, realtimeFrames } from './realtime'
 export { personScopeSchema, scopePlaceSchema, SCOPE_CONFIRMATIONS, type ScopePlace, type PersonScope, type ScopeConfirmation } from './person-scope'
+export { APP_ACCENTS, DEFAULT_APP_ACCENT, type AppAccent } from './app-accents'

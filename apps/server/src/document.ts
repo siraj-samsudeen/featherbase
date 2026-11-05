@@ -10,6 +10,7 @@ import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { mayPurge } from './purge'
 import { RETIRE_INSTEAD, assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
 import { allowedTables, anyTableLinkHolder, linkableTable, repointAnyTableLinks } from './any-table-link'
+import { EVERYONE_ROLES_FIELD, checkEveryoneRoles, parseEveryoneRoles } from './everyone-roles'
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { RESERVED_COLUMNS, canRetire, seriesKey, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
@@ -28,6 +29,7 @@ import { assertSecurityWriter, isSecurityTable, securityRefusal } from './securi
 import {
   assertDocPermission,
   assertPermission,
+  assertSystemManager,
   checkUserPermissions,
   filterReadFields,
   getScopeMap,
@@ -2092,6 +2094,18 @@ function coerceSingleValue(columnType: string, raw: string | null): unknown {
   }
 }
 
+// #923: the roles everyone who signs in holds are stored one per line, each
+// a role that exists. Changing them changes what every person may do, so only
+// a System Manager may (the rest of System Settings stays as its Permission
+// rows allow).
+async function settleEveryoneRoles(tx: typeof sql, clean: RowValues, before: Record<string, string | null>, user: string) {
+  const roles = parseEveryoneRoles(clean[EVERYONE_ROLES_FIELD])
+  clean[EVERYONE_ROLES_FIELD] = roles.join('\n') || null
+  if ((clean[EVERYONE_ROLES_FIELD] ?? null) === (before[EVERYONE_ROLES_FIELD] ?? null)) return
+  await assertSystemManager(user)
+  await checkEveryoneRoles(tx, roles)
+}
+
 // SET-001: persist a Settings Table's values into the EAV store.
 export function saveSingle(...args: Parameters<typeof saveSingleImpl>) {
   return appOperation(() => saveSingleImpl(...args))
@@ -2120,6 +2134,7 @@ async function saveSingleImpl(
       (await stx`select field, value from single_value where table_name = ${table}`).map((r) => [r.field as string, r.value as string | null]))
     await holdManagedSet(stx, table)
     const before = await stored()
+    if (table === 'System Settings' && EVERYONE_ROLES_FIELD in clean) await settleEveryoneRoles(stx, clean, before, user)
     for (const [field, value] of Object.entries(clean)) {
       const text = value == null ? null : typeof value === 'boolean' ? (value ? '1' : '0') : typeof value === 'object' && !(value instanceof Date) ? JSON.stringify(value) : String(value)
       await stx`

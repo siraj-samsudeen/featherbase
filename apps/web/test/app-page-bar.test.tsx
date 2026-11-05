@@ -49,12 +49,13 @@ async function readerOf(admin: TestClient, createUser: CreateUserFn, places: [st
 
 /** bar-proof's own page at `path`, signed in as `as`, with the bar mounted the
  *  way the served document mounts it. */
-function openAppPage(as: TestClient, path = '/barproof/', leave: (href: string) => void = () => {}) {
+function openAppPage(as: TestClient, path = '/barproof/', leave: (href: string) => void = () => {}, accent?: string) {
   window.history.replaceState(null, '', path)
   setSession(as.token!, { row_id: as.user!, email: null, full_name: null })
   const host = document.createElement('featherbase-bar')
   host.dataset.app = 'barproof'
   host.dataset.title = 'Bar proof'
+  if (accent) host.dataset.accent = accent
   document.body.prepend(host)
   const { unmount } = mountBar(host, { leave })
   mounted = { unmount, host }
@@ -172,6 +173,21 @@ test("the bar's theme is painted on the bar, never on the app's page", async ({ 
   await userEvent.click(await bar.findByTestId('theme-dark'))
   await waitFor(() => expect(bar.getByTestId('bar-theme-root')).toHaveAttribute('data-theme', 'dark'))
   expect(document.documentElement.getAttribute('data-theme')).toBe(before)
+})
+
+// #941 (design D2): the app's accent sits on the bar's theme root, beside its
+// painted theme, so the accent's dark block matches after a theme switch.
+test("the app's accent is on the bar's theme root, beside its theme", async ({ admin, createUser }) => {
+  const bar = openAppPage(await readerOf(admin, createUser), '/barproof/', () => {}, 'green')
+  await userEvent.click(await bar.findByTestId('theme-dark'))
+  const root = bar.getByTestId('bar-theme-root')
+  await waitFor(() => expect(root).toHaveAttribute('data-theme', 'dark'))
+  expect(root).toHaveAttribute('data-featherbase-accent', 'green')
+})
+
+test('a bar whose app names no accent carries none', async ({ admin, createUser }) => {
+  const bar = openAppPage(await readerOf(admin, createUser))
+  expect(await bar.findByTestId('bar-theme-root')).not.toHaveAttribute('data-featherbase-accent')
 })
 
 // #668: the app's page is told the theme the person sees, through the

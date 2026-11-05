@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import {
+  createElement,
   useEffect,
   useRef,
   useState,
@@ -7,11 +8,13 @@ import {
   type ReactNode,
 } from 'react'
 import { createRoot } from 'react-dom/client'
+import { THEME_CHANGE_EVENT, paintTheme } from '@featherbase/shop-floor/theme'
 import {
   action,
   read,
   ApiError,
   type Ticket,
+  canManageApps,
   type Session,
   type Detail,
   type RecordData,
@@ -88,6 +91,11 @@ const fields: Record<string, [string, string, string?][]> = {
     ['scope', 'Scope / affected reports'],
     ['expected', 'Expected result'],
   ],
+}
+const connectionNames: Record<string, string> = {
+  employee: 'Employee lookup',
+  email: 'Inbound email',
+  investigation: 'Automated investigation',
 }
 const stateLabel = (state: string) =>
   state.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -477,7 +485,7 @@ function ActionForm({
   button?: string
 }) {
   return (
-    <section className="card">
+    <section className="card" id={`action-${name}`}>
       <h3>{title}</h3>
       <form
         onSubmit={async (e) => {
@@ -517,12 +525,124 @@ function Field({
     </Label>
   )
 }
+// Tickets' App Setting rows in Admin, where its connections and people are set up.
+const SETTINGS_HREF = `/featherbase/admin/table/app-setting?filters=${encodeURIComponent(
+  JSON.stringify([['app', '=', 'tickets']]),
+)}`
+const BUILT_IN_STATES = ['New', 'Needs verification', 'Awaiting approval', 'Approved', 'Rejected', 'Policy review', 'In progress', 'Resolved']
+const isDone = (ticket: Ticket) =>
+  configuredTypes[ticket.kind]
+    ? configuredTypes[ticket.kind].done.includes(ticket.ticket_state)
+    : ticket.ticket_state === 'Resolved'
+// A state's words decide its Shop Floor tone; the colour only repeats them.
+type Tone = 'negative' | 'caution' | 'positive' | 'opportunity' | 'missing' | 'neutral'
+const tone = (ticket: Ticket): Tone => {
+  const words = ticket.ticket_state.toLowerCase()
+  if (isDone(ticket)) return 'positive'
+  if (/reject|declin|cancel|fail/.test(words)) return 'negative'
+  if (/fixed|verify\b/.test(words)) return 'opportunity'
+  if (/^new$|^open$/.test(words)) return 'missing'
+  if (/need|await|wait|review|question|hold|blocked/.test(words)) return 'caution'
+  return 'neutral'
+}
+function StatePill({ ticket }: { ticket: Ticket }) {
+  return (
+    <span className={`pill tone-${tone(ticket)}`}>
+      {stateLabel(ticket.ticket_state)}
+    </span>
+  )
+}
+const assignee = (ticket: Ticket) =>
+  ticket.assigned_to ? person(ticket.assigned_to) : 'Unassigned'
+// What this person can do on this ticket now: the same conditions that enable
+// each action's form in the tabs below.
+type HeaderAction = { key: string; label: string; tab: string; target: string; transition?: TicketAction }
+function availableActions(now: {
+  support: boolean
+  capabilities: Session['capabilities']
+  access: boolean
+  resolved: boolean
+  state: string
+  canDecide: boolean
+  editable: boolean
+  rewordable: boolean
+  // #918: the moves this ticket's type allows the viewer now (null when the
+  // type declares none); the server decides which, for requesters too.
+  transitions: TicketAction[] | null
+}): HeaderAction[] {
+  const actions: HeaderAction[] = (now.transitions ?? []).map((transition) => ({
+    key: `transition:${transition.action}`,
+    label: transition.action,
+    tab: 'Workflow',
+    target: 'action-transition',
+    transition,
+  }))
+  const wording: HeaderAction[] = now.rewordable
+    ? [{ key: 'wording', label: 'Correct the wording', tab: 'Request', target: 'action-wording' }]
+    : []
+  if (!now.support) return [...actions, ...wording]
+  const workflow = (key: string, label: string): HeaderAction => ({
+    key,
+    label,
+    tab: 'Workflow',
+    target: `action-${key}`,
+  })
+  if (now.access) {
+    if (now.capabilities.verify && !now.resolved)
+      actions.push(workflow('verify', 'Record verification'))
+    if (now.canDecide && !now.resolved)
+      actions.push(workflow('decide', 'Decide'))
+    if (now.capabilities.fulfill && now.state === 'approved')
+      actions.push(workflow('fulfill', 'Record fulfillment'))
+  } else if (!now.transitions)
+    actions.push(
+      now.resolved
+        ? workflow('reopen', 'Reopen ticket')
+        : workflow('resolve', 'Resolve ticket'),
+    )
+  if (now.editable)
+    actions.push({ key: 'edit', label: 'Edit request', tab: 'Request', target: 'action-edit' })
+  actions.push(
+    ...wording,
+    { key: 'evidence', label: 'Record evidence', tab: 'Evidence', target: 'action-evidence' },
+    { key: 'link', label: 'Link work', tab: 'Evidence', target: 'action-link' },
+    { key: 'note', label: 'Add note', tab: 'Activity', target: 'action-note' },
+  )
+  return actions
+}
+// The header's actions row. Each button opens the form that does the work.
+function TicketActions({
+  actions,
+  choose,
+}: {
+  actions: HeaderAction[]
+  choose: (action: HeaderAction) => void
+}) {
+  if (!actions.length) return null
+  return (
+    <div className="header-actions" role="group" aria-label="Actions on this ticket">
+      {actions.map((item, i) => (
+        <button
+          key={item.key}
+          type="button"
+          className={i === 0 ? 'primary' : 'secondary'}
+          onClick={() => choose(item)}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  )
+}
 // #918: the actions this ticket's type lets the viewer take now. The server
 // decides which; each asks for its own fields before it is taken.
-function TypeActions({ actions, state, mutate, busy }: { actions: TicketAction[]; state: string; mutate: Mutate; busy: boolean }) {
-  const [open, setOpen] = useState(''),
-    [values, setValues] = useState<RecordData>({})
-  useEffect(() => { setOpen(''); setValues({}) }, [state])
+function TypeActions({ actions, state, mutate, busy, open, setOpen }: {
+  actions: TicketAction[]; state: string; mutate: Mutate; busy: boolean
+  // #941: which move's form is open, held by the ticket so its header can open one.
+  open: string; setOpen: (action: string) => void
+}) {
+  const [values, setValues] = useState<RecordData>({})
+  useEffect(() => { setValues({}) }, [state, open])
   const chosen = actions.find((a) => a.action === open)
   const take = (action: TicketAction, recorded: RecordData) =>
     mutate('transition', { action: action.action, ...(action.fields.length ? { values: recorded } : {}) })
@@ -533,7 +653,7 @@ function TypeActions({ actions, state, mutate, busy }: { actions: TicketAction[]
         <div className="actions">
           {actions.map((a) => (
             <button key={a.action} type="button" className={open === a.action ? 'primary' : 'secondary'} disabled={busy}
-              onClick={() => (a.fields.length ? (setOpen(a.action), setValues({})) : void take(a, {}))}>
+              onClick={() => (a.fields.length ? setOpen(a.action) : void take(a, {}))}>
               {a.action}
             </button>
           ))}
@@ -542,7 +662,7 @@ function TypeActions({ actions, state, mutate, busy }: { actions: TicketAction[]
         <p className="fine">No action is open to you while this ticket is {state}.</p>
       )}
       {chosen && (
-        <form onSubmit={async (e) => { e.preventDefault(); if (await take(chosen, values)) setOpen('') }}>
+        <form id="action-transition" onSubmit={async (e) => { e.preventDefault(); if (await take(chosen, values)) setOpen('') }}>
           <fieldset disabled={busy}>
             <p className="fine">{chosen.action} moves this ticket to {chosen.next_state}.</p>
             <Structured kind="__action__" values={values} change={(key, value) => setValues((v) => ({ ...v, [key]: value }))}
@@ -559,14 +679,12 @@ function TypeActions({ actions, state, mutate, busy }: { actions: TicketAction[]
 }
 // #918: the requester or support corrects the request's wording; the
 // earlier wording stays in the ticket's history.
-function Reword({ original, mutate, busy }: { original: string; mutate: Mutate; busy: boolean }) {
-  const [open, setOpen] = useState(false)
-  if (!open) return <button className="secondary" type="button" onClick={() => setOpen(true)}>Correct the wording</button>
+function Reword({ original, mutate, busy, close }: { original: string; mutate: Mutate; busy: boolean; close: () => void }) {
   return (
-    <form className="card" onSubmit={async (e) => {
+    <form id="action-wording" className="card" onSubmit={async (e) => {
       e.preventDefault()
       const text = String(new FormData(e.currentTarget).get('original') ?? '')
-      if (await mutate('edit', { original: text })) setOpen(false)
+      if (await mutate('edit', { original: text })) close()
     }}>
       <fieldset disabled={busy}>
         <Label title="Original message">
@@ -574,7 +692,7 @@ function Reword({ original, mutate, busy }: { original: string; mutate: Mutate; 
         </Label>
         <p className="fine">The earlier wording is kept in the ticket's history.</p>
         <div className="actions">
-          <button type="button" onClick={() => setOpen(false)}>Cancel</button>
+          <button type="button" onClick={close}>Cancel</button>
           <button className="primary">Save wording</button>
         </div>
       </fieldset>
@@ -619,31 +737,72 @@ function CaseFile({
     detail.capabilities?.approve === true
   const canDecide =
     support &&
-    (approvalAllowed || state === 'awaiting_approval') &&
+    approvalAllowed &&
     verification?.active === true
+  const canReword =
+    Boolean(detail.details) &&
+    (support || ticket.owner === (typeof session.user === 'string' ? session.user : session.user.row_id))
+  const [rewording, setRewording] = useState(false)
+  const actions = availableActions({
+    support,
+    rewordable: canReword,
+    capabilities: session.capabilities,
+    access,
+    resolved,
+    state,
+    canDecide,
+    editable: Boolean(detail.details),
+    transitions: configured?.transitions ? ((detail.actions as TicketAction[] | undefined) ?? []) : null,
+  })
+  const [typeOpen, setTypeOpen] = useState('')
+  useEffect(() => setTypeOpen(''), [ticket.ticket_state, ticket.row_id])
+  const [focus, setFocus] = useState<{ target: string; at: number } | null>(null)
+  useEffect(() => {
+    if (!focus) return
+    const target = document.getElementById(focus.target)
+    target?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    target
+      ?.querySelector<HTMLElement>('input:not([type=hidden]), select, textarea, button')
+      ?.focus({ preventScroll: true })
+  }, [focus])
   return (
     <>
-      <div className="detail-kicker">
-        <span>CASE / {short(ticket.row_id)}</span>
-        <span className={`badge ${resolved ? 'green' : ''}`}>
-          {stateLabel(ticket.ticket_state)}
-        </span>
-      </div>
-      <h2>{ticket.title}</h2>
-      <div className="detail-sub">
-        <span className="avatar">{person(ticket.owner).slice(0, 1).toUpperCase()}</span>
-        <span>{person(ticket.owner)}</span>
-        <span>· {kindLabel(ticket.kind)}</span>
-      </div>
-      <div className="card public-progress">
-        <span className="privacy">Public progress</span>
-        <p>{ticket.public_update || 'No public update yet.'}</p>
-        <small>
-          Assigned to{' '}
-          {ticket.assigned_to ? person(ticket.assigned_to) : 'unassigned'} ·
-          Updated {time(ticket.updated_at)}
-        </small>
-      </div>
+      <header className="ticket-header" aria-label="Ticket">
+        <div className="ticket-kicker">
+          <span>
+            {short(ticket.row_id)} · {kindLabel(ticket.kind)}
+          </span>
+          <StatePill ticket={ticket} />
+        </div>
+        <h2>{ticket.title}</h2>
+        <dl className="ticket-facts">
+          <div>
+            <dt>Assigned to</dt>
+            <dd>{assignee(ticket)}</dd>
+          </div>
+          <div>
+            <dt>Raised by</dt>
+            <dd>{person(ticket.owner)}</dd>
+          </div>
+          <div>
+            <dt>Updated</dt>
+            <dd>{time(ticket.updated_at)}</dd>
+          </div>
+        </dl>
+        <TicketActions
+          actions={actions}
+          choose={(chosen) => {
+            const move = chosen.transition
+            // A move that asks for nothing is taken at once, as in the Workflow tab.
+            if (move && !move.fields.length) return void mutate('transition', { action: move.action })
+            if (move) setTypeOpen(move.action)
+            setTab(chosen.tab)
+            if (chosen.key === 'edit') setEditing(true)
+            if (chosen.key === 'wording') setRewording(true)
+            setFocus({ target: chosen.target, at: Date.now() })
+          }}
+        />
+      </header>
       <div className="tabs" role="tablist" aria-label="Ticket detail">
         {['Request', 'Workflow', 'Evidence', 'Activity'].map((name) => (
           <button
@@ -662,6 +821,10 @@ function CaseFile({
       <section role="tabpanel" id="case-panel" aria-labelledby={`tab-${tab}`}>
         {tab === 'Request' && (
           <>
+            <section className="card public-progress">
+              <h3>Public progress</h3>
+              <p>{ticket.public_update || 'No public update yet.'}</p>
+            </section>
             {detail.details ? (
               <>
                 <div className="section-label">
@@ -673,8 +836,8 @@ function CaseFile({
                 <p className="request-body">
                   {display(detail.details.original)}
                 </p>
-                {(support || ticket.owner === (typeof session.user === 'string' ? session.user : session.user.row_id)) && (
-                  <Reword original={String(detail.details.original ?? '')} mutate={mutate} busy={busy} />
+                {rewording && canReword && (
+                  <Reword original={String(detail.details.original ?? '')} mutate={mutate} busy={busy} close={() => setRewording(false)} />
                 )}
                 {Array.isArray(detail.originalHistory) && detail.originalHistory.length > 0 && (
                   <details className="fine">
@@ -708,14 +871,17 @@ function CaseFile({
                 />
                 {support && (
                   <>
-                    <button
-                      className="secondary"
-                      onClick={() => setEditing(!editing)}
-                    >
-                      {editing ? 'Cancel editing' : 'Edit / classify request'}
-                    </button>
+                    {editing && (
+                      <button
+                        className="secondary"
+                        onClick={() => setEditing(false)}
+                      >
+                        Cancel editing
+                      </button>
+                    )}
                     {editing && (
                       <form
+                        id="action-edit"
                         className="card"
                         onSubmit={async (e) => {
                           e.preventDefault()
@@ -879,7 +1045,7 @@ function CaseFile({
                         title="Verification evidence reference"
                       />
                     </ActionForm>
-                    <section className="card">
+                    <section className="card" id="action-decide">
                       <h3>Regional decision</h3>
                       <p>
                         Only the configured approver for the current verified
@@ -919,7 +1085,9 @@ function CaseFile({
                             ? 'This request is already resolved.'
                             : state === 'policy_review'
                               ? 'Resource policy blocks ordinary approval. An authorized policy review is required.'
-                              : 'Current active verification and a configured regional approval route are required.'}
+                              : verification?.active === true
+                                ? 'Only a configured approver for this region can decide.'
+                                : 'Current active verification and a configured regional approval route are required.'}
                         </p>
                       )}
                     </section>
@@ -943,12 +1111,14 @@ function CaseFile({
                         title="Manual fulfillment reference"
                       />
                     </ActionForm>
-                    <p className="fine">
-                      Missing memberships or routes?{' '}
-                      <a href="/featherbase/admin/apps">
-                        Configure Tickets settings
-                      </a>
-                    </p>
+                    {session.canManage && (
+                      <p className="fine">
+                        Missing memberships or routes?{' '}
+                        <a href={SETTINGS_HREF}>
+                          Configure Tickets settings
+                        </a>
+                      </p>
+                    )}
                   </>
                 ) : (
                   <div className="card">
@@ -962,7 +1132,7 @@ function CaseFile({
                 )}
               </>
             ) : configured?.transitions ? (
-              <TypeActions actions={(detail.actions as TicketAction[] | undefined) ?? []} state={ticket.ticket_state} mutate={mutate} busy={busy} />
+              <TypeActions actions={(detail.actions as TicketAction[] | undefined) ?? []} state={ticket.ticket_state} mutate={mutate} busy={busy} open={typeOpen} setOpen={setTypeOpen} />
             ) : (
               <>
                 <section className="card">
@@ -1087,7 +1257,7 @@ function CaseFile({
           ) : (
             <div className="empty">
               <h3>Evidence is private to support</h3>
-              <p>Public progress is available above and in Activity.</p>
+              <p>Public progress is shown in Request and in Activity.</p>
             </div>
           ))}
         {tab === 'Activity' && (
@@ -1130,6 +1300,7 @@ function CaseFile({
 function App() {
   const [session, setSession] = useState<Session | null>(null),
     [tickets, setTickets] = useState<Ticket[]>([]),
+    [everything, setEverything] = useState<Ticket[]>([]),
     [detail, setDetail] = useState<Detail | null>(null)
   const [selected, setSelected] = useState(''),
     [search, setSearch] = useState(''),
@@ -1150,10 +1321,6 @@ function App() {
       ? session.user
       : session.user.row_id
     : ''
-  const identity =
-    session && typeof session.user === 'object'
-      ? (session.user.full_name ?? person(userId))
-      : person(userId)
   const report = (e: unknown) =>
     setError(
       e instanceof Error
@@ -1161,10 +1328,10 @@ function App() {
         : 'Could not load Tickets. Please try again.',
     )
   useEffect(() => {
-    Promise.all([read<Session>('session'), read<{ types: unknown }>('form')])
-      .then(([value, form]) => {
+    Promise.all([read<Session>('session'), read<{ types: unknown }>('form'), canManageApps()])
+      .then(([value, form, manage]) => {
         learnTypes(form.types)
-        setSession(value)
+        setSession({ ...value, canManage: manage })
       })
       .catch((e) => {
         report(e)
@@ -1202,11 +1369,30 @@ function App() {
     }
   }, [session, search, kind, state, view, reload, userId])
   useEffect(() => {
+    if (!session) return
+    let current = true
+    read<{ tickets: Ticket[]; names?: unknown }>('queue', {})
+      .then((result) => {
+        if (!current) return
+        learnNames(result.names)
+        setEverything(result.tickets)
+      })
+      .catch((e) => {
+        if (current) report(e)
+      })
+    return () => {
+      current = false
+    }
+  }, [session, reload])
+  useEffect(() => {
     const sequence = ++detailSequence.current
     setDetail((current) =>
       current?.ticket.row_id === selected ? current : null,
     )
-    if (!selected) return
+    if (!selected) {
+      setDetailLoading(false)
+      return
+    }
     setDetailLoading(true)
     read<Detail>('detail', { row_id: selected })
       .then((value) => {
@@ -1255,115 +1441,157 @@ function App() {
   const visible = tickets.filter(
     (ticket) => view !== 'mine' || ticket.owner === userId,
   )
+  // The open ticket is always one the list shows: a filter that hides it
+  // moves to the first ticket shown, or to none.
+  const visibleIds = visible.map((ticket) => ticket.row_id).join(' ')
+  useEffect(() => {
+    if (loading) return
+    setSelected((id) =>
+      visible.some((ticket) => ticket.row_id === id) ? id : (visible[0]?.row_id ?? ''),
+    )
+  }, [visibleIds, loading])
+  // Sidebar counts: one unfiltered queue read, counted here.
+  const inView = (ticket: Ticket, name: string) =>
+    name === 'mine'
+      ? ticket.owner === userId
+      : name === 'assigned'
+        ? ticket.assigned_to === userId && !isDone(ticket)
+        : true
+  const views = [
+    ['all', 'All tickets'],
+    ['mine', 'My requests'],
+    ...(session?.capabilities.support ? [['assigned', 'Assigned to me']] : []),
+  ] as const
+  const viewName = views.find(([key]) => key === view)?.[1] ?? 'All tickets'
+  const typeCounts = new Map<string, number>()
+  for (const ticket of everything)
+    if (inView(ticket, view))
+      typeCounts.set(ticket.kind, (typeCounts.get(ticket.kind) ?? 0) + 1)
+  const typeKeys = [
+    ...new Set([
+      ...Object.keys(kinds),
+      ...Object.values(configuredTypes).filter((type) => type.enabled !== false).map((type) => type.key),
+      ...[...typeCounts.keys()].sort(),
+      ...(kind ? [kind] : []),
+    ]),
+  ]
+  // The states the list can hold: the chosen type's own, else every type's.
+  const stateOptions = configuredTypes[kind]
+    ? configuredTypes[kind].states
+    : kind
+      ? BUILT_IN_STATES
+      : [...new Set([...BUILT_IN_STATES, ...Object.values(configuredTypes).flatMap((type) => type.states)])]
+  // A state the chosen type can't hold would leave the list empty with nothing
+  // on screen to explain it.
+  useEffect(() => {
+    if (state && !stateOptions.includes(state)) setState('')
+  }, [kind])
+  const connections =
+    session?.connections && typeof session.connections === 'object'
+      ? (session.connections as Record<string, unknown>)
+      : {}
+  const unconfigured = Object.entries(connections)
+    .filter(([, status]) => status !== 'configured')
+    .map(([key]) => connectionNames[key] ?? stateLabel(key))
+  const newTicket = (
+    <button
+      className="primary"
+      disabled={!session}
+      onClick={() => setCreate(true)}
+    >
+      + New ticket
+    </button>
+  )
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="logo">T</span>
-          <div>Tickets</div>
-        </div>
-        <div className="workspace">
-          Data support<small>One queue. An accountable path.</small>
-        </div>
-        <div className="nav-label">WORKSPACE</div>
-        <nav aria-label="Ticket queues">
-          {[
-            ['all', 'All tickets'],
-            ['mine', 'My requests'],
-            ...(session?.capabilities.support
-              ? [['assigned', 'Assigned to me']]
-              : []),
-          ].map(([key, name]) => (
+    <div className="tickets-shell">
+      {createElement(
+        'featherbase-sidebar',
+        { className: 'tickets-sidebar', 'aria-label': 'Ticket views' },
+        <>
+          {views.map(([key, name]) => (
             <button
               key={key}
-              className={view === key ? 'active' : ''}
+              type="button"
+              aria-current={view === key ? 'page' : undefined}
               onClick={() => setView(key)}
             >
-              {name}
-              <span>↗</span>
+              <span>{name}</span>
+              <span className="count">
+                {everything.filter((ticket) => inView(ticket, key)).length}
+              </span>
             </button>
           ))}
-        </nav>
-        <div className="nav-label">REQUEST TYPES</div>
-        <div className="type-list">
-          Access & permissions
-          <br />
-          Data & reconciliation
-          <br />
-          Reports & exports
-          <br />
-          Sources & pipelines
-          {Object.values(configuredTypes).filter((type) => type.enabled !== false).map((type) => (
-            <span key={type.key}>
-              <br />
-              {type.label}
-            </span>
+          {typeKeys.length > 0 && (
+            <div className="sidebar-heading" id="ticket-types-heading">
+              Types
+            </div>
+          )}
+          {typeKeys.map((key) => (
+            <button
+              key={key}
+              type="button"
+              data-depth="1"
+              aria-current={kind === key ? 'page' : undefined}
+              onClick={() => setKind((current) => (current === key ? '' : key))}
+            >
+              <span>{kindLabel(key)}</span>
+              <span className="count">{typeCounts.get(key) ?? 0}</span>
+            </button>
           ))}
-        </div>
-        <div className="sidebar-bottom">
-          <span className="avatar">
-            {identity.slice(0, 1).toUpperCase() || '·'}
-          </span>
-          <div>
-            <b title={userId}>{identity || 'Connecting…'}</b>
-            <small>
-              {session?.capabilities.support
-                ? 'Support workspace'
-                : 'Requester workspace'}
-            </small>
-          </div>
-        </div>
-      </aside>
-      <main>
-        <header>
-          <span className="breadcrumb">
-            Workspace <span>/</span> <b>Tickets</b>
-          </span>
-          <span className="signed-in">
-            {session ? `Signed in · ${identity}` : 'Connecting to Featherbase…'}
-          </span>
-        </header>
-        <div className="page-heading">
-          <div>
-            <div className="eyebrow">DATA WAREHOUSE SUPPORT</div>
-            <h1>A clear path from ask to answer.</h1>
-            <p>
-              Shared progress. Private details. People accountable at every
-              step.
-            </p>
-          </div>
-          <button
-            className="primary"
-            disabled={!session}
-            onClick={() => setCreate(true)}
-          >
-            ＋ New ticket
-          </button>
-        </div>
-        <div className="connection-strip">
-          <span className="connection-dot" />
-          <b>Connections</b>
-          <span>Employee lookup · Inbound email · Automated investigation</span>
-          <span className="badge">Unconfigured</span>
-          <details>
-            <summary>Details</summary>
-            <div>
-              <p>
-                Stage one uses manual verification, fulfillment and recorded
-                evidence. No live integrations are running.
-              </p>
-              {session && (
-                <Facts
-                  values={
-                    session.connections &&
-                    typeof session.connections === 'object'
-                      ? (session.connections as RecordData)
-                      : { status: session.connections ?? 'unconfigured' }
-                  }
-                />
+          {session && (
+            <div
+              className="connection-status"
+              role="status"
+              title={
+                unconfigured.length
+                  ? `Not set up: ${unconfigured.join(', ')}. Tickets works by hand until they are.`
+                  : 'All connections are set up.'
+              }
+            >
+              <span
+                className={`dot ${unconfigured.length ? 'tone-caution' : 'tone-positive'}`}
+                aria-hidden="true"
+              />
+              {unconfigured.length ? 'Connections not set up' : 'Connections ready'}
+              {unconfigured.length > 0 && session.canManage && (
+                <>
+                  {' · '}
+                  <a href={SETTINGS_HREF}>Set up</a>
+                </>
               )}
             </div>
-          </details>
+          )}
+        </>,
+      )}
+      <main className="tickets-main">
+        <div className="toolbar">
+          <h1>
+            {viewName}
+            {kind && <span className="toolbar-type"> · {kindLabel(kind)}</span>}
+            <span className="count">{visible.length}</span>
+          </h1>
+          <input
+            type="search"
+            aria-label="Search tickets"
+            placeholder="Search tickets"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select
+            aria-label="Filter by state"
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+          >
+            <option value="">
+              {view === 'assigned' ? 'Open work' : 'All states'}
+            </option>
+            {stateOptions.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+          <span className="toolbar-end">{newTicket}</span>
         </div>
         {error && (
           <div role="alert" className="error banner">
@@ -1386,116 +1614,58 @@ function App() {
             {notice}
           </p>
         )}
-        <section className="inbox">
-          <div className="queue">
-            <div className="queue-heading">
-              <h2>
-                {view === 'mine'
-                  ? 'My requests'
-                  : view === 'assigned'
-                    ? 'Assigned to me'
-                    : 'All tickets'}
-              </h2>
-              <span>{visible.length}</span>
+        <section className="split">
+          <div
+            className="ticket-list"
+            aria-busy={loading}
+            aria-label="Tickets"
+          >
+            {loading && (
+              <div className="loading" role="status">
+                Loading queue…
+              </div>
+            )}
+            {!loading && !visible.length && (
+              <div className="empty">
+                <h3>
+                  {search || kind || state
+                    ? 'No matching tickets'
+                    : 'No tickets here yet'}
+                </h3>
+                <p>
+                  {search || kind || state
+                    ? 'Try another search, state or type.'
+                    : 'Create a request when you need a hand.'}
+                </p>
+              </div>
+            )}
+            {visible.map((ticket) => (
               <button
-                className="refresh"
-                aria-label="Refresh tickets"
-                disabled={loading || busy}
-                onClick={() => setReload((n) => n + 1)}
+                key={ticket.row_id}
+                className={`ticket ${selected === ticket.row_id ? 'selected' : ''}`}
+                aria-pressed={selected === ticket.row_id}
+                onClick={() => {
+                  if (!busy) {
+                    setSelected(ticket.row_id)
+                    setNotice('')
+                  }
+                }}
               >
-                ↻
+                <span className="ticket-top">
+                  <span className="ticket-id">
+                    {short(ticket.row_id)} · {kindLabel(ticket.kind)}
+                  </span>
+                  <StatePill ticket={ticket} />
+                </span>
+                <span className="ticket-title">{ticket.title}</span>
+                <span className="ticket-meta">{assignee(ticket)}</span>
               </button>
-            </div>
-            <div className="filters">
-              <input
-                aria-label="Search tickets"
-                placeholder="Search public summaries…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <select
-                aria-label="Filter by request type"
-                value={kind}
-                onChange={(e) => setKind(e.target.value)}
-              >
-                <option value="">All types</option>
-                {Object.entries(kinds).map(([key, name]) => (
-                  <option key={key} value={key}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Filter by status"
-                value={state}
-                onChange={(e) => setState(e.target.value)}
-              >
-                <option value="">{view === 'assigned' ? 'Open work' : 'All statuses'}</option>
-                {['New', 'Needs verification', 'Awaiting approval', 'Approved', 'Rejected', 'Policy review', 'In progress', 'Resolved'].map(value => (
-                  <option key={value} value={value}>{value}</option>
-                ))}
-              </select>
-            </div>
-            <div className="ticket-list" aria-busy={loading}>
-              {loading && (
-                <div className="loading" role="status">
-                  Loading queue…
-                </div>
-              )}
-              {!loading && !visible.length && (
-                <div className="empty">
-                  <span className="empty-mark">↗</span>
-                  <h3>
-                    {search || kind
-                      ? 'No matching tickets'
-                      : 'A little breathing room.'}
-                  </h3>
-                  <p>
-                    {search || kind
-                      ? 'Try another search or request type.'
-                      : 'No tickets in this queue yet. Create a request when you need a hand.'}
-                  </p>
-                </div>
-              )}
-              {visible.map((ticket) => (
-                <button
-                  key={ticket.row_id}
-                  className={`ticket ${selected === ticket.row_id ? 'selected' : ''}`}
-                  aria-pressed={selected === ticket.row_id}
-                  onClick={() => {
-                    if (!busy) {
-                      setSelected(ticket.row_id)
-                      setNotice('')
-                    }
-                  }}
-                >
-                  <div className="ticket-top">
-                    <span className="ticket-id">{short(ticket.row_id)}</span>
-                    <span
-                      className={`badge ${ticket.ticket_state.toLowerCase() === 'resolved' ? 'green' : ''}`}
-                    >
-                      {stateLabel(ticket.ticket_state)}
-                    </span>
-                  </div>
-                  <div className="ticket-title">{ticket.title}</div>
-                  <div className="ticket-meta">
-                    <span>{kindLabel(ticket.kind)}</span>
-                    <span>{person(ticket.owner)}</span>
-                  </div>
-                  {ticket.public_update && (
-                    <p className="ticket-update">{ticket.public_update}</p>
-                  )}
-                </button>
-              ))}
-            </div>
-            <div className="queue-footer">
-              Shared summaries · Signed-in workspace
-            </div>
+            ))}
           </div>
           <article className="detail" aria-busy={detailLoading || busy}>
             {detailLoading && !detail ? (
               <div className="empty" role="status">
-                Loading case…
+                Loading ticket…
               </div>
             ) : detail && session ? (
               <CaseFile
@@ -1507,14 +1677,8 @@ function App() {
               />
             ) : (
               <div className="empty detail-empty">
-                <span className="empty-mark">⌁</span>
-                <div className="eyebrow">YOUR CASE FILE</div>
-                <h2>Every request has a story.</h2>
-                <p>
-                  Select a ticket to see its progress,
-                  <br />
-                  or start with a new request.
-                </p>
+                <p>Select a ticket to see it here.</p>
+                {newTicket}
               </div>
             )}
           </article>
@@ -1533,4 +1697,12 @@ function App() {
     </div>
   )
 }
+// The shared top bar tells the page which theme it painted: on <html> once it
+// has painted, and with an event on each change.
+const painted = document.documentElement.getAttribute('data-featherbase-theme')
+paintTheme(painted === 'light' || painted === 'dark' ? painted : 'device')
+window.addEventListener(THEME_CHANGE_EVENT, (event) => {
+  const theme = (event as CustomEvent<{ theme: 'light' | 'dark' }>).detail?.theme
+  if (theme === 'light' || theme === 'dark') paintTheme(theme)
+})
 createRoot(document.getElementById('root')!).render(<App />)
