@@ -82,6 +82,6 @@ steps(Then, [
     assert.equal(seen.details.answer, answer);
   }],
   ['Tickets offers that person the verification', async x => {
-    await x.page.getByRole('button', { name: 'Verify', exact: true }).waitFor();
+    await x.page.getByRole('group', { name: 'Actions on this ticket' }).getByRole('button', { name: 'Verify', exact: true }).waitFor();
   }],
 ]);
