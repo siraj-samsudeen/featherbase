@@ -28,13 +28,19 @@ interface BarControl {
   options: BarOption[]
 }
 
-export function BarControls({ app }: { app: string }) {
+/** The controls the bar shows for `app`: those with at least one option. */
+export function useBarControls(app: string | undefined) {
   const bar = useQuery({
     queryKey: ['app_bar', app],
-    queryFn: () => api.get<{ controls: BarControl[] }>(`/api/app_bar/${encodeURIComponent(app)}`),
+    queryFn: () => api.get<{ controls: BarControl[] }>(`/api/app_bar/${encodeURIComponent(app!)}`),
+    enabled: Boolean(app),
     retry: false,
   })
-  const controls = (bar.data?.controls ?? []).filter((control) => control.options.length > 0)
+  return (bar.data?.controls ?? []).filter((control) => control.options.length > 0)
+}
+
+export function BarControls({ app }: { app: string }) {
+  const controls = useBarControls(app)
   if (controls.length === 0) return null
   return (
     <div className="flex min-w-0 shrink items-center gap-2 max-sm:pl-1" data-testid="bar-controls">
