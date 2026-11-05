@@ -206,9 +206,12 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
   /** The caller may decide this proposal, or the request is refused. No role is an exception. */
   async function authorize(proposal: ChangeProposal, approvers: unknown) {
     if (proposal.maker === user) reject('Nobody can decide their own proposal')
-    // The decider's own row holds still to commit, so a disable either lands first and refuses
-    // this, or waits for it. One route: the one checked is the one recorded.
-    await sql`select 1 from person where row_id = ${user} for share`
+    // The ways-in lock first, as identity changes take it. Then the decider's own row holds still
+    // to commit, so a disable either lands first and refuses this, or waits for it. One route:
+    // the one checked is the one recorded.
+    const able = await canAct(user, entryTable)
+    const [me] = await sql`select enabled from person where row_id = ${user} for share`
+    if (!able || me?.enabled !== true) reject('This proposal is not waiting for you')
     const route = await resolveRoute(checkedApprovers(approvers), proposal.maker, entryTable)
     if (!route || !(await inRoute(user, route))) reject('This proposal is not waiting for you')
     return route!

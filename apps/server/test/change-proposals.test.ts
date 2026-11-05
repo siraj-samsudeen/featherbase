@@ -172,6 +172,16 @@ describe('who may decide', () => {
     await expect(probe(maker, ask(null))).rejects.toMatchObject({ status: 417 })
   })
 
+  test('a role holder with no way in left cannot decide, though another holder keeps the route open', async ({ admin, createUser }) => {
+    const { maker, manager, other } = await setUp(admin, createUser)
+    await giveRole(admin, other.user, 'Proof Editor')
+    await giveRole(admin, manager.user, 'Proof Editor')
+    const proposal = await probe(maker, ask(null))
+    await sql`update person set password_hash = null where row_id = ${other.user!}`
+    await expect(probe(other, { op: 'approve', id: proposal.row_id, decision: approval(null) })).rejects.toMatchObject({ status: 417 })
+    expect((await probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(null) })).state).toBe('Applied')
+  })
+
   test('with nobody else to approve, the proposal is refused saying why', async ({ admin, createUser }) => {
     const { maker } = await setUp(admin, createUser)
     await giveRole(admin, maker.user, 'Proof Editor')
