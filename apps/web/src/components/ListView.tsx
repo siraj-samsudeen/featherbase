@@ -1638,10 +1638,17 @@ function ChoiceBox({
   filters,
   onChange,
 }: {
-  column: { column_name: string; label?: string | null; column_type: string; choices?: string | null }
+  column: {
+    column_name: string
+    label?: string | null
+    column_type: string
+    choices?: string | null
+    choice_labels?: Record<string, string> | null
+  }
   filters: Filter[]
   onChange: (filters: Filter[]) => void
 }) {
+  const { t } = useI18n()
   const label = column.label ?? column.column_name
   const choices = choicesOf(column)!
   const ticked = tickedChoices(filters, column.column_name, choices)
@@ -1652,6 +1659,7 @@ function ChoiceBox({
         label={label}
         // A link's value that is no longer a choice still shows, ticked.
         choices={inChoiceOrder([...choices, ...ticked], choices)}
+        labelOf={(c) => choiceLabel(c, column.choice_labels, t)}
         ticked={ticked}
         onChange={(next) => onChange(withTicked(filters, column.column_name, next, choices))}
         settle={(next) => tickedChoices(withTicked([], column.column_name, next, choices), column.column_name, choices)}
@@ -1885,13 +1893,14 @@ export function FilterBar({
 }) {
   const { t } = useI18n()
   const fields = [
-    { fieldname: 'row_id', label: 'Row ID', choices: null, ticks: false },
+    { fieldname: 'row_id', label: 'Row ID', choices: null, choice_labels: undefined, ticks: false },
     ...meta.columns
       .filter((f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden)
       .map((f) => ({
         fieldname: f.column_name,
         label: f.label ?? f.column_name,
         choices: choicesOf(f),
+        choice_labels: f.choice_labels,
         ticks: f.column_type === 'Choice',
       })),
   ]
@@ -1901,11 +1910,11 @@ export function FilterBar({
   // #820: what is ticked in Add filter; until the person ticks, the column's
   // filter in use, so adding the column again starts from its choices.
   const [picks, setPicks] = useState<string[] | null>(null)
-  const column = fields.find((f) => f.fieldname === field)
+  const picking = fields.find((f) => f.fieldname === field)
   // #742: a Yes/No column is picked from, and only matched or not. #820: a
   // Choice column ticks one or more of its choices.
-  const choices = column?.choices ?? null
-  const ticks = Boolean(column?.ticks)
+  const choices = picking?.choices ?? null
+  const ticks = Boolean(picking?.ticks)
   const ops: readonly string[] = ticks ? ['in'] : choices ? ['=', '!='] : OPS
   const ticked = picks ?? (ticks ? tickedChoices(filters, field, choices!) : [])
 
@@ -1964,8 +1973,9 @@ export function FilterBar({
         </select>
         {ticks ? (
           <ChoiceTicks
-            label={column!.label}
+            label={picking!.label}
             choices={choices!}
+            labelOf={(c) => choiceLabel(c, picking?.choice_labels, t)}
             ticked={ticked}
             onChange={setPicks}
             buttonText={ticked.length ? `${ticked.length} selected` : 'Value'}
@@ -2022,10 +2032,25 @@ export function FilterBar({
                 onClick={() => onChange(filters.filter((_, j) => j !== i))}
                 className="text-ink-subtle hover:text-ink"
               >
-                ×
-              </button>
-            </span>
-          ))}
+                {t(column?.label ?? f[0])} {f[1]}{' '}
+                {['=', '!=', 'in'].includes(f[1]) && column?.column_type === 'Choice'
+                  ? filterValueLabel(
+                      f[1],
+                      Array.isArray(f[2])
+                        ? f[2].map((v) => choiceLabel(String(v), column.choice_labels, t))
+                        : choiceLabel(String(f[2]), column.choice_labels, t),
+                    )
+                  : filterValueLabel(f[1], f[2])}
+                <button
+                  aria-label="Remove filter"
+                  onClick={() => onChange(filters.filter((_, j) => j !== i))}
+                  className="text-ink-subtle hover:text-ink"
+                >
+                  ×
+                </button>
+              </span>
+            )
+          })}
         </div>
       )}
     </div>

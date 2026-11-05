@@ -9,6 +9,7 @@ const SEARCH_AFTER = 8
 export function ChoiceTicks({
   label,
   choices,
+  labelOf = (choice) => choice,
   ticked,
   onChange,
   settle = (next) => next,
@@ -20,6 +21,8 @@ export function ChoiceTicks({
   /** The column's name, for the button's and the list's accessible names. */
   label: string
   choices: string[]
+  /** #826: what a choice reads as; it is ticked and stored by its value. */
+  labelOf?: (choice: string) => string
   ticked: string[]
   onChange: (ticked: string[]) => void
   /** What `ticked` will read once a change has been written: the quick filter
@@ -77,7 +80,9 @@ export function ChoiceTicks({
   // the choices found, and ticks the search hides stay as they are.
   const searchable = choices.length > SEARCH_AFTER
   const [query, setQuery] = useState('')
-  const found = searchable ? choices.filter((c) => c.toLowerCase().includes(query.trim().toLowerCase())) : choices
+  const found = searchable
+    ? choices.filter((c) => labelOf(c).toLowerCase().includes(query.trim().toLowerCase()))
+    : choices
 
   function tickAll(these: string[], on: boolean) {
     const next = new Set(shown)
@@ -140,7 +145,7 @@ export function ChoiceTicks({
           {found.map((c) => (
             <label key={c} className={touchRowClasses('flex items-center gap-2 rounded px-2 py-1 text-sm text-ink')}>
               <input type="checkbox" checked={shown.includes(c)} onChange={(e) => toggle(c, e.target.checked)} />
-              {c}
+              {labelOf(c)}
             </label>
           ))}
         </div>

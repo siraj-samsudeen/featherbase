@@ -85,7 +85,7 @@ test("Ticking Ground and First Floor shows both floors' rows, with one chip nami
   tick(addFilterOn('floor'), 'Ground', 'First Floor')
   fireEvent.click(screen.getByTestId('filter-add'))
   await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
-  expect(screen.getAllByTestId('filter-chip').map((c) => c.textContent)).toEqual(['floor in Ground, First Floor×'])
+  expect(screen.getAllByTestId('filter-chip').map((c) => c.textContent)).toEqual(['Floor in Ground, First Floor×'])
 })
 
 test('Floor in Ground and First Floor plus Status Open shows only Open rows on those floors', async ({ admin }) => {
@@ -96,8 +96,8 @@ test('Floor in Ground and First Floor plus Status Open shows only Open rows on t
   fireEvent.click(screen.getByTestId('filter-add'))
   await waitFor(() => expect(codes()).toEqual(['R1', 'R3']))
   expect(screen.getAllByTestId('filter-chip').map((c) => c.textContent)).toEqual([
-    'floor in Ground, First Floor×',
-    'state in Open×',
+    'Floor in Ground, First Floor×',
+    'Status in Open×',
   ])
 })
 
@@ -139,7 +139,7 @@ test('Adding Floor again opens with Ground ticked, and First Floor joins the sam
   tick(list, 'First Floor')
   fireEvent.click(screen.getByTestId('filter-add'))
   await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
-  expect(chips()).toEqual(['floor in Ground, First Floor×'])
+  expect(chips()).toEqual(['Floor in Ground, First Floor×'])
 })
 
 test('An older link or saved view with floor = Ground takes First Floor into one chip', async ({ admin }) => {
@@ -151,7 +151,7 @@ test('An older link or saved view with floor = Ground takes First Floor into one
   tick(list, 'First Floor')
   fireEvent.click(screen.getByTestId('filter-add'))
   await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
-  expect(chips()).toEqual(['floor in Ground, First Floor×'])
+  expect(chips()).toEqual(['Floor in Ground, First Floor×'])
 })
 
 test('An older link with floor != Ground ticks the other floors, and unticking Third Floor leaves one in filter', async ({ admin }) => {
@@ -161,7 +161,7 @@ test('An older link with floor != Ground ticks the other floors, and unticking T
   expect(ticked(openBox('floor'))).toEqual(['First Floor', 'Second Floor', 'Third Floor'])
   tick(openBox('floor'), 'Third Floor')
   await waitFor(() => expect(codes()).toEqual(['R3', 'R4', 'R5']))
-  expect(chips()).toEqual(['floor in First Floor, Second Floor×'])
+  expect(chips()).toEqual(['Floor in First Floor, Second Floor×'])
   expect(addressFilters(router)).toEqual([['floor', 'in', ['First Floor', 'Second Floor']]])
 })
 
@@ -177,7 +177,7 @@ test('A link with two Floor filters opens as one chip, the address holds one fil
   await seed(admin)
   const router = await openList(admin, [['floor', '=', 'Ground'], ['floor', 'in', ['First Floor']]])
   await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
-  expect(chips()).toEqual(['floor in Ground, First Floor×'])
+  expect(chips()).toEqual(['Floor in Ground, First Floor×'])
   await waitFor(() => expect(addressFilters(router)).toEqual([['floor', 'in', ['Ground', 'First Floor']]]))
   fireEvent.click(screen.getByTestId('std-filter-floor'))
   expect(ticked(screen.getByTestId('std-choices-floor'))).toEqual(['Ground', 'First Floor'])
@@ -196,12 +196,12 @@ test('Filters on different columns, on text columns and on Yes/No columns are ne
   const router = await openList(admin, link)
   await waitFor(() => expect(codes()).toEqual(['R1', 'R3']))
   expect(chips()).toEqual([
-    'owner_name like %As%×',
-    'owner_name like %sh%×',
-    'active = Yes×',
-    'active != No×',
-    'floor in Ground, First Floor×',
-    'state = Open×',
+    'Owner like %As%×',
+    'Owner like %sh%×',
+    'Active = Yes×',
+    'Active != No×',
+    'Floor in Ground, First Floor×',
+    'Status = Open×',
   ])
   expect(addressFilters(router)).toEqual(link)
 })
@@ -218,7 +218,7 @@ test('Ticking Closed in the Status box narrows the rows, and unticking it brings
   await openList(admin)
   tick(openBox('state'), 'Closed')
   await waitFor(() => expect(codes()).toEqual(['R2', 'R4', 'R6']))
-  expect(chips()).toEqual(['state in Closed×'])
+  expect(chips()).toEqual(['Status in Closed×'])
   tick(openBox('state'), 'Closed')
   await waitFor(() => expect(codes()).toHaveLength(6))
   expect(chips()).toEqual([])
@@ -239,7 +239,7 @@ test('Unticking First Floor in the box leaves only Ground rows, and the chip nam
   await waitFor(() => expect(codes()).toEqual(['R1', 'R2', 'R3', 'R4']))
   tick(openBox('floor'), 'First Floor')
   await waitFor(() => expect(codes()).toEqual(['R1', 'R2']))
-  expect(chips()).toEqual(['floor in Ground×'])
+  expect(chips()).toEqual(['Floor in Ground×'])
 })
 
 test('Ticking every floor in the box removes the Floor filter, and every row shows', async ({ admin }) => {
@@ -268,7 +268,7 @@ test('Ticking every floor at once, then unticking Ground, shows every row not on
   expect(ticked(list)).toEqual(FLOORS)
   tick(list, 'Ground')
   await waitFor(() => expect(codes()).toEqual(['R3', 'R4', 'R5', 'R6']))
-  expect(chips()).toEqual(['floor in First Floor, Second Floor, Third Floor×'])
+  expect(chips()).toEqual(['Floor in First Floor, Second Floor, Third Floor×'])
 })
 
 test('Clear unticks every choice and removes the filter', async ({ admin }) => {
@@ -291,7 +291,7 @@ test('Searching Section\'s 12 choices for "rack", then ticking every one found, 
   fireEvent.change(within(list).getByRole('searchbox', { name: 'Search Section choices' }), { target: { value: 'rack' } })
   fireEvent.click(within(list).getByRole('button', { name: 'Select all' }))
   await waitFor(() => expect(codes()).toEqual(['R2', 'R3', 'R5']))
-  expect(chips()).toEqual(['section in Shoe Rack, Saree Rack, Rack Ends×'])
+  expect(chips()).toEqual(['Section in Shoe Rack, Saree Rack, Rack Ends×'])
   expect(ticked(list)).toEqual(RACKS)
 })
 

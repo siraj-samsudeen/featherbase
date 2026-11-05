@@ -99,7 +99,7 @@ test('Filtering a column and hiding it keeps the filter on', async ({ session })
   })
   await session
     .assertHas('[data-testid="list-total"]', { text: '2 total' })
-    .assertHas('[data-testid="filter-chip"]', { text: 'floor in Ground' })
+    .assertHas('[data-testid="filter-chip"]', { text: 'Floor in Ground' })
   await session.step('remove the chip, then switch Floor back on', async ({ page }) => {
     await page.getByTestId('filter-chip').getByLabel('Remove filter').click()
     await expect(page.getByTestId('list-total')).toHaveText('3 total')
@@ -118,7 +118,7 @@ test('Ticking a Choice in Add filter narrows the rows', async ({ session }) => {
   })
   await session
     .assertHas('[data-testid="list-total"]', { text: '2 total' })
-    .assertHas('[data-testid="filter-chip"]', { text: 'floor in Ground' })
+    .assertHas('[data-testid="filter-chip"]', { text: 'Floor in Ground' })
 })
 
 test('Picking Yes in the Active box and in Add filter shows the right rows', async ({ session }) => {
