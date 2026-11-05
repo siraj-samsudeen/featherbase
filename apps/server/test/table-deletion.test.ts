@@ -221,12 +221,53 @@ describe('DEL-R9: a stale pointer gets a tombstone, not a shrug', () => {
     await expect(admin.get(`/api/table/${ENC}:meta`)).rejects.toMatchObject({
       status: 404,
       message: expect.stringMatching(
-        new RegExp(`Table ${DT} was deleted by Administrator on \\d{4}-\\d{2}-\\d{2}$`),
+        new RegExp(`Table ${DT} was deleted by Administrator on \\d{2}-[A-Z][a-z]{2}-\\d{4}$`),
       ),
     })
     await expect(admin.get('/api/table/Never%20Existed:meta')).rejects.toMatchObject({
       status: 404,
       message: expect.stringMatching(/Table Never Existed not found$/),
+    })
+  })
+
+  // #958: the Access Log holds an id; the reader is told a name.
+  describe('DEL-R9: who is named, not numbered', () => {
+    const FULL = 'psn_aaaaaaaaaaaaaaaaaaaa'
+    const USERNAME = 'psn_bbbbbbbbbbbbbbbbbbbb'
+    const EMAIL = 'psn_cccccccccccccccccccc'
+    const SERVICE = 'svc_dddddddddddddddddddd'
+    const NOBODY = 'psn_eeeeeeeeeeeeeeeeeeee'
+
+    async function bury(name: string, user: string, operation = 'delete_table', reference: string | null = null) {
+      await sql`insert into access_log (row_id, created_by, updated_by, created_at, updated_at, status, "user", operation, ref_table, reference_name)
+        values (${name}, ${user}, ${user}, '2026-11-04T19:00:00Z', now(), 'draft', ${user}, ${operation}, ${name}, ${reference})`
+    }
+    const messageFor = (admin: TestClient, name: string) =>
+      admin.get(`/api/table/${encodeURIComponent(name)}:meta`).then(
+        () => { throw new Error(`${name} answered`) },
+        (error: { message: string }) => error.message.replace(/^404 NotFoundError: /, ''),
+      )
+
+    test.for([
+      ['a person by their full name', FULL, 'Priya Raman'],
+      ['a person with no name by their username', USERNAME, '@priya'],
+      ['a person with no name or username by their email', EMAIL, 'priya@x.test'],
+      ['a service account by its label', SERVICE, 'Nightly loader'],
+      ['an id that names nobody as it is', NOBODY, NOBODY],
+    ])('DEL-R9: names %s, on the day in India', async ([, user, shown], { admin }) => {
+      await sql`insert into person (row_id, full_name) values (${FULL}, 'Priya Raman')`
+      await sql`insert into person (row_id, full_name, username) values (${USERNAME}, '  ', 'priya')`
+      await sql`insert into person (row_id, email) values (${EMAIL}, 'priya@x.test')`
+      await sql`insert into service_account (row_id, label) values (${SERVICE}, 'Nightly loader')`
+      await bury('Buried Table', user)
+      // 19:00 UTC on the 4th is half past midnight on the 5th in India.
+      expect(await messageFor(admin, 'Buried Table')).toBe(`Table Buried Table was deleted by ${shown} on 05-Nov-2026`)
+    })
+
+    test('a renamed Table\'s old name names the person too', async ({ admin }) => {
+      await sql`insert into person (row_id, full_name) values (${FULL}, 'Priya Raman')`
+      await bury('Old Name', FULL, 'rename_table', 'New Name')
+      expect(await messageFor(admin, 'Old Name')).toBe('Table Old Name was renamed to New Name by Priya Raman on 05-Nov-2026')
     })
   })
 
