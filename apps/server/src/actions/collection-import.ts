@@ -419,9 +419,10 @@ export async function importRows({ table, args, user }: CollectionActionContext,
     // RVT-R1 (spec 0005): record every row this part writes — id, action,
     // and the updated_at stamp the write left — so the run is revertable.
     const touched: TouchedRow[] = []
-    const unchanged = opts.skipUnchanged && resolutions
-      ? await observeUnchangedRows(meta, rows.flatMap((row, index) => resolutions[index].action === 'update'
-        ? [{ row_id: resolutions[index].row_id!, values: updateValues(row as Record<string, unknown>, upsert!, resolutions[index]) }]
+    // Only a keyed run skips, so it has resolutions.
+    const unchanged = opts.skipUnchanged
+      ? await observeUnchangedRows(meta, rows.flatMap((row, index) => resolutions![index].action === 'update'
+        ? [{ row_id: resolutions![index].row_id!, values: updateValues(row as Record<string, unknown>, upsert!, resolutions![index]) }]
         : []), user.row_id, runId)
       : new Set<string>()
     for (const [index, row] of rows.entries()) {

@@ -147,6 +147,15 @@ describe('Copy a warehouse table into Featherbase', () => {
       expect(await admin.get(`${PATH}/S002`)).toMatchObject({ display_name: 'Hill Street' })
     })
 
+    test('a Table that keeps no history records no observation', async ({ admin }) => {
+      await quietCopy(admin)
+      await sql`update table_def set track_changes = false where name = 'Quiet Stores'`
+      invalidateMeta('Quiet Stores')
+      const counted = await counts()
+      expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ unchanged: 3 })
+      expect((await counts()).observations).toBe(counted.observations)
+    })
+
     test('only the changed row is rewritten', async ({ admin }) => {
       await quietCopy(admin)
       const others = await admin.get<{ updated_at: string }>(`${PATH}/S002`)
