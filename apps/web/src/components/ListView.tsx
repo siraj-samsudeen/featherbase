@@ -23,9 +23,9 @@ import { PrincipalName, usePrincipalLabels } from '../lib/people'
 import { Button, DataCards, NARROW_QUERY, ViewToggle, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp, ChevronDown } from '@featherbase/shop-floor'
 import { GlossaryHelp } from './GlossaryHelp'
+import { fmtCount } from '@featherbase/shop-floor'
 import { ChoiceTicks } from './ChoiceTicks'
 import { inChoiceOrder, mergeChoiceFilters, tickedChoices, withTicked } from '../lib/choice-filters'
-import { fmtCount } from '../lib/inr'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
 import { ActionDisclosure } from './ActionDisclosure'
@@ -1705,7 +1705,7 @@ function StandardFilters({
       i < (stacked ? QUICK_FILTER_STACK : QUICK_FILTER_ROW) ||
       (f.column_type === 'Choice'
         ? tickedChoices(filters, f.column_name, choicesOf(f)!).length > 0
-        : current(f.column_name, choicesOf(f) ? '=' : 'like') !== ''),
+        : current(f.column_name, boxOp(f)) !== ''),
   )
   const shown = showAll ? columns : inRow
   const folded = columns.length - inRow.length
@@ -1757,7 +1757,8 @@ function StandardFilters({
       {shown.map((f) =>
         f.column_type === 'Choice' ? (
           <ChoiceBox key={f.column_name} column={f} filters={filters} onChange={onChange} />
-        ) : choicesOf(f) ? (
+        ) : f.column_type === 'Reference' && f.reference_table ? (
+          // #793: a link filters by picking a row by its name, not by typing its id.
           <label key={f.column_name} className="flex flex-col gap-0.5">
             <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
@@ -1868,6 +1869,9 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
       {label} {op}{' '}
       {linked ? <LinkedTitle table={col.reference_table!} rowId={String(value)} />
         : (op === '=' || op === '!=') && col?.column_type === 'Choice' ? choiceLabel(String(value), col.choice_labels, t)
+        // #820: an `in` on a Choice column names its choices by their labels.
+        : op === 'in' && col?.column_type === 'Choice' && Array.isArray(value)
+          ? filterValueLabel(op, value.map((v) => choiceLabel(String(v), col.choice_labels, t)))
         : filterValueLabel(op, value)}
     </>
   )
@@ -2032,25 +2036,10 @@ export function FilterBar({
                 onClick={() => onChange(filters.filter((_, j) => j !== i))}
                 className="text-ink-subtle hover:text-ink"
               >
-                {t(column?.label ?? f[0])} {f[1]}{' '}
-                {['=', '!=', 'in'].includes(f[1]) && column?.column_type === 'Choice'
-                  ? filterValueLabel(
-                      f[1],
-                      Array.isArray(f[2])
-                        ? f[2].map((v) => choiceLabel(String(v), column.choice_labels, t))
-                        : choiceLabel(String(f[2]), column.choice_labels, t),
-                    )
-                  : filterValueLabel(f[1], f[2])}
-                <button
-                  aria-label="Remove filter"
-                  onClick={() => onChange(filters.filter((_, j) => j !== i))}
-                  className="text-ink-subtle hover:text-ink"
-                >
-                  ×
-                </button>
-              </span>
-            )
-          })}
+                ×
+              </button>
+            </span>
+          ))}
         </div>
       )}
     </div>
