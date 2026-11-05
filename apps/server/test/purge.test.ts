@@ -315,3 +315,26 @@ describe('#859 Codex review round 8', () => {
     expect(await sql.unsafe('select 1 from featherbase.pg_shared_line where parent = $1', [mine.row_id])).toHaveLength(1)
   })
 })
+
+describe('#859 links to a row of any Table (#881)', () => {
+  async function linkTable(admin: TestClient) {
+    return makeTable(admin, { name: 'Pg Decision', columns: [
+      { column_name: 'about_table', column_type: 'Reference', reference_table: 'Table' },
+      { column_name: 'about_row', column_type: 'Reference', table_column: 'about_table' },
+    ] })
+  }
+
+  test('are found, and deleted too or cleared, and only for the right Table', async ({ admin }) => {
+    const { bu, store } = await setup(admin)
+    const decision = await linkTable(admin)
+    const onBu = await admin.post<{ row_id: string }>(decision.url, { about_table: BU, about_row: 'BU-T' })
+    const onStore = await admin.post<{ row_id: string }>(decision.url, { about_table: STORE, about_row: 'S-K' })
+    const plan = await preview(admin, bu, ['BU-T'], 'clear')
+    expect(plan.groups.find((g) => g.table === 'Pg Decision')).toMatchObject({ count: 1, action: 'clear' })
+    await purge(admin, bu, { ids: ['BU-T'], links: 'clear' })
+    expect(await admin.get<Record<string, unknown>>(decision.rowUrl(onBu.row_id))).toMatchObject({ about_table: null, about_row: null })
+    expect(await admin.get<Record<string, unknown>>(decision.rowUrl(onStore.row_id))).toMatchObject({ about_table: STORE, about_row: 'S-K' })
+    await purge(admin, store, { ids: ['S-K'] })
+    expect((await admin.fetch(decision.rowUrl(onStore.row_id))).status).toBe(404)
+  })
+})

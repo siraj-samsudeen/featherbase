@@ -37,6 +37,8 @@ export interface PurgeGroup {
   lines: boolean
   /** For lines, the Table of the documents holding them (each decides for its own). */
   parent_table?: string
+  /** #881: for a link to any Table, the column naming its Table. */
+  table_column?: string
   count: number
   /** Up to 50, to name them. */
   rows: (PurgeRow & { parent?: { table: string; row_id: string } })[]
@@ -173,13 +175,22 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
   while (queue.length) {
     const step = queue.shift()!
     const refs = await db`
-      select c.parent, c.column_name, c.reqd from column_def c
-      where c.column_type = 'Reference' and c.reference_table = ${step.table} order by c.parent, c.column_name`
+      select c.parent, c.column_name, c.reqd, c.table_column from column_def c
+      where c.column_type = 'Reference' and (c.reference_table = ${step.table} or c.table_column is not null)
+      order by c.parent, c.column_name`
     for (const ref of refs) {
       const holder = String(ref.parent)
       const column = String(ref.column_name)
+      // #881: a link to a row of any Table names its Table in a second column.
+      const tableColumn = ref.table_column ? String(ref.table_column) : null
       const meta = await getMeta(holder).catch(() => null)
-      const group = (g: Omit<PurgeGroup, 'table' | 'column'>) => groups.push({ table: holder, column, ...g })
+      // One group per holder, however many steps of the walk reach it.
+      const group = (g: Omit<PurgeGroup, 'table' | 'column'>) => {
+        const same = groups.find((x) => x.table === holder && x.column === column && x.parent_table === g.parent_table && x.action === g.action)
+        if (!same) return void groups.push({ table: holder, column, ...(tableColumn ? { table_column: tableColumn } : {}), ...g })
+        same.count += g.count
+        same.rows = [...same.rows, ...g.rows].slice(0, 50)
+      }
       if (!meta) {
         group({ lines: false, count: 0, rows: [], action: 'blocked', why: `${holder} is not available, so its links cannot be checked` })
         continue
@@ -195,7 +206,8 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
       }
       const rel = await tableRelation(holder)
       const isLines = meta.kind === 'sub_table'
-      const hits = (await db`select * from ${db(rel)} where ${db(column)} = any(${step.ids}) ${forUpdate}`) as Row[]
+      const hits = (await db`select * from ${db(rel)} where ${db(column)} = any(${step.ids})
+        ${tableColumn ? db`and ${db(tableColumn)} = ${step.table}` : db``} ${forUpdate}`) as Row[]
       // A row already being removed takes its link with it.
       const live = hits.filter((h) => !isRemoved(holder, String(h[meta.row_key]))
         && !(isLines && isRemoved(String(h.parenttype), String(h.parent))))
@@ -330,8 +342,13 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
     for (const g of plan.groups.filter((x) => x.action === 'clear')) {
       const meta = await getMeta(g.table)
       const [col] = await db`select reference_table from column_def where parent = ${g.table} and column_name = ${g.column}`
-      const pointedAt = removedIds.get(String(col.reference_table)) ?? []
-      const all = (await db`select * from ${db(await tableRelation(g.table))} where ${db(g.column)} = any(${pointedAt})`) as Row[]
+      const rel = await tableRelation(g.table)
+      const all: Row[] = []
+      for (const [t, list] of removedIds) {
+        if (g.table_column) all.push(...((await db`select * from ${db(rel)} where ${db(g.table_column)} = ${t} and ${db(g.column)} = any(${list})`) as Row[]))
+        else if (t === String(col.reference_table)) all.push(...((await db`select * from ${db(rel)} where ${db(g.column)} = any(${list})`) as Row[]))
+      }
+      const cleared_values = { [g.column]: null, ...(g.table_column ? { [g.table_column]: null } : {}) }
       // A row being deleted itself (or a line of one) keeps its link to the
       // end, so its deletion record holds the row as it was.
       const holders = all.filter((h) => g.lines
@@ -341,9 +358,9 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
         if (g.lines) {
           await saveSurviving(String(h.parenttype), String(h.parent), async (_doc, docMeta) => ({
             [String(h.parentfield)]: (await linesOf(docMeta, String(h.parent), String(h.parentfield)))
-              .map((l) => (l[ROW_KEY] === h[ROW_KEY] ? { ...l, [g.column]: null } : l)),
+              .map((l) => (l[ROW_KEY] === h[ROW_KEY] ? { ...l, ...cleared_values } : l)),
           }))
-        } else await saveSurviving(g.table, String(h[meta.row_key]), async () => ({ [g.column]: null }))
+        } else await saveSurviving(g.table, String(h[meta.row_key]), async () => cleared_values)
         cleared++
       }
     }
@@ -404,11 +421,13 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
     // Nothing may still point at a removed row: a reference written while
     // this ran refuses the whole delete rather than dangle.
     for (const [t, list] of removedIds) {
-      const refs = await db`select parent, column_name from column_def where column_type = 'Reference' and reference_table = ${t}`
+      const refs = await db`select parent, column_name, table_column from column_def
+        where column_type = 'Reference' and (reference_table = ${t} or table_column is not null)`
       for (const ref of refs) {
         const holder = await getMeta(String(ref.parent)).catch(() => null)
         if (!holder || holder.kind === 'settings' || isBound(holder)) continue
-        const [left] = await db`select 1 from ${db(await tableRelation(holder.name))} where ${db(String(ref.column_name))} = any(${list}) limit 1`
+        const [left] = await db`select 1 from ${db(await tableRelation(holder.name))} where ${db(String(ref.column_name))} = any(${list})
+          ${ref.table_column ? db`and ${db(String(ref.table_column))} = ${t}` : db``} limit 1`
         if (left) throw new AppError('ConflictError', `${holder.name} gained a link to a row being deleted; try again`)
       }
     }

@@ -11,6 +11,7 @@ import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, platformRelation, resolvedRelation, tableName } from './platform-schema'
 import { canRetire, readingPresentationSchema } from 'shared'
+import { allowedTables, anyTableLinkColumns, linkableTable } from './any-table-link'
 
 export { tableName }
 
@@ -108,6 +109,8 @@ export const columnSchema = z.object({
   // Reference -> target table name, Choice -> newline/comma list of choices,
   // Sub-table -> the sub-table's Table name.
   reference_table: optionalString,
+  // #881: a link whose Table is chosen per row names the column holding it.
+  table_column: optionalString,
   choices: optionalString,
   choice_labels: z.record(z.string(), z.string()).nullish(),
   row_table: optionalString,
@@ -215,7 +218,7 @@ export async function setIdPattern(name: string, pattern: string): Promise<Table
 }
 
 function targetOf(f: TableDef['columns'][number]): string | undefined {
-  if (f.column_type === 'Reference') return f.reference_table
+  if (f.column_type === 'Reference') return f.reference_table ?? f.table_column
   if (f.column_type === 'Sub-table') return f.row_table
   return undefined
 }
@@ -261,6 +264,15 @@ function validateDef(def: TableDef) {
       errs[f.column_name] = `${f.column_type} column requires ${f.column_type === 'Reference' ? 'reference_table' : 'row_table'}`
     if (f.column_type === 'Choice' && !f.choices)
       errs[f.column_name] = 'Choice column requires choices'
+    if (f.table_column) {
+      // #881: a link to a row of any Table names the column of this Table
+      // that holds the Table, a link to Table, and no fixed target of its own.
+      const holder = def.columns.find((c) => c.column_name === f.table_column)
+      if (f.column_type !== 'Reference' || f.reference_table)
+        errs[f.column_name] = 'Only a link column without a target Table can take its Table from another column'
+      else if (!holder || holder.column_type !== 'Reference' || holder.reference_table !== 'Table' || holder.table_column)
+        errs[f.column_name] = `${f.table_column} must be a link to Table in this Table`
+    }
   }
   if (Object.keys(errs).length)
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
@@ -277,6 +289,15 @@ async function assertLinkTargetsExist(
 ): Promise<void> {
   const errs: Record<string, string> = {}
   for (const f of columns) {
+    // #881: each allowed Table must exist and be one a link can point at.
+    if (f.column_type === 'Reference' && f.table_column) {
+      for (const allowed of allowedTables(f.choices)) {
+        const [target] = await sql`select kind, data_source from table_def where name = ${allowed}`
+        if (!target) errs[f.column_name] = `Link target ${allowed} does not exist`
+        else if (!linkableTable(target)) errs[f.column_name] = `${allowed} cannot be a link target: only a stored Table's rows can be`
+      }
+      continue
+    }
     if (f.column_type !== 'Reference' || !f.reference_table) continue
     if (f.reference_table === def.name || alongside.includes(f.reference_table)) continue
     const [target] = await sql`select 1 from table_def where name = ${f.reference_table}`
@@ -550,7 +571,8 @@ export async function updateTable(
         position: i + 1,
         label: f.label ?? prettifyLabel(f.column_name),
         reference_table: f.reference_table ?? null,
-        choices: f.choices ?? null,
+        table_column: f.table_column ?? null,
+        choices: f.table_column ? allowedTables(f.choices).join('\n') || null : f.choices ?? null,
         choice_labels: f.choice_labels == null ? null : tx.json(f.choice_labels),
         row_table: f.row_table ?? null,
         reqd: f.reqd ?? false,
@@ -821,7 +843,8 @@ export async function createTable(
         label: f.label ?? prettifyLabel(f.column_name),
         column_type: f.column_type,
         reference_table: f.reference_table ?? null,
-        choices: f.choices ?? null,
+        ...(f.table_column ? { table_column: f.table_column } : {}),
+        choices: f.table_column ? allowedTables(f.choices).join('\n') || null : f.choices ?? null,
         choice_labels: f.choice_labels == null ? null : tx.json(f.choice_labels),
         row_table: f.row_table ?? null,
         reqd: f.reqd ?? false,
@@ -883,11 +906,23 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
   // DEL-R3: DOC-006's reverse lookup, one level up. Any OTHER Table whose
   // schema targets this one — a Reference column or a Sub-table's row
   // storage — blocks, even with zero data rows: the column is the dependency.
-  const blockers = await sql<{ parent: string; column_name: string }[]>`
+  const blockers = [...await sql<{ parent: string; column_name: string }[]>`
     select parent, column_name from column_def
     where (reference_table = ${meta.name} or row_table = ${meta.name})
       and parent <> ${meta.name}
-    order by parent, column_name`
+    order by parent, column_name`]
+  // #881: a link to a row of any Table that allows this one depends on it the
+  // same way, and so does one that holds a link to a row of it.
+  const anyLinks = await anyTableLinkColumns(sql)
+  for (const link of anyLinks) {
+    if (link.parent === meta.name) continue
+    const [def] = await sql<{ choices: string | null }[]>`
+      select choices from column_def where parent = ${link.parent} and column_name = ${link.column_name}`
+    const [held] = allowedTables(def?.choices).includes(meta.name) ? [true] : await sql`
+      select 1 from ${sql(await storedRelation(link.parent))}
+      where ${sql(link.table_column)} = ${meta.name} and ${sql(link.column_name)} is not null limit 1`
+    if (held) blockers.push({ parent: link.parent, column_name: link.column_name })
+  }
   if (blockers.length)
     throw new AppError(
       'ValidationError',
@@ -926,10 +961,19 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
     }
     removedFiles.push(...await tx<{ file_url: string | null }[]>`
       delete from file where ref_table = ${meta.name} returning file_url`)
-    for (const p of pointers)
+    for (const p of pointers) {
+      // #881: the Table half of a link to any Table only names which Table;
+      // with no row linked (checked above) the rest of its row is kept.
+      if (anyLinks.some((l) => l.parent === p.parent && l.table_column === p.column_name)) {
+        await tx`
+          update ${tx(await storedRelation(p.parent))} set ${tx(p.column_name)} = null
+          where ${tx(p.column_name)} = ${meta.name}`
+        continue
+      }
       await tx`
         delete from ${tx(await storedRelation(p.parent))}
         where ${tx(p.column_name)} = ${meta.name}`
+    }
     await tx`delete from column_def where parent = ${meta.name}`
     await tx`delete from table_def where name = ${meta.name}`
     // DEL-R6/BV1: a bound Table sheds its binding, never its source's
@@ -1017,6 +1061,9 @@ export async function renameColumn(
       await tx.unsafe(`alter table ${relation} rename column ${quoteIdent(from)} to ${quoteIdent(target)}`)
     await tx`update column_def set column_name = ${target}
       where parent = ${meta.name} and column_name = ${from}`
+    // #881: a link to a row of any Table keeps naming its Table column.
+    await tx`update column_def set table_column = ${target}
+      where parent = ${meta.name} and table_column = ${from}`
     await tx`update featherbase.table_copy set key_column = ${target}
       where target_table = ${meta.name} and key_column = ${from}`
     // A Sub-table's children name their column on every row, in
@@ -1208,6 +1255,10 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
     await tx`update featherbase.table_copy set target_table = ${to} where target_table = ${from}`
     await tx`delete from table_def where name = ${from}`
     await tx`update column_def set reference_table = ${to} where reference_table = ${from}`
+    // #881: a link to a row of any Table keeps allowing the Table by its new
+    // name; the rows' Table half moves with every other link to Table below.
+    await tx`update column_def set choices = array_to_string(array_replace(string_to_array(choices, E'\n'), ${from}::text, ${to}::text), E'\n')
+             where table_column is not null and choices is not null`
     await tx`update column_def set row_table = ${to} where row_table = ${from}`
     // #855: the renamed Table carries on its own counts. Counts left by a
     // deleted Table of the new name give way first (the primary key would
