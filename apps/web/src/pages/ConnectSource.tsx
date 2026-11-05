@@ -1,16 +1,16 @@
 // #772 checklist 1–9: the Data Source table's New page. The kind folds into one
-// line once picked; MotherDuck asks for a token, tests it, then lists the
-// databases to tick. Other kinds keep the native Data Source form.
+// line once picked; MotherDuck says who the instance's token signs in as and
+// lists the databases to tick (#969). Other kinds keep the native Data Source form.
 import { useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../lib/api'
-import { connectWarehouse, testToken, type TokenReport } from '../lib/warehouse'
+import { connectWarehouse, listDatabases } from '../lib/warehouse'
 import { Breadcrumbs, Button, DataList, Field, Notice, SearchableList, StatusPill, TextInput, buttonClasses, cardClasses } from '@featherbase/shop-floor'
 import { FormView } from '../components/FormView'
 
 const KINDS = [
-  { engine: 'motherduck', label: 'MotherDuck', hint: 'Cloud warehouse, read with a token' },
+  { engine: 'motherduck', label: 'MotherDuck', hint: "Cloud warehouse, read with this server's token" },
   { engine: 'postgres', label: 'Postgres', hint: 'Host, database, user, password' },
   { engine: 'mysql', label: 'MySQL', hint: 'Host, database, user, password' },
   { engine: 'duckdb', label: 'DuckDB file', hint: 'A .duckdb file on the server' },
@@ -85,43 +85,28 @@ function MotherDuckForm({ onChangeKind }: { onChangeKind: () => void }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [name, setName] = useState('warehouse')
-  const [token, setToken] = useState('')
-  const [report, setReport] = useState<TokenReport | null>(null)
-  const [testError, setTestError] = useState<string | null>(null)
+  const listing = useQuery({ queryKey: ['warehouse-databases'], queryFn: listDatabases, retry: false, gcTime: 0 })
+  const report = listing.data ?? null
   const [ticked, setTicked] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState('')
-  const [busy, setBusy] = useState<'test' | 'save' | null>(null)
+  const [busy, setBusy] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const nameError = name && !NAME_RULE.test(name) ? 'Use lowercase letters, digits and hyphens, starting with a letter' : undefined
   const ready = !!report && ticked.size > 0 && !!name && !nameError
 
-  async function test() {
-    setBusy('test')
-    setTestError(null)
-    setReport(null)
-    setTicked(new Set())
-    try {
-      setReport(await testToken(token))
-    } catch (err) {
-      setTestError(err instanceof ApiError ? err.message : 'The test could not be run')
-    } finally {
-      setBusy(null)
-    }
-  }
-
   async function save() {
-    setBusy('save')
+    setBusy(true)
     setSaveError(null)
     try {
       const chosen = (report?.databases ?? []).filter((d) => ticked.has(d.name)).map((d) => d.name)
-      await connectWarehouse(name, token, chosen)
+      await connectWarehouse(name, chosen)
       await queryClient.invalidateQueries({ queryKey: ['warehouse-sources'] })
       navigate({ to: '/featherbase/admin/source/$name', params: { name }, search: { database: chosen[0], schema: undefined } })
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : 'The source could not be saved')
     } finally {
-      setBusy(null)
+      setBusy(false)
     }
   }
 
@@ -147,9 +132,9 @@ function MotherDuckForm({ onChangeKind }: { onChangeKind: () => void }) {
           <Button
             variant="primary"
             disabled={!ready}
-            loading={busy === 'save'}
+            loading={busy}
             onClick={save}
-            title={ready ? undefined : 'Test the token and tick at least one database'}
+            title={ready ? undefined : 'Tick at least one database'}
             data-testid="connect-save"
           >
             Save and browse tables
@@ -158,9 +143,9 @@ function MotherDuckForm({ onChangeKind }: { onChangeKind: () => void }) {
       </div>
       {saveError && <Notice tone="negative" className="mb-4 max-w-3xl">{saveError}</Notice>}
       <section className={cardClasses('max-w-3xl divide-y divide-border')}>
-        <KindLine label="MotherDuck" hint="Cloud warehouse, read with a token" onChange={onChangeKind} />
+        <KindLine label="MotherDuck" hint="Cloud warehouse, read with this server's token" onChange={onChangeKind} />
         <div className="p-5">
-          <h2 className="font-semibold text-ink">2. Paste the token</h2>
+          <h2 className="font-semibold text-ink">2. Name it</h2>
           <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="Name" hint="Lowercase letters, digits and hyphens." error={nameError}>
               <TextInput value={name} onChange={(e) => setName(e.target.value)} data-testid="connect-name" />
@@ -172,50 +157,16 @@ function MotherDuckForm({ onChangeKind }: { onChangeKind: () => void }) {
                 <span className="text-xs text-ink-muted">Featherbase never writes to a warehouse.</span>
               </div>
             </div>
-            <div className="md:col-span-2">
-              <label htmlFor="connect-token" className="mb-1.5 block text-sm font-semibold text-ink">
-                MotherDuck token<span aria-hidden="true" className="text-negative"> *</span>
-              </label>
-              <div className="flex gap-2">
-                <div className="min-w-0 flex-1">
-                  <TextInput
-                    id="connect-token"
-                    type="password"
-                    autoComplete="off"
-                    className="font-mono"
-                    placeholder="Paste a read scaling token"
-                    value={token}
-                    onChange={(e) => {
-                      setToken(e.target.value)
-                      setReport(null)
-                      setTestError(null)
-                      setTicked(new Set())
-                    }}
-                    data-testid="connect-token"
-                  />
-                </div>
-                <Button variant="primary" disabled={!token.trim()} loading={busy === 'test'} onClick={test} data-testid="connect-test">
-                  Test
-                </Button>
-              </div>
-              <div className="mt-2" data-testid="connect-result" aria-live="polite">
-                {report && !report.can_write && (
-                  <p className="text-sm text-positive">
-                    Connected as {report.user} · it can read {report.databases.length} databases. Tick the ones to use below.
-                  </p>
-                )}
-                {report?.can_write && (
-                  <Notice tone="caution">
-                    Connected as {report.user}, but this token can also write to MotherDuck. Featherbase only reads, yet anyone who got the token could write. Paste a read scaling token instead.
-                  </Notice>
-                )}
-                {testError && <Notice tone="negative">{testError}</Notice>}
-                {!report && !testError && (
-                  <p className="text-sm text-ink-muted">
-                    Use a read scaling token: it can only read. Featherbase stores it encrypted and, once you save, shows only its last four characters.
-                  </p>
-                )}
-              </div>
+            <div className="md:col-span-2" data-testid="connect-result" aria-live="polite">
+              {report && (
+                <p className="text-sm text-positive">
+                  Connected as {report.user} · it can read {report.databases.length} databases. Tick the ones to use below.
+                </p>
+              )}
+              {listing.isError && (
+                <Notice tone="negative">{listing.error instanceof ApiError ? listing.error.message : 'MotherDuck could not be asked for its databases'}</Notice>
+              )}
+              {listing.isPending && <p className="text-sm text-ink-muted">Asking MotherDuck which databases this server's token can read…</p>}
             </div>
           </div>
         </div>

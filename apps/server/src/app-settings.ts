@@ -8,7 +8,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { formatWithOptions, inspect } from 'node:util'
 import { z } from 'zod'
 import { sql } from './db'
-import { readNamedVariable } from './env'
+import { readNamedVariable, readVariable } from './env'
 import { AppError } from './errors'
 import { datasetSourceReadOnly } from './sources/read-only'
 
@@ -109,8 +109,8 @@ export async function appSetupState(): Promise<{ app: string; title: string; mis
     const wanted = [...new Set((declared.datasets ?? []).map(d => d.source))]
     const found = wanted.length
       ? new Map((await sql`select row_id, to_jsonb(d) as source from data_source d where row_id in ${sql(wanted)}`)
-        .map(r => [String(r.row_id), r.source as { engine: string; url_env: string | null; read_scaling_token?: boolean }]))
-      : new Map<string, { engine: string; url_env: string | null; read_scaling_token?: boolean }>()
+        .map(r => [String(r.row_id), r.source as { engine: string }]))
+      : new Map<string, { engine: string }>()
     // #660: a scope provider names the identifier systems it reads.
     const systems = declared.scopeProvider?.identifiers ?? []
     // A turned-off system is not set up either (owner decision 27-Oct-2026,
@@ -119,9 +119,14 @@ export async function appSetupState(): Promise<{ app: string; title: string; mis
       ? new Map((await sql`select row_id, enabled, sensitivity from identifier_system where row_id in ${sql(systems)}`)
         .map(r => [String(r.row_id), r.sensitivity === 'Secret' ? 'is secret and can\'t be given to an app' : r.enabled === true ? null : 'is turned off']))
       : new Map<string, string | null>()
+    // #969: every MotherDuck source reads the instance's one token.
+    const warehouseToken = [...found.values()].some(source => source.engine === 'motherduck') && !present(readVariable('MOTHERDUCK_TOKEN'))
     const missing = [
       ...required.filter(name => !filled.has(name)).map(name => `setting ${name}`),
-      ...unset.filter(({ optional }) => !optional).map(({ name }) => `secret ${name}`),
+      ...new Set([
+        ...unset.filter(({ optional }) => !optional).map(({ name }) => `secret ${name}`),
+        ...(warehouseToken ? ['secret MOTHERDUCK_TOKEN'] : []),
+      ]),
       ...wanted.map(name => found.has(name) ? (datasetSourceReadOnly(found.get(name)!) ? null : `read-only data source ${name}`) : `data source ${name}`)
         .filter((gap): gap is string => gap !== null),
       ...systems.filter(system => foundSystems.get(system) !== null)

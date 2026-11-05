@@ -84,7 +84,6 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   data_source: { '*': code, last_error: text },
   // #772: a pasted token's ciphertext and a database's kept table list; never a person.
   data_source_catalog: { '*': code },
-  data_source_secret: { '*': code },
   table_copy: { '*': code },
   copy_refresh_schedule: { '*': code },
   // #927: a master sync's rule, the source values last seen and the differences

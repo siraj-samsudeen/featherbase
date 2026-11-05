@@ -124,6 +124,10 @@ export async function settingsRequirements(): Promise<Pick<CheckVariablesOptions
     from data_source where coalesce(trim(url_env), '') <> ''
     group by url_env order by url_env`
   for (const r of rows) named.push({ name: String(r.url_env).trim(), reason: `the url_env of data source ${String(r.sources)}` })
+  // #969: every MotherDuck source reads the instance's one token.
+  const [warehouse] = await sql`
+    select string_agg(row_id, ', ' order by row_id) as sources from data_source where engine = 'motherduck'`
+  if (warehouse?.sources) named.push({ name: 'MOTHERDUCK_TOKEN', reason: `the token of MotherDuck data source ${String(warehouse.sources)}` })
   return { conditions, named }
 }
 

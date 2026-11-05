@@ -13,11 +13,11 @@ import { invalidateMeta } from '../src/meta'
 import { runMigrations } from '../src/migrate'
 
 let dir: string
-beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir) })
-afterAll(() => { invalidateSources(); overrideVariable('MOTHERDUCK_STANDIN', undefined); rmSync(dir, { recursive: true, force: true }) })
+beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir); overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.reader) })
+afterAll(() => { invalidateSources(); overrideVariable('MOTHERDUCK_STANDIN', undefined); overrideVariable('MOTHERDUCK_TOKEN', undefined); rmSync(dir, { recursive: true, force: true }) })
 
 async function makeCopy(admin: TestClient, sourceTable = 'stores') {
-  await admin.post('/api/table/Data%20Source:motherduck_connect', { name: 'refresh-test', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+  await admin.post('/api/table/Data%20Source:motherduck_connect', { name: 'refresh-test', databases: ['sales'] })
   await admin.post('/api/table/Data%20Source/refresh-test:copy_create', {
     database: 'sales', schema: 'main', table: sourceTable, name: 'Scheduled Stores', key: 'code',
     columns: [{ source: 'code', column_name: 'code' }, { source: 'name', column_name: 'title' }],

@@ -33,7 +33,7 @@ const laterMain = ['0012_table_settings_storage_identity.sql', '0013_reading_pre
   '0016_master_sync.sql',
   '0138_mandatory_access.sql', '0140_data_source_sentence_labels.sql',
   '0141_any_table_link.sql', '0142_everyone_roles.sql', '0143_access_auditor_role.sql',
-  '0144_access_request.sql', '0145_archived_tables.sql']
+  '0144_access_request.sql', '0145_archived_tables.sql', '0146_one_motherduck_token.sql']
 const pendingAfterLabels = [...additions, '0010_copy_refresh_schedule.sql', ...laterMain]
 const allMigrations = [...Object.keys(mainHistory), ...pendingAfterLabels]
 const oldLabels = { postgres: 'PostgreSQL', mysql: 'MySQL', duckdb: 'DuckDB', 'csv-folder': 'CSV folder' }
@@ -140,6 +140,14 @@ it('upgrades the historical branch ledger without replacing its data', async () 
       values ('migration-fixture', 'motherduck', 'TEST', '[{"name":"fixture"}]')`
     await scratch.db`insert into featherbase.data_source_secret (data_source, token_ciphertext)
       values ('migration-fixture', 'synthetic-fixture-not-a-token')`
+    // A connection-variable source, as an instance holds one before #969.
+    await scratch.db`insert into featherbase.data_source (row_id, engine, url_env, default_schema, access, read_scaling_token)
+      values ('via-variable', 'duckdb', 'MOTHERDUCK_URL', 'gold.main', 'read_only', true),
+             ('ticked-other', 'duckdb', 'OTHER_WAREHOUSE', null, 'read_only', true),
+             ('local-file', 'duckdb', 'LOCAL_DUCK_FILE', null, 'read_only', false),
+             ('pg-rw', 'postgres', 'PG_URL', null, 'read_write', false)`
+    await scratch.db`insert into featherbase.table_def (name, data_source, external_schema) values ('Via Variable Sales', 'via-variable', 'marts.sales')`
+    await scratch.db`update featherbase.data_source set access = 'read_write', databases = '[{"name":"fixture","address":"md:fixture","owner":"This account","account":"someone"}]' where row_id = 'migration-fixture'`
     await scratch.db`insert into featherbase.data_source_catalog (data_source, database, tables)
       values ('migration-fixture', 'fixture', '[{"name":"people"}]')`
     await scratch.db`insert into featherbase.table_copy (target_table, data_source, database, source_schema, source_table, key_column, last_run_id)
@@ -149,7 +157,6 @@ it('upgrades the historical branch ledger without replacing its data', async () 
       values ('migration-version', 'Person', 'Administrator', '{"fixture":true}')`
     const snapshot = async () => ({
       source: await scratch.db`select * from featherbase.data_source where row_id = 'migration-fixture'`,
-      secret: await scratch.db`select * from featherbase.data_source_secret`,
       catalog: await scratch.db`select * from featherbase.data_source_catalog`,
       copy: await scratch.db`select * from featherbase.table_copy`,
       log: await scratch.db`select * from featherbase.import_log where row_id = 'migration-import'`,
@@ -159,12 +166,30 @@ it('upgrades the historical branch ledger without replacing its data', async () 
     const before = await snapshot()
     expect(await scratch.migrate.pendingMigrations()).toEqual(['0006_readable_labels.sql', ...pendingAfterLabels])
     expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
-    expect(await snapshot()).toEqual(before)
+    // #969: everything but the source row survives; the token table is gone.
+    const after = await snapshot()
+    expect({ ...after, source: null }).toEqual({ ...before, source: null })
+    expect(after.source).toEqual([expect.objectContaining({ engine: 'motherduck', access: 'read_only', databases: [{ name: 'fixture', owner: 'This account' }] })])
+    expect(after.source[0]).not.toHaveProperty('token_last_four')
+    expect(after.source[0]).not.toHaveProperty('read_scaling_token')
+    expect(await scratch.db`select to_regclass('featherbase.data_source_secret') as secret`).toEqual([{ secret: null }])
+    expect(await scratch.db`select row_id, engine, url_env, access, default_schema from featherbase.data_source
+      where row_id <> 'migration-fixture' order by row_id`).toEqual(expect.arrayContaining([
+      { row_id: 'local-file', engine: 'duckdb', url_env: 'LOCAL_DUCK_FILE', access: 'read_only', default_schema: null },
+      { row_id: 'pg-rw', engine: 'postgres', url_env: 'PG_URL', access: 'read_write', default_schema: null },
+      { row_id: 'ticked-other', engine: 'motherduck', url_env: null, access: 'read_only', default_schema: null },
+      { row_id: 'via-variable', engine: 'motherduck', url_env: null, access: 'read_only', default_schema: 'gold.main' },
+    ]))
+    // Its databases come from its default schema and its connected tables.
+    expect(await scratch.db`select row_id, databases from featherbase.data_source where row_id in ('via-variable', 'ticked-other') order by row_id`).toEqual([
+      { row_id: 'ticked-other', databases: null },
+      { row_id: 'via-variable', databases: [{ name: 'gold' }, { name: 'marts' }] },
+    ])
     expect(await ledger(scratch)).toEqual([...allMigrations, ...Object.keys(branchHistory)].sort())
     await expectCurrent(scratch)
-    expect(await scratch.db`select column_name, count(*)::int as count from featherbase.column_def
-      where parent = 'Data Source' and column_name in ('token_last_four', 'databases') group by column_name order by column_name`).toEqual([
-      { column_name: 'databases', count: 1 }, { column_name: 'token_last_four', count: 1 },
+    expect(await scratch.db`select column_name, read_only from featherbase.column_def
+      where parent = 'Data Source' and column_name in ('token_last_four', 'read_scaling_token', 'databases') order by column_name`).toEqual([
+      { column_name: 'databases', read_only: false },
     ])
   } finally {
     await scratch.close()

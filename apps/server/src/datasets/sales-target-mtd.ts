@@ -1,7 +1,7 @@
 import { sql } from '../db'
 import { registerDataset, type SnapshotRecord } from '../dataset-snapshot'
 import { currentPeriod } from '../sales-target'
-import { readMotherDuck } from '../motherduck-hosted'
+import { readMotherDuck } from '../sources/motherduck'
 
 // The sales-target dataset: `experiments/issue_3755/shared/dive.tsx`'s rows query
 // with its personalisation predicate removed, widened by #4344 to every sale (not
@@ -105,7 +105,7 @@ export function _setSourceReader(r: SourceReader | null): void {
 }
 
 /** The warehouse, read with the shared MotherDuck reader. */
-const motherduckReader: SourceReader = (sqlText) => readMotherDuck(sqlText, 'refresh sales_target_mtd')
+const motherduckReader: SourceReader = (sqlText) => readMotherDuck(sqlText, 'refresh sales_target_mtd', ['gold', 'marts'])
 
 /** The reader in force: the test stub when one is installed, MotherDuck otherwise. */
 export function _liveReader(): SourceReader {

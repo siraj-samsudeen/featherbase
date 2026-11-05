@@ -313,7 +313,8 @@ that fills it).
 - **Read-only sources (Codex round 1).** Postgres runs the query in a `read only`
   transaction. A local DuckDB file is opened in DuckDB's `READ_ONLY` mode, one
   instance per source shared by browsing, connection tests and dataset queries
-  (the driver never writes; round 2). A MotherDuck
+  (the driver never writes; round 2). Superseded for MotherDuck by ADR 0020, whose
+  sessions attach each database read-only with one token, and no checkbox. A MotherDuck
   connection cannot be opened read-only: its guarantee is a read-scaling token
   (MotherDuck: such a token "grants permission for read operations" while
   "restricting write and administrative operations"), which the platform cannot

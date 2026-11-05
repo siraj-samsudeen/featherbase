@@ -49,15 +49,15 @@ const QUICK: DeployLockWait = { attemptSeconds: 0.2, pauseSeconds: 0.1, attempts
 const deployNow = () => instanceDeployOperation(async () => 'deployed', QUICK)
 
 let dir: string
-beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir) })
-afterAll(() => { invalidateSources(); overrideVariable('MOTHERDUCK_STANDIN', undefined); rmSync(dir, { recursive: true, force: true }) })
+beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir); overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.reader) })
+afterAll(() => { invalidateSources(); overrideVariable('MOTHERDUCK_STANDIN', undefined); overrideVariable('MOTHERDUCK_TOKEN', undefined); rmSync(dir, { recursive: true, force: true }) })
 
 const SOURCES = '/api/table/Data%20Source'
 const AGAIN = '/api/table/Overlap%20Stores:copy_again'
 const COLUMNS = [{ source: 'code', column_name: 'code' }, { source: 'name', column_name: 'title' }]
 
 async function makeCopy(admin: TestClient) {
-  await admin.post(`${SOURCES}:motherduck_connect`, { name: 'overlap', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+  await admin.post(`${SOURCES}:motherduck_connect`, { name: 'overlap', databases: ['sales'] })
   await admin.post(`${SOURCES}/overlap:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Overlap Stores', key: 'code', columns: COLUMNS })
 }
 
@@ -114,7 +114,7 @@ describe('a copy and a deploy at the same time', () => {
   })
 
   test('a deploy goes through while a first copy reads the warehouse', async ({ admin }) => {
-    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'overlap', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'overlap', databases: ['sales'] })
     const read = stall()
     gates.read = read.wait
     try {
@@ -287,7 +287,7 @@ describe('the data source changes during the read', () => {
   })
 
   test('a first copy is refused, and no Table is made', async ({ admin }) => {
-    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'overlap', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'overlap', databases: ['sales'] })
     const read = stall()
     gates.read = read.wait
     try {
@@ -326,7 +326,7 @@ describe('the owning app changes during the read', () => {
     await sql`update column_def set source_column = 'code' where parent = ${NAME} and column_name = 'code'`
     await sql`update column_def set source_column = 'name' where parent = ${NAME} and column_name = 'title'`
     invalidateMeta(NAME)
-    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'overlap', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'overlap', databases: ['sales'] })
     await sql`insert into featherbase.table_copy (target_table, data_source, database, source_schema, source_table, key_column)
       values (${NAME}, 'overlap', 'sales', 'main', 'stores', 'code')`
   }

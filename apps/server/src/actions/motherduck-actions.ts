@@ -1,22 +1,19 @@
-// #772: a MotherDuck source connected by pasting its token (ADR 0018, design D1–D3).
-//   POST /api/table/Data Source:motherduck_test     { token }
-//   POST /api/table/Data Source:motherduck_connect  { name, token, databases }
-//   POST /api/table/Data Source/<name>:replace_token { token }
+// #772, #969: a MotherDuck source, read with the instance's one token (ADR 0020).
+//   GET  /api/table/Data Source:motherduck_databases
+//   POST /api/table/Data Source:motherduck_connect  { name, databases }
 //   GET  /api/table/Data Source/<name>:tables?database=
 //   POST /api/table/Data Source/<name>:refresh_tables { database }
 //   GET  /api/table/Data Source/<name>:preview?database=&schema=&table=
-// Every action is System Manager only. A token is never returned or logged; the
-// source keeps it encrypted in data_source_secret and shows only its last four.
+// Every action is System Manager only. The token is never returned or logged.
 import { AppError } from '../errors'
 import { registerCollectionAction, registerRowAction } from '../actions'
 import { actionTransaction } from '../action-transaction'
 import { sql } from '../db'
 import { saveDoc } from '../document'
 import { assertSystemManager } from '../permissions'
-import { encryptSecret, lastFour } from '../secret-store'
 import { assertAllowed, getSource, invalidateSources } from '../sources/registry'
 import { run, quoteIdentifier } from '../sources/duckdb-driver'
-import { inspectToken, type WarehouseDatabase } from '../sources/motherduck'
+import { inspectWarehouse, pickDatabase, type ChosenDatabase } from '../sources/motherduck'
 import type { SourceConfig } from '../sources/types'
 import { checkKey, copyAgain, copyInfo, createCopy, type CopyColumn } from '../sources/table-copy'
 import { syncAfterCopy } from '../master-sync'
@@ -27,27 +24,14 @@ function assertDataSource(table: string): void {
   if (table !== DATA_SOURCE) throw new AppError('NotFoundError', `No such action for ${table}`)
 }
 
-function tokenArg(args: Record<string, unknown>): string {
-  const token = typeof args.token === 'string' ? args.token.trim() : ''
-  if (!token) throw new AppError('ValidationError', 'Paste a MotherDuck token', { token: 'Paste a MotherDuck token' })
-  return token
-}
-
-async function storeToken(name: string, token: string): Promise<void> {
-  await sql`insert into featherbase.data_source_secret (data_source, token_ciphertext)
-            values (${name}, ${encryptSecret(token)})
-            on conflict (data_source) do update set token_ciphertext = excluded.token_ciphertext, updated_at = now()`
-  await sql`update featherbase.data_source set token_last_four = ${lastFour(token)} where row_id = ${name}`
-}
-
 async function warehouseSource(name: string): Promise<SourceConfig> {
   const cfg = await getSource(name)
-  if (cfg.engine !== 'motherduck') throw new AppError('ValidationError', `Data source ${name} is not a MotherDuck source connected by a token`)
+  if (cfg.engine !== 'motherduck') throw new AppError('ValidationError', `Data source ${name} is not a MotherDuck source`)
   return cfg
 }
 
 /** The chosen database `database`, or a refusal: a source reads only its chosen databases. */
-function chosen(cfg: SourceConfig, database: unknown): WarehouseDatabase {
+function chosen(cfg: SourceConfig, database: unknown): ChosenDatabase {
   const db = cfg.databases.find((d) => d.name === database)
   if (!db) throw new AppError('PermissionError', `Data source ${cfg.name} does not read the database ${String(database)}`)
   return db
@@ -73,70 +57,38 @@ async function readTableList(cfg: SourceConfig, database: string): Promise<Table
   return { listed_at: (saved.listed_at as Date).toISOString(), schemas: [...schemas.values()] }
 }
 
-registerCollectionAction('motherduck_test', {
-  // It writes nothing, but it carries a token, so it is a POST: a GET would put
-  // the token in URLs and access logs.
-  effect: 'write',
-  description: 'Test a pasted MotherDuck token: who it signs in as, whether it can write, and the databases it can read.',
-  handler: async ({ table, args, user }) => {
+registerCollectionAction('motherduck_databases', {
+  effect: 'read',
+  description: 'Who the instance\'s MotherDuck token signs in as, and the databases it can read.',
+  handler: async ({ table, user }) => {
     assertDataSource(table)
     await assertSystemManager(user.row_id)
-    const report = await inspectToken(tokenArg(args))
-    // The page needs names and owners only; addresses are kept on the source.
-    return { user: report.user, can_write: report.can_write, databases: report.databases.map(({ name, owner }) => ({ name, owner })) }
+    const report = await inspectWarehouse()
+    // The page needs names and owners only.
+    return { user: report.user, databases: report.databases.map(({ name, owner }) => ({ name, owner })) }
   },
 })
 
 registerCollectionAction('motherduck_connect', {
   effect: 'write',
-  description: 'Save a MotherDuck source from a pasted token and the databases chosen for it.',
+  description: 'Save a MotherDuck source that reads the chosen databases.',
   handler: async ({ table, args, user }) => {
     assertDataSource(table)
     await assertSystemManager(user.row_id)
-    const token = tokenArg(args)
     const names = Array.isArray(args.databases) ? args.databases.map(String) : []
     if (!names.length) throw new AppError('ValidationError', 'Choose at least one database', { databases: 'Choose at least one database' })
-    // Addresses come from MotherDuck's own listing, never from the request.
-    const report = await inspectToken(token)
+    const report = await inspectWarehouse()
     const databases = names.map((n) => {
-      const matches = report.databases.filter((d) => d.name === n)
-      if (!matches.length) throw new AppError('ValidationError', `The token cannot read the database ${n}`, { databases: `The token cannot read ${n}` })
-      // Two databases of one name (say, two people share a "gold") would be
-      // told apart only by the order MotherDuck lists them in: refuse instead.
-      if (matches.length > 1)
-        throw new AppError('ValidationError', `Two databases the token can read are called ${n} (from ${matches.map((d) => d.owner).join(' and ')}); Featherbase cannot tell them apart`, { databases: `Two databases are called ${n}` })
-      return matches[0]
+      const { name, owner } = pickDatabase(report.databases, n)
+      return { name, owner }
     })
     const name = String(args.name ?? '')
     await actionTransaction(async () => {
-      await saveDoc(DATA_SOURCE, { row_id: name, engine: 'motherduck', access: 'read_only' }, user.row_id, 'insert')
-      await sql`update featherbase.data_source set databases = ${sql.json(databases)} where row_id = ${name}`
-      await storeToken(name, token)
+      await saveDoc(DATA_SOURCE, { row_id: name, engine: 'motherduck', access: 'read_only', databases }, user.row_id, 'insert')
       await sql`update featherbase.data_source set conn_status = 'ok', last_checked_at = now(), last_error = null where row_id = ${name}`
     })
     invalidateSources(name)
     return { name }
-  },
-})
-
-registerRowAction('replace_token', {
-  effect: 'write',
-  description: 'Replace a MotherDuck source’s token; the new token is tested first.',
-  handler: async ({ table, name, args, user }) => {
-    assertDataSource(table)
-    await assertSystemManager(user.row_id)
-    const cfg = await warehouseSource(name)
-    const token = tokenArg(args)
-    const report = await inspectToken(token)
-    // The same database, not just one of the same name: another account's
-    // "gold" must not quietly stand in for this source's. An owned database's
-    // address (`md:<name>`) is account-relative, so its owning user must match.
-    const missing = cfg.databases.filter((d) => !report.databases.some((r) =>
-      r.name === d.name && r.address === d.address && (r.account === undefined || r.account === d.account))).map((d) => d.name)
-    if (missing.length) throw new AppError('ValidationError', `The new token cannot read ${missing.join(', ')}`, { token: `The new token cannot read ${missing.join(', ')}` })
-    await actionTransaction(() => storeToken(name, token))
-    invalidateSources(name)
-    return { token_last_four: lastFour(token), can_write: report.can_write }
   },
 })
 
