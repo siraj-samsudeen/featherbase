@@ -3,7 +3,7 @@ export const PLATFORM_SCHEMA = 'featherbase'
 // Physical basenames owned by Featherbase at the cf88a7b convergence boundary.
 // Metadata-backed user Tables are resolved separately by tableRelation().
 const PLATFORM_RELATIONS = new Set([
-  'access_log', 'access_token', 'activity_log', 'app_dataset_row', 'app_role_binding', 'app_setting', 'assignment_rule',
+  'access_log', 'access_request', 'access_token', 'activity_log', 'app_dataset_row', 'app_role_binding', 'app_setting', 'assignment_rule',
   'assignment_rule_user', 'auto_email_report', 'background_job', 'client_script',
   'column_def', 'comment', 'custom_field', 'dashboard', 'data_scope', 'data_source',
   'dataset_miss', 'dataset_place_drop', 'dataset_snapshot', 'email_account', 'email_queue', 'email_rule',

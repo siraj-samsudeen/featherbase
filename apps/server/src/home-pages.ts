@@ -178,7 +178,8 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
   const systemNames = new Set(systemTables.map((r) => r.name as string).sort())
 
   // A link to a table that no longer exists (dropped by an app uninstall)
-  // must not break the page — it is filtered out here. Sub-tables have no
+  // must not break the page — it is filtered out here, and so is one to an
+  // archived table (#905), which is out of everyday menus. Sub-tables have no
   // list view to open, so links to them are dropped too.
   // Include generated targets even when they have no stored placement hint.
   const targets = new Set<string>(systemNames)
@@ -190,7 +191,8 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
   const existing = new Set<string>()
   if (targets.size > 0) {
     const rows = await sql`
-      select name from table_def where name in ${sql([...targets])} and kind != 'sub_table'`
+      select name from table_def where name in ${sql([...targets])} and kind != 'sub_table'
+        and archived_at is null`
     for (const r of rows) existing.add(r.name as string)
   }
 

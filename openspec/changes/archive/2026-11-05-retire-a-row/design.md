@@ -94,7 +94,7 @@ row removed; bulk and per-import; non-admins keep the history rule; never on pla
     any dependent exists (the brief's "not by making life difficult").
 11. **The deletion record goes in the Access Log.** One entry per removed row, operation
     `purge`, with two new columns, `reason` and `snapshot` (the row and its sub-table lines as
-    they were, JSON), migration `0019_deletion_record.sql`. The Access Log is system-written and
+    they were, JSON), migration `0148_deletion_record.sql`. The Access Log is system-written and
     only System Managers read it, so a snapshot of a restricted column is no wider than before.
     A cleared link is recorded on the dependent as a history entry, like any edit. Rejected: a new
     "Deletion Record" Table (one more platform Table to permission, for the same four facts).
@@ -138,7 +138,7 @@ row removed; bulk and per-import; non-admins keep the history rule; never on pla
 
 ## Migration Plan
 
-`0018_row_retirement.ts` adds the three columns to the relation of every Table of kind `table`
+`0147_row_retirement.ts` adds the three columns to the relation of every Table of kind `table`
 that stores its own rows, in the platform schema and in app schemas; `createTable` adds them for
 new Tables. It changes no existing value, so it needs no snapshot rehearsal (`docs/DEPLOY.md`
 rehearses data rewrites). Numbers 0016 and 0017 are taken by open PRs #877 and #929.

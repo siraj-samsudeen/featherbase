@@ -5,7 +5,7 @@
 
 ## 2. Server
 
-- [x] 2.1 Standard columns `retired_at`, `retired_by`, `retired_reason` for stored Tables of kind table; reserved names; migration `0018_row_retirement.ts`
+- [x] 2.1 Standard columns `retired_at`, `retired_by`, `retired_reason` for stored Tables of kind table; reserved names; migration `0147_row_retirement.ts`
 - [x] 2.2 `:retire` and `:reactivate` row actions with the delete/write checks, a lock and a history entry
 - [x] 2.3 List reads hide retired rows unless a filter names `retired_at` or `with_retired` is passed; scope-provider lists include them
 - [x] 2.4 Row capabilities report `retire` and `reactivate`; activity passes the retirement entry through
@@ -23,7 +23,7 @@
 ## 4. Permanent delete (scope added 04-Nov-2026)
 
 - [x] 4.1 Failing server tests: System Manager only, cascade preview, cascade and clear, blocked dependents, deletion records, import-run delete, rollback on a refused dependent, platform tables refused
-- [x] 4.2 Migration `0019_deletion_record.sql`; `:purge_preview` and `:purge`; capability `purge`
+- [x] 4.2 Migration `0148_deletion_record.sql`; `:purge_preview` and `:purge`; capability `purge`
 - [x] 4.3 Delete-permanently dialog: from the form, the refused-delete dialog, the list's selection and an import run
 
 ## 5. Verify and close

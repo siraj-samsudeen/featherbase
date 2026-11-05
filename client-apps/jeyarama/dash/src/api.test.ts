@@ -21,7 +21,7 @@ describe('accessFacts', () => {
   it('a manager is told what instance health says this app lacks', async () => {
     stub({ '/api/whoami': manager, '/api/instance-health': { status: 200, body: { checks: [
       { key: 'app-setup:other', missing: ['secret OTHER'] },
-      { key: 'app-setup:feather_dash', missing: ['secret X'], fix: 'Set it.' }] } } })
+      { key: 'app-setup:dash', missing: ['secret X'], fix: 'Set it.' }] } } })
     expect(await accessFacts()).toEqual({ manages: true, missing: ['secret X'], fix: 'Set it.' })
   })
 

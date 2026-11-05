@@ -4,14 +4,14 @@ import { parseInstanceAddresses } from '../src/instance-addresses'
 // #488: INSTANCE_ADDRESSES — what each web address of an instance opens, and
 // which one emailed links use. Read at boot, before the database.
 
-const DASH = { address: 'https://dash.example.com', opens: 'feather_dash', emails: true }
+const DASH = { address: 'https://dash.example.com', opens: 'dash', emails: true }
 const ADMIN = { address: 'https://featherbase.example.com', opens: 'admin' }
 const parse = (list: unknown, environment = 'production') => parseInstanceAddresses(JSON.stringify(list), environment)
 
 describe('INSTANCE_ADDRESSES validation', () => {
   test('a valid list parses into entries with their lowercased hosts', () => {
     expect(parse([DASH, { ...ADMIN, address: 'https://FeatherBase.Example.com/' }])).toEqual([
-      { address: 'https://dash.example.com', host: 'dash.example.com', opens: 'feather_dash', emails: true },
+      { address: 'https://dash.example.com', host: 'dash.example.com', opens: 'dash', emails: true },
       { address: 'https://featherbase.example.com', host: 'featherbase.example.com', opens: 'admin', emails: false },
     ])
   })

@@ -3,6 +3,7 @@ import { DEFAULT_ID_PATTERN, namingColumn, prettifyLabel, renameNamingColumn, ta
 import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
+import { renameColumnInSyncRules, renameTableInSyncRules } from './master-sync-names'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
 import { accessPolicySchema, policyColumns } from './access-policy'
 import { logAccess } from './audit'
@@ -1112,6 +1113,8 @@ export async function renameColumn(
       where parent = ${meta.name} and table_column = ${from}`
     await tx`update featherbase.table_copy set key_column = ${target}
       where target_table = ${meta.name} and key_column = ${from}`
+    // #936: a master sync rule naming this column keeps working.
+    await renameColumnInSyncRules(tx, meta.name, from, target)
     // A Sub-table's children name their column on every row, in
     // `parentfield`, and every child read filters on it (document.ts
     // loadChildren). Renaming only the column_def would leave them addressed
@@ -1299,6 +1302,8 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
     // A copied Table's provenance follows it, before the old definition's
     // delete would cascade it away (#772: Copy again must survive a rename).
     await tx`update featherbase.table_copy set target_table = ${to} where target_table = ${from}`
+    // #936: a master sync rule naming this Table as its master or link keeps working.
+    await renameTableInSyncRules(tx, from, to)
     await tx`delete from table_def where name = ${from}`
     await tx`update column_def set reference_table = ${to} where reference_table = ${from}`
     // #881: a link to a row of any Table keeps allowing the Table by its new

@@ -13,11 +13,11 @@ import { invalidateMeta } from '../src/meta'
 import { runMigrations } from '../src/migrate'
 
 let dir: string
-beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir) })
-afterAll(() => { invalidateSources(); overrideVariable('MOTHERDUCK_STANDIN', undefined); rmSync(dir, { recursive: true, force: true }) })
+beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir); overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.reader) })
+afterAll(() => { invalidateSources(); overrideVariable('MOTHERDUCK_STANDIN', undefined); overrideVariable('MOTHERDUCK_TOKEN', undefined); rmSync(dir, { recursive: true, force: true }) })
 
 async function makeCopy(admin: TestClient, sourceTable = 'stores') {
-  await admin.post('/api/table/Data%20Source:motherduck_connect', { name: 'refresh-test', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+  await admin.post('/api/table/Data%20Source:motherduck_connect', { name: 'refresh-test', databases: ['sales'] })
   await admin.post('/api/table/Data%20Source/refresh-test:copy_create', {
     database: 'sales', schema: 'main', table: sourceTable, name: 'Scheduled Stores', key: 'code',
     columns: [{ source: 'code', column_name: 'code' }, { source: 'name', column_name: 'title' }],
@@ -95,6 +95,17 @@ describe('Scheduled copied-table refresh', () => {
     expect(String(execution.result)).toContain('3 unchanged')
     expect(String(execution.result)).toContain('0 changed')
     expect(await sql`select row_id from background_job where method = ${schedule.method} and job_status = 'queued'`).toHaveLength(1)
+  })
+
+  test('an archived copy is skipped, not failed, until it is un-archived (#905)', async ({ admin }) => {
+    await makeCopy(admin)
+    await sql`delete from background_job`
+    const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
+    await admin.post('/api/table_def/Scheduled%20Stores/archive', { note: 'Replaced by a newer copy' })
+    await sql`update background_job set run_at = now() where method = ${schedule.method}`
+    expect(await runOneJob()).toBe(true)
+    const [execution] = await sql`select outcome, result from job_execution where method = ${schedule.method}`
+    expect(execution).toEqual({ outcome: 'success', result: 'Skipped: Scheduled Stores is archived' })
   })
 
   test('a new scheduled conflict reaches the responsible administrators', async ({ admin, createUser }) => {

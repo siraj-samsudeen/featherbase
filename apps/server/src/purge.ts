@@ -64,6 +64,9 @@ export function purgeRefusal(meta: TableMeta): string | null {
   // row); its rows keep their own lifecycle.
   if (!canRetire(meta) || meta.system || isBound(meta) || meta.access_policy)
     return `${meta.name} rows cannot be deleted permanently`
+  // #905: an archived Table's rows change for nobody until it is un-archived.
+  if (meta.archived_at)
+    return `${meta.name} is archived; its rows cannot be deleted permanently. A System Manager can un-archive it.`
   return null
 }
 
@@ -247,7 +250,7 @@ export async function planPurge(db: Db, table: string, ids: string[], links: Lin
       for (const [parentTable, bucket] of buckets) {
         const parentMeta = parentTable ? await getMeta(parentTable) : null
         const canDelete = purgeRefusal(parentMeta ?? meta) === null
-        const canClear = !ref.reqd && !meta.system && !meta.system_written
+        const canClear = !ref.reqd && !meta.system && !meta.system_written && !meta.archived_at
           && !(parentMeta && purgeRefusal(parentMeta))
         const action: PurgeGroup['action'] = links === 'cascade'
           ? (canDelete ? 'delete' : canClear ? 'clear' : 'blocked')

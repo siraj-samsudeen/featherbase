@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
-const { changeStandin, acceptanceSql, restartAcceptance } = require('./stack');
+const { changeStandin, acceptanceSql, restartAcceptance, useInstanceToken } = require('./stack');
 
 class CopyRefreshFixture {
   constructor(api) {
@@ -17,8 +17,9 @@ class CopyRefreshFixture {
       `create table ${this.relation} (code varchar, name varchar)`,
       `insert into ${this.relation} values ('P01', 'Rose'), ('P02', 'Fern')`,
     ]);
+    await useInstanceToken();
     await this.api.call('POST', '/api/table/Data%20Source:motherduck_connect', {
-      name: this.source, token: 'standin-read-scaling-token-4f2a', databases: ['sales'],
+      name: this.source, databases: ['sales'],
     }, [201], 'connect local plants source');
     await this.api.copyWarehouse(this.source, {
       database: 'sales', schema: 'main', table: this.relation, name: 'Plants', key: 'code',

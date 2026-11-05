@@ -1,10 +1,11 @@
+import { randomBytes } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { calendarDay } from 'shared'
 import { AppError } from './errors'
 import { sql } from './db'
 import { actionTransaction } from './action-transaction'
 import { getMeta, type TableMeta } from './meta'
-import { getDoc, saveDoc, saveSystemRow } from './document'
+import { assertUserPermissions, getDoc, saveDoc, saveSystemRow } from './document'
 import { holdBeforeRowLock } from './row-lock-order'
 import { tableRelation } from './table-engine'
 import { assertDocPermission } from './permissions'
@@ -13,6 +14,8 @@ import { assertManagedUnchanged } from './managed-settings'
 import { registerCollectionAction } from './actions'
 
 type Row = Record<string, unknown>
+/** Eleven parameters a row, inside Postgres's limit of 65,535 for one statement. */
+const OBSERVATIONS_PER_INSERT = 5000
 type Change = [string, unknown, unknown]
 interface History { row_id: string; created_by: string; created_at: Date; data: { changed?: Change[]; import_run?: string; import_revert?: string; resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown } } }
 interface Conflict { field: string; kept: unknown; incoming: unknown; editor: string; edited_at: Date }
@@ -141,6 +144,47 @@ export async function saveImportedRow(meta: TableMeta, input: Row, user: string,
     }
     return { saved, version, changed: !before || meta.columns.some(c => !same(before![c.column_name], saved[c.column_name], c.column_type)) }
   })
+}
+
+/** #971: which of these updates would change nothing at all, decided in a few
+ *  statements rather than a save per row. True only when every value equals the
+ *  stored one and the row has no open conflict for the save to close. Anything
+ *  else takes saveImportedRow as ever. Each unchanged row is still observed by
+ *  this run, in bulk: a later conflict is decided from the latest observation
+ *  of a run that was not undone (planImport), so each run must keep its own. */
+export async function observeUnchangedRows(meta: TableMeta, inputs: { row_id: string; values: Row }[], user: string, runId: string): Promise<Set<string>> {
+  const unchanged = new Set<string>()
+  if (!inputs.length) return unchanged
+  const ids = inputs.map(i => i.row_id)
+  // #693: the locks a save takes before its row, before any row of this run.
+  for (const { values } of inputs) await holdBeforeRowLock(sql, meta, user, { ...values })
+  // Locked to the end of the run, as a save would: a value another writer commits
+  // while this run decides is either seen here or waits, so the observation
+  // below can never be newer than a value it did not see.
+  const stored = new Map((await sql`select * from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = any(${ids}) order by ${sql(meta.row_key)} for update`).map(r => [String(r[meta.row_key]), r]))
+  const conflicted = new Set((await sql`select distinct ref_name from featherbase.import_conflict where ref_table = ${meta.name} and ref_name = any(${ids}) and closed is not true`).map(c => String(c.ref_name)))
+  const columns = meta.columns.filter(c => !['Section Break', 'Column Break', 'Sub-table'].includes(c.column_type))
+  // The database's wall clock, as saveImportedRow stamps its observations: now()
+  // is this transaction's start, older than rows it has just saved.
+  const [{ at }] = await sql`select clock_timestamp()::text as at`
+  const observations: Row[] = []
+  for (const { row_id, values } of inputs) {
+    const current = stored.get(row_id)
+    if (!current || conflicted.has(row_id)) continue
+    const mapped = columns.filter(c => Object.hasOwn(values, c.column_name))
+    if (!mapped.every(c => same(current[c.column_name], values[c.column_name], c.column_type))) continue
+    // The row-level gate a save applies: private work refuses the run as before.
+    await assertUserPermissions(user, meta, current)
+    unchanged.add(row_id)
+    // What planImport records: read-only columns are never source observations.
+    if (meta.track_changes) observations.push({
+      row_id: randomBytes(5).toString('hex'), ref_table: meta.name, ref_name: row_id, run_id: runId, created_by: user, updated_by: user, created_at: at, updated_at: at, status: 'draft', position: 0,
+      values: sql.json(Object.fromEntries(mapped.filter(c => !c.read_only).map(c => [c.column_name, normalized(values[c.column_name], c.column_type)])) as never),
+    })
+  }
+  for (let i = 0; i < observations.length; i += OBSERVATIONS_PER_INSERT)
+    await sql`insert into featherbase.import_source ${sql(observations.slice(i, i + OBSERVATIONS_PER_INSERT) as never)}`
+  return unchanged
 }
 
 export async function mayResolve(meta: TableMeta, row: Row, field: string, user: string): Promise<boolean> {

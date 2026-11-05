@@ -70,7 +70,7 @@ interface SmtpConfig {
   port: number
   user?: string
   password?: string
-  /** MAIL_FROM: the deployment's one sender (e.g. `Feather Dash <noreply@…>`). */
+  /** MAIL_FROM: the deployment's one sender (e.g. `Dash <noreply@…>`). */
   from?: string
   /** The EHLO name: SMTP_NAME, else the MAIL_FROM domain, else the emails address's
    *  host. Unset here, the sender's domain is used at send time. */

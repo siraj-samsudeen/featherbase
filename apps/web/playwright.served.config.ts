@@ -73,7 +73,7 @@ export default defineConfig({
       // Admin. Plain `localhost` is not listed, so it holds everything.
       INSTANCE_ADDRESSES: JSON.stringify([
         { address: `http://admin.localhost:${port}`, opens: 'admin', emails: true },
-        { address: `http://dash.localhost:${port}`, opens: 'feather_dash' },
+        { address: `http://dash.localhost:${port}`, opens: 'dash' },
       ]),
     },
   },

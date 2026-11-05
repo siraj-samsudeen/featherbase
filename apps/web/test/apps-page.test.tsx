@@ -39,8 +39,8 @@ test('the real catalog offers example and client apps, keeps the list alongside 
   expect(within(details).getByRole('button', { name: 'Prepare and install' })).toBeEnabled()
   expect(within(details).queryByRole('textbox')).not.toBeInTheDocument()
   expect(within(details).queryByRole('link', { name: 'Configure settings' })).not.toBeInTheDocument()
-  await userEvent.click(within(list).getByRole('button', { name: /Feather Dash/ }))
-  expect(screen.getByRole('region', { name: 'Feather Dash details' })).toHaveTextContent('embed_service_account')
+  await userEvent.click(within(list).getByRole('button', { name: /Dash/ }))
+  expect(screen.getByRole('region', { name: 'Dash details' })).toHaveTextContent('embed_service_account')
   expect(list).toBeInTheDocument()
   expect(await admin.get('/api/apps')).toMatchObject({ installed: [] })
 })
@@ -49,10 +49,10 @@ test('secret requirements show names and presence, never the host value', async 
   await discoverAppLibrary([])
   await withNamedVariable('MOTHERDUCK_TOKEN', undefined, async () => {
     const client = renderApps(admin)
-    await userEvent.click(await screen.findByRole('button', { name: /Feather Dash/ }))
+    await userEvent.click(await screen.findByRole('button', { name: /Dash/ }))
     const secret = () => screen.getByText('MOTHERDUCK_TOKEN').closest('li')!
     expect(secret()).toHaveTextContent('Required · Missing')
-    expect(screen.getByRole('region', { name: 'Feather Dash details' })).toHaveTextContent('host environment')
+    expect(screen.getByRole('region', { name: 'Dash details' })).toHaveTextContent('host environment')
     await withNamedVariable('MOTHERDUCK_TOKEN', 'apps-page-private-test-value', async () => {
       await client.invalidateQueries({ queryKey: ['apps'] })
       await waitFor(() => expect(secret()).toHaveTextContent('Required · Present'))

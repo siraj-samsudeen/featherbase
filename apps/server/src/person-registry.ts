@@ -64,6 +64,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   },
   service_account: { row_id: id, label: text },
   person_id_map: { '*': code },
+  access_request: { person: id, email: code, app: text, app_name: code },
   access_log: { user: id, operation: code, ref_table: code, reference_name: on('ref_table'), method: code, scope: code, reason: text, snapshot: text },
   access_token: { id: code, label: text, token_hash: code, person: id, service_account: id },
   activity_log: { user: id, operation: text, full_name: text, ip_address: code, sign_in_method: code },
@@ -83,7 +84,6 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   data_source: { '*': code, last_error: text },
   // #772: a pasted token's ciphertext and a database's kept table list; never a person.
   data_source_catalog: { '*': code },
-  data_source_secret: { '*': code },
   table_copy: { '*': code },
   copy_refresh_schedule: { '*': code },
   // #927: a master sync's rule, the source values last seen and the differences
@@ -148,7 +148,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   sign_in_method: { '*': code, label: text },
   single_value: { '*': code },
   sla_priority: { '*': code },
-  table_def: { '*': code, description: text, label: text },
+  table_def: { '*': code, description: text, label: text, archived_by: id, archived_note: text },
   tag_link: { ref_table: code, ref_name: on('ref_table'), tag: code },
   todo: { allocated_to: id, ref_table: code, reference_name: on('ref_table'), description: text, todo_status: code, priority: code },
   translation: { language: code, source_text: text, translated_text: text },

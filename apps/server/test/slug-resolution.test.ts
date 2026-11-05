@@ -132,7 +132,7 @@ describe('#56: Table slugs in resource URLs', () => {
       expect(exact.status).toBe(404)
       const tombstone = (await exact.json()) as { error: { message: string } }
       expect(tombstone.error.message).toMatch(
-        new RegExp(`^Table ${name} was deleted by Administrator on \\d{4}-\\d{2}-\\d{2}$`),
+        new RegExp(`^Table ${name} was deleted by Administrator on \\d{2}-[A-Z][a-z]{2}-\\d{4}$`),
       )
     }
   })

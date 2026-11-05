@@ -2,12 +2,14 @@ import { randomUUID } from 'node:crypto'
 import { COPY_CADENCES } from 'shared'
 import { sql } from './db'
 import { actionTransaction } from './action-transaction'
+import { appOperation } from './app-lifecycle'
 import { AppError } from './errors'
 import { saveDoc } from './document'
 import { assertSystemManager } from './permissions'
 import type { SessionUser } from './auth'
 import { copyAgain, copyInfo } from './sources/table-copy'
 import { syncAfterCopy } from './master-sync'
+import { getMeta } from './meta'
 import { FinalJobFailure, registerJob, syncScheduledJobs } from './jobs'
 import { runAsSystemActor } from './system-actor'
 import { queueEmail } from './email'
@@ -49,6 +51,12 @@ function registerCopyRefresh(method: string): void {
     const [link] = await sql`select c.target_table from featherbase.copy_refresh_schedule c
       join scheduled_job s on s.row_id = c.scheduled_job where c.scheduled_job = ${method}`
     if (!link) throw new FinalJobFailure('This copied-table schedule has been removed')
+    // #905: an archived copy takes no rows; its schedule waits, quietly, until
+    // it is un-archived or deleted.
+    if ((await getMeta(String(link.target_table))).archived_at) {
+      ctx.setResult(`Skipped: ${String(link.target_table)} is archived`)
+      return
+    }
     const actor = `copy-refresh:${method.slice('copy_refresh_'.length)}`
     const user: SessionUser = { row_id: actor, kind: 'service_account', email: null, full_name: 'Scheduled copy refresh' }
     const result = await runAsSystemActor(actor, () => copyAgain(user, String(link.target_table)))
@@ -61,7 +69,7 @@ function registerCopyRefresh(method: string): void {
     ctx.setResult(summary)
     if (result.conflicts) {
       try {
-        await actionTransaction(async () => {
+        await appOperation(() => actionTransaction(async () => {
           const recipients = await systemManagerEmails()
           if (!recipients.length) return recordUndeliveredNotice(`copy refresh conflicts: ${String(link.target_table)}`)
           for (const to of recipients) await queueEmail({
@@ -69,13 +77,14 @@ function registerCopyRefresh(method: string): void {
             subject: `Copy refresh conflicts: ${String(link.target_table)}`,
             body: `${String(link.target_table)} has ${result.conflicts} new conflict${result.conflicts === 1 ? '' : 's'} from its scheduled refresh. Personal corrections were kept. Open the table's Import conflicts to review them.`,
           })
-        })
+        }))
       } catch {
         // The copy is committed: a mail outage must not retry the import.
         ctx.setResult(`${summary} · Conflict notice could not be queued`)
       }
     }
-  })
+    // #971: reads with no lifecycle lock; copyAgain and the sync take it to apply.
+  }, undefined, { ownLifecycleLock: true })
 }
 
 export async function registerCopyRefreshJobs(): Promise<void> {

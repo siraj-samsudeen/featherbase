@@ -11,7 +11,7 @@ import { sql } from '../src/db'
 // which state, and what they must record. The rules run on synthetic rows.
 const directory = resolve('../..', 'example-apps/tickets')
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
-  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.2.1' },
+  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.2.3' },
 }) }, client.token, client.user)
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -245,7 +245,7 @@ describe('Tickets: transitions per ticket type (#918)', () => {
     expect(ticket.ticket_state).toBe('Closed')
     expect((await read(w.support, 'queue', { state: 'open' })).tickets.map((t: Ticket) => t.row_id)).not.toContain(ticket.row_id)
     expect((await read(w.raiser, 'detail', { row_id: ticket.row_id })).details.what_changed).toBe('Plant 1200 corrected too')
-  })
+  }, 30_000) // walks one ticket through its whole life, about 35 requests
 
   test('history records who took which action with its values; a private type shows others only the action', async ({ admin, createUser }) => {
     const w = await world(admin, createUser, 'private')

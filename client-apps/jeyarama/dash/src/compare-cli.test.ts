@@ -85,10 +85,10 @@ const code = (value: string) => ({ system: 'stylehr-employee-code', value, curre
 function lakeside(extra: Partial<FakeInstance> = {}): FakeInstance {
   return {
     tables: {
-      'feather_dash.store_rollout': [], 'feather_dash.store_floor': [], 'feather_dash.department': [], 'feather_dash.section_alias': [],
-      'feather_dash.section': [{ row_id: 's-sarees', store: '9901', section_name: 'Sarees', team_leaders_allowed: 1 }],
-      'feather_dash.section_subcategory': [{ row_id: 'p1', store: '9901', subcategory: '010101001', section: 's-sarees', starts_on: '2026-01-01' }],
-      'feather_dash.job_assignment': [{ row_id: 'j1', person: 'psn_301', job: 'Team Leader', store: '9901', section: 's-sarees', starts_on: '2026-07-01' }],
+      'dash.store_rollout': [], 'dash.store_floor': [], 'dash.department': [], 'dash.section_alias': [],
+      'dash.section': [{ row_id: 's-sarees', store: '9901', section_name: 'Sarees', team_leaders_allowed: 1 }],
+      'dash.section_subcategory': [{ row_id: 'p1', store: '9901', subcategory: '010101001', section: 's-sarees', starts_on: '2026-01-01' }],
+      'dash.job_assignment': [{ row_id: 'j1', person: 'psn_301', job: 'Team Leader', store: '9901', section: 's-sarees', starts_on: '2026-07-01' }],
       'Sales Target Assignment': [], 'Employee Section Map': [], 'Section Ownership': [], 'Store Manager': [], 'Section Name Alias': [],
       'Section Merchandise Map': [{ row_id: 'm1', store_code: '9901', material_group: '010101001', mch_subcategory: 'Saree', section_name: 'Sarees' }],
       Person: [{ row_id: 'psn_301', full_name: 'P-301' }, { row_id: 'psn_302', full_name: 'P-302' }],

@@ -45,7 +45,7 @@ of their own.
 ## Impact
 
 - Server: three standard columns on every stored Table (`retired_at`, `retired_by`,
-  `retired_reason`) with migration `0018_row_retirement.ts`; `:retire` and `:reactivate` row
+  `retired_reason`) with migration `0147_row_retirement.ts`; `:retire` and `:reactivate` row
   actions; the list, count, group-count, aggregate and summary reads; the import's dry run; the
   delete refusals; row capabilities and activity.
 - Web: the form's Record actions, a retire dialog, a retired badge and line, the list's "show

@@ -2,7 +2,7 @@
 // person's job assignments current on a date, never stored. Every job matches
 // within its own store: a link to another store's floor, department or section
 // covers nothing (it is on the conflict list). Conflicts never change coverage.
-import { checked, exact, holdsOn, text } from './values.ts'
+import { checked, day, exact, holdsOn, text } from './values.ts'
 
 export type Row = Record<string, unknown>
 
@@ -25,6 +25,9 @@ export interface CoveredUnit {
   job: string
   acting: boolean
   jobRow: string
+  /** The assignment's first day, and the day it ends (exclusive), if any. */
+  startsOn: string
+  endsOn: string
   wholeStore: boolean
   /** The sections covered, by row id. */
   sections: string[]
@@ -88,7 +91,8 @@ export function coverageOf(person: string, chart: OrgChart, on: string): Covered
       sections = kind === 'section' ? [target] : inStore.filter(s => exact(s[kind]) === unit)
     }
     const sectionIds = sections.map(id).sort()
-    units.push({ store, kind, unit, unitName, job, acting: checked(row.acting), jobRow: id(row), wholeStore: kind === 'store',
+    units.push({ store, kind, unit, unitName, job, acting: checked(row.acting), jobRow: id(row),
+      startsOn: day(row.starts_on), endsOn: day(row.ends_on), wholeStore: kind === 'store',
       sections: sectionIds, subcategories: [...new Set(sectionIds.flatMap(s => owned.get(s) ?? []))].sort() })
   }
   return units

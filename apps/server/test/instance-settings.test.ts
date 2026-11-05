@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 // Instance settings as code, group 3 (#465, design D2–D4, D9): the managed
 // scope, apply, dry run, and export. Apply runs in one transaction through
 // saveDoc as actor `instance-settings`; a dry run and a wrong file write
@@ -61,7 +62,7 @@ describe('the managed scope (D2)', () => {
       ]],
       ['Scheduled Job', 'rows', ['cadence', 'enabled']],
       ['App Setting', 'rows', ['value']],
-      ['Data Source', 'rows', ['engine', 'url_env', 'default_schema', 'access', 'table_allowlist']],
+      ['Data Source', 'rows', ['engine', 'url_env', 'default_schema', 'access', 'table_allowlist', 'databases']],
     ])
     // The privacy notice may be kept in its own file next to the settings file.
     expect(scope[0].fileFields).toContain('privacy_notice')
@@ -781,6 +782,42 @@ describe('values from variables (#703)', () => {
 })
 
 describe('Data Source rows (#703)', () => {
+  // #969: a MotherDuck row names the databases it reads, and no variable.
+  test('a MotherDuck source comes back with the databases it reads, view-only', async () => {
+    const warehouse = { row_id: 'made-up-motherduck', engine: 'motherduck', default_schema: 'gold.main', databases: [{ name: 'gold' }, { name: 'marts' }] }
+    await applyInstanceSettings({ settings: { 'Data Source': [warehouse] } }, { by: 'Administrator' })
+    const [row] = await sql`select engine, url_env, access, databases from data_source where row_id = ${warehouse.row_id}`
+    expect(row).toEqual({ engine: 'motherduck', url_env: null, access: 'read_only', databases: warehouse.databases })
+    expect((await applyInstanceSettings({ settings: { 'Data Source': [warehouse] } }, { by: 'Administrator' })).changes).toEqual([])
+  })
+
+  // What the #969 migration leaves on an instance whose connection variable may already be gone.
+  test('the file gives a migrated MotherDuck source its databases', async () => {
+    await sql`insert into data_source (row_id, engine, url_env, access) values ('migrated-warehouse', 'motherduck', null, 'read_only')`
+    const databases = [{ name: 'gold' }, { name: 'marts' }]
+    await applyInstanceSettings({ settings: { 'Data Source': [{ row_id: 'migrated-warehouse', engine: 'motherduck', databases }] } }, { by: 'Administrator' })
+    expect((await sql`select databases from data_source where row_id = 'migrated-warehouse'`)[0].databases).toEqual(databases)
+  })
+
+  // The migration converts only a source it can tell is MotherDuck; another one
+  // holding a MotherDuck address under its own variable converts by saying so.
+  test('the file converts a DuckDB source with its own variable by clearing the variable', async () => {
+    await sql`insert into data_source (row_id, engine, url_env, access) values ('own-variable', 'duckdb', 'MADE_UP_DELETED_VARIABLE', 'read_only')`
+    const databases = [{ name: 'gold' }]
+    const keeps = await problemsOf(applyInstanceSettings({ settings: { 'Data Source': [{ row_id: 'own-variable', engine: 'motherduck', databases }] } }, { by: 'Administrator' }))
+    expect(keeps.message).toContain('A MotherDuck source names no variable')
+    await applyInstanceSettings({ settings: { 'Data Source': [{ row_id: 'own-variable', engine: 'motherduck', url_env: null, databases }] } }, { by: 'Administrator' })
+    expect((await sql`select engine, url_env, databases from data_source where row_id = 'own-variable'`)[0]).toEqual({ engine: 'motherduck', url_env: null, databases })
+  })
+
+  test('the Feather Dash file applies: its warehouse reads gold and marts with the one token', async () => {
+    const file = JSON.parse(readFileSync(new URL('../../../client-apps/jeyarama/instances/dash/instance-settings.json', import.meta.url), 'utf8'))
+    const [warehouse] = file.settings['Data Source']
+    expect(warehouse).toEqual({ row_id: 'motherduck', engine: 'motherduck', default_schema: 'gold.main', databases: [{ name: 'gold' }, { name: 'marts' }] })
+    await applyInstanceSettings({ settings: { 'Data Source': [warehouse] } }, { by: 'Administrator' })
+    expect((await sql`select engine from data_source where row_id = 'motherduck'`)[0].engine).toBe('motherduck')
+  })
+
   const source = { row_id: 'made-up-warehouse', engine: 'postgres', url_env: 'MADE_UP_WAREHOUSE_URL', access: 'read_only' }
 
   test('a row comes back from the file, and is locked', async () => {

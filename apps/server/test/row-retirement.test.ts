@@ -196,9 +196,9 @@ async function grantRoleOnComment(admin: TestClient) {
   await grantRole(admin, { role: 'Rt Note Agent', table: 'Comment', can_read: true, can_write: true, can_create: true, can_delete: true })
 }
 
-describe('#859 migration 0018', () => {
+describe('#859 migration 0147', () => {
   test('refuses a Table already using a retirement name for its own data, and changes nothing', async ({ admin }) => {
-    const { up } = await import('../migrations/0018_row_retirement')
+    const { up } = await import('../migrations/0147_row_retirement')
     const t = await makeTable(admin, { name: 'Rt Legacy', columns: ['title'] })
     const relation = await tableRelationOf(t.name)
     await sql.unsafe(`alter table ${relation} drop column retired_at, drop column retired_by, drop column retired_reason, add column retired_at text`)
@@ -208,7 +208,7 @@ describe('#859 migration 0018', () => {
   })
 
   test('adds the columns to a Table made before it, and reruns cleanly', async ({ admin }) => {
-    const { up } = await import('../migrations/0018_row_retirement')
+    const { up } = await import('../migrations/0147_row_retirement')
     const t = await makeTable(admin, { name: 'Rt Older', columns: ['title'] })
     const relation = await tableRelationOf(t.name)
     await sql.unsafe(`alter table ${relation} drop column retired_at, drop column retired_by, drop column retired_reason`)

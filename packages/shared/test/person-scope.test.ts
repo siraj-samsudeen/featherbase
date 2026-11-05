@@ -42,3 +42,14 @@ test.each([
 ])('a confirmation status for %s is not a valid scope', (_, confirmation) => {
   expect(personScopeSchema.safeParse([{ ...place, confirmation }]).success).toBe(false)
 })
+
+// #628 (Q1 C): a place says why the person has it, with dates where the app knows them.
+test('a place may carry its reasons, each with a start and end day', () => {
+  const reasoned = { ...place, reasons: [{ text: 'Team Leader job assignment', since: '2026-08-06', until: '2026-12-31' }, { text: 'Old rule' }] }
+  expect(personScopeSchema.parse([reasoned])).toEqual([reasoned])
+})
+
+test('a reason without text, or with a day that is not a day, is not a valid scope', () => {
+  for (const reasons of [[{ text: '' }], [{ text: 'Job', since: '6 Aug' }], [{ text: 'Job', until: '2026-13-01' }], [{ text: 'Job', extra: 1 }]])
+    expect(personScopeSchema.safeParse([{ ...place, reasons }]).success).toBe(false)
+})
