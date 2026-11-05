@@ -26,7 +26,7 @@ export async function act<T>(name: string, payload: Record<string, unknown>): Pr
     body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), payload }),
   })
   const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new ApiError(body.error?.message ?? 'Request failed', response.status)
+  if (!response.ok) throw new ApiError(body.error?.message ?? 'That did not go through. Try again.', response.status)
   return body.result as T
 }
 

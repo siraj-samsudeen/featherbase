@@ -10,7 +10,7 @@ import { getDoc, hashRowId, saveDoc, saveSystemRow } from './document'
 import { AppError } from './errors'
 import { getMeta, type TableMeta } from './meta'
 import { canSignInNow } from './identities'
-import { getRoles } from './permissions'
+import { getRoles, permissionScope } from './permissions'
 import { getList } from './query'
 import { holdBeforeRowLock } from './row-lock-order'
 import { tableRelation } from './table-engine'
@@ -115,18 +115,23 @@ function checkedApprovers(value: unknown): ApproverRequest {
   return approvers!
 }
 
-/** Who may approve now: the named people who can sign in, else the holders of the roles. Never the maker. */
-async function resolveRoute(request: ApproverRequest, maker: string): Promise<{ people: string[]; roles: string[] } | null> {
+/** A person who can act on a proposal at all: a working way in, and the app opens for them. */
+async function canAct(person: string, entryTable: string): Promise<boolean> {
+  return await canSignInNow(person) && await permissionScope(person, entryTable, 'read') !== 'none'
+}
+
+/** Who may approve now: the named people who can act, else the holders of the roles. Never the maker. */
+async function resolveRoute(request: ApproverRequest, maker: string, entryTable: string): Promise<{ people: string[]; roles: string[] } | null> {
   const named = request.people.filter(person => person !== maker)
   const enabled = named.length ? (await sql`select row_id from person where enabled and row_id in ${sql(named)} order by row_id`).map(row => String(row.row_id)) : []
   const people: string[] = []
-  // A person with no working way in could never act, so a proposal must not wait for them.
-  for (const person of enabled) if (await canSignInNow(person)) people.push(person)
+  // A proposal must never wait for someone who could not reach it.
+  for (const person of enabled) if (await canAct(person, entryTable)) people.push(person)
   if (people.length) return { people, roles: [] }
   if (!request.fallbackRoles.length) return null
   const holders = await sql`select distinct p.row_id from has_role r join person p on p.row_id = r.parent
     where r.parenttype = 'Person' and r.role in ${sql(request.fallbackRoles)} and p.enabled and p.row_id <> ${maker} order by p.row_id`
-  for (const holder of holders) if (await canSignInNow(String(holder.row_id))) return { people: [], roles: [...request.fallbackRoles] }
+  for (const holder of holders) if (await canAct(String(holder.row_id), entryTable)) return { people: [], roles: [...request.fallbackRoles] }
   return null
 }
 
@@ -166,25 +171,25 @@ async function writeRoute(id: string, route: { people: string[]; roles: string[]
 }
 
 /** The decision rule, on its own: not the maker, and among those who may approve now. */
-async function mayDecide(user: string, maker: string, approvers: unknown): Promise<boolean> {
+async function mayDecide(user: string, maker: string, approvers: unknown, entryTable: string): Promise<boolean> {
   if (maker === user) return false
-  const route = await resolveRoute(checkedApprovers(approvers), maker)
+  const route = await resolveRoute(checkedApprovers(approvers), maker, entryTable)
   if (!route) return false
   if (route.people.includes(user)) return true
   const roles = route.roles.length ? await getRoles(user) : []
   return route.roles.some(role => roles.includes(role))
 }
 
-export function proposalsReader(app: string, user: string) {
+export function proposalsReader(app: string, user: string, entryTable: string) {
   const guard = sequential()
   const helper: ChangeProposalsReader = Object.freeze({
     list: (filter: ProposalFilter = {}) => guard.run(() => proposalsWhere(app, filter)),
-    mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers)),
+    mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers, entryTable)),
   })
   return { helper, close: guard.close }
 }
 
-export function proposalsWriter(app: string, declaration: BaseTablesDeclaration | undefined, linked: readonly string[], user: string) {
+export function proposalsWriter(app: string, declaration: BaseTablesDeclaration | undefined, linked: readonly string[], user: string, entryTable: string) {
   const guard = sequential()
   const rule = async (table: string) => {
     const declared = declaration?.propose[table]
@@ -196,8 +201,8 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
   /** The caller may decide this proposal, or the request is refused. No role is an exception. */
   async function authorize(proposal: ChangeProposal, approvers: unknown) {
     if (proposal.maker === user) reject('Nobody can decide their own proposal')
-    if (!(await mayDecide(user, proposal.maker, approvers))) reject('This proposal is not waiting for you')
-    return (await resolveRoute(checkedApprovers(approvers), proposal.maker))!
+    if (!(await mayDecide(user, proposal.maker, approvers, entryTable))) reject('This proposal is not waiting for you')
+    return (await resolveRoute(checkedApprovers(approvers), proposal.maker, entryTable))!
   }
 
   /** The proposal, locked, still Pending. Pre-row locks first, then the row, then the proposal:
@@ -223,7 +228,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
 
   const helper: ChangeProposalsHelper = Object.freeze({
     list: (filter: ProposalFilter = {}) => guard.run(() => proposalsWhere(app, filter)),
-    mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers)),
+    mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers, entryTable)),
 
     // Who may decide comes from rows the app reads first. These hold still what it read until
     // the decision commits, so authority can't change while the decision waits for a lock.
@@ -254,7 +259,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
       if (row !== null && row !== undefined) current = await getDoc(table, String(row)) as ActionRow
       const before = (column: string) => current ? asText(current[column], typeOf(meta, column)) : null
       if (current && entries.every(([column, value]) => before(column) === value)) reject('That is already the case')
-      const route = await resolveRoute(checkedApprovers(request.approvers), user)
+      const route = await resolveRoute(checkedApprovers(request.approvers), user, entryTable)
       if (!route) reject('Nobody else can approve this, so it cannot be sent')
       const same = await proposalsWhere(app, { states: ['Pending'], makers: [user], limit: 500 })
       const key = (list: { column_name: string; proposed_value: string | null }[]) => JSON.stringify([...list].sort((a, b) => a.column_name.localeCompare(b.column_name)).map(c => [c.column_name, c.proposed_value]))

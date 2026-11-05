@@ -190,7 +190,7 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
       const { settings, secrets, kept } = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP), contribution.operations.get(name)?.declaration.needs)
       const context = callerDocuments(app, contribution.tables, user, linkedTables(settings))
       const base = baseTablesReader(app, contribution.baseTables, linkedTables(settings))
-      const proposals = proposalsWriter(app, contribution.baseTables, linkedTables(settings), user)
+      const proposals = proposalsWriter(app, contribution.baseTables, linkedTables(settings), user, contribution.entryTable)
       // Serialized inside the guard (Codex round 2 on #670): a getter on the
       // result is the app's code running, and may log or throw a secret.
       const json = await withSecretsKept(kept, async () => {
@@ -233,7 +233,7 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
       const context = callerDocuments(app, contribution.tables, user, linkedTables(setup.settings))
       const { get, list, activity } = context.documents
       const base = baseTablesReader(app, contribution.baseTables, linkedTables(setup.settings))
-      const proposals = proposalsReader(app, user)
+      const proposals = proposalsReader(app, user, contribution.entryTable)
       return await runRead(app, name, user, handler, contribution, { authorization, payload, setup, provenance },
         Object.freeze({ get, list, activity }), async () => { await context.close(); await base.close(); await proposals.close() }, undefined, base.helper, proposals.helper)
     })

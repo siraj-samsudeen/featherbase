@@ -220,7 +220,7 @@ describe('Waiting for your approval', () => {
     page = await render('Approvals')
     const before = calls.filter(c => c.name === 'approvals').length
     await page.click('Approve')
-    expect(page.q('decision-note')?.textContent).toBe('This has already been decided')
+    expect(page.q('decision-note')?.textContent).toContain('This has already been decided')
     expect(calls.filter(c => c.name === 'approvals').length).toBeGreaterThan(before)
     await page.done()
   })

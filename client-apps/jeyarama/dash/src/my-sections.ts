@@ -11,6 +11,7 @@ type Filter = [string, string, unknown]
 interface ApproverRequest { people: string[]; fallbackRoles: string[] }
 interface ChangeProposal {
   row_id: string; maker: string; state: string; about: unknown; decision_reason: string | null
+  changes: { column_name: string; proposed_value: string | null; review_base_value: string | null }[]
   created_at: string; decided_at: string | null; route: { people: string[]; roles: string[] }
 }
 interface ProposalList { ids?: string[]; states?: string[]; makers?: string[]; limit?: number; start?: number }
@@ -265,6 +266,8 @@ export const actions = {
     const today = istToday()
     const { job, employee } = await myJob(ctx, payload.job, today)
     const from = await heldSection(ctx, job)
+    // Held from before it is checked until the proposal has recorded it, so what is checked is what is reviewed.
+    if (typeof payload.placement === 'string' && payload.placement) await ctx.changeProposals.lockRow(T.placement, payload.placement)
     const [placement] = typeof payload.placement === 'string' && payload.placement ? await list(ctx, T.placement, PLACEMENT_FIELDS, [['row_id', '=', payload.placement]]) : []
     if (!placement || !inForce(placement, today) || exact(placement.section) !== exact(from.row_id) || exact(placement.site) !== exact(job.site))
       ctx.reject('That subcategory is not in your section')
@@ -290,6 +293,9 @@ export const actions = {
     if (!subcategory || subcategory.is_merchandise !== true || subcategory.deleted_at_source === true) ctx.reject('Pick a subcategory from the list')
     const site = exact(job.site)
     if (await scheduledLater(ctx, site, code, today)) ctx.reject(SCHEDULED)
+    const seen = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['site', '=', site], ['subcategory', '=', code]])).filter(row => inForce(row, today))
+    // As with a move: what is checked below is what the proposal records.
+    for (const row of seen) await ctx.changeProposals.lockRow(T.placement, exact(row.row_id))
     const placed = (await list(ctx, T.placement, PLACEMENT_FIELDS, [['site', '=', site], ['subcategory', '=', code]])).filter(row => inForce(row, today))
     if (placed.some(row => exact(row.section) === exact(section.row_id))) ctx.reject('That subcategory is already in your section')
     if (placed.length > 1) ctx.reject('That subcategory is in more than one section here. Ask the master data team to look at it')
@@ -306,6 +312,7 @@ export const actions = {
   /** "My section is wrong": this job's section should be another in the same store. */
   async propose_section(ctx: ActionContext) {
     const payload = payloadOf(ctx)
+    if (typeof payload.job === 'string' && payload.job) await ctx.changeProposals.lockRow(T.job, payload.job)
     const { job, employee } = await myJob(ctx, payload.job, istToday())
     const to = await sectionInStore(ctx, payload.to_section, exact(job.site))
     if (exact(to.row_id) === exact(job.section)) ctx.reject('That is already your section')
@@ -363,6 +370,9 @@ async function whyStale(ctx: ActionContext, proposal: ChangeProposal, a: About, 
   if (exact(employee?.person) !== proposal.maker || exact(employee?.employee_status) !== 'Current') return 'The person who asked no longer holds this job.'
   const [to] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', a.to_section]])
   if (!isActive(to) || exact(to?.site) !== a.site) return 'The section it would go to is no longer open.'
+  // Only when the proposal carries the floor: a job with none has it reviewed, not changed.
+  const floor = proposal.changes.find(change => change.column_name === 'floor' && change.proposed_value !== change.review_base_value)
+  if (a.kind === 'section' && floor && floor.proposed_value !== (exact(to.floor) || null)) return 'The section it would go to has moved floor.'
   if (a.kind === 'move' && exact(job.section) !== a.from_section) return 'The person who asked no longer holds that section.'
   if (a.kind === 'add' && exact(job.section) !== a.to_section) return 'The person who asked no longer holds that section.'
   if (a.kind !== 'section') {

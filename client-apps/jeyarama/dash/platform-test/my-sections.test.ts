@@ -40,6 +40,7 @@ async function world(admin: TestClient, createUser: CreateUserFn) {
   for (const [site_code, site_name] of [['LKS', 'Lakeside'], ['HIL', 'Hillview']]) await save('Site Master', { site_code, site_name, is_store: true })
   await save('Store Floor', { floor_id: 'LKS-F1', floor_name: 'First floor', site: 'LKS' })
   await save('Store Floor', { floor_id: 'LKS-F2', floor_name: 'Second floor', site: 'LKS' })
+  await save('Store Floor', { floor_id: 'LKS-F3', floor_name: 'Third floor', site: 'LKS' })
   await save('Section', { section_id: 'LKS-S1', section_name: 'Ladies Wear', site: 'LKS', floor: 'LKS-F1', section_status: 'Active' })
   await save('Section', { section_id: 'LKS-S2', section_name: 'Silk', site: 'LKS', floor: 'LKS-F2', section_status: 'Active' })
   await save('Section', { section_id: 'LKS-S3', section_name: 'Closed Corner', site: 'LKS', floor: 'LKS-F2', section_status: 'Inactive' })
@@ -240,6 +241,27 @@ describe('what an approver decides', () => {
     await saveRow(admin, 'Section Subcategory', { row_id: 'LKS-1', updated_at: placement.updated_at, subcategory: '010101004' })
     expect(await act(manager, 'decide', { proposal: proposal.id, decision: 'approve' })).toMatchObject({ state: 'Needs fresh review' })
     expect(await row('Section Subcategory', 'LKS-1')).toMatchObject({ section: 'LKS-S1', ends_on: null })
+  })
+
+  test('a section that moved floor since the ask is not what was reviewed', async ({ admin, createUser }) => {
+    const { manager, maker } = await world(admin, createUser)
+    const { updated_at } = (await sql`select updated_at from ${sql(await tableRelation('Job Assignment'))} where row_id = 'JA-1'`)[0]
+    await saveRow(admin, 'Job Assignment', { row_id: 'JA-1', updated_at, floor: 'LKS-F1' })
+    const proposal = await act(maker, 'propose_section', { job: 'JA-1', to_section: 'LKS-S2' })
+    const [section] = await sql`select updated_at from ${sql(await tableRelation('Section'))} where row_id = 'LKS-S2'`
+    await saveRow(admin, 'Section', { row_id: 'LKS-S2', updated_at: section.updated_at, floor: 'LKS-F3' })
+    expect(await act(manager, 'decide', { proposal: proposal.id, decision: 'approve' })).toMatchObject({ state: 'Needs fresh review' })
+  })
+
+  test('a manager Dash does not open for is passed over, for the master data team', async ({ admin, createUser }) => {
+    const { maker, manager, editor } = await world(admin, createUser)
+    await sql`delete from has_role where parent = ${manager.user!} and role = 'Feather Dash Reader'`
+    const proposal = await act(maker, 'propose_move', move())
+    expect(proposal.waiting_for).toBe('the master data team')
+    expect((await read(editor, 'approvals')).proposals.map((p: any) => p.id)).toEqual([proposal.id])
+    // An editor Dash doesn't open for can't take it either: then nobody can, and it says so.
+    await sql`delete from has_role where parent = ${editor.user!} and role = 'Feather Dash Reader'`
+    await expect(act(maker, 'propose_move', { ...move(), placement: 'LKS-2' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Nobody else can approve') })
   })
 
   test('the same day twice: the new rows do not collide, and today has one answer', async ({ admin, createUser }) => {
