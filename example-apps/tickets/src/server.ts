@@ -624,7 +624,8 @@ export const reads = {
     } }
     if (can.support) {
       // The people configured for Tickets whose names are known, for assignment.
-      const staff = new Set([...['support_users', 'verification_admins', 'fulfillment_admins'].flatMap(key => members(configured(ctx, key))),
+      // #964: `assignees` lists people who may be assigned without support rights.
+      const staff = new Set([...['support_users', 'verification_admins', 'fulfillment_admins', 'assignees'].flatMap(key => members(configured(ctx, key))),
         ...Object.values(routes(ctx)).flat()])
       const known = await names(ctx, [...staff])
       answer.people = Object.entries(known).map(([row_id, full_name]) => ({ row_id, full_name }))

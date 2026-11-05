@@ -97,6 +97,17 @@ describe('Scheduled copied-table refresh', () => {
     expect(await sql`select row_id from background_job where method = ${schedule.method} and job_status = 'queued'`).toHaveLength(1)
   })
 
+  test('an archived copy is skipped, not failed, until it is un-archived (#905)', async ({ admin }) => {
+    await makeCopy(admin)
+    await sql`delete from background_job`
+    const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
+    await admin.post('/api/table_def/Scheduled%20Stores/archive', { note: 'Replaced by a newer copy' })
+    await sql`update background_job set run_at = now() where method = ${schedule.method}`
+    expect(await runOneJob()).toBe(true)
+    const [execution] = await sql`select outcome, result from job_execution where method = ${schedule.method}`
+    expect(execution).toEqual({ outcome: 'success', result: 'Skipped: Scheduled Stores is archived' })
+  })
+
   test('a new scheduled conflict reaches the responsible administrators', async ({ admin, createUser }) => {
     await changeStandin(dir, 'sales', ['create table notice_stores as select * from stores'])
     await makeCopy(admin, 'notice_stores')

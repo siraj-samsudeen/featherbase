@@ -21,6 +21,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { coerceRows, sanitizeColumnName } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { type TableMeta } from '../lib/meta'
+import { useCapabilities } from '../lib/session'
 import { sendImportRun, type ImportFailure } from '../lib/import-run'
 import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
@@ -66,6 +67,7 @@ export function TableMerge({ table: source }: { table: string }) {
   const [error, setError] = useState<string | null>(null)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
 
+  const archived = useCapabilities()?.archived ?? []
   const tables = useQuery({
     queryKey: ['tables'],
     queryFn: () => listResource<{ row_id: string }>('Table', { limit_page_length: 500 }),
@@ -213,7 +215,8 @@ export function TableMerge({ table: source }: { table: string }) {
 
   const candidates = (tables.data?.data ?? [])
     .map((t) => t.row_id)
-    .filter((name) => name !== source)
+    // #905: never into an archived Table: it takes no rows.
+    .filter((name) => name !== source && !archived.includes(name))
 
   return (
     <div data-testid="table-merge" className="max-w-4xl">

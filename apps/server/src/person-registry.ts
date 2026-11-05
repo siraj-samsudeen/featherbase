@@ -153,7 +153,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   sign_in_method: { '*': code, label: text },
   single_value: { '*': code },
   sla_priority: { '*': code },
-  table_def: { '*': code, description: text, label: text },
+  table_def: { '*': code, description: text, label: text, archived_by: id, archived_note: text },
   tag_link: { ref_table: code, ref_name: on('ref_table'), tag: code },
   todo: { allocated_to: id, ref_table: code, reference_name: on('ref_table'), description: text, todo_status: code, priority: code },
   translation: { language: code, source_text: text, translated_text: text },

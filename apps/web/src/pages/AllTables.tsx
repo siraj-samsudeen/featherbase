@@ -34,7 +34,13 @@ export function AllTablesPage() {
 
   const byModule = new Map<string, TableSummary[]>()
   const systemTables: TableSummary[] = []
+  // #905: archived Tables stay reachable here, under their own group.
+  const archivedTables: TableSummary[] = []
   for (const dt of tables ?? []) {
+    if (dt.archived) {
+      archivedTables.push(dt)
+      continue
+    }
     if (dt.system) {
       systemTables.push(dt)
       continue
@@ -110,6 +116,25 @@ export function AllTablesPage() {
                 </Link>
               ))}
           </>
+        )}
+        {archivedTables.length > 0 && (
+          <div data-testid="archived-group">
+            <div className="px-2 pt-4 pb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+              Archived tables
+            </div>
+            {archivedTables.map((dt) => (
+              <Link
+                key={dt.row_id}
+                to="/featherbase/admin/table/$table"
+                params={{ table: dt.row_id }}
+                search={{ filters: undefined }}
+                className={linkClass}
+                activeProps={{ className: activeClass }}
+              >
+                {dt.row_id}
+              </Link>
+            ))}
+          </div>
         )}
       </nav>
     </div>
