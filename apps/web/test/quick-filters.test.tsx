@@ -358,11 +358,27 @@ test('On a desktop, the filters show with no Filters button', async ({ admin }) 
   expect(screen.getByTestId('standard-filters')).toBeInTheDocument()
 })
 
-test('A hand-edited link shows its Yes/No value in the box: true as Yes, and a value it cannot read as itself', async ({ admin }) => {
+test('A hand-edited link reads TRUE as Yes in the box', async ({ admin }) => {
   await seedActive(admin)
   await openList(admin, `?filters=${enc(JSON.stringify([['active', '=', 'TRUE']]))}`)
   await waitFor(() => expect(sections()).toHaveLength(2))
   expect(screen.getByTestId('std-filter-active')).toHaveValue('Yes')
+})
+
+// The box reads a value the way the server does (one rule, in shared): 1 and 0
+// are yes and no too, since 05-Nov-2026.
+test('A hand-edited link reads 1 as Yes in the box, as the server does', async ({ admin }) => {
+  await seedActive(admin)
+  await openList(admin, `?filters=${enc(JSON.stringify([['active', '=', '1']]))}`)
+  await waitFor(() => expect(sections()).toHaveLength(2))
+  expect(screen.getByTestId('std-filter-active')).toHaveValue('Yes')
+})
+
+test('A hand-edited link reads 0 as No in the box', async ({ admin }) => {
+  await seedActive(admin)
+  await openList(admin, `?filters=${enc(JSON.stringify([['active', '=', '0']]))}`)
+  await waitFor(() => expect(sections()).toEqual(['Shirts']))
+  expect(screen.getByTestId('std-filter-active')).toHaveValue('No')
 })
 
 test('A hand-edited link with a value the box cannot read shows that value, not All', async ({ admin }) => {
