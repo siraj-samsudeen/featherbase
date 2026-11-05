@@ -618,6 +618,21 @@ export function ListView({
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
           </span>
+          {/* #859: beside the total it changes; the toolbar stays as it was. */}
+          {retirable && (
+            <label className="ml-3 inline-flex cursor-pointer items-center gap-1 text-xs text-ink-muted" data-testid="list-show-retired">
+              <input
+                type="checkbox"
+                checked={showRetired}
+                onChange={(e) => {
+                  setShowRetired(e.target.checked)
+                  setStart(0)
+                }}
+                data-testid="list-show-retired-toggle"
+              />
+              Show retired
+            </label>
+          )}
           {meta.data?.data_source && (
             <span
               className={pillClasses('ml-2 align-middle text-xs')}
@@ -689,20 +704,6 @@ export function ListView({
               </div>
             )}
           </div>
-          {retirable && (
-            <label className={buttonClasses({ className: 'cursor-pointer gap-2' })} data-testid="list-show-retired">
-              <input
-                type="checkbox"
-                checked={showRetired}
-                onChange={(e) => {
-                  setShowRetired(e.target.checked)
-                  setStart(0)
-                }}
-                data-testid="list-show-retired-toggle"
-              />
-              Show retired
-            </label>
-          )}
           {/* TLC-R1 (docs/specs/0007-table-lifecycle.md): the create
               affordance is metadata-gated and lives HERE, in the toolbar of
               the list the user is already looking at. It used to exist only
