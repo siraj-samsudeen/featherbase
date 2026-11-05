@@ -17,7 +17,7 @@ import { annotateHistory, latestVersion } from './import-corrections'
 import { assertSystemManager } from './permissions'
 import { runAsSystemActor } from './system-actor'
 import { runPackageAction } from './runtime-packages'
-import { withAppIdentity } from './app-lifecycle'
+import { appOperation, withAppIdentity } from './app-lifecycle'
 import { createServiceAccount } from './service-accounts'
 import { copyInfo, DELETED_AT_SOURCE } from './sources/table-copy'
 import type { SessionUser } from './auth'
@@ -236,7 +236,9 @@ export async function syncAfterCopy(user: SessionUser, copied: string): Promise<
 export async function runMasterSync(user: SessionUser, copied: string): Promise<MasterSyncResult> {
   await assertSystemManager(user.row_id)
   const actor = await syncActor(user.row_id)
-  const outcome = await runAsSystemActor(actor, () => actionTransaction(() => compareAndApply(actor, copied)))
+  // The app lifecycle lock comes before any row lock, as every save takes them,
+  // so a sync can never wait on an upgrade that waits on the sync.
+  const outcome = await appOperation(() => runAsSystemActor(actor, () => actionTransaction(() => compareAndApply(actor, copied))))
   const { tickets, ticket_errors } = await raiseTickets(actor, copied)
   return { ...outcome, tickets, ticket_errors }
 }
