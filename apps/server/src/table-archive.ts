@@ -6,6 +6,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, invalidateMeta, type TableMeta } from './meta'
 import { logAccess } from './audit'
+import { SECURITY_TABLES } from './security-tables'
 
 const NOTE_LIMIT = 500
 
@@ -16,6 +17,7 @@ function assertArchivable(meta: TableMeta): void {
     : meta.kind === 'settings' ? 'it holds settings'
     : meta.kind === 'sub_table' ? 'it is a sub-table; archive the table it belongs to'
     : meta.owner_app ? `it belongs to the ${meta.owner_app} app`
+    : meta.decides_scope || SECURITY_TABLES.has(meta.name) ? 'it decides who can see or do what'
     : null
   if (why) throw new AppError('ValidationError', `${meta.name} cannot be archived: ${why}`)
 }

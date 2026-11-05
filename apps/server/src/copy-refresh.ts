@@ -8,6 +8,7 @@ import { assertSystemManager } from './permissions'
 import type { SessionUser } from './auth'
 import { copyAgain, copyInfo } from './sources/table-copy'
 import { syncAfterCopy } from './master-sync'
+import { getMeta } from './meta'
 import { FinalJobFailure, registerJob, syncScheduledJobs } from './jobs'
 import { runAsSystemActor } from './system-actor'
 import { queueEmail } from './email'
@@ -49,6 +50,12 @@ function registerCopyRefresh(method: string): void {
     const [link] = await sql`select c.target_table from featherbase.copy_refresh_schedule c
       join scheduled_job s on s.row_id = c.scheduled_job where c.scheduled_job = ${method}`
     if (!link) throw new FinalJobFailure('This copied-table schedule has been removed')
+    // #905: an archived copy takes no rows; its schedule waits, quietly, until
+    // it is un-archived or deleted.
+    if ((await getMeta(String(link.target_table))).archived_at) {
+      ctx.setResult(`Skipped: ${String(link.target_table)} is archived`)
+      return
+    }
     const actor = `copy-refresh:${method.slice('copy_refresh_'.length)}`
     const user: SessionUser = { row_id: actor, kind: 'service_account', email: null, full_name: 'Scheduled copy refresh' }
     const result = await runAsSystemActor(actor, () => copyAgain(user, String(link.target_table)))
