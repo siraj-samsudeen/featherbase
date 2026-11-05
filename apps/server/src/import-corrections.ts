@@ -1,10 +1,11 @@
+import { randomBytes } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { calendarDay } from 'shared'
 import { AppError } from './errors'
 import { sql } from './db'
 import { actionTransaction } from './action-transaction'
 import { getMeta, type TableMeta } from './meta'
-import { assertUserPermissions, getDoc, hashRowId, saveDoc, saveSystemRow } from './document'
+import { assertUserPermissions, getDoc, saveDoc, saveSystemRow } from './document'
 import { holdBeforeRowLock } from './row-lock-order'
 import { tableRelation } from './table-engine'
 import { assertDocPermission } from './permissions'
@@ -177,7 +178,7 @@ export async function observeUnchangedRows(meta: TableMeta, inputs: { row_id: st
     unchanged.add(row_id)
     // What planImport records: read-only columns are never source observations.
     if (meta.track_changes) observations.push({
-      row_id: hashRowId(), ref_table: meta.name, ref_name: row_id, run_id: runId, created_by: user, updated_by: user, created_at: at, updated_at: at, status: 'draft', position: 0,
+      row_id: randomBytes(5).toString('hex'), ref_table: meta.name, ref_name: row_id, run_id: runId, created_by: user, updated_by: user, created_at: at, updated_at: at, status: 'draft', position: 0,
       values: sql.json(Object.fromEntries(mapped.filter(c => !c.read_only).map(c => [c.column_name, normalized(values[c.column_name], c.column_type)])) as never),
     })
   }
