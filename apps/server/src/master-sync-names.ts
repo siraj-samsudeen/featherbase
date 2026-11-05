@@ -45,10 +45,12 @@ async function refingerprint(tx: TxSql, copied: string, rule: StoredRule) {
   }
 }
 
-/** The master Table or the link Table was renamed. (The copied table's own
- *  rename moves its rule by the foreign key.) */
+/** The master Table, the link Table or the copied table was renamed. A
+ *  copied table's rule has already moved by its foreign key (the rename
+ *  moved table_copy first); its differences are re-keyed here. */
 export async function renameTableInSyncRules(tx: TxSql, from: string, to: string): Promise<void> {
   for (const { copied, rule } of await rules(tx)) {
+    if (copied === to) await refingerprint(tx, copied, rule)
     if (rule.master_table !== from && rule.link.table !== from) continue
     const masterMoved = rule.master_table === from
     if (masterMoved) rule.master_table = to
