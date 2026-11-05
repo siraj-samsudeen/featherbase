@@ -147,6 +147,14 @@ function column(meta: TableMeta, field: string, what: string, keyAllowed = false
   return found
 }
 
+/** Platform work on Tables an app owns names that app's installed version, not
+ *  the version the caller's client may or may not have sent. */
+async function asInstalledApps<T>(tables: string[], fn: () => Promise<T>): Promise<T> {
+  const owners = await sql`select distinct i.name, i.package_version from installed_app i
+    join table_def t on t.owner_app = i.name where t.name in ${sql(tables)}`
+  return owners.reduce<() => Promise<T>>((next, owner) => () => withAppIdentity(String(owner.name), String(owner.package_version), next), fn)()
+}
+
 /** A System Manager sets (or, with null, removes) a copied table's sync rule. */
 export async function setMasterSync(user: SessionUser, copied: string, input: unknown) {
   await assertSystemManager(user.row_id)
@@ -158,6 +166,10 @@ export async function setMasterSync(user: SessionUser, copied: string, input: un
   const parsed = masterSyncRuleSchema.safeParse(input)
   if (!parsed.success) throw new AppError('ValidationError', `Sync rule: ${parsed.error.issues.map(i => `${i.path.join('.') || 'rule'} ${i.message}`).join('; ')}`)
   const rule = parsed.data
+  return asInstalledApps([rule.master_table, rule.link.table], () => checkAndSaveRule(user, copied, rule))
+}
+
+async function checkAndSaveRule(user: SessionUser, copied: string, rule: MasterSyncRule) {
   const [copiedMeta, master, link] = await Promise.all([getMeta(copied), getMeta(rule.master_table), getMeta(rule.link.table)])
   if (master.name === copiedMeta.name) throw new AppError('ValidationError', 'A copied table cannot be its own master')
   // Provenance lives on the history row: a master without history cannot say where a change came from.
@@ -221,8 +233,12 @@ interface Difference {
  *  It holds System Manager only inside a sync (system-actor.ts). */
 export const SYNC_ACCOUNT_LABEL = 'svc-master-sync'
 async function syncActor(by: string): Promise<string> {
-  const [found] = await sql`select row_id from service_account where lower(label) = lower(${SYNC_ACCOUNT_LABEL})`
-  return found ? String(found.row_id) : (await createServiceAccount(SYNC_ACCOUNT_LABEL, ['All'], by)).row_id
+  return actionTransaction(async () => {
+    // Two first syncs at once: the second finds the account the first made.
+    await sql`select pg_advisory_xact_lock(hashtext('master-sync-account'))`
+    const [found] = await sql`select row_id from service_account where lower(label) = lower(${SYNC_ACCOUNT_LABEL})`
+    return found ? String(found.row_id) : (await createServiceAccount(SYNC_ACCOUNT_LABEL, ['All'], by)).row_id
+  })
 }
 
 /** Every refresh of a copy, manual or scheduled, brings its master Table in step. */
@@ -245,6 +261,10 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
   await sql`select pg_advisory_xact_lock(hashtext('master-sync:' || ${copied}))`
   const rule = await masterSyncRule(copied)
   if (!rule) throw new AppError('NotFoundError', `${copied} has no master sync rule`)
+  return asInstalledApps([rule.master_table, rule.link.table], () => applyRule(actor, copied, rule))
+}
+
+async function applyRule(actor: string, copied: string, rule: MasterSyncRule): Promise<Omit<MasterSyncResult, 'tickets' | 'ticket_errors'>> {
   const [copiedMeta, master, link] = await Promise.all([getMeta(copied), getMeta(rule.master_table), getMeta(rule.link.table)])
   if (!master.track_changes) throw new AppError('ValidationError', `${master.name} keeps no history, so a synced change could not say where it came from`)
   const runId = `sync-${randomUUID()}`

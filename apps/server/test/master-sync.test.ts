@@ -269,6 +269,22 @@ describe('Master sync (#927)', { timeout: 60_000 }, () => {
     expect(await person(admin, 'P2')).toMatchObject({ employment_status: 'Active' })
   })
 
+  test('a master Table owned by an upgraded app syncs from a request that names no app version', async ({ admin }) => {
+    const { source, rule } = await world(admin, 'staff_app_master')
+    await discoverPackages([resolve('../..', 'test-apps/ticket-sink'), resolve('../..', 'test-apps/action-proof')])
+    await admin.post('/api/install_app', { name: 'actionproof' })
+    const [{ version }] = (await admin.get<{ installed: { name: string; version: string }[] }>('/api/apps')).installed.filter(app => app.name === 'actionproof')
+    const pinned = makeClient({ request: (p, init) => admin.fetch(String(p), { ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': `actionproof@${version}` } }) }, admin.token, admin.user)
+    await pinned.post('/api/save_row', { table: 'actionproof.work', row: { row_id: 'W1', title: 'Asha' } })
+    await admin.post('/api/save_row', { table: 'Sync Source Link', row: { source_system: 'StyleHR', key_kind: 'Work', source_key: 'E1', person: 'W1' } })
+    await admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, master_table: 'actionproof.work', inactive: undefined,
+      link: { ...rule.link, kind: 'Work' }, columns: { title: { source: 'name', owner: 'source' } } } })
+    expect(await run(admin)).toMatchObject({ linked: 1, ticket_errors: [] })
+    const changed = (await sourceChanges(admin, source, [`update $T set name = 'Asha R' where emp_id = 'E1'`])).master_sync
+    expect(changed).toMatchObject({ applied: 1, ticket_errors: [] })
+    expect(await pinned.get('/api/table/actionproof.work/W1')).toMatchObject({ title: 'Asha R' })
+  })
+
   test('the scheduled refresh of a copy runs its sync rule after the copy', async ({ admin }) => {
     const { source } = await world(admin, 'staff_scheduled')
     await run(admin)
