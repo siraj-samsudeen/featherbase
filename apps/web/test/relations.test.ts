@@ -41,6 +41,19 @@ describe('forwardLinks', () => {
     expect(forwardLinks(SITE, { secret_owner: 'psn_x' })).toEqual([])
   })
 
+  test('a link to a row of any Table points into the Table its row names (#881)', () => {
+    const decision = meta([
+      column({ column_name: 'shapes_table', label: 'Shapes Table', column_type: 'Reference', reference_table: 'Table' }),
+      column({ column_name: 'shapes', label: 'Shapes', column_type: 'Reference', table_column: 'shapes_table' }),
+    ], { name: 'Decision' })
+    expect(forwardLinks(decision, { shapes_table: 'Plant', shapes: '8151' })).toEqual([
+      { column: 'shapes_table', label: 'Shapes Table', table: 'Table', row_id: 'Plant' },
+      { column: 'shapes', label: 'Shapes', table: 'Plant', row_id: '8151' },
+    ])
+    // With no Table chosen there is nowhere to point.
+    expect(forwardLinks(decision, { shapes: '8151' })).toEqual([])
+  })
+
   test("a sub-table row points at its parent", () => {
     const line = meta([column({ column_name: 'qty', column_type: 'Int' })], { name: 'PO Line', kind: 'sub_table' })
     expect(forwardLinks(line, { parenttype: 'Purchase Order', parent: 'PO-1' })).toEqual([

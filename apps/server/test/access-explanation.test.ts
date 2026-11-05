@@ -1,4 +1,5 @@
 import { expect } from 'vitest'
+import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { resolve } from 'node:path'
 import { grantRole } from './fixtures'
@@ -122,4 +123,48 @@ test('a history entry that records no changed fields is passed over', async ({ a
   await sql`insert into version (row_id, ref_table, ref_name, data) values ('ae-annotation', 'Person', ${person.user!}, '{"import_run":"r-1"}'::jsonb)`
   const page = await admin.get<Explanation>(pageOf(person.user!))
   expect(page.roles.find((r) => r.role === 'Ae Kept Role')).toMatchObject({ given_by: 'Administrator' })
+})
+
+test('an Access Auditor may open anyone\'s page', async ({ createUser }) => {
+  const person = await createUser({ roles: [] })
+  const auditor = await createUser({ roles: ['Access Auditor'] })
+  expect((await auditor.get<Explanation>(pageOf(person.user!))).person).toBe(person.user)
+})
+
+// C1 (owner, 4 Nov): a viewer whose places cover every place of a person may
+// open that person's page. Fixture app placeroster provides each person's
+// places from its own roster Table (#559).
+async function withPlaces(admin: TestClient) {
+  expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/place-roster')])).toEqual([])
+  await admin.post('/api/install_app', { name: 'placeroster' })
+  return (person: string, place: string, store: string, section: string) =>
+    admin.post('/api/save_row', { table: 'placeroster.position', row: { row_id: `${person}-${place}-${section}`, person, place, store, section } })
+}
+
+test('a manager whose places cover every place of a person may open their page', async ({ admin, createUser }) => {
+  const position = await withPlaces(admin)
+  const manager = await createUser({ roles: [] })
+  const kids = await createUser({ roles: [] })
+  const both = await createUser({ roles: [] })
+  await position(manager.user!, 'North', 'N1', 'kids')
+  await position(manager.user!, 'North', 'N1', 'mens')
+  await position(kids.user!, 'North / Kids', 'N1', 'kids')
+  await position(both.user!, 'North / Kids', 'N1', 'kids')
+  await position(both.user!, 'South / Kids', 'S1', 'kids')
+
+  expect((await manager.get<Explanation>(pageOf(kids.user!))).person).toBe(kids.user)
+  // One of their places is outside the manager's: refused.
+  await expect(manager.get(pageOf(both.user!))).rejects.toMatchObject({ status: 403 })
+  // Covering is one way: the person does not cover their manager.
+  await expect(kids.get(pageOf(manager.user!))).rejects.toMatchObject({ status: 403 })
+})
+
+test('a person with no places is never covered, and a viewer with none covers no one', async ({ admin, createUser }) => {
+  const position = await withPlaces(admin)
+  const manager = await createUser({ roles: [] })
+  const unplaced = await createUser({ roles: [] })
+  const other = await createUser({ roles: [] })
+  await position(manager.user!, 'North', 'N1', 'kids')
+  await expect(manager.get(pageOf(unplaced.user!))).rejects.toMatchObject({ status: 403 })
+  await expect(other.get(pageOf(unplaced.user!))).rejects.toMatchObject({ status: 403 })
 })
