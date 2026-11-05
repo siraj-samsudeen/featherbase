@@ -8,6 +8,8 @@ import { _setDelegatedFetch } from '../src/delegated-login'
 import { _setAlertSender } from '../src/waiting-for-access'
 import { app } from '../src/index'
 import { applySeedPack } from '../src/seed-packs'
+import { createTable } from '../src/table-engine'
+import { withCommittedDatabase } from './committed-database'
 
 const prove = process.env.FIRST_SIGN_IN_COMMIT_PROOF === '1' ? test : test.skip
 const TABLE = 'Commit Crew'
@@ -29,13 +31,13 @@ const signIn = () => app.request('/api/login/delegated', {
   body: JSON.stringify({ usr: 'TT-2001', pwd: 'Made-Up-Pass-970!', method: 'stylehr' }),
 })
 
-prove('sign-ins that were all confirmed at once make one person, and all land on it', async () => {
+prove('sign-ins that were all confirmed at once make one person, and all land on it', async () => withCommittedDatabase(async () => {
   const [db] = await sql`select current_database() as name, (select value from internal_metadata where key = 'environment') as environment`
   expect(db.environment).toBe('test')
   expect(String(db.name)).toMatch(/_first_sign_in_commit_e2e$/)
   await applySeedPack('jeyarama')
-  await saveDoc('Table', {
-    name: TABLE, module: 'Core',
+  await createTable({
+    name: TABLE,
     columns: [
       { column_name: 'crew_name', label: 'Name', column_type: 'Data', reqd: true },
       { column_name: 'crew_no', label: 'Number', column_type: 'Data' },
@@ -43,7 +45,7 @@ prove('sign-ins that were all confirmed at once make one person, and all land on
       { column_name: 'crew_state', label: 'State', column_type: 'Data' },
       { column_name: 'login', label: 'Login', column_type: 'Reference', reference_table: 'Person' },
     ],
-  }, 'Administrator', 'insert')
+  })
   await saveDoc('Sign In Method', {
     row_id: 'stylehr', kind: 'delegated_password', label: 'StyleHR', enabled: true, self_link: false,
     new_person: 'create_if_on_roster', service_url: 'https://hr.example.test/api/login/', settings: JSON.stringify({ roster: ROSTER }),
@@ -72,10 +74,10 @@ prove('sign-ins that were all confirmed at once make one person, and all land on
     expect(Number((await sql`select count(*)::int as n from person`)[0].n)).toBe(before + 1)
     expect(await sql`select person_id from sign_in_identity where subject = '8001'`).toHaveLength(1)
     expect(await sql`select 1 from person_identifier where value in ('8001', 'TT-2001')`).toHaveLength(2)
-    const [row] = await sql`select login from commit_crew where crew_no = 'TT-2001'`
+    const [row] = await sql`select login from featherbase.commit_crew where crew_no = 'TT-2001'`
     expect(people.has(String(row.login))).toBe(true)
   } finally {
     _setDelegatedFetch(null)
     _setAlertSender(null)
   }
-})
+}))

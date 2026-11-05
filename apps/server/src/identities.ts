@@ -108,7 +108,15 @@ export function methodUsable(m: { kind: string; enabled: boolean; client_id?: st
 }
 
 function toMethod(r: Record<string, unknown>): SignInMethod {
-  const settings = r.settings
+  // A JSON column reads back as text or as an object, depending on the write path.
+  let settings = r.settings
+  if (typeof settings === 'string') {
+    try {
+      settings = JSON.parse(settings)
+    } catch {
+      settings = null
+    }
+  }
   return {
     key: String(r.row_id),
     kind: String(r.kind) as MethodKind,

@@ -12,6 +12,7 @@ import { _setDelegatedFetch, delegatedLoginConfig } from '../src/delegated-login
 import { rosterFirstSignIn } from '../src/roster-first-sign-in'
 import { _setAlertSender } from '../src/waiting-for-access'
 import { applyInstanceSettings } from '../src/instance-settings'
+import { getSignInMethod } from '../src/identities'
 import { makeTable } from './fixtures'
 import { configureDelegated, giveEmployeeCode, linkDelegated } from './identity-fixtures'
 
@@ -361,6 +362,7 @@ describe('the rule is configuration', () => {
     expect((await post({ ...method, new_person: 'create_if_on_roster' })).status).toBe(417)
     expect((await post({ ...method, new_person: 'create_if_on_roster', settings: JSON.stringify({ roster: { table: TABLE } }) })).status).toBe(417)
     expect((await post({ ...method, new_person: 'create_if_on_roster', settings: JSON.stringify({ roster: ROSTER }) })).status).toBe(201)
+    expect((await getSignInMethod('hr_two'))?.settings).toMatchObject({ roster: { table: TABLE } })
     expect((await patchMethod(admin, 'password', { new_person: 'create_if_on_roster' })).status).toBe(417)
     expect((await patchMethod(admin, 'google', { new_person: 'create_if_on_roster' })).status).toBe(417)
   })
@@ -382,5 +384,6 @@ describe('the rule is configuration', () => {
     await applyInstanceSettings({ settings: { 'Sign In Method': [stylehr!] } }, { by: 'Administrator' })
     const [row] = await sql`select enabled, new_person from sign_in_method where row_id = 'stylehr'`
     expect(row).toEqual({ enabled: false, new_person: 'create_if_on_roster' })
+    expect((await getSignInMethod('stylehr'))?.settings).toMatchObject({ roster: { table: 'Employee', provider_record_key: 'employee_id' } })
   })
 })
