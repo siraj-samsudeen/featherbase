@@ -3,7 +3,8 @@ import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { installApp, registerApp, uninstallApp } from '../src/apps'
-import { sameStoredValue } from '../src/permissions'
+import { permittedColumns, sameStoredValue } from '../src/permissions'
+import { childColumns } from '../src/row-readers'
 import { readLegacyPermission } from '../src/app-permission-format'
 
 // #917: a Permission row names one operation and the Columns it reaches; the
@@ -138,5 +139,48 @@ describe('stored forms of the same value', () => {
     ['Float', 'x', 'y', false],
   ] as const)('%s %o vs %o', ([type, submitted, stored, same]) => {
     expect(sameStoredValue(type, submitted, stored)).toBe(same)
+  })
+})
+
+describe('a grant reaches only what its rows allow', () => {
+  async function withLines(admin: TestClient) {
+    await setup(admin)
+    const [{ row_id }] = await sql`select row_id from column_def where parent = ${DT} and column_name = 'lines'`
+    return String(row_id)
+  }
+  const insert = (row: Record<string, unknown>) => sql`insert into permission ${sql({ scope_mode: 'all', column_rule: 'basic', role: ROLE, ...row })}`
+  async function holder() {
+    await sql`insert into person (row_id, full_name, enabled) values ('psn_pr_holder', 'Holder', true)`
+    await sql`insert into has_role (row_id, parent, parenttype, parentfield, role) values ('pr-held', 'psn_pr_holder', 'Person', 'roles', ${ROLE})`
+    return 'psn_pr_holder'
+  }
+
+  test('an unknown Column rule reaches nothing', async ({ admin }) => {
+    await withLines(admin)
+    await insert({ row_id: 'pr-odd', ref_table: DT, operation: 'read', column_rule: 'someday' })
+    expect([...await permittedColumns(await holder(), DT, 'read')]).toEqual([])
+  })
+
+  test('a link that is not on the Table lends nothing to its line items', async ({ admin }) => {
+    await withLines(admin)
+    await insert({ row_id: 'pr-base', ref_table: DT, operation: 'read' })
+    expect([...await childColumns(await holder(), DT, 'Pr Line', 'no-such-link', 'read')]).toEqual([])
+  })
+
+  test("creator-only grants lend nothing on another person's row", async ({ admin }) => {
+    const link = await withLines(admin)
+    await insert({ row_id: 'pr-own', ref_table: DT, operation: 'read', scope_mode: 'creator' })
+    await insert({ row_id: 'pr-all', ref_table: DT, operation: 'read' })
+    await insert({ row_id: 'pr-line', ref_table: 'Pr Line', operation: 'read', scope_mode: 'creator', column_rule: 'every', parent_permission: 'pr-all', parent_column: link })
+    const person = await holder()
+    expect([...await childColumns(person, DT, 'Pr Line', link, 'read', 'someone-else')]).toEqual(['@basic'])
+    expect((await childColumns(person, DT, 'Pr Line', link, 'read', person)).has('*')).toBe(true)
+  })
+
+  test('an inherited grant naming a parent that does not exist is refused', async ({ admin }) => {
+    const link = await withLines(admin)
+    await expect(admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: 'Pr Line', role: ROLE, operation: 'read', parent_permission: 'no-such-grant', parent_column: link,
+    } })).rejects.toMatchObject({ status: 417 })
   })
 })
