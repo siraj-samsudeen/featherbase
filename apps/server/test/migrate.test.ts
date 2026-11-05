@@ -90,6 +90,9 @@ describe('migrate: a new database', () => {
           ('legacy-held-6', 'psn_note_creator', 'Person', 'roles', 'Legacy Note Creator')`
       await db.sql`insert into permission (row_id, ref_table, role, tier, can_create)
         values ('legacy-note-create', 'Legacy Contact Note', 'Legacy Note Creator', 'restricted', true)`
+      // A row whose level was cleared granted nothing, and must not start to.
+      await db.sql`insert into role (row_id) values ('Legacy No Level')`
+      await db.sql`insert into permission (row_id, ref_table, role, tier, can_read) values ('legacy-no-level', 'Legacy Contact', 'Legacy No Level', null, true)`
       const relation = await tableRelation('Legacy Contact')
       await db.sql`insert into ${db.sql(relation)} (row_id, created_by, name, phone)
         values ('mine', 'psn_legacy', 'Mine', 'my-phone'), ('other', 'Administrator', 'Other', 'hidden-phone')`
@@ -135,6 +138,7 @@ describe('migrate: a new database', () => {
       expect(linesRow).toMatchObject({ name: 'Lines', notes: [{ note: 'shown', private_note: 'line-detail' }] })
       expect(linesRow).not.toHaveProperty('phone')
       expect(await db.sql`select 1 from permission where role = 'Legacy Note Creator'`).toEqual([])
+      expect(await db.sql`select 1 from permission where role = 'Legacy No Level'`).toEqual([])
       const creator = { Authorization: `Bearer ${(await issueSession('psn_note_creator')).token}`, 'Content-Type': 'application/json' }
       const refused = await app.request('/api/save_row', { method: 'POST', headers: creator,
         body: JSON.stringify({ table: 'Legacy Contact', row: { name: 'Mine too', notes: [{ private_note: 'never' }] } }) })

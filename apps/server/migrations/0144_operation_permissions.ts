@@ -63,7 +63,9 @@ export async function up() {
   }
   await sql`delete from permission`
   const bases: { id: string; old: (typeof previous)[number]; operation: string }[] = []
-  for (const old of previous.filter((row) => (row.tier ?? 'basic') === 'basic')) {
+  // Only a row at the basic level granted anything: one whose level was cleared
+  // never did, and must not start to.
+  for (const old of previous.filter((row) => row.tier === 'basic')) {
     for (const [operation, flag] of Object.entries(flags))
       if (old[flag]) bases.push({ id: await convert(old, operation, 'basic'), old, operation })
   }
