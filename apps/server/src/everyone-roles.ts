@@ -16,7 +16,10 @@ export function parseEveryoneRoles(text: unknown): string[] {
 /** The roles every signed-in person holds now. */
 export async function everyoneRoles(tx: typeof sql): Promise<string[]> {
   const [row] = await tx`select value from single_value where table_name = 'System Settings' and field = ${EVERYONE_ROLES_FIELD}`
-  return parseEveryoneRoles(row?.value)
+  const named = parseEveryoneRoles(row?.value).filter((role) => !PLATFORM_ROLES.includes(role))
+  // As getRoles reads it: a role deleted since the setting was saved is held by nobody.
+  const existing = named.length ? new Set((await tx`select row_id from role where row_id in ${tx(named)}`).map((r) => String(r.row_id))) : new Set()
+  return named.filter((role) => existing.has(role))
 }
 
 /** Each role must exist, and none may be a platform role: System Manager for

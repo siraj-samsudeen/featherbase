@@ -6,6 +6,7 @@ import { test } from './pg-test'
 import { grantRole, makeTable } from './fixtures'
 import { managedScope } from '../src/instance-settings'
 import { getRoles } from '../src/permissions'
+import { sql } from '../src/db'
 import type { TestClient } from 'feather-testing-postgres'
 
 const NOTES = 'Er Notes'
@@ -81,4 +82,21 @@ test("a person's access page says which roles come from the setting", async ({ a
 test('a settings file never carries the roles everyone holds', async () => {
   const scope = await managedScope()
   expect(scope.find((entry) => entry.table === 'System Settings')?.fields).not.toContain('everyone_roles')
+})
+
+test('a role deleted since, or a platform role written past the save, is held by nobody', async ({ admin, createUser }) => {
+  await setup(admin)
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Er Gone' } })
+  await setEveryone(admin, `${MEMBER}\nEr Gone`)
+  await admin.delete('/api/table/Role/Er%20Gone')
+  await sql`update single_value set value = value || E'\nSystem Manager' where table_name = 'System Settings' and field = 'everyone_roles'`
+  const person = await createUser({})
+  const held = await getRoles(String(person.user))
+  expect(held).toContain(MEMBER)
+  expect(held).not.toContain('Er Gone')
+  expect(held).not.toContain('System Manager')
+  const page = await admin.get<{ roles: { role: string }[] }>(`/api/access_explanation/${encodeURIComponent(person.user!)}`)
+  expect(page.roles.map((r) => r.role)).toContain(MEMBER)
+  expect(page.roles.map((r) => r.role)).not.toContain('Er Gone')
+  expect(page.roles.map((r) => r.role)).not.toContain('System Manager')
 })

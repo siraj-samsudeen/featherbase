@@ -80,7 +80,7 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
     return { role, app: null, through: null, everyone: false, given_by: from.by, given_at: from.at }
   })
   // #923: a person also holds the roles given to everyone who signs in.
-  const [isPerson] = await sql`select 1 from person where row_id = ${person}`
+  const [isPerson] = await sql`select 1 from person where row_id = ${person} and row_id <> 'Guest'`
   for (const role of isPerson ? await everyoneRoles(sql) : [])
     if (!roles.some((r) => r.role === role)) roles.push({ role, app: null, through: null, everyone: true, given_by: null, given_at: null })
   // App roles bound to the person's own roles (#620), from available apps only,

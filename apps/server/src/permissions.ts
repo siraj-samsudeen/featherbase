@@ -23,8 +23,12 @@ export async function getRoles(principal: string): Promise<string[]> {
       -- #923: a person (never a service account) also holds the roles
       -- System Settings gives everyone who signs in, one per line.
       union
-      select btrim(r) from single_value s, regexp_split_to_table(s.value, E'\n') r
-      where s.table_name = 'System Settings' and s.field = 'everyone_roles' and btrim(r) <> ''
+      -- Only a role that still exists, and never a platform role, whatever
+      -- the stored text says.
+      select ro.row_id from single_value s, regexp_split_to_table(s.value, E'\n') r
+      join role ro on ro.row_id = btrim(r)
+      where s.table_name = 'System Settings' and s.field = 'everyone_roles'
+        and ro.row_id not in ${sql(PLATFORM_ROLES)}
         and exists (select 1 from person where row_id = ${principal}))
     select role, null as app from held
     union all
