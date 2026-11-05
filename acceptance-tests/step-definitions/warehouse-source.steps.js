@@ -178,8 +178,9 @@ Then('the change is refused', function () {
 
 Then('the row in the warehouse is unchanged', async function () {
   await this.withApi(async (api) => {
-    const preview = await api.call('GET', `/api/table/Data%20Source/${this.source}:preview?database=${this.database}&schema=main&table=stores`, undefined, [200], 'read the warehouse');
-    assert.equal(preview.first_rows.find((row) => row.code === 'S001').name, 'Harbour Road');
+    const res = await api.call('GET', `/api/table/Data%20Source/${this.source}:preview?database=${this.database}&schema=main&table=stores`, undefined, [200], 'read the warehouse');
+    const preview = await res.json();
+    assert.equal((preview.data ?? preview).first_rows.find((row) => row.code === 'S001').name, 'Harbour Road');
   });
 });
 
