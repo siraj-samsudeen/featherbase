@@ -11,6 +11,9 @@ export interface ColumnDef {
   label: string | null
   column_type: string
   reference_table: string | null
+  /** #881: on a link to a row of any Table, the column holding its Table;
+   *  its `choices` then lists the Tables allowed, one per line. */
+  table_column?: string | null
   choices: string | null
   choice_labels?: Record<string, string> | null
   row_table: string | null
