@@ -128,7 +128,7 @@ test('a one-sheet import with some rows refused stays, lists them, and does not 
   await user.selectOptions(typeOf('Zone'), 'Int')
   await user.click(screen.getByTestId('iw-import'))
   expect(await screen.findByTestId('iw-result-0', {}, { timeout: 10000 })).toHaveTextContent('1 failed')
-  await waitFor(() => expect(screen.getByTestId('iw-done')).toHaveTextContent('Imported, but 1 row was refused. See above.'), { timeout: 8000 })
+  await waitFor(() => expect(screen.getByTestId('iw-done')).toHaveTextContent('1 row was refused. See above.'), { timeout: 8000 })
   expect(screen.getByTestId('iw-done')).toHaveClass('text-negative')
   await new Promise((resolve) => setTimeout(resolve, 1000))
   expect(screen.getByTestId('iw-result-0')).toBeInTheDocument()

@@ -2912,7 +2912,7 @@ export function ImportWizard() {
             : runOutcome.remaining > 0
               ? `Imported ${fmtCount(runOutcome.imported)}; ${fmtCount(runOutcome.remaining)} still to import.`
               : runOutcome.refused
-                ? `Imported, but ${runOutcome.refused === 1 ? '1 row was' : `${fmtCount(runOutcome.refused)} rows were`} refused. See above.`
+                ? `${runOutcome.refused === 1 ? '1 row was' : `${fmtCount(runOutcome.refused)} rows were`} refused. See above.`
                 : 'Import complete.'}
         </p>
       )}
