@@ -371,9 +371,8 @@ function eligibleOne(cfg: DelegatedLoginConfig, rows: Record<string, unknown>[])
  *  open this person's account. Refused when the method no longer says where
  *  the provider names it, rather than stop checking. */
 export async function recordToName(cfg: DelegatedLoginConfig, identity: string | null): Promise<{ key: string; record: string } | undefined> {
-  if (!identity) return undefined
-  const [link] = await sql`select subject, linked_by from sign_in_identity where id = ${identity}`
-  if (link?.linked_by !== ROSTER_LINK) return undefined
+  const [link] = await sql`select subject from sign_in_identity where id = ${identity} and linked_by = ${ROSTER_LINK}`
+  if (!link) return undefined
   let roster: RosterLink | null = null
   try {
     roster = rosterFrom(cfg.method.settings)

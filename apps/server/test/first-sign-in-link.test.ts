@@ -494,6 +494,14 @@ describe('what cannot be read is refused', () => {
     expect(await sql`select 1 from person_identifier where value = ${RECORD}`).toHaveLength(1)
   })
 
+  test('a roster with no extra identifiers records the record number alone', async ({ api, admin }) => {
+    const { identifiers: _none, ...roster } = ROSTER
+    await setUp(admin, { roster })
+    provider()
+    expect((await signIn(api)).status).toBe(200)
+    expect(await sql`select system from person_identifier where value in (${RECORD}, ${CODE})`).toEqual([{ system: 'stylehr-employee-id' }])
+  })
+
   test('a Table in an outside source fails closed', async ({ api, admin }) => {
     await setUp(admin)
     await sql`update table_def set data_source = 'elsewhere' where name = ${TABLE}`
