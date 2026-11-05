@@ -8,9 +8,13 @@
 import { test, expect, adminAuth, type Page } from './fixtures'
 import { ensureTable, fillRows } from './fixtures-ui'
 import { tableHref } from 'shared'
+import { urlFilters } from './nav-url'
 
 const SWITCH = 'E2E Quick Switch'
 const BOXES = 'E2E Quick Boxes'
+// Eight text columns: the widest a desktop row of six boxes gets.
+const TEXT = 'E2E Quick Text'
+const TEXT_COLUMNS = ['ref', 'note_1', 'note_2', 'note_3', 'note_4', 'note_5', 'note_6', 'note_7']
 const enc = encodeURIComponent
 
 test.beforeAll(async ({ request }) => {
@@ -47,6 +51,11 @@ test.beforeAll(async ({ request }) => {
   await fillRows(request, auth, BOXES, rows.length, (i) => ({
     ...rows[i], lob: 'Textiles', main_category: 'Women', category: 'Sarees', section: `section-${i}`,
   }))
+  await ensureTable(request, auth, {
+    name: TEXT,
+    columns: TEXT_COLUMNS.map((c) => ({ column_name: c, column_type: 'Data', label: c.replace('_', ' '), in_list_view: true })),
+  })
+  await fillRows(request, auth, TEXT, 2, (i) => ({ ref: `ref-${i}` }))
 })
 
 const boxes = (page: Page) =>
@@ -117,9 +126,7 @@ test('Picking Yes in the Active box and in Add filter shows the right rows', asy
   })
   await session.assertHas('[data-testid="list-total"]', { text: '3 total' })
   await session.step('the page address holds the word Yes', async ({ page }) => {
-    // The router stores the filters as a JSON string inside the search value.
-    const filters = JSON.parse(JSON.parse(new URL(page.url()).searchParams.get('filters')!) as string) as unknown[]
-    expect(filters).toEqual([['active', '=', 'Yes']])
+    expect(urlFilters(page.url())).toEqual([['active', '=', 'Yes']])
     await page.getByTestId('std-filter-active').selectOption('')
     await expect(page.getByTestId('list-total')).toHaveText('4 total')
   })
@@ -163,6 +170,22 @@ test('Eight possible boxes show six plus "+2 more", and a box in use stays showi
   })
 })
 
+test('At 1280, six text boxes and "+2 more" share one line', async ({ session }) => {
+  await session.visit(`${tableHref(TEXT)}`)
+  await session.step('six boxes, then +2 more, all at the same height', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await expect(page.getByTestId('std-filter-more')).toHaveText('+2 more')
+    expect(await boxes(page)).toEqual(TEXT_COLUMNS.slice(0, 6))
+    const tops = await Promise.all(
+      [...TEXT_COLUMNS.slice(0, 6).map((c) => `std-filter-${c}`), 'std-filter-more'].map(
+        async (id) => (await page.getByTestId(id).boundingBox())!,
+      ),
+    )
+    // One line: every box and the button end at the same height.
+    for (const b of tops) expect(Math.abs(b.y + b.height - (tops[0].y + tops[0].height))).toBeLessThan(2)
+  })
+})
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true })
 
@@ -175,8 +198,20 @@ test.describe('on a phone', () => {
       await expect(page.getByTestId('filter-field')).toHaveCount(0)
       const toggle = (await page.getByTestId('filters-toggle').boundingBox())!
       const rows = (await page.getByTestId('list-rows').boundingBox())!
-      // Only the list's own Select all / Sort by line sits between them.
-      expect(rows.y - (toggle.y + toggle.height)).toBeLessThan(160)
+      // Only the list's own controls sit between them: the Table / Compact /
+      // Tree of all switch and the Select all / Sort by line. No filter control.
+      const between = await page.locator('main [data-testid]').evaluateAll(
+        (els, [top, bottom]) =>
+          els
+            .filter((e) => {
+              const b = e.getBoundingClientRect()
+              return b.height > 0 && b.top >= top - 1 && b.bottom <= bottom + 1
+            })
+            .map((e) => (e as HTMLElement).dataset.testid!),
+        [toggle.y + toggle.height, rows.y],
+      )
+      expect(between.filter((id) => /filter|saved-view|recent/.test(id))).toEqual([])
+      expect(rows.y - (toggle.y + toggle.height)).toBeLessThan(200)
     })
     await session.step('open: four boxes stacked, Floor too since it holds a value, then +3 more', async ({ page }) => {
       await page.getByTestId('filters-toggle').click()
@@ -184,6 +219,8 @@ test.describe('on a phone', () => {
       await expect(page.getByTestId('std-filter-more')).toHaveText('+3 more')
       const tops = await Promise.all(['store', 'lob'].map(async (c) => (await page.getByTestId(`std-filter-${c}`).boundingBox())!))
       expect(tops[1].y).toBeGreaterThan(tops[0].y + tops[0].height - 1)
+      // Every stacked box takes the full width: a text box as wide as a dropdown.
+      expect(Math.abs(tops[1].width - tops[0].width)).toBeLessThan(2)
     })
     await session.step('Add filter sits on one line', async ({ page }) => {
       const parts = await Promise.all(
