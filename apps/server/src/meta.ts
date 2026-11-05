@@ -322,14 +322,14 @@ export async function resolveTableName(input: string): Promise<string> {
 
 /** #958: who a deletion's testimony names. The Access Log holds an id, which
  *  means nothing to a reader; the id is only the last resort, for one that no
- *  longer names anybody. Guarded like the testimony it completes. */
+ *  longer names anybody. */
 async function principalLabel(id: string): Promise<string> {
   const [row] = await sql`
     select coalesce(
       (select coalesce(nullif(trim(full_name), ''), '@' || nullif(username, ''), nullif(email, ''))
        from person where row_id = ${id}),
-      (select nullif(trim(label), '') from service_account where row_id = ${id})) as name`.catch(() => [])
-  return (row?.name as string | null | undefined) ?? id
+      (select nullif(trim(label), '') from service_account where row_id = ${id})) as name`
+  return (row.name as string | null) ?? id
 }
 
 export async function getMeta(name: string): Promise<TableMeta> {
