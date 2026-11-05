@@ -12,13 +12,14 @@ type Dataset = { name: string; source: string; query: string; columns: { name: s
 const datasets = (manifest as unknown as { datasets: Dataset[] }).datasets
 const sales = () => datasets.find(d => d.name === SALES_DATASET)!
 const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean }>
-const ROLES = ['Feather Dash Reader', 'Feather Dash Section Editor', 'Feather Dash Section Reviewer']
+const ROLES = ['Dash Reader', 'Dash Section Editor', 'Dash Section Reviewer']
 
 describe("the app's name in the manifest", () => {
-  it('shows as Dash, under the identifier feather_dash, with the role names grants point at', () => {
+  it('shows as Dash in its title, roles and Table group, under the identifier feather_dash', () => {
     expect(manifest.title).toBe('Dash')
     expect(manifest.name).toBe('feather_dash')
     expect(manifest.roles).toEqual(ROLES)
+    expect([...new Set(manifest.tables.map(table => table.module))]).toEqual(['Dash'])
   })
 })
 
@@ -145,15 +146,15 @@ describe('the read grants, declared before the first install', () => {
   })
 
   it('give the Reader nothing else: the report reads the cached dataset through its places, never a Table', () => {
-    expect(granted('Feather Dash Reader')).toEqual(['feather_dash.store_rollout'])
+    expect(granted('Dash Reader')).toEqual(['feather_dash.store_rollout'])
   })
 
   it("give stage D's Section Editor a read of every org chart Table", () => {
-    expect(granted('Feather Dash Section Editor')).toEqual([...ORG_CHART, 'feather_dash.store_rollout'].sort())
+    expect(granted('Dash Section Editor')).toEqual([...ORG_CHART, 'feather_dash.store_rollout'].sort())
   })
 
   it("give stage D's Section Reviewer a read of every org chart Table", () => {
-    expect(granted('Feather Dash Section Reviewer')).toEqual([...ORG_CHART, 'feather_dash.store_rollout'].sort())
+    expect(granted('Dash Section Reviewer')).toEqual([...ORG_CHART, 'feather_dash.store_rollout'].sort())
   })
 
   it('give no app role the people Tables: who reads contacts and stints is the scopes\' to decide (#683)', () => {

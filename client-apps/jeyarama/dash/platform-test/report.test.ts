@@ -26,7 +26,7 @@ const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
   createUser: async ({ createUser }, use) => use(async options => pinned(await createUser(options))),
 })
-const READER = 'Feather Dash Reader'
+const READER = 'Dash Reader'
 // A declared secret is required by every read (featherbase app-settings.ts), so the
 // instance sets the token even where no Dive is configured.
 process.env.MOTHERDUCK_TOKEN = 'made-up-token'

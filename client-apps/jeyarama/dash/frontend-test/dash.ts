@@ -31,7 +31,7 @@ export async function setupDash(admin: TestClient, createUser: CreateUserFn) {
     expect(response.status).toBe(row.row_id ? 200 : 201)
     return await response.json() as { row_id: string }
   }
-  const reader = await createUser({ email: 'dash-ui-manager@example.test', roles: ['Feather Dash Reader'] })
+  const reader = await createUser({ email: 'dash-ui-manager@example.test', roles: ['Dash Reader'] })
   await save('store_rollout', { store: '9901', live_since: '2026-01-01' })
   const section = await save('section', { store: '9901', section_name: 'Sarees' })
   for (const subcategory of ['010101001', '010101002', '010101003'])

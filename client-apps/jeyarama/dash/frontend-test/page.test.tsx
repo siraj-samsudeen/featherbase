@@ -310,7 +310,7 @@ describe('Feather Dash against the real platform', () => {
     { job: 'Staff', acting: true, sentence: 'You see Sarees at LKS because you work in them.' },
   ]) {
     installed(`names a ${example.acting ? 'temporary ' : ''}${example.job}'s section and reason without a store code`, async ({ dash, createUser }) => {
-      const person = await createUser({ email: 'dash-section-reader@example.test', roles: ['Feather Dash Reader'] })
+      const person = await createUser({ email: 'dash-section-reader@example.test', roles: ['Dash Reader'] })
       await dash.save('job_assignment', { person: person.user, job: example.job, acting: example.acting,
         store: '9901', section: dash.section.row_id, starts_on: '2026-01-01' })
       token = person.token
@@ -389,7 +389,7 @@ describe('Feather Dash against the real platform', () => {
 
   for (const count of [2, 3, 4]) {
     installed(`names ${count} covered sections in a staff reader's heading without widening to the whole store`, async ({ dash, createUser }) => {
-      const person = await createUser({ email: 'dash-multiple-sections@example.test', roles: ['Feather Dash Reader'] })
+      const person = await createUser({ email: 'dash-multiple-sections@example.test', roles: ['Dash Reader'] })
       const names = ['Alpha', 'Beta', 'Gamma', 'Omega'].slice(0, count)
       const facts = []
       for (const [index, section_name] of names.entries()) {
@@ -413,7 +413,7 @@ describe('Feather Dash against the real platform', () => {
   }
 
   installed('a reader with staff and team-lead jobs sees one ordered explanation for both sections', async ({ dash, createUser }) => {
-    const person = await createUser({ email: 'dash-two-jobs@example.test', roles: ['Feather Dash Reader'] })
+    const person = await createUser({ email: 'dash-two-jobs@example.test', roles: ['Dash Reader'] })
     const section = await dash.save('section', { store: '9901', section_name: 'Cotton' })
     await dash.save('section_subcategory', { store: '9901', subcategory: '020202002', section: section.row_id, starts_on: '2026-01-01' })
     await dash.save('job_assignment', { person: person.user, job: 'Staff', store: '9901', section: section.row_id, starts_on: '2026-01-01' })
@@ -428,7 +428,7 @@ describe('Feather Dash against the real platform', () => {
   })
 
   installed('legacy explicit assignments explain unplaced subcategories without claiming a section job', async ({ dash, createUser }) => {
-    const person = await createUser({ email: 'dash-legacy-assigned@example.test', roles: ['Feather Dash Reader'] })
+    const person = await createUser({ email: 'dash-legacy-assigned@example.test', roles: ['Dash Reader'] })
     await dash.save('Sales Target Assignment', { employee: person.user, plant_code: '9902', material_group: '020202002' })
     await dash.snapshot([dash.fact('020202002', { store_code: '9902', store_name: null, short_code: null, subcategory: 'Assigned cloth' })])
     await dash.snapshot([], 'sales_month')
@@ -535,7 +535,7 @@ describe('Feather Dash against the real platform', () => {
 
   for (const role of ['staff', 'leader', 'manager']) {
     installed(`a legacy ${role} with explicit assignments sees both reasons without suggesting a new org-chart job`, async ({ dash, createUser }) => {
-      const person = await createUser({ email: 'dash-legacy-combined@example.test', roles: ['Feather Dash Reader'] })
+      const person = await createUser({ email: 'dash-legacy-combined@example.test', roles: ['Dash Reader'] })
       // The real roster input, as in platform-test/provider.test.ts; this
       // identifier system is managed by roster sync rather than edited in Admin.
       await sql`insert into person_identifier (id, person_id, system, assigner, value, valid, verified, one_holder, source, recorded_by)
