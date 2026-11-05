@@ -175,7 +175,10 @@ async function writeRoute(id: string, route: { people: string[]; roles: string[]
 async function mayDecide(user: string, maker: string, approvers: unknown, entryTable: string): Promise<boolean> {
   if (maker === user) return false
   const route = await resolveRoute(checkedApprovers(approvers), maker, entryTable)
-  if (!route) return false
+  return !!route && inRoute(user, route)
+}
+
+async function inRoute(user: string, route: { people: string[]; roles: string[] }): Promise<boolean> {
   if (route.people.includes(user)) return true
   const roles = route.roles.length ? await getRoles(user) : []
   return route.roles.some(role => roles.includes(role))
@@ -203,8 +206,12 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
   /** The caller may decide this proposal, or the request is refused. No role is an exception. */
   async function authorize(proposal: ChangeProposal, approvers: unknown) {
     if (proposal.maker === user) reject('Nobody can decide their own proposal')
-    if (!(await mayDecide(user, proposal.maker, approvers, entryTable))) reject('This proposal is not waiting for you')
-    return (await resolveRoute(checkedApprovers(approvers), proposal.maker, entryTable))!
+    // The decider's own row holds still to commit, so a disable either lands first and refuses
+    // this, or waits for it. One route: the one checked is the one recorded.
+    await sql`select 1 from person where row_id = ${user} for share`
+    const route = await resolveRoute(checkedApprovers(approvers), proposal.maker, entryTable)
+    if (!route || !(await inRoute(user, route))) reject('This proposal is not waiting for you')
+    return route!
   }
 
   /** The proposal, locked, still Pending. Pre-row locks first, then the row, then the proposal:
