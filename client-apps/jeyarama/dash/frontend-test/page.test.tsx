@@ -453,7 +453,8 @@ describe('Feather Dash against the real platform', () => {
         window.dispatchEvent(new dom.window.CustomEvent('featherbase:bar-change', { detail: { key: 'store', value: '9901' } }))
         await busy
       })
-      await waitForText(signedIn ? 'Quick view' : 'Ask your Store Manager')
+      if (signedIn) await waitForQuickView()
+      else await waitForText('Ask your Store Manager')
       expect(requests.filter(r => r.path.endsWith('/report'))).toHaveLength(1)
       expect(requests.filter(r => r.path.endsWith('/embed_session'))).toHaveLength(1)
       expect(requests.filter(r => r.path.endsWith('/stores'))).toHaveLength(1)
