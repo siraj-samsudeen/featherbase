@@ -137,14 +137,14 @@ const VIEW_LIMIT = 50
 async function waitingOnNow(ctx: ReadContext, job: Row | undefined, maker: string): Promise<string> {
   const { approvers, manager } = await approversOf(ctx, job)
   const route = await ctx.changeProposals.routeFor(maker, approvers)
-  return route?.people.length ? (manager ?? MASTER_DATA_TEAM) : MASTER_DATA_TEAM
+  return (route?.people.length ? manager : null) ?? MASTER_DATA_TEAM
 }
 
 /** A proposal as a person reads it: names only. */
 function view(proposal: ChangeProposal) {
   const a = about(proposal)
   return { id: proposal.row_id, kind: a.kind, what: a.what, from: a.from, to: a.to, store: a.store, state: proposal.state,
-    waiting_for: proposal.route.people.length ? (a.manager_name ?? MASTER_DATA_TEAM) : MASTER_DATA_TEAM,
+    waiting_for: (proposal.route.people.length ? a.manager_name : null) ?? MASTER_DATA_TEAM,
     reason: proposal.decision_reason, asked_on: day(proposal.created_at), decided_on: day(proposal.decided_at) }
 }
 
@@ -185,7 +185,7 @@ export const reads = {
     const pendingJobRows = pendingJobs.length ? byId(await list(ctx, T.job, JOB_FIELDS, [['row_id', 'in', pendingJobs]])) : new Map<string, Row>()
     const waitingOnJob = new Map<string, string>()
     for (const id of pendingJobs) waitingOnJob.set(id, await waitingOnNow(ctx, pendingJobRows.get(id), ctx.user))
-    const shown = mine.map(p => ({ ...view(p), ...(p.state === 'Pending' ? { waiting_for: waitingOnJob.get(about(p).job_assignment) ?? MASTER_DATA_TEAM } : {}) }))
+    const shown = mine.map(p => ({ ...view(p), ...(p.state === 'Pending' ? { waiting_for: waitingOnJob.get(about(p).job_assignment)! } : {}) }))
     const waitingOn = new Map(mine.flatMap((p, index) => p.state === 'Pending' && about(p).kind === 'move' ? [[about(p).subcategory, shown[index].waiting_for] as const] : []))
     const views = []
     for (const job of jobs) {
@@ -391,7 +391,7 @@ async function whyStale(ctx: ActionContext, proposal: ChangeProposal, a: About, 
   if (a.kind === 'section' && floor && floor.proposed_value !== (exact(to.floor) || null)) return 'The section it would go to has moved floor.'
   if (a.kind === 'move' && exact(job.section) !== a.from_section) return 'The person who asked no longer holds that section.'
   if (a.kind === 'move') {
-    const [from] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', a.from_section ?? '']])
+    const [from] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', exact(a.from_section)]])
     if (!isActive(from)) return 'The section it would leave is no longer open.'
   }
   if (a.kind === 'add' && exact(job.section) !== a.to_section) return 'The person who asked no longer holds that section.'

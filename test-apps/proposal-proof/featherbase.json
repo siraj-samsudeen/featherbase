@@ -24,6 +24,12 @@
       ],
       "Holder Base": [
         "label"
+      ],
+      "Role": [
+        "row_id"
+      ],
+      "Holder Child": [
+        "label"
       ]
     },
     "propose": {

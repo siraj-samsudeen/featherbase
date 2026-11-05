@@ -100,8 +100,8 @@ export function baseTablesReader(app: string, declaration: BaseTablesDeclaration
 /** A value as a column holds it, as comparable text: a Date column is a calendar day. */
 function asText(value: unknown, type?: string): string | null {
   if (value === null || value === undefined || value === '') return null
-  if (type === 'Date') return (value instanceof Date ? value.toISOString() : String(value)).slice(0, 10)
-  return value instanceof Date ? value.toISOString() : String(value)
+  const text = value instanceof Date ? value.toISOString() : String(value)
+  return type === 'Date' ? text.slice(0, 10) : text
 }
 
 const isDay = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
@@ -263,6 +263,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
 
     propose: (request: ProposalRequest) => guard.run(async () => {
       const { table, row, changes, about, reviewed: mustStay = [] } = request ?? ({} as ProposalRequest)
+      const target = row ?? null
       const { declared, meta } = await rule(table)
       const entries = Object.entries(changes ?? {})
       if (!entries.length) reject('A proposal changes at least one column')
@@ -271,9 +272,9 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
         if (value !== null && typeof value !== 'string') reject('Proposed values are text')
       }
       for (const column of mustStay)
-        if (!declared.columns.includes(column) || !typeOf(meta, column) || column in (changes ?? {})) reject(`Column ${column} of Table ${table} cannot be reviewed here`)
+        if (!declared.columns.includes(column) || !typeOf(meta, column) || column in changes) reject(`Column ${column} of Table ${table} cannot be reviewed here`)
       let current: ActionRow | null = null
-      if (row !== null && row !== undefined) current = await getDoc(table, String(row)) as ActionRow
+      if (target !== null) current = await getDoc(table, String(target)) as ActionRow
       const before = (column: string) => current ? asText(current[column], typeOf(meta, column)) : null
       if (current && entries.every(([column, value]) => before(column) === value)) reject('That is already the case')
       const route = await resolveRoute(checkedApprovers(request.approvers), user, entryTable)
@@ -283,8 +284,8 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
       const asked = key(entries.filter(([column, value]) => !current || before(column) !== value).map(([column_name, proposed_value]) => ({ column_name, proposed_value })))
       // Only what the proposal changes: the reviewed columns hold still.
       const askedOf = (p: ChangeProposal) => key(p.changes.filter(c => p.target_row === null || c.proposed_value !== c.review_base_value))
-      if (same.some(p => p.target_table === table && (p.target_row ?? null) === (row ?? null) && askedOf(p) === asked)) reject('You have already asked for this')
-      const saved = await saveSystemRow('Change Proposal', { app, target_table: table, target_row: row ?? null, maker: user, proposal_state: 'Pending', about: (about ?? null) as never }, user)
+      if (same.some(p => p.target_table === table && p.target_row === target && askedOf(p) === asked)) reject('You have already asked for this')
+      const saved = await saveSystemRow('Change Proposal', { app, target_table: table, target_row: target, maker: user, proposal_state: 'Pending', about: (about ?? null) as never }, user)
       const id = String(saved.row_id)
       // The end date and the app's reviewed columns are compared at approval, though never
       // proposed: a row that ended, or now holds something else, is not what was reviewed.

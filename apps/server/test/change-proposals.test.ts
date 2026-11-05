@@ -28,6 +28,7 @@ async function setUp(admin: TestClient, createUser: CreateUserFn) {
     { column_name: 'placement_id', column_type: 'Data', reqd: true },
     { column_name: 'label', column_type: 'Data' }, { column_name: 'site', column_type: 'Data' },
     { column_name: 'secret', column_type: 'Data' },
+    { column_name: 'layout_break', column_type: 'Section Break' },
     { column_name: 'starts_on', column_type: 'Date' }, { column_name: 'ends_on', column_type: 'Date' },
     { column_name: 'source', column_type: 'Data' },
   ] })
@@ -110,6 +111,13 @@ describe('a proposal changes nothing until it is approved', () => {
     await probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(manager.user, 'P-3') })
     expect(await placement('P-3')).toMatchObject({ label: 'Linen', site: 'North', created_by: maker.user })
     expect(asDay((await placement('P-3')).starts_on)).toBe('2026-11-05')
+  })
+
+  test('a row with no start date can be corrected', async ({ admin, createUser }) => {
+    const { maker, manager } = await setUp(admin, createUser)
+    await admin.post('/api/save_row', { table: 'Placement', row: { placement_id: 'P-NOSTART', label: 'Cotton' } })
+    const proposal = await probe(maker, ask(manager.user, { label: 'Silk' }, 'P-NOSTART'))
+    expect((await probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(manager.user, 'P-AFTER') })).state).toBe('Applied')
   })
 
   test('a row started on the approval day ends the day before: no day has two answers', async ({ admin, createUser }) => {
@@ -212,6 +220,9 @@ describe('what an app may propose', () => {
     // Asking for the same again is refused, whatever unchanged column it also names; a different ask on the same row is allowed.
     await expect(probe(maker, ask(manager.user))).rejects.toMatchObject({ status: 417 })
     await expect(probe(maker, ask(manager.user, { label: 'Silk', site: 'North' }))).rejects.toMatchObject({ status: 417 })
+    // A new row asked for twice is the same ask; so is it, and only it.
+    await probe(maker, ask(manager.user, { label: 'Hemp' }, null))
+    await expect(probe(maker, ask(manager.user, { label: 'Hemp' }, null))).rejects.toMatchObject({ status: 417 })
     await probe(maker, ask(manager.user, { label: 'Linen' }))
     const stampless = decision(manager.user, { effectiveOn: '2026-11-05', newRow: { placement_id: 'P-9', secret: 'smuggled' } })
     await expect(probe(manager, { op: 'approve', id: first.row_id, decision: stampless })).rejects.toMatchObject({ status: 417 })
@@ -318,8 +329,9 @@ describe('what the helpers refuse', () => {
     await admin.post('/api/table_def', { name: 'Holder Child', kind: 'sub_table', columns: [{ column_name: 'label', column_type: 'Data' }] })
     await admin.post('/api/table_def', { name: 'Holder Base', columns: [{ column_name: 'label', column_type: 'Data' }, { column_name: 'kids', column_type: 'Sub-table', row_table: 'Holder Child' }] })
     const [setting] = await sql`select updated_at from app_setting where row_id = 'proposalproof.linked_tables'`
-    await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'proposalproof.linked_tables', updated_at: setting.updated_at, value: JSON.stringify(['Placement', 'Holder Base']) } })
-    await expect(probe(maker, { op: 'list', table: 'Holder Base', args: { fields: ['label'] } })).rejects.toMatchObject({ status: 417 })
+    await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'proposalproof.linked_tables', updated_at: setting.updated_at, value: JSON.stringify(['Placement', 'Holder Base', 'Holder Child', 'Role']) } })
+    for (const table of ['Holder Base', 'Holder Child', 'Role'])
+      await expect(probe(maker, { op: 'list', table, args: { fields: ['row_id'] } }), table).rejects.toMatchObject({ status: 417 })
   })
 
   test('helpers run one at a time, and none outlives its handler', async ({ admin, createUser }) => {
@@ -331,7 +343,8 @@ describe('what the helpers refuse', () => {
   test('proposing: nothing to change, a value that is not text, a column both changed and reviewed, bad approvers', async ({ admin, createUser }) => {
     const { maker, manager } = await setUp(admin, createUser)
     const base = ask(manager.user).request
-    for (const request of [{ ...base, changes: {} }, { ...base, changes: { label: 7 } }, { ...base, reviewed: ['label'] }, { ...base, approvers: { people: 'x' } }, { ...base, approvers: undefined }])
+    await expect(probe(maker, { op: 'propose' })).rejects.toMatchObject({ status: 417 })
+    for (const request of [{ table: 'Placement', row: 'P-1', approvers: base.approvers }, { ...base, changes: {} }, { ...base, changes: { label: 7 } }, { ...base, reviewed: ['label'] }, { ...base, approvers: { people: 'x' } }, { ...base, approvers: undefined }])
       await expect(probe(maker, { op: 'propose', request })).rejects.toMatchObject({ status: 417 })
     expect((await sql`select count(*)::int as n from change_proposal`)[0].n).toBe(0)
   })
@@ -342,6 +355,8 @@ describe('what the helpers refuse', () => {
     await expect(probe(manager, { op: 'approve', id: proposal.row_id, decision: decision(manager.user, { effectiveOn: 'soon' }) })).rejects.toMatchObject({ status: 417 })
     await expect(probe(manager, { op: 'needs_fresh_review', id: proposal.row_id, decision: decision(manager.user, {}) })).rejects.toMatchObject({ status: 417 })
     await expect(probe(manager, { op: 'reject', id: '', decision: decision(manager.user, { reason: 'x' }) })).rejects.toMatchObject({ status: 417 })
+    await expect(probe(manager, { op: 'reject', id: proposal.row_id, decision: decision(manager.user) })).rejects.toMatchObject({ status: 417 })
+    await expect(probe(manager, { op: 'approve', id: proposal.row_id, decision: decision(manager.user, { effectiveOn: '2026-11-05' }) })).rejects.toMatchObject({ status: expect.any(Number) })
     expect((await probe(manager, { op: 'approve', id: proposal.row_id, decision: decision(manager.user, { effectiveOn: '2026-09-01', newRow: { placement_id: 'P-EARLY' } }) })).state).toBe('Needs fresh review')
   })
 
@@ -371,6 +386,7 @@ describe('listing', () => {
     expect((await probe(manager, { op: 'proposals', filter: {} })).map((p: any) => p.row_id)).toEqual([proposal.row_id])
     expect((await probe(manager, { op: 'proposals', filter: { makers: [other.user] } }))).toEqual([])
     expect((await probe(manager, { op: 'proposals', filter: { states: ['Rejected'] } }))).toEqual([])
+    for (const filter of [{ ids: [] }, { states: [] }, { makers: [] }]) expect(await probe(manager, { op: 'proposals', filter })).toEqual([])
     await expect(probe(manager, { op: 'approve', id: 'no-such', decision: approval(manager.user) })).rejects.toMatchObject({ status: 404 })
   })
 })
