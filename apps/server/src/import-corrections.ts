@@ -4,7 +4,7 @@ import { AppError } from './errors'
 import { sql } from './db'
 import { actionTransaction } from './action-transaction'
 import { getMeta, type TableMeta } from './meta'
-import { getDoc, hashRowId, saveDoc, saveSystemRow } from './document'
+import { assertUserPermissions, getDoc, hashRowId, saveDoc, saveSystemRow } from './document'
 import { holdBeforeRowLock } from './row-lock-order'
 import { tableRelation } from './table-engine'
 import { assertDocPermission } from './permissions'
@@ -170,6 +170,8 @@ export async function observeUnchangedRows(meta: TableMeta, inputs: { row_id: st
     if (!current || conflicted.has(row_id)) continue
     const mapped = columns.filter(c => Object.hasOwn(values, c.column_name))
     if (!mapped.every(c => same(current[c.column_name], values[c.column_name], c.column_type))) continue
+    // The row-level gate a save applies: private work refuses the run as before.
+    await assertUserPermissions(user, meta, current)
     unchanged.add(row_id)
     // What planImport records: read-only columns are never source observations.
     if (meta.track_changes) observations.push({

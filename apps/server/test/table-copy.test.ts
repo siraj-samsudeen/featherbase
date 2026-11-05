@@ -5,12 +5,13 @@ import { rmSync } from 'node:fs'
 import { makeClient, type TestClient } from 'feather-testing-postgres'
 import { app } from '../src/index'
 import { issueSession } from '../src/auth'
-import { deleteTable } from '../src/table-engine'
+import { deleteTable, tableRelation } from '../src/table-engine'
 import { sql } from '../src/db'
 import { test } from './pg-test'
 import { committedTest } from './pg-test-shared'
 import { overrideVariable } from '../src/env'
 import { invalidateSources } from '../src/sources/registry'
+import { invalidateMeta } from '../src/meta'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standin'
 import { grantRole } from './fixtures'
 
@@ -116,6 +117,18 @@ describe('Copy a warehouse table into Featherbase', () => {
       expect(await admin.post(`${PATH}:copy_again`, {})).toMatchObject({ unchanged: 3 })
       await source("update quiet_stores set name = 'Harbour Road North' where code = 'S001'")
       await expect(admin.post(`${PATH}:copy_again`, {})).rejects.toMatchObject({ status: 417, message: expect.stringContaining('A save ran') })
+    })
+
+    test('a row the person may not reach still refuses the run, though it did not change', async ({ admin }) => {
+      await quietCopy(admin)
+      // Private until shared (any false column serves as the flag), and created by
+      // someone else: an admitted manager still may not reach the row.
+      await sql`update table_def set access_policy = ${sql.json({ version: 1, roles: ['System Manager'], shared_column: 'deleted_at_source' })} where name = 'Quiet Stores'`
+      await sql`update ${sql(await tableRelation('Quiet Stores'))} set created_by = 'someone-else' where row_id = 'S002'`
+      invalidateMeta('Quiet Stores')
+      const counted = await counts()
+      await expect(admin.post(`${PATH}:copy_again`, {})).rejects.toMatchObject({ status: 403 })
+      expect(await counts()).toEqual(counted)
     })
 
     test('only the changed row is rewritten', async ({ admin }) => {
