@@ -3,7 +3,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
-import { NARROW_QUERY } from '../src/components/ui/DataList'
+import { NARROW_QUERY } from '@featherbase/shop-floor'
 import { recordAction } from '../src/lib/recents'
 
 afterEach(() => {
