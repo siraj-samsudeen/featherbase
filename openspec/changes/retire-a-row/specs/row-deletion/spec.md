@@ -56,6 +56,12 @@ with links to them.
 - **WHEN** a platform row must point at "Test BU"
 - **THEN** the delete cannot be confirmed, and that row is listed with a link to it
 
+#### Scenario: Someone's access is limited to it
+
+- **WHEN** a person's access is limited to "Test BU"
+- **THEN** the delete cannot be confirmed until that limit is changed, so no one comes to see more
+  than they did
+
 ### Requirement: Every permanently deleted row leaves a deletion record
 
 Each row a permanent delete removes, those removed with it included, SHALL leave a record of who
@@ -88,8 +94,8 @@ A permanent delete SHALL remove everything it previewed, or, if any part fails, 
 ### Requirement: Platform tables are never deleted permanently
 
 Permanent deletion SHALL NOT be offered or allowed on the platform's own tables, a person's
-sign-in records, settings tables, tables read from an outside database, or rows locked by the
-instance's settings.
+sign-in records, settings tables, tables read from an outside database, tables of private work,
+or rows locked by the instance's settings.
 
 #### Scenario: A person record
 

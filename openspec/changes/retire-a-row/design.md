@@ -118,6 +118,11 @@ row removed; bulk and per-import; non-admins keep the history rule; never on pla
     anywhere in the graph; a row locked by instance settings. A submitted row is no exception
     for a System Manager (setup clean-up). Rejected: allowing app-owned Tables only through an app rule (no such rule
     exists yet; an app's data Tables are deletable like any Table, its Settings tables are not).
+13a. **What holds a delete besides links.** A Data Scope naming a removed row: removing a person's
+    last scope would leave them with no limit on that Table, widening access. Activity that goes
+    with a row (comments, files, assignments and the rest) joins the walk, since a link can point
+    at it. A shared sub-table's lines are judged per parent Table. The deletion record keeps what
+    comments said and which files were attached, replies and line activity included.
 14. **Downstream.** Featherbase's own Postgres is the warehouse's source. A permanent delete is
     an ordinary `DELETE` there, so the CDC capture sees a delete event and the bronze copy flags
     the row deleted, as for any delete. A retirement is an update of three columns and reaches
