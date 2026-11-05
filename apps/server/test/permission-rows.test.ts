@@ -177,6 +177,22 @@ describe('a grant reaches only what its rows allow', () => {
     expect((await childColumns(person, DT, 'Pr Line', link, 'read', person)).has('*')).toBe(true)
   })
 
+  test('a reader of listed Columns can list a Table sorted by one they cannot read', async ({ admin, createUser }) => {
+    await admin.post('/api/table_def', { name: 'Pr Sorted', sort_column: 'unit_cost', sort_order: 'asc', columns: [
+      { column_name: 'title', column_type: 'Data' }, { column_name: 'unit_cost', column_type: 'Data' },
+    ] })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } }).catch(() => {})
+    await admin.post('/api/save_row', { table: 'Pr Sorted', row: { title: 'One', unit_cost: '5' } })
+    const [{ row_id: title }] = await sql`select row_id from column_def where parent = 'Pr Sorted' and column_name = 'title'`
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: 'Pr Sorted', role: ROLE, operation: 'read', column_rule: 'listed', columns: [{ target_column: title }],
+    } })
+    const reader = await createUser({ roles: [ROLE] })
+    const path = `/api/table/${encodeURIComponent('Pr Sorted')}?fields=${encodeURIComponent('["title"]')}`
+    expect(await reader.get<{ data: unknown[] }>(path)).toMatchObject({ data: [{ title: 'One' }] })
+    expect((await reader.fetch(`${path}&order_by=unit_cost`)).status).toBe(417)
+  })
+
   test('an inherited grant naming a parent that does not exist is refused', async ({ admin }) => {
     const link = await withLines(admin)
     await expect(admin.post('/api/save_row', { table: 'Permission', row: {

@@ -626,8 +626,11 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
     .map((f) => sql`${readExpression(f)} as ${sql(f)}`)
     .reduce((acc, frag) => sql`${acc}, ${frag}`)
 
-  let orderField = meta.sort_column || 'updated_at'
-  let orderDir = (meta.sort_order || 'desc').toLowerCase()
+  // The Table's own sort applies only if this reader may read that Column; an
+  // order_by they ask for themselves is still refused below.
+  const defaultSort = meta.sort_column && cols.has(meta.sort_column)
+  let orderField = defaultSort ? meta.sort_column! : 'updated_at'
+  let orderDir = (defaultSort && meta.sort_order || 'desc').toLowerCase()
   if (args.order_by) {
     const m = args.order_by.trim().match(/^([a-z][a-z0-9_]*)\s*(asc|desc)?$/i)
     if (!m) throw new AppError('ValidationError', `Invalid order_by ${args.order_by}`)
