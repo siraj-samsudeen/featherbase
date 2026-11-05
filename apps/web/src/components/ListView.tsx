@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { choiceLabel, parseFilters, rowDisplayTitle } from 'shared'
+import { choiceLabel, parseFilters, readYesNo, rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, getToken, listResource } from '../lib/api'
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
@@ -1665,15 +1665,13 @@ function StandardFilters({
   }
 
   // #742: a box picked from shows a link's value as one of its choices — a Yes/No
-  // box reads true/yes and false/no as the server does — and any other value as
-  // itself, so a filtered list never shows "All".
+  // box reads it with the server's own rule (readYesNo, in shared) — and any
+  // other value as itself, so a filtered list never shows "All".
   function picked(f: { column_name: string; column_type: string }): string {
     const raw = current(f.column_name, '=')
     if (f.column_type !== 'Check') return raw
-    const word = raw.toLowerCase()
-    if (word === 'true' || word === 'yes') return 'Yes'
-    if (word === 'false' || word === 'no') return 'No'
-    return raw
+    const yesNo = readYesNo(raw)
+    return yesNo === true ? 'Yes' : yesNo === false ? 'No' : raw
   }
 
   function unreadable(f: { column_name: string; column_type: string; choices?: string | null }): boolean {
