@@ -22,6 +22,6 @@ that person's page (C1), with no app changes.
 
 ## Impact
 
-- Migration `0141_access_auditor_role.sql` adds one Role row.
+- Migration `0142_access_auditor_role.sql` adds one Role row.
 - `apps/server/src/access-explanation.ts`: the viewer rule.
 - The page's refusal message names who may open it.
