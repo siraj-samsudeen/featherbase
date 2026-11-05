@@ -86,8 +86,7 @@ export function normalize(value: unknown, columnType?: string): Value {
     // Only ISO dates are read as dates; the day is the one written, never shifted by a zone.
     if (!isoDay(text)) return text
     if (columnType === 'Date') return isoDay(text)
-    const d = new Date(text)
-    return Number.isNaN(d.getTime()) ? text : d.toISOString()
+    return new Date(text).toISOString()
   }
   if (value instanceof Date) return value.toISOString()
   if (typeof value === 'object') return JSON.stringify(value)
@@ -110,8 +109,7 @@ export function toMaster(value: unknown, columnType?: string): unknown {
   if (columnType === 'Date' || columnType === 'Datetime') {
     if (value instanceof Date) return n
     // Not an ISO date, a day that does not exist (30-Feb), or an unreadable time: never guessed.
-    if (!isoDay(String(value)) || (columnType === 'Datetime' && Number.isNaN(new Date(String(value)).getTime()))) return NOT_FITTING
-    return n
+    return isoDay(String(value)) ? n : NOT_FITTING
   }
   return n
 }
@@ -391,7 +389,7 @@ async function raiseTickets(actor: string, copied: string): Promise<{ tickets: s
       const app = String(d.ticket_app)
       // Platform work on the app's behalf names its installed version, not the caller's client.
       const [installed] = await sql`select package_version from installed_app where name = ${app}`
-      const answer = await runAsSystemActor(actor, () => withAppIdentity(app, String(installed?.package_version ?? ''), () => runPackageAction(app, 'create',
+      const answer = await runAsSystemActor(actor, () => withAppIdentity(app, String(installed.package_version), () => runPackageAction(app, 'create',
         { idempotencyKey: `master-sync-${d.fingerprint}`, payload: d.ticket_payload }, actor))) as { result: { ticket: { row_id: string } } }
       // An app that answers without a ticket is an error, kept and retried like any other.
       const ticket = String(answer.result.ticket.row_id)

@@ -75,6 +75,7 @@ describe('the three-way rule for one column', () => {
     expect(normalize('abc', 'Int')).toBe('abc')
     expect(normalize('not a date', 'Date')).toBe('not a date')
     expect(normalize('2026-13-01T00:00:00', 'Datetime')).toBe('2026-13-01T00:00:00')
+    expect(normalize('2026-11-04T10:00:00Z', 'Date')).toBe('2026-11-04')
     expect(normalize(null, 'JSON')).toBeNull()
     expect(toMaster('', 'Data')).toBeNull()
     expect(toMaster(null, 'JSON')).toBeNull()
@@ -246,6 +247,26 @@ describe('Master sync (#927)', { timeout: 60_000 }, () => {
     const later = (await sourceChanges(admin, source, [`update $T set phone = '333' where emp_id = 'E1'`])).master_sync
     expect(later).toMatchObject({ applied: 1, raised: 0 })
     expect(await person(admin, 'P1')).toMatchObject({ phone: '333' })
+  })
+
+  test('an inactive value the master refuses is raised; an emptied value reads as empty in its ticket', async ({ admin }) => {
+    const { source, rule } = await world(admin, 'staff_empties')
+    await run(admin)
+    await edit(admin, 'P1', { phone: '' })
+    await admin.post(`${COPY}:master_sync_run`, {})
+    expect((await sunk()).at(-1)!.payload.original).toMatch(/Featherbase now: \(empty\)/)
+    await sql`update column_def set column_type = 'Choice', choices = ${'Active\nLeft'} where parent = 'Sync Person' and column_name = 'employment_status'`
+    invalidateMeta('Sync Person')
+    await admin.post(`${COPY}:set_master_sync`, { rule: { ...rule, inactive: { column: 'employment_status', value: 'Inactive' } } })
+    await changeStandin(dir, 'sales', [`update ${source} set phone = null where emp_id = 'E2'`, `update ${source} set role = null where emp_id = 'E3'`])
+    await admin.post(`${SOURCES}/ms-${source.replaceAll('_', '-')}:refresh_tables`, { database: 'sales' })
+    await admin.post(`${COPY}:copy_again`, {})
+    expect((await sunk()).at(-1)!.payload.original).toMatch(/Source now: \(empty\)/)
+    await changeStandin(dir, 'sales', [`delete from ${source} where emp_id = 'E2'`])
+    await admin.post(`${SOURCES}/ms-${source.replaceAll('_', '-')}:refresh_tables`, { database: 'sales' })
+    const gone = (await admin.post<Row>(`${COPY}:copy_again`, {})).master_sync
+    expect(gone).toMatchObject({ applied: 0, raised: 1, ticket_errors: [] })
+    expect(await person(admin, 'P2')).toMatchObject({ employment_status: 'Active' })
   })
 
   test('the scheduled refresh of a copy runs its sync rule after the copy', async ({ admin }) => {

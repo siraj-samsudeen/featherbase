@@ -56,7 +56,7 @@ function registerCopyRefresh(method: string): void {
     // #927: a copy with a master sync rule brings its master Table in step.
     const sync = await runAsSystemActor(actor, () => syncAfterCopy(user, String(link.target_table)))
     if (sync) {
-      summary += ` · master sync: ${sync.applied} applied · ${sync.raised} new differences · ${sync.tickets.length} tickets raised${sync.ticket_errors.length ? ` · ${sync.ticket_errors.length} tickets not raised` : ''}`
+      summary += ` · master sync: ${sync.applied} applied · ${sync.raised} new differences · ${sync.tickets.length} tickets raised · ${sync.ticket_errors.length} tickets not raised`
     }
     ctx.setResult(summary)
     if (result.conflicts) {
