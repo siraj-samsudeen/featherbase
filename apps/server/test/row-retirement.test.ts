@@ -291,3 +291,14 @@ describe('#859 the rest of retirement', () => {
     expect((res as { status?: number }).status ?? 200).toBeLessThan(500)
   })
 })
+
+describe('key analysis', () => {
+  test('a matched row that cannot be read for another reason is a failure, not a skipped column', async ({ admin }) => {
+    await makeTable(admin, { name: 'Rt Ka Line', kind: 'sub_table', columns: ['label'] })
+    const doc = await makeTable(admin, { name: 'Rt Ka Doc', id_pattern: 'prompt', columns: ['code', { column_name: 'items', column_type: 'Sub-table', row_table: 'Rt Ka Line' }] })
+    await admin.post(doc.url, { row_id: 'K-1', code: 'K1' })
+    await sql.unsafe('drop table featherbase.rt_ka_line')
+    const res = await admin.fetch(`${doc.url}:import`, { method: 'POST', body: JSON.stringify({ analyze_keys: true, columns: ['code'], rows: [{ code: 'K1' }] }) })
+    expect(res.status).toBe(500)
+  })
+})
