@@ -136,6 +136,11 @@ describe('opening something without access is the request', () => {
     expect((await list(admin)).total).toBe(0)
   })
 
+  test('a built-in account asks for nothing', async ({ admin }) => {
+    expect(await requestAccess('Guest', 'featherbase')).toBeNull()
+    expect((await list(admin)).total).toBe(0)
+  })
+
   test('signing in for the first time is not a request', async ({ admin }) => {
     await managers()
     await configureGoogle({ client_id: 'real-client-id', allowed_email_domains: DOMAIN })

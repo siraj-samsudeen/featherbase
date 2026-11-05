@@ -81,11 +81,16 @@ export interface AccessAnswer {
 
 /** `person` opened `app` without access, as far as the page knew: record
  *  their request and, the first time, tell the System Managers. Null when
- *  `app` names nothing a person can ask for. Never throws for mail. */
+ *  `app` names nothing a person can ask for, or `person` is a built-in
+ *  account. Never throws for mail. */
 export async function requestAccess(person: string, app: string): Promise<AccessAnswer | null> {
   const target = await accessTarget(app)
   if (!target) return null
   if (await canOpen(person, target.name)) return { state: 'open', title: target.title }
+  // A built-in account (Administrator, Guest) is nobody to give a role to:
+  // it asks for nothing, and an app's address shows it as unavailable.
+  const [{ built_in: builtIn }] = await sql`select coalesce(built_in, false) as built_in from person where row_id = ${person}`
+  if (builtIn) return null
   const made = await sql`
     insert into access_request (row_id, person, email, app, app_name, created_by, updated_by)
     select substr(md5(random()::text || clock_timestamp()::text), 1, 10), p.row_id, p.email, ${target.title}, ${target.name}, p.row_id, p.row_id
