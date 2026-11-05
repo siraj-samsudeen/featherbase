@@ -567,4 +567,17 @@ describe('#859 delete permanently: the rest of the paths', () => {
     expect(rec.snapshot._files.map((f: { file_name: string }) => f.file_name).sort()).toEqual(['a.txt', 'b.txt', 'c.txt'])
   })
 
+
+  test('a run that also updated rows offers only the rows it added', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    await sql.unsafe("update featherbase.pg_business_unit set bu_name = 'Kept' where row_id = 'BU-K'")
+    const run = await admin.post<{ run_id: string }>(`${bu.url}:import`, { key_column: 'row_id', rows: [{ row_id: 'BU-K', bu_name: 'Renamed' }, { row_id: 'BU-A', bu_name: 'Added' }] })
+    expect((await admin.get<{ rows: { row_id: string }[] }>(`${bu.url}:purge_preview?run_id=${run.run_id}`)).rows.map((r) => r.row_id)).toEqual(['BU-A'])
+  })
+
+  test('an unset Settings link holds nothing', async ({ admin }) => {
+    const { bu } = await setup(admin)
+    await makeTable(admin, { name: 'Pg Idle', kind: 'settings', columns: [{ column_name: 'unit', column_type: 'Reference', reference_table: BU }] })
+    expect(await purge(admin, bu, { ids: ['BU-K'], links: 'clear' })).toEqual({ deleted: 1, cleared: 1 })
+  })
 })

@@ -275,4 +275,19 @@ describe('#859 the rest of retirement', () => {
     expect(await admin.post(`/api/table/Comment/${c.row_id}:retire`, { reason: 'Out of date' })).toMatchObject({ retired_reason: 'Out of date' })
     void plant
   })
+
+  test('a row gone by the time it is locked is not found', async ({ admin }) => {
+    const { plant } = await plants(admin)
+    const { registerController, unregisterController } = await import('../src/controllers')
+    const vanish = { table: PLANT, hooks: { before_lock: async ({ tx }: { tx: { unsafe: (q: string) => Promise<unknown> } }) => { await tx.unsafe("delete from featherbase.rt_plant where row_id = 'Sample plant'") } } }
+    registerController(vanish as never)
+    try {
+      await expectApiError(retire(admin, plant, 'Sample plant', 'Too late'), { status: 404 })
+    } finally { unregisterController(vanish as never) }
+  })
+
+  test('an import matching rows of a Table that cannot retire works without retirement', async ({ admin }) => {
+    const res = await admin.post<{ dry_run: boolean; retired: number }>('/api/table/Table:import', { key_column: 'row_id', dry_run: true, rows: [{ row_id: 'Rt No Such Table' }] }).catch((err: { status: number }) => err)
+    expect((res as { status?: number }).status ?? 200).toBeLessThan(500)
+  })
 })

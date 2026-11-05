@@ -336,7 +336,7 @@ async function activitySnapshot(db: Db, table: string, rowId: string): Promise<{
  *  shares, tags and the rest (ROW_ID_HOLDERS), all but the Access Log. */
 async function forgetRow(db: Db, table: string, rowId: string, files: string[]) {
   const attached = await db`select file_url from ${db(`${PLATFORM_SCHEMA}.file`)} where ref_table = ${table} and ref_name = ${rowId}`
-  for (const f of attached) if (typeof f.file_url === 'string' && f.file_url) files.push(f.file_url)
+  files.push(...attached.map((f) => String(f.file_url)))
   for (const { relation, tableColumn, nameColumn } of ROW_ID_HOLDERS) {
     if (relation === 'access_log') continue
     await db`delete from ${db(`${PLATFORM_SCHEMA}.${relation}`)} where ${db(tableColumn)} = ${table} and ${db(nameColumn)} = ${rowId}`
@@ -501,13 +501,11 @@ export async function purgeRows(table: string, args: Record<string, unknown>, us
   // Stored bytes go only after the commit, and only when no File row still
   // names them (as a Table's delete does, DEL-R7).
   await afterDocumentCommit(async () => {
-    for (const url of new Set(files)) {
-      if (!/^\/(?:private\/)?files\/[a-f0-9]{16}_[\w.-]+$/.test(url)) continue
-      try {
-        const survivors = await sql`select 1 from file where file_url = ${url} limit 1`
-        if (!survivors.length) await deleteStored(url)
-      } catch { console.warn('Permanent delete: attachment cleanup could not complete') }
-    }
+    // Best effort, like a Table's delete: a survivor is disk garbage, not a leak.
+    await Promise.allSettled([...new Set(files)].filter((url) => /^\/(?:private\/)?files\/[a-f0-9]{16}_[\w.-]+$/.test(url)).map(async (url) => {
+      const survivors = await sql`select 1 from file where file_url = ${url} limit 1`
+      if (!survivors.length) await deleteStored(url)
+    }))
   })
   return result
 }
