@@ -66,15 +66,15 @@ test('on the Admin screens the bar is named Featherbase', async ({ admin }) => {
   expect(await barName()).toHaveTextContent('Featherbase')
 })
 
-test('on the Sales Target page the bar is named for the app, Feather Dash', async ({ admin }) => {
+test('on the Sales Target page the bar is named for the app, Dash', async ({ admin }) => {
   await renderApp('/featherbase/sales-target', admin)
-  expect(await barName()).toHaveTextContent('Feather Dash')
+  expect(await barName()).toHaveTextContent('Dash')
 })
 
 test("on an app's address the account page is named for the app", async ({ admin }) => {
   onAddressThatOpens('feather_dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  await waitFor(async () => expect(await barName()).toHaveTextContent('Feather Dash'))
+  await waitFor(async () => expect(await barName()).toHaveTextContent('Dash'))
 })
 
 test('on the Admin address the account page is named Featherbase', async ({ admin }) => {
@@ -89,22 +89,22 @@ test("on an app's address the account page's tab title is the app's name", async
   document.title = 'Featherbase'
   onAddressThatOpens('feather_dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  await waitFor(() => expect(document.title).toBe('Feather Dash'))
+  await waitFor(() => expect(document.title).toBe('Dash'))
 })
 
-test('the Sales Target page on the Admin address is named Feather Dash in its bar', async ({ admin }) => {
+test('the Sales Target page on the Admin address is named Dash in its bar', async ({ admin }) => {
   onAddressThatOpens('admin')
   await renderApp('/featherbase/sales-target', admin)
   await settledBar()
   await new Promise((resolve) => setTimeout(resolve, 50))
-  expect(await barName()).toHaveTextContent('Feather Dash')
+  expect(await barName()).toHaveTextContent('Dash')
 })
 
-test("the Sales Target page on the Admin address has Feather Dash as its tab title", async ({ admin }) => {
+test("the Sales Target page on the Admin address has Dash as its tab title", async ({ admin }) => {
   document.title = 'Featherbase'
   onAddressThatOpens('admin')
   await renderApp('/featherbase/sales-target', admin)
-  await waitFor(() => expect(document.title).toBe('Feather Dash'))
+  await waitFor(() => expect(document.title).toBe('Dash'))
 })
 
 // #758: the platform destination has one name, Featherbase.
@@ -136,7 +136,7 @@ test('on the Admin address the account page is named for the app a person who ca
   const viewer = await viewerOnly(admin, createUser, 'viewer.account@example.com')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
   await settledBar()
-  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Feather Dash$/))
+  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Dash$/))
 })
 
 test("on the Admin address the account page's tab title names the app a person who cannot use Admin can open", async ({ admin, createUser }) => {
@@ -145,7 +145,7 @@ test("on the Admin address the account page's tab title names the app a person w
   const viewer = await viewerOnly(admin, createUser, 'viewer.account.tab@example.com')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Feather Dash'))
+  await waitFor(() => expect(document.title).toBe('Dash'))
 })
 
 test('on the Admin address the account page is named Featherbase for someone who can open nothing', async ({ createUser }) => {
@@ -157,7 +157,7 @@ test('on the Admin address the account page is named Featherbase for someone who
 })
 
 test("on the Admin address the account page's tab title is Featherbase for someone who can open nothing", async ({ createUser }) => {
-  document.title = 'Feather Dash'
+  document.title = 'Dash'
   onAddressThatOpens('admin')
   const nobody = await createUser({ email: 'nobody.account.tab@example.com' })
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, nobody)
@@ -170,7 +170,7 @@ test("on an app's address the account page stays named for the app for someone w
   const nobody = await createUser({ email: 'nobody.dash.account@example.com' })
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, nobody)
   await settledBar()
-  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Feather Dash$/))
+  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Dash$/))
 })
 
 // ---- 2b. an installed app of the interim name (#671) -----------------------------
@@ -212,14 +212,14 @@ test('on the Admin address the account page is Featherbase for someone who can o
   await waitFor(async () => expect(await barName()).toHaveTextContent(/^Featherbase$/))
 })
 
-test('on the Admin address the account page names Feather Dash for a report viewer who can also open an app open to everyone', async ({ admin, createUser }) => {
+test('on the Admin address the account page names Dash for a report viewer who can also open an app open to everyone', async ({ admin, createUser }) => {
   expect(await discoverPackages([OTHER_APP])).toEqual([])
   await admin.post('/api/install_app', { name: 'other' })
   onAddressThatOpens('admin')
   const viewer = await viewerOnly(admin, createUser, 'viewer.other.app@example.com')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
   await settledBar()
-  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Feather Dash$/))
+  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Dash$/))
 })
 
 test("on an app's address whose installed app is disabled, the bar's name still leads to the app's root", async ({ admin }) => {
@@ -234,7 +234,7 @@ test("on an app's address whose installed app is disabled, the bar's name still 
 test("on an app's address whose app is not installed, the bar's name leads to the interim page", async ({ admin }) => {
   onAddressThatOpens('feather_dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  await settledName('Feather Dash')
+  await settledName('Dash')
   expect(await barName()).toHaveAttribute('href', '/featherbase/sales-target')
 })
 
@@ -276,7 +276,7 @@ test('Open Admin is not offered to a person who cannot use Admin', async ({ admi
   onAddressThatOpens('feather_dash')
   const viewer = await viewerOnly(admin, createUser, 'viewer.bar@example.com')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
-  await waitFor(async () => expect(await barName()).toHaveTextContent('Feather Dash'))
+  await waitFor(async () => expect(await barName()).toHaveTextContent('Dash'))
   expect(within(await settledBar()).queryByTestId('open-admin')).not.toBeInTheDocument()
 })
 
@@ -296,7 +296,7 @@ const settledName = async (name: string) => {
 test('Open Admin is not offered on the Sales Target page opened on the Admin address', async ({ admin }) => {
   onAddressThatOpens('admin')
   await renderApp('/featherbase/sales-target', admin)
-  expect(within(await settledName('Feather Dash')).queryByTestId('open-admin')).not.toBeInTheDocument()
+  expect(within(await settledName('Dash')).queryByTestId('open-admin')).not.toBeInTheDocument()
 })
 
 test('Open Admin is not offered on the account page on the Admin address', async ({ admin }) => {
@@ -307,14 +307,14 @@ test('Open Admin is not offered on the account page on the Admin address', async
 
 test('Open Admin is not offered on a host the list does not name, which holds the Admin', async ({ admin }) => {
   await renderApp('/featherbase/sales-target', admin)
-  expect(within(await settledName('Feather Dash')).queryByTestId('open-admin')).not.toBeInTheDocument()
+  expect(within(await settledName('Dash')).queryByTestId('open-admin')).not.toBeInTheDocument()
 })
 
 test('at phone width Open Admin is not in the Account menu on the Admin address', async ({ admin }) => {
   phoneWidth()
   onAddressThatOpens('admin')
   await renderApp('/featherbase/sales-target', admin)
-  await settledName('Feather Dash')
+  await settledName('Dash')
   expect(within(await openAccountMenu()).queryByTestId('open-admin')).not.toBeInTheDocument()
 })
 
@@ -520,7 +520,7 @@ test('while whoami loads the bar shows its name and nothing on the right', async
       ? new Promise<Response>(() => {})
       : real(input, init))
   await renderApp('/featherbase/sales-target', admin)
-  expect(await barName()).toHaveTextContent('Feather Dash')
+  expect(await barName()).toHaveTextContent('Dash')
   expect(within(await bar()).getByTestId('top-bar-right')).toBeEmptyDOMElement()
 })
 

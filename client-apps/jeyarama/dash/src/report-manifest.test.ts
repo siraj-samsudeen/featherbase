@@ -14,6 +14,14 @@ const sales = () => datasets.find(d => d.name === SALES_DATASET)!
 const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean }>
 const ROLES = ['Feather Dash Reader', 'Feather Dash Section Editor', 'Feather Dash Section Reviewer']
 
+describe("the app's name in the manifest", () => {
+  it('shows as Dash, under the identifier feather_dash, with the role names grants point at', () => {
+    expect(manifest.title).toBe('Dash')
+    expect(manifest.name).toBe('feather_dash')
+    expect(manifest.roles).toEqual(ROLES)
+  })
+})
+
 describe('the report in the manifest', () => {
   // The old report's checks (featherbase sales-target-mtd.ts `validate`): a refresh with no
   // target at all, or with under half the active snapshot's target day rows, keeps the last good

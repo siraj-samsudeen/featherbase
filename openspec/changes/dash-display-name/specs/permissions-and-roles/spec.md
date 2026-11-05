@@ -14,7 +14,7 @@ the app, which keeps working for them as before, and signing in takes them to it
 An app without pages of its own is used through the administration, so its
 tables still count, as do grants on the instance's own tables.
 
-#### Scenario: A store manager who only uses Dash
+#### Scenario: A store manager who only uses Feather Dash
 
 - **WHEN** a store manager whose only grant is to read Dash's own tables
   opens Dash

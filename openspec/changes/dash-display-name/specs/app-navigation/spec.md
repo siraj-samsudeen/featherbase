@@ -36,7 +36,7 @@ Then the project's two tasks are shown
 And the shared navigation identifies September stock review as current
 ```
 
-#### Scenario: Dash keeps the selected store
+#### Scenario: Feather Dash keeps the selected store
 
 ```gherkin
 Given the user can open Tasker and Dash but cannot open Featherbase

@@ -97,8 +97,8 @@ const noSidewaysScroll = (page: Page) => page.evaluate(() => document.documentEl
 
 test("Open Admin on the app's address reaches the Admin address, signed in there", async ({ session, page, request }) => {
   await onDash(page, request, 'Open Admin')
-  await session.step('the bar on the app address is named Feather Dash', async () => {
-    await expect(page.getByTestId('top-bar-name')).toHaveText('Feather Dash')
+  await session.step('the bar on the app address is named Dash', async () => {
+    await expect(page.getByTestId('top-bar-name')).toHaveText('Dash')
   })
   await session.step('Open Admin hands the person to the Admin address', async () => {
     await page.getByTestId('open-admin').click()
@@ -120,7 +120,7 @@ test("the Account menu's Sign-in methods stays on the app's address", async ({ s
   await session.step('the account page opens on the app address, with the bar and no Admin menus', async () => {
     await expect(page).toHaveURL(`${DASH}/featherbase/account/sign-in-methods`)
     await expect(page.getByTestId('sign-in-methods')).toBeVisible()
-    await expect(page.getByTestId('top-bar-name')).toHaveText('Feather Dash')
+    await expect(page.getByTestId('top-bar-name')).toHaveText('Dash')
     await expect(page.getByTestId('awesomebar')).toHaveCount(0)
     await expect(page.getByTestId('notif-bell')).toHaveCount(0)
   })
@@ -319,7 +319,7 @@ for (const width of [1280, 375]) {
       await signInAt(page, ADMIN, both)
       await expect(page).toHaveURL(new RegExp(`^${ADMIN}/featherbase/admin`), { timeout: 15_000 })
       await page.goto(`${ADMIN}/featherbase/sales-target`)
-      await expect(page.getByTestId('top-bar-name')).toHaveText('Feather Dash')
+      await expect(page.getByTestId('top-bar-name')).toHaveText('Dash')
       await expect(page.getByTestId('session-user')).toBeVisible()
       await session.step('no Open Admin, in the bar or the Account menu', async () => {
         expect(await openAdminShown(page, phone)).toBe(0)
@@ -334,9 +334,9 @@ for (const width of [1280, 375]) {
       })
       await shot(page, 'item2-dash-address-sales-target')
       await page.goto(`${DASH}/featherbase/account/sign-in-methods`)
-      await session.step('the account page is named Feather Dash', async () => {
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Feather Dash')
-        await expect(page).toHaveTitle('Feather Dash')
+      await session.step('the account page is named Dash', async () => {
+        await expect(page.getByTestId('top-bar-name')).toHaveText('Dash')
+        await expect(page).toHaveTitle('Dash')
       })
       await shot(page, 'item3-dash-address-account')
     })
@@ -359,9 +359,9 @@ for (const width of [1280, 375]) {
       await signInAt(page, ADMIN, viewer)
       await expect(page).toHaveURL(`${DASH}/featherbase/sales-target`, { timeout: 15_000 })
       await page.goto(`${ADMIN}/featherbase/account/sign-in-methods`)
-      await session.step('bar and tab say Feather Dash', async () => {
-        await expect(page.getByTestId('top-bar-name')).toHaveText('Feather Dash')
-        await expect(page).toHaveTitle('Feather Dash')
+      await session.step('bar and tab say Dash', async () => {
+        await expect(page.getByTestId('top-bar-name')).toHaveText('Dash')
+        await expect(page).toHaveTitle('Dash')
       })
       await shot(page, 'item3-admin-address-account-viewer')
     })

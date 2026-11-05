@@ -84,7 +84,7 @@ class AppNavigation {
   async expectAppsOnly() {
     await this.page.getByTestId('session-user').waitFor();
     const options = await this.choices().locator('option').allTextContents();
-    assert.deepEqual(options.sort(), ['Feather Dash', 'Tasker']);
+    assert.deepEqual(options.sort(), ['Dash', 'Tasker']);
   }
   async expectNoBase() {
     assert.equal(await this.choices().locator('option[value="/featherbase/admin"]').count(), 0);

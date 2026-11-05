@@ -367,7 +367,7 @@ describe('Feather Dash against the real platform', () => {
     token = admin.token
     await withNamedVariable('MOTHERDUCK_TOKEN', undefined, async () => {
       await open()
-      await waitForText("Feather Dash isn't set up on this instance yet")
+      await waitForText("Dash isn't set up on this instance yet")
       expect(document.querySelector('[data-testid=setup-missing]')?.textContent).toContain('secret MOTHERDUCK_TOKEN')
       expect(document.body.textContent).toContain('Set each setting in the instance settings file')
       expect(document.querySelector('[data-testid=next-command]')?.textContent).toBe('pnpm dev jeyarama/dash --made-up-data')
@@ -491,7 +491,7 @@ describe('Feather Dash against the real platform', () => {
       dom.reconfigure({ url: 'https://dash.example.test/feather_dash/' })
       await withNamedVariable('MOTHERDUCK_TOKEN', missing ? undefined : 'made-up-local-ui-test-token', async () => {
         await open()
-        await waitForText(missing ? "Feather Dash isn't set up on this instance yet" : 'your account covers no store')
+        await waitForText(missing ? "Dash isn't set up on this instance yet" : 'your account covers no store')
         expect(document.querySelector('code')).toBeNull()
         expect(document.body.textContent).not.toContain('this machine')
         expect(document.querySelector('[data-testid=feather-dash] a')?.getAttribute('href')).toBe('/featherbase/admin/instance-health')

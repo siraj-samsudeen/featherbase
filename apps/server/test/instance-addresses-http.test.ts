@@ -504,13 +504,13 @@ describe('sessions stay per address', () => {
 
 describe('the brand', () => {
   test("on an app's address, /api/brand names the app", async ({ api }) => {
-    expect(((await (await api.fetch(`${DASH}/api/brand`)).json()) as { app_name: string }).app_name).toBe('Feather Dash')
+    expect(((await (await api.fetch(`${DASH}/api/brand`)).json()) as { app_name: string }).app_name).toBe('Dash')
   })
 
   test('on the admin address, /api/brand names the instance', async ({ api }) => {
     const instance = ((await (await api.fetch('/api/brand')).json()) as { app_name: string }).app_name
     expect(((await (await api.fetch(`${ADMIN}/api/brand`)).json()) as { app_name: string }).app_name).toBe(instance)
-    expect(instance).not.toBe('Feather Dash')
+    expect(instance).not.toBe('Dash')
   })
 })
 

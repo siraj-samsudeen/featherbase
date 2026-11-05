@@ -162,7 +162,7 @@ class BaseInstall {
   }
   async inspect(name = 'tasker') {
     await this.open(APPS);
-    await this.page.getByRole('navigation', { name: 'Available apps' }).getByRole('button', { name: name === 'tasker' ? /Tasker/ : /Feather Dash/ }).click();
+    await this.page.getByRole('navigation', { name: 'Available apps' }).getByRole('button', { name: name === 'tasker' ? /Tasker/ : /Dash/ }).click();
   }
   details(name = 'Tasker') { return this.page.getByLabel(`${name} details`); }
   async detailsContain(text, name) {
@@ -181,7 +181,7 @@ class BaseInstall {
     assert.equal((await this.app()).installed, true);
   }
   async preparationsShown() {
-    for (const name of ['Tasker', 'Feather Dash']) {
+    for (const name of ['Tasker', 'Dash']) {
       const button = this.page.getByRole('navigation', { name: 'Available apps' }).getByRole('button', { name: new RegExp(name) });
       assert.match(await button.innerText(), /Needs preparation/);
     }
@@ -332,7 +332,7 @@ class BaseInstall {
   }
   async configureDash() {
     await this.inspect('feather_dash');
-    await this.details('Feather Dash').getByRole('link', { name: 'Configure settings', exact: true }).click();
+    await this.details('Dash').getByRole('link', { name: 'Configure settings', exact: true }).click();
   }
   async manageDashIdentifier() {
     await this.applySettings({ 'App Setting': [{ row_id: 'feather_dash.dive_id', value: 'acceptance-report' }] });
@@ -359,14 +359,14 @@ class BaseInstall {
   }
   async readOnlyDeclaration() {
     await this.inspect('feather_dash');
-    await this.detailsContain('packaged declarations are read-only', 'Feather Dash');
-    assert.equal(await this.details('Feather Dash').locator('input,textarea').count(), 0);
+    await this.detailsContain('packaged declarations are read-only', 'Dash');
+    assert.equal(await this.details('Dash').locator('input,textarea').count(), 0);
   }
   async missingSecret() {
     const app = await this.app('feather_dash');
     assert.deepEqual(app.secrets.find(secret => secret.name === 'MOTHERDUCK_TOKEN'), { name: 'MOTHERDUCK_TOKEN', optional: false, present: false });
-    await this.detailsContain('MOTHERDUCK_TOKEN', 'Feather Dash');
-    await this.detailsContain('Missing', 'Feather Dash');
+    await this.detailsContain('MOTHERDUCK_TOKEN', 'Dash');
+    await this.detailsContain('Missing', 'Dash');
   }
   async secretsAbsent() {
     const json = JSON.stringify(await this.catalog());
