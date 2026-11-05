@@ -7,6 +7,5 @@
 const tableSlug = (name) => name.toLowerCase().replace(/[-_\s]+/g, ' ').trim().replace(/ /g, '-');
 const tableHref = (name) => `/featherbase/admin/table/${encodeURIComponent(tableSlug(name))}`;
 const rowHref = (table, rowId) => `${tableHref(table)}/row/${encodeURIComponent(rowId)}`;
-const mapHref = (table, rowId) => `${rowHref(table, rowId)}/map`;
 
-module.exports = { tableHref, rowHref, mapHref };
+module.exports = { tableHref, rowHref };

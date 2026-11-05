@@ -79,7 +79,7 @@ export function Attachments({ table, name, readOnly = false, canUpload = true }:
   return (
     <div className={cardClasses('min-w-0 p-4 [overflow-wrap:anywhere]')} data-testid="attachments-panel">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+        <span className="text-xs font-semibold text-ink-subtle">
           Attachments
         </span>
         {!readOnly && canUpload && <><button

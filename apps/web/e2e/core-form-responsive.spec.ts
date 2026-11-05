@@ -99,13 +99,13 @@ for (const width of [375, 1440]) {
     })
 
     await session.step('Work and Collaboration separate form fields from reachable attachments', async ({ page }) => {
-      await expect(page.getByTestId('form-section-0')).toBeVisible()
+      await expect(page.getByTestId('form-arranged')).toBeVisible()
       await expect(page.getByTestId('attachments-panel')).toBeHidden()
       await page.getByRole('tab', { name: 'Collaboration', exact: true }).click()
       await expect(page.getByTestId('attachments-panel')).toBeVisible()
-      await expect(page.getByTestId('form-section-0')).toBeHidden()
+      await expect(page.getByTestId('form-arranged')).toBeHidden()
       await contained(page, controls)
-      await page.getByRole('tab', { name: 'Work', exact: true }).click()
+      await page.getByRole('tab', { name: 'Form', exact: true }).click()
       await expect(page.locator('[data-field=title]')).toHaveValue(`Northern ${width} crates`)
     })
 
@@ -148,7 +148,7 @@ for (const width of [375, 1440]) {
         await page.screenshot({ path: `../../dist/core-responsive-${width}-${status}.png` })
         await page.unroute('**/api/save_row')
         await page.unroute('**/api/upload_file')
-        await page.getByRole('tab', { name: 'Work', exact: true }).click()
+        await page.getByRole('tab', { name: 'Form', exact: true }).click()
       })
     }
 

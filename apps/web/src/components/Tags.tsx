@@ -44,7 +44,7 @@ export function Tags({ table, name, readOnly = false }: { table: string; name: s
 
   return (
     <div className={cardClasses('p-4')} data-testid="tags-panel">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+      <div className="mb-2 text-xs font-semibold text-ink-subtle">
         Tags
       </div>
       {tags.isError && <p role="alert" className="text-sm text-negative">Tags could not be read.</p>}

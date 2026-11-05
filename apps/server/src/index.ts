@@ -1980,6 +1980,9 @@ app.get('/api/workflow/:table/:name', async (c) => {
 
 // UI-013: per-user list/view settings. Stored per (user, table) and only
 // ever readable/writable by that user.
+// A save merges its top-level keys into what is stored, so the list's
+// arrangement and the form's (`form`, #795) share one record without one
+// screen's save dropping the other's.
 app.get('/api/user_settings/:table', async (c) => {
   const [row] = await sql`
     select settings from user_settings
@@ -1992,7 +1995,7 @@ app.put('/api/user_settings/:table', async (c) => {
   await sql`
     insert into user_settings ("user", table_name, settings, updated_at)
     values (${who(c)}, ${c.req.param('table')}, ${settings as unknown as string}, now())
-    on conflict ("user", table_name) do update set settings = excluded.settings, updated_at = now()`
+    on conflict ("user", table_name) do update set settings = user_settings.settings || excluded.settings, updated_at = now()`
   return c.json({ ok: true })
 })
 

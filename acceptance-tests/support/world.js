@@ -145,6 +145,15 @@ class FeatherbaseWorld {
     return person.page;
   }
 
+  /** That person in a new browser, signed in again: nothing this browser kept is there. */
+  async signedInAfresh(who) {
+    const person = this.people.get(who);
+    if (!person) throw new Error(`no one called "${who}" in this scenario`);
+    const state = await signedInState(person.email, PERSON_PASSWORD);
+    ({ context: person.context, page: person.page } = await this.newPage(`${slug(who)}-again`, `${who} (again)`, state));
+    return person.page;
+  }
+
   /**
    * The page of whoever "the user" is in this scenario: the person created as
    * 'the user' when there is one, otherwise the System Manager (a scenario

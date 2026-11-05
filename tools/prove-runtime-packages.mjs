@@ -455,7 +455,7 @@ try {
     await staleCore.getByTestId('attach-file-input').setInputFiles({ name: 'stale-37.txt', mimeType: 'text/plain', buffer: Buffer.from('Must not attach from obsolete form') })
     assert.equal((await uploading).status(), expectedStatus)
     await expect(staleCore.getByTestId('attach-error')).toBeVisible()
-    await staleCore.getByRole('tab', { name: 'Work', exact: true }).click()
+    await staleCore.getByRole('tab', { name: 'Form', exact: true }).click()
   }
   const preferencesBefore = await api('/api/user_settings/tasker.preferences')
   const commentsBefore = await api('/api/table/Comment?limit_page_length=1000')
@@ -542,7 +542,7 @@ try {
     const sidebar = await page.getByTestId('admin-sidebar').boundingBox()
     return sidebar ? sidebar.x + sidebar.width : Number.POSITIVE_INFINITY
   }).toBeLessThanOrEqual(0)
-  await page.getByRole('tab', { name: 'Work', exact: true }).click()
+  await page.getByRole('tab', { name: 'Form', exact: true }).click()
   await page.screenshot({ path: resolve(output, 'upgraded-core-form-mobile.png'), fullPage: true })
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Upgraded core form has horizontal page overflow at 375px')
   for (const control of [page.locator('[data-field="task_title"]'), page.locator('[data-field="description"]'), page.getByTestId('form-save')]) {

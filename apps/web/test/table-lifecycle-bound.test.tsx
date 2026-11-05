@@ -142,8 +142,8 @@ test('A read-only data source keeps its tables view-only: the row form names the
   expect(screen.queryByTestId('form-save')).toBeNull()
   expect(screen.queryByTestId('form-delete')).toBeNull()
   expect(screen.queryByTestId('form-rename')).toBeNull()
-  // The values are still there to read.
-  expect((await screen.findAllByDisplayValue('Karaikal')).length).toBeGreaterThan(0)
+  // The values are still there to read, shown as values (#795).
+  expect((await screen.findAllByText('Karaikal')).length).toBeGreaterThan(0)
 })
 
 // #328 (Concurrent edits are caught when the source can tell): with no
