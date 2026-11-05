@@ -1261,9 +1261,7 @@ function ListCell({
         to="/featherbase/admin/table/$table/row/$name"
         search={{ prefill: undefined }}
         params={{ table, name: String(row.row_id) }}
-        className={touchLinkClasses(`font-medium text-action hover:underline ${
-          col.column_name === 'name' ? 'font-mono text-[13px]' : ''
-        }`)}
+        className={touchLinkClasses('font-medium text-action hover:underline')}
       >
         {col.column_name === 'row_id' && isPrincipalTable(table) ? (
           <PrincipalName id={String(row.row_id)} />
