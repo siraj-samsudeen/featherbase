@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { SearchInput, buttonClasses, cardClasses, touchRowClasses } from './ui'
-import { ChevronDown } from './ui/icons'
+import { ChevronDown, SearchInput, buttonClasses, cardClasses, touchRowClasses } from '@featherbase/shop-floor'
 
 const SEARCH_AFTER = 8
 
