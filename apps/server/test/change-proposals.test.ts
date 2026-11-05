@@ -267,6 +267,13 @@ describe('stale proposals', () => {
     expect((await probe(manager, { op: 'approve', id: second.row_id, decision: approval(manager.user) })).state).toBe('Needs fresh review')
   })
 
+  test('a row deleted meanwhile closes the proposal instead of stranding it', async ({ admin, createUser }) => {
+    const { maker, manager } = await setUp(admin, createUser)
+    const proposal = await probe(maker, ask(manager.user))
+    await sql`delete from ${sql(await tableRelation('Placement'))} where row_id = 'P-1'`
+    expect((await probe(manager, { op: 'approve', id: proposal.row_id, decision: approval(manager.user) })).state).toBe('Needs fresh review')
+  })
+
   test('applying one sends the others on that row back for a fresh review', async ({ admin, createUser }) => {
     const { maker, manager } = await setUp(admin, createUser)
     const first = await probe(maker, ask(manager.user))

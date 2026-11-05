@@ -18,6 +18,6 @@
 
 ## 4. Check and release
 
-- [ ] 4.1 Codex standard and adversarial reviews until clean.
-- [ ] 4.2 The independent UI verifier against the issue's checklist.
-- [ ] 4.3 Pre-deploy path proved locally; CI green; change archived.
+- [x] 4.1 Codex standard and adversarial reviews until clean.
+- [x] 4.2 The independent UI verifier against the issue's checklist.
+- [x] 4.3 Pre-deploy path proved locally; CI green; change archived.

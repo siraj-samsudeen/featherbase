@@ -311,6 +311,11 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
       const proposed = Object.fromEntries(proposal.changes.filter(c => !proposal.target_row || c.proposed_value !== c.review_base_value).map(c => [c.column_name, c.proposed_value]))
       let current: ActionRow | null = null
       if (proposal.target_row) {
+        const [exists] = await sql`select 1 from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = ${proposal.target_row}`
+        if (!exists) {
+          await close(proposal.row_id, 'Needs fresh review', { reason: 'What this was about no longer exists.' })
+          return oneProposal(app, id)
+        }
         current = await getDoc(meta.name, proposal.target_row) as ActionRow
         const stale = proposal.changes.some(c => asText(current![c.column_name], typeOf(meta, c.column_name)) !== (c.review_base_value ?? null))
           || (asText(current[declared.startsOn], 'Date') ?? '') > effective
