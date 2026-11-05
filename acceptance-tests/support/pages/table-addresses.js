@@ -181,7 +181,6 @@ class TableAddresses {
     await this.formReady();
     await this.page.getByRole('button', { name: 'Record actions', exact: true }).click();
     await expect(this.page.getByTestId('form-print')).toHaveAttribute('href', '/featherbase/print/route-probe/Stock%20review');
-    await expect(this.page.getByTestId('form-map')).toHaveAttribute('href', STOCK + '/map');
     await this.page.getByTestId('form-print').click();
     await expect(this.page.getByTestId('print-format-body')).toHaveText('Canonical review: Stock review');
     await expect(this.page.getByTestId('print-docname')).toContainText('Stock review');
@@ -192,9 +191,12 @@ class TableAddresses {
     await this.page.getByTestId('portal-row').getByRole('link', { name: 'Stock review', exact: true }).click();
     await expect(this.page.getByTestId('portal-doc')).toContainText('Stock review');
     await expect(this.page.getByTestId('portal-field-subject')).toHaveText('Stock review');
-    await this.visit(STOCK + '/map');
+    // #910: the map is the row page's Map tab, at the row's own address.
+    await this.visit(STOCK);
+    await this.formReady();
+    await this.page.getByRole('tab', { name: 'Map', exact: true }).click();
     await expect(this.page.getByTestId('relation-map')).toBeVisible();
-    await expect(this.page.getByTestId('map-open-form')).toHaveAttribute('href', STOCK);
+    assert.equal(new URL(this.page.url()).pathname, STOCK);
     await this.visit(ROOT + '/view/report');
     await expect(this.page.getByTestId('report-view')).toBeVisible();
     await expect(this.page.getByTestId('report-to-list')).toHaveAttribute('href', ROOT);

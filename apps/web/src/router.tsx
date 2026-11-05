@@ -64,7 +64,10 @@ import { CopyBar } from './components/CopyBar'
 import type { BrowseContext } from './lib/warehouse'
 import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
-import { RelationMap } from './pages/RelationMap'
+import { NavPathBar } from './components/NavPathBar'
+import { PaneSplit } from './components/RowPane'
+import { NavigationProvider, useAddressNavigation, useLocalNavigation } from './lib/navigation'
+import type { NavStep } from './lib/nav-path'
 
 // #642 (E4): a page with a frame policy of its own (the Sales Target report)
 // is entered and left by a full load, so each document carries the policy the
@@ -420,16 +423,24 @@ const tableRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'table/$table',
   ...tableAddress,
-  validateSearch: (search: Record<string, unknown>) => ({
+  // #910: `path` is the walk the user is on (lib/navigation); `filters`
+  // stays the way in from elsewhere (a saved view, a shared list link).
+  validateSearch: (search: Record<string, unknown>) => withPath(search, {
     filters: searchString(search.filters),
   }),
   component: tablePage(TableListPage),
 })
 
+/** A list or row page's search, with the walk's `path` when there is one:
+ *  kept as the router parsed it (an object), so the address carries it once,
+ *  not as a quoted string; decodePath validates either. */
+function withPath<T extends object>(search: Record<string, unknown>, rest: T): T & { path?: unknown } {
+  return search.path === undefined || search.path === null || search.path === '' ? rest : { ...rest, path: search.path }
+}
+
 function TableListPage() {
   const { table, tableMeta } = useTableAddress()
-  const { filters } = tableRoute.useSearch()
-  const navigate = tableRoute.useNavigate()
+  const { filters, path } = tableRoute.useSearch()
   // SET-001: a Settings Table has no list — open its one row directly.
   if (tableMeta.kind === 'settings') {
     return (
@@ -438,22 +449,33 @@ function TableListPage() {
       </div>
     )
   }
-  const parsed = parseFilters(filters)
+  return <NavigatedList key={table} table={table} filters={filters} path={path} />
+}
+
+function NavigatedList({ table, filters, path }: { table: string; filters?: string; path?: unknown }) {
+  const here = useMemo<NavStep>(() => {
+    const parsed = parseFilters(filters)
+    return parsed.length ? { screen: 'list', table, filters: parsed } : { screen: 'list', table }
+  }, [table, filters])
+  const nav = useAddressNavigation(here, path)
   return (
     <div data-testid="table-page">
       {/* #772: a table copied from a data source shows where from, and Copy again. */}
       <CopyBar key={`copy-${table}`} table={table} />
-      <ListView
-        key={table}
-        table={table}
-        filters={parsed}
-        onFiltersChange={(next) =>
-          navigate({
-            search: { filters: next.length ? JSON.stringify(next) : undefined },
-            replace: true,
-          })
-        }
-      />
+      <NavigationProvider value={nav}>
+        <NavPathBar />
+        <PaneSplit>
+          <ListView
+            key={table}
+            table={table}
+            filters={nav.step.filters ?? []}
+            onFiltersChange={(next) => {
+              const { filters: _, ...step } = nav.step
+              nav.push(next.length ? { ...step, filters: next } : step)
+            }}
+          />
+        </PaneSplit>
+      </NavigationProvider>
     </div>
   )
 }
@@ -882,7 +904,7 @@ const docRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'table/$table/row/$name',
   ...rowAddress,
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>) => withPath(search, {
     prefill: searchString(search.prefill),
   }),
   component: tablePage(TableFormPage),
@@ -891,7 +913,9 @@ const docRoute = createRoute({
 function TableFormPage() {
   const { table } = useTableAddress()
   const { name } = docRoute.useParams()
-  const { prefill } = docRoute.useSearch()
+  const { prefill, path } = docRoute.useSearch()
+  const here = useMemo<NavStep>(() => ({ screen: 'row', table, row: name }), [table, name])
+  const nav = useAddressNavigation(here, path)
   // #102 review: the raw prefill string is part of the key — navigating
   // from one ?prefill= URL to another (or clearing it, e.g. Ctrl/Cmd+B)
   // remounts the form instead of retaining the previous form's values.
@@ -908,12 +932,17 @@ function TableFormPage() {
   }
   return (
     <div data-testid="doc-page">
-      <FormView
-        key={`${table}/${name}/${prefill ?? ''}`}
-        table={table}
-        name={name}
-        prefill={parsedPrefill}
-      />
+      <NavigationProvider value={nav}>
+        <NavPathBar />
+        <PaneSplit onFocus={(pane) => nav.push({ screen: 'row', table: pane.table, row: pane.row, ...(nav.step.view ? { view: nav.step.view } : {}) })}>
+          <FormView
+            key={`${table}/${name}/${prefill ?? ''}`}
+            table={table}
+            name={name}
+            prefill={parsedPrefill}
+          />
+        </PaneSplit>
+      </NavigationProvider>
     </div>
   )
 }
@@ -941,7 +970,7 @@ const exploreRoute = createRoute({
   path: 'explore',
   validateSearch: (search: Record<string, unknown>) => ({
     root: searchString(search.root),
-    // Entry points (ListView split button, RelationMap) deep-link a whole
+    // Entry points (ListView split button, the row page's Map tab) deep-link a whole
     // workspace: `chain` pre-builds step2/step3, `select` preselects pane 1.
     // Both are validated the parseFilters way — malformed means absent.
     chain: searchString(search.chain),
@@ -953,8 +982,12 @@ const exploreRoute = createRoute({
 function ExplorePage() {
   const { root, chain, select } = exploreRoute.useSearch()
   const navigate = exploreRoute.useNavigate()
+  // #910: Explore keeps its own chain; its drill pane walks in memory.
+  const nav = useLocalNavigation({ screen: 'list', table: root || 'Explore' })
   return (
     <div data-testid="table-page">
+      <NavigationProvider value={nav}>
+      <PaneSplit>
       {/* Params initialize state, they are not two-way bound — in-view step
           and selection changes stay pure state (#87 keeps root shareable;
           the chain/select params exist for the entry points). The key
@@ -973,29 +1006,8 @@ function ExplorePage() {
           })
         }
       />
-    </div>
-  )
-}
-
-// #100 pattern 6: relationship map — the row's neighborhood as a walkable
-// graph. `trail` carries the hop history (static first segment).
-const mapRoute = createRoute({
-  getParentRoute: () => adminRoute,
-  path: 'table/$table/row/$name/map',
-  ...rowAddress,
-  validateSearch: (search: Record<string, unknown>) => ({
-    trail: search.trail,
-  }),
-  component: tablePage(MapPage),
-})
-
-function MapPage() {
-  const { table } = useTableAddress()
-  const { name } = mapRoute.useParams()
-  const { trail } = mapRoute.useSearch()
-  return (
-    <div data-testid="table-page">
-      <RelationMap key={`${table}/${name}`} table={table} name={name} trail={trail} />
+      </PaneSplit>
+      </NavigationProvider>
     </div>
   )
 }
@@ -1012,5 +1024,5 @@ export const routeTree = rootRoute.addChildren([
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute, accessExplanationRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

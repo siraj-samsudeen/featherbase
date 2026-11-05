@@ -1,5 +1,6 @@
 import { tableSlug } from 'shared'
 import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
+import { urlFilters } from './nav-url'
 
 const DT = 'Recents DT'
 const DOC = 'quokka-recent-doc'
@@ -165,7 +166,7 @@ test('#101: an empty command bar lists recent visits and replays them', async ({
 
     // Clicking the list entry replays the URL, filters included.
     await recents.nth(1).click()
-    await expect(page).toHaveURL(/filters=/)
+    await expect.poll(() => urlFilters(page.url())).toContainEqual(['note', '=', 'searchable'])
     await expect(page.getByTestId('table-page')).toBeVisible()
 
     await page.goto('/admin')
@@ -200,7 +201,7 @@ test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ s
       .filter({ hasText: 'Note = searchable' })
       .first()
       .click()
-    await expect(page).toHaveURL(/filters=/)
+    await expect.poll(() => urlFilters(page.url())).toContainEqual(['note', '=', 'searchable'])
     await expect(page.getByTestId('table-page')).toBeVisible()
 
     // The strip above the grid shows this table's recent row + filter set.
@@ -211,7 +212,7 @@ test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ s
 
     // A view chip re-applies the whole filter set; a row chip opens the form.
     await strip.getByTestId('recent-strip-view').first().click()
-    await expect(page).toHaveURL(/filters=/)
+    await expect.poll(() => urlFilters(page.url())).toContainEqual(['note', '=', 'searchable'])
     await strip.getByTestId('recent-strip-row').first().click()
     await expect(page).toHaveURL(new RegExp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${DOC}`))
     await expect(page.getByTestId('form-view')).toBeVisible()

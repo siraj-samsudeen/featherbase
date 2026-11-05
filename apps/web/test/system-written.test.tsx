@@ -2,7 +2,7 @@
 // no write affordance to anyone, Administrator included — absent, not
 // disabled — and its form opens read-only. Driven by the table's meta, so an
 // ordinary platform table (Comment) keeps its controls.
-import { screen, waitFor } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach } from 'vitest'
 import { logActivity } from 'server/src/audit'
@@ -53,8 +53,9 @@ test('an ordinary platform list keeps its New', async ({ admin }) => {
 test('an Activity Log row opens read-only, with no Save, Delete or Rename', async ({ admin }) => {
   const id = await seedActivity()
   await renderApp(`/featherbase/admin/table/activity-log/row/${id}`, admin)
-  const field = await screen.findByDisplayValue('seeded for the read-only form')
-  await waitFor(() => expect(field).toBeDisabled())
+  // #795: a read-only row shows its values, not disabled boxes.
+  await screen.findByText('seeded for the read-only form')
+  expect(within(screen.getByTestId('form-arranged')).queryAllByRole('textbox')).toHaveLength(0)
   await userEvent.click(screen.getByRole('button', { name: 'Record actions' }))
   for (const control of ['form-save', 'form-delete', 'form-rename'])
     expect(screen.queryByTestId(control), control).toBeNull()

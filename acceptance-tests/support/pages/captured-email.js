@@ -52,8 +52,15 @@ class CapturedEmail {
     await this.page.mouse.move(280, 180);
     await details.getByText('Raw details', { exact: true }).hover();
     await details.getByText('Raw details', { exact: true }).click();
-    await expect(details.locator('[data-field="body"]')).toBeDisabled();
-    await expect(details.locator('[data-field="attachment_b64"]')).toBeDisabled();
+    // A value the user can't edit: shown as a value (#795) or as a disabled
+    // control; either way nothing in it accepts input.
+    for (const column of ['body', 'attachment_b64']) {
+      const field = details.locator(`[data-field="${column}"], [data-form-field="${column}"]`).first();
+      await expect(field).toBeAttached();
+      const editable = field.locator('input:enabled, textarea:enabled, select:enabled, [contenteditable="true"]')
+        .or(field.locator('xpath=self::input[not(@disabled)] | self::textarea[not(@disabled)]'));
+      assert.equal(await editable.count(), 0, `${column} can be edited`);
+    }
     for (const id of ['form-save', 'form-delete', 'form-rename'])
       assert.equal(await this.page.getByTestId(id).count(), 0);
   }

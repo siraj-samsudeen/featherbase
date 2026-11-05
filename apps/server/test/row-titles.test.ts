@@ -92,7 +92,7 @@ describe('POST /api/row_titles', () => {
   test('a Table with no title column titles a row from its readable values', async ({ admin }) => {
     await seedMerch(admin)
     const res = await admin.post<Titles>('/api/row_titles', { rows: [{ table: MERCH, row_id: '1517|040802006' }] })
-    expect(res.titles).toEqual([{ table: MERCH, row_id: '1517|040802006', title: '1517 · Kurti Z' }])
+    expect(res.titles).toEqual([{ table: MERCH, row_id: '1517|040802006', title: 'Kurti Z · 1517' }])
   })
 
   test("a Table's title column wins", async ({ admin }) => {
