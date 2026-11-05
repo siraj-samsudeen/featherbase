@@ -169,7 +169,8 @@ async function fetchTargets(): Promise<ImportTarget[]> {
   const metas = await Promise.all(
     list.data.map((t) => api.get<TableMeta>(`/api/table/${encodeURIComponent(t.row_id)}:meta`)),
   )
-  return metas.map((m) => ({ name: m.name, columns: mappableColumns(m) }))
+  // #905: an archived Table takes no rows, so it is no import target.
+  return metas.filter((m) => !m.archived_at).map((m) => ({ name: m.name, columns: mappableColumns(m) }))
 }
 
 // IMP-013: the target picker. A native <select> over hundreds of Tables was

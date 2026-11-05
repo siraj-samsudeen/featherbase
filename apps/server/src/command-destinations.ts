@@ -27,7 +27,9 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
   const definitions = await sql<{
     name: string; owner_app: string | null; module: string; system: boolean;
     system_written: boolean; kind: 'table' | 'settings'
-  }[]>`select name, owner_app, module, system, system_written, kind from table_def where kind != 'sub_table' order by name`
+  }[]>`select name, owner_app, module, system, system_written, kind from table_def where kind != 'sub_table'
+      -- #905: an archived table is out of the command bar; All tables lists it.
+      and archived_at is null order by name`
   for (const definition of definitions) {
     const { name, owner_app } = definition
     if ((await permissionScope(user, name, 'read')) === 'none') continue

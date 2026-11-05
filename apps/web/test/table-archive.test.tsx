@@ -1,0 +1,77 @@
+// #905: a System Manager archives a custom Table from its list. A banner says
+// who, when and what replaced it; nobody can add rows; it moves to Archived
+// tables and out of the table pickers; Un-archive brings it all back.
+import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { test, expect, renderApp } from './pg-test'
+
+type Admin = Parameters<typeof renderApp>[1]
+const OLD = 'Twa SAP Plant'
+
+async function seed(admin: Admin) {
+  await admin.post('/api/table_def', { name: OLD, columns: [{ column_name: 'city', column_type: 'Data', label: 'City' }] })
+  await admin.post('/api/save_row', { table: OLD, row: { city: 'Chennai' } })
+}
+
+test('archiving from the list shows the banner, takes away New, and un-archive brings it back', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await renderApp('/featherbase/admin/table/twa-sap-plant', admin)
+  expect(await screen.findByTestId('list-new', undefined, { timeout: 10_000 })).toBeInTheDocument()
+  await user.click(await screen.findByRole('button', { name: 'Table administration' }))
+  await user.click(await screen.findByTestId('archive-table'))
+  const dialog = await screen.findByTestId('archive-table-dialog')
+  expect(dialog).toHaveTextContent(`Archive ${OLD}?`)
+  await user.type(within(dialog).getByTestId('archive-table-note'), 'Replaced by Plant')
+  await user.click(within(dialog).getByTestId('archive-table-confirm'))
+
+  const banner = await screen.findByTestId('archived-banner', undefined, { timeout: 10_000 })
+  expect(banner).toHaveTextContent(`${OLD} is archived.`)
+  expect(within(banner).getByTestId('archived-note')).toHaveTextContent('Replaced by Plant')
+  await waitFor(() => expect(within(banner).getByTestId('principal-name')).not.toHaveTextContent('…'))
+  expect(screen.queryByTestId('archive-table-dialog')).not.toBeInTheDocument()
+  // The rows stay; nothing adds or changes one.
+  expect(await screen.findByText('Chennai')).toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByTestId('list-new')).not.toBeInTheDocument())
+
+  await user.click(within(banner).getByTestId('unarchive-table'))
+  await waitFor(() => expect(screen.queryByTestId('archived-banner')).not.toBeInTheDocument(), { timeout: 10_000 })
+  expect(await screen.findByTestId('list-new')).toBeInTheDocument()
+})
+
+test('an archived Table is listed under Archived tables, once', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/table_def', { name: 'Twa Visit', columns: [{ column_name: 'plant', column_type: 'Data', label: 'Plant' }] })
+  await admin.post('/api/table_def/Twa%20SAP%20Plant/archive', { note: 'Replaced by Plant' })
+
+  await renderApp('/featherbase/admin/all-tables', admin)
+  const group = await screen.findByTestId('archived-group', undefined, { timeout: 10_000 })
+  expect(within(group).getByRole('link', { name: OLD })).toBeInTheDocument()
+  const nav = screen.getByTestId('table-nav')
+  expect(within(nav).getAllByRole('link', { name: OLD })).toHaveLength(1)
+})
+
+test('no table picker offers an archived Table', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/table_def', { name: 'Twa Visit', columns: [{ column_name: 'plant', column_type: 'Data', label: 'Plant' }] })
+  await admin.post('/api/table_def/Twa%20SAP%20Plant/archive', { note: 'Replaced by Plant' })
+  const user = userEvent.setup()
+  await renderApp('/featherbase/admin/table/twa-visit/columns', admin)
+  await user.click(await screen.findByRole('button', { name: 'Turn plant into a link' }, { timeout: 10_000 }))
+  const picker = await screen.findByRole('combobox', { name: 'Table plant links to' })
+  await waitFor(() => expect(within(picker).getAllByRole('option').length).toBeGreaterThan(2))
+  const options = within(picker).getAllByRole('option').map((o) => o.textContent)
+  expect(options).toContain('Twa Visit')
+  expect(options).not.toContain(OLD)
+})
+
+test('a row of an archived Table opens read only, with the banner', async ({ admin }) => {
+  await seed(admin)
+  const { data } = await admin.get<{ data: { row_id: string }[] }>(`/api/table/${encodeURIComponent(OLD)}`)
+  await admin.post('/api/table_def/Twa%20SAP%20Plant/archive', {})
+  await renderApp(`/featherbase/admin/table/twa-sap-plant/row/${encodeURIComponent(data[0].row_id)}`, admin)
+  const form = await screen.findByTestId('form-view', undefined, { timeout: 10_000 })
+  expect(await within(form).findByTestId('archived-banner')).toHaveTextContent(`${OLD} is archived.`)
+  expect(within(form).queryByTestId('form-save')).not.toBeInTheDocument()
+  expect(within(form).queryByTestId('unarchive-table')).not.toBeInTheDocument()
+})

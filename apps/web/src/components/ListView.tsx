@@ -11,7 +11,7 @@ import { useNavigation } from '../lib/navigation'
 import { TreeOfAll } from './RelationTree'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
 import { LinkControl } from './FormView'
-import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isArchived, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
 import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, switchColumn, titleListColumn, viewColumns, type ColumnArrangement, type ListColumn } from '../lib/list-view-columns'
 import { useI18n } from '../lib/i18n'
 import { useRealtime } from '../lib/realtime'
@@ -28,6 +28,7 @@ import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
 import { ActionDisclosure } from './ActionDisclosure'
 import { RenameTable } from './RenameTable'
+import { ArchiveTable, ArchivedBanner, canArchive } from './ArchiveTable'
 
 export type Filter = [string, string, unknown]
 
@@ -785,6 +786,8 @@ export function ListView({
               {meta.data && !meta.data.system && !meta.data.owner_app && !meta.data.data_source && meta.data.kind !== 'settings' && !isSystemWritten(meta.data) && (
                 <RenameTable table={table} />
               )}
+              {/* #905: archive a custom Table something replaced; deleting stays separate. */}
+              {canArchive(meta.data) && !isArchived(meta.data) && <ArchiveTable table={table} />}
               {!meta.data?.system && !isSystemWritten(meta.data) && (
                 <button
                   onClick={() => setConfirmingDelete(true)}
@@ -799,6 +802,7 @@ export function ListView({
           </ActionDisclosure>}
         </div>
       </div>
+      <ArchivedBanner table={table} meta={meta.data} canUnarchive={isSystemManager} />
       {conflictsOpen && meta.data && <ImportConflicts key={table} table={table} meta={meta.data} />}
       {settingsUnsaved && (
         <div className="mb-3" data-testid="list-settings-error">
