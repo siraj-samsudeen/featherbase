@@ -20,7 +20,7 @@ beforeAll(() => {
   const checkout = resolve(import.meta.dirname, '../../../..')
   const require = createRequire(resolve(checkout, 'apps/web/package.json'))
   const { JSDOM } = require('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Record<string, unknown> & { close(): void } } }
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/feather_dash/?view=sections' })
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/dash/?view=sections' })
   const added: string[] = []
   for (const key of Object.getOwnPropertyNames(dom.window)) {
     if (key in globalThis) continue
@@ -31,7 +31,7 @@ beforeAll(() => {
     Object.defineProperty(globalThis, key, { configurable: true, get: () => (key === 'window' ? dom.window : dom.window[key]) })
   ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
   ;(globalThis as Record<string, unknown>).fetch = async (url: string, init: RequestInit) => {
-    const [, kind, name] = /app_(reads|actions)\/feather_dash\/(.+)$/.exec(String(url))!
+    const [, kind, name] = /app_(reads|actions)\/dash\/(.+)$/.exec(String(url))!
     const body = JSON.parse(String(init.body))
     calls.push({ kind: kind as Call['kind'], name, payload: body.payload })
     const answer = answers[name]

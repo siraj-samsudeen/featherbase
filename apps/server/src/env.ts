@@ -116,7 +116,7 @@ export const VARIABLES = [
   { name: 'SMTP_PASSWORD', secret: true, required: 'optional',
     purpose: 'that user\'s **app password**; required when `SMTP_USER` is set. Google\'s grouped display (`abcd efgh ijkl mnop`) has its spaces removed' },
   { name: 'MAIL_FROM', secret: false, required: 'optional',
-    purpose: 'the From of every SMTP message (`Feather Dash <noreply@example.com>`); it wins over any Email Account address. Unset, the default Email Account\'s address is used' },
+    purpose: 'the From of every SMTP message (`Dash <noreply@example.com>`); it wins over any Email Account address. Unset, the default Email Account\'s address is used' },
   { name: 'SMTP_NAME', secret: false, required: 'optional',
     purpose: 'the `EHLO` hostname. Unset, the domain of `MAIL_FROM`, then the host of the `INSTANCE_ADDRESSES` entry marked for emails, then the sender\'s domain' },
   // ---- Abuse limits (see "Public-route abuse limits")

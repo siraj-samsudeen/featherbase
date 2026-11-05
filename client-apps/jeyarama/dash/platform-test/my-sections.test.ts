@@ -17,19 +17,19 @@ const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   createUser: async ({ createUser }, use) => use(async options => pinned(await createUser(options))),
 })
 const read = async (client: TestClient, name: string, payload: object = {}) =>
-  (await client.post<any>(`/api/app_reads/feather_dash/${name}`, { payload })).result
+  (await client.post<any>(`/api/app_reads/dash/${name}`, { payload })).result
 const act = async (client: TestClient, name: string, payload: object) =>
-  (await client.post<any>(`/api/app_actions/feather_dash/${name}`, { idempotencyKey: randomUUID(), payload })).result
+  (await client.post<any>(`/api/app_actions/dash/${name}`, { idempotencyKey: randomUUID(), payload })).result
 const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
 const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
 const asDay = (value: unknown) => (value instanceof Date ? value.toISOString().slice(0, 10) : value)
 const row = async (table: string, id: string) => (await sql`select * from ${sql(await tableRelation(table))} where row_id = ${id}`)[0]
-const READER = { roles: ['Feather Dash Reader'] }
+const READER = { roles: ['Dash Reader'] }
 
 async function world(admin: TestClient, createUser: CreateUserFn) {
   await installApp(admin)
   for (const table of BASE_TABLES) await admin.post('/api/table_def', table)
-  await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'feather_dash.linked_tables', value: JSON.stringify(LINKED_TABLES) } })
+  await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) } })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Master Data Editor' } })
   const save = (table: string, values: Record<string, unknown>) => saveRow(admin, table, values)
   const person = (name: string, roles = READER.roles) => createUser({ email: `${name}-${randomUUID()}@example.test`, roles })
@@ -80,8 +80,8 @@ describe('what a person sees', () => {
     const answer = await read(otherStaff, 'my_sections')
     expect(answer.jobs[0]).toMatchObject({ section: null, subcategories: [], reports_to: 'No Login Manager', waiting_for: 'the master data team' })
     expect(await read(stranger, 'my_sections')).toEqual({ state: 'unknown_person' })
-    const [setting] = await sql`select updated_at from app_setting where row_id = 'feather_dash.linked_tables'`
-    await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'feather_dash.linked_tables', updated_at: setting.updated_at, value: '[]' } })
+    const [setting] = await sql`select updated_at from app_setting where row_id = 'dash.linked_tables'`
+    await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.linked_tables', updated_at: setting.updated_at, value: '[]' } })
     expect(await read(stranger, 'my_sections')).toEqual({ state: 'not_set_up' })
   })
 
@@ -292,12 +292,12 @@ describe('what an approver decides', () => {
 
   test('a manager Dash does not open for is passed over, for the master data team', async ({ admin, createUser }) => {
     const { maker, manager, editor } = await world(admin, createUser)
-    await sql`delete from has_role where parent = ${manager.user!} and role = 'Feather Dash Reader'`
+    await sql`delete from has_role where parent = ${manager.user!} and role = 'Dash Reader'`
     const proposal = await act(maker, 'propose_move', move())
     expect(proposal.waiting_for).toBe('the master data team')
     expect((await read(editor, 'approvals')).proposals.map((p: any) => p.id)).toEqual([proposal.id])
     // An editor Dash doesn't open for can't take it either: then nobody can, and it says so.
-    await sql`delete from has_role where parent = ${editor.user!} and role = 'Feather Dash Reader'`
+    await sql`delete from has_role where parent = ${editor.user!} and role = 'Dash Reader'`
     await expect(act(maker, 'propose_move', { ...move(), placement: 'LKS-2' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Nobody else can approve') })
   })
 

@@ -164,7 +164,7 @@ test('a person with no viewer role is told plainly, with no API wording and no i
   const outsider = await createUser({ email: 'outsider.page@example.com' })
   await renderApp('/featherbase/sales-target', outsider)
   const note = await screen.findByTestId('embed-state')
-  await waitFor(() => expect(note).toHaveTextContent("You don't have access to Feather Dash yet"))
+  await waitFor(() => expect(note).toHaveTextContent("You don't have access to Dash yet"))
   expect(note).not.toHaveTextContent('Requires the')
   expect(note).not.toHaveTextContent('session could not be created')
 })
@@ -393,7 +393,7 @@ test('a role taken away mid-session shows the no-access card and no cached table
   })
   try {
     await renderApp('/featherbase/sales-target', reader)
-    expect(await screen.findByText("You don't have access to Feather Dash yet")).toBeInTheDocument()
+    expect(await screen.findByText("You don't have access to Dash yet")).toBeInTheDocument()
     expect(screen.queryByTestId('snapshot-report')).not.toBeInTheDocument()
     expect(screen.queryByText(/Numbers unavailable/)).not.toBeInTheDocument()
     expect(screen.queryByText('Report unavailable')).not.toBeInTheDocument()
@@ -418,7 +418,7 @@ test('a 403 from /report alone shows the no-access card', async ({ admin, create
   })
   try {
     await renderApp('/featherbase/sales-target', reader)
-    expect(await screen.findByText("You don't have access to Feather Dash yet")).toBeInTheDocument()
+    expect(await screen.findByText("You don't have access to Dash yet")).toBeInTheDocument()
     expect(screen.queryByText(/Numbers unavailable/)).not.toBeInTheDocument()
     expect(screen.queryByTestId('snapshot-error')).not.toBeInTheDocument()
   } finally {
@@ -438,7 +438,7 @@ test('a person with no full name is shown by email, never by id, in the header',
 test('a person with no viewer role gets a neutral header, not "Opening your report"', async ({ createUser }) => {
   const outsider = await createUser({ email: 'outsider.header@example.com' })
   await renderApp('/featherbase/sales-target', outsider)
-  await screen.findByText("You don't have access to Feather Dash yet")
+  await screen.findByText("You don't have access to Dash yet")
   expect(screen.getByTestId('identity')).not.toHaveTextContent('Opening your report')
 })
 

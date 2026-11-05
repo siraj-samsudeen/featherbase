@@ -5,7 +5,7 @@ type Embed = { frame?: string; not_set_up?: boolean; unreachable?: boolean; too_
 
 /** Where the Dive is served from (featherbase.json's `frameOrigins`), and the message it posts once it has drawn (B7). */
 export const DIVE_ORIGIN = 'https://embed-motherduck.com'
-export const DIVE_READY_MESSAGE = 'feather-dash:dive-ready'
+export const DIVE_READY_MESSAGE = 'dash:dive-ready'
 type ReportState = { state: string }
 
 export type View =

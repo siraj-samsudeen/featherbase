@@ -16,7 +16,7 @@ beforeAll(() => {
   const checkout = resolve(import.meta.dirname, '../../../..')
   const require = createRequire(resolve(checkout, 'apps/web/package.json'))
   const { JSDOM } = require('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Record<string, unknown> & { close(): void } } }
-  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/feather_dash/?store=9901' })
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/dash/?store=9901' })
   const added: string[] = []
   for (const key of Object.getOwnPropertyNames(dom.window)) {
     if (key in globalThis) continue
@@ -54,14 +54,14 @@ describe('choosing another store on the rendered page', () => {
   it("never draws the previous store's figures under the new store, even for an answer that lands before the new store opens", async () => {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
-    const { FeatherDash } = await import('./app')
+    const { Dash } = await import('./app')
     const container = document.getElementById('root')!
     const drawn: string[] = []
     const observer = new MutationObserver(records => {
       for (const r of records) for (const node of r.addedNodes) drawn.push(node.textContent ?? '')
     })
     observer.observe(container, { childList: true, subtree: true, characterData: true })
-    await act(async () => { createRoot(container).render(<FeatherDash />) })
+    await act(async () => { createRoot(container).render(<Dash />) })
     await act(async () => { await settle() })
     const old = calls.filter(c => c.store === '9901')
     expect(old.map(c => c.name).sort()).toEqual(['embed_session', 'report'])
@@ -83,13 +83,13 @@ describe('choosing another store on the rendered page', () => {
   async function openOn9901({ answer = true, embed = { not_set_up: true } as Record<string, unknown> } = {}) {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
-    const { FeatherDash } = await import('./app')
+    const { Dash } = await import('./app')
     history.replaceState(null, '', '?store=9901')
     calls.length = 0
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<FeatherDash />) })
+    await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
     const answerAll = async () => {
       for (const c of calls.filter(c => c.store === '9901'))
@@ -107,7 +107,7 @@ describe('choosing another store on the rendered page', () => {
       window.dispatchEvent(new (DomEvent().CustomEvent)('featherbase:bar-change', { detail: { key: 'store', value: '9901' } }))
       await settle()
     })
-    expect(container.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
     await unmount()
   })
 
@@ -118,7 +118,7 @@ describe('choosing another store on the rendered page', () => {
       window.dispatchEvent(new (DomEvent().PopStateEvent)('popstate'))
       await settle()
     })
-    expect(container.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
     await unmount()
   })
 
@@ -129,7 +129,7 @@ describe('choosing another store on the rendered page', () => {
       await settle()
     })
     await answerAll()
-    expect(container.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
     await unmount()
   })
 
@@ -141,7 +141,7 @@ describe('choosing another store on the rendered page', () => {
       await settle()
     })
     await answerAll()
-    expect(container.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
     await unmount()
   })
 
@@ -190,12 +190,12 @@ describe('choosing another store on the rendered page', () => {
     history.replaceState(null, '', '?store=9901&month=last')
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
-    const { FeatherDash } = await import('./app')
+    const { Dash } = await import('./app')
     calls.length = 0
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<FeatherDash />) })
+    await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
     expect(calls.filter(c => c.name !== 'stores' && c.name !== 'approvals').map(c => c.payload.month)).toEqual(['last', 'last'])
     await act(async () => root.unmount())
@@ -210,13 +210,13 @@ describe("the page's header", () => {
   it('says why the reader sees the store chosen, under the period and above the measure, and changes with the store', async () => {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
-    const { FeatherDash } = await import('./app')
+    const { Dash } = await import('./app')
     history.replaceState(null, '', '?store=9901')
     calls.length = 0
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<FeatherDash />) })
+    await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
     const answer = async (store: string, heading: unknown) => {
       for (const c of calls.filter(c => c.store === store))
@@ -247,13 +247,13 @@ describe("the page's header", () => {
   const openWithSections = async (sections: string[]) => {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
-    const { FeatherDash } = await import('./app')
+    const { Dash } = await import('./app')
     history.replaceState(null, '', '?store=9901')
     calls.length = 0
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<FeatherDash />) })
+    await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
     for (const c of calls.filter(c => c.store === '9901'))
       c.answer.resolve(c.name === 'report' ? withHeading('9901', { name: 'LKS', sections, reasons: [] }) : { not_set_up: true })
@@ -285,19 +285,19 @@ describe("the page's header", () => {
   it('draws the header above the Dive too', async () => {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
-    const { FeatherDash } = await import('./app')
+    const { Dash } = await import('./app')
     history.replaceState(null, '', '?store=9901')
     calls.length = 0
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<FeatherDash />) })
+    await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
     for (const c of calls.filter(c => c.store === '9901'))
       c.answer.resolve(c.name === 'report' ? withHeading('9901', { name: 'LKS', sections: [], reasons: [{ basis: 'store_manager', sections: [] }] })
         : { frame: 'https://embed-motherduck.com/sandbox/#session=made-up' })
     await act(async () => { await settle() })
-    expect(container.querySelector('[data-testid=feather-dash]')?.getAttribute('data-view')).toBe('dive')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('dive')
     expect(text(container, 'why-line')).toBe('You see LKS because you are its Store Manager.')
     await act(async () => root.unmount())
   })
@@ -305,13 +305,13 @@ describe("the page's header", () => {
   it('leaves the sentence out, not an empty line, when no reason is known', async () => {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
-    const { FeatherDash } = await import('./app')
+    const { Dash } = await import('./app')
     history.replaceState(null, '', '?store=9901')
     calls.length = 0
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<FeatherDash />) })
+    await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
     for (const c of calls.filter(c => c.store === '9901'))
       c.answer.resolve(c.name === 'report' ? withHeading('9901', { name: 'LKS', sections: ['Alpha'], reasons: [] }) : { not_set_up: true })

@@ -32,13 +32,8 @@
     },
     {
       "path": "client-apps/jeyarama/dash",
-      "version": "0.10.2",
-      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/ace7d8f12fc53dc595f7dbd74e5a46448c7a5bbf"
-    },
-    {
-      "path": "client-apps/jeyarama/dash",
-      "version": "0.10.3",
-      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/4dc1395f5ee1f9ee362bbfe3b37173eee4b5372f"
+      "version": "0.10.4",
+      "archive": "https://codeload.github.com/siraj-samsudeen/featherbase/tar.gz/c6f08c542b67f95bc8bc58dc946725de656f1ac8"
     }
   ],
   "madeUpData": "client-apps/jeyarama/dash/scripts/seed-made-up.mts"

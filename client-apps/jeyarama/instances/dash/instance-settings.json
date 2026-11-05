@@ -1,7 +1,7 @@
 {
   "settings": {
     "System Settings": {
-      "app_name": "Feather Dash",
+      "app_name": "Dash",
       "time_zone": "Asia/Kolkata",
       "privacy_notice": {
         "file": "privacy-notice.md"
@@ -86,19 +86,19 @@
         ],
         "App Setting": [
           {
-            "row_id": "feather_dash.dive_id",
+            "row_id": "dash.dive_id",
             "value": {
               "env": "DIVE_ID"
             }
           },
           {
-            "row_id": "feather_dash.embed_service_account",
+            "row_id": "dash.embed_service_account",
             "value": {
               "env": "SERVICE_ACCOUNT"
             }
           },
           {
-            "row_id": "feather_dash.linked_tables",
+            "row_id": "dash.linked_tables",
             "value": "[\"Employee\", \"Job Assignment\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site Master\"]"
           }
         ]
@@ -114,13 +114,13 @@
         ],
         "App Setting": [
           {
-            "row_id": "feather_dash.dive_id",
+            "row_id": "dash.dive_id",
             "value": {
               "env": "DIVE_ID"
             }
           },
           {
-            "row_id": "feather_dash.embed_service_account",
+            "row_id": "dash.embed_service_account",
             "value": {
               "env": "SERVICE_ACCOUNT"
             }

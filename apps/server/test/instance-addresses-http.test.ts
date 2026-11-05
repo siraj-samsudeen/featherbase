@@ -20,10 +20,10 @@ const setGoogleOpen = () => configureGoogle({ allowed_email_domains: '*' })
 
 const DASH = 'https://dash.example.com'
 const ADMIN = 'https://featherbase.example.com'
-const ROOT = '/featherbase/sales-target' // feather_dash's interim root (design D8)
+const ROOT = '/featherbase/sales-target' // dash's interim root (design D8)
 const ADDRESSES = parseInstanceAddresses(
   JSON.stringify([
-    { address: DASH, opens: 'feather_dash', emails: true },
+    { address: DASH, opens: 'dash', emails: true },
     { address: ADMIN, opens: 'admin' },
   ]),
   'test',
@@ -503,13 +503,13 @@ describe('sessions stay per address', () => {
 
 describe('the brand', () => {
   test("on an app's address, /api/brand names the app", async ({ api }) => {
-    expect(((await (await api.fetch(`${DASH}/api/brand`)).json()) as { app_name: string }).app_name).toBe('Feather Dash')
+    expect(((await (await api.fetch(`${DASH}/api/brand`)).json()) as { app_name: string }).app_name).toBe('Dash')
   })
 
   test('on the admin address, /api/brand names the instance', async ({ api }) => {
     const instance = ((await (await api.fetch('/api/brand')).json()) as { app_name: string }).app_name
     expect(((await (await api.fetch(`${ADMIN}/api/brand`)).json()) as { app_name: string }).app_name).toBe(instance)
-    expect(instance).not.toBe('Feather Dash')
+    expect(instance).not.toBe('Dash')
   })
 })
 
@@ -543,7 +543,7 @@ describe('the release preflight', () => {
   test('passes a valid list and says what it opens', async () => {
     await asRelease(async () =>
       expect(await preflightRelease({ environment: 'production' })).toContain(
-        'INSTANCE_ADDRESSES: https://dash.example.com opens feather_dash (emails), https://featherbase.example.com opens admin',
+        'INSTANCE_ADDRESSES: https://dash.example.com opens dash (emails), https://featherbase.example.com opens admin',
       ))
   })
 
@@ -606,16 +606,16 @@ describe('an address that opens an installed app package', () => {
 // is installed (design D8, "Interim target"). From then on its address opens
 // the app, names it, and signs its readers in to it.
 describe('an address whose app is installed under the interim name', () => {
-  const APP_ROOT = '/feather_dash/'
+  const APP_ROOT = '/dash/'
   const get = (api: TestClient, url: string) => api.fetch(url, { headers: { accept: 'text/html' } })
 
-  /** The stand-in installed as feather_dash: readable by All, so anyone can
+  /** The stand-in installed as dash: readable by All, so anyone can
    *  open it and no one gains a Table grant of their own by it. */
   async function installDashApp(admin: TestClient) {
     const { discoverPackages } = await import('../src/runtime-packages')
     const { resolve } = await import('node:path')
     expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/dash-stand-in')])).toEqual([])
-    await admin.post('/api/install_app', { name: 'feather_dash' })
+    await admin.post('/api/install_app', { name: 'dash' })
   }
 
   // The installed app stays loaded in this process after its rows roll back.
@@ -636,7 +636,7 @@ describe('an address whose app is installed under the interim name', () => {
 
   test("the address's brand is the installed app's title", async ({ api, admin }) => {
     await installDashApp(admin)
-    expect(await (await api.fetch(`${DASH}/api/brand`)).json()).toMatchObject({ app_name: 'Dash stand-in', opens: 'feather_dash' })
+    expect(await (await api.fetch(`${DASH}/api/brand`)).json()).toMatchObject({ app_name: 'Dash stand-in', opens: 'dash' })
   })
 
   test('a person who can open the app, without the report role, lands on its root', async ({ api, admin }) => {
@@ -658,7 +658,7 @@ describe('an address whose app is installed under the interim name', () => {
   // database, never whether this process is serving the app. A disabled,
   // pending or locally unloaded app is still installed: its address keeps to
   // the app's root, which answers that the app is unavailable.
-  const disable = (admin: TestClient) => admin.post('/api/set_app_enabled', { name: 'feather_dash', enabled: false })
+  const disable = (admin: TestClient) => admin.post('/api/set_app_enabled', { name: 'dash', enabled: false })
 
   test('a disabled app keeps / on the app root', async ({ api, admin }) => {
     await installDashApp(admin)
@@ -691,7 +691,7 @@ describe('an address whose app is installed under the interim name', () => {
   test('an app pending activation, as a restarted process finds it, keeps / on the app root', async ({ api, admin }) => {
     const { discoverPackages } = await import('../src/runtime-packages')
     await installDashApp(admin)
-    await sql`update installed_app set activation_pending = true where name = 'feather_dash'`
+    await sql`update installed_app set activation_pending = true where name = 'dash'`
     await discoverPackages([])
     expect((await get(api, `${DASH}/`)).headers.get('location')).toBe(APP_ROOT)
   })
@@ -720,7 +720,7 @@ describe('an address whose app is installed under the interim name', () => {
     const { discoverPackages } = await import('../src/runtime-packages')
     await installDashApp(admin)
     await discoverPackages([])
-    await sql`delete from installed_app where name = 'feather_dash'`
+    await sql`delete from installed_app where name = 'dash'`
     expect((await get(api, `${DASH}/`)).headers.get('location')).toBe(ROOT)
   })
 })

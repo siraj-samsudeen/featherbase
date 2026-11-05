@@ -7,9 +7,9 @@ export class ApiError extends Error {
 /** Calls one of Feather Dash's declared reads on the platform, as the
  *  signed-in person (the session cookie rides along on the same origin). */
 export async function read<T>(name: string, payload: Record<string, unknown> = {}): Promise<T> {
-  const response = await fetch(`/api/app_reads/feather_dash/${encodeURIComponent(name)}`, {
+  const response = await fetch(`/api/app_reads/dash/${encodeURIComponent(name)}`, {
     method: 'POST', credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `feather_dash@${version}` },
+    headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `dash@${version}` },
     body: JSON.stringify({ payload }),
   })
   const body = await response.json().catch(() => ({}))
@@ -20,9 +20,9 @@ export async function read<T>(name: string, payload: Record<string, unknown> = {
 /** Runs one of Dash's declared actions. A fresh key per call: a retry after a lost answer is
  *  the caller pressing the button again, and the rules refuse a repeat. */
 export async function act<T>(name: string, payload: Record<string, unknown>): Promise<T> {
-  const response = await fetch(`/api/app_actions/feather_dash/${encodeURIComponent(name)}`, {
+  const response = await fetch(`/api/app_actions/dash/${encodeURIComponent(name)}`, {
     method: 'POST', credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `feather_dash@${version}` },
+    headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `dash@${version}` },
     body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), payload }),
   })
   const body = await response.json().catch(() => ({}))
@@ -45,6 +45,6 @@ export async function accessFacts(): Promise<{ manages: boolean; missing?: strin
   const me = await platformGet<{ capabilities?: { manage?: boolean } }>('/api/whoami').catch(() => undefined)
   if (!me?.capabilities?.manage) return { manages: false }
   const health = await platformGet<{ checks: { key: string; missing?: string[]; fix?: string | null }[] }>('/api/instance-health').catch(() => undefined)
-  const check = health?.checks.find(c => c.key === 'app-setup:feather_dash')
+  const check = health?.checks.find(c => c.key === 'app-setup:dash')
   return { manages: true, missing: check?.missing, fix: check?.fix ?? null }
 }
