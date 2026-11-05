@@ -88,7 +88,7 @@ describe('Copy a warehouse table into Featherbase', () => {
       (select count(*)::int from import_log where ref_table = 'Quiet Stores') as runs`)[0]
     async function quietCopy(admin: TestClient) {
       await changeStandin(dir, 'sales', ['create or replace table quiet_stores as select * from stores'])
-      await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-quiet', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+      await admin.post(`${SOURCES}:motherduck_connect`, { name: 'tc-quiet', databases: ['sales'] })
       await admin.post(`${SOURCES}/tc-quiet:copy_create`, { database: 'sales', schema: 'main', table: 'quiet_stores', name: 'Quiet Stores', key: 'code', columns: STORES })
     }
     const source = async (statement: string) => {
