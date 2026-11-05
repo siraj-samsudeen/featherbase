@@ -5,7 +5,7 @@ import { rmSync } from 'node:fs'
 import { makeClient, type TestClient } from 'feather-testing-postgres'
 import { app } from '../src/index'
 import { issueSession } from '../src/auth'
-import { deleteTable, tableRelation } from '../src/table-engine'
+import { changeColumnType, deleteTable, tableRelation } from '../src/table-engine'
 import { sql } from '../src/db'
 import { test } from './pg-test'
 import { committedTest } from './pg-test-shared'
@@ -632,6 +632,8 @@ describe('Copy a warehouse table into Featherbase', () => {
     const meta = await admin.get<{ columns: { column_name: string }[] }>('/api/table/Marker%20Copy:meta')
     await expect(admin.put('/api/table_def/Marker%20Copy', { columns: meta.columns.filter(c => c.column_name !== 'deleted_at_source'), remove_columns: ['deleted_at_source'] }))
       .rejects.toMatchObject(refused)
+    // An app migration's type change is refused too: Copy again writes it as a check box.
+    await expect(changeColumnType('Marker Copy', 'deleted_at_source', 'Int')).rejects.toMatchObject({ message: expect.stringContaining('cannot be changed') })
     await admin.post('/api/table/Marker%20Copy:copy_again', {})
     expect(await admin.get('/api/table/Marker%20Copy/S002')).toMatchObject({ display_name: 'Hill Street', deleted_at_source: false })
   })
