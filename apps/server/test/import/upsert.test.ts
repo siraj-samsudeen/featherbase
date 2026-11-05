@@ -698,12 +698,15 @@ describe('UPS-R5: the key is remembered per Table', () => {
       )}&order_by=${encodeURIComponent('created_at desc')}`,
     )
     expect(logs.data.length).toBe(3) // seed request + keyed run + keyless run
-    // Latest row (the keyless run) records the truthful zero count but no
-    // match-key configuration…
-    expect(logs.data[0].updated).not.toBeNull()
-    expect(logs.data[0].updated).toBe(0)
-    expect(logs.data[0].key_column).toBeNull()
-    expect(logs.data[0].empty_cells).toBeNull()
+    // Keyless runs (the seed and the later one) record the truthful zero count
+    // but no match-key configuration… Found by content: inside the sandbox's one
+    // transaction now() is frozen, so created_at ties and its order is arbitrary.
+    const keyless = logs.data.filter((l) => l.key_column == null)
+    expect(keyless).toHaveLength(2)
+    for (const run of keyless) {
+      expect(run.updated).toBe(0)
+      expect(run.empty_cells).toBeNull()
+    }
     // …and the wizard's lookup — newest row WITH a key — still finds the
     // remembered pair, so a keyless run never erases the suggestion.
     const remembered = logs.data.find((l) => l.key_column != null)
