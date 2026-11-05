@@ -89,6 +89,23 @@ describe('NAV-002: related filters', () => {
     expect(names).toEqual(['O-1', 'O-3'])
   })
 
+  // #835: 'not related' — rows holding none of a sub-table's matching rows.
+  test('not related, via sub-table: rows with no child pointing at the target', async ({ admin }) => {
+    await setup(admin)
+    const { names } = await list(admin, ORDER, [
+      ['row_id', 'not related', { via: LINE, column: 'part', table: PART, filters: [['row_id', '=', 'P-1']] }],
+    ])
+    expect(names).toEqual(['O-2'])
+  })
+
+  test("'not related' takes only the sub-table shape", async ({ admin }) => {
+    await setup(admin)
+    const res = await admin.fetch(`/api/table/${encodeURIComponent(ORDER)}?filters=${encodeURIComponent(JSON.stringify([
+      ['supplier', 'not related', { table: SUP, filters: [['city', '=', 'Chennai']] }],
+    ]))}`)
+    expect(res.status).toBe(417)
+  })
+
   test('parent: child rows whose owning row matches', async ({ admin }) => {
     await setup(admin)
     const { names, total } = await list(admin, LINE, [

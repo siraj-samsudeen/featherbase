@@ -32,6 +32,7 @@ const REFUSED = { status: 403, type: 'PermissionError', message: expect.stringMa
 // is written by the server alone; the ones left out are edited by people.
 const SYSTEM_WRITTEN = [
   'Access Log',
+  'Access Request',
   'Activity Log',
   'Background Job',
   'Dataset Miss',
@@ -334,6 +335,7 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/set_language': 'personal preference',
     'POST /api/set_password': 'credentials',
     'POST /api/people/names': 'read',
+    'POST /api/access_request': 'audit: records an access request for the person asking (#955)',
     'POST /api/row_titles': 'read',
     'POST /api/people/:id/identities': 'person identities',
     'POST /api/people/:id/identifiers': 'person identifiers',

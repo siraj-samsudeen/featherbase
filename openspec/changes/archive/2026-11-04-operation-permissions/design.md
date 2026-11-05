@@ -127,7 +127,7 @@ silently widens the grant.
 
 ## Migration Plan
 
-`0144_operation_permissions` runs once on the next release: converts rows, repoints each
+`0145_operation_permissions` runs once on the next release: converts rows, repoints each
 installed app's grant ids and recorded declaration, adds the dependency constraints and
 replaces `fc_has_read`. Rollback is restoring the pre-release backup; there is no down
 migration.

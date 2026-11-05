@@ -34,7 +34,7 @@ interface Landing {
  *  that no installed app with pages of its own owns (#659: tableAccessFor's
  *  `admin` is the rule).
  *  The same facts /api/whoami's capabilities draw the shell from. */
-async function canUseAdmin(person: string): Promise<boolean> {
+export async function canUseAdmin(person: string): Promise<boolean> {
   const roles = await getRoles(person)
   if (person === 'Administrator' || roles.includes('System Manager')) return true
   return (await tableAccessFor(person, roles)).admin
@@ -44,7 +44,7 @@ async function canUseAdmin(person: string): Promise<boolean> {
  *  feather_dash is installed (#671), Feather Dash's interim gate is today's
  *  report gate (design D8); an installed app is open to whoever its catalog
  *  lists, and to no one while it is disabled or not loaded here. */
-async function canOpenApp(person: string, app: string): Promise<boolean> {
+export async function canOpenApp(person: string, app: string): Promise<boolean> {
   if (app === 'feather_dash' && !(await isInstalled(app))) return (await getRoles(person)).includes(VIEWER_ROLE)
   return (await appCatalog(person)).some((entry) => entry.name === app)
 }

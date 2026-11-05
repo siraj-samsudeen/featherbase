@@ -597,7 +597,10 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       const html = await (await member.fetch('/tasker/')).text()
       expect(html).toContain('<featherbase-bar data-app="tasker" data-title="Tasker"></featherbase-bar>')
       expect(html).not.toContain('Other tasks')
-      expect((await member.fetch('/other/')).status).toBe(404)
+      // #955: no page of the app, only word that an admin has been told.
+      const refused = await member.fetch('/other/')
+      expect(refused.status).toBe(403)
+      expect(await refused.text()).toContain("You don't have access to Other tasks yet")
     } finally {
       await rm(restricted, { recursive: true, force: true })
     }
@@ -911,7 +914,10 @@ describe('An app declares its phone tabs', () => {
       await admin.post('/api/install_app', { name: 'other' })
       const member = await createUser({ email: 'app-tabs-no-read@example.com', roles: [] })
       expect(await member.get('/api/app_catalog')).toEqual([])
-      expect((await member.fetch('/other/targets', { headers: { accept: 'text/html' } })).status).toBe(404)
+      // #955: no page of the app, only word that an admin has been told.
+      const refused = await member.fetch('/other/targets', { headers: { accept: 'text/html' } })
+      expect(refused.status).toBe(403)
+      expect(await refused.text()).not.toContain('<featherbase-bar')
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 

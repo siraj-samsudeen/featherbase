@@ -80,7 +80,8 @@ describe('the org_chart scope provider on the platform', () => {
     const { people } = await setup(admin, createUser)
     expect(await resolvePersonScope(people['p-103'], await binding())).toEqual([{
       label: '9901 / Section: Sarees', filters: { store: ['9901'], subcategory: ['010101001'] },
-      basis: 'team_leader', confirmation: { store: { '9901': 'confirmed' }, subcategory: { '010101001': 'confirmed' } },
+      basis: 'team_leader', reasons: [{ text: 'Team Leader job assignment', since: '2026-01-01' }],
+      confirmation: { store: { '9901': 'confirmed' }, subcategory: { '010101001': 'confirmed' } },
     }])
   })
 
@@ -98,7 +99,8 @@ describe('the org_chart scope provider on the platform', () => {
     })
     const expected = [{
       label: '9901 / Section: Sarees', filters: { store: ['9901'], subcategory: ['010101001'] },
-      basis: 'team_leader', confirmation: { store: { '9901': 'confirmed' }, subcategory: { '010101001': 'confirmed' } },
+      basis: 'team_leader', reasons: [{ text: 'Team Leader job assignment', since: '2026-01-01' }],
+      confirmation: { store: { '9901': 'confirmed' }, subcategory: { '010101001': 'confirmed' } },
     }]
     expect(await resolvePersonScope(people['p-103'], await binding())).toEqual(expected)
 
@@ -150,6 +152,7 @@ describe('the org_chart scope provider on the platform', () => {
     const expected = [{
       label: '9902 / Section: Accessories', filters: { store: ['9902'], subcategory: ['010404001', '010404002'] },
       basis: 'assignment, team_leader',
+      reasons: [{ text: 'Sales Target Assignment, by the old rules' }, { text: 'Team Leader, by the old rules' }],
       confirmation: { store: { '9902': 'assumed' }, subcategory: { '010404001': 'assumed', '010404002': 'assumed' } },
     }]
     expect(await resolvePersonScope(people['p-131'], await binding())).toEqual(expected)
@@ -166,9 +169,11 @@ describe('the org_chart scope provider on the platform', () => {
     })
     expect(await resolvePersonScope(people['p-131'], await binding())).toEqual([{
       label: '9902 / Section: Accessories', filters: { store: ['9902'], subcategory: ['010404001', '010404002'] }, basis: 'assignment, store_manager',
+      reasons: [{ text: 'Sales Target Assignment, by the old rules' }, { text: 'Store Manager, by the old rules' }],
       confirmation: { store: { '9902': 'assumed' }, subcategory: { '010404001': 'assumed', '010404002': 'assumed' } },
     }, {
       label: '9902 / Section: Footwear', filters: { store: ['9902'], subcategory: ['010505001'] }, basis: 'store_manager',
+      reasons: [{ text: 'Store Manager, by the old rules' }],
       confirmation: { store: { '9902': 'assumed' }, subcategory: { '010505001': 'assumed' } },
     }])
   })

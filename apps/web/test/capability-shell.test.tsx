@@ -108,14 +108,15 @@ test('a viewer-only person reaches their sign-in methods on the account page, st
   expect(urls.filter((u) => /^\/api\/(table|home_pages|app_catalog|unread_count|events|navigable_tables)/.test(u))).toEqual([])
 })
 
-test('a person with neither the viewer role nor a Table grant lands on a plain no-access page', async ({ admin, createUser }) => {
+test('a person with neither the viewer role nor a Table grant lands on a plain no-access page, which asks for access', async ({ admin, createUser }) => {
   await seed(admin)
   const nobody = await createUser({ email: 'nobody@example.com' })
   const urls = recordCalls()
   await renderApp('/featherbase/admin/home/home', nobody)
   const page = await screen.findByTestId('no-access')
-  expect(page).toHaveTextContent("You don't have access to anything here yet")
-  expect(page).toHaveTextContent(/ask your administrator/i)
+  // #955: opening Featherbase with no access is the request for it.
+  await waitFor(() => expect(page).toHaveTextContent("You don't have access to Featherbase yet"))
+  expect(page).toHaveTextContent('An admin has been told')
   for (const id of [...ADMIN_ONLY_TESTIDS, 'admin-sidebar']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
   expect(urls.filter((u) => /^\/api\/(table|home_pages|app_catalog|unread_count|events)/.test(u))).toEqual([])
   // #489: signing out is in the shared top bar's Account menu.

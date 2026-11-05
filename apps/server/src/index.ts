@@ -26,7 +26,7 @@ import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
 import { personByEmail, pickPeople, principalNames, tableMembers } from './people-directory'
-import { countWaitingForAccess } from './waiting-for-access'
+import { countWaitingForAccess, noAccessYetPage, requestAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { sendInvitation } from './invitation-email'
@@ -829,8 +829,9 @@ app.get('*', async (c, next) => {
       return c.notFound()
     }
     let resource
+    let user: SessionUser | undefined
     try {
-      const user = await resolveToken(authCredential(c))
+      user = await resolveToken(authCredential(c))
       resource = await appAsset(name, asset, user.row_id, c.req.header('accept')?.includes('text/html'))
     } catch (error) {
       if (!(error instanceof AppError)) throw error
@@ -840,6 +841,10 @@ app.get('*', async (c, next) => {
           `/featherbase/login?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`,
         )
       if (!navigation || path.extname(asset)) throw error
+      // #955: a served app this person cannot open: opening it is the request.
+      const asked = user && (await requestAccess(user.row_id, name))
+      if (asked && asked.state === 'waiting')
+        return c.html(noAccessYetPage(asked.title), 403)
       return c.html(
         `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Application unavailable</title></head>
       <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
@@ -1280,11 +1285,20 @@ app.post('/api/setup/system-managers', async (c) => {
   return c.json(await setUpSystemManagers(await c.req.json().catch(() => null), who(c), externalOrigin(c).origin))
 })
 
-// #429/#835: how many signed in but hold no role yet, for the menu badge.
-// System Manager only. The list itself is the standard Person list.
+// #955: how many access requests are waiting, for the menu badge. System
+// Manager only. The list itself is the standard Access Request list.
 app.get('/api/people/waiting_for_access/count', async (c) => {
   await assertSystemManager(who(c))
   return c.json({ count: await countWaitingForAccess() })
+})
+
+// #955: a page that found the person has no access to it (Featherbase's
+// no-access page, Feather Dash's) says so here; opening it is the request.
+app.post('/api/access_request', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { app?: unknown }
+  const answer = typeof body.app === 'string' ? await requestAccess(who(c), body.app) : null
+  if (!answer) throw new AppError('ValidationError', 'No such app to ask for')
+  return c.json(answer)
 })
 
 // person-rename: ids are opaque, so screens ask for names (batch), and the
