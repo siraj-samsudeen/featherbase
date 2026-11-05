@@ -239,6 +239,13 @@ describe('Master sync (#927)', { timeout: 60_000 }, () => {
     expect(await person(admin, 'P1')).toMatchObject({ phone: '111' })
     expect(await person(admin, 'P2')).toMatchObject({ phone: '555' })
     expect((await sunk()).at(-1)!.payload.original).toMatch(/does not fit/)
+    // A refused value was not "seen": the same value raises nothing new, and a valid one still applies.
+    const before = (await sunk()).length
+    expect(await run(admin)).toMatchObject({ applied: 0, raised: 0 })
+    expect(await sunk()).toHaveLength(before)
+    const later = (await sourceChanges(admin, source, [`update $T set phone = '333' where emp_id = 'E1'`])).master_sync
+    expect(later).toMatchObject({ applied: 1, raised: 0 })
+    expect(await person(admin, 'P1')).toMatchObject({ phone: '333' })
   })
 
   test('the scheduled refresh of a copy runs its sync rule after the copy', async ({ admin }) => {

@@ -287,6 +287,15 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
       }
       result.linked++
       const values: Record<string, unknown> = {}
+      // What this run saw, kept as the row's last-seen values once it is done.
+      let seen: Record<string, Value> | undefined
+      // A source value that could not be applied was not "seen": the column
+      // keeps its old baseline, so a later valid value still applies.
+      const keepBaseline = (field: string) => {
+        const before = snapshots.get(key)
+        if (before?.master_row === target && Object.hasOwn(before.source_values, field)) seen![field] = before.source_values[field]
+        else delete seen![field]
+      }
       if (row.gone) {
         // Never delete: mark inactive when the rule says how, else ask.
         if (!rule.inactive) differences.push({ kind: 'gone', source_key: key, master_row: target, column_name: null, source_value: null, featherbase_value: null })
@@ -297,26 +306,23 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
       } else {
         const snapshot = snapshots.get(key)
         const seenBefore = snapshot && snapshot.master_row === target ? snapshot.source_values : undefined
-        const sourceNow: Record<string, Value> = {}
+        seen = {}
         for (const [field, spec] of Object.entries(rule.columns)) {
           const type = master.columns.find(c => c.column_name === field)?.column_type
           const source = normalize(row[spec.source], type)
           const featherbase = normalize(current[field], type)
-          sourceNow[field] = source
+          seen[field] = source
           const decision = decideColumn(spec.owner, seenBefore === undefined || !Object.hasOwn(seenBefore, field) ? undefined : seenBefore[field], source, featherbase)
           const stored = decision.apply ? toMaster(row[spec.source], type) : undefined
-          if (decision.apply && isNotFitting(stored))
+          if (decision.apply && isNotFitting(stored)) {
             differences.push({ kind: 'cannot_apply', source_key: key, master_row: target, column_name: field, source_value: source, featherbase_value: featherbase })
-          else if (decision.apply) values[field] = stored
+            keepBaseline(field)
+          } else if (decision.apply) values[field] = stored
           else if (decision.raise) differences.push({ kind: decision.raise, source_key: key, master_row: target, column_name: field, source_value: source, featherbase_value: featherbase })
         }
-        // The snapshot is always the source as last seen.
-        await sql`insert into featherbase.master_sync_snapshot (copied_table, source_key, master_row, source_values)
-          values (${copied}, ${key}, ${target}, ${sql.json(sourceNow)})
-          on conflict (copied_table, source_key) do update set master_row = excluded.master_row, source_values = excluded.source_values, seen_at = now()`
       }
-      if (!Object.keys(values).length) { result.unchanged++; continue }
-      try {
+      if (!Object.keys(values).length) result.unchanged++
+      else try {
         // One row's save is its own savepoint: a value the master refuses
         // (a Choice it does not offer, a required value emptied, too long)
         // is raised, and every other row still syncs.
@@ -329,11 +335,16 @@ async function compareAndApply(actor: string, copied: string): Promise<Omit<Mast
         result.applied++
       } catch (error) {
         if (!(error instanceof AppError) || error.type !== 'ValidationError') throw error
-        for (const field of Object.keys(values))
+        for (const field of Object.keys(values)) {
           differences.push({ kind: 'cannot_apply', source_key: key, master_row: target, column_name: field,
             source_value: normalize(values[field], master.columns.find(c => c.column_name === field)?.column_type),
             featherbase_value: normalize(current[field], master.columns.find(c => c.column_name === field)?.column_type) })
+          if (seen) keepBaseline(field)
+        }
       }
+      if (seen) await sql`insert into featherbase.master_sync_snapshot (copied_table, source_key, master_row, source_values)
+        values (${copied}, ${key}, ${target}, ${sql.json(seen)})
+        on conflict (copied_table, source_key) do update set master_row = excluded.master_row, source_values = excluded.source_values, seen_at = now()`
     }
   }
   for (const d of differences) {
