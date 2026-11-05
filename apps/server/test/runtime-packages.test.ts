@@ -660,6 +660,37 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  test('an upgrade will not withdraw a grant someone else\'s deeper grant depends on', async ({ admin }) => {
+    const root = await mkdtemp(resolve('test/.tasker-withdraw-held-'))
+    const installed = resolve(root, 'installed')
+    const next = resolve(root, 'next')
+    try {
+      for (const to of [installed, next])
+        await cp(currentTasker, to, { recursive: true, filter: file => !file.split('/').includes('node_modules') })
+      const { version: from } = JSON.parse(await readFile(resolve(installed, 'package.json'), 'utf8')) as { version: string }
+      const to = '99.0.0'
+      await editJson(resolve(installed, 'featherbase.json'), m => { m.permissions.push({ table: 'Person', role: 'All', operations: { read: '*' } }) })
+      await editJson(resolve(next, 'featherbase.json'), m => { m.migrations.push({ id: 'withdraw_person_read_probe', fromVersion: from, toVersion: to, operations: [] }) })
+      await editJson(resolve(next, 'package.json'), p => { p.version = to })
+      expect(await discoverPackages([installed])).toEqual([])
+      await admin.post('/api/install_app', { name: 'tasker' })
+      const [base] = await sql`select row_id from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person' and operation = 'read'`
+      await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Manual Detail' } })
+      await sql`insert into permission (row_id, ref_table, role, operation, scope_mode, column_rule, requires_permission)
+        values ('manual-detail', 'Person', 'Manual Detail', 'read', 'all', 'every', ${String(base.row_id)})`
+      expect(await discoverPackages([installed, next])).toEqual([])
+      await loadInstalledApps()
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'tasker', version: to })
+      await expect(admin.post('/api/upgrade_app', { name: 'tasker', version: to, planId: plan.planId }))
+        .rejects.toMatchObject({ status: 417, message: expect.stringMatching(/Deeper access of Manual Detail depends on the grant to All on Person/) })
+      expect(await sql`select 1 from permission where row_id = 'manual-detail'`).toHaveLength(1)
+      expect(await everyoneReadsPerson()).toHaveLength(1)
+      expect(await sql`select package_version from installed_app where name = 'tasker'`).toEqual([{ package_version: from }])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })
 
 // #551 (ADR 0011, design E9): an app states the platform version it was built

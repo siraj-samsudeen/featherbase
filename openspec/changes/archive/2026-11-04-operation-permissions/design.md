@@ -111,6 +111,9 @@ good, where clearing the old flag left a restricted row to work again when ticke
 Release preflight refuses a pre-conversion row with nothing ticked that is creator-only
 or app-owned, since the conversion has no way to keep that restriction.
 
+An app upgrade likewise refuses to withdraw a grant that someone else's deeper grant
+depends on. Uninstalling an app, an explicit removal, still ends what depends on its grants.
+
 *Rejected:* letting it clear and defaulting the next tick to all rows and no app, which
 silently widens the grant.
 

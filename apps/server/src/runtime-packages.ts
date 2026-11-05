@@ -669,6 +669,15 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
         // Only the grants this app owns: an adopted, pre-existing grant stays.
         // Withdrawn first, under the names the Tables have before any rename.
         for (const p of prepared.withdrawn) {
+          // Someone's deeper grant needs this one: deleting it would end that
+          // too, with nothing to show for it. Refused while nothing has changed.
+          const held = await sql`select distinct d.role from permission d join permission g
+              on d.requires_permission = g.row_id or d.parent_permission = g.row_id
+            where g.owner_app = ${name} and g.ref_table = ${p.table} and g.role = ${p.role}
+              and g.scope_mode = ${p.scope_mode ?? 'all'} and g.operation in ${sql(Object.keys(p.operations))}
+              and d.owner_app is distinct from ${name} order by d.role`
+          if (held.length)
+            refuse(`Deeper access of ${held.map((d) => String(d.role)).join(', ')} depends on the grant to ${p.role} on ${p.table} that this upgrade withdraws. Remove those Permission Rows first, then upgrade`)
           const gone = await sql`
             with recursive withdrawn as (
               select row_id from permission
