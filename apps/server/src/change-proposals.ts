@@ -152,10 +152,21 @@ async function writeRoute(id: string, route: { people: string[]; roles: string[]
       parenttype: 'Change Proposal', parentfield: 'approvers', ...row } as unknown as Record<string, never>)}`
 }
 
-export function proposalsReader(app: string) {
+/** The decision rule, on its own: not the maker, and among those who may approve now. */
+async function mayDecide(user: string, maker: string, approvers: unknown): Promise<boolean> {
+  if (maker === user) return false
+  const route = await resolveRoute(checkedApprovers(approvers), maker)
+  if (!route) return false
+  if (route.people.includes(user)) return true
+  const roles = route.roles.length ? await getRoles(user) : []
+  return route.roles.some(role => roles.includes(role))
+}
+
+export function proposalsReader(app: string, user: string) {
   const guard = sequential()
   const helper: ChangeProposalsReader = Object.freeze({
     list: (filter: ProposalFilter = {}) => guard.run(() => proposalsWhere(app, filter)),
+    mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers)),
   })
   return { helper, close: guard.close }
 }
@@ -172,11 +183,8 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
   /** The caller may decide this proposal, or the request is refused. No role is an exception. */
   async function authorize(proposal: ChangeProposal, approvers: unknown) {
     if (proposal.maker === user) reject('Nobody can decide their own proposal')
-    const route = await resolveRoute(checkedApprovers(approvers), proposal.maker)
-    if (!route) reject('Nobody else can approve this')
-    const roles = route!.roles.length ? await getRoles(user) : []
-    if (!route!.people.includes(user) && !route!.roles.some(role => roles.includes(role))) reject('This proposal is not waiting for you')
-    return route!
+    if (!(await mayDecide(user, proposal.maker, approvers))) reject('This proposal is not waiting for you')
+    return (await resolveRoute(checkedApprovers(approvers), proposal.maker))!
   }
 
   /** The proposal, locked, still Pending. Pre-row locks first, then the proposal, then the row. */
@@ -198,6 +206,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
 
   const helper: ChangeProposalsHelper = Object.freeze({
     list: (filter: ProposalFilter = {}) => guard.run(() => proposalsWhere(app, filter)),
+    mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers)),
 
     propose: (request: ProposalRequest) => guard.run(async () => {
       const { table, row, changes, about } = request ?? ({} as ProposalRequest)

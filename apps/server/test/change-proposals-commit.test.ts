@@ -5,7 +5,7 @@ import { sql } from '../src/db'
 import { discoverPackages, runPackageAction } from '../src/runtime-packages'
 import { installApp, uninstallApp } from '../src/apps'
 import { saveDoc } from '../src/document'
-import { createTable, deleteTable, tableRelation } from '../src/table-engine'
+import { createTable, tableRelation } from '../src/table-engine'
 import { app } from '../src/index'
 
 // #975: two approvals of one proposal, on independent connections, must COMMIT to prove anything.
@@ -45,12 +45,7 @@ prove('real commits: two approvers approving at once apply it once', async () =>
     const [row] = await sql`select proposal_state, decided_by from change_proposal where row_id = ${proposal.row_id}`
     expect(row.proposal_state).toBe('Applied')
   } finally {
-    await sql`delete from change_proposal_column`; await sql`delete from change_proposal_approver`; await sql`delete from change_proposal`
-    await sql`delete from version where ref_table = ${TABLE}`
-    await sql`delete from has_role where role = 'Proof Editor'`
-    if (people.length) await sql`delete from person where row_id in ${sql(people)}`
-    await sql`delete from app_setting where row_id = 'proposalproof.linked_tables'`
-    await deleteTable(TABLE).catch(() => {})
+    // A disposable database: nothing here is cleaned up but the app's hold on it.
     await uninstallApp('proposalproof').catch(() => {})
   }
 })

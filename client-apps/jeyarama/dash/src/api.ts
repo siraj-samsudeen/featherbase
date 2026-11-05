@@ -17,6 +17,19 @@ export async function read<T>(name: string, payload: Record<string, unknown> = {
   return body.result as T
 }
 
+/** Runs one of Dash's declared actions. A fresh key per call: a retry after a lost answer is
+ *  the caller pressing the button again, and the rules refuse a repeat. */
+export async function act<T>(name: string, payload: Record<string, unknown>): Promise<T> {
+  const response = await fetch(`/api/app_actions/feather_dash/${encodeURIComponent(name)}`, {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `feather_dash@${version}` },
+    body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), payload }),
+  })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new ApiError(body.error?.message ?? 'Request failed', response.status)
+  return body.result as T
+}
+
 const platformGet = async <T>(path: string): Promise<T> => {
   const response = await fetch(path, { credentials: 'same-origin' })
   if (!response.ok) throw new ApiError('Request failed', response.status)

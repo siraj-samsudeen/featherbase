@@ -233,7 +233,7 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
       const context = callerDocuments(app, contribution.tables, user, linkedTables(setup.settings))
       const { get, list, activity } = context.documents
       const base = baseTablesReader(app, contribution.baseTables, linkedTables(setup.settings))
-      const proposals = proposalsReader(app)
+      const proposals = proposalsReader(app, user)
       return await runRead(app, name, user, handler, contribution, { authorization, payload, setup, provenance },
         Object.freeze({ get, list, activity }), async () => { await context.close(); await base.close(); await proposals.close() }, undefined, base.helper, proposals.helper)
     })
@@ -272,7 +272,7 @@ function closedDocuments(): never {
 }
 const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, activity: closedDocuments })
 const CLOSED_BASE_TABLES: RuntimeReadContext['baseTables'] = Object.freeze({ list: closedDocuments })
-const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments })
+const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments, mayDecide: closedDocuments })
 
 interface Frozen { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup; provenance?: DropProvenance }
 

@@ -50,7 +50,11 @@ export interface DecisionApproval {
 export interface BaseTablesHelper {
   list(table: string, args: ActionListArgs & { fields: string[] }): Promise<ActionRow[]>
 }
-export interface ChangeProposalsReader { list(filter?: ProposalFilter): Promise<ChangeProposal[]> }
+export interface ChangeProposalsReader {
+  list(filter?: ProposalFilter): Promise<ChangeProposal[]>
+  /** Whether the caller may decide a proposal by this maker, with these approvers. */
+  mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
+}
 export interface ChangeProposalsHelper extends ChangeProposalsReader {
   propose(request: ProposalRequest): Promise<ChangeProposal>
   approve(id: string, decision: DecisionApproval): Promise<ChangeProposal>

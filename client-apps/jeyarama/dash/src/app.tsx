@@ -1,8 +1,9 @@
 // Feather Dash's report page (rendered by main.tsx).
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { accessFacts, read } from './api'
 import { MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
 import type { Heading, Report, ReportRow, Totals } from './report'
+import { DashSidebar, SECTIONS_ADDRESS } from './sections-page'
 
 /** The store the bar's picker keeps in the address (`?store=`). */
 const storeInAddress = () => new URLSearchParams(window.location.search).get('store') ?? undefined
@@ -101,11 +102,7 @@ export function FeatherDash() {
 
   return (
     <div className="fd-shell">
-    {createElement('featherbase-sidebar', { 'aria-label': 'Feather Dash navigation' },
-      <a href={`${window.location.pathname}${window.location.search}`} aria-current="page">
-        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18M7 14v3m5-8v8m5-12v12" /></svg>
-        <span>Sales report</span>
-      </a>)}
+    <DashSidebar current="report" />
     <main className="fd-page" data-testid="feather-dash" data-view={view.kind}>
       {/* The header, in every state with a store on show (#4486): the Dive, the quick view, and each empty state. */}
       {(view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty') && report?.ok && report.value.heading && (
@@ -132,7 +129,12 @@ export function FeatherDash() {
       {view.kind === 'empty' && (
         <Notice testid={`empty-${view.why}`}>
           {view.why === 'no_data_yet' && notArrivedLine(month)}
-          {view.why === 'no_sections' && 'This store has no sections set up yet, so there is nothing to show.'}
+          {view.why === 'no_sections' && (
+            <>
+              <span>This store has no sections set up yet, so there is nothing to show.</span>
+              <a href={SECTIONS_ADDRESS} data-testid="fix-link">Open your sections to put this right</a>
+            </>
+          )}
           {view.why === 'not_built' && 'The figures are being prepared. Try again in a few minutes.'}
         </Notice>
       )}
@@ -182,7 +184,12 @@ function NoAccess() {
   }, [])
   if (!help) return <p className="fd-opening">Opening your report…</p>
   if (help.kind === 'reader')
-    return <Notice testid="no-access">You don't have access to any store's report yet. Ask your Store Manager if you think you should.</Notice>
+    return (
+      <Notice testid="no-access">
+        <span>You don't have access to any store's report yet. Ask your Store Manager if you think you should.</span>
+        <a href={SECTIONS_ADDRESS} data-testid="fix-link">See what is mapped to you, and correct it</a>
+      </Notice>
+    )
   const health = <p><a href="/featherbase/admin/instance-health">Open instance health</a></p>
   if (help.kind === 'not_set_up')
     return (
