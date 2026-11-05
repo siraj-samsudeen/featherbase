@@ -507,6 +507,12 @@ export function FormView({
       {/* person-identities: the one platform Table whose rows sign in. */}
       {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
       {table === 'Person' && <PersonSignInMethods user={name} />}
+      {/* #628: what this person can see, and why. */}
+      {table === 'Person' && (
+        <RouterLink to="/featherbase/account/access/$person" params={{ person: name }} className="text-sm text-action hover:underline" data-testid="person-access-explanation">
+          What they can see
+        </RouterLink>
+      )}
       {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
     </aside>}
   </div>
@@ -1086,16 +1092,45 @@ function FieldControl({
           errors={errors}
         />,
       )
-    case 'Reference':
+    case 'Reference': {
+      // #881: a link to a row of any Table takes its Table from the row's own
+      // Table column, chosen first; a Table column offers only the Tables its
+      // row column allows, and choosing another Table clears the row.
+      if (field.table_column) {
+        const chosen = values[field.table_column]
+        if (chosen == null || chosen === '')
+          return wrap(
+            <input type="text" className={base} {...common} disabled value="" placeholder="Choose its Table first" />,
+          )
+        return wrap(
+          <LinkControl
+            key={String(chosen)}
+            field={{ ...field, reference_table: String(chosen) }}
+            value={value}
+            onChange={onChange}
+            className={base}
+            common={common}
+            anyTable
+          />,
+        )
+      }
+      const bound = field.reference_table === 'Table'
+        ? meta.columns.filter((c) => c.table_column === field.column_name)
+        : []
       return wrap(
         <LinkControl
           field={field}
           value={value}
-          onChange={onChange}
+          onChange={bound.length ? (next) => {
+            if (next !== value) for (const row of bound) setField(row.column_name, null)
+            onChange(next)
+          } : onChange}
           className={base}
           common={common}
+          extraFilters={bound.length ? anyTableFilters(bound) : undefined}
         />,
       )
+    }
     case 'Attach':
     case 'Attach Image':
       return wrap(
@@ -1309,6 +1344,14 @@ function readableTitleColumn(meta: TableMeta | undefined): string | undefined {
   return column.column_name
 }
 
+/** What a Table column of a link to a row of any Table offers: stored Tables
+ *  only, and of those only the ones its row columns allow, when they list any. */
+function anyTableFilters(rows: ColumnDef[]): unknown[] {
+  const lists = rows.map((row) => (row.choices ?? '').split('\n').map((name) => name.trim()).filter(Boolean))
+  const allowed = lists.some((list) => !list.length) ? null : [...new Set(lists.flat())]
+  return [['kind', '=', 'table'], ...(allowed ? [['row_id', 'in', allowed]] : [])]
+}
+
 // UI-006: debounced autocomplete over the permission-filtered list API.
 export function LinkControl({
   field,
@@ -1318,6 +1361,8 @@ export function LinkControl({
   common,
   forFilter = false,
   floating = false,
+  extraFilters = [],
+  anyTable = false,
 }: {
   field: ColumnDef
   value: unknown
@@ -1329,6 +1374,11 @@ export function LinkControl({
   /** Inside a scrolling frame (a grid of nested rows): the list is placed
    *  over the page under the box, so the frame cannot cut it off. */
   floating?: boolean
+  /** Filters every search carries besides the picker's own (#881). */
+  extraFilters?: unknown[]
+  /** A link to a row of any Table: a row of a Table the person can't read
+   *  is shown as "<Table> (no access)", and is not a place to go (#881). */
+  anyTable?: boolean
 }) {
   const target = field.reference_table ?? ''
   const box = useRef<HTMLInputElement>(null)
@@ -1364,7 +1414,7 @@ export function LinkControl({
   const nav = useNavigation()
   const navigate = useNavigate()
   // A filter has its own clear control and stays a filter: no pane or open.
-  const hasValue = Boolean(value) && query === null && !forFilter
+  const hasValue = Boolean(value) && query === null && !forFilter && !(anyTable && targetMeta.isError)
 
   // The floating list is placed once, under the box; scrolling or resizing
   // would leave it behind, so either closes it.
@@ -1400,7 +1450,7 @@ export function LinkControl({
         }
         const label = picker.labelField
         const res = await listResource<Record<string, unknown> & { row_id: string }>(target, {
-          filters: [...picker.filters, ...(q ? [[picker.searchField, 'like', `%${q}%`]] : [])],
+          filters: [...picker.filters, ...extraFilters, ...(q ? [[picker.searchField, 'like', `%${q}%`]] : [])],
           fields: label ? ['row_id', label] : ['row_id'],
           limit_page_length: 10,
         })
@@ -1417,11 +1467,13 @@ export function LinkControl({
   const valueLabel = picker.peopleSearch
     ? value ? principalLabel(String(value), principalName, principalName === null) : null
     : picker.labelField && current.data ? String(current.data[picker.labelField] ?? '') || null : null
+  // #881: the Table is the reader's only clue; the row's name stays private.
+  const noAccess = anyTable && Boolean(value) && targetMeta.isError
   // #910 D3: a row the viewer cannot read is named neutrally, never by its id,
   // and offers no way to it.
-  const linked = useLinkTitle(!picker.peopleSearch && value ? target : undefined, value ? String(value) : undefined)
-  const unseen = !picker.peopleSearch && Boolean(value) && linked.state === 'unreadable'
-  const shown = query ?? (unseen ? UNSEEN_ROW : valueLabel ?? String(value ?? ''))
+  const linked = useLinkTitle(!picker.peopleSearch && value && target ? target : undefined, value ? String(value) : undefined)
+  const unseen = !picker.peopleSearch && Boolean(value) && !noAccess && linked.state === 'unreadable'
+  const shown = query ?? (noAccess ? `${target} (no access)` : null) ?? (unseen ? UNSEEN_ROW : valueLabel ?? String(value ?? ''))
 
   // A link the person cannot see is not theirs to change: neutral words, no
   // box and no picker, and the stored link is saved as it was.
@@ -1525,7 +1577,8 @@ export function LinkControl({
           {!options.length && (
             <p className="px-3 py-1.5 text-sm text-ink-subtle">No matches</p>
           )}
-          {!forFilter && (
+          {/* A Table column of a link to any Table picks among Tables; it never makes one (#881). */}
+          {!forFilter && !extraFilters.length && (
             <RouterLink
               to="/featherbase/admin/table/$table/new"
               params={{ table: target }}

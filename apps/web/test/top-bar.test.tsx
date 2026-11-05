@@ -329,11 +329,11 @@ test('the right side reads Open Admin, the theme toggle, then the Account menu',
 
 // ---- 5. the Account menu --------------------------------------------------------
 
-test('the Account menu holds the name, Sign-in methods, then Log out', async ({ admin }) => {
+test('the Account menu holds the name, Sign-in methods, What can I see? (#628), then Log out', async ({ admin }) => {
   await renderApp('/featherbase/sales-target', admin)
   const menu = await openAccountMenu()
   const order = [...menu.querySelectorAll('[data-testid="account-identity"], [role="menuitem"]')].map((el) => el.getAttribute('data-testid'))
-  expect(order).toEqual(['account-identity', 'account-sign-in-methods', 'logout'])
+  expect(order).toEqual(['account-identity', 'account-sign-in-methods', 'account-access-explanation', 'logout'])
 })
 
 test("the Account menu's Sign-in methods opens the account page", async ({ admin }) => {

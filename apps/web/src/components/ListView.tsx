@@ -1232,7 +1232,7 @@ const isFigure = (col: ListColumn) => ['Int', 'Float', 'Currency', 'Percent'].in
 
 function ListCell({
   row,
-  col,
+  col: shownCol,
   table,
   settings,
   first,
@@ -1250,6 +1250,11 @@ function ListCell({
   // #910: a link opens the linked row in the drill pane, over this list.
   const navigation = useNavigation()
   const nav = navigation?.step.screen === 'list' && navigation.step.table === table ? navigation : null
+  // #881: a link to a row of any Table reads as a link to the row's own Table.
+  const anyTable = shownCol.table_column ? row[shownCol.table_column] : undefined
+  const col = shownCol.table_column
+    ? { ...shownCol, reference_table: isBlank(anyTable) ? null : String(anyTable) }
+    : shownCol
   if (first)
     return (
       <Link

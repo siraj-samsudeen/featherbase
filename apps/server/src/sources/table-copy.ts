@@ -79,7 +79,8 @@ export async function createCopy(
   // bounded (it becomes the row id); any other VARCHAR is unbounded text, so a
   // long note never fails the whole copy against Data's 140 characters.
   const nativeType = (source: string) => {
-    const mapped = typeOf.get(source) ?? 'Data'
+    // Every chosen column exists: the source read above already refused any other.
+    const mapped = typeOf.get(source)!
     const raw = String(rawTypeOf.get(source))
     if (mapped === 'Text') return 'Long Text'
     // Native numbers travel as JavaScript doubles: a DECIMAL wider than 15

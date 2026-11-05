@@ -10,7 +10,7 @@ export async function seedTickets({ baseUrl, password = 'admin', expectedEnviron
   async function api(path, body) {
     const response = await fetch(new URL(path, origin), {
       method: body === undefined ? 'GET' : 'POST', redirect: 'error',
-      headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'tickets@0.1.0', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'tickets@0.2.0', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
     const result = await response.json()

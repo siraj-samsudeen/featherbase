@@ -37,6 +37,10 @@ export interface ColumnDef {
   label: string | null
   column_type: ColumnType
   reference_table: string | null
+  // #881: on a link whose Table is chosen per row, the column of this Table
+  // that names it (a link to Table). Its `choices` lists the Tables allowed,
+  // one per line; none means any Table that can be linked to.
+  table_column?: string | null
   choices: string | null
   choice_labels?: Record<string, string> | null
   row_table: string | null

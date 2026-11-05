@@ -158,6 +158,11 @@ export const VARIABLES = [
   { name: 'DISABLE_DATABASE_ENVIRONMENT_CHECK', secret: false, required: 'optional',
     purpose: '`1` skips the check that the database was stamped by this environment. Break-glass only' },
   { name: 'FEATHERBASE_APP_PATHS', secret: false, required: 'optional', default: '`[]`', purpose: 'JSON array of extra app package directories to discover at boot; `<folder>/*` means every folder in it' },
+  // #938: what this instance was built from, shown to System Managers on Admin → Apps. Railway sets these on deploys from GitHub; elsewhere the server reads git from its checkout, or shows "unknown".
+  { name: 'RAILWAY_GIT_COMMIT_SHA', secret: false, required: 'optional', purpose: 'set by Railway: the commit this deployment was built from, shown on Admin → Apps (#938). Unset outside Railway, a checkout reads it from git' },
+  { name: 'RAILWAY_GIT_COMMIT_MESSAGE', secret: false, required: 'optional', purpose: 'set by Railway: that commit\'s message, shown with it' },
+  { name: 'RAILWAY_GIT_REPO_OWNER', secret: false, required: 'optional', purpose: 'set by Railway: the GitHub owner, for links to the commit and its issues' },
+  { name: 'RAILWAY_GIT_REPO_NAME', secret: false, required: 'optional', purpose: 'set by Railway: the GitHub repository, for the same links' },
   { name: 'FEATHERBASE_INSTANCE', secret: false, required: 'optional', purpose: 'the client instance this image was built for (`<client>/<instance>`), as a build argument and a variable. Set, the pre-deploy step installs or upgrades its apps and applies its settings. See [A client instance](#a-client-instance)' },
   { name: 'JOB_POLL_MS', secret: false, required: 'optional', default: '`500`', purpose: 'background worker poll interval' },
   { name: 'SERVER_URL', secret: false, required: 'optional', default: '`http://localhost:8000`', purpose: 'the server `pnpm smoke` probes' },
@@ -166,10 +171,9 @@ export const VARIABLES = [
   { name: 'MOTHERDUCK_API_BASE', secret: false, required: 'optional', default: '`https://api.motherduck.com`', purpose: 'MotherDuck API base' },
   { name: 'MOTHERDUCK_EMBED_ORIGIN', secret: false, required: 'optional', default: '`https://embed-motherduck.com`', purpose: 'the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub' },
   { name: 'DIVE_ID', secret: false, required: 'optional', purpose: 'the sales-target Dive' },
-  { name: 'DIVE_VERSION', secret: false, required: 'optional', purpose: 'the sales-target Dive version' },
   { name: 'SERVICE_ACCOUNT', secret: false, required: 'optional', purpose: 'the MotherDuck service account the embed runs as' },
   { name: 'SALES_TARGET_TODAY', secret: false, required: 'optional', purpose: 'pins "today" (YYYY-MM-DD) for the sales target; for tests and rehearsals' },
-  { name: 'SALES_TARGET_SHARED_ENV', secret: false, required: 'optional', purpose: 'path of a local `.env.local` the sales-target experiment reads `DIVE_ID`, `DIVE_VERSION` and `SERVICE_ACCOUNT` from' },
+  { name: 'SALES_TARGET_SHARED_ENV', secret: false, required: 'optional', purpose: 'path of a local `.env.local` the sales-target experiment reads `DIVE_ID` and `SERVICE_ACCOUNT` from' },
 ] as const satisfies readonly Variable[]
 
 export type VariableName = (typeof VARIABLES)[number]['name']

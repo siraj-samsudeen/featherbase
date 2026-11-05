@@ -98,6 +98,10 @@ variable.
 | `PREVIEW_USER_NAME` | no | no |  | preview deployments: the full name the pre-deploy step gives the preview person (default `Preview Visitor`) |
 | `DISABLE_DATABASE_ENVIRONMENT_CHECK` | no | no |  | `1` skips the check that the database was stamped by this environment. Break-glass only |
 | `FEATHERBASE_APP_PATHS` | no | no | `[]` | JSON array of extra app package directories to discover at boot; `<folder>/*` means every folder in it |
+| `RAILWAY_GIT_COMMIT_SHA` | no | no |  | set by Railway: the commit this deployment was built from, shown on Admin → Apps (#938). Unset outside Railway, a checkout reads it from git |
+| `RAILWAY_GIT_COMMIT_MESSAGE` | no | no |  | set by Railway: that commit's message, shown with it |
+| `RAILWAY_GIT_REPO_OWNER` | no | no |  | set by Railway: the GitHub owner, for links to the commit and its issues |
+| `RAILWAY_GIT_REPO_NAME` | no | no |  | set by Railway: the GitHub repository, for the same links |
 | `FEATHERBASE_INSTANCE` | no | no |  | the client instance this image was built for (`<client>/<instance>`), as a build argument and a variable. Set, the pre-deploy step installs or upgrades its apps and applies its settings. See [A client instance](#a-client-instance) |
 | `JOB_POLL_MS` | no | no | `500` | background worker poll interval |
 | `SERVER_URL` | no | no | `http://localhost:8000` | the server `pnpm smoke` probes |
@@ -105,10 +109,9 @@ variable.
 | `MOTHERDUCK_API_BASE` | no | no | `https://api.motherduck.com` | MotherDuck API base |
 | `MOTHERDUCK_EMBED_ORIGIN` | no | no | `https://embed-motherduck.com` | the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub |
 | `DIVE_ID` | no | no |  | the sales-target Dive |
-| `DIVE_VERSION` | no | no |  | the sales-target Dive version |
 | `SERVICE_ACCOUNT` | no | no |  | the MotherDuck service account the embed runs as |
 | `SALES_TARGET_TODAY` | no | no |  | pins "today" (YYYY-MM-DD) for the sales target; for tests and rehearsals |
-| `SALES_TARGET_SHARED_ENV` | no | no |  | path of a local `.env.local` the sales-target experiment reads `DIVE_ID`, `DIVE_VERSION` and `SERVICE_ACCOUNT` from |
+| `SALES_TARGET_SHARED_ENV` | no | no |  | path of a local `.env.local` the sales-target experiment reads `DIVE_ID` and `SERVICE_ACCOUNT` from |
 
 <!-- generated:variables:end -->
 
@@ -221,6 +224,13 @@ stopping at the first problem so that the old deployment keeps serving:
    `production` applies `prod`. Any other environment refuses (`pnpm dev` is for a
    developer's machine);
 4. on `staging` only, re-pin an app whose files changed (below).
+
+Steps 2 to 4 are one transaction, and they hold the apps' lifecycle lock from
+start to end. While they run, the old deployment's API requests and jobs wait,
+usually for a few seconds. To take the lock, the step waits up to 60 seconds for
+requests already running. If they keep the apps busy longer than that, the deploy
+fails and changes nothing; deploy again. Inside the transaction, a lock wait over
+60 seconds, or 5 minutes idle, also fails the deploy.
 
 **Variables.** The table above, and for a client instance:
 

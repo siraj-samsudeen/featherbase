@@ -4,6 +4,7 @@ import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { AppError } from './errors'
 import { PLATFORM_SCHEMA } from './platform-schema'
+import { anyTableLinkCount } from './any-table-link'
 import { displayName } from './people-directory'
 import { SYSTEM_ACTOR_LABELS } from 'shared'
 
@@ -87,6 +88,8 @@ export async function retainedDocumentCounts(tx: typeof sql, table: string, rowI
     const [count] = await tx`select count(*)::int as n from ${tx(await tableRelation(meta.name))} where ${tx(String(column.column_name))} = ${rowId}`
     references += Number(count.n)
   }
+  // #881: links to it from a link to a row of any Table count the same.
+  references += await anyTableLinkCount(tx, table, rowId)
   return { comments: activity.comments, versions: activity.versions, references,
     files: activity.files, shares: activity.shares }
 }
