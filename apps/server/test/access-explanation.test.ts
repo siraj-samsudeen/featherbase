@@ -1,4 +1,5 @@
 import { expect } from 'vitest'
+import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { resolve } from 'node:path'
 import { grantRole } from './fixtures'
@@ -133,7 +134,7 @@ test('an Access Auditor may open anyone\'s page', async ({ createUser }) => {
 // C1 (owner, 4 Nov): a viewer whose places cover every place of a person may
 // open that person's page. Fixture app placeroster provides each person's
 // places from its own roster Table (#559).
-async function withPlaces(admin: Parameters<Parameters<typeof test>[1]>[0]['admin']) {
+async function withPlaces(admin: TestClient) {
   expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/place-roster')])).toEqual([])
   await admin.post('/api/install_app', { name: 'placeroster' })
   return (person: string, place: string, store: string, section: string) =>
