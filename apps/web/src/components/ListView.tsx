@@ -1684,24 +1684,30 @@ function StandardFilters({
     onChange(value ? [...rest, [columnName, op, op === 'like' ? `%${value}%` : value]] : rest)
   }
 
+  // #742: on a desktop the boxes share one line and shrink evenly when it is
+  // full, so six always fit; they wrap only once "+N more" has opened. On a
+  // phone each stacked box takes the full width.
+  const box = stacked ? 'flex flex-col gap-0.5' : 'flex min-w-0 flex-col gap-0.5'
+  const textWidth = stacked ? undefined : 'max-w-[10rem]'
+  const row = showAll ? 'flex-wrap' : 'flex-nowrap'
   return (
     <div
-      className={stacked ? 'mb-3 flex flex-col gap-2' : 'mb-3 flex flex-wrap items-end gap-2'}
+      className={stacked ? 'mb-3 flex flex-col gap-2' : `mb-3 flex ${row} items-end gap-2`}
       data-testid="standard-filters"
     >
       {shown.map((f) =>
         f.column_type === 'Reference' && f.reference_table ? (
           // #793: a link filters by picking a row by its name, not by typing its id.
-          <label key={f.column_name} className="flex flex-col gap-0.5">
+          <label key={f.column_name} className={box}>
             <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex min-w-0 items-center gap-1">
               <LinkControl
                 field={f}
                 value={current(f.column_name, '=')}
                 onChange={(v) => apply(f.column_name, '=', String(v ?? ''))}
-                className={inputClasses('max-w-[10rem]')}
+                className={inputClasses(textWidth)}
                 common={{ 'data-testid': `std-filter-${f.column_name}` }}
                 forFilter
               />
@@ -1719,7 +1725,7 @@ function StandardFilters({
             </span>
           </label>
         ) : choicesOf(f) ? (
-          <label key={f.column_name} className="flex flex-col gap-0.5">
+          <label key={f.column_name} className={box}>
             <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
@@ -1727,7 +1733,7 @@ function StandardFilters({
               value={picked(f)}
               onChange={(e) => apply(f.column_name, '=', e.target.value)}
               data-testid={`std-filter-${f.column_name}`}
-              className={inputClasses('max-w-[20rem]')}
+              className={inputClasses(stacked ? undefined : 'max-w-[20rem]')}
             >
               <option value="">All</option>
               {[...choicesOf(f)!, ...(unreadable(f) ? [picked(f)] : [])].map((o) => (
@@ -1738,7 +1744,7 @@ function StandardFilters({
             </select>
           </label>
         ) : (
-          <label key={f.column_name} className="flex flex-col gap-0.5">
+          <label key={f.column_name} className={box}>
             <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
@@ -1754,7 +1760,7 @@ function StandardFilters({
               }}
               placeholder={`Filter ${f.label ?? f.column_name}…`}
               data-testid={`std-filter-${f.column_name}`}
-              className={inputClasses('max-w-[10rem]')}
+              className={inputClasses(textWidth)}
             />
           </label>
         ),
@@ -1764,7 +1770,7 @@ function StandardFilters({
           type="button"
           onClick={() => setShowAll((all) => !all)}
           data-testid="std-filter-more"
-          className={buttonClasses()}
+          className={buttonClasses({ className: 'shrink-0 whitespace-nowrap' })}
         >
           {showAll ? 'Show fewer' : `+${folded} more`}
         </button>
