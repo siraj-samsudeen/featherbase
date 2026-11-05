@@ -303,7 +303,9 @@ evidence remain support-only. Give staff the `Tickets Support` role and configur
 the app's settings with person IDs, not display names: `support_users`,
 `verification_admins` and `fulfillment_admins` are JSON arrays; `approval_routes`
 maps regions to arrays of alternative approvers; `restricted_resources` is a
-JSON array of restricted resource names. Missing authority or routing blocks
+JSON array of restricted resource names. `assignees` is a JSON array of people
+support may assign tickets to without giving them support rights; the assign
+picker also offers everyone in the other lists. Missing authority or routing blocks
 access decisions. Use the existing App Setting/instance-settings interface.
 
 Tickets uses ordinary platform Table permissions: Administrator and System
