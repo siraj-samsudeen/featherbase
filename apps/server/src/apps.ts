@@ -295,7 +295,7 @@ export async function provisionGrants(
         select row_id from permission
         where ref_table = ${p.table} and role = ${p.role} and operation = ${operation}
           and parent_permission is null and requires_permission is null
-          and (owner_app is null or owner_app = ${manifest.name})`
+          and (owner_app is null or owner_app = ${manifest.name}) and row_id <> all(${perms}::text[])`
       if (have) continue
       // A level ('*', '@basic') keeps following the Table's Columns and line
       // items; a list names Columns, and `lines.qty` a line item's Column.

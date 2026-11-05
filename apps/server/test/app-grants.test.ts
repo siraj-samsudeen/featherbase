@@ -187,6 +187,20 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     }
   })
 
+  test('two declarations of one operation with different rows are both provisioned', async () => {
+    registerApp(manifest({ permissions: [
+      { table: DT, role: ROLE, operations: { read: '@basic' } },
+      { table: DT, role: ROLE, scope_mode: 'creator', operations: { read: '*' } },
+    ] }))
+    try {
+      await installApp(APP)
+      expect(await sql`select scope_mode, column_rule from permission where ref_table = ${DT} and role = ${ROLE} and operation = 'read' order by scope_mode`)
+        .toEqual([{ scope_mode: 'all', column_rule: 'basic' }, { scope_mode: 'creator', column_rule: 'every' }])
+    } finally {
+      await unwire()
+    }
+  })
+
   test('uninstall removes exactly what install created', async () => {
     registerApp(
       manifest({
