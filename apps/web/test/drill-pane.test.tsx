@@ -113,6 +113,37 @@ test("Open as list opens the group's table narrowed to the row", async ({ admin 
   await waitFor(() => expect(listed()).toBe(3))
 })
 
+// A group linked through a sub-table (visits whose lines name the site)
+// opens as a list narrowed by a relationship filter, not by a plain value.
+async function seedVisits(admin: Parameters<typeof renderApp>[1]) {
+  await admin.post('/api/table_def', {
+    name: 'Nv Visit Line', kind: 'sub_table',
+    columns: [{ column_name: 'site', column_type: 'Reference', reference_table: SITE, label: 'Site', in_list_view: true }],
+  })
+  await admin.post('/api/table_def', {
+    name: 'Nv Visit', id_pattern: 'prompt', title_column: 'visit_name',
+    columns: [
+      { column_name: 'visit_name', column_type: 'Data', label: 'Visit name', in_list_view: true },
+      { column_name: 'lines', column_type: 'Sub-table', row_table: 'Nv Visit Line', label: 'Lines' },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Nv Visit', row: { row_id: 'v1', visit_name: 'March audit', lines: [{ site: 'ENK' }] } })
+  await admin.post('/api/save_row', { table: 'Nv Visit', row: { row_id: 'v2', visit_name: 'April audit', lines: [{ site: 'TCR' }] } })
+}
+
+test('Open as list on a group linked through a sub-table shows only the related rows', async ({ admin }) => {
+  await seedSites(admin)
+  await seedVisits(admin)
+  const view = await renderApp(tableHref(SITE), admin)
+  await select('Enchakkal')
+  const site = await pane('Enchakkal')
+  fireEvent.click(await within(site).findByRole('button', { name: 'Nv Visit 1' }))
+  fireEvent.click(await within(site).findByRole('link', { name: 'Open as list' }))
+  await waitFor(() => expect((view.router.state as { location: { pathname: string } }).location.pathname).toBe(tableHref('Nv Visit')))
+  await screen.findByRole('link', { name: 'March audit' })
+  expect(listed()).toBe(1)
+})
+
 test('Open row page and Edit are separate ways to the row', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
   // The ways to the row show once the row is known to be readable.

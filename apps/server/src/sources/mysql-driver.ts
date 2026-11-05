@@ -14,6 +14,7 @@ import type {
   SourceRefusal,
   SourceRow,
 } from './types'
+import { orderClause } from './order'
 
 // The mysql driver (mysql2, which speaks caching_sha2_password). One bounded
 // pool per source (EDS-1), every identifier quoted, every value a bound
@@ -442,7 +443,7 @@ export const mysqlDriver: SourceDriver = {
   async getList(bind, spec: ListSpec) {
     const cols = [...new Set([bind.pk, ...spec.columns])].map(quoteIdent).join(', ')
     const { text, values } = buildWhere(spec.filters)
-    const order = `${quoteIdent(spec.order.column)} ${spec.order.dir === 'desc' ? 'desc' : 'asc'}`
+    const order = orderClause(spec.order, bind.pk, quoteIdent)
     const rows = await run(
       bind.source,
       `select ${cols} from ${relation(bind)} where ${text}
