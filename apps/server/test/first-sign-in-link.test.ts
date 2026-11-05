@@ -8,6 +8,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
+import { invalidateMeta } from '../src/meta'
 import { _setDelegatedFetch, delegatedLoginConfig } from '../src/delegated-login'
 import { rosterFirstSignIn } from '../src/roster-first-sign-in'
 import { _setAlertSender } from '../src/waiting-for-access'
@@ -338,9 +339,19 @@ describe('the service is not asked, and the refusal says nothing', () => {
     ['a person column that is not a link to Person', { ...ROSTER, person_column: 'crew_name' }],
     ['an identifier system that does not exist', { ...ROSTER, identifiers: { 'no-such-system': 'crew_no' } }],
     ['a malformed setting', { ...ROSTER, sign_in_id_column: 'crew no; drop table person' }],
+    ['a blank setting', { ...ROSTER, current_status: ' ' }],
+    ['identifiers that are not column names', { ...ROSTER, identifiers: { 'stylehr-employee-code': 'crew no' } }],
   ] as const)('a roster naming %s fails closed', async ([, roster], { api, admin }) => {
     await setUp(admin, { roster })
     vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await expectRefusedWithoutAsking(api, provider())
+  })
+
+  test('a roster that is not an object, or absent, fails closed', async ({ api, admin }) => {
+    await setUp(admin, { roster: 'not an object' })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await expectRefusedWithoutAsking(api, provider())
+    await sql`update sign_in_method set settings = null where row_id = 'stylehr'`
     await expectRefusedWithoutAsking(api, provider())
   })
 
@@ -427,6 +438,77 @@ describe('two first sign-ins at once', () => {
     expect(await peopleCount()).toBe(before)
     expect((await crew())[0].login).toBeNull()
     expect(await sql`select 1 from sign_in_identity where subject = ${RECORD}`).toEqual([])
+  })
+})
+
+describe('what cannot be read is refused', () => {
+  test('a save that fails midway keeps nothing and is noted', async ({ api, admin }) => {
+    await setUp(admin)
+    const before = await peopleCount()
+    provider(async () => {
+      // Recording the employee code now fails, after the person and link were written.
+      await sql`update identifier_system set enabled = false where row_id = 'stylehr-employee-code'`
+      return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
+    })
+    const res = await signIn(api)
+    expect(res.status).toBe(401)
+    expect(await peopleCount()).toBe(before)
+    expect(await sql`select 1 from sign_in_identity where subject = ${RECORD}`).toEqual([])
+    expect(await sql`select 1 from person_identifier where value in (${RECORD}, ${CODE})`).toEqual([])
+    expect((await heldNotes())[0]).toMatch(/ link_failed$/)
+  })
+
+  test.for([
+    ['removed', () => sql`delete from featherbase.crew_list where crew_no = ${CODE}`, 'link_failed'],
+    ['no longer current', () => sql`update featherbase.crew_list set crew_state = 'Left' where crew_no = ${CODE}`, 'link_failed'],
+    ['given another record', () => sql`update featherbase.crew_list set hr_record = '7009' where crew_no = ${CODE}`, 'link_failed'],
+    ['joined by a second row with its ID', () => sql`insert into featherbase.crew_list (row_id, crew_name, crew_no, hr_record, crew_state) values ('second-crew', 'Made Up Two', ${CODE}, '7003', 'Working')`, 'duplicate_id'],
+  ] as const)('a row %s while the service was asked is not linked', async ([, change, reason], { api, admin }) => {
+    await setUp(admin)
+    const before = await peopleCount()
+    provider(async () => {
+      await change()
+      return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
+    })
+    expect((await signIn(api)).status).toBe(401)
+    expect(await peopleCount()).toBe(before)
+    expect((await heldNotes())[0]).toMatch(new RegExp(` ${reason}$`))
+  })
+
+  test('a roster may also list the record number system, recorded once', async ({ api, admin }) => {
+    await setUp(admin, { roster: { ...ROSTER, identifiers: { 'stylehr-employee-id': 'hr_record', 'stylehr-employee-code': 'crew_no' } } })
+    provider()
+    expect((await signIn(api)).status).toBe(200)
+    expect(await sql`select 1 from person_identifier where value = ${RECORD}`).toHaveLength(1)
+  })
+
+  test('a Table in an outside source fails closed', async ({ api, admin }) => {
+    await setUp(admin)
+    await sql`update table_def set data_source = 'elsewhere' where name = ${TABLE}`
+    invalidateMeta(TABLE)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await expectRefusedWithoutAsking(api, provider())
+  })
+
+  test('a value its identifier system cannot hold is noted, without asking', async ({ api, admin }) => {
+    await setUp(admin, { roster: { ...ROSTER, identifiers: { 'stylehr-employee-code': 'login' } } })
+    await expectRefusedWithoutAsking(api, provider())
+    expect((await heldNotes())[0]).toMatch(/ link_failed$/)
+  })
+
+  test('a roster-made link is refused when the roster has become unreadable', async ({ api, admin }) => {
+    await setUp(admin)
+    provider()
+    await signIn(api)
+    await sql`update sign_in_method set settings = ${sql.json({ roster: 'not an object' })} where row_id = 'stylehr'`
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await expectRefusedWithoutAsking(api, provider())
+  })
+
+  test('settings saved as text that is not JSON read as none', async ({ admin }) => {
+    await setUp(admin)
+    await sql`update sign_in_method set settings = to_jsonb('not json'::text) where row_id = 'stylehr'`
+    expect((await getSignInMethod('stylehr'))?.settings).toBeNull()
   })
 })
 
