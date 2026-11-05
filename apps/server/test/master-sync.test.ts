@@ -182,6 +182,43 @@ describe('Master sync (#927)', { timeout: 60_000 }, () => {
     expect(await run(admin)).toMatchObject({ raised: 1 })
   })
 
+  test('renaming the master, the link Table or a named column keeps the rule working, raising nothing twice (#936)', async ({ admin }) => {
+    const { source } = await world(admin, 'staff_renamed')
+    await run(admin)
+    await edit(admin, 'P1', { phone: '999' })
+    expect(await run(admin)).toMatchObject({ raised: 1 })
+    const renameTable = (from: string, to: string) => admin.post(`/api/table_def/${encodeURIComponent(from)}/rename`, { to })
+    const renameColumn = (table: string, from: string, to: string) =>
+      admin.post(`/api/table_def/${encodeURIComponent(table)}/rename_column`, { from, to })
+    await renameTable('Sync Person', 'Sync Member')
+    await renameColumn('Sync Member', 'phone', 'mobile')
+    await renameColumn('Sync Member', 'employment_status', 'standing')
+    await renameTable('Sync Source Link', 'Sync Member Link')
+    await renameColumn('Sync Member Link', 'person', 'member')
+    await renameColumn('Sync Member Link', 'source_key', 'outside_key')
+    await renameColumn('Sync Staff Copy', 'name', 'given_name')
+
+    const [stored] = await sql`select rule from featherbase.master_sync where copied_table = 'Sync Staff Copy'`
+    expect(stored.rule).toMatchObject({
+      master_table: 'Sync Member',
+      link: { table: 'Sync Member Link', key_column: 'outside_key', master_column: 'member', system_column: 'source_system', kind_column: 'key_kind' },
+      columns: { full_name: { source: 'given_name' }, mobile: { source: 'phone' }, floor_role: { source: 'role' } },
+      inactive: { column: 'standing' },
+    })
+    expect(Object.keys(stored.rule.columns)).not.toContain('phone')
+    // The unresolved differences are the same ones: nothing is raised again,
+    // and the edited phone keeps its baseline under its new name.
+    expect(await run(admin)).toMatchObject({ raised: 0, already_raised: 2, ticket_errors: [] })
+    // And a source change still arrives through the renamed columns.
+    const result = (await sourceChanges(admin, source, [`update $T set name = 'Asha R' where emp_id = 'E1'`, `delete from $T where emp_id = 'E2'`])).master_sync
+    expect(result).toMatchObject({ applied: 2, raised: 0, ticket_errors: [] })
+    expect(await admin.get<Row>('/api/table/Sync%20Member/P1')).toMatchObject({ full_name: 'Asha R', mobile: '999' })
+    expect(await admin.get<Row>('/api/table/Sync%20Member/P2')).toMatchObject({ standing: 'Inactive' })
+    // Renaming the copied table itself raises nothing again either.
+    await renameTable('Sync Staff Copy', 'Sync Crew Copy')
+    expect(await admin.post<Row>('/api/table/Sync%20Crew%20Copy:master_sync_run', {})).toMatchObject({ raised: 0, ticket_errors: [] })
+  })
+
   test('a row gone from the source marks the master row inactive and deletes nothing; without an inactive column it asks', async ({ admin }) => {
     const { source, rule } = await world(admin, 'staff_gone')
     await run(admin)
