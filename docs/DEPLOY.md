@@ -121,7 +121,7 @@ variable.
 entry is one web address of this instance:
 
 ```json
-[{ "address": "https://dash.example.com", "opens": "feather_dash", "emails": true },
+[{ "address": "https://dash.example.com", "opens": "dash", "emails": true },
  { "address": "https://featherbase.example.com", "opens": "admin" }]
 ```
 

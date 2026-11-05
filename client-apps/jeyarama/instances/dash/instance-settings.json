@@ -86,13 +86,13 @@
         ],
         "App Setting": [
           {
-            "row_id": "feather_dash.dive_id",
+            "row_id": "dash.dive_id",
             "value": {
               "env": "DIVE_ID"
             }
           },
           {
-            "row_id": "feather_dash.embed_service_account",
+            "row_id": "dash.embed_service_account",
             "value": {
               "env": "SERVICE_ACCOUNT"
             }
@@ -110,13 +110,13 @@
         ],
         "App Setting": [
           {
-            "row_id": "feather_dash.dive_id",
+            "row_id": "dash.dive_id",
             "value": {
               "env": "DIVE_ID"
             }
           },
           {
-            "row_id": "feather_dash.embed_service_account",
+            "row_id": "dash.embed_service_account",
             "value": {
               "env": "SERVICE_ACCOUNT"
             }

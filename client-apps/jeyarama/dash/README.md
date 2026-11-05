@@ -3,8 +3,8 @@
 Dash is a client app built for JeyaRama on Featherbase: the store
 staff's month-to-date sales-against-target report, the store org chart that
 decides who sees which sections, and the scope provider that turns the org
-chart into each reader's places. Its app id is `feather_dash`, so its Tables are
-`feather_dash.*`.
+chart into each reader's places. Its app id is `dash`, so its Tables are
+`dash.*`.
 
 It lives in featherbase's `client-apps/` (ADR 0014). Platform and app share
 one commit, so a platform change and the app change that needs it are one PR.
@@ -75,8 +75,8 @@ The platform tests run inside `apps/server`'s own test harness, against a test
 database of your own (the harness migrates it and empties its job queue):
 
 ```sh
-createdb -h 127.0.0.1 -U postgres feather_dash_platform_test
-export DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/feather_dash_platform_test
+createdb -h 127.0.0.1 -U postgres dash_platform_test
+export DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/dash_platform_test
 (cd ../../../apps/server && NODE_ENV=test pnpm migrate)
 npm run test:platform              # or: npm run test:platform -- provider.test.ts
 ```
@@ -103,7 +103,7 @@ module on every save. There is no image and no second checkout.
    It prints where to go and how to sign in. Set `API_PORT`, `WEB_PORT` or
    `DATABASE_URL` for ports and a database of your own (`.env.example`).
 
-2. **Open** `http://localhost:5173/feather_dash/` and sign in as
+2. **Open** `http://localhost:5173/dash/` and sign in as
    `Administrator` (development password `admin`).
 
 3. **Start the watchers** here, and leave them running: `npm run dev`.
@@ -111,7 +111,7 @@ module on every save. There is no image and no second checkout.
 | You edit | What happens | What you do |
 |---|---|---|
 | the client (`src/*.tsx`, `src/style.css`, `index.html`) | Vite rebuilds `dist/client`; the platform reads the client from disk on every request. | Refresh the browser. |
-| the server module (`src/server.ts`) | esbuild rebuilds `dist/server.mjs` and the dev server restarts. The platform fingerprints the app folder, so the installed app no longer matches it: the server log warns `App feather_dash version … is installed and enabled, but this server does not have it`. | `DATABASE_URL=… npm run dev:repin` re-pins the dev database's install to the folder and restarts the server. |
+| the server module (`src/server.ts`) | esbuild rebuilds `dist/server.mjs` and the dev server restarts. The platform fingerprints the app folder, so the installed app no longer matches it: the server log warns `App dash version … is installed and enabled, but this server does not have it`. | `DATABASE_URL=… npm run dev:repin` re-pins the dev database's install to the folder and restarts the server. |
 | `featherbase.json` | A manifest change is a schema change. | Recreate the dev database and install again. `dev:repin` refuses a changed manifest. |
 
 The same warning follows any restart once the client was rebuilt since the
@@ -143,7 +143,7 @@ at the repository root.
 
 ## What the manifest declares
 
-- **`feather_dash.store_rollout`**, the entry Table and the per-store live
+- **`dash.store_rollout`**, the entry Table and the per-store live
   switch: a store with a row live on or before today uses the new org chart.
   It is marked `decides_scope`, so only a System Manager writes it; the three
   app roles read it, because the platform opens an app only for people who can
@@ -225,9 +225,9 @@ at the repository root.
   `embed_session` take `{ month }` (`this` when missing) and read that month's
   datasets. The Dive caps its anchor day at `period_end` (Sales Target Dive
   v14, data-warehouse#4630), so it shows last month as it shows this month.
-- **The reads** (`POST /api/app_reads/feather_dash/<read>` with
+- **The reads** (`POST /api/app_reads/dash/<read>` with
   `{"payload":{…}}` and the header `X-Featherbase-App-Version:
-  feather_dash@<version>`, which the client sends):
+  dash@<version>`, which the client sends):
   - `me` → `{ user }`;
   - `stores` → the reader's stores for the bar's picker, whose labels the
     platform's bar draws (the single-store label too):
@@ -279,13 +279,13 @@ at the repository root.
       trimmed: `embed_session` answers `{ too_large: true }`, the page shows
       the quick view with "This store is too large for the interactive
       report yet. Showing the cached table.", and the server logs
-      `feather_dash_embed_state_too_large` naming the store (no person). The platform pinned here has no app-facing
+      `dash_embed_state_too_large` naming the store (no person). The platform pinned here has no app-facing
       Instance health check, so the log line is the operator's signal.
   The last three are `person_scope` reads for the three app roles.
 - **The Dive's settings** (optional: without them the page shows the quick
   view): `dive_id`, `embed_service_account`, and
   `dive_ready_signal` (`on` once the Dive posts `{ type:
-  "feather-dash:dive-ready" }` to the page when it has drawn, B7; until then
+  "dash:dive-ready" }` to the page when it has drawn, B7; until then
   the frame's `load` counts as ready); the secret
   `MOTHERDUCK_TOKEN` (every read answers "not set up" while it is missing);
   `frameOrigins: ["https://embed-motherduck.com"]`.
@@ -316,7 +316,7 @@ are empty and the comparison is accepted. Use the repository's Node 26.13.0 LTS 
 
 **Known interim on an app address.** Until featherbase's cut-over retires
 today's Sales Target page (design D8, B9), the platform routes an address that
-opens `feather_dash` to that page (`INTERIM_APPS` in featherbase's
+opens `dash` to that page (`INTERIM_APPS` in featherbase's
 `packages/shared/src/app-routes.ts`). The app itself is served at
-`/feather_dash/` on the Admin address, and on a dev machine with
+`/dash/` on the Admin address, and on a dev machine with
 `INSTANCE_ADDRESSES` unset.

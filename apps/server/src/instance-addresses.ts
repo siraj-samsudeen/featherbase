@@ -2,7 +2,7 @@
 // instance opens, and which one emailed links use. It is the only place the
 // server learns its own addresses.
 //
-//   [{ "address": "https://dash.example.com", "opens": "feather_dash", "emails": true },
+//   [{ "address": "https://dash.example.com", "opens": "dash", "emails": true },
 //    { "address": "https://featherbase.example.com", "opens": "admin" }]
 //
 // Read at boot, before the database, so nothing here may touch it. The list is

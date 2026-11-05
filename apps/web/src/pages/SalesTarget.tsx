@@ -391,7 +391,7 @@ function SalesTargetReport() {
       {/* #489: the shared top bar. The identity line and the store switcher
           sit below it, inside the page (Stage B moves the switcher into the
           bar as a declared control). */}
-      <TopBar home="feather_dash" />
+      <TopBar home="dash" />
       <div className="flex flex-wrap items-center justify-between gap-3 px-3 pt-3" data-testid="report-identity">
         <div className="flex min-w-0 items-center gap-3">
           <div>

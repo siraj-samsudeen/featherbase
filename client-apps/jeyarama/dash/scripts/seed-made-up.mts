@@ -31,7 +31,7 @@ const { datasetsDeclaration } = await server('app-datasets.ts')
 const { markScopeTables } = await import(pathToFileURL(resolve(appDir, 'platform-test/mark-scope-tables.mjs')).href)
 
 /** The local password every made-up reader signs in with (this script's own test value). */
-const PASSWORD = 'feather-dash-dev'
+const PASSWORD = 'dash-dev'
 
 const [stamp] = await sql`select value from featherbase.internal_metadata where key = 'environment'`.catch(() => [])
 if (stamp?.value !== 'development') throw new Error('Refusing: this database is not stamped development')
@@ -40,7 +40,7 @@ const login = await (await fetch(`${api}/api/login`, { method: 'POST', headers: 
   body: JSON.stringify({ usr: 'Administrator', pwd: 'admin' }) })).json() as { token: string }
 async function call<T = Record<string, unknown>>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${api}${path}`, { ...init, headers: { authorization: `Bearer ${login.token}`, 'content-type': 'application/json',
-    'X-Featherbase-App-Version': `feather_dash@${JSON.parse(await readFile(resolve(appDir, 'package.json'), 'utf8')).version}`, ...init.headers } })
+    'X-Featherbase-App-Version': `dash@${JSON.parse(await readFile(resolve(appDir, 'package.json'), 'utf8')).version}`, ...init.headers } })
   const body = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(`${path}: ${response.status} ${JSON.stringify(body)}`)
   return body as T
@@ -57,8 +57,8 @@ async function ensure(table: string, row: Record<string, unknown>, create: () =>
 // The employee-code identifier system the scope provider declares.
 await applySeedPack('jeyarama')
 
-const [installed] = await sql`select 1 from installed_app where name = 'feather_dash'`
-if (!installed) await post('/api/install_app', { name: 'feather_dash' })
+const [installed] = await sql`select 1 from installed_app where name = 'dash'`
+if (!installed) await post('/api/install_app', { name: 'dash' })
 
 // Until every store is live the provider reads the old Store Sections Tables, so they exist, marked.
 const OLD = [
@@ -81,7 +81,7 @@ await markScopeTables((path: string, init?: RequestInit) => call(path, init))
 // The instance's MotherDuck source, played by a local DuckDB path that nothing opens: the
 // platform serves the cached copy below without querying it.
 const sourceExists = await call('/api/table/Data%20Source/motherduck').then(() => true, () => false)
-if (!sourceExists) await post('/api/table/Data%20Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'FEATHER_DASH_LOCAL_DUCKDB', access: 'read_only' })
+if (!sourceExists) await post('/api/table/Data%20Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'DASH_LOCAL_DUCKDB', access: 'read_only' })
 
 // Made-up people, each a Dash Reader.
 const people: Record<string, string> = {}
@@ -101,10 +101,10 @@ for (const [key, name] of [['many', 'Asha Many-Stores'], ['one', 'Ravi One-Store
 // Stores: Lakeside 9901 and Hillview 9902 have sections; Riverside 9903 has none; Northgate 9905 has
 // a section but nothing cached (its figures are being prepared). All live. Parkside 9904 is not live:
 // it is on the old rules, where a subcategory can be assigned to a person (#4486).
-for (const store of ['9901', '9902', '9903', '9905', '9906']) await ensure('feather_dash.store_rollout', { store, live_since: '2026-01-01' })
-const section = (store: string, name: string) => ensure('feather_dash.section', { store, section_name: name })
+for (const store of ['9901', '9902', '9903', '9905', '9906']) await ensure('dash.store_rollout', { store, live_since: '2026-01-01' })
+const section = (store: string, name: string) => ensure('dash.section', { store, section_name: name })
 const place = (store: string, subcategory: string, sectionId: string) =>
-  ensure('feather_dash.section_subcategory', { store, subcategory, section: sectionId, starts_on: '2026-01-01' })
+  ensure('dash.section_subcategory', { store, subcategory, section: sectionId, starts_on: '2026-01-01' })
 const sarees = await section('9901', 'Sarees')
 const kids = await section('9901', 'Kids Wear')
 const bags = await section('9901', 'Bags')
@@ -123,15 +123,15 @@ await place('9901', '010707001', footwear.row_id)
 await place('9901', '010808001', watches.row_id)
 await place('9901', '011010001', sports.row_id)
 // A department of two sections at Lakeside, for a Department Manager.
-const menswear = await ensure('feather_dash.department', { store: '9901', department_key: 'menswear', name: 'Menswear' })
-const shirts = await ensure('feather_dash.section', { store: '9901', section_name: 'Formal Shirts', department: menswear.row_id })
-const trousers = await ensure('feather_dash.section', { store: '9901', section_name: 'Trousers', department: menswear.row_id })
+const menswear = await ensure('dash.department', { store: '9901', department_key: 'menswear', name: 'Menswear' })
+const shirts = await ensure('dash.section', { store: '9901', section_name: 'Formal Shirts', department: menswear.row_id })
+const trousers = await ensure('dash.section', { store: '9901', section_name: 'Trousers', department: menswear.row_id })
 await place('9901', '011212001', shirts.row_id)
 await place('9901', '011313001', trousers.row_id)
 const toys = await section('9905', 'Toys')
 await place('9905', '011111001', toys.row_id)
 const job = (person: string, job: string, store: string, extra: Record<string, unknown> = {}) =>
-  ensure('feather_dash.job_assignment', { person, job, store, starts_on: '2026-01-01', ...extra })
+  ensure('dash.job_assignment', { person, job, store, starts_on: '2026-01-01', ...extra })
 // #928: a person's assignments share their time, one Primary at a time. Until the scopes derive a
 // cluster's stores (#683), the made-up Cluster Manager holds a row in each store, splitting the time.
 const second = (percentage: number) => ({ assignment_type: 'Secondary', percentage })
@@ -217,11 +217,11 @@ async function seed(name: string, rows: Record<string, unknown>[]) {
   // As the platform keys it (featherbase app-datasets.ts): a guard is not part of the definition.
   const version = createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16)
   // A rerun replaces the copy: the earlier ones are made-up too, and nobody can go back to them.
-  await sql`delete from app_dataset_row where snapshot_id in (select row_id from dataset_snapshot where dataset = ${`feather_dash.${name}`})`
-  await sql`delete from dataset_snapshot where dataset = ${`feather_dash.${name}`}`
+  await sql`delete from app_dataset_row where snapshot_id in (select row_id from dataset_snapshot where dataset = ${`dash.${name}`})`
+  await sql`delete from dataset_snapshot where dataset = ${`dash.${name}`}`
   const id = randomUUID()
   await sql`insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, activated_at, row_count)
-    values (${id}, ${`feather_dash.${name}`}, ${version}, 'active', ${refreshedAt}, ${refreshedAt}, ${rows.length})`
+    values (${id}, ${`dash.${name}`}, ${version}, 'active', ${refreshedAt}, ${refreshedAt}, ${rows.length})`
   for (const r of rows) await sql`insert into app_dataset_row (snapshot_id, row) values (${id}, ${sql.json(r)})`
 }
 await seed('sales_to_date', facts)
@@ -248,8 +248,8 @@ const signIn = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'con
   body: JSON.stringify({ usr: 'reader-sm@example.test', pwd: PASSWORD }) })
 if (!signIn.ok) throw new Error(`Signing in as a made-up reader failed: HTTP ${signIn.status}`)
 const version = JSON.parse(await readFile(resolve(appDir, 'package.json'), 'utf8')).version
-const opened = await fetch(`${api}/api/app_reads/feather_dash/report`, { method: 'POST', headers: { 'content-type': 'application/json',
-  authorization: `Bearer ${((await signIn.json()) as { token: string }).token}`, 'X-Featherbase-App-Version': `feather_dash@${version}` },
+const opened = await fetch(`${api}/api/app_reads/dash/report`, { method: 'POST', headers: { 'content-type': 'application/json',
+  authorization: `Bearer ${((await signIn.json()) as { token: string }).token}`, 'X-Featherbase-App-Version': `dash@${version}` },
   body: JSON.stringify({ payload: { store: '9901' } }) })
 const answer = await opened.json() as { result?: { state?: string; rows?: unknown[] } }
 if (!opened.ok || !answer.result?.rows?.length) throw new Error(`A made-up reader's report has no figures: HTTP ${opened.status} ${JSON.stringify(answer).slice(0, 300)}`)

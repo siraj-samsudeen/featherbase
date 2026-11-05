@@ -35,7 +35,7 @@ export const FEATHERBASE_ADMIN_DESTINATION = {
 // target report, a Featherbase page rather than an installed app. The server
 // routes and names its address from this; the shared top bar names the page.
 export const INTERIM_APPS: Record<string, { root: string; title: string; tabs?: readonly AppTab[] }> = {
-  feather_dash: { root: '/featherbase/sales-target', title: 'Dash' },
+  dash: { root: '/featherbase/sales-target', title: 'Dash' },
 }
 
 // #380 task 4.4: an app may declare the tabs its staff move between on a
@@ -61,7 +61,7 @@ export function appTabLinks(root: string, tabs: readonly AppTab[]): AppTabLink[]
 // Target report frames MotherDuck, until B9). The server sets the policy and
 // the web app enters and leaves these pages by a full load; both match a path
 // here, with or without one trailing slash, as the web router does.
-const OWN_FRAME_POLICY_PAGES: readonly string[] = [INTERIM_APPS.feather_dash.root]
+const OWN_FRAME_POLICY_PAGES: readonly string[] = [INTERIM_APPS.dash.root]
 
 /** The page with its own frame policy that `path` shows, or null. */
 export function ownFramePolicyPage(path: string): string | null {

@@ -6,7 +6,8 @@ The owner wants the app called "Dash", not "Feather Dash", "both in App name and
 
 - People see "Dash" in the top bar's app name, the app switcher, the browser tab, Dash's own pages, the sign-in page and invitation emails on its instance, and its privacy notice.
 - The role names and each Table's `module` say "Dash" too. The owner chose this because production is being installed fresh.
-- The identifier `feather_dash`, its route and Table names stay.
+- The identifier `feather_dash` becomes `dash`: the route `/dash/`, Table names (`dash.store_rollout`), settings keys and the package name. The owner chose this for the same reason.
+- Dash leaves `previousVersions`: an image holding the old versions would install a second app under the old name.
 - Dash goes to 0.10.4 with an empty version step.
 
 ## Capabilities

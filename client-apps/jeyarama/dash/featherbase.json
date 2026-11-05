@@ -1,11 +1,11 @@
 {
   "manifestVersion": 1,
   "platformVersion": "2026-10",
-  "name": "feather_dash",
+  "name": "dash",
   "title": "Dash",
   "server": "dist/server.mjs",
   "client": "dist/client",
-  "entryTable": "feather_dash.store_rollout",
+  "entryTable": "dash.store_rollout",
   "roles": [
     "Dash Reader",
     "Dash Section Editor",
@@ -322,7 +322,7 @@
   ],
   "tables": [
     {
-      "name": "feather_dash.store_rollout",
+      "name": "dash.store_rollout",
       "label": "Store rollout",
       "module": "Dash",
       "description": "Stores whose people are scoped by the new store org chart, and since when. Only a System Manager writes it.",
@@ -349,7 +349,7 @@
       ]
     },
     {
-      "name": "feather_dash.store_floor",
+      "name": "dash.store_floor",
       "label": "Store floor",
       "module": "Dash",
       "description": "The floors of a store. A section names its floor; a Floor Manager's job assignment names one.",
@@ -387,7 +387,7 @@
       ]
     },
     {
-      "name": "feather_dash.department",
+      "name": "dash.department",
       "label": "Department",
       "module": "Dash",
       "description": "A named group of sections in one store, which may span floors. A Department Manager's job assignment names one.",
@@ -444,7 +444,7 @@
       ]
     },
     {
-      "name": "feather_dash.section",
+      "name": "dash.section",
       "label": "Section",
       "module": "Dash",
       "description": "One area of one store, named uniquely in that store. Its subcategories come from section_subcategory.",
@@ -470,7 +470,7 @@
           "column_name": "floor",
           "label": "Floor",
           "column_type": "Reference",
-          "reference_table": "feather_dash.store_floor",
+          "reference_table": "dash.store_floor",
           "in_list_view": true,
           "description": "One of this store's floors. Optional for a store without floors."
         },
@@ -478,7 +478,7 @@
           "column_name": "department",
           "label": "Department",
           "column_type": "Reference",
-          "reference_table": "feather_dash.department",
+          "reference_table": "dash.department",
           "in_list_view": true,
           "description": "One of this store's departments. Plain and undated."
         },
@@ -521,7 +521,7 @@
       "track_changes": true
     },
     {
-      "name": "feather_dash.section_subcategory",
+      "name": "dash.section_subcategory",
       "label": "Section subcategory",
       "module": "Dash",
       "description": "Which section owns a subcategory in a store, from starts_on up to but not including ends_on. All its credit and coverage go to that section.",
@@ -548,7 +548,7 @@
           "column_name": "section",
           "label": "Section",
           "column_type": "Reference",
-          "reference_table": "feather_dash.section",
+          "reference_table": "dash.section",
           "reqd": true,
           "in_list_view": true
         },
@@ -577,7 +577,7 @@
       ]
     },
     {
-      "name": "feather_dash.display_location",
+      "name": "dash.display_location",
       "label": "Display location",
       "module": "Dash",
       "description": "An extra place a subcategory is shown, for floor audits. It never moves credit or coverage.",
@@ -623,7 +623,7 @@
       ]
     },
     {
-      "name": "feather_dash.job_assignment",
+      "name": "dash.job_assignment",
       "label": "Job assignment",
       "module": "Dash",
       "description": "Who holds which job, where and when, with the HR designation beside the job. A person's coverage is worked out from their current rows, acting included.",
@@ -650,7 +650,7 @@
           "column_name": "designation",
           "label": "Designation",
           "column_type": "Reference",
-          "reference_table": "feather_dash.designation",
+          "reference_table": "dash.designation",
           "in_list_view": true,
           "description": "The HR title, from the group's one designation list. Separate from the job."
         },
@@ -673,7 +673,7 @@
           "column_name": "floor",
           "label": "Floor",
           "column_type": "Reference",
-          "reference_table": "feather_dash.store_floor",
+          "reference_table": "dash.store_floor",
           "in_list_view": true,
           "description": "Floor Manager only."
         },
@@ -681,7 +681,7 @@
           "column_name": "department",
           "label": "Department",
           "column_type": "Reference",
-          "reference_table": "feather_dash.department",
+          "reference_table": "dash.department",
           "in_list_view": true,
           "description": "Department Manager only: one row per department."
         },
@@ -689,7 +689,7 @@
           "column_name": "section",
           "label": "Section",
           "column_type": "Reference",
-          "reference_table": "feather_dash.section",
+          "reference_table": "dash.section",
           "in_list_view": true,
           "description": "Team Leader and Staff only."
         },
@@ -742,7 +742,7 @@
       ]
     },
     {
-      "name": "feather_dash.section_alias",
+      "name": "dash.section_alias",
       "label": "Section alias",
       "module": "Dash",
       "description": "Another system's name for a section.",
@@ -774,7 +774,7 @@
           "column_name": "section",
           "label": "Section",
           "column_type": "Reference",
-          "reference_table": "feather_dash.section",
+          "reference_table": "dash.section",
           "reqd": true,
           "in_list_view": true
         },
@@ -789,7 +789,7 @@
       ]
     },
     {
-      "name": "feather_dash.floor_alias",
+      "name": "dash.floor_alias",
       "label": "Floor alias",
       "module": "Dash",
       "description": "Another system's name for a floor.",
@@ -821,7 +821,7 @@
           "column_name": "floor",
           "label": "Floor",
           "column_type": "Reference",
-          "reference_table": "feather_dash.store_floor",
+          "reference_table": "dash.store_floor",
           "reqd": true,
           "in_list_view": true
         },
@@ -836,7 +836,7 @@
       ]
     },
     {
-      "name": "feather_dash.job_alias",
+      "name": "dash.job_alias",
       "label": "Job alias",
       "module": "Dash",
       "description": "Another system's name for a job, matched as a whole value. Central: the same in every store.",
@@ -875,7 +875,7 @@
       ]
     },
     {
-      "name": "feather_dash.employee",
+      "name": "dash.employee",
       "label": "Employee",
       "module": "Dash",
       "title_column": "name",
@@ -912,7 +912,7 @@
       ]
     },
     {
-      "name": "feather_dash.employment",
+      "name": "dash.employment",
       "label": "Employment",
       "module": "Dash",
       "title_column": "employee_number",
@@ -923,7 +923,7 @@
           "column_name": "employee",
           "label": "Employee",
           "column_type": "Reference",
-          "reference_table": "feather_dash.employee",
+          "reference_table": "dash.employee",
           "reqd": true,
           "in_list_view": true
         },
@@ -966,7 +966,7 @@
       ]
     },
     {
-      "name": "feather_dash.designation",
+      "name": "dash.designation",
       "label": "Designation",
       "module": "Dash",
       "title_column": "title",
@@ -998,7 +998,7 @@
       ]
     },
     {
-      "name": "feather_dash.designation_alias",
+      "name": "dash.designation_alias",
       "label": "Designation alias",
       "module": "Dash",
       "title_column": "alias",
@@ -1023,7 +1023,7 @@
           "column_name": "designation",
           "label": "Designation",
           "column_type": "Reference",
-          "reference_table": "feather_dash.designation",
+          "reference_table": "dash.designation",
           "reqd": true,
           "in_list_view": true
         },
@@ -1041,12 +1041,12 @@
   "scopeProvider": {
     "name": "org_chart",
     "tables": [
-      "feather_dash.store_rollout",
-      "feather_dash.store_floor",
-      "feather_dash.department",
-      "feather_dash.section",
-      "feather_dash.section_subcategory",
-      "feather_dash.job_assignment",
+      "dash.store_rollout",
+      "dash.store_floor",
+      "dash.department",
+      "dash.section",
+      "dash.section_subcategory",
+      "dash.job_assignment",
       "Sales Target Assignment",
       "Employee Section Map",
       "Section Ownership",
@@ -1060,127 +1060,127 @@
   },
   "permissions": [
     {
-      "table": "feather_dash.store_rollout",
+      "table": "dash.store_rollout",
       "role": "Dash Reader",
       "can_read": true
     },
     {
-      "table": "feather_dash.store_rollout",
+      "table": "dash.store_rollout",
       "role": "Dash Section Editor",
       "can_read": true
     },
     {
-      "table": "feather_dash.store_rollout",
+      "table": "dash.store_rollout",
       "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
-      "table": "feather_dash.store_floor",
+      "table": "dash.store_floor",
       "role": "Dash Section Editor",
       "can_read": true
     },
     {
-      "table": "feather_dash.department",
+      "table": "dash.department",
       "role": "Dash Section Editor",
       "can_read": true
     },
     {
-      "table": "feather_dash.section",
+      "table": "dash.section",
       "role": "Dash Section Editor",
       "can_read": true
     },
     {
-      "table": "feather_dash.section_subcategory",
+      "table": "dash.section_subcategory",
       "role": "Dash Section Editor",
       "can_read": true
     },
     {
-      "table": "feather_dash.display_location",
+      "table": "dash.display_location",
       "role": "Dash Section Editor",
       "can_read": true
     },
     {
-      "table": "feather_dash.job_assignment",
+      "table": "dash.job_assignment",
       "role": "Dash Section Editor",
       "can_read": true
     },
     {
-      "table": "feather_dash.section_alias",
+      "table": "dash.section_alias",
       "role": "Dash Section Editor",
       "can_read": true
     },
     {
-      "table": "feather_dash.floor_alias",
+      "table": "dash.floor_alias",
       "role": "Dash Section Editor",
       "can_read": true
     },
     {
-      "table": "feather_dash.job_alias",
+      "table": "dash.job_alias",
       "role": "Dash Section Editor",
       "can_read": true
     },
     {
-      "table": "feather_dash.store_floor",
+      "table": "dash.store_floor",
       "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
-      "table": "feather_dash.department",
+      "table": "dash.department",
       "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
-      "table": "feather_dash.section",
+      "table": "dash.section",
       "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
-      "table": "feather_dash.section_subcategory",
+      "table": "dash.section_subcategory",
       "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
-      "table": "feather_dash.display_location",
+      "table": "dash.display_location",
       "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
-      "table": "feather_dash.job_assignment",
+      "table": "dash.job_assignment",
       "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
-      "table": "feather_dash.section_alias",
+      "table": "dash.section_alias",
       "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
-      "table": "feather_dash.floor_alias",
+      "table": "dash.floor_alias",
       "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
-      "table": "feather_dash.job_alias",
+      "table": "dash.job_alias",
       "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
-      "table": "feather_dash.designation",
+      "table": "dash.designation",
       "role": "Dash Section Editor",
       "can_read": true
     },
     {
-      "table": "feather_dash.designation",
+      "table": "dash.designation",
       "role": "Dash Section Reviewer",
       "can_read": true
     },
     {
-      "table": "feather_dash.designation_alias",
+      "table": "dash.designation_alias",
       "role": "Dash Section Editor",
       "can_read": true
     },
     {
-      "table": "feather_dash.designation_alias",
+      "table": "dash.designation_alias",
       "role": "Dash Section Reviewer",
       "can_read": true
     }
@@ -1188,7 +1188,7 @@
   "reads": {
     "version": 1,
     "tables": [
-      "feather_dash.store_rollout"
+      "dash.store_rollout"
     ],
     "operations": {
       "me": {

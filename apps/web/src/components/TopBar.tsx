@@ -84,7 +84,7 @@ function nameOf(context: string, brand: Brand | undefined): string {
 
 /** The one app a person can belong to without a Table grant of their own:
  *  Feather Dash, the report page until an app is installed under its name. */
-const DASH = 'feather_dash'
+const DASH = 'dash'
 
 /** #501 item 3: on the Admin side, a page of the person's own (the account
  *  page) is named for where they belong — the Admin if they can use it, else

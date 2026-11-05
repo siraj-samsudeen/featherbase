@@ -43,7 +43,7 @@ function listenForStore(onStore: (store: string) => void): () => void {
   }
 }
 
-export function FeatherDash() {
+export function Dash() {
   // undefined until the first store is known: the reads wait for it (one call per read per load).
   const [store, setStore] = useState<{ value: string | undefined } | undefined>(undefined)
   const [month, setMonth] = useState<MonthChoice>(monthInAddress)
@@ -106,7 +106,7 @@ export function FeatherDash() {
         <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18M7 14v3m5-8v8m5-12v12" /></svg>
         <span>Sales report</span>
       </a>)}
-    <main className="fd-page" data-testid="feather-dash" data-view={view.kind}>
+    <main className="fd-page" data-testid="dash" data-view={view.kind}>
       {/* The header, in every state with a store on show (#4486): the Dive, the quick view, and each empty state. */}
       {(view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty') && report?.ok && report.value.heading && (
         <ReportHeading heading={report.value.heading} period={report.value} wide={view.kind === 'dive'} />
@@ -138,7 +138,7 @@ export function FeatherDash() {
       )}
       {view.kind === 'no_access' && <NoAccess />}
       {view.kind === 'signed_out' && (
-        <Notice testid="signed-out"><a href={`/featherbase/login?next=${encodeURIComponent('/feather_dash/' + window.location.search)}`}>Sign in</a> to open your report.</Notice>
+        <Notice testid="signed-out"><a href={`/featherbase/login?next=${encodeURIComponent('/dash/' + window.location.search)}`}>Sign in</a> to open your report.</Notice>
       )}
       {view.kind === 'failed' && (
         <Notice testid="failed">
