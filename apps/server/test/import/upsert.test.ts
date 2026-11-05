@@ -681,20 +681,21 @@ describe('UPS-R5: the key is remembered per Table', () => {
     admin,
   }) => {
     // #979: one test is one transaction, so now() dates every import alike.
-    // Age the earlier ones so "the latest" has one answer.
-    const ageEarlierImports = () =>
-      sql`update featherbase.import_log set created_at = created_at - interval '1 minute' where ref_table = ${DT}`
+    // Date the later runs forward so "the latest" has one answer.
+    const dateForward = (minutes: number, isThisRun: ReturnType<typeof sql>) =>
+      sql`update featherbase.import_log set created_at = created_at + ${minutes} * interval '1 minute'
+          where ref_table = ${DT} and ${isThisRun}`
     await setup(admin)
     await seed(admin)
-    await ageEarlierImports()
     await admin.post(PATH, {
       key_column: 'zone',
       empty_cells: 'clear',
       columns: ['zone', 'pop'],
       rows: [{ zone: 'Alpha', pop: 1 }],
     })
-    await ageEarlierImports()
+    await dateForward(1, sql`key_column is not null`)
     await admin.post(PATH, { rows: [{ zone: 'Later keyless', pop: 2 }] })
+    await dateForward(2, sql`key_column is null and inserted = 1`)
 
     const logs = await admin.get<{ data: Record<string, unknown>[] }>(
       `/api/table/${encodeURIComponent('Import Log')}?fields=${encodeURIComponent(
