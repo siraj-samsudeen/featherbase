@@ -186,7 +186,7 @@ function assertExactWholeNumbers(rows: Record<string, unknown>[], columns: strin
   for (const row of rows)
     for (const column of columns) {
       const value = row[column]
-      if (value === null || value === undefined || value === '') continue
+      // Empty cells read as 0 or NaN and pass; only digit text past the range is refused.
       if (Number.isSafeInteger(Number(value))) continue
       if (typeof value === 'bigint' || (typeof value === 'string' && /^-?\d+$/.test(value.trim())))
         throw new AppError('ValidationError', `Copy failed; no rows changed: ${column} holds ${String(value).trim()} in row ${String(row.row_id)}, ` +
