@@ -82,6 +82,14 @@ describe('migrate: a new database', () => {
           ('legacy-held-4', 'psn_lines', 'Person', 'roles', 'Legacy Note Detail')`
       await db.sql`insert into permission (row_id, ref_table, role, tier, can_read)
         values ('legacy-note-detail', 'Legacy Contact Note', 'Legacy Note Detail', 'restricted', true)`
+      // A restricted create flag on line items alone reached nothing, and must not after.
+      await db.sql`insert into role (row_id) values ('Legacy Note Creator')`
+      await db.sql`insert into person (row_id, full_name, enabled) values ('psn_note_creator', 'Note Creator', true)`
+      await db.sql`insert into has_role (row_id, parent, parenttype, parentfield, role)
+        values ('legacy-held-5', 'psn_note_creator', 'Person', 'roles', 'Legacy Reader'),
+          ('legacy-held-6', 'psn_note_creator', 'Person', 'roles', 'Legacy Note Creator')`
+      await db.sql`insert into permission (row_id, ref_table, role, tier, can_create)
+        values ('legacy-note-create', 'Legacy Contact Note', 'Legacy Note Creator', 'restricted', true)`
       const relation = await tableRelation('Legacy Contact')
       await db.sql`insert into ${db.sql(relation)} (row_id, created_by, name, phone)
         values ('mine', 'psn_legacy', 'Mine', 'my-phone'), ('other', 'Administrator', 'Other', 'hidden-phone')`
@@ -122,6 +130,11 @@ describe('migrate: a new database', () => {
       const linesRow = await (await app.request('/api/table/Legacy%20Contact/lines-own', { headers: lines })).json()
       expect(linesRow).toMatchObject({ name: 'Lines', notes: [{ note: 'shown', private_note: 'line-detail' }] })
       expect(linesRow).not.toHaveProperty('phone')
+      expect(await db.sql`select 1 from permission where role = 'Legacy Note Creator'`).toEqual([])
+      const creator = { Authorization: `Bearer ${(await issueSession('psn_note_creator')).token}`, 'Content-Type': 'application/json' }
+      const refused = await app.request('/api/save_row', { method: 'POST', headers: creator,
+        body: JSON.stringify({ table: 'Legacy Contact', row: { name: 'Mine too', notes: [{ private_note: 'never' }] } }) })
+      expect(refused.status).toBe(403)
     } finally {
       await scratch.close()
     }

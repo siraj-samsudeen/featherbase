@@ -1829,6 +1829,10 @@ app.post('/api/permissions/:table', async (c) => {
     if (existing.some((row) => row.column_rule !== 'basic') || shapes.size > 1)
       throw new AppError('ValidationError', 'Edit the individual Permission Rows to preserve their scopes and Column selections')
     const [shape] = existing
+    // Clearing the last tick would forget the creator restriction or app
+    // ownership, and ticking again would grant wider than the role ever held.
+    if (shape && (shape.scope_mode !== 'all' || shape.owner_app) && !Object.keys(MATRIX_OPERATIONS).some((flag) => body[flag]))
+      throw new AppError('ValidationError', 'Edit the individual Permission Rows to preserve their scopes and app ownership')
     for (const [flag, operation] of Object.entries(MATRIX_OPERATIONS)) {
       const contributions = existing.filter((row) => row.operation === operation)
       if (!body[flag]) {
@@ -1848,7 +1852,11 @@ app.post('/api/permissions/:table', async (c) => {
         const saved = await saveDoc('Permission', {
           ref_table: table, role: body.role, operation, scope_mode: shape?.scope_mode ?? 'all', column_rule: 'basic',
         }, user)
-        if (shape?.owner_app) await sql`update permission set owner_app = ${String(shape.owner_app)} where row_id = ${String(saved.row_id)}`
+        if (shape?.owner_app) {
+          await sql`update permission set owner_app = ${String(shape.owner_app)} where row_id = ${String(saved.row_id)}`
+          // On the install ledger, so uninstalling the app removes it too.
+          await sql`update installed_app set perms = coalesce(perms, '[]'::jsonb) || ${sql.json([String(saved.row_id)])} where name = ${String(shape.owner_app)}`
+        }
       }
     }
   })

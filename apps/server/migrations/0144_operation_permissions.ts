@@ -67,12 +67,17 @@ export async function up() {
     for (const [operation, flag] of Object.entries(flags))
       if (old[flag]) bases.push({ id: await convert(old, operation, 'basic'), old, operation })
   }
+  // A line-item Table cannot be saved directly, and what a new line may hold
+  // came from the parent's reach and the line items' edit flag, never their
+  // create flag: that flag alone must not become Column reach.
+  const lineItemTables = new Set((await sql`select name from table_def where kind = 'sub_table'`).map((row) => String(row.name)))
   for (const old of previous.filter((row) => row.tier === 'restricted')) {
     // Identifier sensitivity formerly used Person's restricted read level.
     // Keep it as a distinct read capability, never as identifier-edit power.
     if (old.ref_table === 'Person' && old.can_read) await convert(old, 'read_identifiers', 'every')
     // A create grant previously also admitted the holder's writable Columns.
     for (const base of bases.filter((base) => base.old.ref_table === old.ref_table && COLUMN_OPERATIONS.includes(base.operation))) {
+      if (base.operation === 'create' && lineItemTables.has(String(old.ref_table))) continue
       const flag = flags[base.operation as keyof typeof flags]
       if (old[flag] || (base.operation === 'create' && old.can_write)) await convert(old, base.operation, 'every', base.id)
     }
@@ -86,8 +91,8 @@ export async function up() {
   for (const old of previous.filter((row) => row.tier === 'restricted')) {
     for (const link of links.filter((link) => link.row_table === old.ref_table)) {
       for (const base of bases.filter((base) => base.old.ref_table === link.parent && COLUMN_OPERATIONS.includes(base.operation))) {
-        const flag = flags[base.operation as keyof typeof flags]
-        if (!(old[flag] || (base.operation === 'create' && old.can_write))) continue
+        // Editing line items reaches a new line's Columns; their create flag does not.
+        if (!old[base.operation === 'create' ? 'can_write' : flags[base.operation as keyof typeof flags]]) continue
         const id = randomUUID()
         replacements.get(String(old.row_id))!.push(id)
         await sql`insert into permission ${sql({

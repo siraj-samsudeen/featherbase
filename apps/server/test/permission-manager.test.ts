@@ -61,6 +61,34 @@ describe('SET-003: permission manager endpoints', () => {
     ])
   })
 
+  test('clearing the last tick cannot forget a creator restriction', async ({ admin }) => {
+    await setup(admin)
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, operation: 'read', scope_mode: 'creator',
+    } })
+    const cleared = await admin.fetch(`/api/permissions/${encodeURIComponent(DT)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: ROLE }),
+    })
+    expect(cleared.status).toBe(417)
+    expect(await sql`select operation, scope_mode from permission where ref_table = ${DT} and role = ${ROLE}`)
+      .toEqual([{ operation: 'read', scope_mode: 'creator' }])
+  })
+
+  test("an operation added beside an app's grant is on that app's install ledger", async ({ admin }) => {
+    await setup(admin)
+    const grant = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Permission', row: {
+      ref_table: DT, role: ROLE, operation: 'read',
+    } })
+    await sql`insert into installed_app (name, tables, roles, perms, fixtures, sources) values
+      ('ledger_app', '[]', '[]', ${sql.json([grant.row_id])}, '[]', '[]')`
+    await sql`update permission set owner_app = 'ledger_app' where row_id = ${grant.row_id}`
+    await admin.post(`/api/permissions/${encodeURIComponent(DT)}`, { role: ROLE, can_read: true, can_write: true })
+    const [added] = await sql`select row_id, owner_app from permission where ref_table = ${DT} and role = ${ROLE} and operation = 'update'`
+    expect(added.owner_app).toBe('ledger_app')
+    const [{ perms }] = await sql`select perms from installed_app where name = 'ledger_app'`
+    expect(perms).toEqual([grant.row_id, added.row_id])
+  })
+
   test('the simple matrix leaves a grant of listed Columns to its own Row', async ({ admin }) => {
     await setup(admin)
     await admin.post('/api/save_row', { table: 'Permission', row: {
