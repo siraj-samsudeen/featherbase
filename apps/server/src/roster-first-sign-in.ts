@@ -112,20 +112,24 @@ async function rowsWithId({ link, relation }: Roster, id: string): Promise<Roste
 }
 
 /** Does anyone already hold this row's record or ID here? An ended link counts:
- *  it never opens an account again (person-resolution D5). Each value is held
- *  by this row's person-to-be only after this sign-in writes it. */
-async function heldElsewhere(method: SignInMethod, { recordSystem }: Roster, row: RosterRow): Promise<boolean> {
+ *  it never opens an account again (person-resolution D5). */
+async function heldElsewhere(method: SignInMethod, { recordSystem }: Roster, row: RosterRow): Promise<HeldReason | null> {
   const [linked] = await sql`
     select 1 from sign_in_identity
     where method = ${method.key} and (subject = ${row.record} or lower(sign_in_name) = lower(${row.sign_in_id})) limit 1`
-  if (linked) return true
+  if (linked) return 'already_linked'
   for (const [system, raw] of [[recordSystem, row.record], ...Object.entries(row.values)]) {
     const [s] = await sql`select normalise, kind from identifier_system where row_id = ${system}`
-    const value = normaliseValue(raw, s.normalise as NormaliseRule, s.kind as IdentifierKind)
+    let value: string
+    try {
+      value = normaliseValue(raw, s.normalise as NormaliseRule, s.kind as IdentifierKind)
+    } catch {
+      return 'link_failed' // a value the identifier system cannot hold
+    }
     const [held] = await sql`select 1 from person_identifier where system = ${system} and value = ${value} and upper_inf(valid) limit 1`
-    if (held) return true
+    if (held) return 'already_linked'
   }
-  return false
+  return null
 }
 
 /** The one row this ID may link, or null with the reason noted when an
@@ -153,13 +157,7 @@ async function candidate(method: SignInMethod, roster: Roster, id: string): Prom
 async function problemWith(method: SignInMethod, roster: Roster, row: RosterRow): Promise<HeldReason | null> {
   if (row.person) return 'row_has_person'
   if (!row.record) return 'no_record_number'
-  try {
-    return (await heldElsewhere(method, roster, row)) ? 'already_linked' : null
-  } catch (err) {
-    // A value the identifier system cannot hold.
-    if (err instanceof AppError) return 'link_failed'
-    throw err
-  }
+  return heldElsewhere(method, roster, row)
 }
 
 interface Linked {
@@ -173,7 +171,7 @@ async function winner(method: SignInMethod, row: { record: string; person: strin
   const [won] = await sql`
     select id, person_id from sign_in_identity
     where method = ${method.key} and subject = ${row.record} and ended_at is null and linked_by = ${ROSTER_LINK}`
-  if (!won || (row.person && String(won.person_id) !== row.person)) return null
+  if (!won || String(won.person_id) !== row.person) return null
   return { user: String(won.person_id), identity: String(won.id), created: false }
 }
 
@@ -239,10 +237,10 @@ export async function rosterFirstSignIn(cfg: DelegatedLoginConfig, id: string, p
   try {
     linked = await link(method, roster, id, row)
   } catch (err) {
-    const code = (err as { code?: string })?.code
-    if (!(err instanceof AppError) && code !== '23505' && code !== '23P01') throw err
-    // Lost a race on the unique link, or a save refused it: nothing was kept.
-    linked = (await winner(method, { record: row.record, person: null })) ?? 'link_failed'
+    // A save refused it, so nothing was kept. The row lock already serialises a
+    // race for this row; a database failure stays a failure, not a wrong password.
+    if (!(err instanceof AppError)) throw err
+    linked = 'link_failed'
   }
   if (typeof linked === 'string') {
     await hold(method.key, row.row_id, linked)

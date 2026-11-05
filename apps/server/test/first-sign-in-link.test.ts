@@ -424,6 +424,18 @@ describe('two first sign-ins at once', () => {
     expect((await heldNotes())[0]).toMatch(/ row_has_person$/)
   })
 
+  test('a row whose record changed while taken is not the winner', async ({ api, admin }) => {
+    await setUp(admin)
+    provider()
+    const cfg = (await delegatedLoginConfig('stylehr'))!
+    await rosterFirstSignIn(cfg, CODE, PASSWORD, null)
+    provider(async () => {
+      await sql`update featherbase.crew_list set hr_record = '7009' where crew_no = ${CODE}`
+      return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
+    })
+    await expect(rosterFirstSignIn(cfg, CODE, PASSWORD, null)).rejects.toThrow(REFUSED)
+  })
+
   test('a failure midway leaves nothing behind', async ({ api, admin, createUser }) => {
     const other = await createUser({ email: 'other.crew@example.test' })
     await setUp(admin)
@@ -488,6 +500,18 @@ describe('what cannot be read is refused', () => {
     invalidateMeta(TABLE)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     await expectRefusedWithoutAsking(api, provider())
+  })
+
+  test('a database failure midway stays a failure, keeps nothing, and is not called a wrong password', async ({ api, admin }) => {
+    await setUp(admin)
+    const before = await peopleCount()
+    provider(async () => {
+      await sql`alter table featherbase.crew_list drop column login`
+      return Response.json({ access: 'opaque', employee_id: Number(RECORD) })
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await signIn(api)).status).toBe(500)
+    expect(await peopleCount()).toBe(before)
   })
 
   test('a value its identifier system cannot hold is noted, without asking', async ({ api, admin }) => {
