@@ -263,6 +263,53 @@ describe('a copy and a deploy at the same time', () => {
   })
 })
 
+describe('the data source changes during the read', () => {
+  // As a deploy's settings file may, between the read and the apply.
+  const change = () => sql`update data_source set table_allowlist = 'sales.main.other' where row_id = 'overlap'`
+
+  test('Copy again is refused, and no row changes', async ({ admin }) => {
+    await makeCopy(admin)
+    const runs = await sql`select 1 from import_log where ref_table = 'Overlap Stores'`
+    const read = stall()
+    gates.read = read.wait
+    try {
+      const copy = admin.post(AGAIN, {})
+      await read.reached
+      await change()
+      read.release()
+      await expect(copy).rejects.toMatchObject({ status: 409, message: expect.stringContaining('changed while the source was read') })
+    } finally { gates.read = undefined; read.release() }
+    expect(await sql`select 1 from import_log where ref_table = 'Overlap Stores'`).toHaveLength(runs.length)
+  })
+
+  test('a first copy is refused, and no Table is made', async ({ admin }) => {
+    await admin.post(`${SOURCES}:motherduck_connect`, { name: 'overlap', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+    const read = stall()
+    gates.read = read.wait
+    try {
+      const made = admin.post(`${SOURCES}/overlap:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Overlap Stores', key: 'code', columns: COLUMNS })
+      await read.reached
+      await change()
+      read.release()
+      await expect(made).rejects.toMatchObject({ status: 409 })
+    } finally { gates.read = undefined; read.release() }
+    expect(await sql`select 1 from table_def where name = 'Overlap Stores'`).toHaveLength(0)
+  })
+
+  test('a status a read writes is not a change', async ({ admin }) => {
+    await makeCopy(admin)
+    const read = stall()
+    gates.read = read.wait
+    try {
+      const copy = admin.post<{ unchanged: number }>(AGAIN, {})
+      await read.reached
+      await sql`update data_source set conn_status = 'error', last_checked_at = now(), last_error = 'seen by another read' where row_id = 'overlap'`
+      read.release()
+      expect((await copy).unchanged).toBe(3)
+    } finally { gates.read = undefined; read.release() }
+  })
+})
+
 describe('the owning app changes during the read', () => {
   const NAME = 'copyowner.store'
   const PATH = `/api/table/${NAME}`

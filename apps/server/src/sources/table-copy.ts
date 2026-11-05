@@ -49,6 +49,19 @@ async function withSourceRows<T>(cfg: SourceConfig, query: string, key: string, 
   } finally { await rm(folder, { recursive: true, force: true }) }
 }
 
+/** #971: a Data Source's settings as they stand, without the status every read
+ *  updates. A deploy may change them while a copy reads, so the apply compares. */
+async function sourceSettings(name: string): Promise<string> {
+  const [row] = await sql`select * from data_source where row_id = ${name}`
+  const { conn_status, last_checked_at, last_error, updated_at, updated_by, ...settings } = row ?? {}
+  return JSON.stringify(settings)
+}
+
+async function assertSourceUnchanged(name: string, settings: string): Promise<void> {
+  if (await sourceSettings(name) !== settings)
+    throw new AppError('ConflictError', `Data source ${name} changed while the source was read; try the copy again`)
+}
+
 /** How many rows, how many distinct values and how many empty ones a column has. */
 export async function checkKey(sourceName: string, database: string, schema: string, table: string, column: string) {
   const cfg = await getSource(sourceName)
@@ -65,6 +78,7 @@ export async function createCopy(
   user: SessionUser,
   input: { source: string; database: string; schema: string; table: string; name: string; key: string; columns: CopyColumn[] },
 ): Promise<{ table: string; result: CopyResult }> {
+  const settings = await sourceSettings(input.source)
   const cfg = await getSource(input.source)
   const keyColumn = input.columns.find((c) => c.source === input.key)
   if (!keyColumn) throw new AppError('ValidationError', 'The key column must be one of the columns copied', { key: 'Keep the key column' })
@@ -95,6 +109,7 @@ export async function createCopy(
   }
   const select = input.columns.map(c => `${quoteIdentifier(c.source)} as ${quoteIdentifier(c.column_name)}`).join(', ')
   return withSourceRows(cfg, `select ${select} from ${relation(input.database, input.schema, input.table)}`, keyColumn.column_name, (folder, parts) => appOperation(() => actionTransaction(async () => {
+    await assertSourceUnchanged(input.source, settings)
     await createTable({
       name: input.name,
       id_pattern: 'prompt',
@@ -131,7 +146,8 @@ export async function copyInfo(target: string) {
  * reach here outside one: the request middleware and the job runner let them).
  * The apply takes it, after this table's own lock, so nothing holding the
  * lifecycle lock ever waits for that one. Whatever may have changed during the
- * read is checked under it: applyCopy's mapping check, and here the owning app. */
+ * read is checked under it: applyCopy's mapping check, the source's settings
+ * and the owning app. */
 export async function copyAgain(user: SessionUser, target: string): Promise<CopyResult> {
   return sql.begin(async lock => {
     await lock`select pg_advisory_xact_lock(hashtext('table-copy:' || ${target}))`
@@ -140,6 +156,7 @@ export async function copyAgain(user: SessionUser, target: string): Promise<Copy
     // Recorded before the metadata the read relies on: an upgrade after this is caught.
     const owner = target.includes('.') ? target.split('.')[0] : null
     const identity = owner ? await servingIdentity(owner) : null
+    const settings = await sourceSettings(String(copy.data_source))
     const cfg = await getSource(String(copy.data_source))
     assertAllowed(cfg, `${copy.database}.${copy.source_schema}`, String(copy.source_table))
     const meta = await getMeta(target)
@@ -149,7 +166,10 @@ export async function copyAgain(user: SessionUser, target: string): Promise<Copy
     const select = columns.map(c => `${quoteIdentifier(c.source_column!)} as ${quoteIdentifier(c.column_name)}`).join(', ')
     return withSourceRows(cfg, `select ${select} from ${relation(String(copy.database), String(copy.source_schema), String(copy.source_table))}`, key.column_name,
       async (folder, parts) => {
-        const apply = () => actionTransaction(() => applyCopy(user, target, copy, meta, folder, parts))
+        const apply = () => actionTransaction(async () => {
+          await assertSourceUnchanged(String(copy.data_source), settings)
+          return applyCopy(user, target, copy, meta, folder, parts)
+        })
         if (!owner) return appOperation(apply)
         let result!: CopyResult
         await assertStillServing(owner, identity!, async () => { result = await apply() })
