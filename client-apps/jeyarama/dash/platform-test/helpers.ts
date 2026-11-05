@@ -6,23 +6,23 @@ import { makeClient, type TestClient } from 'feather-testing-postgres'
 import { expect } from 'vitest'
 import { discoverPackages } from '../../src/runtime-packages'
 
-export const APP_DIR = process.env.FEATHER_DASH_DIR!
+export const APP_DIR = process.env.DASH_DIR!
 /** The version under test: the app folder's own package.json. */
 export const VERSION: string = JSON.parse(readFileSync(resolve(APP_DIR, 'package.json'), 'utf8')).version
 
 export const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
-  ...init, headers: { 'X-Featherbase-App-Version': `feather_dash@${VERSION}`, ...init?.headers },
+  ...init, headers: { 'X-Featherbase-App-Version': `dash@${VERSION}`, ...init?.headers },
 }) }, client.token, client.user)
 
 /** Feather Dash at this version, installed. */
 export async function installApp(admin: TestClient) {
   expect(await discoverPackages([APP_DIR])).toEqual([])
-  await admin.post('/api/install_app', { name: 'feather_dash' })
+  await admin.post('/api/install_app', { name: 'dash' })
 }
 
 /** Saves a row of one of the app's Tables. */
 export const saveRow = (client: TestClient, table: string, row: Record<string, unknown>) =>
-  client.post<Record<string, unknown>>('/api/save_row', { table: table.includes('.') || !/^[a-z_]+$/.test(table) ? table : `feather_dash.${table}`, row })
+  client.post<Record<string, unknown>>('/api/save_row', { table: table.includes('.') || !/^[a-z_]+$/.test(table) ? table : `dash.${table}`, row })
 
 // The old Tables, as an instance holds them (featherbase's sales-target tests' shapes).
 export const OLD_TABLES: [string, Record<string, unknown>[]][] = [

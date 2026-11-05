@@ -1,8 +1,8 @@
-# Feather Dash People
+# Dash People
 
 ## Purpose
 
-Feather Dash holds who works for the group and in which stints, the HR title beside each
+Dash holds who works for the group and in which stints, the HR title beside each
 person's org-chart job, how a person's time is split across their job assignments, the approved
 headcount of each section, and the jobs above the store up to the Director. The HR load, the
 scopes and the reports build on these one set of records.

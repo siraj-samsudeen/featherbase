@@ -75,7 +75,7 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
     add(page.title, `/featherbase/admin/${page.slug}`, 'Page')
   }
   add('Sign-in methods', ACCOUNT_SIGN_IN_METHODS_PATH, 'Account')
-  if (roles.includes(VIEWER_ROLE)) add(INTERIM_APPS.feather_dash.title, INTERIM_APPS.feather_dash.root, 'Report')
+  if (roles.includes(VIEWER_ROLE)) add(INTERIM_APPS.dash.title, INTERIM_APPS.dash.root, 'Report')
   for (const page of await getVisibleHomePages(user))
     add(page.label || page.row_id, `/featherbase/admin/home/${encodeURIComponent(page.row_id)}`, 'Home Page')
   for (const app of await appCatalog(user)) {

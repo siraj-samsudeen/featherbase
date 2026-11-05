@@ -76,7 +76,7 @@ variable.
 | `SMTP_PORT` | no | no | `587` | `587` = STARTTLS, `465` = implicit TLS. On every port but 465, STARTTLS is required |
 | `SMTP_USER` | no | no |  | a Workspace user in the domain; turns on SMTP AUTH |
 | `SMTP_PASSWORD` | no | yes |  | that user's **app password**; required when `SMTP_USER` is set. Google's grouped display (`abcd efgh ijkl mnop`) has its spaces removed |
-| `MAIL_FROM` | no | no |  | the From of every SMTP message (`Feather Dash <noreply@example.com>`); it wins over any Email Account address. Unset, the default Email Account's address is used |
+| `MAIL_FROM` | no | no |  | the From of every SMTP message (`Dash <noreply@example.com>`); it wins over any Email Account address. Unset, the default Email Account's address is used |
 | `SMTP_NAME` | no | no |  | the `EHLO` hostname. Unset, the domain of `MAIL_FROM`, then the host of the `INSTANCE_ADDRESSES` entry marked for emails, then the sender's domain |
 | `PREAUTH_WINDOW_MS` | no | no | `900000` | pre-auth fixed window, in milliseconds |
 | `PREAUTH_LOGIN_MAX` | no | no | `60` | password and delegated sign-in submissions per source and window |
@@ -121,7 +121,7 @@ variable.
 entry is one web address of this instance:
 
 ```json
-[{ "address": "https://dash.example.com", "opens": "feather_dash", "emails": true },
+[{ "address": "https://dash.example.com", "opens": "dash", "emails": true },
  { "address": "https://featherbase.example.com", "opens": "admin" }]
 ```
 

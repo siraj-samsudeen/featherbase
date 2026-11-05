@@ -1308,7 +1308,7 @@ app.get('/api/people/waiting_for_access/count', async (c) => {
 })
 
 // #955: a page that found the person has no access to it (Featherbase's
-// no-access page, Feather Dash's) says so here; opening it is the request.
+// no-access page, Dash's) says so here; opening it is the request.
 app.post('/api/access_request', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { app?: unknown }
   const answer = typeof body.app === 'string' ? await requestAccess(who(c), body.app) : null
