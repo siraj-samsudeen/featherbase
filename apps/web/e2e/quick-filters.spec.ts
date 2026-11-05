@@ -7,6 +7,7 @@
 // that switches one switches it back, so the others read the Table's defaults.
 import { test, expect, adminAuth, type Page } from './fixtures'
 import { ensureTable, fillRows } from './fixtures-ui'
+import { tableHref } from 'shared'
 
 const SWITCH = 'E2E Quick Switch'
 const BOXES = 'E2E Quick Boxes'
@@ -64,7 +65,7 @@ async function switchColumn(page: Page, column: string) {
 }
 
 test('Switching a column on and off makes its box appear and go', async ({ session }) => {
-  await session.visit(`/admin/${enc(SWITCH)}`).assertHas('[data-testid="list-total"]', { text: '3 total' })
+  await session.visit(`${tableHref(SWITCH)}`).assertHas('[data-testid="list-total"]', { text: '3 total' })
   await session.step('switch Remarks on: its box appears in its place', async ({ page }) => {
     await switchColumn(page, 'remarks')
     await expect.poll(() => boxes(page)).toEqual(['section', 'remarks', 'floor'])
@@ -76,7 +77,7 @@ test('Switching a column on and off makes its box appear and go', async ({ sessi
 })
 
 test('Filtering a column and hiding it keeps the filter on', async ({ session }) => {
-  await session.visit(`/admin/${enc(SWITCH)}`).assertHas('[data-testid="list-total"]', { text: '3 total' })
+  await session.visit(`${tableHref(SWITCH)}`).assertHas('[data-testid="list-total"]', { text: '3 total' })
   await session.step('pick Ground in the Floor box', async ({ page }) => {
     await page.getByTestId('std-filter-floor').selectOption('Ground')
   })
@@ -96,7 +97,7 @@ test('Filtering a column and hiding it keeps the filter on', async ({ session })
 })
 
 test('Picking a Choice in Add filter from its dropdown narrows the rows', async ({ session }) => {
-  await session.visit(`/admin/${enc(BOXES)}`).assertHas('[data-testid="list-total"]', { text: '4 total' })
+  await session.visit(`${tableHref(BOXES)}`).assertHas('[data-testid="list-total"]', { text: '4 total' })
   await session.step('add Floor = Ground by picking, not typing', async ({ page }) => {
     await page.getByTestId('filter-field').selectOption('floor')
     await expect(page.getByTestId('filter-op').locator('option')).toHaveText(['=', '!='])
@@ -109,7 +110,7 @@ test('Picking a Choice in Add filter from its dropdown narrows the rows', async 
 })
 
 test('Picking Yes in the Active box and in Add filter shows the right rows', async ({ session }) => {
-  await session.visit(`/admin/${enc(BOXES)}`).assertHas('[data-testid="list-total"]', { text: '4 total' })
+  await session.visit(`${tableHref(BOXES)}`).assertHas('[data-testid="list-total"]', { text: '4 total' })
   await session.step('pick Yes in the Active box (after +2 more)', async ({ page }) => {
     await page.getByTestId('std-filter-more').click()
     await page.getByTestId('std-filter-active').selectOption('Yes')
@@ -135,10 +136,10 @@ test('Picking Yes in the Active box and in Add filter shows the right rows', asy
 // Deliberate deep links: the journey is a link someone changed by hand.
 test('A hand-edited link saying "true" shows the active rows, and one saying "maybe" shows none', async ({ session }) => {
   await session
-    .visit(`/admin/${enc(BOXES)}?filters=${enc(JSON.stringify([['active', '=', 'true']]))}`)
+    .visit(`${tableHref(BOXES)}?filters=${enc(JSON.stringify([['active', '=', 'true']]))}`)
     .assertHas('[data-testid="list-total"]', { text: '3 total' })
   await session
-    .visit(`/admin/${enc(BOXES)}?filters=${enc(JSON.stringify([['active', '=', 'maybe']]))}`)
+    .visit(`${tableHref(BOXES)}?filters=${enc(JSON.stringify([['active', '=', 'maybe']]))}`)
     .assertHas('[data-testid="filter-chip"]', { text: 'Active = maybe' })
   await session.step('no rows, and no error', async ({ page }) => {
     await expect(page.getByTestId('list-total')).toHaveText('0 total')
@@ -149,12 +150,12 @@ test('A hand-edited link saying "true" shows the active rows, and one saying "ma
 test('Eight possible boxes show six plus "+2 more", and a box in use stays showing', async ({ session }) => {
   // assertHas reads its text as a pattern, and "+" is a pattern character: exact
   // text checks stay raw expects.
-  await session.visit(`/admin/${enc(BOXES)}`)
+  await session.visit(`${tableHref(BOXES)}`)
   await session.step('six boxes, in column order, then +2 more', async ({ page }) => {
     await expect(page.getByTestId('std-filter-more')).toHaveText('+2 more')
     expect(await boxes(page)).toEqual(['store', 'lob', 'main_category', 'category', 'section', 'floor'])
   })
-  await session.visit(`/admin/${enc(BOXES)}?filters=${enc(JSON.stringify([['owner_name', 'like', '%Asha%']]))}`)
+  await session.visit(`${tableHref(BOXES)}?filters=${enc(JSON.stringify([['owner_name', 'like', '%Asha%']]))}`)
   await session.step('the Owner box shows, holding its value', async ({ page }) => {
     await expect(page.getByTestId('std-filter-more')).toHaveText('+1 more')
     expect(await boxes(page)).toEqual(['store', 'lob', 'main_category', 'category', 'section', 'floor', 'owner_name'])
@@ -167,7 +168,7 @@ test.describe('on a phone', () => {
 
   test('On a phone the filters fold with a count, open stacked, and the rows come straight after them', async ({ session }) => {
     const two = JSON.stringify([['store', '=', 'KKL'], ['floor', '=', 'Ground']])
-    await session.visit(`/admin/${enc(BOXES)}?filters=${enc(two)}`)
+    await session.visit(`${tableHref(BOXES)}?filters=${enc(two)}`)
     await session.step('folded: no filter control shows, and the rows come next', async ({ page }) => {
       await expect(page.getByTestId('filters-toggle')).toHaveText('Filters (2)')
       await expect(page.getByTestId('standard-filters')).toHaveCount(0)

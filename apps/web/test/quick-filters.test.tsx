@@ -5,6 +5,7 @@ import { afterEach, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { NARROW_QUERY } from '@featherbase/shop-floor'
 import { recordAction } from '../src/lib/recents'
+import { tableHref } from 'shared'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -43,7 +44,7 @@ async function seed(admin: Admin) {
 }
 
 async function openList(admin: Admin, search = '') {
-  await renderApp(`/featherbase/admin/${enc(T)}${search}`, admin)
+  await renderApp(`${tableHref(T)}${search}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   await screen.findByTestId('list-rows')
 }
@@ -236,7 +237,7 @@ test('A text column keeps its typed value and every operator', async ({ admin })
 
 test("The report's filter bar also offers the dropdowns", async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/${enc(T)}/view/report`, admin)
+  await renderApp(`${tableHref(T)}/view/report`, admin)
   await screen.findByTestId('report-view', {}, { timeout: 8000 })
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'floor' } })
   expect(options('filter-value')).toEqual(['', 'Ground', 'First'])
@@ -318,7 +319,7 @@ test('On a phone, opening the filters shows up to four quick filters, says how m
 test('On a phone, Recent folds behind the Filters button; Save view stays showing', async ({ admin }) => {
   onPhone()
   await seed(admin)
-  recordAction('Administrator', { kind: 'row', key: `row:${T}/r-1`, label: 'r-1', sub: T, path: `/featherbase/admin/${enc(T)}/r-1` })
+  recordAction('Administrator', { kind: 'row', key: `row:${T}/r-1`, label: 'r-1', sub: T, path: `${tableHref(T)}/r-1` })
   // Save view shows once a filter is on.
   await openList(admin, `?filters=${enc(JSON.stringify([['floor', '=', 'Ground']]))}`)
   expect(await screen.findByTestId('saved-views-bar')).toBeInTheDocument()
