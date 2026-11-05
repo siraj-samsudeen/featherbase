@@ -17,7 +17,7 @@ export function ChangeRecord({ values }: { values: Record<string, unknown> }) {
   return (
     <section data-testid="change-record" className={cardClasses('mb-4 overflow-hidden')}>
       <header data-testid="change-header" className="border-b border-border p-4 text-sm text-ink-muted">
-        <h2 className="m-0 mb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">Changes</h2>
+        <h2 className="m-0 mb-1 text-xs font-semibold text-ink-subtle">Changes</h2>
         <div className="text-base font-semibold text-ink">
           {table}
           {row && (
@@ -49,7 +49,7 @@ export function ChangeRecord({ values }: { values: Record<string, unknown> }) {
       ) : (
         <table className="w-full table-fixed border-collapse text-sm">
           <thead>
-            <tr className="text-left text-xs uppercase tracking-wide text-ink-subtle">
+            <tr className="text-left text-xs text-ink-subtle">
               <th scope="col" className="w-1/4 px-4 py-2 font-semibold">Field</th>
               <th scope="col" className="px-4 py-2 font-semibold">Before</th>
               <th scope="col" className="px-4 py-2 font-semibold">After</th>

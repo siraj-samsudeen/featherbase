@@ -6,6 +6,7 @@
 const assert = require('node:assert/strict');
 const { Given, When, Then } = require('@cucumber/cucumber');
 const { RelationMapPage } = require('../support/pages/relation-map-page');
+const { SITE } = require('../support/organisation');
 
 Given('a table of volunteers and a table of chores, each chore assigned to a volunteer', async function () {
   await this.withApi(async (api) => {
@@ -45,10 +46,6 @@ When("the user opens Asha's relationship map", async function () {
   await this.map.open('Volunteer', 'vol-1');
 });
 
-When("the user opens Asha's chores", async function () {
-  await this.map.openCollection('Chore');
-});
-
 Then('the user sees {string}, a {word}, linked by {string}', async function (title, table, link) {
   const box = this.map.linkedRow(table);
   const text = await this.map.boxText(box, title);
@@ -64,16 +61,33 @@ Then("the user sees Asha's chores related by {string}", async function (link) {
   assert.ok(!text.includes('assigned_to'), `the chores box reads "${text}", a technical name`);
 });
 
-Then('the user sees {string} listed with her phone {string}', async function (title, phone) {
-  const rows = await this.map.listedRows();
-  assert.ok(rows.some((row) => row.includes(title) && row.includes(phone)),
-    `the rows listed read ${JSON.stringify(rows)}, without "${title}" and "${phone}"`);
+// ---- Enchakkal's map, a tab of its row page (#910); the masters come from organisation.js ----
+
+When("the user opens the map on Enchakkal's page", async function () {
+  this.map = new RelationMapPage(await this.actor());
+  await this.map.open(SITE, this.org[SITE].Enchakkal);
 });
 
-Then('the user sees {string} listed instead of {string}', async function (shown, gone) {
-  await this.map.page.getByTestId('map-row').filter({ hasText: shown }).first().waitFor({ timeout: 10_000 }).catch(() => {});
-  const rows = await this.map.listedRows();
-  assert.ok(rows.some((row) => row.includes(shown)), `the rows listed read ${JSON.stringify(rows)}, without "${shown}"`);
-  // A listed chore may name Asha as its assignee (#792); what must go is Asha's own row, led by her title.
-  assert.ok(!rows.some((row) => row.split('\t')[0].trim() === gone), `the rows listed still include "${gone}": ${JSON.stringify(rows)}`);
+Then('the map shows Enchakkal pointing at Kerala', async function () {
+  await this.map.centredOn('Enchakkal');
+  const box = this.map.linkedRow('Region');
+  const text = await this.map.boxText(box, 'Kerala');
+  assert.ok(text.includes('Kerala'), `the region box reads "${text}", without "Kerala"`);
+});
+
+Then('a group of 3 plants pointing back at Enchakkal', async function () {
+  const box = this.map.collection('Plant');
+  const text = await this.map.boxText(box, '3');
+  assert.match(text, /\b3\b/, `the plants box reads "${text}", without a count of 3`);
+});
+
+When('the user chooses to centre the map on the region Kerala', async function () {
+  await this.map.centreOn('Region');
+});
+
+Then('the map re-centres on Kerala, showing what it in turn points to and back from', async function () {
+  await this.map.centredOn('Kerala');
+  const sites = this.map.collection(SITE);
+  const text = await this.map.boxText(sites, '3');
+  assert.match(text, /\b3\b/, `Kerala's sites box reads "${text}", without a count of 3`);
 });

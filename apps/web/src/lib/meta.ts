@@ -94,6 +94,12 @@ export interface TableMeta {
 
 export const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
+/** When the platform made and last changed a row: on every row, in no Table's columns. */
+export const ROW_STAMPS: Record<'created_at' | 'updated_at', { label: string; column_type: 'Datetime'; by: 'created_by' | 'updated_by' }> = {
+  created_at: { label: 'Created', column_type: 'Datetime', by: 'created_by' },
+  updated_at: { label: 'Updated', column_type: 'Datetime', by: 'updated_by' },
+}
+
 export const COLUMN_TYPES = [
   'Data', 'Int', 'Float', 'Currency', 'Check', 'Choice', 'Date', 'Datetime',
   'Text', 'Long Text', 'Reference', 'Sub-table', 'Attach', 'Attach Image', 'JSON',

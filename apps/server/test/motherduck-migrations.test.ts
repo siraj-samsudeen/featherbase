@@ -29,7 +29,8 @@ const branchHistory = {
 }
 const additions = ['0007_motherduck_pasted_token.sql', '0008_table_copy.sql', '0009_table_copy_lifecycle.sql']
 const laterMain = ['0012_table_settings_storage_identity.sql', '0013_reading_presentation.sql',
-  '0014_series_per_table.sql', '0015_metadata_override_editor.sql', '0138_mandatory_access.sql', '0141_any_table_link.sql', '0142_everyone_roles.sql']
+  '0014_series_per_table.sql', '0015_metadata_override_editor.sql', '0138_mandatory_access.sql', '0140_data_source_sentence_labels.sql',
+  '0141_any_table_link.sql', '0142_everyone_roles.sql']
 const pendingAfterLabels = [...additions, '0010_copy_refresh_schedule.sql', ...laterMain]
 const allMigrations = [...Object.keys(mainHistory), ...pendingAfterLabels]
 const oldLabels = { postgres: 'PostgreSQL', mysql: 'MySQL', duckdb: 'DuckDB', 'csv-folder': 'CSV folder' }

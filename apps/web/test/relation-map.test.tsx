@@ -1,12 +1,15 @@
-// The relationship map (spec: search-and-explore). A row's neighbourhood: what it points to,
-// what points back with a count, re-centring on a related row, and the trail back.
+// The relationship map, the row page's Map tab (spec: search-and-explore,
+// relational-navigation; #910 checklist 17). A row's neighbourhood one step
+// out: what it points to, what points back with a count. Clicking a box shows
+// that row in the drill pane and leaves the map where it is; Focus here
+// re-centres it. The separate map page is gone.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { vi } from 'vitest'
-import { test, expect, renderApp } from './pg-test'
 import { tableHref } from 'shared'
+import { createUserWithRole } from 'server/test/fixtures'
+import { test, expect, renderApp } from './pg-test'
 
 configure({ asyncUtilTimeout: 10_000 })
-const enc = encodeURIComponent
 
 async function seed(admin: Parameters<typeof renderApp>[1]) {
   await admin.post('/api/table_def', {
@@ -25,119 +28,127 @@ async function seed(admin: Parameters<typeof renderApp>[1]) {
   await admin.post('/api/save_row', { table: 'Rm Order', row: { row_id: 'ord-2', title: 'Second order', customer: 'cust-1' } })
 }
 
+/** The row page of `row`, on its Map tab. */
+async function openMap(admin: Parameters<typeof renderApp>[1], table: string, row: string) {
+  const view = await renderApp(`${tableHref(table)}/row/${row}`, admin)
+  fireEvent.click(await screen.findByRole('tab', { name: 'Map' }))
+  await screen.findByTestId('relation-map')
+  return view
+}
+
 test('the map shows what a row points to and what points back, with a count', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/table/rm-order/row/ord-1/map`, admin)
-  await screen.findByTestId('relation-map')
+  const order = await openMap(admin, 'Rm Order', 'ord-1')
   // The box names the link in words, beside the Table it leads to (#794).
   expect(await screen.findByTestId('map-forward-Rm Customer')).toHaveTextContent('Customer · Rm Customer')
   // Nothing points back at an order, so no collection is drawn for it.
   expect(screen.queryByTestId('map-group-Rm Order')).not.toBeInTheDocument()
+  order.unmount()
 
-  await renderApp(`/featherbase/admin/table/rm-customer/row/cust-1/map`, admin)
+  await openMap(admin, 'Rm Customer', 'cust-1')
   const back = await screen.findByTestId('map-group-Rm Order')
   expect(back).toHaveTextContent('2')
   await waitFor(() => expect(back).toHaveTextContent('via Customer'))
 })
 
-// SPEC: The relationship map lists its center row until a collection is opened (#794).
-test('with nothing opened the center row is listed, and opening a collection lists its rows instead', async ({ admin }) => {
+/** Someone who can read orders but not the customers they point at. */
+async function orderViewer(admin: Parameters<typeof renderApp>[1], createUser: Parameters<typeof createUserWithRole>[1]) {
   await seed(admin)
-  await renderApp(`${tableHref('Rm Customer')}/row/cust-1/map`, admin)
-  const self = await screen.findByTestId('map-self-row')
-  await waitFor(() => expect(within(self).getByTestId('map-row')).toHaveTextContent('Asha Stores'))
-  fireEvent.click(await screen.findByTestId('map-group-Rm Order'))
-  await screen.findByTestId('map-group-rows')
-  expect(screen.queryByTestId('map-self-row')).not.toBeInTheDocument()
-  await waitFor(() => expect(screen.getAllByTestId('map-row')).toHaveLength(2))
-})
-
-async function hopOrderToCustomerToOtherOrder(admin: Parameters<typeof renderApp>[1]) {
-  await seed(admin)
-  const view = await renderApp(`/featherbase/admin/table/rm-order/row/ord-1/map`, admin)
-  // order -> its customer
-  fireEvent.click(await screen.findByTestId('map-forward-Rm Customer'))
-  await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores'))
-  // customer -> another of the customer's orders, picked from the opened collection
-  fireEvent.click(await screen.findByTestId('map-group-Rm Order'))
-  const rows = await screen.findAllByTestId('map-row')
-  fireEvent.click(rows.find((r) => r.textContent?.includes('Second order'))!)
-  await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Second order'))
-  return view
+  return createUserWithRole(admin, createUser, { role: 'Rm Order Viewer', table: 'Rm Order', can_read: true })
 }
 
-test('clicking a related row re-centres the map on it, and the trail names where the user came from', async ({ admin }) => {
-  const { router } = await hopOrderToCustomerToOtherOrder(admin)
-  const trail = screen.getByTestId('map-trail')
-  await waitFor(() => expect(within(trail).getByTestId('map-trail-0')).toHaveTextContent('First order'))
-  await waitFor(() => expect(within(trail).getByTestId('map-trail-1')).toHaveTextContent('Asha Stores'))
-  await waitFor(() => expect(trail).toHaveTextContent('Second order'))
-  const { location } = router.state as { location: { searchStr: string } }
-  expect(JSON.parse(new URLSearchParams(location.searchStr).get('trail')!)).toEqual([
-    ['Rm Order', 'ord-1'], ['Rm Customer', 'cust-1'],
-  ])
+test("a link to a row the viewer can't read is no button in the narrow map", async ({ admin, createUser }) => {
+  const viewer = await orderViewer(admin, createUser)
+  await openMap(viewer, 'Rm Order', 'ord-1')
+  const link = () => screen.getByTestId('map-narrow-forward-Rm Customer')
+  await waitFor(() => expect(link()).toHaveTextContent('A row you cannot see'))
+  expect(link().closest('button')).toBeNull()
 })
 
-// SPEC: The relationship map remembers the trail. Each stop on the trail is
-// the row the user stood on, in its own Table (#513), so an earlier stop
-// opens that row again.
-test('the trail leads back to the original order in one click', async ({ admin }) => {
-  await hopOrderToCustomerToOtherOrder(admin)
-  fireEvent.click(within(screen.getByTestId('map-trail')).getByTestId('map-trail-0'))
-  await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('First order'), { timeout: 3000 })
-  await waitFor(() => expect(screen.getByTestId('map-forward-Rm Customer')).toHaveTextContent('Asha Stores'))
+test("clicking a link to a row the viewer can't read opens no pane", async ({ admin, createUser }) => {
+  const viewer = await orderViewer(admin, createUser)
+  await openMap(viewer, 'Rm Order', 'ord-1')
+  const box = await screen.findByTestId('map-forward-Rm Customer')
+  await waitFor(() => expect(box).toHaveTextContent('Not visible to you'))
+  fireEvent.click(box)
+  // Let a pane that would open have the time to.
+  await new Promise((r) => setTimeout(r, 500))
+  expect(screen.queryByRole('complementary', { name: 'A row you cannot see' })).not.toBeInTheDocument()
 })
 
-test('a copied single-encoded trail restores titles and a removed stop safely falls back to its id', async ({ admin }) => {
+test('clicking a linked row shows it in the drill pane; the map stays centred', async ({ admin }) => {
   await seed(admin)
-  const trail = JSON.stringify([['Rm Order', 'removed-order'], ['Rm Customer', 'cust-1']])
-  const { router } = await renderApp(`/featherbase/admin/table/rm-order/row/ord-2/map?trail=${enc(trail)}`, admin)
-  await waitFor(() => expect(screen.getByTestId('map-trail-1')).toHaveTextContent('Asha Stores'))
-  const { location } = router.state as { location: { searchStr: string } }
-  expect(JSON.parse(new URLSearchParams(location.searchStr).get('trail')!)).toEqual(JSON.parse(trail))
-  expect(screen.getByTestId('map-trail-0')).toHaveTextContent('removed-order')
-  fireEvent.click(screen.getByTestId('map-trail-1'))
-  await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores'))
-  expect(screen.getByTestId('map-trail-0')).toHaveTextContent('removed-order')
+  await openMap(admin, 'Rm Order', 'ord-1')
+  fireEvent.click(await screen.findByTestId('map-forward-Rm Customer'))
+  expect(await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })).toBeInTheDocument()
+  expect(screen.getByTestId('map-center')).toHaveTextContent('First order')
 })
 
-test('the narrow layout exposes every backlink count and its rows through buttons', async ({ admin }) => {
+test('clicking a collection shows its rows in the drill pane', async ({ admin }) => {
+  await seed(admin)
+  await openMap(admin, 'Rm Customer', 'cust-1')
+  fireEvent.click(await screen.findByTestId('map-group-Rm Order'))
+  const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
+  await waitFor(() => expect(within(within(pane).getByRole('table')).getAllByRole('row')).toHaveLength(3))
+  expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores')
+})
+
+test('Focus here re-centres the map on the row in the pane', async ({ admin }) => {
+  await seed(admin)
+  await openMap(admin, 'Rm Order', 'ord-1')
+  fireEvent.click(await screen.findByTestId('map-forward-Rm Customer'))
+  const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
+  fireEvent.click(await within(pane).findByRole('button', { name: 'Focus here' }))
+  await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores'))
+  expect(await screen.findByTestId('map-group-Rm Order')).toHaveTextContent('2')
+  expect(screen.getByRole('tab', { name: 'Map' })).toHaveAttribute('aria-selected', 'true')
+})
+
+// #907: a row known by a code reads by its name on the map.
+test('a code-keyed row reads by its name in its box', async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: 'Rm State', id_pattern: 'prompt', title_column: 'state_name',
+    columns: [{ column_name: 'state_name', column_type: 'Data', in_list_view: true }],
+  })
+  await admin.post('/api/table_def', {
+    name: 'Rm Depot', id_pattern: 'prompt', title_column: 'title',
+    columns: [
+      { column_name: 'title', column_type: 'Data', in_list_view: true },
+      { column_name: 'state', column_type: 'Reference', reference_table: 'Rm State', label: 'State' },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Rm State', row: { row_id: '32', state_name: 'Kerala' } })
+  await admin.post('/api/save_row', { table: 'Rm Depot', row: { row_id: 'd-1', title: 'Kochi depot', state: '32' } })
+  await openMap(admin, 'Rm Depot', 'd-1')
+  const box = await screen.findByTestId('map-forward-Rm State')
+  await waitFor(() => expect(box).toHaveTextContent('Kerala'))
+  expect(box).not.toHaveTextContent(/\b32\b/)
+})
+
+test('the narrow layout exposes every backlink count through buttons', async ({ admin }) => {
   await seed(admin)
   await admin.post('/api/table_def', {
     name: 'Rm Note', id_pattern: 'prompt',
     columns: [{ column_name: 'customer', column_type: 'Reference', reference_table: 'Rm Customer' }],
   })
   await admin.post('/api/save_row', { table: 'Rm Note', row: { row_id: 'note-1', customer: 'cust-1' } })
-  await renderApp(`/featherbase/admin/table/rm-customer/row/cust-1/map`, admin)
+  await openMap(admin, 'Rm Customer', 'cust-1')
   const narrow = within(await screen.findByTestId('map-narrow'))
-  const orders = await narrow.findByTestId('map-narrow-group-Rm Order')
-  expect(orders).toHaveTextContent('2')
+  expect(await narrow.findByTestId('map-narrow-group-Rm Order')).toHaveTextContent('2')
   expect(await narrow.findByTestId('map-narrow-group-Rm Note')).toHaveTextContent('1')
-  fireEvent.click(orders)
-  expect(orders).toHaveAttribute('aria-expanded', 'true')
-  expect(await screen.findAllByTestId('map-row')).toHaveLength(2)
-  fireEvent.click(orders)
-  expect(orders).toHaveAttribute('aria-expanded', 'false')
-  expect(screen.queryByTestId('map-group-rows')).not.toBeInTheDocument()
+  fireEvent.click(narrow.getByTestId('map-narrow-group-Rm Order'))
+  expect(await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })).toBeInTheDocument()
 })
 
-test('the narrow layout keeps a single link walkable and an empty map understandable', async ({ admin }) => {
-  await seed(admin)
-  const linked = await renderApp(`/featherbase/admin/table/rm-order/row/ord-1/map`, admin)
-  fireEvent.click(await screen.findByTestId('map-narrow-forward-Rm Customer'))
-  await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores'))
-  linked.unmount()
+test('an unconnected row says it has no related rows', async ({ admin }) => {
   await admin.post('/api/table_def', { name: 'Rm Alone', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Rm Alone', row: { row_id: 'alone-1', title: 'Unconnected row' } })
-  await renderApp(`/featherbase/admin/table/rm-alone/row/alone-1/map`, admin)
-  await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('alone-1'))
+  await openMap(admin, 'Rm Alone', 'alone-1')
   expect(within(screen.getByTestId('map-narrow')).getByText('No related rows')).toBeInTheDocument()
-  expect(screen.getByTestId('map-open-form')).toBeInTheDocument()
 })
 
-// A sub-table on the map (ADR 0012 merged coverage showed it untaken): its
-// rows are a collection on the parent, one of them re-centres the map, and
-// from there the row points back up at its parent.
+// A sub-table on the map: its rows are a collection on the parent, and a row
+// of it points back up at its parent.
 test('a sub-table shows as a collection of its rows, and a row of it points back at its parent', async ({ admin }) => {
   await admin.post('/api/table_def', {
     name: 'Rm Line', kind: 'sub_table',
@@ -153,42 +164,79 @@ test('a sub-table shows as a collection of its rows, and a row of it points back
       { column_name: 'lines', column_type: 'Sub-table', row_table: 'Rm Line', label: 'Lines' },
     ],
   })
-  await admin.post('/api/save_row', {
+  const saved = await admin.post<{ lines: { row_id: string }[] }>('/api/save_row', {
     table: 'Rm Invoice',
     row: { row_id: 'inv-1', title: 'March invoice', lines: [{ item: 'Saree', qty: 2 }, { item: 'Shawl', qty: 1 }] },
   })
+  const invoice = await openMap(admin, 'Rm Invoice', 'inv-1')
+  expect(await screen.findByTestId('map-group-Rm Line')).toHaveTextContent('2')
+  invoice.unmount()
+  await openMap(admin, 'Rm Line', saved.lines[0].row_id)
+  await waitFor(() => expect(screen.getByTestId('map-forward-Rm Invoice')).toHaveTextContent('March invoice'))
+})
+
+test('the separate map page is gone', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(`${tableHref('Rm Order')}/row/ord-1/map`, admin)
+  expect(await screen.findByTestId('page-not-found')).toBeInTheDocument()
+})
+
+test("the map's centre box never shows the row's id while its name is on its way", async ({ admin }) => {
+  await seed(admin)
   let release!: () => void
   const gate = new Promise<void>((resolve) => { release = resolve })
   const real = globalThis.fetch
-  const delayed = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-    const response = await real(input, init)
-    if (String(input).includes('/api/table/Rm%20Line:meta')) await gate
-    return response
+  const held = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes('/api/row_titles')) await gate
+    return real(input, init)
   })
   try {
-    await renderApp(`/featherbase/admin/table/rm-invoice/row/inv-1/map`, admin)
-    const lines = await screen.findByTestId('map-group-Rm Line')
-    expect(lines).toHaveTextContent('2')
-    fireEvent.click(lines)
-    const group = await screen.findByTestId('map-group-rows')
-    expect(within(group).queryAllByTestId('map-row')).toHaveLength(0)
+    await openMap(admin, 'Rm Order', 'ord-1')
+    const centre = await screen.findByTestId('map-center')
+    expect(centre).not.toHaveTextContent('ord-1')
+    expect(screen.getByTestId('map-svg')).not.toHaveAttribute('aria-label', expect.stringContaining('ord-1'))
     release()
-    const rows = await within(group).findAllByTestId('map-row')
-    expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining('Saree'), expect.stringContaining('Shawl')])
-    fireEvent.click(rows[0])
-    // Re-centred on the line: it points up at its invoice.
-    const parent = await screen.findByTestId('map-forward-Rm Invoice')
-    expect(parent).toHaveTextContent('inv-1')
-    expect(screen.queryByTestId('map-group-Rm Line')).not.toBeInTheDocument()
+    await waitFor(() => expect(centre).toHaveTextContent('First order'))
   } finally {
     release()
-    delayed.mockRestore()
+    held.mockRestore()
   }
 })
 
-test('a map deep link to a missing row says what could not be loaded', async ({ admin }) => {
+// Checklist 21: the map works from the keyboard.
+test('a linked row on the map is reached by Tab and shown in the pane by Enter', async ({ admin }) => {
   await seed(admin)
-  await renderApp(`/featherbase/admin/table/rm-order/row/gone/map`, admin)
-  expect(await screen.findByText('Cannot load Rm Order gone')).toBeInTheDocument()
-  expect(screen.queryByTestId('relation-map')).not.toBeInTheDocument()
+  await openMap(admin, 'Rm Order', 'ord-1')
+  const box = await screen.findByTestId('map-forward-Rm Customer')
+  expect(box).toHaveAttribute('tabindex', '0')
+  fireEvent.keyDown(box, { key: 'Enter' })
+  expect(await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })).toBeInTheDocument()
+})
+
+test('a collection on the map is reached by Tab and shown in the pane by Space', async ({ admin }) => {
+  await seed(admin)
+  await openMap(admin, 'Rm Customer', 'cust-1')
+  const box = await screen.findByTestId('map-group-Rm Order')
+  expect(box).toHaveAttribute('tabindex', '0')
+  fireEvent.keyDown(box, { key: ' ' })
+  const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
+  await waitFor(() => expect(within(within(pane).getByRole('table')).getAllByRole('row')).toHaveLength(3))
+})
+
+test("a link to a row the viewer can't read is not in the tab order", async ({ admin, createUser }) => {
+  const viewer = await orderViewer(admin, createUser)
+  await openMap(viewer, 'Rm Order', 'ord-1')
+  const box = await screen.findByTestId('map-forward-Rm Customer')
+  await waitFor(() => expect(box).toHaveTextContent('Not visible to you'))
+  expect(box).not.toHaveAttribute('tabindex')
+})
+
+// Beside the pane the map keeps its drawing at its full size, so its text
+// never shrinks below legible; a narrow frame scrolls it sideways instead.
+test('the map drawing never shrinks below its own size; a narrow frame scrolls it', async ({ admin }) => {
+  await seed(admin)
+  await openMap(admin, 'Rm Order', 'ord-1')
+  const svg = screen.getByTestId('map-svg')
+  expect(svg.getAttribute('class')).toMatch(/\bmin-w-\[56rem\]/)
+  expect(svg.parentElement!.className).toMatch(/\boverflow-x-auto\b/)
 })
