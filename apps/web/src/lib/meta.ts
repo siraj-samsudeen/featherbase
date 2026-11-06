@@ -141,6 +141,12 @@ export function isRowsReadOnly(meta: TableMeta | undefined): boolean {
   return isSourceReadOnly(meta) || isSystemWritten(meta) || isArchived(meta) || isView(meta)
 }
 
+/** #1021: the Table a link's values are rows of: a view's base, since a
+ *  link to a view stores and opens base rows. */
+export function linkRowsTable(column: { reference_table?: string | null; reference_base?: string | null }): string | null {
+  return column.reference_base ?? column.reference_table ?? null
+}
+
 /** #1021: a view: a filtered lens on its base, whose rows are its base's. */
 export function isView(meta: TableMeta | undefined): meta is TableMeta & { kind: 'view'; view_of: string } {
   return meta?.kind === 'view' && Boolean(meta.view_of)

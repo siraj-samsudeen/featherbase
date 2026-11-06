@@ -819,7 +819,7 @@ export function ListView({
                   for system tables, never per-table code. */}
               {/* #871: a custom Table only; app and platform Tables are named elsewhere. */}
               {meta.data && !meta.data.system && !meta.data.owner_app && !meta.data.data_source && meta.data.kind !== 'settings' && !isSystemWritten(meta.data) && (
-                <RenameTable table={table} />
+                <RenameTable table={table} noun={isView(meta.data) ? 'view' : 'Table'} />
               )}
               {/* #905: archive a custom Table something replaced; deleting stays separate. */}
               {canArchive(meta.data) && !isArchived(meta.data) && <ArchiveTable table={table} />}
@@ -868,7 +868,7 @@ export function ListView({
             </h2>
             <p className="mb-3 text-sm text-ink-muted" data-testid="delete-table-count">
               {isView(meta.data)
-                ? `The view goes; its ${meta.data.view_of} rows stay as they are.`
+                ? `The view goes; the rows of ${meta.data.view_of} stay as they are.`
                 : deleteCount.data
                 ? `${fmtCount(deleteCount.data.count)} row${deleteCount.data.count === 1 ? '' : 's'} will be permanently deleted.`
                 : 'Counting rows…'}{' '}
@@ -895,7 +895,7 @@ export function ListView({
                 className={buttonClasses({ variant: 'danger', className: 'disabled:opacity-40' })}
                 data-testid="delete-table-confirm"
               >
-                {deleteBusy ? 'Deleting…' : 'Delete'}
+                {deleteBusy ? 'Deleting…' : isView(meta.data) ? 'Delete view' : 'Delete'}
               </button>
             </div>
           </div>
@@ -1200,7 +1200,7 @@ function ListRow({
 }: {
   row: Record<string, unknown>
   table: string
-  columns: { column_name: string; label: string; column_type: string; reference_table?: string | null }[]
+  columns: { column_name: string; label: string; column_type: string; reference_table?: string | null; reference_base?: string | null }[]
   settings: Settings
   // What the row's checkbox names it (#514): the row's display title.
   title: string
@@ -1332,7 +1332,7 @@ function ListCell({
           <PrincipalName id={String(row[col.column_name])} />
         ) : col.column_type === 'Reference' && col.reference_table && !isBlank(row[col.column_name]) ? (
           // A title that links to another row reads as that row's title.
-          <LinkedTitle table={col.reference_table} rowId={String(row[col.column_name])} />
+          <LinkedTitle table={col.reference_base ?? col.reference_table} rowId={String(row[col.column_name])} />
         ) : col.column_name !== 'row_id' && isBlank(row[col.column_name]) ? (
           // #792: a row with a blank title is led by its id, never a blank; a
           // person's opaque id reads as what identifies them (#835).
@@ -1361,13 +1361,13 @@ function ListCell({
         // #792: a link reads as the linked row's title and opens that row;
         // #910 D5: its code follows when people use one.
         <RowLink
-          table={col.reference_table}
+          table={col.reference_base ?? col.reference_table}
           rowId={String(value)}
           onClick={(e) => {
             e.stopPropagation()
             if (!nav || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
             e.preventDefault()
-            nav.push({ ...nav.step, pane: { table: col.reference_table!, row: String(value) } })
+            nav.push({ ...nav.step, pane: { table: col.reference_base ?? col.reference_table!, row: String(value) } })
           }}
         />
       ) : (
@@ -1603,7 +1603,7 @@ function InlineChildGrid({
               {cols.map((c) => (
                 <td key={c.column_name} className="px-3 py-1 text-ink">
                   {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
-                    <NestedLink table={c.reference_table} rowId={String(r[c.column_name])} />
+                    <NestedLink table={c.reference_base ?? c.reference_table} rowId={String(r[c.column_name])} />
                   ) : (
                     c.column_type === 'Choice' && r[c.column_name] != null
                       ? choiceLabel(String(r[c.column_name]), c.choice_labels, t)
@@ -1789,7 +1789,7 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
   return (
     <>
       {label} {op}{' '}
-      {linked ? <LinkedTitle table={col.reference_table!} rowId={String(value)} />
+      {linked ? <LinkedTitle table={col.reference_base ?? col.reference_table!} rowId={String(value)} />
         : (op === '=' || op === '!=') && col?.column_type === 'Choice' ? choiceLabel(String(value), col.choice_labels, t)
         : filterValueLabel(op, value)}
     </>

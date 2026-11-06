@@ -960,9 +960,25 @@ const newRowRoute = createRoute({
 })
 
 function NewRowPage() {
-  const { table } = useTableAddress()
+  const { table, tableMeta } = useTableAddress()
   const { prefill } = newRowRoute.useSearch()
   const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
+  // #1021: a view holds no rows; a new row is added to its base.
+  if (tableMeta.kind === 'view' && tableMeta.view_of)
+    return (
+      <div data-testid="view-new-row">
+        <Notice tone="info">
+          <span>
+            {table} is a view of {tableMeta.view_of} and holds no rows of its own.{' '}
+            <Link to="/featherbase/admin/table/$table/new" params={{ table: tableMeta.view_of }} search={{ prefill: undefined }}
+              className="font-medium text-action hover:underline" data-testid="view-new-row-base">
+              Add a {tableMeta.view_of} row
+            </Link>{' '}
+            instead; it shows here when it matches the view.
+          </span>
+        </Notice>
+      </div>
+    )
   if (table === 'Data Source') return <div data-testid="doc-page"><ConnectSource /></div>
   return <div data-testid="doc-page"><FormView key={`${table}/new/${prefill ?? ''}`} table={table} name="" isNew prefill={parsedPrefill} /></div>
 }

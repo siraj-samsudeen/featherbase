@@ -35,8 +35,8 @@ export function ViewBanner({ meta }: { meta: TableMeta | undefined }) {
             className="font-medium text-action hover:underline" data-testid="view-banner-base">
             {meta.view_of}
           </Link>
-          : the {meta.view_of} rows where <span data-testid="view-banner-filter">{describeViewFilters(meta)}</span>.
-          {' '}Its rows open, and are changed, as {meta.view_of} rows.
+          : the rows of {meta.view_of} where <span data-testid="view-banner-filter">{describeViewFilters(meta)}</span>.
+          {' '}Its rows open, and are changed, in {meta.view_of}.
         </span>
       </Notice>
     </div>
@@ -116,7 +116,7 @@ export function SaveAsView({ table, filters }: { table: string; filters: readonl
             ) : (
               <>
                 <p className="mb-3 text-sm text-ink-muted">
-                  A view is a named list of the {table} rows this filter shows, now and later. Links can point at it, so
+                  A view is a named list of the rows of {table} this filter shows, now and later. Links can point at it, so
                   their pickers offer only these rows. It holds no rows of its own and gives nobody access: whoever can
                   read {table} can read it.
                 </p>
@@ -129,7 +129,7 @@ export function SaveAsView({ table, filters }: { table: string; filters: readonl
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className={inputClasses('mb-3 w-full')}
-                  placeholder="Store"
+                  placeholder="For example, Store"
                   data-testid="save-as-view-name"
                 />
               </>
