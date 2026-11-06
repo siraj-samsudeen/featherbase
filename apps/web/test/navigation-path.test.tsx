@@ -23,6 +23,7 @@ async function addRegionFilter() {
 }
 
 // #1013: one step is no path, and would only repeat the page's own heading.
+// Someone with no remembered walk has nothing to reopen either.
 test('a list with one step shows no path bar', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(tableHref(SITE), admin)
@@ -159,10 +160,11 @@ test('a walk is listed under Recent paths by its names after signing in again', 
   })
   first.unmount()
 
-  // #1013: Recent paths sits in the bar, so it shows wherever a walk does.
-  const walking: NavPath = { steps: [{ screen: 'list', table: REGION }, { screen: 'list', table: REGION, filters: [['row_id', '=', 'KL']] }], at: 1 }
-  await renderApp(`${tableHref(REGION)}?path=${encodeURIComponent(encodePath(walking))}`, admin)
-  fireEvent.click(await screen.findByRole('button', { name: 'Recent paths' }))
+  // #1013: a plain list shows no bar, only the way back to remembered walks.
+  await renderApp(tableHref(SITE), admin)
+  const recent = await screen.findByRole('button', { name: 'Recent paths' })
+  expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
+  fireEvent.click(recent)
   const item = await screen.findByRole('menuitem', { name: `${SITE} › Region: Kerala · KL` })
   fireEvent.click(item)
   await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
