@@ -64,7 +64,7 @@ export async function createSavedView(user: string, body: unknown): Promise<Save
     updated_by: user,
     created_at: now,
     updated_at: now,
-    status: 'draft',
+    submission_status: 'draft',
     ref_table: parsed.data.table,
     label: parsed.data.label,
     // sql.json keeps the array a jsonb array — a pre-stringified value would

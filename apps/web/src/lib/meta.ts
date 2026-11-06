@@ -33,7 +33,7 @@ export interface ColumnDef {
   updated_by: string
   created_at: string
   updated_at: string
-  status: string
+  submission_status: string
 }
 
 export interface TableMeta {
@@ -83,7 +83,7 @@ export interface TableMeta {
   updated_by: string
   created_at: string
   updated_at: string
-  status: string
+  submission_status: string
   position: number
   columns: ColumnDef[]
   /** Column names the caller may read; served per request beside cached metadata. */

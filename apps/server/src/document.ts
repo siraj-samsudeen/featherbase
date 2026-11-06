@@ -762,7 +762,7 @@ async function saveChildren(
         updated_by: user,
         created_at: now,
         updated_at: now,
-        status: 'draft',
+        submission_status: 'draft',
         position: i + 1,
         parent: parentRowId,
         parenttype: parentMeta.name,
@@ -929,7 +929,7 @@ export async function saveSystemRow(table: string, values: RowValues, actor: str
     [meta.row_key]: String(values[ROW_KEY] ?? '') || hashRowId(),
     created_by: actor,
     updated_by: actor,
-    status: 'draft',
+    submission_status: 'draft',
     position: 0,
   } as unknown as Record<string, never>)} returning *`
   return { table, ...(saved as RowValues) }
@@ -1013,7 +1013,7 @@ async function writeDoc(
         updated_by: user,
         created_at: now,
         updated_at: now,
-        status: 'draft',
+        submission_status: 'draft',
         position: 0,
         ...fieldValues,
       }
@@ -1045,7 +1045,7 @@ async function writeDoc(
         updated_by: row.updated_by,
         created_at: row.created_at,
         updated_at: row.updated_at,
-        status: row.status,
+        submission_status: row.submission_status,
         position: row.position,
       }
       await lockCoreDocumentTargets(stx, meta, dbRow, user)
@@ -1121,7 +1121,7 @@ async function saveBoundDoc(
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
     'insert',
   )
-  const row: RowValues = { [ROW_KEY]: providedName, status: 'draft', ...fieldValues }
+  const row: RowValues = { [ROW_KEY]: providedName, submission_status: 'draft', ...fieldValues }
   const hctx: HookContext = { row, meta, user, isNew: true, tx: sql }
   await runHooks('before_insert', hctx)
   await runHooks('before_validate', hctx)
@@ -1296,12 +1296,12 @@ async function updateDoc(
           'ConflictError',
           `${meta.name} ${name} has been modified after you loaded it`,
         )
-      if ((existing.status as string) === 'submitted')
+      if ((existing.submission_status as string) === 'submitted')
         throw new AppError(
           'ValidationError',
           `${meta.name} ${name} is submitted and cannot be modified (cancel it first)`,
         )
-      if ((existing.status as string) === 'cancelled')
+      if ((existing.submission_status as string) === 'cancelled')
         throw new AppError(
           'ValidationError',
           `${meta.name} ${name} is cancelled and cannot be modified`,
@@ -1416,7 +1416,7 @@ async function recordVersion(
     updated_by: user,
     created_at: at,
     updated_at: at,
-    status: 'draft',
+    submission_status: 'draft',
     position: 0,
     ref_table: meta.name,
     ref_name: name,
@@ -1493,10 +1493,10 @@ async function setStatus(
     await assertDocPermission(
       user, table, event === 'on_submit' ? 'submit' : 'cancel', String(existing.created_by))
     await assertUserPermissions(user, meta, existing as RowValues)
-    if ((existing.status as string) !== from)
+    if ((existing.submission_status as string) !== from)
       throw new AppError(
         'ValidationError',
-        `${table} ${name} has status ${existing.status}; expected ${from}`,
+        `${table} ${name} has status ${existing.submission_status}; expected ${from}`,
       )
     // Order: before_submit/before_cancel run BEFORE the write and may
     // abort it; on_update fires after the write, then on_submit/on_cancel.
@@ -1510,7 +1510,7 @@ async function setStatus(
     }
     await runHooks(event === 'on_submit' ? 'before_submit' : 'before_cancel', preCtx)
     const [updated] = await tx`
-      update ${tx(tbl)} set status = ${to}, updated_at = ${new Date()},
+      update ${tx(tbl)} set submission_status = ${to}, updated_at = ${new Date()},
         updated_by = ${user}
       where ${tx(meta.row_key)} = ${name} returning *`
     const ctx: HookContext = {
@@ -1558,7 +1558,7 @@ async function amendDocImpl(
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
   const source = await getDoc(table, name, user)
-  if ((source.status as string) !== 'cancelled')
+  if ((source.submission_status as string) !== 'cancelled')
     throw new AppError('ValidationError', `${table} ${name} must be cancelled before amending`)
   await assertDocPermission(user, table, 'amend', String(source.created_by))
 
@@ -1640,7 +1640,7 @@ async function deleteDocImpl(
       assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name), true)
     }
     await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
-    if ((existing.status as string) === 'submitted')
+    if ((existing.submission_status as string) === 'submitted')
       throw new AppError(
         'ValidationError',
         `${table} ${name} is submitted and cannot be deleted (cancel it first)`,
@@ -1864,7 +1864,7 @@ async function setRetirement(
       updated_by: user,
       created_at: at,
       updated_at: at,
-      status: 'draft',
+      submission_status: 'draft',
       position: 0,
       ref_table: meta.name,
       ref_name: name,
@@ -2037,15 +2037,15 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
     })
     const retirable = canRetire(meta)
     return {
-      write: !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && row.status !== 'cancelled' && await rowGrant('write'),
+      write: !ENGINE_MANAGED.has(table) && row.submission_status !== 'submitted' && row.submission_status !== 'cancelled' && await rowGrant('write'),
       retire: retirable && row.retired_at == null && await retirement('delete'),
       reactivate: retirable && row.retired_at != null && await retirement('write'),
       purge: await mayPurge(user, meta),
       rename,
-      delete: meta.kind === 'table' && !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && await rowGrant('delete'),
-      submit: Boolean(meta.is_submittable) && row.status === 'draft' && await rowGrant('submit'),
-      cancel: Boolean(meta.is_submittable) && row.status === 'submitted' && await rowGrant('cancel'),
-      amend: Boolean(meta.is_submittable) && row.status === 'cancelled' && await rowGrant('amend'),
+      delete: meta.kind === 'table' && !ENGINE_MANAGED.has(table) && row.submission_status !== 'submitted' && await rowGrant('delete'),
+      submit: Boolean(meta.is_submittable) && row.submission_status === 'draft' && await rowGrant('submit'),
+      cancel: Boolean(meta.is_submittable) && row.submission_status === 'submitted' && await rowGrant('cancel'),
+      amend: Boolean(meta.is_submittable) && row.submission_status === 'cancelled' && await rowGrant('amend'),
       assign: await createIn('ToDo'),
       tag: true, // tags, unlike ToDo/Comment/File creation, need only row read
       comment: await createIn('Comment'),
@@ -2112,7 +2112,7 @@ async function getSingle(meta: TableMeta, user: string): Promise<RowValues> {
     table: meta.name,
     [ROW_KEY]: meta.name,
     created_by: 'Administrator',
-    status: 'draft',
+    submission_status: 'draft',
   }
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue

@@ -254,7 +254,7 @@ export async function classifyColumns(db: Sql | TxSql = sql): Promise<Classifica
       push(text, 'standard column')
       continue
     }
-    if (column === 'row_id' || column === 'status' || column === 'parentfield' || column === 'parenttype') {
+    if (column === 'row_id' || column === 'submission_status' || column === 'parentfield' || column === 'parenttype') {
       push(code, 'standard column')
       continue
     }

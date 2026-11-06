@@ -313,7 +313,7 @@ describe('EDS-5: reading bound rows', () => {
     const doc = (await admin.get(`/api/table/Ext%20Tenant/${name}`)) as Record<string, unknown>
     expect(doc.slug).toBe('acme')
     expect(Date.parse(doc.updated_at as string)).not.toBeNaN()
-    expect(doc.status).toBe('draft')
+    expect(doc.submission_status).toBe('draft')
   })
 
   // #541: a bigint on the source is a whole-number column, read back as a number.

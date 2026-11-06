@@ -26,7 +26,7 @@ export const STANDARD_COLUMNS = [
   'created_at',
   'updated_at',
   'updated_by',
-  'status',
+  'submission_status',
   'position',
   'parent',
   'parenttype',
@@ -398,7 +398,7 @@ function createTableDDL(def: TableDef, relation = tableName(def.name)): string |
     `"created_at" timestamptz not null default now()`,
     `"updated_at" timestamptz not null default now()`,
     `"updated_by" varchar(140) not null default 'Administrator'`,
-    `"status" text not null default 'draft'`,
+    `"submission_status" text not null default 'draft'`,
     `"position" integer not null default 0`,
   ]
   if ((def.kind ?? 'table') === 'table')
