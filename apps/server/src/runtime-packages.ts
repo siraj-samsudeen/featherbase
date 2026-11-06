@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
-import { registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, syncAppJobs, type AppManifest } from './apps'
+import { appPermissionSchema, registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, syncAppJobs, type AppManifest } from './apps'
 import { applyJobPlan, bindAppJobs, jobsDeclaration, planJobChanges, validateAppJobs } from './app-jobs'
 import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
@@ -89,15 +89,7 @@ const manifestSchema = z.object({
   title: z.string().min(1),
   tables: z.array(tableDefSchema).min(1),
   roles: z.array(z.string().min(1)).optional(),
-  permissions: z.array(z.object({
-    table: z.string(), role: z.string(),
-    tier: z.enum(['basic', 'restricted']).optional(),
-    own_rows_only: z.boolean().optional(),
-    can_read: z.boolean().optional(), can_write: z.boolean().optional(),
-    can_create: z.boolean().optional(), can_delete: z.boolean().optional(),
-    can_submit: z.boolean().optional(), can_cancel: z.boolean().optional(),
-    can_amend: z.boolean().optional(),
-  }).strict()).default([]),
+  permissions: z.array(appPermissionSchema).default([]),
   server: z.string().optional(),
   client: z.string().optional(),
   entryTable: z.string(),
@@ -677,14 +669,31 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
         // Only the grants this app owns: an adopted, pre-existing grant stays.
         // Withdrawn first, under the names the Tables have before any rename.
         for (const p of prepared.withdrawn) {
-          const gone = await sql`
-            delete from permission
-            where owner_app = ${name} and ref_table = ${p.table} and role = ${p.role} and tier = ${p.tier ?? 'basic'}
-            returning row_id`
+          // The app's grant and its own line-item grants under it.
+          const closure = (await sql`
+            with recursive withdrawn as (
+              select row_id from permission
+              where owner_app = ${name} and ref_table = ${p.table} and role = ${p.role}
+                and scope_mode = ${p.scope_mode ?? 'all'} and operation in ${sql(Object.keys(p.operations))}
+              union
+              select p.row_id from permission p join withdrawn w on p.parent_permission = w.row_id
+                where p.owner_app = ${name}
+            )
+            select row_id from withdrawn`).map((row) => String(row.row_id))
+          // Someone's deeper grant needs one of these: deleting it would end that
+          // too, with nothing to show for it. Refused while nothing has changed.
+          const held = closure.length ? await sql`select distinct role from permission
+            where (requires_permission in ${sql(closure)} or parent_permission in ${sql(closure)})
+              and owner_app is distinct from ${name} order by role` : []
+          if (held.length)
+            refuse(`Deeper access of ${held.map((d) => String(d.role)).join(', ')} depends on the grant to ${p.role} on ${p.table} that this upgrade withdraws. Remove those Permission Rows first, then upgrade`)
+          const gone = closure.length ? await sql`delete from permission where row_id in ${sql(closure)} returning row_id` : []
           for (const g of gone) {
+            await sql`delete from featherbase.permission_column where parent = ${String(g.row_id)}`
             await sql`update installed_app set perms = perms - ${String(g.row_id)} where name = ${name}`
-            await logActivity(actor, `app_grant_withdrawn ${name}@${version}: ${p.role} on ${p.table} (${p.tier ?? 'basic'}, ${String(g.row_id)})`.slice(0, 140))
           }
+          if (gone.length)
+            await logActivity(actor, `app_grant_withdrawn ${name}@${version}: ${p.role} on ${p.table} (${gone.length} contributions)`.slice(0, 140))
         }
         const losses = await applyMigrations(prepared.pending, name, actor, { ownsClient: typeof prepared.target.manifest.client === 'string' })
         // Counts only, never values: what each destructive step removed.
@@ -694,7 +703,7 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           const created = await provisionGrants({ name, roles: prepared.target.manifest.roles, runtime_package: true }, prepared.granted)
           await sql`update installed_app set roles = roles || ${sql.json(created.roles)}, perms = perms || ${sql.json(created.perms)} where name = ${name}`
           for (const p of prepared.granted)
-            await logActivity(actor, `app_grant_added ${name}@${version}: ${p.role} on ${p.table} (${p.tier ?? 'basic'})`.slice(0, 140))
+            await logActivity(actor, `app_grant_added ${name}@${version}: ${p.role} on ${p.table}`.slice(0, 140))
         }
         await sql`update installed_app set package_version = ${version}, artifact_digest = ${prepared.target.digest},
           manifest = ${sql.json(prepared.target.app.runtime_manifest as never)},

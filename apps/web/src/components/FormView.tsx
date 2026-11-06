@@ -1478,13 +1478,13 @@ function ChildGrid({
 
 
 /** The target Table's title column, when it is one of its columns the
- *  caller may read: a column above the caller's readable levels can be
+ *  caller may read: a column the caller was not granted can be
  *  neither searched nor shown, and a title that is the row key itself (a
  *  Table named by its id) is already what row_id shows. */
 function readableTitleColumn(meta: TableMeta | undefined): string | undefined {
   const title = meta?.title_column
   const column = title ? meta.columns.find((c) => c.column_name === title) : undefined
-  if (!column || (meta?.readable_tiers && !meta.readable_tiers.includes(column.tier))) return undefined
+  if (!column || (meta?.readable_columns && !meta.readable_columns.includes(column.column_name))) return undefined
   return column.column_name
 }
 

@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
 import { overrideVariable } from 'server/src/env'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -108,7 +109,7 @@ test('someone without the System Manager role sees no banner, no link and never 
   await sql`delete from instance_settings_apply`
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
   await admin.post('/api/table_def', { name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Shelf Note', role: 'Shelf Clerk', can_read: true } })
+  await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_read: true })
   const clerk = await createUser({ email: 'clerk.health@example.com', roles: ['Shelf Clerk'] })
   const urls: string[] = []
   const real = globalThis.fetch
@@ -128,7 +129,7 @@ test('a page the person cannot open is never remembered, so Last view and Recent
   const { recentActions } = await import('../src/lib/recents')
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
   await admin.post('/api/table_def', { name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Shelf Note', role: 'Shelf Clerk', can_read: true } })
+  await grantRole(admin, { table: 'Shelf Note', role: 'Shelf Clerk', can_read: true })
   const clerk = await createUser({ email: 'clerk.recents@example.com', roles: ['Shelf Clerk'] })
   await renderApp('/featherbase/admin/instance-health', clerk)
   await screen.findByTestId('all-tables-link')

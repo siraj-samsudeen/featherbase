@@ -12,6 +12,7 @@ import { invalidateSources } from '../src/sources/registry'
 import { saveUpload, deleteStored } from '../src/storage'
 import { saveSystemRow } from '../src/document'
 import { fileURLToPath } from 'node:url'
+import { grantRole } from './fixtures'
 
 const storageRoot = process.env.FILE_STORAGE_DIR ?? fileURLToPath(new URL('../storage', import.meta.url))
 const bytesPath = (url: string) => path.join(storageRoot, url.startsWith('/private/') ? 'private' : 'public', path.basename(url))
@@ -164,14 +165,12 @@ describe('DEL-R4 + DEL-I1: the sidecar sweep', () => {
     // Log entry, and the module home-page link created with the Table. The
     // Import Log is system-written (#432), so the entry is written the way
     // the importer writes it.
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: 'All', can_read: true },
-    })
+    const grants = await grantRole(admin, { table: DT, role: 'All', can_read: true })
     await saveSystemRow('Import Log', { ref_table: DT, file_name: 'zones.csv', inserted: 8, failed: 0 }, 'Administrator')
     await admin.delete(`/api/table_def/${ENC}`)
 
     const [perms] = await sql`select count(*)::int as n from permission where ref_table = ${DT}`
+    expect(await sql`select target_column from featherbase.permission_column where parent in ${sql(grants)}`).toEqual([])
     const [logs] = await sql`select count(*)::int as n from import_log where ref_table = ${DT}`
     const [links] = await sql`
       select count(*)::int as n from home_page_link where link_to = ${DT}`
@@ -299,10 +298,7 @@ describe('DEL-I2: a refusal changes nothing', () => {
       columns: [{ column_name: 'zone', column_type: 'Reference', reference_table: DT }],
     })
     await admin.post('/api/save_row', { table: DT, row: { title: 'keep me' } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: 'All', can_read: true },
-    })
+    await grantRole(admin, { table: DT, role: 'All', can_read: true })
     const counts = async () => {
       const [a] = await sql`select count(*)::int as n from featherbase.deletion_target`
       const [b] = await sql`select count(*)::int as n from permission where ref_table = ${DT}`

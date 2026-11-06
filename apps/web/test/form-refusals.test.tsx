@@ -11,6 +11,7 @@ import { afterEach, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { pickedFile, useNodeMultipart } from './node-multipart'
 import { rowHref } from 'shared'
+import { grantRole } from 'server/test/fixtures'
 
 type Admin = Parameters<typeof renderApp>[1]
 const enc = encodeURIComponent
@@ -229,10 +230,7 @@ test('a Reference search the server refuses offers no matches rather than failin
   })
   await admin.post('/api/save_row', { table: 'Frf Depot', row: { row_id: 'depot-1', city: 'Kochi' } })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Frf Visitor' } })
-  await admin.post('/api/save_row', {
-    table: 'Permission',
-    row: { ref_table: 'Frf Visit', role: 'Frf Visitor', can_read: true, can_write: true, can_create: true },
-  })
+  await grantRole(admin, { table: 'Frf Visit', role: 'Frf Visitor', can_read: true, can_write: true, can_create: true })
   await admin.post('/api/save_row', { table: 'Frf Visit', row: { row_id: 'visit-1' } })
   const clerk = await createUser({ roles: ['Frf Visitor'] })
   await expect(clerk.get(`/api/table/${enc('Frf Depot')}`)).rejects.toMatchObject({ status: 403 })

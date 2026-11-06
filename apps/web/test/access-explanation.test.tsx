@@ -8,6 +8,7 @@ import { rowHref } from 'shared'
 import { resolve } from 'node:path'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 type Admin = Parameters<typeof renderApp>[1]
 const WAIT = { timeout: 10_000 }
@@ -16,7 +17,7 @@ const pageOf = (person: string) => `/featherbase/account/access/${encodeURICompo
 async function seed(admin: Admin) {
   await admin.post('/api/table_def', { name: 'Ax Site', title_column: 'site_name', columns: [{ column_name: 'site_name', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Ax Site Reader' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Ax Site', role: 'Ax Site Reader', can_read: true } })
+  await grantRole(admin, { table: 'Ax Site', role: 'Ax Site Reader', can_read: true })
   const north = await admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent('Ax Site')}`, { site_name: 'North' })
   return { north }
 }

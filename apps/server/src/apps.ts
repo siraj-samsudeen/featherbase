@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
+import { readLegacyPermission, type ColumnLevel } from './app-permission-format'
 import { createTable, tableRelation, quoteRelation } from './table-engine'
 import { asNameList, declaresOwnPages } from './installed-app-ledger'
 import { ensureHomePageForTable } from './home-pages'
@@ -46,16 +47,12 @@ export interface SchedulerEvent {
 export interface AppPermission {
   table: string
   role: string
-  tier?: 'basic' | 'restricted'
-  own_rows_only?: boolean
-  can_read?: boolean
-  can_write?: boolean
-  can_create?: boolean
-  can_delete?: boolean
-  can_submit?: boolean
-  can_cancel?: boolean
-  can_amend?: boolean
+  scope_mode?: 'all' | 'creator'
+  operations: Partial<Record<'read' | 'create' | 'update', string[] | ColumnLevel> &
+    Record<'delete' | 'submit' | 'cancel' | 'amend', true>>
 }
+
+export type { ColumnLevel } from './app-permission-format'
 
 // PLAT-006 (#78): fixture documents an app ships — workflows, email rules,
 // server scripts, SLAs, web forms, sample rows. Anything saveDoc can save.
@@ -285,31 +282,47 @@ export async function provisionGrants(
         'ValidationError',
         `Permission on ${p.table} names unknown role ${p.role} — declare it in the manifest's roles`,
       )
-    const tier = p.tier ?? 'basic'
-    const [have] = await sql`
-      select 1 from permission
-      where ref_table = ${p.table} and role = ${p.role} and tier = ${tier}
-        and (owner_app is null or owner_app = ${manifest.name})`
-    if (have) continue
-    const saved = await saveDoc('Permission', {
-      ref_table: p.table,
-      role: p.role,
-      tier,
-      own_rows_only: p.own_rows_only ?? false,
-      can_read: p.can_read ?? false,
-      can_write: p.can_write ?? false,
-      can_create: p.can_create ?? false,
-      can_delete: p.can_delete ?? false,
-      can_submit: p.can_submit ?? false,
-      can_cancel: p.can_cancel ?? false,
-      can_amend: p.can_amend ?? false,
-    })
-    // Runtime-package grants are live contributions, not permanent core
-    // permissions. Keep their owner outside editable metadata so permission
-    // checks can suspend them whenever that package is disabled or absent.
-    if (manifest.runtime_package)
-      await sql`update permission set owner_app = ${manifest.name} where row_id = ${String(saved.row_id)}`
-    perms.push(String(saved.row_id))
+    // Existing manual configuration, whatever its scope, is kept as it is: the
+    // app must not add a wider grant beside a creator-only one. What this install
+    // just created is not existing configuration.
+    const [adopted] = await sql`
+      select 1 from permission where ref_table = ${p.table} and role = ${p.role} and owner_app is null
+        and parent_permission is null and requires_permission is null and row_id <> all(${perms}::text[]) limit 1`
+    if (adopted) continue
+    for (const [operation, selection] of Object.entries(p.operations)) {
+      const scope = p.scope_mode ?? 'all'
+      const [have] = await sql`
+        select row_id from permission
+        where ref_table = ${p.table} and role = ${p.role} and operation = ${operation}
+          and parent_permission is null and requires_permission is null
+          and (owner_app is null or owner_app = ${manifest.name}) and row_id <> all(${perms}::text[])`
+      if (have) continue
+      // A level ('*', '@basic') keeps following the Table's Columns and line
+      // items; a list names Columns, and `lines.qty` a line item's Column.
+      async function provision(table: string, selection: string[] | ColumnLevel | true, parent?: string, parentColumn?: string): Promise<void> {
+        const meta = await getMeta(table)
+        const columns = Array.isArray(selection) ? meta.columns.filter((column) =>
+          selection.some((name) => name === column.column_name || name.startsWith(`${column.column_name}.`))) : []
+        // A dotted name goes through a grid; recursion checks the rest of it.
+        if (Array.isArray(selection) && selection.some((name) => !columns.some((column) => name.split('.')[0] === column.column_name
+          && (!name.includes('.') || column.column_type === 'Sub-table'))))
+          throw new AppError('ValidationError', `Permission on ${table} names an unknown Column`)
+        const rule = selection === '*' ? 'every' : Array.isArray(selection) ? 'listed' : 'basic'
+        const saved = await saveDoc('Permission', {
+          ref_table: table, role: p.role, operation, scope_mode: scope, column_rule: rule, parent_permission: parent, parent_column: parentColumn,
+          columns: columns.map((column) => ({ target_column: column.row_id })),
+        })
+        if (manifest.runtime_package)
+          await sql`update permission set owner_app = ${manifest.name} where row_id = ${String(saved.row_id)}`
+        perms.push(String(saved.row_id))
+        for (const column of columns.filter((column) => column.column_type === 'Sub-table')) {
+          const children = (selection as string[])
+            .filter((name) => name.startsWith(`${column.column_name}.`)).map((name) => name.slice(column.column_name.length + 1))
+          if (children.length) await provision(column.row_table!, children, String(saved.row_id), column.row_id)
+        }
+      }
+      await provision(p.table, selection)
+    }
   }
   return { roles, perms }
 }
@@ -623,21 +636,21 @@ export async function installApp(name: string): Promise<InstallResult> {
 // process. Only data can survive JSON — Tables, roles, permissions.
 const CODE_ONLY_KEYS = ['doc_events', 'scheduler_events'] as const
 
-const appPermissionSchema = z
+const columnSelection = z.union([z.literal('*'), z.literal('@basic'), z.array(z.string().min(1))])
+export const appPermissionSchema = z.preprocess(readLegacyPermission, z
   .object({
     table: z.string().min(1),
     role: z.string().min(1),
-    tier: z.enum(['basic', 'restricted']).optional(),
-    own_rows_only: z.boolean().optional(),
-    can_read: z.boolean().optional(),
-    can_write: z.boolean().optional(),
-    can_create: z.boolean().optional(),
-    can_delete: z.boolean().optional(),
-    can_submit: z.boolean().optional(),
-    can_cancel: z.boolean().optional(),
-    can_amend: z.boolean().optional(),
+    scope_mode: z.enum(['all', 'creator']).optional(),
+    operations: z.object({
+      read: columnSelection.optional(),
+      create: columnSelection.optional(),
+      update: columnSelection.optional(),
+      delete: z.literal(true).optional(), submit: z.literal(true).optional(),
+      cancel: z.literal(true).optional(), amend: z.literal(true).optional(),
+    }).strict().refine((operations) => Object.keys(operations).length > 0, 'A permission needs an operation'),
   })
-  .strict()
+  .strict())
 
 // Fixtures are pure data — they survive JSON, so a declarative manifest may
 // carry them (PLAT-006, #78).

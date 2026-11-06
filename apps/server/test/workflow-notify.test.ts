@@ -4,6 +4,7 @@ import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { notifyApproversOfNewRow, type WorkflowState } from '../src/workflow'
+import { grantRole } from './fixtures'
 
 // WF-004: only a state explicitly marked as waiting for approval emails
 // the roles on its outgoing transitions. The holders of those
@@ -25,10 +26,6 @@ async function setup(admin: TestClient, createUser: CreateUserFn, waitsForApprov
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: APPROVER_ROLE } })
-  await admin.post('/api/save_row', {
-    table: 'Permission',
-    row: { ref_table: DT, role: APPROVER_ROLE, tier: 'basic', can_read: true, can_write: true },
-  })
   const approver = await createUser({ email: APPROVER, roles: [APPROVER_ROLE] })
 
   // Draft --Submit(anyone)--> Pending --Approve(Approver)--> Approved.
@@ -49,6 +46,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn, waitsForApprov
       ],
     },
   })
+  await grantRole(admin, { table: DT, role: APPROVER_ROLE, can_read: true, can_write: true })
   return approver
 }
 
@@ -272,10 +270,7 @@ describe('WF-004: pending-approval notifications', () => {
 
     test('the approver who creates it is not emailed', async ({ admin, createUser }) => {
       const approver = await setupStartsPending(admin, createUser)
-      await admin.post('/api/save_row', {
-        table: 'Permission',
-        row: { ref_table: DT, role: APPROVER_ROLE, tier: 'basic', can_read: true, can_create: true },
-      })
+      await grantRole(admin, { table: DT, role: APPROVER_ROLE, can_read: true, can_create: true })
       await createUser({ email: 'wf-notify-peer@x.com', roles: [APPROVER_ROLE] })
       await approver.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'wf-notify-own', title: 'Own request' })
       const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-own'`

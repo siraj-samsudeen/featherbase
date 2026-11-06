@@ -2,6 +2,7 @@ import { afterEach } from 'vitest'
 import { clearSession, setSession } from '../src/lib/api'
 import { analyzeImportKeys } from '../src/lib/import-run'
 import { test, expect } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 afterEach(() => clearSession())
 
@@ -19,9 +20,7 @@ test('#851 readable coverage survives aggregation without write permission', asy
   const rows = Array.from({ length: 520 }, (_, i) => ({ code: `Z${i}` }))
   await admin.post('/api/table/Ika%20Zone:import', { rows })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Ika Reader' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: {
-    ref_table: 'Ika Zone', role: 'Ika Reader', can_read: true, can_create: true, can_write: false,
-  } })
+  await grantRole(admin, { table: 'Ika Zone', role: 'Ika Reader', can_read: true, can_create: true, can_write: false })
   const user = await createUser({ roles: ['Ika Reader'] })
   setSession(user.token!, { row_id: user.user!, email: null, full_name: null })
   expect(await analyzeImportKeys({ table: 'Ika Zone', columns: ['code'], rows: rows.map((values, sourceIndex) => ({ values, sourceIndex })) }))
@@ -33,12 +32,8 @@ test('#851 matching permission must hold in every import part', async ({ admin, 
   const rows = Array.from({ length: 520 }, (_, i) => ({ code: `Z${i}` }))
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Ika Reader' } })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Ika Own Writer' } })
-  await admin.post('/api/save_row', { table: 'Permission', row: {
-    ref_table: 'Ika Zone', role: 'Ika Reader', can_read: true, can_create: true,
-  } })
-  await admin.post('/api/save_row', { table: 'Permission', row: {
-    ref_table: 'Ika Zone', role: 'Ika Own Writer', can_write: true, own_rows_only: true,
-  } })
+  await grantRole(admin, { table: 'Ika Zone', role: 'Ika Reader', can_read: true, can_create: true })
+  await grantRole(admin, { table: 'Ika Zone', role: 'Ika Own Writer', can_write: true, own_rows_only: true })
   const user = await createUser({ roles: ['Ika Reader', 'Ika Own Writer'] })
   // Keep the expensive restricted-user seed small. The last part is writable,
   // so accepting its permission alone must not erase the first part's refusal.

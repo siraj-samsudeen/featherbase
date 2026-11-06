@@ -6,9 +6,10 @@ import { MAX_RELATED_DEPTH } from 'shared'
 import { MAX_RELATED_HOPS, parseRelatedSpec } from '../related-filter'
 import {
   getScopeMap,
+  includesColumn,
   isPrivileged,
   permissionScope,
-  permittedTiers,
+  permittedColumns,
 } from '../permissions'
 import { isSensitiveColumn } from '../sensitive-columns'
 import { getDriver, getSource, assertAllowed } from './registry'
@@ -36,11 +37,11 @@ interface BoundContext {
 // PERM-006: drop columns the caller's read tiers don't cover, so a
 // restricted column cannot be selected, filtered, sorted or grouped through
 // the bound path either — list and detail must agree (review finding 3).
-function narrowToTiers(bind: Binding, meta: TableMeta, tiers: Set<'basic' | 'restricted'>): Binding {
-  const allowed = new Map(meta.columns.map((c) => [c.column_name, c.tier ?? 'basic']))
+function narrowToColumns(bind: Binding, meta: TableMeta, columns: ReadonlySet<string>): Binding {
+  const allowed = new Set(meta.columns.filter((column) => includesColumn(columns, column)).map((column) => column.column_name))
   return {
     ...bind,
-    columns: bind.columns.filter((c) => tiers.has(allowed.get(c.column_name) ?? 'basic')),
+    columns: bind.columns.filter((column) => allowed.has(column.column_name)),
   }
 }
 
@@ -244,7 +245,7 @@ async function mapFilters(
       await assertBoundScope(target, user, 'read')
       const ctx = await boundContext(target)
       const scopeFilters = await boundScopeFilters(target, user, ctx.bind)
-      const targetBind = narrowToTiers(ctx.bind, target, await permittedTiers(user, target.name, 'read'))
+      const targetBind = narrowToColumns(ctx.bind, target, await permittedColumns(user, target.name, 'read', ''))
       mapped.push({
         column, op: 'related', value: {
           binding: targetBind,
@@ -322,7 +323,7 @@ export async function boundGetList(meta: TableMeta, args: BoundListArgs, user: s
   // narrow by a restricted Reference the caller cannot see), then the
   // caller-facing binding is narrowed to their read tiers.
   const scopeFilters = await boundScopeFilters(meta, user, ctx.bind)
-  const bind = narrowToTiers(ctx.bind, meta, await permittedTiers(user, meta.name, 'read'))
+  const bind = narrowToColumns(ctx.bind, meta, await permittedColumns(user, meta.name, 'read', ''))
 
   const fields = args.fields?.length ? args.fields : [ROW_KEY]
   const selectCols = fields.map((f) => requireSourceColumn(bind, f, 'selected'))
@@ -372,7 +373,7 @@ export async function boundCountDocs(
   // narrow by a restricted Reference the caller cannot see), then the
   // caller-facing binding is narrowed to their read tiers.
   const scopeFilters = await boundScopeFilters(meta, user, ctx.bind)
-  const bind = narrowToTiers(ctx.bind, meta, await permittedTiers(user, meta.name, 'read'))
+  const bind = narrowToColumns(ctx.bind, meta, await permittedColumns(user, meta.name, 'read', ''))
   return driver.count(bind, [...await mapFilters(meta, bind, filters, user), ...scopeFilters])
 }
 
@@ -389,7 +390,7 @@ export async function boundGroupCount(
   // narrow by a restricted Reference the caller cannot see), then the
   // caller-facing binding is narrowed to their read tiers.
   const scopeFilters = await boundScopeFilters(meta, user, ctx.bind)
-  const bind = narrowToTiers(ctx.bind, meta, await permittedTiers(user, meta.name, 'read'))
+  const bind = narrowToColumns(ctx.bind, meta, await permittedColumns(user, meta.name, 'read', ''))
   return driver.groupCount(
     bind,
     requireSourceColumn(bind, field, 'group_by'),

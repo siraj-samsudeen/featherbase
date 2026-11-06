@@ -8,7 +8,7 @@ import { sql } from '../src/db'
 import { normaliseValue, verhoeffValid } from '../src/identifiers'
 import { addIdentifier, deleteIdentifier, listIdentifiers, updateIdentifier } from '../src/person-identifiers'
 import { applySeedPack } from '../src/seed-packs'
-import { expectApiError, makePerson } from './fixtures'
+import { expectApiError, makePerson, grantRole } from './fixtures'
 import { configureDelegated, inviteGoogleRaw } from './identity-fixtures'
 import { saveIdentifierSystem } from '../src/seed-packs'
 
@@ -291,13 +291,32 @@ describe('dates and audit (Codex review on #385)', () => {
 })
 
 describe('who sees what', () => {
+  test('creator-scoped identifier authority does not expose other readable people', async ({ admin, createUser }) => {
+    await grantRole(admin, { table: 'Person', role: 'Contact Clerk', can_read: true, can_create: true })
+    await admin.post('/api/save_row', { table: 'Permission', row: {
+      ref_table: 'Person', role: 'Contact Clerk', operation: 'read_identifiers', scope_mode: 'creator',
+    } })
+    const clerk = await createUser({ email: 'contact-clerk@x.test', roles: ['Contact Clerk'] })
+    const own = await clerk.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Clerk contact' } })
+    const other = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Other contact' } })
+    for (const [person, phone] of [[own.row_id, '9847012345'], [other.row_id, '9847099999']]) {
+      await admin.post(`/api/people/${person}/identifiers`, { system: 'phone', value: phone })
+    }
+    const visible = await clerk.get<{ identifiers: { system: string }[] }>(`/api/people/${own.row_id}/identifiers`)
+    expect(visible.identifiers.map((identifier) => identifier.system)).toContain('phone')
+    const hidden = await clerk.get<{ identifiers: { system: string }[] }>(`/api/people/${other.row_id}/identifiers`)
+    expect(hidden.identifiers.map((identifier) => identifier.system)).not.toContain('phone')
+    expect(await clerk.get('/api/identifiers?system=phone&value=9847012345')).toMatchObject({ people: [{ person_id: own.row_id }] })
+    expect(await clerk.get('/api/identifiers?system=phone&value=9847099999')).toEqual({ people: [] })
+  })
+
   test('restricted values are shown only to restricted readers; hidden ones never in a panel, but found by exact value', async ({ admin, createUser }) => {
     await applySeedPack('jeyarama')
     const p = await makePerson({ full_name: 'Shown', email: 'shown@x.test' })
     await addIdentifier(p, { system: 'phone', value: '9847012345' }, 'Administrator')
     await addIdentifier(p, { system: 'stylehr-employee-id', value: '900001' }, 'sync', ROSTER)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Person Reader' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Person Reader', can_read: true } })
+    await grantRole(admin, { table: 'Person', role: 'Person Reader', can_read: true })
     const reader = await createUser({ email: 'reader@x.test', roles: ['Person Reader'] })
     const plain = await reader.get<{ identifiers: { system: string }[] }>(`/api/people/${p}/identifiers`)
     expect(plain.identifiers.map((i) => i.system)).toEqual(['email'])
@@ -330,9 +349,7 @@ describe('search respects who may read people (Codex review on #385)', () => {
     await admin.post(`/api/people/${person}/identifiers`, { system: normal, value: 'Alpha-42' })
     await admin.post(`/api/people/${other}/identifiers`, { system: normal, value: 'Bravo-81' })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Boundary Person Reader' } })
-    await admin.post('/api/save_row', {
-      table: 'Permission', row: { ref_table: 'Person', role: 'Boundary Person Reader', can_read: true },
-    })
+    await grantRole(admin, { table: 'Person', role: 'Boundary Person Reader', can_read: true })
     const reader = await createUser({ roles: ['Boundary Person Reader'] })
     const denied = await createUser()
     const snapshot = async () => ({
@@ -376,7 +393,7 @@ describe('search respects who may read people (Codex review on #385)', () => {
     const none = await createUser({ email: 'no.person.read@x.test' })
     await expect(none.get('/api/identifiers?system=email&value=scoped.search@x.test')).rejects.toMatchObject({ status: 403 })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Person Searcher' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Person Searcher', can_read: true } })
+    await grantRole(admin, { table: 'Person', role: 'Person Searcher', can_read: true })
     const scoped = await createUser({ email: 'scoped.searcher@x.test', roles: ['Person Searcher'] })
     await admin.post('/api/save_row', { table: 'Data Scope', row: { person: scoped.user, allow_table: 'Person', for_value: p } })
     expect((await scoped.get<{ people: { person_id: string }[] }>('/api/identifiers?system=email&value=scoped.search@x.test')).people.map((x) => x.person_id)).toEqual([p])
@@ -392,7 +409,7 @@ describe('search respects who may read people (Codex review on #385)', () => {
     const found = await admin.get<{ people: { person_id: string; pending_invite: boolean }[] }>('/api/identifiers?system=email&value=INVITED.IRA@x.test')
     expect(found.people.map((x) => [x.person_id, x.pending_invite])).toEqual([[invitee, true]])
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Person Searcher' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Person Searcher', can_read: true } })
+    await grantRole(admin, { table: 'Person', role: 'Person Searcher', can_read: true })
     const scoped = await createUser({ email: 'invite.scoped@x.test', roles: ['Person Searcher'] })
     await admin.post('/api/save_row', { table: 'Data Scope', row: { person: scoped.user, allow_table: 'Person', for_value: scoped.user } })
     expect((await scoped.get<{ people: unknown[] }>('/api/identifiers?system=email&value=invited.ira@x.test')).people).toEqual([])
@@ -505,7 +522,7 @@ describe('changing a value needs a read of its person (review on #385)', () => {
     const outOfScope = await makePerson({ full_name: 'Badge Out' })
     const a = await addIdentifier(inScope, { system: 'badge', value: 'b-1' }, 'Administrator')
     const b = await addIdentifier(outOfScope, { system: 'badge', value: 'b-2' }, 'Administrator')
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Data Quality Manager', can_read: true } })
+    await grantRole(admin, { table: 'Person', role: 'Data Quality Manager', can_read: true })
     const reviewer = await createUser({ email: 'scoped.reviewer@x.test', roles: ['Data Quality Manager'] })
     await admin.post('/api/save_row', { table: 'Data Scope', row: { person: reviewer.user, allow_table: 'Person', for_value: inScope } })
     const patch = (id: string) => reviewer.fetch(`/api/identifiers/${id}`, { method: 'PATCH', body: JSON.stringify({ note: 'checked' }) })
@@ -538,7 +555,7 @@ describe('who may change a value follows its system (D9)', () => {
   test('self editing does not let a Person reader change someone else’s phone', async ({ admin, createUser }) => {
     const owner = await createUser({ email: 'phone.owner@x.test' })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Phone Reader' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Phone Reader', can_read: true } })
+    await grantRole(admin, { table: 'Person', role: 'Phone Reader', can_read: true })
     const reader = await createUser({ email: 'phone.other@x.test', roles: ['Phone Reader'] })
     const { identifier } = await owner.post<{ identifier: { id: string; source: string; verified: boolean } }>(`/api/people/${owner.user}/identifiers`, {
       system: 'phone', value: '9847012345',

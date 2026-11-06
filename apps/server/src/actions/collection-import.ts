@@ -6,7 +6,7 @@ import { quoteIdent } from '../sql-identifier'
 import { AppError } from '../errors'
 import { checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
-import { assertDocPermission, assertPermission, permissionScope, permittedTiers } from '../permissions'
+import { assertDocPermission, assertPermission, permissionScope, permittedColumns, includesColumn } from '../permissions'
 import { registerCollectionAction, type CollectionActionContext } from '../actions'
 import { sql } from '../db'
 import { canRetire, tableRelation, quoteRelation } from '../table-engine'
@@ -291,30 +291,43 @@ export async function importRows({ table, args, user }: CollectionActionContext,
       for (const column of columns)
         if (column !== ROW_KEY && !meta.columns.some((c) => c.column_name === column))
           throw new AppError('ValidationError', `${meta.name} has no column ${column}`)
-      const readTiers = await permittedTiers(user.row_id, table, 'read')
-      const writeTiers = await permittedTiers(user.row_id, table, 'write')
+      const readColumns = await permittedColumns(user.row_id, table, 'read')
+      // A Column read only on the caller's own rows, beside rows read in
+      // full, is never offered: whether a guess matched a hidden value would
+      // otherwise show in the answer.
+      const readEverywhere = await permittedColumns(user.row_id, table, 'read', '')
+      const ownRowsOnly = (await permissionScope(user.row_id, table, 'read')) === 'own_rows'
+      const writeColumns = await permittedColumns(user.row_id, table, 'write')
+      // The row key is not a metadata Column: any grant of the action reaches it.
+      const reaches = (selection: ReadonlySet<string>, definition: (typeof meta.columns)[number] | undefined) =>
+        definition ? includesColumn(selection, definition) : selection.size > 0
       const key_candidates: { column: string; matched: number; complete: boolean; can_match: boolean }[] = []
       for (const column of columns) {
         const definition = meta.columns.find((c) => c.column_name === column)
         if (definition && (definition.read_only || ['Section Break', 'Column Break', 'Sub-table'].includes(definition.column_type))) continue
-        const tier = definition?.tier ?? 'basic'
-        if (!readTiers.has(tier)) continue
+        if (!reaches(readColumns, definition)) continue
+        if (!ownRowsOnly && !reaches(readEverywhere, definition)) continue
         const matches = await resolveRows(meta, rows, column)
         // A single blank, duplicate or ambiguous key invalidates the column.
         if (matches.some((r) => r.action === 'fail')) continue
+        let hidden = false
         try {
           for (const match of matches) {
             if (match.action !== 'update') continue
-            // getDoc includes own-row, reference-scope and attached-row gates.
-            await getDoc(table, match.row_id!, user.row_id)
+            // getDoc includes own-row, reference-scope and attached-row gates,
+            // and drops the Columns this caller may not read on that row: a
+            // key matched on a hidden value would disclose it.
+            const readable = await getDoc(table, match.row_id!, user.row_id)
+            hidden ||= column !== ROW_KEY && !Object.hasOwn(readable, column)
           }
         } catch (err) {
           if (err instanceof AppError && err.type === 'PermissionError') continue
           throw err
         }
+        if (hidden) continue
         // Readable overlap still matters to an append-only caller. Whether
         // this key can authorize an upsert is a separate permission fact.
-        let can_match = writeTiers.has(tier)
+        let can_match = reaches(writeColumns, definition)
         if (can_match) {
           try {
             await assertRunPermitted(user.row_id, table, matches)
@@ -372,7 +385,10 @@ export async function importRows({ table, args, user }: CollectionActionContext,
             // the mapped values as the update they will become. The insert
             // checks (name conflicts, reqd columns) do not apply.
             checkRowForUpdate(meta, row as Record<string, unknown>, resolution, upsert!)
-            const current = await getDoc(table, resolution.row_id!, user.row_id)
+            // Refused if this person cannot read the row. The rehearsal then compares
+            // with what is stored, as the real import does; only counts leave here.
+            await getDoc(table, resolution.row_id!, user.row_id)
+            const current = await getDoc(table, resolution.row_id!)
             const plan = await planImport(meta, current, updateValues(row as Record<string, unknown>, upsert!, resolution), user.row_id)
             fieldsUpdated += plan.fields_updated
             fieldsKept += plan.fields_kept
@@ -383,7 +399,7 @@ export async function importRows({ table, args, user }: CollectionActionContext,
             actions.push('update')
             continue
           }
-          const name = await checkRowForInsert(meta, row as Record<string, unknown>)
+          const name = await checkRowForInsert(meta, row as Record<string, unknown>, user.row_id)
           if (name && seenNames.has(name))
             throw new AppError('ConflictError', `Duplicate name ${name} within the import`)
           if (name) seenNames.add(name)

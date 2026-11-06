@@ -9,6 +9,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { createTable } from '../src/table-engine'
 import { invalidateMeta } from '../src/meta'
+import { grantRole } from './fixtures'
 
 interface Card {
   label: string | null
@@ -116,10 +117,7 @@ describe('GET /api/home_pages: link permission filtering', () => {
   }) => {
     await makeTable(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: DT, role: ROLE, can_read: true },
-    })
+    await grantRole(admin, { table: DT, role: ROLE, can_read: true })
     await admin.post('/api/save_row', {
       table: 'Home Page',
       row: {
@@ -353,12 +351,8 @@ describe('System membership comes from the current catalogue', () => {
 
   test('generated links use effective labels after the viewer passes visibility checks', async ({ admin, createUser }) => {
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-    await admin.post('/api/save_row', {
-      table: 'Permission', row: { ref_table: 'Sign In Method', role: ROLE, can_read: true, own_rows_only: true },
-    })
-    await admin.post('/api/save_row', {
-      table: 'Permission', row: { ref_table: 'Person', role: ROLE, can_read: true },
-    })
+    await grantRole(admin, { table: 'Sign In Method', role: ROLE, can_read: true, own_rows_only: true })
+    await grantRole(admin, { table: 'Person', role: ROLE, can_read: true })
     await admin.post('/api/table/Metadata%20Override', {
       row_id: 'hp-sign-in-label', table_name: 'Sign In Method', property: 'label', value: 'Sign-in providers',
     })

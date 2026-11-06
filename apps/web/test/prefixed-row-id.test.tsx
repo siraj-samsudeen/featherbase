@@ -6,6 +6,7 @@ import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
+import { grantRole } from 'server/test/fixtures'
 
 type Admin = Parameters<typeof renderApp>[1]
 const T = 'Pri Plant'
@@ -82,9 +83,7 @@ test('missing or denied rename advice exposes neither rename action, even on a w
   })
   await admin.post('/api/save_row', { table: T, row: { ...row, plant_code: '8159' } })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pri Reader' } })
-  await admin.post('/api/save_row', {
-    table: 'Permission', row: { ref_table: T, role: 'Pri Reader', can_read: true },
-  })
+  await grantRole(admin, { table: T, role: 'Pri Reader', can_read: true })
   const reader = await createUser({ email: 'pri.reader@example.com', roles: ['Pri Reader'] })
   await admin.post('/api/save_row', {
     table: 'Share', row: { share_table: T, share_name: row.row_id, person: reader.user, read: true, write: true },

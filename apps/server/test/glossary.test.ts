@@ -11,7 +11,7 @@ import { test } from './pg-test'
 import { discoverPackages, packageFailures } from '../src/runtime-packages'
 import { uninstallApp } from '../src/apps'
 import { glossaryDeclaration } from '../src/glossary'
-import { expectApiError } from './fixtures'
+import { expectApiError, grantRole } from './fixtures'
 
 const v1 = resolve('../..', 'test-apps/fixtures/shelves-v1')
 const v2 = resolve('../..', 'test-apps/fixtures/shelves-v2')
@@ -101,7 +101,7 @@ describe('reading the glossary', () => {
   test('a role granted write on Glossary Term may edit it', async ({ admin, createUser }) => {
     await install(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Glossary Editor' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Glossary Term', role: 'Glossary Editor', can_read: true, can_write: true, can_create: true } })
+    await grantRole(admin, { table: 'Glossary Term', role: 'Glossary Editor', can_read: true, can_write: true, can_create: true })
     const editor = await createUser({ email: 'editor@example.test', roles: ['Glossary Editor'] })
     expect((await glossary(editor)).canEdit).toBe(true)
     await reword(editor, 'Coverage', 'The aisles you answer for.')

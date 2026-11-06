@@ -128,13 +128,14 @@ beforeAll(async () => {
     }),
   })
   USER = ((await person.json()) as { row_id: string }).row_id
-  await areq('/api/save_row', {
+  const permission = await areq('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({
       table: 'Permission',
-      row: { ref_table: DT, role: ROLE, tier: 'basic', can_read: true },
+      row: { ref_table: DT, role: ROLE, operation: 'read' },
     }),
   })
+  expect(permission.status).toBe(201)
   await areq('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({
@@ -174,6 +175,37 @@ describe('PERM-004: generated RLS for direct clients', () => {
     await as(USER)
     expect(await direct`select * from featherbase.rls_hidden`).toHaveLength(0)
     expect(await direct`select * from featherbase.person`).toHaveLength(0)
+  })
+
+  it('a creator-only grant cannot become unrestricted through a direct connection', async () => {
+    await sql`update permission set scope_mode = 'creator' where ref_table = ${DT}`
+    try {
+      await as(USER)
+      expect(await direct`select * from featherbase.rls_vault`).toEqual([])
+      expect(await direct`select * from featherbase.rls_vault_item`).toEqual([])
+    } finally { await sql`update permission set scope_mode = 'all' where ref_table = ${DT}` }
+  })
+
+  it('a grant of listed Columns requires the server read path', async () => {
+    await sql`update permission set column_rule = 'listed' where ref_table = ${DT}`
+    try {
+      await as(USER)
+      expect(await direct`select * from featherbase.rls_vault`).toEqual([])
+      expect(await direct`select * from featherbase.rls_vault_item`).toEqual([])
+    } finally { await sql`update permission set column_rule = 'basic' where ref_table = ${DT}` }
+  })
+
+  it('a basic-level grant reads natively only while no Column is restricted', async () => {
+    await sql`update column_def set tier = 'restricted' where parent = ${CHILD} and column_name <> 'parent'`
+    try {
+      await as(USER)
+      expect(await direct`select * from featherbase.rls_vault`).toEqual([])
+      await sql`update permission set column_rule = 'every' where ref_table = ${DT}`
+      expect((await direct`select * from featherbase.rls_vault`).length).toBeGreaterThan(0)
+    } finally {
+      await sql`update column_def set tier = 'basic' where parent = ${CHILD}`
+      await sql`update permission set column_rule = 'basic' where ref_table = ${DT}`
+    }
   })
 
   it('an unauthenticated session (Guest) sees nothing', async () => {

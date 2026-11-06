@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { grantRole } from './fixtures'
 
 // Relational navigation (#100): GET /api/table/:table/:row_id:connections
 // returns every table pointing at the row via Reference columns, with
@@ -178,10 +179,7 @@ describe('NAV-001: via-link permission scoping', () => {
   const ROLE = 'Cnx Role'
 
   async function grant(admin: TestClient, table: string, extra: Record<string, unknown> = {}) {
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: table, role: ROLE, can_read: true, ...extra },
-    })
+    await grantRole(admin, { table, role: ROLE, can_read: true, ...extra })
   }
 
   test('own_rows_only: other users’ owners are absent from names AND count', async ({
@@ -281,10 +279,7 @@ describe('NAV-001: navigable tables', () => {
   test('filters by per-table read permission', async ({ admin, createUser }) => {
     await setup(admin)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Cnx Nav Role' } })
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: EMP, role: 'Cnx Nav Role', can_read: true },
-    })
+    await grantRole(admin, { table: EMP, role: 'Cnx Nav Role', can_read: true })
     const user = await createUser({ roles: ['Cnx Nav Role'] })
 
     const mine = await user.get<{ tables: string[] }>('/api/navigable_tables')

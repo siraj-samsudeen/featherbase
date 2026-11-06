@@ -90,9 +90,18 @@ describe('#341: restricted columns on sub-table rows', () => {
     const cur = await user.get<Record<string, any>>(parent.rowUrl(name))
     // The form echoes the line it was shown (no unit_cost) and adds one
     // that tries to set the hidden column.
-    await patchDoc(user, parent.rowUrl(name), {
+    await expect(patchDoc(user, parent.rowUrl(name), {
       updated_at: cur.updated_at,
       lines: [{ ...cur.lines[0], item: 'Bolt M8' }, { item: 'Nut', unit_cost: 77 }],
+    })).rejects.toMatchObject({ status: 403 })
+    const unchanged = await admin.get<Record<string, any>>(parent.rowUrl(name))
+    expect(unchanged.updated_at).toBe(cur.updated_at)
+    expect(unchanged.lines.map((r: Record<string, unknown>) => [r.item, Number(r.unit_cost)])).toEqual([['Bolt', 4200]])
+    // Omitting the hidden value permits the edit and preserves the stored cost.
+    // A new line gets its metadata default, not a caller-supplied hidden value.
+    await patchDoc(user, parent.rowUrl(name), {
+      updated_at: cur.updated_at,
+      lines: [{ ...cur.lines[0], item: 'Bolt M8' }, { item: 'Nut' }],
     })
     const rows = await sql.unsafe(
       `select item, unit_cost from ${CTABLE} where parent = '${name}' order by position`,
