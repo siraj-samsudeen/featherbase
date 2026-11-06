@@ -20,6 +20,8 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('#1012: the arrange controls stay put whichever column count is chosen', async ({ session, page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await session.visit(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/layout-1`)
+  // The widest system fonts decide whether the bar fits, so test with one on every machine.
+  await page.addStyleTag({ content: "body, button { font-family: Verdana, 'DejaVu Sans' !important; }" })
   const one = page.getByTestId('arrange-columns-1')
   const two = page.getByTestId('arrange-columns-2')
   await expect(two).toBeVisible()
