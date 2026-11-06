@@ -14,7 +14,11 @@ alter table featherbase.table_def add constraint table_def_view_shape
 update featherbase.column_def set choices = choices || E'\nview'
 where parent = 'Table' and column_name = 'kind' and choices is not null
   and not ('view' = any(string_to_array(replace(choices, E'\r', ''), E'\n')));
-insert into featherbase.column_def (parent, position, column_name, label, column_type, reference_table, read_only, description)
+update featherbase.column_def set choice_labels = choice_labels || '{"view":"View"}'::jsonb
+where parent = 'Table' and column_name = 'kind' and choice_labels is not null;
+-- Data, not a Reference: Table rows live in table_def, and link sweeps expect
+-- a Reference's target to have storage of its own.
+insert into featherbase.column_def (parent, position, column_name, label, column_type, read_only, description)
 select 'Table', coalesce((select max(position) from featherbase.column_def where parent = 'Table'), 0) + 1,
-  'view_of', 'View of', 'Reference', 'Table', true, 'A view shows the rows of this Table that its filter matches.'
+  'view_of', 'View of', 'Data', true, 'The Table this view shows rows of: the ones its filter matches.'
 where not exists (select 1 from featherbase.column_def where parent = 'Table' and column_name = 'view_of');
