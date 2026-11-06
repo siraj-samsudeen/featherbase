@@ -1,7 +1,7 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
 import { KINDS, METHOD_TABLE, SIGN_IN_METHOD_KINDS, assertNoAdminLockout, domainListProblem, endSessionsNoLongerAdmitted, lockWaysIn, methodUsable, type MethodKind } from '../identities'
-import { usableServiceUrl, wireFrom } from '../delegated-login'
+import { rosterFrom, usableServiceUrl, wireFrom } from '../delegated-login'
 
 // person-identities (D2): a Sign In Method row is configuration. Its policy
 // values are checked against what the kind's adapter can vouch for, a unique
@@ -66,10 +66,19 @@ const controller: TableController = {
       }
       if (kind === 'delegated_password' && row.settings !== undefined) {
         try {
-          wireFrom(parseSettings(row.settings))
+          const settings = parseSettings(row.settings)
+          wireFrom(settings)
+          rosterFrom(settings)
         } catch (err) {
           throw new AppError('ValidationError', (err as Error).message, { settings: (err as Error).message })
         }
+      }
+      // #970: the rule means nothing without the roster it reads.
+      if (newPerson === 'create_if_on_roster') {
+        if (!caps.rosterFirstSignIn)
+          throw new AppError('ValidationError', 'Only a connected service can check a sign-in against a staff roster', { new_person: 'refuse' })
+        if (!rosterFrom(parseSettings(row.settings !== undefined ? row.settings : old?.settings)))
+          throw new AppError('ValidationError', 'A staff roster rule needs settings.roster: its Table and columns', { settings: 'needs roster' })
       }
     },
     before_save: async ({ row, old, isNew, tx }) => {

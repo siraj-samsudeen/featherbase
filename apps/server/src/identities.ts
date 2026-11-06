@@ -81,14 +81,15 @@ export interface SignInMethod {
  *  - hostedDomain: returns a Workspace-style domain claim that must agree for a company domain
  *  - candidateFirst: the person is found from what they typed BEFORE credentials are checked
  *  - admitsPrivileged: may sign in an Administrator or System Manager
+ *  - rosterFirstSignIn: may make a person from a staff roster row (#970)
  *  - unique: at most one row of this kind */
 export const KINDS: Record<
   MethodKind,
-  { trustedSubject: boolean; verifiedEmail: boolean; hostedDomain: boolean; candidateFirst: boolean; admitsPrivileged: boolean; unique: boolean }
+  { trustedSubject: boolean; verifiedEmail: boolean; hostedDomain: boolean; candidateFirst: boolean; admitsPrivileged: boolean; rosterFirstSignIn: boolean; unique: boolean }
 > = {
-  password: { trustedSubject: true, verifiedEmail: false, hostedDomain: false, candidateFirst: true, admitsPrivileged: true, unique: true },
-  google: { trustedSubject: true, verifiedEmail: true, hostedDomain: true, candidateFirst: false, admitsPrivileged: true, unique: true },
-  delegated_password: { trustedSubject: false, verifiedEmail: false, hostedDomain: false, candidateFirst: true, admitsPrivileged: false, unique: false },
+  password: { trustedSubject: true, verifiedEmail: false, hostedDomain: false, candidateFirst: true, admitsPrivileged: true, rosterFirstSignIn: false, unique: true },
+  google: { trustedSubject: true, verifiedEmail: true, hostedDomain: true, candidateFirst: false, admitsPrivileged: true, rosterFirstSignIn: false, unique: true },
+  delegated_password: { trustedSubject: false, verifiedEmail: false, hostedDomain: false, candidateFirst: true, admitsPrivileged: false, rosterFirstSignIn: true, unique: false },
 }
 
 export const METHOD_TABLE = 'Sign In Method'
@@ -107,7 +108,15 @@ export function methodUsable(m: { kind: string; enabled: boolean; client_id?: st
 }
 
 function toMethod(r: Record<string, unknown>): SignInMethod {
-  const settings = r.settings
+  // A JSON column reads back as text or as an object, depending on the write path.
+  let settings = r.settings
+  if (typeof settings === 'string') {
+    try {
+      settings = JSON.parse(settings)
+    } catch {
+      settings = null
+    }
+  }
   return {
     key: String(r.row_id),
     kind: String(r.kind) as MethodKind,
