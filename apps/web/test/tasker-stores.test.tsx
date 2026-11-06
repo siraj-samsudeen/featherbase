@@ -64,6 +64,7 @@ test('task details set a store and dates, and the task row shows them', async ({
   const detail = await screen.findByRole('region', { name: 'Task detail content' })
   await user.selectOptions(await within(detail).findByRole('combobox', { name: 'Task store' }), 'Keelkattalai Store')
   await waitFor(async () => expect((await admin.get<{ store: string }>(`/api/table/tasker.task/${task.row_id}`)).store).toBe(keel.row_id))
+  await waitFor(() => expect(within(detail).getByLabelText('Due date')).toBeEnabled())
   fireEvent.change(within(detail).getByLabelText('Due date'), { target: { value: day(-2) } })
   await waitFor(async () => expect(String((await admin.get<{ due_date: string }>(`/api/table/tasker.task/${task.row_id}`)).due_date).slice(0, 10)).toBe(day(-2)))
   expect(await within(detail).findByText('Overdue by 2 days')).toBeInTheDocument()
@@ -124,7 +125,8 @@ test('task filters narrow a list by store and by when tasks are due', async ({ a
   renderTasker(admin)
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: 'September stock review' }))
-  await screen.findByRole('link', { name: 'Fix the billing printer' })
+  const printer = (await screen.findByRole('link', { name: 'Fix the billing printer' })).closest('article')!
+  await waitFor(() => expect(printer).toHaveTextContent('Avadi Store'))
   await user.click(screen.getByRole('button', { name: /^Filter/ }))
   const filters = await screen.findByRole('dialog', { name: 'Filter tasks' })
   await user.click(within(within(filters).getByRole('group', { name: 'Due' })).getByRole('checkbox', { name: 'Overdue' }))

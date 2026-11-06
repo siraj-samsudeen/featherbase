@@ -233,3 +233,33 @@ html:has(.tasker-focus-detail), html:has(.tasker-focus-detail) body { overflow: 
     font-size: var(--text-control);
   }
 }
+
+/* Store and due dates */
+.tasker-task-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 5px 0 0; }
+.tasker-store-chip, .tasker-due-chip { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-subtle); color: var(--color-ink-muted); font-size: 12px; white-space: nowrap; }
+.tasker-due-chip[data-mark="overdue"], .tasker-due-note[data-mark="overdue"] { border-color: var(--color-negative); background: var(--color-negative-tint); color: var(--color-negative); font-weight: 650; }
+.tasker-due-chip[data-mark="due_today"], .tasker-due-note[data-mark="due_today"] { border-color: var(--color-caution); background: var(--color-caution-tint); color: var(--color-ink); font-weight: 650; }
+.tasker-due-chip[data-mark="scheduled"], .tasker-due-note[data-mark="scheduled"] { border-color: var(--color-action); background: var(--color-action-tint); color: var(--color-action); }
+.tasker-detail-controls input[type="date"] { display: block; width: 100%; min-width: 0; margin-top: 4px; padding: 6px 7px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: var(--color-ink); font-size: 12px; }
+.tasker-due-note { grid-column: 1 / -1; justify-self: start; margin: 0; padding: 3px 10px; border: 1px solid var(--color-border); border-radius: 999px; font-size: 12px; }
+
+/* Stores page */
+.tasker-store-table-wrap { overflow-x: auto; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); }
+.tasker-store-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tasker-store-table th, .tasker-store-table td { padding: 8px 14px; border-bottom: 1px solid var(--color-border); text-align: right; white-space: nowrap; }
+.tasker-store-table thead th { background: var(--color-subtle); color: var(--color-ink-muted); font-size: 12px; font-weight: 650; }
+.tasker-store-table th:first-child { text-align: left; }
+.tasker-store-table tbody th { font-weight: 600; color: var(--color-ink); }
+.tasker-store-table tr.is-total th, .tasker-store-table tr.is-total td { border-bottom: 0; background: var(--color-subtle); font-weight: 700; }
+.tasker-store-table td button { min-width: 36px; min-height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--color-action); font: inherit; font-weight: 650; text-decoration: underline; cursor: pointer; }
+.tasker-store-table td button:hover, .tasker-store-table td button[aria-pressed="true"] { border-color: var(--color-action); background: var(--color-action-tint); text-decoration: none; }
+.tasker-store-table td[data-bucket="overdue"] button { color: var(--color-negative); }
+.tasker-store-zero { display: inline-block; min-width: 36px; padding: 0 8px; color: var(--color-ink-subtle); }
+.tasker-store-drilldown { margin-top: 20px; }
+.tasker-store-drilldown h3 { margin: 0 0 10px; font-weight: 650; }
+.tasker-store-drilldown h3 span { color: var(--color-ink-muted); font-weight: 400; }
+.tasker-store-create { margin-top: 24px; font-size: 13px; }
+.tasker-store-create label { display: block; margin-bottom: 6px; font-weight: 650; }
+.tasker-store-create div { display: flex; flex-wrap: wrap; gap: 8px; }
+.tasker-store-create input, .tasker-store-create select { min-width: 0; padding: 7px 10px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: var(--color-ink); font-size: 13px; }
+.tasker-store-create input { flex: 1 1 220px; }

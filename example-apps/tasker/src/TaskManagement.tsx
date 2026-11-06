@@ -14,6 +14,8 @@ import { Markdown } from './Markdown'
 import { describeHistoryValue } from './history'
 import { ProjectDescription } from './ProjectDescription'
 import { TaskActions } from './TaskActions'
+import { StoresContext, StoresPage, TaskStoreAndDue, dueNote, storeName, useStores, type Store } from './Stores'
+import { DUE_MARKS, DUE_MARK_LABELS, NO_STORE, calendarDay, dueMark, localDay } from './storeWork'
 import {
   UNASSIGNED,
   emptyTaskViewSetup,
@@ -26,7 +28,7 @@ import {
   type TaskViewSetup,
 } from './taskViews'
 
-type View = 'inbox' | 'work' | 'together' | 'projects' | 'personal' | 'views'
+type View = 'inbox' | 'work' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
 type DetailMode = 'compact' | 'inspector' | 'focus'
 
 interface Task {
@@ -43,6 +45,9 @@ interface Task {
   project: string | null
   personal_tasks_owner: string | null
   assigned_to: string | null
+  store: string | null
+  start_date: string | null
+  due_date: string | null
   updated_at: string
 }
 
@@ -83,6 +88,9 @@ const TASK_FIELDS = [
   'project',
   'personal_tasks_owner',
   'assigned_to',
+  'store',
+  'start_date',
+  'due_date',
   'created_at',
   'updated_at',
 ]
@@ -111,13 +119,14 @@ function sameDocumentHash(hash: string) {
   return `${location.pathname}${location.search}${hash}`
 }
 
-type TaskerIconName = 'inbox' | 'work' | 'together' | 'projects' | 'personal' | 'views'
+type TaskerIconName = 'inbox' | 'work' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
 
 function TaskerIcon({ name }: { name: TaskerIconName }) {
   const paths: Record<TaskerIconName, ReactNode> = {
     inbox: <><path d="M4 5.5h16v13H4z" /><path d="M4 14h4l2 2h4l2-2h4" /></>,
     work: <><circle cx="12" cy="8" r="3" /><path d="M5.5 20c.6-4 2.7-6 6.5-6s5.9 2 6.5 6" /></>,
     together: <><circle cx="9" cy="8" r="2.5" /><circle cx="16.5" cy="9" r="2" /><path d="M3.5 19c.5-3.5 2.3-5.2 5.5-5.2s5 1.7 5.5 5.2" /><path d="M14.5 14.4c3.3-.4 5.3 1.1 6 4.1" /></>,
+    stores: <><path d="M4 9.5 5.5 4.5h13L20 9.5" /><path d="M4 9.5c0 1.5 1.2 2.5 2.7 2.5S9.3 11 9.3 9.5c0 1.5 1.2 2.5 2.7 2.5s2.7-1 2.7-2.5c0 1.5 1.1 2.5 2.6 2.5S20 11 20 9.5" /><path d="M5.5 12v7.5h13V12M10 19.5v-4.5h4v4.5" /></>,
     projects: <><path d="M3.5 7.5h6l2-2h9v13h-17z" /><path d="M3.5 9.5h17" /></>,
     personal: <><rect x="5" y="4" width="14" height="16" rx="2" /><path d="M9 4V2.8M15 4V2.8M8.5 10h7M8.5 14h5" /></>,
     views: <><path d="M5 7h14M5 12h14M5 17h14" /><circle cx="8" cy="7" r="1.5" /><circle cx="15" cy="12" r="1.5" /><circle cx="11" cy="17" r="1.5" /></>,
@@ -218,6 +227,15 @@ export function TaskManagementPage() {
       `/api/user_settings/${encodeURIComponent(SAVED_VIEWS_SETTINGS)}`,
     ),
   })
+  const stores = useQuery({
+    queryKey: ['task-management', 'stores'],
+    queryFn: () =>
+      listAllResources<Store>('tasker.store', {
+        fields: ['row_id', 'store_name', 'store_type'],
+        order_by: 'store_name asc',
+        limit_page_length: 200,
+      }),
+  })
   const comments = useQuery({
     queryKey: ['task-management', 'comments'],
     queryFn: () =>
@@ -233,7 +251,7 @@ export function TaskManagementPage() {
   const parentsById = new Map(storedTasks.map(task => [task.row_id, task]))
   const allTasks = storedTasks.map(task => {
     const parent = task.parent_task && parentsById.get(task.parent_task)
-    return parent ? { ...task, project: parent.project, shared: parent.shared } : task
+    return parent ? { ...task, project: parent.project, shared: parent.shared, store: parent.store } : task
   })
   const openChildren = new Map<string, number>()
   for (const task of allTasks) if (task.parent_task && !['Done', 'Cancelled'].includes(task.task_state))
@@ -538,6 +556,7 @@ export function TaskManagementPage() {
     { id: 'inbox', label: 'Inbox', icon: 'inbox', count: inbox.length },
     { id: 'work', label: 'My Work', icon: 'work', count: myWork.length },
     { id: 'together', label: 'Together', icon: 'together' },
+    { id: 'stores', label: 'Stores', icon: 'stores' },
     {
       id: 'personal',
       label: 'Personal tasks',
@@ -587,7 +606,11 @@ export function TaskManagementPage() {
     />
   }
 
+  const allStores = stores.data?.data ?? []
+  const today = localDay()
+
   return (
+    <StoresContext.Provider value={allStores}>
     <div className="tasker-shell" data-view={view} data-testid="task-management-page">
       {createElement('featherbase-sidebar', { className: 'tasker-sidebar', 'aria-label': 'Task views' }, <>
         {primaryTabs.map((tab) => (
@@ -704,6 +727,17 @@ export function TaskManagementPage() {
           })}
           {!filteredTogether.length && <NoTaskMatches total={activeTogetherTasks.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
         </section>
+      )}
+
+      {view === 'stores' && (
+        <StoresPage
+          tasks={allTasks.filter((task) => !task.parent_task)}
+          today={today}
+          onStoreAdded={refresh}
+          renderTasks={(rows) => rows.length
+            ? <TaskList openChildren={openChildren} tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+            : <Empty text="No tasks here." />}
+        />
       )}
 
       {view === 'projects' && (
@@ -825,6 +859,7 @@ export function TaskManagementPage() {
         </div>
       )}
     </div>
+    </StoresContext.Provider>
   )
 }
 
@@ -889,6 +924,7 @@ function TaskViewToolbar({
   onUpdate: (savedView: SavedTaskView) => Promise<void>
   onReset: () => void
 }) {
+  const stores = useStores()
   const [filtersOpen, setFiltersOpen] = useState(false)
   const filterButton = useRef<HTMLButtonElement>(null)
   const [savingAsNew, setSavingAsNew] = useState(false)
@@ -907,7 +943,7 @@ function TaskViewToolbar({
   function removeFilter(dimension: keyof TaskViewFilters, value: string) {
     setFilters({
       ...setup.filters,
-      [dimension]: setup.filters[dimension].filter((candidate) => candidate !== value),
+      [dimension]: (setup.filters[dimension] as string[]).filter((candidate) => candidate !== value),
     })
   }
 
@@ -921,6 +957,10 @@ function TaskViewToolbar({
     chips.push({ key: `urgency:${urgency}`, label: urgency === 'urgent' ? 'Urgent' : 'Not urgent', remove: () => removeFilter('urgencies', urgency) })
   for (const projectId of setup.filters.projects)
     chips.push({ key: `project:${projectId}`, label: projects.find((project) => project.row_id === projectId)?.project_name ?? 'Unavailable project', remove: () => removeFilter('projects', projectId) })
+  for (const storeId of setup.filters.stores)
+    chips.push({ key: `store:${storeId}`, label: storeName(stores, storeId), remove: () => removeFilter('stores', storeId) })
+  for (const mark of setup.filters.dueMarks)
+    chips.push({ key: `due:${mark}`, label: DUE_MARK_LABELS[mark], remove: () => removeFilter('dueMarks', mark) })
 
   async function submitSavedView(event: React.FormEvent) {
     event.preventDefault()
@@ -1023,6 +1063,7 @@ function TaskFilterControls({ filters, people, projects, showProjects, onFilters
   onClear: () => void
   onClose: () => void
 }) {
+  const stores = useStores()
   const firstControl = useRef<HTMLInputElement>(null)
   useEffect(() => firstControl.current?.focus(), [])
 
@@ -1049,6 +1090,8 @@ function TaskFilterControls({ filters, people, projects, showProjects, onFilters
       <FilterGroup label="Responsible person" values={[UNASSIGNED, ...people.map((person) => person.row_id)]} labels={new Map([[UNASSIGNED, 'Unassigned'], ...people.map(person => [person.row_id, personName(person)] as [string, string])])} selected={filters.responsiblePeople} onToggle={(value) => toggle('responsiblePeople', value)} />
       <FilterGroup label="Urgency" values={['urgent', 'not_urgent']} labels={new Map([['urgent', 'Urgent'], ['not_urgent', 'Not urgent']])} selected={filters.urgencies} onToggle={(value) => toggle('urgencies', value as TaskViewFilters['urgencies'][number])} />
       {showProjects && <FilterGroup label="Project" values={projects.map((project) => project.row_id)} labels={new Map(projects.map((project) => [project.row_id, project.project_name]))} selected={filters.projects} onToggle={(value) => toggle('projects', value)} />}
+      <FilterGroup label="Store" values={[...stores.map((store) => store.row_id), NO_STORE]} labels={new Map([...stores.map((store) => [store.row_id, store.store_name] as [string, string]), [NO_STORE, 'No store']])} selected={filters.stores} onToggle={(value) => toggle('stores', value)} />
+      <FilterGroup label="Due" values={DUE_MARKS} labels={new Map(Object.entries(DUE_MARK_LABELS))} selected={filters.dueMarks} onToggle={(value) => toggle('dueMarks', value as TaskViewFilters['dueMarks'][number])} />
       <div className="tasker-filter-actions"><Button type="button" onClick={onClear}>Clear all</Button><Button type="button" variant="primary"  onClick={onClose}>Close</Button></div>
     </div>
   </div>
@@ -1172,6 +1215,7 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
   onCompleted: (projectId?: string) => Promise<void>
 }) {
   const queryClient = useQueryClient()
+  const stores = useStores()
   const task = useQuery({ queryKey: ['task-management', 'detail', id],
     queryFn: () => api.get<Task & { description: string }>(`/api/table/tasker.task/${encodeURIComponent(id)}`),
     retry: false,
@@ -1280,6 +1324,13 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
         }}><option value="" disabled={effectiveShared}>{effectiveShared ? 'Shared work' : 'Inbox'}</option>{projects.map(project => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}
           {!effectiveShared && !task.data.parent_task && people.filter(user => user.row_id === me).map(user => <option key={user.row_id} value={`personal:${user.row_id}`}>Personal: {personName(user)}</option>)}
         </select></label>
+        <label>Store<select aria-label="Task store" disabled={Boolean(task.data.parent_task)} title={task.data.parent_task ? 'A subtask belongs to its parent’s store' : undefined} value={task.data.store ?? ''} onChange={(event) => void patch({ store: event.target.value || null }, task.data.updated_at)}>
+          <option value="">No store</option>{stores.map(store => <option key={store.row_id} value={store.row_id}>{store.store_name}</option>)}
+          {task.data.store && !stores.some(store => store.row_id === task.data.store) && <option value={task.data.store}>Unavailable store</option>}
+        </select></label>
+        <label>Start date<input type="date" value={calendarDay(task.data.start_date) ?? ''} onChange={(event) => void patch({ start_date: event.target.value || null }, task.data.updated_at)} /></label>
+        <label>Due date<input type="date" value={calendarDay(task.data.due_date) ?? ''} min={calendarDay(task.data.start_date) ?? undefined} onChange={(event) => void patch({ due_date: event.target.value || null }, task.data.updated_at)} /></label>
+        {dueNote(task.data, localDay()) && <p className="tasker-due-note" data-mark={dueMark(task.data, localDay()) ?? undefined}>{dueNote(task.data, localDay())}</p>}
         <div className="tasker-detail-signals">
           {!task.data.assigned_to && <Button type="button"  onClick={() => void patch({ assigned_to: me }, task.data.updated_at)}>Take it</Button>}
           <Button type="button"  aria-pressed={task.data.urgent} onClick={() => void patch({ urgent: !task.data.urgent }, task.data.updated_at)}>{task.data.urgent ? 'Urgent' : 'Not urgent'}</Button>
@@ -1372,6 +1423,7 @@ function TaskList({ tasks, openChildren, users, projects, focusSet, me, explanat
   savedViewId?: string
 }) {
   const queryClient = useQueryClient()
+  const today = localDay()
   const [explaining, setExplaining] = useState<string | null>(null)
   const [explanation, setExplanation] = useState('')
   const [posting, setPosting] = useState(false)
@@ -1409,6 +1461,7 @@ function TaskList({ tasks, openChildren, users, projects, focusSet, me, explanat
         <input aria-label={`Mark ${task.task_title} done`} type="checkbox" disabled={!task.is_done && Boolean(openChildren.get(task.row_id))} title={openChildren.get(task.row_id) ? 'Finish or cancel the subtasks first' : undefined} checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="tasker-task-checkbox" />
         <div className="tasker-task-copy">
           <a href={sameDocumentHash(savedViewId ? savedViewHash(savedViewId, task.row_id) : `#task=${encodeURIComponent(task.row_id)}`)} className={task.is_done ? 'line-through' : ''}>{task.task_title}</a>
+          <TaskStoreAndDue task={task} today={today} />
           {explaining === task.row_id && (
             <form className="tasker-explanation-form" onSubmit={(event) => { event.preventDefault(); void addExplanation(task) }}>
               <label className="sr-only" htmlFor={`explain-${task.row_id}`}>Optional explanation</label>
