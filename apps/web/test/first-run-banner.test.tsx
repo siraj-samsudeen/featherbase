@@ -103,3 +103,42 @@ test('items 14, 15: the old address opens the setup screen at the new one', asyn
   expect(await screen.findByTestId('first-run-setup')).toBeInTheDocument()
   await waitFor(() => expect(pathOf(router)).toBe(SETUP))
 })
+
+test('item 5: saving an email on a Person form ends the banner on that page, without waiting for the next check', async ({ admin, createUser }) => {
+  await noManagerEmails()
+  const manager = await createUser({ email: undefined, roles: ['System Manager'] })
+  await sql`update person set email = null where row_id = ${manager.user}`
+  await renderApp(`/featherbase/admin/table/person/row/${manager.user}`, admin)
+  await screen.findByTestId('setup-banner')
+  await userEvent.type(await screen.findByLabelText('Email'), 'keeper@example.com')
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(screen.queryByTestId('setup-banner')).not.toBeInTheDocument())
+  expect(screen.queryByTestId('setup-administrators-link')).not.toBeInTheDocument()
+})
+
+test('moving to a page asks for the checks once, however many parts of the shell want them', async ({ admin }) => {
+  await noManagerEmails()
+  const real = globalThis.fetch
+  let asked = 0
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url
+    if (url.includes('/api/instance-health')) asked += 1
+    return real(input, init)
+  })
+  await renderApp('/featherbase/admin/all-tables', admin)
+  await screen.findByTestId('setup-banner')
+  await new Promise((r) => setTimeout(r, 200))
+  asked = 0
+  await userEvent.click(screen.getByTestId('jobs-link'))
+  await screen.findByRole('heading', { name: 'Jobs' })
+  await new Promise((r) => setTimeout(r, 200))
+  expect(asked).toBe(1)
+})
+
+test('a hosted instance is not told setup can wait for "exploring locally"', async ({ admin }) => {
+  await noManagerEmails()
+  await renderApp('/featherbase/admin/setup', admin)
+  const guide = await screen.findByTestId('welcome-setup')
+  await within(guide).findByRole('link', { name: 'Set up administrators' })
+  expect(guide).not.toHaveTextContent('exploring locally')
+})
