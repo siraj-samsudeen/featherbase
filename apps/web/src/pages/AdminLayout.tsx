@@ -113,7 +113,7 @@ function AdminLayoutForKind({ wide }: { wide: boolean }) {
   return <AdminShell wide={wide} />
 }
 
-function AdminShell({ wide }: { wide: boolean }) {
+export function AdminShell({ wide }: { wide: boolean }) {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()

@@ -1,5 +1,7 @@
 import { Outlet } from '@tanstack/react-router'
-import { TopBar } from '../components/TopBar'
+import { TopBar, useOnAppAddress } from '../components/TopBar'
+import { useShellKind } from '../lib/session'
+import { AdminShell } from './AdminLayout'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 
 // #489 item 13: the person's own account pages, outside the Admin screens.
@@ -10,12 +12,23 @@ import { ThemeChoiceProvider } from '../lib/theme-choice'
 export function AccountLayout() {
   return (
     <ThemeChoiceProvider>
-      <div className="flex min-h-screen flex-col bg-canvas" data-testid="account-layout">
-        <TopBar forPerson />
-        <main className="mx-auto w-full max-w-3xl flex-1 p-4 sm:p-6">
-          <Outlet />
-        </main>
-      </div>
+      <AccountFrame />
     </ThemeChoiceProvider>
+  )
+}
+
+/** #1006: someone who can use Admin, where Admin is, stays in its frame. Anyone
+ *  else has no Admin to return to, so the plain bar is all their frame. */
+function AccountFrame() {
+  const kind = useShellKind()
+  const onAppAddress = useOnAppAddress()
+  if (kind === 'admin' && onAppAddress === false) return <AdminShell wide={false} />
+  return (
+    <div className="flex min-h-screen flex-col bg-canvas" data-testid="account-layout">
+      <TopBar forPerson />
+      <main className="mx-auto w-full max-w-3xl flex-1 p-4 sm:p-6">
+        <Outlet />
+      </main>
+    </div>
   )
 }

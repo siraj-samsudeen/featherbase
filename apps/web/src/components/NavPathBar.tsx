@@ -21,7 +21,8 @@ export function NavPathBar() {
     if (path && nav?.addressed && settings.ready) settings.remember(path)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, settings.ready])
-  if (!nav || !path) return null
+  // #1013: one step is no path, and would only repeat the page's own heading.
+  if (!nav || !path || path.steps.length < 2) return null
   return (
     <PathBar
       steps={path.steps.map((_, i) => ({ key: String(i), label: labels[i] }))}

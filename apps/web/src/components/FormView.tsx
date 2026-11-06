@@ -470,11 +470,13 @@ export function FormView({
 
   const work = <div className="flex flex-col gap-6 lg:flex-row">
     {/* Its columns follow its own width (a form beside the pane is narrow). */}
-    <div className={`@container min-w-0 flex-1 ${arrangement.columns === 1 && !isNew ? 'max-w-2xl' : 'max-w-3xl'}`}>
+    <div className="@container min-w-0 max-w-3xl flex-1">
       {!isNew && (
         <ArrangeBar mode={arrangement.mode} columns={arrangement.columns}
           onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
       )}
+      {/* #1012: one column narrows the fields only, so the toolbar above stays put. */}
+      <div className={arrangement.columns === 1 && !isNew ? 'max-w-2xl' : undefined} data-testid="form-fields">
       {!isNew && !arrangement.ready ? (
         <p className="text-sm text-ink-subtle">Loading…</p>
       ) : !isNew && arrangement.mode !== 'source' ? (() => {
@@ -510,6 +512,7 @@ export function FormView({
           ))}
         </div>
       )}
+      </div>
     </div>
     {/* Only the Tables with panels of their own give the form a side column. */}
     {!isNew && (table === 'Person' || table === 'Identifier System') && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
