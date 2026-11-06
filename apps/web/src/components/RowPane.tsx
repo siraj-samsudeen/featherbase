@@ -204,7 +204,7 @@ function PaneLink({ table, rowId, onOpen, goThere = false, onFilter, filterDisab
   if (name.state === 'loading') return <span className="text-sm text-ink-subtle">…</span>
   if (name.state === 'unreadable') return <LinkChip label="" unreadable />
   const open = () => onOpen({ table, row: rowId })
-  return <LinkChip label={name.title} code={name.code} onOpen={open} onGoThere={goThere ? open : undefined}
+  return <LinkChip label={name.text} onOpen={open} onGoThere={goThere ? open : undefined}
     onFilter={onFilter} filterDisabledReason={filterDisabledReason} />
 }
 

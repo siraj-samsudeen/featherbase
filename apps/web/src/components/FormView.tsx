@@ -7,7 +7,8 @@ import { pickerFor } from '../lib/pickers'
 import { changeOverride, overrideControl } from '../lib/metadata-override-editor'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
-import { UNSEEN_ROW, useLinkTitle } from '../lib/relations'
+import { RowName } from '../lib/row-name'
+import { UNSEEN_ROW, useRowName } from '../lib/relations'
 import { useRowCapabilities } from '../lib/row-capabilities'
 import { useIsSystemManager, useWhoAmI } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
@@ -1542,7 +1543,7 @@ export function LinkControl({
   // An opaque id (a person's `psn_…`) is shown by its name.
   const current = useQuery({
     queryKey: ['link-label', target, String(value ?? '')],
-    enabled: Boolean(picker.labelField) && !picker.peopleSearch && Boolean(value),
+    enabled: Boolean(own.labelField) && !picker.peopleSearch && Boolean(value),
     queryFn: () => api.get<Record<string, unknown>>(`/api/table/${encodeURIComponent(target)}/${encodeURIComponent(String(value))}`),
   })
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -1608,14 +1609,16 @@ export function LinkControl({
   }
 
   const principalName = usePrincipalName(picker.peopleSearch && value ? String(value) : null)
+  // #1020: a set link reads as its Table's links read.
+  const linked = useRowName(!picker.peopleSearch && value && target ? target : undefined, value ? String(value) : undefined)
   const valueLabel = picker.peopleSearch
     ? value ? principalLabel(String(value), principalName, principalName === null) : null
-    : picker.labelField && current.data ? String(current.data[picker.labelField] ?? '') || null : null
+    : own.labelField ? (current.data ? String(current.data[own.labelField] ?? '') || null : null)
+    : linked.state === 'read' ? linked.text : null
   // #881: the Table is the reader's only clue; the row's name stays private.
   const noAccess = anyTable && Boolean(value) && targetMeta.isError
   // #910 D3: a row the viewer cannot read is named neutrally, never by its id,
   // and offers no way to it.
-  const linked = useLinkTitle(!picker.peopleSearch && value && target ? target : undefined, value ? String(value) : undefined)
   const unseen = !picker.peopleSearch && Boolean(value) && !noAccess && linked.state === 'unreadable'
   const shown = query ?? (noAccess ? `${target} (no access)` : null) ?? (unseen ? UNSEEN_ROW : valueLabel ?? String(value ?? ''))
 
@@ -1638,7 +1641,7 @@ export function LinkControl({
         aria-expanded={open}
         placeholder={forFilter ? `Filter ${field.label ?? field.column_name}…` : `Reference: ${target}`}
         value={shown}
-        onFocus={() => search(query ?? (picker.labelField ? '' : shown))}
+        onFocus={() => search(query ?? (picker.labelField ? '' : String(value ?? '')))}
         onBlur={() => {
           // A search still waiting must not reopen the list on a cell left behind.
           clearTimeout(timer.current)
@@ -1715,7 +1718,7 @@ export function LinkControl({
               className="block w-full px-3 py-1.5 text-left text-sm hover:bg-subtle"
               data-testid="link-option"
             >
-              {o.label}
+              {own.labelField || picker.peopleSearch ? o.label : <RowName table={target} rowId={o.value} />}
             </button>
           ))}
           {!options.length && (

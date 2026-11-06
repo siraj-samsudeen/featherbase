@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import { viewColumns } from './list-view-columns'
-import type { ReadingPresentation } from 'shared'
+import type { LinkFormat, ReadingPresentation } from 'shared'
 
 export interface ColumnDef {
   row_id: string
@@ -43,6 +43,8 @@ export interface TableMeta {
   is_submittable: boolean
   id_pattern: string
   title_column: string | null
+  /** #1020: how links to this Table's rows read. */
+  link_format?: LinkFormat
   reading_presentation?: ReadingPresentation | null
   sort_column: string
   sort_order: string

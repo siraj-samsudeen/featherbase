@@ -8,8 +8,7 @@ import { api } from '../lib/api'
 import { ROW_STAMPS, type ColumnDef, type TableMeta } from '../lib/meta'
 import { ShownName } from '../lib/people'
 import { formatValue, type Settings } from '../lib/settings'
-import { RowTitle } from '../lib/row-titles'
-import { RowLink } from '../lib/row-name'
+import { RowLink, RowName } from '../lib/row-name'
 import { useIsSystemManager } from '../lib/session'
 import { useI18n } from '../lib/i18n'
 import { useNavigation } from '../lib/navigation'
@@ -267,7 +266,7 @@ export function ValueField({ field, value, meta, settings, columns }: {
       e.preventDefault()
       nav.push({ ...nav.step, pane: { table: target, row: String(value) } })
     }
-    shown = <RowLink table={target} rowId={String(value)} onClick={open} withCode={false} />
+    shown = <RowLink table={target} rowId={String(value)} onClick={open} />
   } else if (kind === 'yesno')
     shown = <span className={pillClasses(value ? 'bg-positive-tint text-positive' : 'bg-subtle text-ink-muted')}>{value ? 'Yes' : 'No'}</span>
   else if (kind === 'number') shown = formatValue(field.column_type, value, settings) || String(value)
@@ -340,7 +339,7 @@ export function BookkeepingLine({ fields, values, settings }: { fields: ColumnDe
           {t(f.label ?? f.column_name)}{' '}
           <span className="text-ink-muted">
             {f.column_type === 'Reference' && f.reference_table
-              ? <RowTitle table={f.reference_table} rowId={String(values[f.column_name])} />
+              ? <RowName table={f.reference_table} rowId={String(values[f.column_name])} />
               : formatValue(f.column_type, values[f.column_name], settings) || String(values[f.column_name])}
           </span>
         </span>

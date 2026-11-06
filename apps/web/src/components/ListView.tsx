@@ -5,7 +5,7 @@ import { choiceLabel, parseFilters, rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, getToken, listResource } from '../lib/api'
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
-import { LinkedTitle, RowLink } from '../lib/row-name'
+import { RowLink, RowName } from '../lib/row-name'
 import { UNSEEN_ROW, useLinkTitle } from '../lib/relations'
 import { useNavigation } from '../lib/navigation'
 import { TreeOfAll } from './RelationTree'
@@ -796,7 +796,7 @@ export function ListView({
                   className={buttonClasses()}
                   data-testid="open-naming"
                 >
-                  Naming
+                  Naming and links
                 </Link>
               )}
               <Link
@@ -1322,7 +1322,7 @@ function ListCell({
           <PrincipalName id={String(row[col.column_name])} />
         ) : col.column_type === 'Reference' && col.reference_table && !isBlank(row[col.column_name]) ? (
           // A title that links to another row reads as that row's title.
-          <LinkedTitle table={col.reference_table} rowId={String(row[col.column_name])} />
+          <RowName table={col.reference_table} rowId={String(row[col.column_name])} />
         ) : col.column_name !== 'row_id' && isBlank(row[col.column_name]) ? (
           // #792: a row with a blank title is led by its id, never a blank; a
           // person's opaque id reads as what identifies them (#835).
@@ -1369,8 +1369,8 @@ function ListCell({
 
 const isBlank = (v: unknown) => v == null || String(v).trim() === ''
 
-/** A nested row's link, by its key as before; a row the viewer cannot read
- *  is neutral words with no link (#910 D3). */
+/** A nested row's link, read as its Table's links read; a row the viewer cannot
+ *  read is neutral words with no link (#910 D3). */
 function NestedLink({ table, rowId }: { table: string; rowId: string }) {
   const principal = isPrincipalTable(table)
   const title = useLinkTitle(principal ? undefined : table, rowId)
@@ -1378,7 +1378,7 @@ function NestedLink({ table, rowId }: { table: string; rowId: string }) {
   return (
     <Link to="/featherbase/admin/table/$table/row/$name" search={{ prefill: undefined }}
       params={{ table, name: rowId }} className="text-action hover:underline">
-      {principal ? <PrincipalName id={rowId} /> : rowId}
+      {principal ? <PrincipalName id={rowId} /> : <RowName table={table} rowId={rowId} />}
     </Link>
   )
 }
@@ -1779,7 +1779,7 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
   return (
     <>
       {label} {op}{' '}
-      {linked ? <LinkedTitle table={col.reference_table!} rowId={String(value)} />
+      {linked ? <RowName table={col.reference_table!} rowId={String(value)} />
         : (op === '=' || op === '!=') && col?.column_type === 'Choice' ? choiceLabel(String(value), col.choice_labels, t)
         : filterValueLabel(op, value)}
     </>

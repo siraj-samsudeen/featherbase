@@ -4,7 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { ApiError, api } from '../lib/api'
 import type { TableMeta } from '../lib/meta'
 import { PrincipalName } from '../lib/people'
-import { RowTitle } from '../lib/row-titles'
+import { RowName } from '../lib/row-name'
 import { formatDateTime, formatValue, useSettings } from '../lib/settings'
 import { Button, Notice, cardClasses, touchLinkClasses } from '@featherbase/shop-floor'
 
@@ -70,7 +70,7 @@ export function ImportConflicts({ table, meta }: { table: string; meta: TableMet
                 params={{ table, name: conflict.row_id }}
                 search={{ prefill: undefined }}
                 className={touchLinkClasses('max-w-full break-words font-semibold')}
-              ><RowTitle table={table} rowId={conflict.row_id} /></Link>
+              ><RowName table={table} rowId={conflict.row_id} /></Link>
               <h3 className="text-sm font-semibold text-ink">{conflict.label}</h3>
             </div>
             <dl className="grid min-w-0 gap-3 text-sm sm:grid-cols-2">

@@ -57,3 +57,13 @@ export function rowDisplayTitle(meta: TitleMeta, row: Record<string, unknown>, r
   }
   return cap([meta.name, ...rowId.split('|').filter(Boolean)].join(SEPARATOR))
 }
+
+/** #1020: a stand-in title's two parts, for a title reading "Kurti Z · 1517".
+ *  A code in a stand-in holds no letter (see rowDisplayTitle), so a title whose
+ *  last part has letters is one name, however many separators it holds. */
+export function splitStandInTitle(title: string): { name: string; code: string } | null {
+  const at = title.lastIndexOf(SEPARATOR)
+  if (at === -1) return null
+  const code = title.slice(at + SEPARATOR.length)
+  return hasLetter(code) ? null : { name: title.slice(0, at), code }
+}

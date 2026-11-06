@@ -1,4 +1,5 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
+import { linkText, splitStandInTitle } from 'shared'
 import { listResource } from './api'
 import { useConnections, type Connection } from './connections'
 import { dataColumns } from './list-view-columns'
@@ -118,7 +119,7 @@ export function groupRowsQuery(connection: Pick<Connection, 'table' | 'filters'>
   }
 }
 
-// ---------- D5: name first, then the code people use ----------
+// ---------- D5: a row's name, and the code people use ----------
 
 // Ids the platform makes up: content hashes, plain counters, opaque person
 // ids and numbered series ("PL-.####").
@@ -127,7 +128,7 @@ function generatedIds(pattern: string): boolean {
   return pattern === 'hash' || pattern === 'integer' || pattern.startsWith('opaque:') || /\.#+$/.test(pattern)
 }
 
-/** The code shown after a linked row's name: its id, when the Table has a
+/** The code a linked row can show beside its name: its id, when the Table has a
  *  title column and its ids are codes people use (set by a column, a source's
  *  key or the person creating the row), and the name does not already say it. */
 export function shownCode(meta: Pick<TableMeta, 'title_column' | 'id_pattern' | 'data_source'>, rowId: string, title: string): string | undefined {
@@ -137,8 +138,21 @@ export function shownCode(meta: Pick<TableMeta, 'title_column' | 'id_pattern' | 
   return rowId
 }
 
-/** A linked row as people read it: its name, and the code that follows it. */
-export type RowName = { state: 'loading' } | { state: 'unreadable' } | { state: 'read'; title: string; code?: string }
+/** #1020: a linked row as its Table chooses to show it. Without a title column
+ *  the stand-in title may already hold a code ("Kurti Z · 1517"), and the format
+ *  covers that too, unless all it holds is the Table's name and a made-up id. */
+export function linkedRowText(meta: Pick<TableMeta, 'title_column' | 'id_pattern' | 'data_source' | 'link_format'>, rowId: string, title: string): string {
+  const code = shownCode(meta, rowId, title)
+  if (code) return linkText(meta.link_format, title, code)
+  if (meta.title_column && meta.title_column !== 'row_id') return title
+  const standIn = splitStandInTitle(title)
+  if (!standIn || (standIn.code === rowId && !meta.data_source && generatedIds(meta.id_pattern))) return title
+  return linkText(meta.link_format, standIn.name, standIn.code)
+}
+
+/** A linked row as people read it: `text` is what a link says, by its Table's
+ *  format (#1020); `title` is the row's name alone. */
+export type RowName = { state: 'loading' } | { state: 'unreadable' } | { state: 'read'; title: string; text: string }
 
 /** The names of these rows, for this viewer, in the same order (D5). */
 export function useRowNames(refs: { table: string; row_id: string }[]): RowName[] {
@@ -148,8 +162,10 @@ export function useRowNames(refs: { table: string; row_id: string }[]): RowName[
   return refs.map((ref, i) => {
     const t = titles[i]
     if (t.state !== 'read') return t
-    const meta = metas[tables.indexOf(ref.table)]?.data
-    return { state: 'read', title: t.title, code: meta ? shownCode(meta, ref.row_id, t.title) : undefined }
+    const meta = metas[tables.indexOf(ref.table)]
+    // Until the format is known the words would change under the reader.
+    if (meta?.isPending) return { state: 'loading' }
+    return { state: 'read', title: t.title, text: meta?.data ? linkedRowText(meta.data, ref.row_id, t.title) : t.title }
   })
 }
 
@@ -160,11 +176,11 @@ export function useRowName(table: string | undefined, rowId: string | undefined)
 /** What a step, a pane or a tree line says for a row the viewer cannot read. */
 export const UNSEEN_ROW = 'A row you cannot see'
 
-/** A row name as one string: "Enchakkal Supermarket · 1503", or the neutral words. */
+/** A row name as one string: "Enchakkal Supermarket (1503)", or the neutral words. */
 export function rowNameText(name: RowName, loading = '…'): string {
   if (name.state === 'unreadable') return UNSEEN_ROW
   if (name.state === 'loading') return loading
-  return name.code ? `${name.title} · ${name.code}` : name.title
+  return name.text
 }
 
 /** The order a group lists its rows in: by code where rows have codes people

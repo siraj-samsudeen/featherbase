@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { DEFAULT_ID_PATTERN, namingColumn, prettifyLabel, renameNamingColumn, tableSlug } from 'shared'
+import { DEFAULT_ID_PATTERN, LINK_FORMATS, namingColumn, prettifyLabel, renameNamingColumn, tableSlug } from 'shared'
 import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
@@ -181,6 +181,8 @@ export const tableDefSchema = z.object({
   is_submittable: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   id_pattern: optionalString,
   title_column: optionalString,
+  // #1020: how links to this Table's rows read. Kept when an update leaves it out.
+  link_format: z.enum(LINK_FORMATS).nullish().transform((v) => v ?? undefined).optional(),
   reading_presentation: readingPresentationSchema.nullish(),
   description: optionalString,
   // #74: platform-table flag. Accepted here so migrations and seeds can set
@@ -599,6 +601,7 @@ export async function updateTable(
       is_submittable: def.is_submittable ?? existing.is_submittable,
       id_pattern: def.id_pattern ?? existing.id_pattern,
       title_column: def.title_column ?? null,
+      ...(def.link_format !== undefined ? { link_format: def.link_format } : {}),
       ...(def.reading_presentation !== undefined ? { reading_presentation: def.reading_presentation } : {}),
       description: def.description ?? null,
       // Only when given: an update that leaves it out keeps the Table's choice.
@@ -868,6 +871,7 @@ export async function createTable(
     }
     await assertTableAddressAvailable(tx, def.name)
     if (def.decides_scope) tableRow.decides_scope = true
+    if (def.link_format) tableRow.link_format = def.link_format
     if (def.access_policy) tableRow.access_policy = def.access_policy
     if (qualified) {
       tableRow.label = def.label ?? def.name.split('.')[1]

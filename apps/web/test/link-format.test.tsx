@@ -36,7 +36,7 @@ async function stores(admin: Admin, link_format?: string) {
   await admin.post('/api/save_row', { table: 'Lf Store', row: { store_name: 'East', cluster: 'VLM' } })
 }
 
-test.each(FORMATS)('a list cell, in %s, reads %s', async (link_format, text, { admin }) => {
+test.for(FORMATS)('a list cell, in %s, reads %s', async ([link_format, text], { admin }) => {
   await stores(admin, link_format)
   await renderApp('/featherbase/admin/table/Lf%20Store', admin)
   const cell = await screen.findByTestId('cell-cluster', undefined, { timeout: 8000 })
@@ -53,10 +53,11 @@ test('a form link box reads the format, and its options do too', async ({ admin 
   await waitFor(() => expect(within(options).getByTestId('link-option')).toHaveTextContent('VLM (Vellayambalam)'))
 })
 
-test('the settings page saves a format and a name column, and shows a preview from a real row', async ({ admin }) => {
+test('the settings page saves a format, and shows a preview from a real row', async ({ admin }) => {
   await admin.post('/api/table_def', {
     name: 'Lf Imported',
     id_pattern: 'field:cluster_code',
+    title_column: 'cluster_name',
     columns: [
       { column_name: 'cluster_code', column_type: 'Data' },
       { column_name: 'cluster_name', column_type: 'Data' },
@@ -67,11 +68,10 @@ test('the settings page saves a format and a name column, and shows a preview fr
   const user = userEvent.setup()
   const format = await screen.findByRole('combobox', { name: 'How links read' }, { timeout: 8000 })
   expect(format).toHaveValue('name_code')
-  await user.selectOptions(screen.getByRole('combobox', { name: 'Name column' }), 'cluster_name')
   await waitFor(() => expect(screen.getByTestId('link-format-preview')).toHaveTextContent('Vellayambalam (VLM)'))
   await user.selectOptions(format, 'code')
   await waitFor(() => expect(screen.getByTestId('link-format-preview')).toHaveTextContent(/VLM$/))
   await user.click(screen.getByTestId('link-format-save'))
   expect(await screen.findByTestId('link-format-saved')).toBeInTheDocument()
-  expect(await admin.get(`/api/table/${encodeURIComponent('Lf Imported')}:meta`)).toMatchObject({ link_format: 'code', title_column: 'cluster_name' })
+  expect(await admin.get(`/api/table/${encodeURIComponent('Lf Imported')}:meta`)).toMatchObject({ link_format: 'code' })
 })
