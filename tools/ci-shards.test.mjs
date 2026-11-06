@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { enumerate, shardCount, validate } from './ci-shards.mjs'
+import { acceptanceShardCount, enumerate, partition, shardCount, validate } from './ci-shards.mjs'
 
 function collectorFixture(t, suite) {
   const root = resolve(import.meta.dirname, '..')
@@ -132,4 +132,41 @@ test('the merge accepts exactly one successful producer per shard and every file
     mutate(invalid)
     assert.throws(() => check(invalid))
   }
+})
+
+test('acceptance Feature files partition exactly once, with their scenarios and in their order', async () => {
+  const all = await enumerate('acceptance')
+  const shards = []
+  for (let shard = 1; shard <= acceptanceShardCount; shard++) shards.push(await enumerate('acceptance', shard))
+  assert(all.length > acceptanceShardCount)
+  assert.deepEqual(shards.flat().sort(), all)
+  assert.equal(new Set(shards.flat()).size, all.length)
+  assert(shards.every(files => files.length > 0))
+  // Every Feature file offered to a runner has a scenario to run.
+  for (const unit of all) assert.match(readFileSync(resolve(import.meta.dirname, '../acceptance-tests', unit.replace(/(?::\d+)+$/, '')), 'utf8'), /Scenario/)
+})
+
+test('one capability runs on one runner, and all of its Feature files run', async t => {
+  process.env.ACCEPTANCE_CAPABILITIES = 'list-view'
+  t.after(() => { delete process.env.ACCEPTANCE_CAPABILITIES })
+  const files = await enumerate('acceptance', 1)
+  assert(files.length > 0)
+  assert(files.every(file => file.includes('/list-view/')))
+  assert.deepEqual([...files].sort(), await enumerate('acceptance'))
+})
+
+test('partition balances by weight, keeps the given order and spares the runner with a head start', () => {
+  const weights = { a: 1, b: 9, c: 2, d: 8 }
+  const [first, second] = partition(['a', 'b', 'c', 'd'], unit => weights[unit], 2)
+  assert.deepEqual(first, ['a', 'b'])
+  assert.deepEqual(second, ['c', 'd'])
+  const [loaded, free] = partition(['a', 'b'], unit => weights[unit], 2, 100)
+  assert.deepEqual(loaded, [])
+  assert.deepEqual(free, ['a', 'b'])
+})
+
+test('the merge holds an acceptance run to the number of runners it expects', () => {
+  const receipts = [{ suite: 'acceptance', head: 'head', total: 1, shard: 1, files: ['a'], artifacts: { 'results.json': 'digest' } }]
+  validate(receipts, 'acceptance', ['a'], 'head', 1)
+  assert.throws(() => validate(receipts, 'acceptance', ['a'], 'head', acceptanceShardCount), /Missing or duplicate producers/)
 })

@@ -11,7 +11,49 @@ import { pathToFileURL } from 'node:url'
 const root = resolve(import.meta.dirname, '..')
 const web = resolve(root, 'apps/web')
 export const shardCount = 4
-const suites = ['component', 'browser']
+export const acceptanceShardCount = 6
+const suites = ['component', 'browser', 'acceptance']
+const acceptance = resolve(root, 'acceptance-tests')
+// The first acceptance runner also collects the runtime HTTP coverage, for about this long.
+const COVERAGE_HEAD_START_SECONDS = 92
+// Measured across the suite, for a Feature file with no recorded time yet.
+const SECONDS_PER_STEP = 0.27
+const capabilityOf = unit => { const parts = unit.split('/'); return parts[parts.lastIndexOf('specs') + 1] }
+const withoutLines = unit => unit.replace(/(\.feature)(?::\d+)+$/, '$1')
+// The name a Feature file has in tools/acceptance-weights.json.
+const weightKey = unit => withoutLines(unit).replace(/^\.extracted\//, '').replace(/\/spec\.feature$/, '')
+const selectedCapabilities = () => (process.env.ACCEPTANCE_CAPABILITIES ?? '').split(',').filter(Boolean)
+const totalFor = suite => suite !== 'acceptance' ? shardCount : selectedCapabilities().length ? 1 : acceptanceShardCount
+/**
+ * Splits Feature files across runners, longest first onto the emptiest, and
+ * keeps each runner's files in their given order. A file stays whole: its
+ * scenarios may rely on the order they are written in.
+ */
+export function partition(units, weightOf, total, headStart = 0) {
+  const loads = Array.from({ length: total }, (_, index) => ({ seconds: index === 0 ? headStart : 0, units: new Set() }))
+  const longestFirst = [...units].sort((a, b) => weightOf(b) - weightOf(a) || a.localeCompare(b))
+  for (const unit of longestFirst) {
+    const emptiest = loads.reduce((least, load) => load.seconds < least.seconds ? load : least)
+    emptiest.seconds += weightOf(unit)
+    emptiest.units.add(unit)
+  }
+  return loads.map(load => units.filter(unit => load.units.has(unit)))
+}
+function acceptanceFiles(shard) {
+  const requireAcceptance = createRequire(resolve(acceptance, 'package.json'))
+  requireAcceptance('./extract-gherkin.cjs').extractAll()
+  const { effectivePaths } = requireAcceptance('./openspec-effective-paths.cjs')
+  const read = unit => readFileSync(resolve(acceptance, withoutLines(unit)), 'utf8')
+  const capabilities = selectedCapabilities()
+  // A spec with no Gherkin extracts to a Feature file with no scenarios.
+  const units = effectivePaths().filter(unit => /^\s*Scenario(?: Outline)?:/m.test(read(unit)))
+    .filter(unit => !capabilities.length || capabilities.includes(capabilityOf(unit)))
+  if (!shard) return [...units].sort()
+  const measured = JSON.parse(readFileSync(resolve(root, 'tools/acceptance-weights.json'), 'utf8'))
+  const weightOf = unit => measured[weightKey(unit)]
+    ?? SECONDS_PER_STEP * read(unit).split('\n').filter(line => /^\s*(Given|When|Then|And|But|\*)\s/.test(line)).length
+  return partition(units, weightOf, totalFor('acceptance'), capabilities.length ? 0 : COVERAGE_HEAD_START_SECONDS)[shard - 1]
+}
 function run(args, capture = false) {
   const result = spawnSync('pnpm', ['--filter', 'web', 'exec', ...args], {
     cwd: root, encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit',
@@ -30,6 +72,7 @@ function browserFiles(report) {
 }
 export async function enumerate(suite, shard) {
   assert(suites.includes(suite), 'Unknown suite')
+  if (suite === 'acceptance') return acceptanceFiles(shard)
   if (suite === 'browser') {
     // Playwright's native shard groups can split a file across runners (e.g.
     // tests with different fixture options). Keep the entire file together.
@@ -61,14 +104,14 @@ function head() {
   assert.equal(result.status, 0)
   return result.stdout.trim()
 }
-export function validate(receipts, suite, files, commit) {
-  assert.equal(receipts.length, shardCount, 'Missing or duplicate producers')
+export function validate(receipts, suite, files, commit, total = shardCount) {
+  assert.equal(receipts.length, total, 'Missing or duplicate producers')
   const seen = new Set()
   for (const receipt of receipts) {
     assert.equal(receipt.suite, suite, 'Unexpected producer')
     assert.equal(receipt.head, commit, 'Stale producer')
-    assert.equal(receipt.total, shardCount)
-    assert(Number.isInteger(receipt.shard) && receipt.shard >= 1 && receipt.shard <= shardCount)
+    assert.equal(receipt.total, total)
+    assert(Number.isInteger(receipt.shard) && receipt.shard >= 1 && receipt.shard <= total)
     assert(!seen.has(receipt.shard), 'Duplicate producer')
     seen.add(receipt.shard)
     assert(receipt.files.length > 0, 'Empty producer')
@@ -78,8 +121,36 @@ export function validate(receipts, suite, files, commit) {
   assert.equal(new Set(produced).size, produced.length, 'A file ran more than once')
   assert.deepEqual(produced, files, 'Missing or unexpected test files')
 }
+/** Runs this runner's Feature files, and checks each one really ran, from Cucumber's own record. */
+function runAcceptance(files, directory) {
+  const messages = resolve(acceptance, 'reports/messages.ndjson')
+  rmSync(messages, { force: true })
+  const result = spawnSync('npm', ['--prefix', 'acceptance-tests', 'test', '--', '--format', 'message:reports/messages.ndjson'], {
+    cwd: root, stdio: 'inherit', env: { ...process.env, ACCEPTANCE_PATHS: JSON.stringify(files) },
+  })
+  assert.equal(result.status, 0, 'Acceptance shard failed')
+  const units = {}
+  const pickles = new Map()
+  const cases = new Map()
+  const started = new Map()
+  const seconds = ({ seconds: whole, nanos = 0 }) => whole + nanos / 1e9
+  for (const line of readFileSync(messages, 'utf8').split('\n').filter(Boolean)) {
+    const message = JSON.parse(line)
+    if (message.pickle) pickles.set(message.pickle.id, message.pickle.uri)
+    if (message.testCase) cases.set(message.testCase.id, pickles.get(message.testCase.pickleId))
+    if (message.testCaseStarted) started.set(message.testCaseStarted.id, message.testCaseStarted)
+    if (message.testCaseFinished) {
+      const begun = started.get(message.testCaseFinished.testCaseStartedId)
+      const unit = units[cases.get(begun.testCaseId)] ??= { scenarios: 0, seconds: 0 }
+      unit.scenarios += 1
+      unit.seconds += seconds(message.testCaseFinished.timestamp) - seconds(begun.timestamp)
+    }
+  }
+  assert.deepEqual(Object.keys(units).sort(), files.map(withoutLines).sort(), 'A Feature file did not run')
+  writeFileSync(resolve(directory, 'results.json'), JSON.stringify(units, null, 2))
+}
 async function execute(suite, shard) {
-  assert(Number.isInteger(shard) && shard >= 1 && shard <= shardCount)
+  assert(Number.isInteger(shard) && shard >= 1 && shard <= totalFor(suite))
   const files = await enumerate(suite, shard)
   assert(files.length, 'Empty shard')
   const directory = resolve(root, '.ci-shards', `${suite}-${shard}`)
@@ -87,7 +158,8 @@ async function execute(suite, shard) {
   mkdirSync(directory, { recursive: true })
   const selection = `--shard=${shard}/${shardCount}`
   const report = resolve(directory, 'results.json')
-  if (suite === 'component') {
+  if (suite === 'acceptance') runAcceptance(files, directory)
+  else if (suite === 'component') {
     run(['vitest', 'run', selection, '--coverage', '--maxWorkers=1',
       '--coverage.thresholds.lines=0', '--coverage.thresholds.statements=0',
       '--coverage.thresholds.functions=0', '--coverage.thresholds.branches=0',
@@ -112,9 +184,9 @@ async function execute(suite, shard) {
     assert(readdirSync(resolve(directory, 'coverage')).some(file => /^e2e-.*\.json$/.test(file)), 'Missing browser coverage')
   }
   writeFileSync(resolve(directory, 'receipt.json'), JSON.stringify({
-    suite, shard, total: shardCount, head: head(), files, artifacts: hashes(directory),
+    suite, shard, total: totalFor(suite), head: head(), files, artifacts: hashes(directory),
   }, null, 2))
-  console.log(`${suite} ${shard}/${shardCount}: ${files.length} files executed successfully`)
+  console.log(`${suite} ${shard}/${totalFor(suite)}: ${files.length} files executed successfully`)
 }
 async function collect(suite) {
   const base = resolve(root, '.ci-shards')
@@ -126,7 +198,18 @@ async function collect(suite) {
     assert.equal(name, `${suite}-${receipt.shard}`, 'Unexpected producer directory')
     return receipt
   })
-  validate(receipts, suite, await enumerate(suite), head())
+  validate(receipts, suite, await enumerate(suite), head(), totalFor(suite))
+  if (suite === 'acceptance') {
+    const measured = {}
+    for (const name of directories) {
+      const results = JSON.parse(readFileSync(resolve(base, name, 'results.json')))
+      for (const [unit, { seconds }] of Object.entries(results)) measured[weightKey(unit)] = Math.round(seconds)
+    }
+    // Paste into tools/acceptance-weights.json when the runners drift apart.
+    console.log(`Measured seconds per Feature file:\n${JSON.stringify(measured, Object.keys(measured).sort(), 2)}`)
+    console.log(`Verified ${receipts.length} ${suite} producers: exact-once inventory`)
+    return
+  }
   if (suite === 'component') rmSync(resolve(web, '.vitest-web-reports'), { recursive: true, force: true })
   else {
     mkdirSync(resolve(web, '.nyc_output'), { recursive: true })
@@ -149,7 +232,7 @@ async function collect(suite) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [command, suite, shard] = process.argv.slice(2)
-  assert(suites.includes(suite), 'Expected component or browser')
+  assert(suites.includes(suite), 'Expected component, browser or acceptance')
   if (command === 'run') await execute(suite, Number(shard))
   else if (command === 'collect') await collect(suite)
   else if (command === 'list') console.log(JSON.stringify(await enumerate(suite, shard && Number(shard))))
