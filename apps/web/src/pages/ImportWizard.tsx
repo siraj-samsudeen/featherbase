@@ -181,11 +181,19 @@ async function fetchTargets(): Promise<ImportTarget[]> {
     order_by: 'row_id asc',
     limit_page_length: 500,
   })
+  // #1007: the list names every Table, but an app's mandatory access can still
+  // refuse this person one, even a System Manager. A refusal only leaves that
+  // Table out; anything else, like an outage, is not "no targets" and still fails.
   const metas = await Promise.all(
-    list.data.map((t) => api.get<TableMeta>(`/api/table/${encodeURIComponent(t.row_id)}:meta`)),
+    list.data.map((t) =>
+      api.get<TableMeta>(`/api/table/${encodeURIComponent(t.row_id)}:meta`).catch((err: unknown) => {
+        if (err instanceof ApiError && err.status === 403) return null
+        throw err
+      }),
+    ),
   )
   // #905: an archived Table takes no rows, so it is no import target.
-  return metas.filter((m) => !m.archived_at).map((m) => ({ name: m.name, columns: mappableColumns(m) }))
+  return metas.flatMap((m) => (m && !m.archived_at ? [{ name: m.name, columns: mappableColumns(m) }] : []))
 }
 
 // IMP-013: the target picker. A native <select> over hundreds of Tables was

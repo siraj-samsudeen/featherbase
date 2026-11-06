@@ -7,11 +7,12 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router'
 import userEvent from '@testing-library/user-event'
+import { afterEach, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
 import { setSession } from '../src/lib/api'
 import { ImportWizard } from '../src/pages/ImportWizard'
-import { grantRole } from 'server/test/fixtures'
+import { grantRole, makeTable } from 'server/test/fixtures'
 
 async function upload(csv: string, name = 'zones.csv') {
   const bytes = new TextEncoder().encode(csv).buffer
@@ -41,6 +42,48 @@ async function openOnZones(admin: Admin) {
   await upload('zone_name,pop,note\nA,5,x\nB,6,y\n')
   await waitFor(() => expect(screen.getByTestId('iw-target-0')).toHaveValue('Iwr Zone'), { timeout: 8000 })
 }
+
+afterEach(() => vi.unstubAllGlobals())
+
+// #1007: an app's mandatory access refuses even a System Manager who lacks the
+// app's role, and one such Table used to stop the whole wizard.
+test('a System Manager with no app role imports, and a Table they cannot read is not offered', async ({ admin, createUser }) => {
+  clearSession()
+  await zoneTable(admin)
+  const secret = await makeTable(admin, {
+    name: 'Iwr Secret',
+    access_policy: { version: 1, roles: ['Iwr Member'] },
+    columns: ['zone_name', 'pop', 'note'],
+  })
+  const manager = await createUser({ roles: ['System Manager'] })
+  await expect(manager.get(`${secret.url}:meta`)).rejects.toMatchObject({ status: 403 })
+
+  await renderApp('/featherbase/admin/import', manager)
+  await upload('zone_name,pop,note\nA,5,x\n')
+  const target = await screen.findByTestId('iw-target-0', undefined, { timeout: 8000 })
+  expect(screen.queryByTestId('iw-error')).not.toBeInTheDocument()
+  await waitFor(() => expect(target).toHaveValue('Iwr Zone'))
+  await userEvent.setup().click(target)
+  const menu = screen.getByTestId('iw-target-menu-0')
+  expect(within(menu).getByTestId('iw-target-opt-0-Iwr Zone')).toBeInTheDocument()
+  expect(within(menu).queryByTestId('iw-target-opt-0-Iwr Secret')).not.toBeInTheDocument()
+  clearSession()
+})
+
+test('a Table whose details cannot be fetched during an outage stops the wizard and says so', async ({ admin }) => {
+  clearSession()
+  await zoneTable(admin)
+  const bridged = globalThis.fetch
+  vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
+    String(input).includes('Iwr%20Zone:meta')
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : bridged(input, init))
+  await renderApp('/featherbase/admin/import', admin)
+  await upload('zone_name,pop,note\nA,5,x\n')
+  expect(await screen.findByTestId('iw-error', undefined, { timeout: 8000 })).toHaveTextContent('Failed to fetch')
+  expect(screen.queryByTestId('iw-target-0')).not.toBeInTheDocument()
+  clearSession()
+})
 
 test('a match preview refused by the server disappears, while Check reports the refusal', async ({ admin }) => {
   const user = userEvent.setup()
