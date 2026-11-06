@@ -1893,10 +1893,9 @@ async function setRetirement(
 // the column's rules judge the new value as a save would.
 async function renamedSourceColumn(tx: typeof sql, meta: TableMeta, row: RowValues, target: string, user: string): Promise<RowValues> {
   const naming = namingColumn(meta.id_pattern)
-  if (!naming) return {}
+  const def = meta.columns.find((c) => c.column_name === naming?.column)
+  if (!naming || !def) return {}
   const { prefix, column } = naming
-  const def = meta.columns.find((c) => c.column_name === column)
-  if (!def) return {}
   const refuse = (message: string) => new AppError('ValidationError', message, { [ROW_KEY]: message })
   if (!target.startsWith(prefix) || target === prefix)
     throw refuse(`A ${meta.name} ID is ${prefix} followed by its ${def.label ?? column}`)
@@ -1960,7 +1959,7 @@ async function renameDocImpl(
     await runHooks('before_rename', { row: existing as RowValues, meta, user, isNew: false, tx: stx })
     // Rename the row itself.
     try {
-      await tx`update ${tx(tbl)} set ${tx({ [meta.row_key]: target, ...source, updated_at: new Date() } as Record<string, never>)} where ${tx(meta.row_key)} = ${oldName}`
+      await tx`update ${tx(tbl)} set ${tx({ [meta.row_key]: target, ...source, updated_at: new Date() } as unknown as Record<string, never>)} where ${tx(meta.row_key)} = ${oldName}`
     } catch (err) {
       await mapDbError(meta, err)
     }
