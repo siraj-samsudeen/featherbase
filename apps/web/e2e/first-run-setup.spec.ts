@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises'
 import { tableHref } from 'shared'
-import { anonymousTest, expect, adminAuth, loginAs, type APIRequestContext } from './fixtures'
+import { ADMIN_PWD, ADMIN_USER, anonymousTest, expect, adminAuth, loginAs, type APIRequestContext } from './fixtures'
 import { ensureTable } from './fixtures-ui'
 
 // Bounded, test-only evidence for #774's unreproduced initial-Welcome failure.
@@ -251,7 +251,9 @@ test('the old setup address reaches the screen through sign-in, and a reload kee
   await session.visit('/featherbase/admin/setup/people')
   await session.step('sign in where the old address sent us', async ({ page }) => {
     await expect(page).toHaveURL(/\/featherbase\/login\?next=/)
-    await loginAs(page)
+    await page.fill('input[name=email]', ADMIN_USER)
+    await page.fill('input[name=password]', ADMIN_PWD)
+    await page.click('button[type=submit]')
   })
   await session
     .assertHas('[data-testid="first-run-setup"]')
