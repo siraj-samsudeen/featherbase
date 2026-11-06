@@ -15,8 +15,10 @@ const sources = backendSources()
 
 export default defineConfig({
   root,
+  // As in vite.config.ts: the page tests render Shop Floor's components on this app's one React.
+  ...(platform ? {} : { resolve: { dedupe: ['react', 'react-dom'] } }),
   test: {
-    ...(platform ? server.test : { include: ['src/**/*.test.ts', 'src/**/*.test.tsx'] }),
+    ...(platform ? server.test : { include: ['src/**/*.test.ts', 'src/**/*.test.tsx'], server: { deps: { inline: [/shop-floor/, /lucide-react/] } } }),
     reporters: ['default', {
       onCoverage(coverage: unknown) {
         const map = coverage as ReturnType<BaseCoverageProvider['createCoverageMap']>

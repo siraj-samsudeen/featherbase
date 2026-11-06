@@ -29,6 +29,7 @@ const { setUserPassword } = await server('auth.ts')
 const { applySeedPack } = await server('seed-packs.ts')
 const { datasetsDeclaration } = await server('app-datasets.ts')
 const { markScopeTables } = await import(pathToFileURL(resolve(appDir, 'platform-test/mark-scope-tables.mjs')).href)
+const { BASE_TABLES, LINKED_TABLES } = await import(pathToFileURL(resolve(appDir, 'platform-test/base-tables.mjs')).href)
 
 /** The local password every made-up reader signs in with (this script's own test value). */
 const PASSWORD = 'dash-dev'
@@ -243,6 +244,54 @@ await seed('sales_last_month_meta', [...new Set(month.map(m => `${m.store_code} 
   return { store_code, store_name: STORE_NAMES[store_code], subcategory_code, period_start: lastMonth, data_through: lastMonthEnd, targets_available: true }
 }))
 
+// Your sections (#975) reads the instance's base Tables: these, with made-up rows, stand in for
+// what the warehouse loads on a real instance.
+for (const table of BASE_TABLES as { name: string }[]) {
+  const exists = await call(`/api/table/${encodeURIComponent(table.name)}:meta`).then(() => true, () => false)
+  if (!exists) await post('/api/table_def', table)
+}
+const linked = await call<{ data: { updated_at: string }[] }>(`/api/table/App%20Setting?filters=${encodeURIComponent(JSON.stringify([['row_id', '=', 'dash.linked_tables']]))}&fields=${encodeURIComponent(JSON.stringify(['updated_at']))}`)
+if (!linked.data.length) await save('App Setting', { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) })
+const keep = async (table: string, id: string, row: Record<string, unknown>) => {
+  if (await call(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(id)}`).then(() => false, () => true)) await save(table, row)
+}
+for (const [site_code, site_name, is_store] of [['LKS', 'Lakeside', true], ['HIL', 'Hillview', true], ['RIV', 'Riverside', true], ['HOF', 'Head Office', false]] as const)
+  await keep('Site Master', site_code, { site_code, site_name, is_store })
+for (const [floor_id, floor_name, site] of [['LKS-F1', 'First floor', 'LKS'], ['LKS-F2', 'Second floor', 'LKS']])
+  await keep('Store Floor', floor_id, { floor_id, floor_name, site })
+for (const [section_id, section_name, site, floor, section_status] of [
+  ['LKS-S1', 'Ladies Wear', 'LKS', 'LKS-F1', 'Active'], ['LKS-S2', 'Silk', 'LKS', 'LKS-F2', 'Active'], ['LKS-S3', 'Kids Wear', 'LKS', 'LKS-F2', 'Active'],
+  ['LKS-S4', 'Closed Corner', 'LKS', 'LKS-F2', 'Inactive'], ['HIL-S1', 'Hillview Accessories', 'HIL', null, 'Active']])
+  await keep('Section', section_id!, { section_id, section_name, site, floor, section_status })
+for (const [code, name, merchandise] of [['010101001', 'Silk sarees', true], ['010101002', 'Cotton sarees', true], ['010101003', 'Salwar sets', true], ['010202001', 'Boys shirts', true],
+  ['010202002', 'Girls frocks', true], ['010303001', 'Saree blouses', true], ['990101001', 'Saree hangers', false]] as const)
+  await keep('Subcategory', code, { row_id: code, subcategory: name, is_merchandise: merchandise })
+for (const [id, sub, section] of [['LKS-010101001-2026-10-01', '010101001', 'LKS-S1'], ['LKS-010101002-2026-10-01', '010101002', 'LKS-S1'], ['LKS-010101003-2026-10-01', '010101003', 'LKS-S1'],
+  ['LKS-010202001-2026-10-01', '010202001', 'LKS-S3'], ['LKS-010202002-2026-10-01', '010202002', 'LKS-S3']])
+  await keep('Section Subcategory', id, { placement_id: id, site: 'LKS', subcategory: sub, section, starts_on: '2026-10-01', source: 'Made-up' })
+await keep('Role', 'Master Data Editor', { row_id: 'Master Data Editor' })
+// Each person is a Reader and shows one state of Your sections.
+const staff: [string, string, string, string[]][] = [
+  ['leader', 'Asha Leader', '2001', []], ['manager', 'Mani Manager', '2002', []], ['nosection', 'Nila No-Section', '2003', []],
+  ['nomanager', 'Ravi No-Manager', '2004', []], ['riverside', 'Rekha Riverside', '2005', []], ['editor', 'Elan Editor', '2006', ['Master Data Editor']],
+  ['manager2', 'Selvi Other-Manager', '2008', []], ['stranger', 'Sara Stranger', '', []]]
+const sectionPeople: Record<string, string> = {}
+for (const [key, full_name, employee_id, roles] of staff) {
+  const email = `sections-${key}@example.test`
+  const [found] = await sql`select row_id from person where lower(email) = ${email}`
+  const id = found ? String(found.row_id) : String((await post('/api/table/Person', { email, full_name, enabled: true,
+    roles: ['Dash Reader', ...roles].map(role => ({ role })) })).row_id)
+  await setUserPassword(id, PASSWORD)
+  sectionPeople[key] = id
+  if (employee_id) await keep('Employee', employee_id, { employee_id, employee_name: full_name, person: id, employee_status: 'Current' })
+}
+await keep('Employee', '2007', { employee_id: '2007', employee_name: 'Lata No-Sign-In', employee_status: 'Current' })
+for (const [id, employee, job, site, section, reports_to] of [
+  ['JA-2001-LKS-S1', '2001', 'Team Leader', 'LKS', 'LKS-S1', '2002'], ['JA-2002-LKS', '2002', 'Store Manager', 'LKS', null, '2008'],
+  ['JA-2003-LKS', '2003', 'Staff', 'LKS', null, '2002'], ['JA-2004-LKS-S3', '2004', 'Team Leader', 'LKS', 'LKS-S3', '2007'],
+  ['JA-2005-RIV', '2005', 'Staff', 'RIV', null, '2002'], ['JA-2006-HOF', '2006', 'Head office staff', 'HOF', null, null]])
+  await keep('Job Assignment', id!, { assignment_id: id, employee, job, site, section, reports_to, starts_on: '2026-10-01', source: 'Made-up' })
+
 // The proof it worked: a made-up Store Manager opens Lakeside's report and gets figures.
 const signIn = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ usr: 'reader-sm@example.test', pwd: PASSWORD }) })
@@ -272,6 +321,15 @@ Other made-up people, same password. Each shows one state of the page:
   reader-dm2@example.test       Department Manager of Menswear (2 sections) at Lakeside
   reader-staff1@example.test    section staff in Sarees at Lakeside ("because you work in them")
   reader-smtl@example.test      Store Manager of Lakeside and Team Leader of Sarees there
-  reader-smlarge@example.test   Store Manager of Bayside, a large store (1,600 subcategories)`)
+  reader-smlarge@example.test   Store Manager of Bayside, a large store (1,600 subcategories)
+Your sections (/dash/?view=sections), same password:
+  sections-leader@example.test     Team Leader of Ladies Wear at Lakeside; asks Mani Manager
+  sections-manager@example.test    Mani Manager, who approves Asha, Nila and Rekha
+  sections-nosection@example.test  a job with no section against it
+  sections-nomanager@example.test  a manager with no sign-in: goes to the master data team
+  sections-riverside@example.test  a store with no sections
+  sections-editor@example.test     holds Master Data Editor
+  sections-stranger@example.test   not on the staff list
+  reader-none@example.test         no store's report; the link to Your sections`)
 await sql.end()
 process.exit(0)

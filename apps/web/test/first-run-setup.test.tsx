@@ -82,7 +82,7 @@ test('exploring past setup keeps a genuine job failure visible', async ({ admin 
 
 test('with the email sink, Invite shows each person with their invitation to copy (items 21, 23, 24)', async ({ admin }) => {
   await noManagerEmails()
-  await renderApp('/featherbase/admin/setup/people', admin)
+  await renderApp('/featherbase/admin/setup/person', admin)
   const setup = await screen.findByTestId('first-run-setup')
   await userEvent.type(within(setup).getByLabelText('Full name'), 'Asha Keeper')
   await userEvent.type(within(setup).getByLabelText('Email'), 'asha@example.com')
@@ -109,7 +109,7 @@ test('with the email sink, Invite shows each person with their invitation to cop
 
 test('problems show beside their row and nothing is created (item 22)', async ({ admin }) => {
   await noManagerEmails()
-  await renderApp('/featherbase/admin/setup/people', admin)
+  await renderApp('/featherbase/admin/setup/person', admin)
   const setup = await screen.findByTestId('first-run-setup')
   await userEvent.click(within(setup).getByRole('button', { name: 'Invite' }))
   expect(await within(setup).findByText('Enter an email address')).toBeInTheDocument()
@@ -130,14 +130,14 @@ test('another System Manager is never offered the setup (item 18)', async ({ cre
   await screen.findByTestId('all-tables-link')
   expect(screen.queryByTestId('welcome-setup')).not.toBeInTheDocument()
   expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument()
-  const { router } = await renderApp('/featherbase/admin/setup/people', manager)
+  const { router } = await renderApp('/featherbase/admin/setup/person', manager)
   await waitFor(() => expect((router.state as { location: { pathname: string } }).location.pathname).toBe('/featherbase/admin'))
   await waitFor(() => expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument())
 })
 
 test('a row can be removed, and a server problem with no field of its own is still shown (Codex review)', async ({ admin }) => {
   await noManagerEmails()
-  await renderApp('/featherbase/admin/setup/people', admin)
+  await renderApp('/featherbase/admin/setup/person', admin)
   const setup = await screen.findByTestId('first-run-setup')
   await userEvent.click(within(setup).getByRole('button', { name: 'Add another person' }))
   expect(within(setup).getAllByLabelText('Email')).toHaveLength(2)

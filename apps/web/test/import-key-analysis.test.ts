@@ -27,6 +27,7 @@ test('#851 readable coverage survives aggregation without write permission', asy
     .toEqual([{ column: 'code', matched: 520, complete: true, can_match: false }])
 })
 
+// Seeding through a restricted user takes 10-15 s on CI, right at the 15 s default.
 test('#851 matching permission must hold in every import part', async ({ admin, createUser }) => {
   await admin.post('/api/table_def', { name: 'Ika Zone', columns: [{ column_name: 'code', column_type: 'Data' }] })
   const rows = Array.from({ length: 520 }, (_, i) => ({ code: `Z${i}` }))
@@ -42,7 +43,7 @@ test('#851 matching permission must hold in every import part', async ({ admin, 
   setSession(user.token!, { row_id: user.user!, email: null, full_name: null })
   expect(await analyzeImportKeys({ table: 'Ika Zone', columns: ['code'], rows: rows.map((values, sourceIndex) => ({ values, sourceIndex })) }))
     .toEqual([{ column: 'code', matched: 520, complete: true, can_match: false }])
-})
+}, 30_000)
 
 test('#851 a duplicate spanning import parts is not a candidate', async ({ admin }) => {
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })

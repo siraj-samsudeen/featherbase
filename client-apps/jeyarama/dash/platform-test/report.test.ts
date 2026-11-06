@@ -132,8 +132,8 @@ describe('the report reads on the platform', () => {
   test("fill the bar's store picker with the reader's stores, and its month picker with this month and last (#750)", async ({ admin, createUser }) => {
     const { manager } = await setup(admin, createUser)
     expect(await manager.get('/api/app_bar/dash')).toEqual({ controls: [
-      { picker: 'Store', sets: 'store', options: [{ value: '9901', label: 'Lakeside' }] },
-      { picker: 'Month', sets: 'month', options: [{ value: 'this', label: `This month · ${monthName(periodStart)}` },
+      { picker: 'Store', sets: 'store', hiddenWhen: 'view', options: [{ value: '9901', label: 'Lakeside' }] },
+      { picker: 'Month', sets: 'month', hiddenWhen: 'view', options: [{ value: 'this', label: `This month · ${monthName(periodStart)}` },
         { value: 'last', label: `Last month · ${monthName(lastMonthStart)}` }] },
     ] })
   })
