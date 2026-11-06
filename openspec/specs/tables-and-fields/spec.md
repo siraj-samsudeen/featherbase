@@ -945,5 +945,10 @@ The Columns page SHALL offer one Title choice per column that can name a row, sa
 
 #### Scenario: Columns that can't be a title
 
-- **WHEN** a column is hidden, or holds a date, a tick or another type that can't name a row
-- **THEN** it has no Title choice
+- **WHEN** a column is hidden, or holds a date, a tick, a link or another type that can't name a row by its own value
+- **THEN** it has no Title choice, unless it is the title now
+
+#### Scenario: Removing the title column
+
+- **WHEN** the title column is removed
+- **THEN** the Table has no title column

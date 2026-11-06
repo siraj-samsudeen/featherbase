@@ -14,8 +14,7 @@ export interface TitleMeta {
   columns: TitleColumn[]
 }
 
-/** The column types whose values can name a row. */
-export const TITLE_COLUMN_TYPES = new Set(['Data', 'Choice', 'Reference', 'Int', 'Text'])
+const VALUE_TYPES = new Set(['Data', 'Choice', 'Reference', 'Int', 'Text'])
 const OPAQUE_ID = /^(psn|svc)_[a-z2-7]{20}$/
 const MAX_LENGTH = 80
 const SEPARATOR = ' · '
@@ -47,7 +46,7 @@ export function rowDisplayTitle(meta: TitleMeta, row: Record<string, unknown>, r
     return cap([row.table_name, row.column_name || 'Whole Table', row.property].join(SEPARATOR))
   }
   const values = meta.columns
-    .filter((c) => TITLE_COLUMN_TYPES.has(c.column_type) && !c.hidden && c.column_name !== 'row_id')
+    .filter((c) => VALUE_TYPES.has(c.column_type) && !c.hidden && c.column_name !== 'row_id')
     .map((c) => String(row[c.column_name] ?? '').trim())
     .filter((v) => v && !OPAQUE_ID.test(v))
   if (values.length > 0) {

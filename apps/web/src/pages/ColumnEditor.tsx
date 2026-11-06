@@ -23,12 +23,16 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { TITLE_COLUMN_TYPES } from 'shared'
 import { ApiError, api } from '../lib/api'
 import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { RESERVED, SNAKE, TARGET_REQUIRED_TYPES, slugify } from '../lib/column-rules'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
 import { usePickableTables } from '../lib/session'
+
+// #1024: what can be chosen as a title. A link's value is the other row's id, so
+// a row headed by one reads as a bare id. A title already stored stays shown,
+// whatever its type or if hidden, so the page always says what the title is.
+const TITLE_CHOICE_TYPES = new Set(['Data', 'Text', 'Choice', 'Int'])
 
 interface NewColumn {
   label: string
@@ -283,6 +287,11 @@ export function ColumnEditor({ table }: { table: string }) {
       await queryClient.invalidateQueries({ queryKey: ['meta', table] })
       await queryClient.invalidateQueries({ queryKey: ['row-title', table] })
     },
+    // A refusal can mean the page is out of date: show what is true now.
+    onError: async () => {
+      setSaved(null)
+      await queryClient.invalidateQueries({ queryKey: ['meta', table] })
+    },
   })
 
   if (meta.isPending) return <p className="text-sm text-ink-muted">Loading…</p>
@@ -446,7 +455,7 @@ export function ColumnEditor({ table }: { table: string }) {
                   </td>
                   {def.kind !== 'settings' && (
                     <td className="pr-2 text-center">
-                      {TITLE_COLUMN_TYPES.has(column.column_type) && !column.hidden && (
+                      {(def.title_column === column.column_name || (TITLE_CHOICE_TYPES.has(column.column_type) && !column.hidden)) && (
                         <label className="inline-flex size-control cursor-pointer items-center justify-center max-sm:size-touch">
                           <input
                             type="radio"

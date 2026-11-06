@@ -11,7 +11,7 @@ export { RESERVED_APP_ROOTS, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, FEATHE
 export { JOBS_PATH, COPY_CADENCES, jobTitle } from './jobs'
 export { ADMIN_PAGES } from './app-routes'
 export type { CommandDestinations, CommandTableDestination, CommandPageDestination } from './command-destinations'
-export { rowDisplayTitle, TITLE_COLUMN_TYPES, type TitleMeta, type TitleColumn } from './row-title'
+export { rowDisplayTitle, type TitleMeta, type TitleColumn } from './row-title'
 export { MAX_RELATED_DEPTH, parseFilters, RELATED_OPS, type ListFilter } from './filters'
 export type { WebFormColumn, WebFormConfig } from './webform'
 export { INSTANCE_SETTINGS_TABLES, INSTANCE_SETTINGS_FILE, MANAGED_FIELD_HINT, SETUP_MAX_PEOPLE } from './instance-settings'

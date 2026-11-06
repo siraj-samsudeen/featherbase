@@ -260,13 +260,28 @@ test('a radio per column that can be a title, with the current one selected', as
       { column_name: 'open', label: 'Open', column_type: 'Check' },
       { column_name: 'opened_on', label: 'Opened on', column_type: 'Date' },
       { column_name: 'secret', label: 'Secret', column_type: 'Data', hidden: true },
+      { column_name: 'zone', label: 'Zone', column_type: 'Reference', reference_table: 'Person' },
     ],
   })
   await renderApp(`/featherbase/admin/table/${tableSlug(DT)}/columns`, admin)
   await screen.findByTestId('ce-row-glor', undefined, { timeout: 8000 })
   expect(titleRadio('glor')).toBeChecked()
   expect(titleRadio('pop')).not.toBeChecked()
-  for (const none of ['open', 'opened_on', 'secret']) expect(titleRadio(none)).toBeNull()
+  for (const none of ['open', 'opened_on', 'secret', 'zone']) expect(titleRadio(none)).toBeNull()
+})
+
+test('a title already stored shows its radio, even on a column that could not be chosen now', async ({ admin }) => {
+  await seed(admin, {
+    title_column: 'secret',
+    columns: [
+      { column_name: 'glor', label: 'Glor', column_type: 'Data' },
+      { column_name: 'pop', label: 'Pop', column_type: 'Int' },
+      { column_name: 'secret', label: 'Secret', column_type: 'Data', hidden: true },
+    ],
+  })
+  await renderApp(`/featherbase/admin/table/${tableSlug(DT)}/columns`, admin)
+  await screen.findByTestId('ce-row-glor', undefined, { timeout: 8000 })
+  expect(titleRadio('secret')).toBeChecked()
 })
 
 test('choosing a title saves at once, naming only the title, and links read it', async ({ admin }) => {
@@ -304,6 +319,7 @@ test('a refused title shows why, and the stored choice stays selected', async ({
     await user.click(titleRadio('pop')!)
     expect(await screen.findByTestId('ce-title-error')).toHaveTextContent('Not today')
     expect(titleRadio('glor')).toBeChecked()
+    expect(screen.queryByTestId('ce-saved')).not.toBeInTheDocument()
   } finally {
     globalThis.fetch = bridged
   }

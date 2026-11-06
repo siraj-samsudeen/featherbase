@@ -69,6 +69,13 @@ describe('PUT /api/table_def/:name', () => {
     expect((await meta(admin, 'Pu Settings')).description).toBe('Limits')
   })
 
+  test('removing the title column clears the title', async ({ admin }) => {
+    await plant(admin)
+    await admin.put(url('Pu Plant'), { reading_presentation: null })
+    await admin.put(url('Pu Plant'), { columns: [{ column_name: 'note', column_type: 'Text' }], remove_columns: ['plant_name'] })
+    expect((await meta(admin, 'Pu Plant')).title_column).toBeNull()
+  })
+
   test('a title column the Table does not have is refused', async ({ admin }) => {
     await plant(admin)
     await expect(admin.put(url('Pu Plant'), { title_column: 'nope' })).rejects.toMatchObject({ status: 417 })
