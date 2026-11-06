@@ -149,7 +149,7 @@ describe('DrillPane', () => {
   test('is a complementary region named by its title, its kind above', () => {
     pane()
     const region = screen.getByRole('complementary', { name: 'North bay (B-104)' })
-    expect(region).toHaveTextContent(/^Bin\s*North bay (B-104)/)
+    expect(region).toHaveTextContent(/^Bin\s*North bay \(B-104\)/)
   })
 
   test('holds its sections under their headings', () => {
