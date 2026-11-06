@@ -28,7 +28,8 @@ import { resolvePreviewPerson } from './preview-person'
 import { personByEmail, pickPeople, principalNames, tableMembers } from './people-directory'
 import { countWaitingForAccess, noAccessYetPage, requestAccess } from './waiting-for-access'
 import { archiveTable, unarchiveTable } from './table-archive'
-import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
+import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser, noLinkCarries, recordToName } from './delegated-login'
+import { hold, rosterFirstSignIn } from './roster-first-sign-in'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { sendInvitation } from './invitation-email'
 import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
@@ -273,11 +274,19 @@ app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
   if (attempt.refusal) return attempt.refusal
   // Before the provider call: never forward a password that cannot be bound.
   const id = usr.trim()
-  const account = await linkedUser(cfg, id)
-  // The shared pipeline (sign-in.ts) does the rest: an outage never falls
-  // back to another way in, and a leaver is disabled everywhere.
-  const status = await checkWithProvider(cfg, id, pwd)
-  const issued = await completeSignIn(cfg.method, { status }, account, { testMode: delegatedTestMode(), ipAddress: clientAddress(c) })
+  let issued
+  // #970: nobody linked to this ID, so only the method's roster rule can admit
+  // it. Test mode skips the provider, so it never makes anyone.
+  if (!delegatedTestMode() && (await noLinkCarries(cfg, id))) {
+    issued = await rosterFirstSignIn(cfg, id, pwd, clientAddress(c))
+  } else {
+    const account = await linkedUser(cfg, id)
+    // The shared pipeline (sign-in.ts) does the rest: an outage never falls
+    // back to another way in, and a leaver is disabled everywhere.
+    const status = await checkWithProvider(cfg, id, pwd, await recordToName(cfg, account.identity))
+    if (status === 'another_record') await hold(cfg.key, String(account.identity), 'service_named_another_record')
+    issued = await completeSignIn(cfg.method, { status: status === 'another_record' ? 'rejected' : status }, account, { testMode: delegatedTestMode(), ipAddress: clientAddress(c) })
+  }
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
