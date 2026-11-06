@@ -38,6 +38,7 @@ import { GlossaryHelp } from './GlossaryHelp'
 import { ReadingPresentation } from './ReadingPresentation'
 import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
+import { INSTANCE_HEALTH_QUERY_KEY } from '../pages/InstanceHealth'
 import { ArchivedBanner } from './ArchiveTable'
 import { ContentTabs, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 
@@ -409,6 +410,8 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
+      // A save can settle a health check, and the banners shouldn't lag behind it (#1003).
+      void queryClient.invalidateQueries({ queryKey: INSTANCE_HEALTH_QUERY_KEY })
       if (editingOverride) {
         await queryClient.invalidateQueries({ queryKey: ['meta', String(saved.table_name)] })
         if (typeof baseline.table_name === 'string' && baseline.table_name !== saved.table_name)

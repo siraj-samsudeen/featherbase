@@ -43,7 +43,8 @@ const COVERAGE: Record<string, string> = {
   '/featherbase/admin/apps': 'manager page catalogue',
   '/featherbase/admin/glossary': 'page catalogue',
   '/featherbase/admin/setup': 'manager page catalogue',
-  '/featherbase/admin/setup/people': 'Administrator-only page catalogue',
+  '/featherbase/admin/setup/person': 'Administrator-only page catalogue',
+  '/featherbase/admin/setup/people': 'redirects to setup/person',
   '/featherbase/admin/home/$name': 'visible Home Pages',
   '/featherbase/admin/all-tables': 'page catalogue',
   '/featherbase/admin/source/$name': 'manager readable Data Sources',
@@ -74,7 +75,7 @@ test('#737 every standalone Admin route is actually supplied to Cmd K', async ({
   const parent = roots.find((r) => r.options.path === '/featherbase/admin')!
   const standalone = Object.values(parent.children ?? [])
     .map((r) => r.options.path)
-    .filter((path): path is string => Boolean(path && path !== '/' && path !== 'new-table' && !path.includes('$')))
+    .filter((path): path is string => Boolean(path && path !== '/' && path !== 'new-table' && path !== 'setup/people' && !path.includes('$')))
   const inventory = await admin.get<{ pages: { href: string }[] }>('/api/command_destinations')
   expect(standalone.length).toBeGreaterThan(10)
   for (const path of standalone)
