@@ -22,16 +22,29 @@ async function addRegionFilter() {
   fireEvent.click(screen.getByTestId('filter-add'))
 }
 
-test('a list shows a path bar whose one step names the list', async ({ admin }) => {
+// #1013: one step is no path, and would only repeat the page's own heading.
+test('a list with one step shows no path bar', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(tableHref(SITE), admin)
+  await screen.findByTestId('filter-field')
+  await screen.findAllByTestId('row-check')
+  expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Recent paths' })).not.toBeInTheDocument()
+})
+
+test('going back to the first step of a walk keeps the bar, so Forward stays reachable', async ({ admin }) => {
+  await seedSites(admin)
+  await renderApp(tableHref(SITE), admin)
+  await addRegionFilter()
+  await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
+  fireEvent.click(screen.getByRole('button', { name: 'Back' }))
   await waitFor(() => expect(current()).toHaveTextContent(SITE))
+  expect(screen.getByRole('button', { name: 'Forward' })).toBeEnabled()
 })
 
 test('adding a filter is a new step named by the filter', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(tableHref(SITE), admin)
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
   expect(within(pathNav()).getAllByRole('button')).toHaveLength(2)
@@ -40,7 +53,6 @@ test('adding a filter is a new step named by the filter', async ({ admin }) => {
 test("the browser's back button returns to the step before", async ({ admin }) => {
   await seedSites(admin)
   const { router } = await renderApp(tableHref(SITE), admin)
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(2))
   ;(router as unknown as { history: { back: () => void } }).history.back()
@@ -52,7 +64,6 @@ test("the path's Back is the browser's back, so a new step after it leaves no st
   await seedSites(admin)
   const { router } = await renderApp(tableHref(SITE), admin)
   const history = (router as unknown as { history: { back: () => void; canGoBack: () => boolean } }).history
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(2))
   fireEvent.click(screen.getByRole('button', { name: 'Back' }))
@@ -73,7 +84,6 @@ test("the path's Back is the browser's back, so a new step after it leaves no st
 test('choosing an earlier step brings back its filters', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(tableHref(SITE), admin)
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(2))
   fireEvent.click(within(pathNav()).getByRole('button', { name: /Nv Site/ }))
@@ -85,7 +95,6 @@ test('choosing an earlier step brings back its filters', async ({ admin }) => {
 test('the address carries row ids and column names, never names', async ({ admin }) => {
   await seedSites(admin)
   const { router } = await renderApp(tableHref(SITE), admin)
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(pathParam(router)).toContain('"region"'))
   expect(pathParam(router)).not.toContain('Kerala')
@@ -129,7 +138,6 @@ test('Copy link copies the address of this step', async ({ admin }) => {
   const writeText = vi.fn().mockResolvedValue(undefined)
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
   const { router } = await renderApp(tableHref(SITE), admin)
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(pathParam(router)).toBeTruthy())
   fireEvent.click(screen.getByRole('button', { name: 'Copy link' }))
@@ -141,7 +149,6 @@ test('Copy link copies the address of this step', async ({ admin }) => {
 test('a walk is listed under Recent paths by its names after signing in again', async ({ admin }) => {
   await seedSites(admin)
   const first = await renderApp(tableHref(SITE), admin)
-  await screen.findByRole('navigation', { name: 'Path' })
   await addRegionFilter()
   await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
   // The walk is saved to the person's settings before the next sign-in.
