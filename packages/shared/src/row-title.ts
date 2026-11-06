@@ -6,6 +6,7 @@ export interface TitleColumn {
   column_name: string
   column_type: string
   hidden?: boolean | null
+  reference_table?: string | null
 }
 
 export interface TitleMeta {
@@ -14,7 +15,11 @@ export interface TitleMeta {
   columns: TitleColumn[]
 }
 
-const VALUE_TYPES = new Set(['Data', 'Choice', 'Reference', 'Int', 'Text'])
+// A link's value is the linked row's id: a code the reader may not be allowed to
+// see (#1020), so a link never words a row's title. A link to a person is the one
+// title column allowed, and callers show the person's name.
+const VALUE_TYPES = new Set(['Data', 'Choice', 'Int', 'Text'])
+const PERSON_TABLES = new Set(['Person', 'Service Account'])
 const OPAQUE_ID = /^(psn|svc)_[a-z2-7]{20}$/
 const MAX_LENGTH = 80
 const SEPARATOR = ' · '
@@ -33,7 +38,9 @@ function cap(v: string): string {
  * nothing at all → "<Table> · <key parts>".
  */
 export function rowDisplayTitle(meta: TitleMeta, row: Record<string, unknown>, rowId: string): string {
-  const titleColumn = meta.title_column && meta.title_column !== 'row_id' ? meta.title_column : null
+  const named = meta.title_column && meta.title_column !== 'row_id' ? meta.title_column : null
+  const link = meta.columns.find((c) => c.column_name === named && c.column_type === 'Reference')
+  const titleColumn = link && !PERSON_TABLES.has(link.reference_table ?? '') ? null : named
   if (titleColumn) {
     const v = String(row[titleColumn] ?? '').trim()
     if (v) return cap(v)

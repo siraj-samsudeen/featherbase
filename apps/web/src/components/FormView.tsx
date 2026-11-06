@@ -8,7 +8,7 @@ import { changeOverride, overrideControl } from '../lib/metadata-override-editor
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
 import { RowName } from '../lib/row-name'
-import { UNSEEN_ROW, hasGeneratedIds, linkedRowText, useRowName } from '../lib/relations'
+import { UNSEEN_ROW, hasGeneratedIds, linkedRowText, rowNameText, useRowName } from '../lib/relations'
 import { useRowCapabilities } from '../lib/row-capabilities'
 import { useIsSystemManager, useWhoAmI } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
@@ -235,7 +235,7 @@ export function FormView({
   if (meta.isLoading || (!isNew && (doc.isLoading || access.isLoading)))
     return <p className="text-sm text-ink-subtle">Loading…</p>
   if (meta.isError || (!isNew && doc.isError))
-    return <p className="text-sm text-negative">Cannot load {table} {name}</p>
+    return <p className="text-sm text-negative">Cannot load this {table} row</p>
 
   const m = meta.data!
   const dirty = JSON.stringify(values) !== JSON.stringify(baseline)
@@ -534,6 +534,9 @@ export function FormView({
   const changeRecord = !isNew && table === 'Version'
   const RawDetails = reading || changeRecord ? 'details' : 'div'
 
+  // #1020: a stand-in title holds a code, so it reads as the Table's links do.
+  const ownName = m.title_column && m.title_column !== 'row_id' ? <RowTitle table={table} rowId={name} /> : <RowName table={table} rowId={name} />
+
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
@@ -548,7 +551,7 @@ export function FormView({
           {table}
         </RouterLink>
         <span aria-hidden="true">/</span>
-        <span className="min-w-0 text-ink">{isNew ? 'New' : <RowTitle table={table} rowId={name} />}</span>
+        <span className="min-w-0 text-ink">{isNew ? 'New' : ownName}</span>
       </nav>
       <ArchivedBanner table={table} meta={meta.data} canUnarchive={false} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -556,7 +559,7 @@ export function FormView({
           <h1 className="text-xl font-semibold text-ink">
             {/* The row's title (title column, or a readable stand-in from its
                 values) — the same one Home and the activity feed show. */}
-            {table}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
+            {table}: {isNew ? 'New' : ownName}
             <GlossaryHelp table={table} className="ml-1" />
           </h1>
           <span className="text-xs text-ink-muted" data-testid="form-status">
@@ -1481,6 +1484,19 @@ function ChildGrid({
 }
 
 
+// #1020: with no title column a made-up id never shows, and an id people chose
+// gives way to a stand-in title only when that title says the same id.
+const readsByStandIn = (meta: TableMeta, rowId: string, title: string) => hasGeneratedIds(meta) || title.includes(rowId)
+
+function StandInOption({ meta, table, rowId }: { meta: TableMeta; table: string; rowId: string }) {
+  const name = useRowName(table, rowId)
+  if (name.state === 'read' && readsByStandIn(meta, rowId, name.title)) return name.text
+  return hasGeneratedIds(meta) ? rowNameText(name) : rowId
+}
+
+// Columns whose words a stand-in title is made of, and a person may search.
+const STAND_IN_SEARCH = new Set(['Data', 'Text', 'Choice'])
+
 /** The target Table's title column, when it is one of its columns the
  *  caller may read: a column the caller was not granted can be
  *  neither searched nor shown, and a title that is the row key itself (a
@@ -1541,6 +1557,17 @@ export function LinkControl({
   const picker = own.labelField === null && own.searchField === 'row_id' && !own.peopleSearch && title
     ? { ...own, searchField: title, labelField: title }
     : own
+  // #1020: a person looks a row up by what its link says: its name or its code.
+  // With no title column the name is a stand-in from the row's values. A made-up
+  // id is nobody's code.
+  const m = targetMeta.data
+  const defaultPicker = own.labelField === null && own.searchField === 'row_id' && !own.peopleSearch && m && !m.system
+  const standInFields = defaultPicker && !title
+    ? m.columns.filter((c) => STAND_IN_SEARCH.has(c.column_type) && !c.hidden && (!m.readable_columns || m.readable_columns.includes(c.column_name))).map((c) => c.column_name).slice(0, 3)
+    : []
+  const searchFields = defaultPicker
+    ? [...(title ? [title] : standInFields), ...(hasGeneratedIds(m) ? [] : ['row_id'])]
+    : [picker.searchField]
   const [query, setQuery] = useState<string | null>(null) // null = not searching
   const [open, setOpen] = useState(false)
   const [options, setOptions] = useState<{ value: string; label: string }[]>([])
@@ -1610,13 +1637,15 @@ export function LinkControl({
           return
         }
         const label = picker.labelField
-        const res = await listResource<Record<string, unknown> & { row_id: string }>(target, {
-          filters: [...picker.filters, ...extraFilters, ...(q ? [[picker.searchField, 'like', `%${q}%`]] : [])],
+        const fields = searchFields.length ? searchFields : ['row_id']
+        const reads = await Promise.all((q ? fields : fields.slice(0, 1)).map((f) => listResource<Record<string, unknown> & { row_id: string }>(target, {
+          filters: [...picker.filters, ...extraFilters, ...(q ? [[f, 'like', `%${q}%`]] : [])],
           fields: label ? ['row_id', label] : ['row_id'],
           limit_page_length: 10,
-        })
+        })))
         if (version !== searchVersion.current) return
-        setOptions(res.data.map((r) => ({ value: r.row_id, label: label ? String(r[label] ?? '') || r.row_id : r.row_id })))
+        const found = new Map(reads.flatMap((res) => res.data).map((r) => [r.row_id, r]))
+        setOptions([...found.values()].slice(0, 10).map((r) => ({ value: r.row_id, label: label ? String(r[label] ?? '') || r.row_id : r.row_id })))
         openList()
       } catch {
         if (version === searchVersion.current) setOptions([])
@@ -1630,19 +1659,17 @@ export function LinkControl({
   const valueLabel = picker.peopleSearch
     ? value ? principalLabel(String(value), principalName, principalName === null) : null
     : own.labelField ? (current.data ? String(current.data[own.labelField] ?? '') || null : null)
-    : (picker.labelField || (targetMeta.data && !targetMeta.data.system && hasGeneratedIds(targetMeta.data))) && linked.state === 'read' ? linked.text : null
+    : linked.state === 'read' && (picker.labelField || (m && !m.system && readsByStandIn(m, String(value), linked.title))) ? linked.text : null
   // #881: the Table is the reader's only clue; the row's name stays private.
   const noAccess = anyTable && Boolean(value) && targetMeta.isError
   // #910 D3: a row the viewer cannot read is named neutrally, never by its id,
   // and offers no way to it.
   const unseen = !picker.peopleSearch && Boolean(value) && !noAccess && linked.state === 'unreadable'
-  // #1020: an option reads as its Table's links read. A Table with no title
-  // column and ids people chose lists those ids, as its search matches them.
+  // #1020: an option reads as its Table's links read.
   const optionText = (o: { value: string; label: string }) => {
-    const m = targetMeta.data
     if (!m || own.labelField || picker.peopleSearch) return o.label
     if (picker.labelField) return linkedRowText(m, o.value, o.label)
-    return !m.system && hasGeneratedIds(m) ? <RowName table={target} rowId={o.value} /> : o.label
+    return m.system ? o.label : <StandInOption meta={m} table={target} rowId={o.value} />
   }
   const shown = query ?? (noAccess ? `${target} (no access)` : null) ?? (unseen ? UNSEEN_ROW : valueLabel ?? String(value ?? ''))
 
@@ -1665,7 +1692,7 @@ export function LinkControl({
         aria-expanded={open}
         placeholder={forFilter ? `Filter ${field.label ?? field.column_name}…` : `Reference: ${target}`}
         value={shown}
-        onFocus={() => search(query ?? (picker.labelField ? '' : String(value ?? '')))}
+        onFocus={() => search(query ?? (picker.labelField || standInFields.length ? '' : String(value ?? '')))}
         onBlur={() => {
           // A search still waiting must not reopen the list on a cell left behind.
           clearTimeout(timer.current)

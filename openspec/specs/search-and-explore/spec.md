@@ -291,7 +291,7 @@ Given the user is a System Manager
 And a table of suppliers and a table of purchases, each purchase from a supplier
 And the purchases are from the supplier "Acme"
 When the user types "purch" in Explore's table search and presses Enter
-Then each purchase shows "Acme"
+Then each purchase shows "Acme (sup-1)"
 ```
 
 ### Requirement: The relationship map says how each row is related

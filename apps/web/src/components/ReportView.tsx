@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { choiceLabel } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
+import { RowName } from '../lib/row-name'
 import { FilterBar, type Filter } from './ListView'
 import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
 import { fmtCount, fmtNumber } from '@featherbase/shop-floor'
@@ -287,11 +288,19 @@ export function ReportView({
     return definition?.column_type === 'Choice' ? choiceLabel(value, definition.choice_labels, t) : value
   }
 
+  // #1020: a link reads as its Table's links read, wherever it is on the page.
+  const displayValue = (value: string, column: string): ReactNode => {
+    const definition = available.find((f) => f.column_name === column)
+    return value && value !== EMPTY_GROUP && definition?.column_type === 'Reference' && definition.reference_table
+      ? <RowName table={definition.reference_table} rowId={value} />
+      : displayChoice(value, column)
+  }
+
   const cell = (row: Row, col: string) => {
     const v = row[col]
     if (v == null || v === '') return '—'
     if (typeof v === 'boolean') return v ? '✓' : ''
-    return displayChoice(String(v), col)
+    return displayValue(String(v), col)
   }
 
   // RPT-003: export what is on screen, in display order — group header rows
@@ -606,7 +615,7 @@ export function ReportView({
                 <ReportGroup
                   key={g.key}
                   group={g}
-                  label={displayChoice(g.key, groupBy)}
+                  label={displayValue(g.key, groupBy)}
                   columns={columns}
                   numericCols={numericCols}
                   fmt={fmt}
@@ -687,7 +696,7 @@ export function ReportView({
         <div className="space-y-2">
           {chartData.map((r, i) => (
             <div key={`${r.label}-${i}`} className="flex items-center gap-2" data-testid={`chart-bar-${r.label}`}>
-              <div className="w-24 shrink-0 truncate text-xs text-ink-muted">{displayChoice(r.label, groupBy || chartLabelField) || '—'}</div>
+              <div className="w-24 shrink-0 truncate text-xs text-ink-muted">{displayValue(r.label, groupBy || chartLabelField) || '—'}</div>
               <div className="h-5 flex-1 rounded bg-subtle">
                 <div
                   className="h-5 rounded bg-action"
@@ -717,7 +726,7 @@ function ReportGroup({
   bodyRow,
 }: {
   group: GroupTotals
-  label: string
+  label: ReactNode
   columns: string[]
   numericCols: string[]
   fmt: (v: number) => string

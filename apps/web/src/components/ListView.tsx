@@ -1543,7 +1543,7 @@ function InlineChildren({
       ),
   })
   if (doc.isLoading) return <p className="text-xs text-ink-subtle">Loading…</p>
-  if (doc.isError) return <p className="text-xs text-negative">Cannot load {name}</p>
+  if (doc.isError) return <p className="text-xs text-negative">Cannot load this row</p>
   return (
     <div className="flex flex-col gap-3">
       {childFields.map((f) => (

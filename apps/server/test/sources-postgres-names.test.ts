@@ -112,10 +112,11 @@ describe('connected tables read as names', () => {
     expect(meta.columns.find((c) => c.column_name === 'id')?.label).toBe('ID')
   })
 
-  test('a row whose Table has no title column reads as its first value', async ({ admin }) => {
+  // #1020: Bin's one value is a link, and a link's value is another row's key.
+  test('a row whose only value is a link reads as its Table and its own key', async ({ admin }) => {
     await reflectBoth(admin)
     expect(await admin.post('/api/row_titles', { rows: [{ table: 'Bin', row_id: 'b1' }] }))
-      .toEqual({ titles: [{ table: 'Bin', row_id: 'b1', title: '7' }] })
+      .toEqual({ titles: [{ table: 'Bin', row_id: 'b1', title: 'Bin · b1' }] })
   })
 
   test.for([['label', 'Top'], ['retired_column', 'Top']] as const)(

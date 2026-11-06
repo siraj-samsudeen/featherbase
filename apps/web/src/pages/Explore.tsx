@@ -10,6 +10,7 @@ import { useNavigation } from '../lib/navigation'
 import { cardClasses, inputClasses, pillClasses, touchTargetClasses } from '@featherbase/shop-floor'
 import { fmtCount, fmtShowing } from '@featherbase/shop-floor'
 import { RowName } from '../lib/row-name'
+import { rowNameText, useRowName } from '../lib/relations'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -315,6 +316,19 @@ function StepPicker({
   )
 }
 
+function Chip({ table, rowId, clear }: { table: string; rowId: string; clear: () => void }) {
+  // #1020: a selected row reads as its Table's links read, or in neutral words.
+  const name = rowNameText(useRowName(table, rowId))
+  return (
+    <span className={pillClasses('gap-1 bg-action-tint text-action')} data-testid="explore-chip">
+      {table}: {name}
+      <button aria-label={`Release ${name}`} onClick={clear} className={touchTargetClasses('hover:opacity-70')}>
+        ×
+      </button>
+    </span>
+  )
+}
+
 function Chips({
   groups,
 }: {
@@ -325,22 +339,7 @@ function Chips({
     <div className="mb-3 flex min-h-[26px] flex-wrap items-center gap-2" data-testid="explore-chips">
       {any ? (
         groups.flatMap((g) =>
-          [...g.names].map((n) => (
-            <span
-              key={`${g.label}:${n}`}
-              className={pillClasses('gap-1 bg-action-tint text-action')}
-              data-testid="explore-chip"
-            >
-              {g.label}: {n}
-              <button
-                aria-label={`Release ${n}`}
-                onClick={() => g.clear(n)}
-                className={touchTargetClasses('hover:opacity-70')}
-              >
-                ×
-              </button>
-            </span>
-          )),
+          [...g.names].map((n) => <Chip key={`${g.label}:${n}`} table={g.label} rowId={n} clear={() => g.clear(n)} />),
         )
       ) : (
         <span className="text-xs text-ink-subtle">

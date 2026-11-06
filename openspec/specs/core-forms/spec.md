@@ -139,7 +139,7 @@ row to link to.
 Given the user is a System Manager
 And orders from the customers "Globex Ltd" and "Initech"
 When the user types "Ltd" into a new order's customer and picks "Globex Ltd"
-Then the user was offered only "Globex Ltd"
+Then the user was offered only "Globex Ltd (cust-1)"
 And the user sees the saved order's customer as "Globex Ltd"
 ```
 

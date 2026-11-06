@@ -32,6 +32,27 @@ describe('link_format on a Table definition', () => {
   })
 })
 
+describe('a link as the name of a row', () => {
+  const columns = [
+    { column_name: 'label', column_type: 'Data' },
+    { column_name: 'cluster', column_type: 'Reference', reference_table: 'Role' },
+    { column_name: 'owner', column_type: 'Reference', reference_table: 'Person' },
+  ]
+
+  test('a link to a row is refused: its value is a code', async ({ admin }) => {
+    await expect(admin.post('/api/table_def', { name: 'Lf LinkTitle', title_column: 'cluster', columns }))
+      .rejects.toMatchObject({ status: 417 })
+    await admin.post('/api/table_def', { name: 'Lf LinkTitle', title_column: 'label', columns })
+    await expect(admin.put(url('Lf LinkTitle'), { title_column: 'cluster' })).rejects.toMatchObject({ status: 417 })
+    expect((await meta(admin, 'Lf LinkTitle')).title_column).toBe('label')
+  })
+
+  test('a link to a person is allowed: people read the name', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Lf PersonTitle', title_column: 'owner', columns })
+    expect((await meta(admin, 'Lf PersonTitle')).title_column).toBe('owner')
+  })
+})
+
 describe('a PUT that names only the format', () => {
   test('changes the format and leaves everything else', async ({ admin }) => {
     await admin.post('/api/table_def', {

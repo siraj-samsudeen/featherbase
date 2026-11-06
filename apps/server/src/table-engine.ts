@@ -478,6 +478,14 @@ async function assertNoRepeats(
 // partial payload would otherwise erase every column it left out. Each one
 // must be named in remove_columns; an unnamed omission refuses the whole
 // write, naming the column and how many rows hold a value in it.
+/** A link's value is a row's id, a code, so it can't name a row (#1020). A link
+ *  to a person can: people read the person's name. */
+function refuseLinkTitle(def: { title_column?: string | null; columns: { column_name: string; column_type: string; reference_table?: string | null }[] }) {
+  const link = def.columns.find((c) => c.column_name === def.title_column && c.column_type === 'Reference')
+  if (link && link.reference_table !== 'Person' && link.reference_table !== 'Service Account')
+    throw new AppError('ValidationError', `A link can't name a row: ${def.title_column} holds another row's code`, { title_column: 'Choose a column that holds a name' })
+}
+
 export async function updateTable(
   name: string,
   input: unknown,
@@ -502,6 +510,7 @@ export async function updateTable(
   if (def.title_column && def.title_column !== existing.title_column && def.title_column !== ROW_KEY &&
       !def.columns.some((c) => c.column_name === def.title_column && !['Sub-table', 'Section Break', 'Column Break'].includes(c.column_type)))
     throw new AppError('ValidationError', `${name} has no column ${def.title_column} to name its rows`, { title_column: 'No such column' })
+  if (def.title_column !== existing.title_column) refuseLinkTitle(def)
   if (existing.access_policy && def.access_policy && JSON.stringify(def.access_policy) !== JSON.stringify(accessPolicySchema.parse(existing.access_policy)))
     throw new AppError('PermissionError', 'An existing mandatory access policy cannot be changed through the schema editor')
   if (existing.access_policy) {
@@ -864,6 +873,7 @@ export async function createTable(
         [f.column_name]: `${f.row_table} is not a sub_table Table`,
       })
   }
+  refuseLinkTitle(def)
 
   await sql.begin(async (tx) => {
     const tableRow: Record<string, unknown> = {

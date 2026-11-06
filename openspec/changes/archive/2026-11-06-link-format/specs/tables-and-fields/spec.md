@@ -9,6 +9,16 @@ A Table SHALL choose how links to its rows read: Name (code), the default; Code 
 - **WHEN** a Cluster row has the code VLM and the name Vellayambalam
 - **THEN** a link reads "Vellayambalam (VLM)" in Name (code), "VLM (Vellayambalam)" in Code (name), "Vellayambalam" in Name only, and "VLM" in Code only
 
+#### Scenario: A link does not name a row
+
+- **WHEN** a Table's title column would be a link to a row of another Table
+- **THEN** the Table's definition is refused, and a row's stand-in title leaves links out, because a link's value is a code the reader may not be allowed to see. A link to a person can still name a row, by the person's name
+
+#### Scenario: A row with no value of its own
+
+- **WHEN** a linked row has no value that could name it
+- **THEN** a link reads as its Table when its ID is generated, and as its ID when people chose it
+
 #### Scenario: No separate code
 
 - **WHEN** a Table's rows are numbered by a series, or their ID already is their name

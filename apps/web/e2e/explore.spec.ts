@@ -90,7 +90,7 @@ test('a root+chain+select URL renders three panes, pane 1 preselected, downstrea
 
   await session.step('pane 1: both vehicles listed, Truck 1 arrives already selected', async ({ page }) => {
     await expect(page.getByTestId('explore-pane1-count')).toHaveText('2')
-    await expect(page.getByTestId('explore-chip')).toContainText(`${VEHICLE}: ${v1}`)
+    await expect(page.getByTestId('explore-chip')).toContainText(`${VEHICLE}: Truck 1`)
     await expect(
       page.getByTestId('explore-pane1').locator('[data-testid=explore-row][data-selected]'),
     ).toContainText('Truck 1')
@@ -174,7 +174,7 @@ test("the row page's Map tab: Open in Explore materializes the neighborhood narr
   await session.step('pane 1 preselected to the mapped row; hops narrow correctly', async ({ page }) => {
     await expect(page).toHaveURL(/\/admin\/explore\?/)
     // pane 1 preselected to the mapped row
-    await expect(page.getByTestId('explore-chip')).toContainText(`${VEHICLE}: ${v1}`)
+    await expect(page.getByTestId('explore-chip')).toContainText(`${VEHICLE}: Truck 1`)
     // first hop: accidents of Truck 1; second hop: claims of those accidents
     await expect(page.getByTestId('explore-pane2-count')).toHaveText('2')
     await expect(page.getByTestId('explore-pane3-count')).toHaveText('1')

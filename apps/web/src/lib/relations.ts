@@ -145,13 +145,16 @@ export function hasGeneratedIds(meta: Pick<TableMeta, 'id_pattern' | 'data_sourc
 
 /** #1020: a linked row as its Table chooses to show it. Without a title column
  *  the stand-in title may already hold a code ("Kurti Z · 1517"), and the format
- *  covers that too, unless all it holds is the Table's name and a made-up id. */
-export function linkedRowText(meta: Pick<TableMeta, 'title_column' | 'id_pattern' | 'data_source' | 'link_format'>, rowId: string, title: string): string {
+ *  covers that too. */
+export function linkedRowText(meta: Pick<TableMeta, 'title_column' | 'id_pattern' | 'data_source' | 'link_format'> & { name?: string }, rowId: string, title: string): string {
+  // A row with no value this viewer can read: only its id tells it apart, and a
+  // made-up id is never shown, so it reads as its Table.
+  if (meta.name && title === `${meta.name} · ${rowId}`) return hasGeneratedIds(meta) ? meta.name : rowId
   const code = shownCode(meta, rowId, title)
   if (code) return linkText(meta.link_format, title, code)
   if (meta.title_column && meta.title_column !== 'row_id') return title
   const standIn = splitStandInTitle(title)
-  if (!standIn || (standIn.code === rowId && !meta.data_source && generatedIds(meta.id_pattern))) return title
+  if (!standIn) return title
   return linkText(meta.link_format, standIn.name, standIn.code)
 }
 

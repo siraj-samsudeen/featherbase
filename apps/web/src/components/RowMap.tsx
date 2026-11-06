@@ -71,7 +71,7 @@ export function RowMap({ table, name }: { table: string; name: string }) {
   if (meta.isLoading || doc.isLoading)
     return <p className="text-sm text-ink-subtle">Loading…</p>
   if (meta.isError || doc.isError)
-    return <p className="text-sm text-negative">Cannot load {table} {name}</p>
+    return <p className="text-sm text-negative">Cannot load this {table} row</p>
 
   const m = meta.data!
   const d = doc.data!

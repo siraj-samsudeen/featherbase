@@ -163,8 +163,9 @@ describe('linkedRowText', () => {
       expect(linkedRowText({ ...STAND_IN, link_format: 'name' }, 'a1b2', 'Metadata · Whole Table · label')).toBe('Metadata · Whole Table · label')
     })
 
-    test("the last-resort title, the Table and its generated id, stays whole and shows no id on its own", () => {
-      expect(linkedRowText({ ...STAND_IN, id_pattern: 'integer', link_format: 'code' }, '7', 'Cluster · 7')).toBe('Cluster · 7')
+    test('a row with no value of its own reads as its Table when its id is made up, else as its id', () => {
+      expect(linkedRowText({ ...STAND_IN, name: 'Cluster', id_pattern: 'integer', link_format: 'code' }, '7', 'Cluster · 7')).toBe('Cluster')
+      expect(linkedRowText({ ...STAND_IN, name: 'Cluster', id_pattern: 'prompt', link_format: 'name' }, 'C7', 'Cluster · C7')).toBe('C7')
     })
   })
 })

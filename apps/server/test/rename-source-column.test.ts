@@ -14,7 +14,7 @@ async function cluster(admin: TestClient, extra: { column?: Record<string, unkno
   await admin.post('/api/table_def', {
     name: 'Rs Cluster',
     id_pattern: extra.id_pattern ?? 'field:code',
-    title_column: 'code',
+    title_column: extra.column?.column_type === 'Reference' ? 'note' : 'code',
     columns: [
       { column_name: 'code', column_type: 'Data', reqd: true, ...extra.column },
       { column_name: 'note', column_type: 'Data' },
