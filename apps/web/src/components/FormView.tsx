@@ -1681,11 +1681,16 @@ export function LinkControl({
   // #1019: the arrows walk the list and Escape closes it; Tab leaves the box for
   // the next field, so the list's own controls are off the Tab order.
   function moveThroughList(event: KeyboardEvent<HTMLDivElement>) {
-    if (!open) return
+    if (!open) {
+      // A grid's arrows move between its cells.
+      if (event.key === 'ArrowDown' && !floating) search(query ?? '')
+      return
+    }
     if (event.key === 'Escape') {
       event.stopPropagation()
       setOpen(false)
-      if (forFilter || floating) setQuery(null)
+      // Whatever was being searched for was never picked.
+      setQuery(null)
       backToBox()
     } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()

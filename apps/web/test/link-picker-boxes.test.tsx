@@ -64,6 +64,19 @@ test('Tab leaves a link box for the next field: nothing in its list is a Tab sto
   for (const stop of [list, ...list.querySelectorAll('input,a,button')]) expect(stop).toHaveAttribute('tabindex', '-1')
 })
 
+test('Escape on a form link drops what was being searched for', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(`${tableHref(SHOP)}/row/s-1`, admin)
+  await screen.findByTestId('link-open-region')
+  const box = document.querySelector<HTMLInputElement>('[data-field=region]')!
+  await waitFor(() => expect(box).toHaveValue('Kerala'))
+  fireEvent.focus(box)
+  const list = await screen.findByTestId('link-options-region')
+  fireEvent.change(within(list).getByRole('searchbox'), { target: { value: 'tam' } })
+  fireEvent.keyDown(within(list).getByRole('searchbox'), { key: 'Escape' })
+  await waitFor(() => expect(box).toHaveValue('Kerala'))
+})
+
 test('a form link with a value offers its way to the row, not a chevron', async ({ admin }) => {
   await seed(admin)
   await renderApp(`${tableHref(SHOP)}/row/s-1`, admin)
@@ -110,6 +123,11 @@ test('the keyboard walks a link list: arrows to an option, Enter picks it, Escap
   fireEvent.keyDown(second, { key: 'Enter' })
   await waitFor(() => expect(box).toHaveValue('Kerala'))
   expect(box).toHaveFocus()
+  await stayClosed()
+  // ArrowDown shows the list again, for someone not using a mouse.
+  fireEvent.keyDown(box, { key: 'ArrowDown' })
+  await within(await screen.findByTestId('link-options-region')).findAllByTestId('link-option')
+  fireEvent.keyDown(box, { key: 'Escape' })
   await stayClosed()
   // A box that kept its focus opens again on a click.
   fireEvent.click(box)
