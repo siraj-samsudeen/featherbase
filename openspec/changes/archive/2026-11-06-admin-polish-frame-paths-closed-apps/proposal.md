@@ -8,7 +8,7 @@ Checking master tables in Admin after go-live turned up four small breaks: **Wha
 - A person's own access page says "you" throughout.
 - A System Manager's app switcher lists installed apps they can't open, greyed out, with the roles that would open them.
 - One-column arrangement narrows the fields only, so the toolbar stays where it was.
-- The path bar shows only once there is a real path of two or more steps. Recent paths lives in the bar, so it is reachable only there.
+- The path bar shows only once there is a real path of two or more steps. On one step, a person with remembered paths still sees Recent paths alone.
 
 ## Capabilities
 

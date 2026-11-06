@@ -21,8 +21,17 @@ export function NavPathBar() {
     if (path && nav?.addressed && settings.ready) settings.remember(path)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, settings.ready])
+  if (!nav || !path) return null
   // #1013: one step is no path, and would only repeat the page's own heading.
-  if (!nav || !path || path.steps.length < 2) return null
+  // Only the way back to remembered walks stays, so they survive signing in.
+  if (path.steps.length < 2) {
+    if (settings.recent.length === 0) return null
+    return (
+      <div className="mb-3 flex justify-end">
+        <RecentWalks paths={settings.recent} onPick={nav.open} />
+      </div>
+    )
+  }
   return (
     <div className="mb-3">
       <PathBar
