@@ -16,6 +16,8 @@ import { SYSTEM_ACTOR_LABELS } from 'shared'
 // registry's conditional ids, so a new such column cannot be missed.
 export const ROW_ID_HOLDERS = [
   { relation: 'access_log', tableColumn: 'ref_table', nameColumn: 'reference_name' },
+  { relation: 'change_proposal', tableColumn: 'target_table', nameColumn: 'target_row' },
+  { relation: 'change_proposal', tableColumn: 'target_table', nameColumn: 'result_row' },
   { relation: 'comment', tableColumn: 'ref_table', nameColumn: 'ref_name' },
   { relation: 'data_scope', tableColumn: 'allow_table', nameColumn: 'for_value' },
   { relation: 'email_queue', tableColumn: 'ref_table', nameColumn: 'reference_name' },

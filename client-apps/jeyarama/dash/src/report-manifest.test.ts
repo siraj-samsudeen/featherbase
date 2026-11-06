@@ -81,7 +81,7 @@ describe('the report in the manifest', () => {
   })
 
   it('draws the store picker and the month picker (#750) in the top bar, setting ?store= and ?month=', () => {
-    expect(manifest.bar).toEqual([{ picker: 'Store', options: 'stores', sets: 'store' }, { picker: 'Month', options: 'months', sets: 'month' }])
+    expect(manifest.bar).toEqual([{ picker: 'Store', options: 'stores', sets: 'store', hiddenWhen: 'view' }, { picker: 'Month', options: 'months', sets: 'month', hiddenWhen: 'view' }])
   })
 
   it("lets anyone who can open the app read the month picker's options: they hold no figure", () => {
@@ -95,7 +95,7 @@ describe('the report in the manifest', () => {
   it('reads the Dive from optional settings, so an instance without one gets the quick view', () => {
     expect(manifest.settings).toEqual([
       { name: 'dive_id', required: false }, { name: 'embed_service_account', required: false },
-      { name: 'dive_ready_signal', required: false }])
+      { name: 'dive_ready_signal', required: false }, { name: 'linked_tables', required: false }])
   })
 
   it('reads the MotherDuck token as a secret', () => {

@@ -86,7 +86,7 @@ describe('#1022 SLA escalation', () => {
 })
 
 describe('#1022 migration 0151', () => {
-  const up = async () => (await import('../migrations/0151_submission_status')).up()
+  const up = async () => (await import('../migrations/0152_submission_status')).up()
   const columns = async (table: string) => (await sql`
     select column_name from information_schema.columns
     where table_name = ${table} and column_name in ('status', 'submission_status') order by 1`).map((c) => c.column_name)

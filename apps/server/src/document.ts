@@ -1241,7 +1241,9 @@ async function updateDoc(
       'Updates must include the updated_at timestamp of the loaded row',
     )
   // A write-share grants full field access; otherwise honor tiers.
-  const sharedWrite = await isSharedWith(user, meta.name, name, 'write')
+  // #975: a trusted save is the platform's own, such as an approved Change Proposal: approving
+  // is not editing, so neither the maker's nor the approver's grants are what it runs on.
+  const sharedWrite = trusted || await isSharedWith(user, meta.name, name, 'write')
   let writeTiers = sharedWrite
     ? new Set(ALL_COLUMNS)
     : await permittedColumns(user, meta.name, 'write')
@@ -1283,7 +1285,7 @@ async function updateDoc(
         throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
       previous = { ...(existing as RowValues) }
       // PERM-008: a share with write grants update even without role write.
-      await assertMandatoryAccess(user, meta, existing as RowValues)
+      if (!trusted) await assertMandatoryAccess(user, meta, existing as RowValues)
       if (!sharedWrite) {
         await assertDocPermission(user, meta.name, 'write', String(existing.created_by))
         await assertUserPermissions(user, meta, existing as RowValues)
