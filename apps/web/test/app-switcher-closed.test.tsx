@@ -13,7 +13,7 @@ async function installTasker(admin: Admin) {
   await admin.post('/api/install_app', { name: 'tasker' })
 }
 
-const switcher = () => screen.findByTestId('top-bar-name', {}, WAIT).then((el) => el.closest('select') ?? el)
+const switcher = () => screen.findByRole('combobox', { name: 'Switch application' }, WAIT)
 
 test('a System Manager without the role sees the app greyed out, with the reason', async ({ admin, createUser }) => {
   await installTasker(admin)
