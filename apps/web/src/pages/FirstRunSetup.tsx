@@ -5,13 +5,14 @@ import { SETUP_MAX_PEOPLE } from 'shared'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { Button, Card, Field, Notice, Skeleton, StatusPill, TextInput, buttonClasses } from '@featherbase/shop-floor'
 import { Plus } from '@featherbase/shop-floor'
-import { INSTANCE_HEALTH_PATH, INSTANCE_HEALTH_QUERY_KEY, useInstanceHealth } from './InstanceHealth'
+import { INSTANCE_HEALTH_PATH, INSTANCE_HEALTH_QUERY_KEY, SETUP_PERSON_LABEL, SETUP_PERSON_PATH, useInstanceHealth } from './InstanceHealth'
 
 // First-run setup (#465, design D9; spec "First-run System Manager setup").
 // Offered to the built-in Administrator whenever "A System Manager with an
 // email address" fails: once, when they sign in and land on the Admin home
 // (a deep link is never taken over). Each person named becomes a System
-// Manager and is invited; "Not now" reaches the Admin at once.
+// Manager and is invited; "Not now" reaches the Admin at once. The offer is
+// one-time, so SetupBanner keeps the way in open for as long as it is needed.
 
 const SETUP_PATH = '/featherbase/admin/setup'
 const ADMINISTRATOR = 'Administrator'
@@ -81,7 +82,7 @@ export function WelcomeSetup() {
             </div>
             <p className="mt-2 text-sm text-ink-muted">Use your own identity and choose who receives system notices. You can do this later while exploring locally.</p>
             <div className="mt-3 flex flex-wrap gap-3">
-              {getSessionUser()?.row_id === ADMINISTRATOR && <Link to="/featherbase/admin/setup/people" className={buttonClasses()}>Set up administrators</Link>}
+              {getSessionUser()?.row_id === ADMINISTRATOR && <Link to={SETUP_PERSON_PATH} className={buttonClasses()}>{SETUP_PERSON_LABEL}</Link>}
               <Link to="/featherbase/admin/table/$table" params={{ table: 'Person' }} search={{ filters: undefined }} className={buttonClasses()}>Manage people</Link>
             </div>
           </section>

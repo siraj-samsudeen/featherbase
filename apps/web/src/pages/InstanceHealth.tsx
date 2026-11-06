@@ -2,9 +2,9 @@ import { useEffect } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { adminPageTitle, tableHref } from 'shared'
-import { api } from '../lib/api'
+import { api, getSessionUser } from '../lib/api'
 import { fmtInstantIST } from '@featherbase/shop-floor'
-import { Button, Card, Notice, Skeleton, StatusPill, cx, type StatusTone } from '@featherbase/shop-floor'
+import { Button, Card, Notice, Skeleton, StatusPill, buttonClasses, cx, type StatusTone } from '@featherbase/shop-floor'
 import { ChevronRight } from '@featherbase/shop-floor'
 
 // Instance health (#465, design D8; spec instance-health). One page listing
@@ -47,6 +47,10 @@ interface InstanceHealthView {
 
 export const INSTANCE_HEALTH_QUERY_KEY = ['instance-health'] as const
 export const INSTANCE_HEALTH_PATH = '/featherbase/admin/instance-health'
+export const SETUP_PERSON_PATH = '/featherbase/admin/setup/person'
+export const SETUP_PERSON_LABEL = 'Set up administrators'
+const SYSTEM_MANAGER_EMAIL = 'system-manager-email'
+const isAdministrator = () => getSessionUser()?.row_id === 'Administrator'
 
 /** The checks, asked again every minute and on every page change, so the
  *  banner goes soon after the cause is fixed. */
@@ -97,6 +101,39 @@ export function HealthBanner({ enabled }: { enabled: boolean }) {
   )
 }
 
+/** The check first-run setup answers, while it fails and only for the built-in
+ *  Administrator, the one person who can open setup (#1003). */
+export function useSetupNeeded(enabled: boolean): HealthCheckView | null {
+  const mine = enabled && isAdministrator()
+  const health = useInstanceHealth(mine)
+  if (!mine) return null
+  return health.data?.checks.find((c) => c.key === SYSTEM_MANAGER_EMAIL && !c.ok) ?? null
+}
+
+/** The persistent way into first-run setup (#1003). The sign-in offer is
+ *  one-time and most sign-ins never make it. Unfinished setup is not a fault,
+ *  so it has the "Setup needed" colour rather than the health banner's. */
+export function SetupBanner({ enabled }: { enabled: boolean }) {
+  const check = useSetupNeeded(enabled)
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  if (!check || pathname === SETUP_PERSON_PATH) return null
+  return (
+    <div
+      data-testid="setup-banner"
+      role="status"
+      className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-0 bg-opportunity-tint px-3 text-sm font-medium text-opportunity"
+    >
+      <span className="py-1">{check.message}</span>
+      <Link
+        to={SETUP_PERSON_PATH}
+        className="inline-flex min-h-8 items-center underline underline-offset-2 max-sm:min-h-11"
+      >
+        {SETUP_PERSON_LABEL}
+      </Link>
+    </div>
+  )
+}
+
 const STATE: Record<'passing' | Severity, { label: string; tone: StatusTone }> = {
   passing: { label: 'Passing', tone: 'positive' },
   warning: { label: 'Warning', tone: 'caution' },
@@ -135,6 +172,13 @@ function Prose({ text }: { text: string }) {
   )
 }
 
+/** The next click (#1004): only the Administrator can open setup. */
+function SystemManagerEmailAction() {
+  return isAdministrator()
+    ? <Link to={SETUP_PERSON_PATH} data-testid="health-check-action" className={buttonClasses()}>{SETUP_PERSON_LABEL}</Link>
+    : <Link to="/featherbase/admin/table/$table" params={{ table: 'Person' }} search={{ filters: undefined }} data-testid="health-check-action" className={buttonClasses()}>Open the Person table</Link>
+}
+
 function CheckCard({ check }: { check: HealthCheckView }) {
   const state = check.state === 'optional' ? { label: 'Optional', tone: 'neutral' as const }
     : check.state === 'setup-needed' ? { label: 'Setup needed', tone: 'opportunity' as const }
@@ -158,6 +202,7 @@ function CheckCard({ check }: { check: HealthCheckView }) {
           <div data-testid="health-fix">
             <dt className="font-medium text-ink">{check.state === 'fault' ? 'How to fix' : 'Next action'}</dt>
             <dd className="text-ink-muted [overflow-wrap:anywhere]"><Prose text={check.fix} /></dd>
+            {check.key === SYSTEM_MANAGER_EMAIL && <dd className="mt-2"><SystemManagerEmailAction /></dd>}
           </div>
         )}
       </dl>

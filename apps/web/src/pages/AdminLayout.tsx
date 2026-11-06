@@ -32,7 +32,7 @@ import { KindIcon } from '../lib/kind-icons'
 import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
-import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
+import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PATH, SetupBanner, useSetupNeeded } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
@@ -228,6 +228,7 @@ function AdminShell({ wide }: { wide: boolean }) {
   // #465 D9: right after the Administrator signs in, ask who looks after the
   // instance while no System Manager has an email address.
   useSetupOffer(canManage)
+  const setupNeeded = useSetupNeeded(canManage) !== null
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
@@ -700,6 +701,7 @@ function AdminShell({ wide }: { wide: boolean }) {
       {/* #465 D8: System Managers only, while a health check fails; above the
           top bar, beside the preview banner. */}
       <HealthBanner enabled={canManage} />
+      <SetupBanner enabled={canManage} />
       {/* #489: the shared top bar, with the Admin menus inside it: the app
           switcher in the name's place, the sidebar toggle, the command bar
           and the notification bell. md+: the left zone is exactly the
@@ -879,6 +881,7 @@ function AdminShell({ wide }: { wide: boolean }) {
             items={canManage
               ? [
                   { to: '/featherbase/admin/setup', label: 'Welcome', icon: ListChecks, testid: 'welcome-link' },
+                  ...(setupNeeded ? [{ to: SETUP_PERSON_PATH, label: SETUP_PERSON_LABEL, icon: ListChecks, testid: 'setup-administrators-link' }] : []),
                   { to: '/featherbase/admin/apps', label: 'Apps', icon: Compass, testid: 'apps-link' },
                   { to: JOBS_PATH, label: 'Jobs', icon: CalendarClock, testid: 'jobs-link' },
                   { to: INSTANCE_HEALTH_PATH, label: 'Instance health', icon: ListChecks, testid: 'instance-health-link' },
