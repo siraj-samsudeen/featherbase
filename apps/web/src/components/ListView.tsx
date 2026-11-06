@@ -1654,6 +1654,17 @@ function InlineChildGrid({
 // list the advanced FilterBar manages, so chips stay in sync.
 const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference', 'Email', 'Small Text'])
 
+// #1016: a "Name" box reads as a login to a password manager, which then adds
+// its icon to it and knocks it out of line. Browsers read autocomplete; the
+// rest are 1Password's, LastPass's, Bitwarden's and Dashlane's own marks.
+const NOT_A_LOGIN = {
+  autoComplete: 'off',
+  'data-1p-ignore': 'true',
+  'data-lpignore': 'true',
+  'data-bwignore': 'true',
+  'data-form-type': 'other',
+}
+
 function StandardFilters({
   meta,
   filters,
@@ -1703,7 +1714,7 @@ function StandardFilters({
                 value={current(f.column_name, '=')}
                 onChange={(v) => apply(f.column_name, '=', String(v ?? ''))}
                 className={inputClasses('max-w-[10rem]')}
-                common={{ 'data-testid': `std-filter-${f.column_name}` }}
+                common={{ 'data-testid': `std-filter-${f.column_name}`, ...NOT_A_LOGIN }}
                 forFilter
               />
               {current(f.column_name, '=') && (
@@ -1759,6 +1770,7 @@ function StandardFilters({
               placeholder={`Filter ${f.label ?? f.column_name}…`}
               data-testid={`std-filter-${f.column_name}`}
               className={inputClasses('max-w-[10rem]')}
+              {...NOT_A_LOGIN}
             />
           </label>
         ),
@@ -1881,6 +1893,7 @@ export function FilterBar({
           aria-label="Filter value"
           data-testid="filter-value"
           className={inputClasses('max-w-[10rem]')}
+          {...NOT_A_LOGIN}
         />}
         <button
           onClick={add}
