@@ -68,6 +68,10 @@ async function externalSql(statement, parameters = []) {
   finally { await db.end(); }
 }
 
+// #969: the one token every MotherDuck source reads, made up, for the stand-in
+// (apps/server/test/motherduck-standin.ts).
+const STANDIN_READER_TOKEN = 'standin-read-token-4f2a';
+
 const children = [];
 const logs = [];
 let apiChild;
@@ -77,7 +81,7 @@ function isolatedEnvironment(overrides = {}) {
   return {
     ...process.env, DATABASE_URL: acceptanceDatabaseUrl(), PORT: String(API_PORT),
     API_PORT: String(API_PORT), WEB_PORT: String(WEB_PORT), FEATHERBASE_ENV: 'test',
-    FEATHERBASE_INSTANCE: '', FEATHERBASE_APP_PATHS: '[]', MOTHERDUCK_TOKEN: '',
+    FEATHERBASE_INSTANCE: '', FEATHERBASE_APP_PATHS: '[]', MOTHERDUCK_TOKEN: STANDIN_READER_TOKEN,
     SMTP_HOST: '', SMTP_USER: '', SMTP_PASSWORD: '',
     GOOGLE_CLIENT_SECRET: 'acceptance-private-secret',
     ALLOW_MOCK_OAUTH: '1', PREAUTH_LOGIN_MAX: '10000', WEB_ORIGINS: BASE_URL,
@@ -124,6 +128,12 @@ async function restartAcceptance(overrides = {}, root = REPO_ROOT) {
   scenarioEnvironment = { ...(scenarioEnvironment ?? isolatedEnvironment()), ...overrides };
   apiChild = start('api', ['--filter', 'server', 'start'], scenarioEnvironment, root);
   await waitFor(`${API_URL}/api/ping`, apiChild, 'The scenario API');
+}
+
+// #969: a scenario that reads the warehouse says which instance token it needs;
+// an earlier scenario may have left another one, or none, on the shared API.
+async function useInstanceToken(token = STANDIN_READER_TOKEN) {
+  if ((scenarioEnvironment ?? isolatedEnvironment()).MOTHERDUCK_TOKEN !== token) await restartAcceptance({ MOTHERDUCK_TOKEN: token });
 }
 
 // Reset only our disposable DB, with the API stopped (its metadata is cached).
@@ -235,6 +245,6 @@ AfterAll(async function () {
 process.on('exit', stopAll);
 
 module.exports = {
-  BASE_URL, API_URL, PROTOTYPE_URL, resetAcceptance, restartAcceptance, acceptanceSql, acceptanceDatabaseUrl, isolatedEnvironment, REPO_ROOT,
+  BASE_URL, API_URL, PROTOTYPE_URL, resetAcceptance, restartAcceptance, useInstanceToken, acceptanceSql, acceptanceDatabaseUrl, isolatedEnvironment, REPO_ROOT,
   externalSql, EXTERNAL_URL_ENV, EXTERNAL_READER, EXTERNAL_READER_PASSWORD, addStandinTable, changeStandin,
 };

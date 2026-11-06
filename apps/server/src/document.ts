@@ -7,11 +7,12 @@ import { AppError } from './errors'
 import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
-import { assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
+import { mayPurge } from './purge'
+import { RETIRE_INSTEAD, assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
 import { allowedTables, anyTableLinkHolder, linkableTable, repointAnyTableLinks } from './any-table-link'
 import { EVERYONE_ROLES_FIELD, checkEveryoneRoles, parseEveryoneRoles } from './everyone-roles'
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
-import { STANDARD_COLUMNS, seriesKey, tableName, tableRelation } from './table-engine'
+import { RESERVED_COLUMNS, canRetire, seriesKey, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
 import { holdBeforeRowLock } from './row-lock-order'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
@@ -22,7 +23,7 @@ import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, readerFor, restrictRow, seesEveryColumn, type Tiers } from './row-readers'
-import { assertNotSystemWritten } from './system-written'
+import { assertRowsWritable } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
 import {
@@ -204,7 +205,8 @@ function pickFieldValues(meta: TableMeta, values: RowValues, managedValues: RowV
   const errors: Record<string, string> = {}
   for (const [key, value] of Object.entries({ ...values, ...managedValues })) {
     if (key === 'table') continue
-    if ((STANDARD_COLUMNS as readonly string[]).includes(key)) continue
+    // #859: retirement is changed only by :retire and :reactivate.
+    if (RESERVED_COLUMNS.includes(key)) continue
     const field = known.get(key)
     if (!field) {
       errors[key] = `Unknown field ${key} on ${meta.name}`
@@ -756,7 +758,7 @@ async function saveChildren(
 // declared (non-sensitive) Columns leave through the API, regardless of
 // the caller's tier.
 function stripInternalColumns(meta: TableMeta, row: RowValues): RowValues {
-  const known = new Set<string>(['table', ...STANDARD_COLUMNS, ...meta.columns.map((f) => f.column_name)])
+  const known = new Set<string>(['table', ...RESERVED_COLUMNS, ...meta.columns.map((f) => f.column_name)])
   const out: RowValues = {}
   // #132: the single physical→wire crossing. Storage may key the row under a
   // different column (only `Table` does, see meta.ts); everything above this
@@ -863,7 +865,7 @@ async function saveDocImpl(
   mode: 'upsert' | 'insert' = 'upsert',
   opts: SaveOptions = {},
 ): Promise<RowValues> {
-  assertNotSystemWritten(await getMeta(table), mode === 'insert' ? 'created' : 'saved')
+  assertRowsWritable(await getMeta(table), mode === 'insert' ? 'created' : 'saved')
   return writeDoc(table, values, user, mode, opts)
 }
 
@@ -1431,7 +1433,7 @@ async function setStatus(
   user: string,
 ): Promise<RowValues> {
   const meta = await getMeta(table)
-  assertNotSystemWritten(meta, event === 'on_submit' ? 'submitted' : 'cancelled')
+  assertRowsWritable(meta, event === 'on_submit' ? 'submitted' : 'cancelled')
   await assertSecurityWriter(table, user)
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
@@ -1506,7 +1508,7 @@ async function amendDocImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
-  assertNotSystemWritten(meta, 'amended')
+  assertRowsWritable(meta, 'amended')
   await assertSecurityWriter(table, user)
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
@@ -1529,7 +1531,7 @@ async function amendDocImpl(
       values[f.column_name] = rows.map((r) => {
         const copy: RowValues = {}
         for (const [k, v] of Object.entries(r))
-          if (!(STANDARD_COLUMNS as readonly string[]).includes(k)) copy[k] = v
+          if (!RESERVED_COLUMNS.includes(k)) copy[k] = v
         return copy
       })
     } else {
@@ -1564,7 +1566,7 @@ async function deleteDocImpl(
   opts: { expectUpdatedAt?: string | null } = {},
 ): Promise<void> {
   const meta = await getMeta(table)
-  assertNotSystemWritten(meta, 'deleted')
+  assertRowsWritable(meta, 'deleted')
   await assertSecurityWriter(table, user)
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
@@ -1586,11 +1588,11 @@ async function deleteDocImpl(
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
         throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
-      assertNothingRetained(table, name, await retainedDocumentCounts(stx, table, name))
+      assertNothingRetained(table, name, await retainedDocumentCounts(stx, table, name), true)
     } else {
       // #321: a plain row keeps its comments, history, attachments and shares
       // by refusing the delete while it has any (links are checked below).
-      assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name))
+      assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name), true)
     }
     await tx`delete from version where ref_table = ${table} and ref_name = ${name} and data->>'created' = 'true'`
     if ((existing.status as string) === 'submitted')
@@ -1621,13 +1623,19 @@ async function deleteDocImpl(
           : `${parentTable} ${ref[parentKey] as string}`
         throw new AppError(
           'ValidationError',
-          `Cannot delete ${table} ${name}: it is linked from ${holder}`,
+          `Cannot delete ${table} ${name}: it is linked from ${holder}. ${RETIRE_INSTEAD}`,
+          { retire: 'available' },
         )
       }
     }
     // #881: and so does a link to a row of any Table naming this row.
     const anyHolder = await anyTableLinkHolder(stx, table, name)
-    if (anyHolder) throw new AppError('ValidationError', `Cannot delete ${table} ${name}: it is linked from ${anyHolder}`)
+    if (anyHolder)
+      throw new AppError(
+        'ValidationError',
+        `Cannot delete ${table} ${name}: it is linked from ${anyHolder}. ${RETIRE_INSTEAD}`,
+        { retire: 'available' },
+      )
 
     const ctx: HookContext = {
       row: existing as RowValues,
@@ -1727,6 +1735,111 @@ async function deleteBoundDoc(
     )
 }
 
+// #859 (ADR 0019): retire a row, taking it out of use without deleting it,
+// or reactivate it. Retire needs the delete right on the Table, reactivate
+// the write right; a reason is required to retire. Only the three
+// retirement columns (and the update stamp) change, and each step is one
+// history entry, recorded whether or not the Table tracks changes.
+export function retireDoc(table: string, name: string, reason: unknown, user = 'Administrator') {
+  return appOperation(() => setRetirement(table, name, user, { reason }))
+}
+export function reactivateDoc(table: string, name: string, user = 'Administrator') {
+  return appOperation(() => setRetirement(table, name, user, null))
+}
+const MAX_RETIRED_REASON = 1000
+async function setRetirement(
+  table: string,
+  name: string,
+  user: string,
+  retire: { reason: unknown } | null,
+): Promise<RowValues> {
+  const meta = await getMeta(table)
+  assertRowsWritable(meta, retire ? 'retired' : 'reactivated')
+  if (!canRetire(meta))
+    throw new AppError('ValidationError', `${table} rows cannot be retired`)
+  await assertSecurityWriter(table, user)
+  let reason: string | null = null
+  if (retire) {
+    reason = typeof retire.reason === 'string' ? retire.reason.trim() : ''
+    if (!reason)
+      throw new AppError('ValidationError', 'A reason is required to retire a row', { retired_reason: 'Required' })
+    if (reason.length > MAX_RETIRED_REASON)
+      throw new AppError('ValidationError', `A reason is at most ${MAX_RETIRED_REASON} characters`, { retired_reason: 'Too long' })
+  }
+  // Only someone who may open the row may retire or reactivate it: the read
+  // path's own checks (mandatory access, shares, a comment's or file's row).
+  await getDoc(table, name, user)
+  // PERM-008: reactivating is editing, so a write share grants it as it
+  // grants an update; retiring is deleting, which no share grants.
+  const sharedWrite = !retire && await isSharedWith(user, table, name, 'write')
+  const tbl = await tableRelation(table)
+  let previous: RowValues = {}
+  const [saved] = await afterCommitOf(() => sql.begin(async (tx) => {
+    const stx = tx as unknown as typeof sql
+    await holdBeforeRowLock(stx, meta, user, { [meta.row_key]: name })
+    const [existing] = await tx`
+      select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
+    if (!existing) throw new AppError('NotFoundError', `${table} ${name} not found`)
+    previous = existing as RowValues
+    await assertMandatoryAccess(user, meta, existing as RowValues)
+    if (!sharedWrite) {
+      await assertDocPermission(user, table, retire ? 'delete' : 'write', String(existing.created_by))
+      await assertUserPermissions(user, meta, existing as RowValues)
+    }
+    if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, existing as RowValues, user)
+    await assertRowNotManaged(stx, meta, name, user)
+    if (retire && existing.retired_at != null)
+      throw new AppError('ValidationError', `${table} ${name} is already retired`)
+    if (!retire && existing.retired_at == null)
+      throw new AppError('ValidationError', `${table} ${name} is not retired`)
+    // The database's clock, as for history (#432).
+    const [{ at }] = await tx<{ at: Date }[]>`select clock_timestamp() as at`
+    // The whole update trigger chain (AGENTS.md invariant 2): the pre-save
+    // hooks and scripts see the row as it will be, and may refuse it (a
+    // Table whose controller refuses generic writes refuses this too). Only
+    // the retirement columns are written, whatever a hook changes.
+    // Hooks see the whole document, its lines included, as on any save.
+    const whole = await loadChildren(meta, { table: meta.name, ...(existing as RowValues) })
+    const pre: HookContext = {
+      row: { ...whole, retired_at: retire ? at : null, retired_by: retire ? user : null, retired_reason: reason },
+      old: whole, meta, user, isNew: false, tx: stx,
+    }
+    await runHooks('before_validate', pre)
+    await runHooks('validate', pre)
+    await runDocEventScripts('validate', meta.name, pre.row, stx)
+    await runHooks('before_save', pre)
+    await runDocEventScripts('before_save', meta.name, pre.row, stx)
+    const [updated] = await tx`
+      update ${tx(tbl)} set retired_at = ${retire ? at : null}, retired_by = ${retire ? user : null},
+        retired_reason = ${reason}, updated_at = ${at}, updated_by = ${user}
+      where ${tx(meta.row_key)} = ${name} returning *`
+    await tx`insert into version ${tx({
+      [ROW_KEY]: hashRowId(),
+      created_by: user,
+      updated_by: user,
+      created_at: at,
+      updated_at: at,
+      status: 'draft',
+      position: 0,
+      ref_table: meta.name,
+      ref_name: name,
+      data: { changed: [], retirement: retire ? { action: 'retired', reason } : { action: 'reactivated' } } as unknown as string,
+    })}`
+    const ctx: HookContext = { row: { ...whole, ...(updated as RowValues) }, old: whole, meta, user, isNew: false, tx: stx }
+    await runHooks('after_save', ctx)
+    await runHooks('on_update', ctx)
+    await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
+    return [updated]
+  }))
+  const result = await loadChildren(meta, { table: meta.name, ...(saved as RowValues) })
+  await afterDocumentCommit(async () => {
+    await evaluateEmailRules('on_save', meta.name, result, previous)
+    await evaluateWebhooks('on_update', meta.name, result)
+    await runHooks('after_commit', { row: result, old: previous, meta, user, isNew: false, tx: sql })
+  })
+  return getDoc(table, name, user)
+}
+
 // DOC-012: rename a row's primary key and update every Reference that
 // pointed at the old name — across all Tables and child tables — in one
 // transaction. The row keeps all its other data and children, and its
@@ -1741,7 +1854,7 @@ async function renameDocImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
-  assertNotSystemWritten(meta, 'renamed')
+  assertRowsWritable(meta, 'renamed')
   await assertSecurityWriter(table, user)
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be renamed`)
@@ -1839,7 +1952,7 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
       }
     }
     const rowGrant = (action: 'write' | 'delete' | 'submit' | 'cancel' | 'amend') => allowed(async () => {
-      assertNotSystemWritten(meta, 'changed')
+      assertRowsWritable(meta, 'changed')
       await assertSecurityWriter(table, user)
       if (isBound(meta) && (action === 'write' || action === 'delete')) {
         await writableContext(meta)
@@ -1858,18 +1971,31 @@ export function rowCapabilities(table: string, name: string, user: string): Prom
     // Rename deliberately does NOT inherit update's write-share exception.
     const rename = !isBound(meta) && meta.kind === 'table' && !ENGINE_MANAGED.has(table)
       && !meta.id_pattern?.startsWith('opaque:') && await allowed(async () => {
-        assertNotSystemWritten(meta, 'renamed')
+        assertRowsWritable(meta, 'renamed')
         await assertSecurityWriter(table, user)
         await assertDocPermission(user, table, 'write', String(row.created_by))
         await assertUserPermissions(user, meta, row)
       })
     const createIn = (target: string) => allowed(async () => {
-      assertNotSystemWritten(await getMeta(target), 'created')
+      assertRowsWritable(await getMeta(target), 'created')
       await assertSecurityWriter(target, user)
       await assertPermission(user, target, 'create')
     })
+    // #859: exactly the checks setRetirement runs, so advice never disagrees.
+    const retirement = (action: 'delete' | 'write') => allowed(async () => {
+      assertRowsWritable(meta, 'changed')
+      await assertSecurityWriter(table, user)
+      if (action === 'delete' || !(await isSharedWith(user, table, name, 'write'))) {
+        await assertDocPermission(user, table, action, String(row.created_by))
+        await assertUserPermissions(user, meta, row)
+      }
+    })
+    const retirable = canRetire(meta)
     return {
       write: !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && row.status !== 'cancelled' && await rowGrant('write'),
+      retire: retirable && row.retired_at == null && await retirement('delete'),
+      reactivate: retirable && row.retired_at != null && await retirement('write'),
+      purge: await mayPurge(user, meta),
       rename,
       delete: meta.kind === 'table' && !ENGINE_MANAGED.has(table) && row.status !== 'submitted' && await rowGrant('delete'),
       submit: Boolean(meta.is_submittable) && row.status === 'draft' && await rowGrant('submit'),
@@ -1990,7 +2116,7 @@ async function saveSingleImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
-  assertNotSystemWritten(meta, 'saved')
+  assertRowsWritable(meta, 'saved')
   await assertSecurityWriter(table, user)
   if (meta.kind !== 'settings') throw new AppError('ValidationError', `${table} is not a Settings Table`)
   await assertPermission(user, table, 'write')

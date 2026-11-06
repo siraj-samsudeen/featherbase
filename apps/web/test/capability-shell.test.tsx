@@ -107,14 +107,15 @@ test('a viewer-only person reaches their sign-in methods on the account page, st
   expect(urls.filter((u) => /^\/api\/(table|home_pages|app_catalog|unread_count|events|navigable_tables)/.test(u))).toEqual([])
 })
 
-test('a person with neither the viewer role nor a Table grant lands on a plain no-access page', async ({ admin, createUser }) => {
+test('a person with neither the viewer role nor a Table grant lands on a plain no-access page, which asks for access', async ({ admin, createUser }) => {
   await seed(admin)
   const nobody = await createUser({ email: 'nobody@example.com' })
   const urls = recordCalls()
   await renderApp('/featherbase/admin/home/home', nobody)
   const page = await screen.findByTestId('no-access')
-  expect(page).toHaveTextContent("You don't have access to anything here yet")
-  expect(page).toHaveTextContent(/ask your administrator/i)
+  // #955: opening Featherbase with no access is the request for it.
+  await waitFor(() => expect(page).toHaveTextContent("You don't have access to Featherbase yet"))
+  expect(page).toHaveTextContent('An admin has been told')
   for (const id of [...ADMIN_ONLY_TESTIDS, 'admin-sidebar']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
   expect(urls.filter((u) => /^\/api\/(table|home_pages|app_catalog|unread_count|events)/.test(u))).toEqual([])
   // #489: signing out is in the shared top bar's Account menu.
@@ -129,9 +130,9 @@ test('a person with neither the viewer role nor a Table grant lands on a plain n
 test("a person whose only grant is on an installed app's Table gets the no-access page in the Admin", async ({ admin, createUser }) => {
   expect(await discoverPackages([DASH_STAND_IN])).toEqual([])
   try {
-    await admin.post('/api/install_app', { name: 'feather_dash' })
+    await admin.post('/api/install_app', { name: 'dash' })
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Dash Reader' } })
-    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'feather_dash.note', role: 'Dash Reader', can_read: true } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'dash.note', role: 'Dash Reader', can_read: true } })
     const reader = await createUser({ email: 'dash.reader.shell@example.com', roles: ['Dash Reader'] })
     await renderApp('/featherbase/admin', reader)
     expect(await screen.findByTestId('no-access')).toBeInTheDocument()
@@ -141,7 +142,7 @@ test("a person whose only grant is on an installed app's Table gets the no-acces
 })
 
 test('a failed refresh of whoami keeps the shell the person already has', () => {
-  const caps = { manage: false, report: false, admin: true, own_grant: true, tables: ['Shelf Note'], creatable: [] }
+  const caps = { manage: false, report: false, admin: true, own_grant: true, tables: ['Shelf Note'], creatable: [], archived: [] }
   expect(shellKindOf({ isError: true, data: { capabilities: caps } })).toBe('admin')
   expect(shellKindOf({ isError: true, data: undefined })).toBe('failed')
   expect(shellKindOf({ isError: false, data: undefined })).toBe('loading')

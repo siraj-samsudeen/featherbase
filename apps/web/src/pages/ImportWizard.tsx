@@ -3,13 +3,16 @@ import { tableHref } from 'shared'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
 // imports this file — a strict useSearch would need the route object back)
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminPageTitle } from 'shared'
-import { DEFAULT_ID_PATTERN, applyColumnCombines, autoMapImportColumns, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
+import { DEFAULT_ID_PATTERN, applyColumnCombines, autoMapImportColumns, choiceOptions, listColumnsInUse, retiredColumnNotice, coerceRows, combineOverlap, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
-import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
+import { PurgeDialog, tableCanPurge } from '../components/PurgeDialog'
+import { useIsSystemManager } from '../lib/session'
+import { COLUMN_TYPES, NO_COLUMN_TYPES, useMeta, type TableMeta } from '../lib/meta'
+import { refusalMessage } from '../lib/table-refusal'
 import {
   countDataRows,
   excelRow,
@@ -76,6 +79,9 @@ interface SheetPlan {
   // Per file column, new-Table mode: import this column at all? (Existing
   // mode has the same control via the mapping's "— skip —".)
   include: boolean[]
+  // New-Table mode: the Table this wizard has already made for the plan. Trying
+  // again after a dropped connection must not ask to make it a second time.
+  created_table?: string
   // #738, new-Table mode: the user's own "In list" ticks, per file column.
   // Absent until the user changes one; until then the ticks follow
   // listTicks' default, the first seven columns in use.
@@ -116,6 +122,7 @@ interface SheetPlan {
     rows_kept: number
     conflicts: number
     tracks_changes?: boolean | null
+    retired?: number
     valid: number
     updated: number
     inserted: number
@@ -159,6 +166,14 @@ interface ImportTarget {
   columns: MappableColumn[]
 }
 
+// A Choice of many options keeps its row one readable height; the rest are on hover.
+const OPTIONS_SHOWN = 8
+function optionsPreview(choices: string | undefined): string {
+  const options = choices?.split('\n') ?? []
+  const more = options.length - OPTIONS_SHOWN
+  return options.slice(0, OPTIONS_SHOWN).join(', ') + (more > 0 ? ` +${more} more` : '')
+}
+
 async function fetchTargets(): Promise<ImportTarget[]> {
   const list = await listResource<{ row_id: string }>('Table', {
     filters: [['kind', '=', 'table']],
@@ -169,7 +184,8 @@ async function fetchTargets(): Promise<ImportTarget[]> {
   const metas = await Promise.all(
     list.data.map((t) => api.get<TableMeta>(`/api/table/${encodeURIComponent(t.row_id)}:meta`)),
   )
-  return metas.map((m) => ({ name: m.name, columns: mappableColumns(m) }))
+  // #905: an archived Table takes no rows, so it is no import target.
+  return metas.filter((m) => !m.archived_at).map((m) => ({ name: m.name, columns: mappableColumns(m) }))
 }
 
 // IMP-013: the target picker. A native <select> over hundreds of Tables was
@@ -312,7 +328,8 @@ function TargetPicker({
 function TargetRowCount({ i, table }: { i: number; table: string }) {
   const count = useQuery({
     queryKey: ['iw-count', table],
-    queryFn: () => api.get<{ count: number }>(`/api/table/${encodeURIComponent(table)}:count`),
+    // #859: every row an import can match, retired ones included.
+    queryFn: () => api.get<{ count: number }>(`/api/table/${encodeURIComponent(table)}:count?with_retired=true`),
     staleTime: 30_000,
   })
   if (count.data == null) return null
@@ -339,6 +356,11 @@ function ImportPreviewFacts({ report }: {
         {fmtCount(report.fields_kept ?? 0)} {report.fields_kept === 1 ? 'value' : 'values'} retained ·{' '}
         {fmtCount(report.conflicts)} new {report.conflicts === 1 ? 'conflict' : 'conflicts'}
       </p>
+      {(report.retired ?? 0) > 0 && (
+        <p data-testid="iw-preview-retired">
+          {fmtCount(report.retired ?? 0)} matched {report.retired === 1 ? 'row is' : 'rows are'} retired and {report.retired === 1 ? 'stays' : 'stay'} retired
+        </p>
+      )}
       <p className="text-xs text-ink-muted">
         Rows keeping corrections may also have other values change. Counts describe mapped values; import automation still runs.
       </p>
@@ -678,6 +700,12 @@ interface RunEntry {
 }
 
 function RunHistory({ table }: { table: string }) {
+  // #859: a System Manager may delete the rows a run added, permanently.
+  const isSystemManager = useIsSystemManager()
+  const meta = useMeta(table)
+  const canPurge = isSystemManager && tableCanPurge(meta.data)
+  const [purgeRun, setPurgeRun] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const runs = useQuery({
     queryKey: ['iw-run-history', table],
     staleTime: 10_000,
@@ -719,9 +747,31 @@ function RunHistory({ table }: { table: string }) {
       return [...byRun.values()].slice(0, 5)
     },
   })
+  // Whether a run's added rows are still there, from the server, so a reload
+  // tells the same story.
+  const remaining = useQueries({
+    queries: (runs.data ?? []).map((r) => ({
+      queryKey: ['iw-run-remaining', table, r.run_id],
+      enabled: canPurge && r.inserted > 0,
+      queryFn: () => api.get<{ remaining: number }>(`/api/table/${encodeURIComponent(table)}:purge_run_remaining?run_id=${encodeURIComponent(r.run_id)}`),
+    })),
+  })
   if (!runs.data?.length) return null
+  const gone = (r: RunEntry, idx: number) => canPurge && r.inserted > 0 && remaining[idx]?.data?.remaining === 0
   return (
     <div className={cardClasses('mt-4 p-3')} data-testid="iw-run-history">
+      {purgeRun && (
+        <PurgeDialog
+          table={table}
+          runId={purgeRun}
+          onClose={() => setPurgeRun(null)}
+          onDone={() => {
+            setPurgeRun(null)
+            void runs.refetch()
+            void queryClient.invalidateQueries({ queryKey: ['iw-run-remaining', table] })
+          }}
+        />
+      )}
       <div className="mb-1 text-xs font-medium text-ink-muted">Recent imports into {table}</div>
       {runs.data.map((r, idx) => (
         <div
@@ -733,11 +783,23 @@ function RunHistory({ table }: { table: string }) {
             {r.file_name ?? 'API import'} — {fmtCount(r.updated)} processed matches · {fmtCount(r.inserted)} added · {fmtCount(r.failed)}{' '}
             failed
           </span>
-          {r.reverted_at ? (
+          {gone(r, idx) && (
+            <span className="text-xs text-ink-subtle" data-testid={`iw-run-purged-${idx}`}>its added rows are gone</span>
+          )}
+          {gone(r, idx) && r.updated === 0 ? null : r.reverted_at ? (
             <span className="text-xs text-ink-subtle">reverted</span>
           ) : (
             <RevertControl i={`h${idx}`} table={table} runId={r.run_id} />
           )}
+          {canPurge && r.inserted > 0 && !r.reverted_at && remaining[idx]?.data?.remaining ? (
+            <button
+              className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+              onClick={() => setPurgeRun(r.run_id)}
+              data-testid={`iw-run-purge-${idx}`}
+            >
+              Delete its rows permanently
+            </button>
+          ) : null}
         </div>
       ))}
     </div>
@@ -763,6 +825,7 @@ export function ImportWizard() {
     imported: number
     failed: string[]
     remaining: number
+    refused?: number
   } | null>(null)
   // #199: the wizard is two steps now. 'overview' answers "what is in this
   // file?"; 'columns' is the existing per-sheet work, over the chosen sheets
@@ -1179,8 +1242,12 @@ export function ImportWizard() {
         const next = { ...p, combines }
         const cols = mergedColumnsFor(next)
         const rows = mergeSheetRows(cols, next.members.map((m) => sheets[m].rows))
-        const inferred = inferTableDef(next.table, cols.map((c) => c.label), rows)
-        return { ...next, inferred, include: inferred.columns.map(() => true), list_ticks: undefined, check: null, result: null }
+        const fresh = inferTableDef(next.table, cols.map((c) => c.label), rows)
+        // A column this combine leaves alone keeps what the person set on it.
+        const before = mergedColumnsFor(p)
+        const untouched = (ci: number) => (cols[ci].combinedKeys ? -1 : before.findIndex((b) => b.key === cols[ci].key && !b.combinedKeys))
+        const inferred = { ...fresh, columns: fresh.columns.map((c, ci) => p.inferred.columns[untouched(ci)] ?? c) }
+        return { ...next, inferred, include: inferred.columns.map((_, ci) => p.include[untouched(ci)] ?? true), list_ticks: undefined, check: null, result: null }
       }),
     )
   }
@@ -1350,6 +1417,49 @@ export function ImportWizard() {
     )
   }
 
+  // A column's type, as the person picked it. Inference fills a Choice's options
+  // only when it picks Choice itself, and a Choice with none is refused, so a
+  // hand-picked one reads them from every sheet feeding the column.
+  function withColumnType(plan: SheetPlan, column: InferredTableDef['columns'][number], ci: number, column_type: string) {
+    if (column_type !== 'Choice' || column.choices) return { ...column, column_type }
+    const values = plan.members.flatMap((m) => memberSheet(plan, m).rows.map((row) => row[ci]))
+    return { ...column, column_type, choices: choiceOptions(values).join('\n') || undefined }
+  }
+
+  // The columns a new Table is made with, each with its place on screen, so a
+  // refusal can name the one the person sees.
+  function sentColumns(plan: SheetPlan) {
+    return plan.inferred.columns
+      .map((c, sourceIndex) => ({ ...c, sourceIndex }))
+      .filter((c) => c.column_name.trim() && plan.include[c.sourceIndex])
+  }
+
+  // Make the Table a new-Table plan imports into. On a second attempt the first
+  // may have made it already: an empty one is made again, since the person may
+  // have changed its columns since, and one holding rows would double them.
+  async function makeNewTable(plan: SheetPlan, i: number) {
+    if (plan.created_table === plan.table) {
+      const address = encodeURIComponent(plan.table)
+      const held = await api.get<{ count: number }>(`/api/table/${address}:count`).catch(() => null)
+      if (held?.count)
+        throw new ApiError(409, 'ConflictError', `${plan.table} already holds ${fmtCount(held.count)} ${held.count === 1 ? 'row' : 'rows'} from the attempt that stopped. Delete it under Past imports, then import again.`)
+      if (held) await api.delete(`/api/table_def/${address}`)
+    }
+    const inList = listTicks(plan)
+    await api.post('/api/table_def', {
+      name: plan.table,
+      id_pattern: planIdPattern(plan),
+      columns: sentColumns(plan).map((c) => ({
+        column_name: c.column_name.trim(),
+        label: c.label.trim() || undefined,
+        column_type: c.column_type,
+        choices: c.column_type === 'Choice' ? c.choices : undefined,
+        in_list_view: inList[c.sourceIndex],
+      })),
+    })
+    setPlans((ps) => ps.map((p, j) => (j === i ? { ...p, created_table: plan.table } : p)))
+  }
+
   // The upsert arguments of an existing-mode run, or null for append-always.
   function upsertArgs(plan: SheetPlan): ImportUpsertArgs | null {
     if (!plan.key) return null
@@ -1394,7 +1504,7 @@ export function ImportWizard() {
         if (i !== only) continue
         // #201: rehearse member by member, exactly as the import will send
         // them, so a reported row number is true against its own sheet.
-        const totals = { valid: 0, updated: 0, changed: 0, unchanged: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, rows_kept: 0, conflicts: 0, tracks_changes: null as boolean | null }
+        const totals = { valid: 0, updated: 0, changed: 0, unchanged: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, rows_kept: 0, conflicts: 0, retired: 0, tracks_changes: null as boolean | null }
         const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
         for (const { sheetIndex: m, rows, skipped, failed: duplicates } of targetParts(plan)) {
           const sheet = memberSheet(plan, m)
@@ -1417,6 +1527,7 @@ export function ImportWizard() {
           totals.unchanged += report.unchanged
           totals.rows_kept += report.rows_kept
           totals.conflicts += report.conflicts
+          totals.retired += report.retired
           totals.tracks_changes = report.tracks_changes
           totals.valid += report.valid
           totals.updated += report.updated
@@ -1427,7 +1538,7 @@ export function ImportWizard() {
         setPlans((ps) => ps.map((p, j) => (j === i ? { ...p, check: { ...totals, failed } } : p)))
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Check failed')
+      setError(refusalMessage(err, 'Check failed'))
     } finally {
       setBusy(null)
     }
@@ -1468,7 +1579,7 @@ export function ImportWizard() {
             if (candidates.some((c) => c.complete)) overlaps.push({ index: i, table: plan.table, rows: rows.length })
           }
         } catch (err) {
-          const message = err instanceof ApiError ? err.message : 'Import safety check failed'
+          const message = refusalMessage(err, 'Import safety check failed')
           if (currentGuardIdentity.current === guardIdentity)
             setPlans((ps) => ps.map((p, j) => j === i ? { ...p, failure: message } : p))
           throw err // Failed analysis is never permission to append or write other targets.
@@ -1497,6 +1608,7 @@ export function ImportWizard() {
       // unreported, and skipped the completion block — taking with it the only
       // link to the Import Log. Each target now fails on its own.
       let imported = 0
+      let rowsRefused = 0
       const failedTargets: string[] = []
       const ran: number[] = []
       for (const [i, plan] of plans.entries()) {
@@ -1507,23 +1619,7 @@ export function ImportWizard() {
         // result on screen is the user's evidence that it did land.
         if (only === undefined && plan.result) continue
         try {
-        if (plan.mode === 'new') {
-          const inList = listTicks(plan)
-          await api.post('/api/table_def', {
-            name: plan.table,
-            id_pattern: planIdPattern(plan),
-            columns: plan.inferred.columns
-              .map((c, idx) => ({ c, idx }))
-              .filter(({ c, idx }) => c.column_name.trim() && plan.include[idx])
-              .map(({ c, idx }) => ({
-                column_name: c.column_name.trim(),
-                label: c.label.trim() || undefined,
-                column_type: c.column_type,
-                choices: c.column_type === 'Choice' ? c.choices : undefined,
-                in_list_view: inList[idx],
-              })),
-          })
-        }
+        if (plan.mode === 'new') await makeNewTable(plan, i)
         // RVT-R1: one identity for the whole target, shared by its parts —
         // the handle the revert control addresses. #201: for a merge group
         // that means one run_id across every member sheet, so reverting
@@ -1573,6 +1669,12 @@ export function ImportWizard() {
           failed.push(...report.failed.map((f) => ({ ...f, sheetIndex: m })))
         }
         failed.sort((a, b) => plan.members.indexOf(a.sheetIndex) - plan.members.indexOf(b.sheetIndex) || a.sourceIndex - b.sourceIndex)
+        // Every row refused into a Table made for them: nothing landed, and its
+        // columns may be why. So this target failed, and can be corrected and
+        // imported again rather than leaving an empty Table with the wrong columns.
+        if (plan.mode === 'new' && failed.length && !total.inserted && !total.updated)
+          throw new ApiError(417, 'ValidationError', `${failed.length === 1 ? 'the 1 row was' : `all ${fmtCount(failed.length)} rows were`} refused (first: ${failLabel(plan, failed[0])})`)
+        rowsRefused += failed.length
         setPlans((ps) =>
           ps.map((p, j) =>
             j === i
@@ -1586,7 +1688,7 @@ export function ImportWizard() {
           // Recorded, named, and the run continues. A target that threw is
           // not the same as one that imported nothing, so it says which.
           failedTargets.push(plan.table)
-          const message = err instanceof ApiError ? err.message : 'Import failed'
+          const message = refusalMessage(err, 'Import failed', plan.mode === 'new' ? sentColumns(plan) : [])
           setPlans((ps) =>
             ps.map((p, j) => (j === i ? { ...p, failure: message } : p)),
           )
@@ -1608,7 +1710,7 @@ export function ImportWizard() {
       // #202: "Import complete." after target 1 of 3 would be a lie. The run
       // still always reports when it STOPS (#203) — it just reports what it
       // actually did and what is left.
-      setRunOutcome({ imported, failed: failedTargets, remaining: stillToGo })
+      setRunOutcome({ imported, failed: failedTargets, remaining: stillToGo, refused: rowsRefused })
       const finished = failedTargets.length === 0 && activeIndexes.every(landed)
       setDone(finished)
       // #204: and drop the saved session with it, so the next visit is a
@@ -1630,8 +1732,9 @@ export function ImportWizard() {
       // result is a per-sheet summary with ONE revert control for the whole
       // group — jumping to the list view would destroy the only place either
       // can be read, which is the complaint this work started from.
-      // #203: and never navigate away from a failure the user has not read.
-      if (!failedTargets.length && active.length === 1 && active[0].members.length === 1) {
+      // #203: and never navigate away from a failure the user has not read,
+      // refused rows included: they are listed nowhere else on the way out.
+      if (!failedTargets.length && !rowsRefused && active.length === 1 && active[0].members.length === 1) {
         navigate({
           to: '/featherbase/admin/table/$table',
           params: { table: active[0].table },
@@ -1639,7 +1742,7 @@ export function ImportWizard() {
         })
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Import failed')
+      setError(refusalMessage(err, 'Import failed'))
     } finally {
       setBusy(null)
     }
@@ -2303,7 +2406,7 @@ export function ImportWizard() {
                                 inferred: {
                                   ...plan.inferred,
                                   columns: plan.inferred.columns.map((cc, j) =>
-                                    j === ci ? { ...cc, column_type: e.target.value } : cc,
+                                    j === ci ? withColumnType(plan, cc, ci, e.target.value) : cc,
                                   ),
                                 },
                               })
@@ -2318,8 +2421,12 @@ export function ImportWizard() {
                             ))}
                           </select>
                         </td>
-                        <td className="px-2 py-1 text-xs text-ink-muted">
-                          {c.column_type === 'Choice' ? c.choices?.split('\n').join(', ') : ''}
+                        <td
+                          className="px-2 py-1 text-xs text-ink-muted"
+                          data-rowfield="choices"
+                          title={c.column_type === 'Choice' ? c.choices?.split('\n').join(', ') : undefined}
+                        >
+                          {c.column_type === 'Choice' ? optionsPreview(c.choices) : ''}
                         </td>
                       </tr>
                     ))}
@@ -2847,14 +2954,16 @@ export function ImportWizard() {
       )}
       {runOutcome && !needsFile && (
         <p
-          className={`mt-2 text-sm ${runOutcome.failed.length ? 'text-negative' : 'text-positive'}`}
+          className={`mt-2 text-sm ${runOutcome.failed.length || runOutcome.refused ? 'text-negative' : 'text-positive'}`}
           data-testid="iw-done"
         >
           {runOutcome.failed.length > 0
             ? `Imported ${fmtCount(runOutcome.imported)}; ${fmtCount(runOutcome.failed.length)} failed: ${runOutcome.failed.join(', ')}.`
             : runOutcome.remaining > 0
               ? `Imported ${fmtCount(runOutcome.imported)}; ${fmtCount(runOutcome.remaining)} still to import.`
-              : 'Import complete.'}
+              : runOutcome.refused
+                ? `${runOutcome.refused === 1 ? '1 row was' : `${fmtCount(runOutcome.refused)} rows were`} refused. See above.`
+                : 'Import complete.'}
         </p>
       )}
 

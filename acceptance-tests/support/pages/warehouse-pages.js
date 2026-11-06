@@ -1,6 +1,6 @@
 'use strict';
 
-// #772: connecting a MotherDuck warehouse by its token, its source page, the
+// #772, #969: connecting a MotherDuck warehouse with the instance's token, its source page, the
 // sidebar's Data sources group, searchable catalog, preview and copy setup.
 
 const SOURCE_TABLE = 'data-source';
@@ -19,11 +19,13 @@ class ConnectWarehousePage {
     await this.page.getByTestId('connect-name').fill(name);
   }
 
-  async test(token) {
-    await this.page.getByTestId('connect-token').fill(token);
-    await this.page.getByTestId('connect-test').click();
-    // The result replaces the hint once the test has answered.
-    await this.page.getByTestId('connect-result').filter({ hasText: /Connected|refused|cannot|could not/ }).waitFor();
+  /** The result replaces the waiting line once MotherDuck has answered. */
+  async answered() {
+    await this.page.getByTestId('connect-result').filter({ hasText: /Connected|refused|cannot|could not|not set/ }).waitFor();
+  }
+
+  async asksForToken() {
+    return (await this.page.locator('input[type=password]').count()) > 0;
   }
 
   async result() {
@@ -45,39 +47,6 @@ class ConnectWarehousePage {
   async save() {
     await this.page.getByTestId('connect-save').click();
     await this.page.getByTestId('warehouse-browser').waitFor();
-  }
-}
-
-class WarehouseSourcePage {
-  constructor(page) {
-    this.page = page;
-  }
-
-  async open(name) {
-    await this.page.goto(`/featherbase/admin/table/${SOURCE_TABLE}/row/${encodeURIComponent(name)}`);
-    await this.page.getByTestId('warehouse-token').waitFor();
-  }
-
-  async token() {
-    return this.page.getByTestId('warehouse-token').innerText();
-  }
-
-  /** The token line once it names these last four (it refreshes after a replace). */
-  async tokenEnding(four) {
-    const line = this.page.getByTestId('warehouse-token').filter({ hasText: `…${four}` });
-    await line.waitFor({ timeout: 15_000 }).catch(() => {});
-    return this.token();
-  }
-
-  async pageText() {
-    return this.page.locator('body').innerText();
-  }
-
-  async replaceToken(token) {
-    await this.page.getByTestId('replace-token').click();
-    await this.page.getByTestId('replace-token-input').fill(token);
-    await this.page.getByTestId('replace-token-save').click();
-    await this.page.getByTestId('replace-token').waitFor();
   }
 }
 
@@ -312,4 +281,4 @@ class CopiedWarehousePage {
   }
 }
 
-module.exports = { ConnectWarehousePage, WarehouseSourcePage, DataSourcesSidebar, WarehouseBrowserPage, WarehouseCopyPage, CopiedWarehousePage };
+module.exports = { ConnectWarehousePage, DataSourcesSidebar, WarehouseBrowserPage, WarehouseCopyPage, CopiedWarehousePage };

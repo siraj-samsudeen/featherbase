@@ -27,7 +27,9 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
   const definitions = await sql<{
     name: string; owner_app: string | null; module: string; system: boolean;
     system_written: boolean; kind: 'table' | 'settings'
-  }[]>`select name, owner_app, module, system, system_written, kind from table_def where kind != 'sub_table' order by name`
+  }[]>`select name, owner_app, module, system, system_written, kind from table_def where kind != 'sub_table'
+      -- #905: an archived table is out of the command bar; All tables lists it.
+      and archived_at is null order by name`
   for (const definition of definitions) {
     const { name, owner_app } = definition
     if ((await permissionScope(user, name, 'read')) === 'none') continue
@@ -73,7 +75,7 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
     add(page.title, `/featherbase/admin/${page.slug}`, 'Page')
   }
   add('Sign-in methods', ACCOUNT_SIGN_IN_METHODS_PATH, 'Account')
-  if (roles.includes(VIEWER_ROLE)) add(INTERIM_APPS.feather_dash.title, INTERIM_APPS.feather_dash.root, 'Report')
+  if (roles.includes(VIEWER_ROLE)) add(INTERIM_APPS.dash.title, INTERIM_APPS.dash.root, 'Report')
   for (const page of await getVisibleHomePages(user))
     add(page.label || page.row_id, `/featherbase/admin/home/${encodeURIComponent(page.row_id)}`, 'Home Page')
   for (const app of await appCatalog(user)) {

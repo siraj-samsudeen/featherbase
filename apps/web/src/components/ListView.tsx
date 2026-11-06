@@ -11,7 +11,7 @@ import { useNavigation } from '../lib/navigation'
 import { TreeOfAll } from './RelationTree'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
 import { LinkControl } from './FormView'
-import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isArchived, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
 import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, switchColumn, titleListColumn, viewColumns, type ColumnArrangement, type ListColumn } from '../lib/list-view-columns'
 import { useI18n } from '../lib/i18n'
 import { useRealtime } from '../lib/realtime'
@@ -22,12 +22,15 @@ import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName, usePrincipalLabels } from '../lib/people'
 import { Button, DataCards, NARROW_QUERY, ViewToggle, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp, ChevronDown } from '@featherbase/shop-floor'
+import { RetiredBadge, tableCanRetire } from './RowRetirement'
+import { PurgeDialog, tableCanPurge } from './PurgeDialog'
 import { GlossaryHelp } from './GlossaryHelp'
 import { fmtCount } from '@featherbase/shop-floor'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
 import { ActionDisclosure } from './ActionDisclosure'
 import { RenameTable } from './RenameTable'
+import { ArchiveTable, ArchivedBanner, canArchive } from './ArchiveTable'
 
 export type Filter = [string, string, unknown]
 
@@ -201,6 +204,14 @@ export function ListView({
   }, [colPickerOpen])
   const [conflictsOpen, setConflictsOpen] = useState(false)
   useEffect(() => setConflictsOpen(false), [table])
+  // #859: retired rows are left out unless the person asks to see them.
+  const [showRetired, setShowRetired] = useState(false)
+  useEffect(() => setShowRetired(false), [table])
+  const retirable = tableCanRetire(meta.data)
+  // #859: a System Manager may delete the selection permanently.
+  const [purging, setPurging] = useState(false)
+  const canPurge = isSystemManager && tableCanPurge(meta.data)
+  const withRetired = retirable && showRetired
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsUnsaved, setSettingsUnsaved] = useState(false)
   const settingsWrite = useRef(Promise.resolve())
@@ -366,13 +377,14 @@ export function ListView({
       : undefined)
 
   const list = useQuery({
-    queryKey: ['list', table, columns.map((c) => c.column_name), orderBy, start, filterKey],
+    queryKey: ['list', table, columns.map((c) => c.column_name), orderBy, start, filterKey, withRetired],
     enabled: Boolean(meta.data),
     placeholderData: keepPreviousData,
     queryFn: () =>
       listResource(table, {
         filters: queryFilters,
-        fields: listFields(columns),
+        fields: retirable ? [...listFields(columns), 'retired_at'] : listFields(columns),
+        with_retired: withRetired,
         order_by: orderBy,
         limit_start: start,
         limit_page_length: PAGE,
@@ -557,6 +569,8 @@ export function ListView({
       // #898: the deleted rows' titles go, so recents stop offering them.
       const failed = new Set((result.failed ?? []).map((f) => f.row_id))
       for (const id of selected) if (!failed.has(id)) queryClient.setQueryData(['row-title', table, id], null)
+      // The Recent chips ask again, so a deleted row leaves them at once.
+      void queryClient.invalidateQueries({ queryKey: ['recent-strip-rows', table] })
       await reportPartial('deleted', result.deleted, result.failed ?? [])
     } catch (err) {
       setBulkError(err instanceof ApiError ? refusal(err) : 'Bulk delete failed')
@@ -607,6 +621,21 @@ export function ListView({
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
           </span>
+          {/* #859: beside the total it changes; the toolbar stays as it was. */}
+          {retirable && (
+            <label className="ml-3 inline-flex cursor-pointer items-center gap-1 text-xs text-ink-muted" data-testid="list-show-retired">
+              <input
+                type="checkbox"
+                checked={showRetired}
+                onChange={(e) => {
+                  setShowRetired(e.target.checked)
+                  setStart(0)
+                }}
+                data-testid="list-show-retired-toggle"
+              />
+              Show retired
+            </label>
+          )}
           {meta.data?.data_source && (
             <span
               className={pillClasses('ml-2 align-middle text-xs')}
@@ -787,6 +816,8 @@ export function ListView({
               {meta.data && !meta.data.system && !meta.data.owner_app && !meta.data.data_source && meta.data.kind !== 'settings' && !isSystemWritten(meta.data) && (
                 <RenameTable table={table} />
               )}
+              {/* #905: archive a custom Table something replaced; deleting stays separate. */}
+              {canArchive(meta.data) && !isArchived(meta.data) && <ArchiveTable table={table} />}
               {!meta.data?.system && !isSystemWritten(meta.data) && (
                 <button
                   onClick={() => setConfirmingDelete(true)}
@@ -801,6 +832,7 @@ export function ListView({
           </ActionDisclosure>}
         </div>
       </div>
+      <ArchivedBanner table={table} meta={meta.data} canUnarchive={isSystemManager} />
       {conflictsOpen && meta.data && <ImportConflicts key={table} table={table} meta={meta.data} />}
       {settingsUnsaved && (
         <div className="mb-3" data-testid="list-settings-error">
@@ -864,6 +896,17 @@ export function ListView({
       {/* #327: the same confirmation as Delete Table and a form's Delete —
           labelled, Escape-dismissable, Cancel first — naming how many rows
           go. Whatever the server answers shows in the bulk bar afterwards. */}
+      {purging && (
+        <PurgeDialog
+          table={table}
+          ids={[...selected]}
+          onClose={() => setPurging(false)}
+          onDone={() => {
+            setPurging(false)
+            setSelected(new Set())
+          }}
+        />
+      )}
       {confirmingBulkDelete && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
@@ -985,6 +1028,14 @@ export function ListView({
               </>
             )}
           </span>}
+          {canPurge && <button
+            onClick={() => setPurging(true)}
+            disabled={bulkBusy}
+            className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+            data-testid="bulk-purge"
+          >
+            Delete permanently
+          </button>}
           {bulkError && (
             <span className="text-xs text-negative" data-testid="bulk-error">
               {bulkError}
@@ -1277,6 +1328,7 @@ function ListCell({
     : shownCol
   if (first)
     return (
+      <>
       <Link
         to="/featherbase/admin/table/$table/row/$name"
         search={{ prefill: undefined }}
@@ -1301,6 +1353,8 @@ function ListCell({
             : cell(row[col.column_name], col.column_type, settings)
         )}
       </Link>
+      {row.retired_at != null && <RetiredBadge className="ml-2 align-middle" />}
+      </>
     )
   const value = row[col.column_name]
   return (

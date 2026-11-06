@@ -29,12 +29,21 @@ const controller: TableController = {
         throw new AppError('ValidationError', 'Incomplete table restriction', {
           table_allowlist: guidance,
         })
-      // #772: a MotherDuck source connected by a pasted token names no
-      // variable; its token is stored encrypted (ADR 0018).
+      // #969: a MotherDuck source names no variable, since the instance has one
+      // token, and is only ever read (ADR 0020).
       if (engine === 'motherduck') {
         if (row.access === 'read_write')
           throw new AppError('ValidationError', 'MotherDuck sources are read-only', {
-            access: 'A warehouse connected by a token can only be read',
+            access: 'A warehouse can only be read',
+          })
+        if (String(row.url_env ?? '').trim())
+          throw new AppError('ValidationError', 'A MotherDuck source names no variable', {
+            url_env: 'Every MotherDuck source uses MOTHERDUCK_TOKEN; leave this empty',
+          })
+        const databases = row.databases ?? []
+        if (!Array.isArray(databases) || databases.some((d) => typeof d?.name !== 'string' || !d.name.trim()))
+          throw new AppError('ValidationError', 'Name each database a MotherDuck source reads', {
+            databases: 'A list of databases, each with a name',
           })
       } else if (engine === 'csv-folder') {
         if (!String(row.root_path ?? '').trim())

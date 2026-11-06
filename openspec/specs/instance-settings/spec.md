@@ -75,8 +75,7 @@ holding a secret SHALL be refused.
 
 The file SHALL be able to name an instance's data sources, by which variable
 holds each connection and never the connection itself. A MotherDuck source
-whose token was pasted in the app is not in the file; after a wipe it is
-connected again in the app.
+names the databases it reads; its token is the instance's one MotherDuck token.
 
 #### Scenario: After a wipe
 

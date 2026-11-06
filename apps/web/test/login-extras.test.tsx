@@ -57,7 +57,7 @@ test('someone who belongs on another address is handed off there when they sign 
   config.instanceAddresses = parseInstanceAddresses(
     JSON.stringify([
       { address: 'http://localhost', opens: 'admin', emails: true },
-      { address: 'http://dash.example.test', opens: 'feather_dash' },
+      { address: 'http://dash.example.test', opens: 'dash' },
     ]),
     'test',
   )

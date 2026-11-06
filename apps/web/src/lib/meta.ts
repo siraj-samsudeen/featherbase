@@ -61,6 +61,13 @@ export interface TableMeta {
   // #432: the platform alone writes this Table's rows (Activity Log, Version,
   // Background Job, …). Lists and forms show it read-only for everyone.
   system_written?: boolean
+  /** Private work (mandatory access); never deleted permanently (#859). */
+  access_policy?: unknown
+  // #905: an archived Table keeps its rows readable but takes no new rows or
+  // edits. Who archived it, when, and what replaced it.
+  archived_at?: string | null
+  archived_by?: string | null
+  archived_note?: string | null
   // EDS-13: set when the Table is bound to an external Data Source. The Admin
   // shows a source badge and, for read-only sources, renders lists/forms
   // without any write affordance.
@@ -126,7 +133,12 @@ export function isSystemWritten(meta: TableMeta | undefined): boolean {
 // hangs on this: absent when a read-only source owns the rows or when the
 // platform does.
 export function isRowsReadOnly(meta: TableMeta | undefined): boolean {
-  return isSourceReadOnly(meta) || isSystemWritten(meta)
+  return isSourceReadOnly(meta) || isSystemWritten(meta) || isArchived(meta)
+}
+
+/** #905: archived: its rows read only for everyone, until it is un-archived. */
+export function isArchived(meta: TableMeta | undefined): boolean {
+  return Boolean(meta?.archived_at)
 }
 
 /** The one query for a Table's metadata — shared by useMeta and by callers

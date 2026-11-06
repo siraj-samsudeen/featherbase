@@ -801,6 +801,14 @@ export function appEntryTable(name: string): string | undefined {
   return packages.get(name)?.entryTable
 }
 
+/** #955: an installed app whose pages this process serves, whoever may open
+ *  them: the apps a person can ask for by opening them. */
+export async function servedApp(name: string): Promise<{ name: string; title: string } | null> {
+  const item = (await listInstalledApps()).find((entry) => entry.name === name)
+  const pkg = packages.get(name)
+  return item?.active && item.ownPages && pkg?.clientRoot ? { name: pkg.name, title: pkg.title } : null
+}
+
 export async function appCatalog(user: string) {
   const installed = await listInstalledApps()
   const result = []

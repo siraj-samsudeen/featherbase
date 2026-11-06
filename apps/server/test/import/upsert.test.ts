@@ -311,7 +311,7 @@ describe('UPS-R1: the import boundary learns update', () => {
     expect(await admin.post(PATH, { key_column: 'zone', rows, dry_run: true })).toEqual({
       dry_run: true, valid: 2, updated: 1, inserted: 1, failed: [],
       actions: ['update', 'insert'], fields_updated: 1, fields_kept: 0, tracks_changes: true,
-      changed: 1, unchanged: 0, rows_kept: 0, conflicts: 0,
+      changed: 1, unchanged: 0, rows_kept: 0, conflicts: 0, retired: 0,
     })
     expect(await importState()).toEqual(before)
   })
@@ -331,7 +331,7 @@ describe('UPS-R1: the import boundary learns update', () => {
     expect(await admin.post(PATH, { ...body, dry_run: true })).toEqual({
       dry_run: true, valid: 2, updated: 1, inserted: 1, failed,
       actions: ['update', 'fail', 'fail', 'insert'], fields_updated: 1, fields_kept: 0,
-      changed: 1, unchanged: 0, rows_kept: 0, conflicts: 0,
+      changed: 1, unchanged: 0, rows_kept: 0, conflicts: 0, retired: 0,
       tracks_changes: true,
     })
     expect(await importState()).toEqual(before)
@@ -705,12 +705,16 @@ describe('UPS-R5: the key is remembered per Table', () => {
       )}&order_by=${encodeURIComponent('created_at desc')}`,
     )
     expect(logs.data.length).toBe(3) // seed request + keyed run + keyless run
-    // Latest row (the keyless run) records the truthful zero count but no
-    // match-key configuration…
-    expect(logs.data[0].updated).not.toBeNull()
-    expect(logs.data[0].updated).toBe(0)
-    expect(logs.data[0].key_column).toBeNull()
-    expect(logs.data[0].empty_cells).toBeNull()
+    // A keyless run records the truthful zero count but no match-key
+    // configuration… (the runs share one created_at in a test transaction,
+    // so they are picked by what they hold, not by their order)
+    const keyless = logs.data.filter((l) => l.key_column == null)
+    expect(keyless).toHaveLength(2)
+    for (const log of keyless) {
+      expect(log.updated).not.toBeNull()
+      expect(log.updated).toBe(0)
+      expect(log.empty_cells).toBeNull()
+    }
     // …and the wizard's lookup — newest row WITH a key — still finds the
     // remembered pair, so a keyless run never erases the suggestion.
     const remembered = logs.data.find((l) => l.key_column != null)
