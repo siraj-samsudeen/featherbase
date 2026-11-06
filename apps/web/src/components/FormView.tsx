@@ -1530,7 +1530,8 @@ export function LinkControl({
 }) {
   const target = field.reference_table ?? ''
   const box = useRef<HTMLInputElement>(null)
-  const [place, setPlace] = useState<{ top: number; left: number; width: number } | null>(null)
+  const list = useRef<HTMLDivElement>(null)
+  const [place, setPlace] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null)
   // #793: a Table with no picker of its own is searched and shown by its
   // title column, never by its row id — only when the caller may read that
   // column; otherwise it stays searched and shown by row id.
@@ -1564,11 +1565,13 @@ export function LinkControl({
   // A filter has its own clear control and stays a filter: no pane or open.
   const hasValue = Boolean(value) && query === null && !forFilter && !(anyTable && targetMeta.isError)
 
-  // The floating list is placed once, under the box; scrolling or resizing
-  // would leave it behind, so either closes it.
+  // The floating list is placed once, beside the box; scrolling the page or
+  // resizing would leave it behind, so either closes it.
   useEffect(() => {
     if (!floating || !open) return
-    const close = () => setOpen(false)
+    const close = (e: Event) => {
+      if (!(e.target instanceof Node && list.current?.contains(e.target))) setOpen(false)
+    }
     window.addEventListener('scroll', close, true)
     window.addEventListener('resize', close)
     return () => {
@@ -1579,7 +1582,17 @@ export function LinkControl({
 
   function openList() {
     const rect = floating ? box.current?.getBoundingClientRect() : undefined
-    setPlace(rect ? { top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 224) } : null)
+    if (rect) {
+      // Scrolling closes the list, so it has to fit in the window where it opens.
+      const below = window.innerHeight - rect.bottom - 8
+      const above = rect.top - 8
+      const across = { left: rect.left, width: Math.max(rect.width, 224) }
+      setPlace(below < 240 && above > below
+        ? { ...across, bottom: window.innerHeight - rect.top + 4, maxHeight: above }
+        : { ...across, top: rect.bottom + 4, maxHeight: below })
+    } else {
+      setPlace(null)
+    }
     setOpen(true)
   }
 
@@ -1713,7 +1726,8 @@ export function LinkControl({
       )}
       {open && (
         <div
-          className={place ? 'fixed z-30 rounded-md border border-border bg-surface shadow-lg' : 'absolute z-10 mt-1 w-full rounded-md border border-border bg-surface shadow-lg'}
+          ref={list}
+          className={place ? 'fixed z-30 overflow-y-auto rounded-md border border-border bg-surface shadow-lg' : 'absolute z-10 mt-1 w-full rounded-md border border-border bg-surface shadow-lg'}
           style={place ?? undefined}
           data-testid={`link-options-${field.column_name}`}
         >
