@@ -305,7 +305,9 @@ the app's settings with person IDs, not display names: `support_users`,
 maps regions to arrays of alternative approvers; `restricted_resources` is a
 JSON array of restricted resource names. `assignees` is a JSON array of people
 support may assign tickets to without giving them support rights; the assign
-picker also offers everyone in the other lists. Missing authority or routing blocks
+picker also offers everyone in the other lists. Assigning a ticket to someone
+else emails them, once the save commits; creating a ticket never sends mail.
+Missing authority or routing blocks
 access decisions. Use the existing App Setting/instance-settings interface.
 
 Tickets uses ordinary platform Table permissions: Administrator and System

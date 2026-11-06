@@ -33,6 +33,17 @@ export interface RuntimeActionContext {
    *  Never return, log or store one. */
   readonly secrets: Readonly<Record<string, string>>
   reject(message: string, fields?: Record<string, string>): never
+  /** #1001: email a person by Person ID. The platform holds the address. */
+  readonly mail: {
+    /** Whether this person may read this row of the app's own Tables, so an
+     *  email to them can leave out what they could not read. */
+    mayRead(person: string, table: string, rowId: string): Promise<boolean>
+    /** Queues one email once this action commits: none if it rolls back, and a
+     *  person with no usable email gets none (logged). A failure to queue never
+     *  undoes the action. `path` follows the app's root in a link the platform
+     *  appends, on the address that serves the app. */
+    toPerson(person: string, message: { subject: string; body: string; path?: string; ref_table?: string; reference_name?: string }): Promise<void>
+  }
   readonly documents: {
     get(table: string, rowId: string): Promise<ActionRow>
     members(table: string): Promise<{ row_id: string; full_name: string }[]>
@@ -62,7 +73,7 @@ export interface DatasetAnswer {
   readonly rows: DatasetRow[]
 }
 
-export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'documents'> {
+export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'documents' | 'mail'> {
   readonly documents: Pick<RuntimeActionContext['documents'], 'get' | 'list' | 'activity'>
   /** #625 (E3): the app's declared datasets, limited to the reader's places. */
   readonly datasets: {

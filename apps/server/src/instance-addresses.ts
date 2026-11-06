@@ -134,6 +134,13 @@ export function adminLinkOrigin(list: readonly InstanceAddress[] | null, environ
   return emailedLinkOrigin(list, environment, undefined, (l) => adminAddress(l))
 }
 
+/** The origin of an emailed link to an app's page (#1001): the entry that opens
+ *  the app, else the `admin` entry, which serves every app. The entry marked for
+ *  emails may open another app, and its address would redirect the page away. */
+export function appLinkOrigin(list: readonly InstanceAddress[] | null, environment: string, app: string): string | null {
+  return emailedLinkOrigin(list, environment, undefined, (l) => l.find((entry) => entry.opens === app) ?? adminAddress(l))
+}
+
 function emailedLinkOrigin(
   list: readonly InstanceAddress[] | null,
   environment: string,

@@ -1302,7 +1302,8 @@ function App() {
     [tickets, setTickets] = useState<Ticket[]>([]),
     [everything, setEverything] = useState<Ticket[]>([]),
     [detail, setDetail] = useState<Detail | null>(null)
-  const [selected, setSelected] = useState(''),
+  // #1001: an emailed link opens its ticket.
+  const [selected, setSelected] = useState(() => new URLSearchParams(window.location.search).get('ticket') ?? ''),
     [search, setSearch] = useState(''),
     [kind, setKind] = useState(''),
     [state, setState] = useState(''),
