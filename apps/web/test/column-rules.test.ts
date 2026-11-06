@@ -70,7 +70,7 @@ describe('checkColumn', () => {
     expect(checkColumn(col('submission_status'), [], 'x'.repeat(64))).toEqual({
       error: '“submission_status” is a built-in column every table gets', fix: undefined,
     })
-    for (const name of ['!!!', ' Status ', '2'.repeat(64)]) {
+    for (const name of ['!!!', ' Position ', '2'.repeat(64)]) {
       const verdict = checkColumn(col(name), [])
       // Spaces around a reserved name are ignored; a slug that is empty,
       // reserved or too long is not a safe one-click repair.
