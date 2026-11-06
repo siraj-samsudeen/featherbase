@@ -257,13 +257,13 @@ describe('Tickets assignment email on real commits (#1001)', () => {
     const { worker, support, openTicket } = await world(admin, createUser)
     const ticket = await openTicket()
     // Fails at COMMIT itself: every statement of the save, and the handler, have succeeded.
-    await sql.unsafe(`create function refuse_commit_1001() returns trigger language plpgsql as $$ begin raise exception 'refused at commit'; end $$`)
-    await sql.unsafe(`create constraint trigger refuse_commit_1001 after insert on runtime_action_result deferrable initially deferred for each row execute function refuse_commit_1001()`)
+    await sql.unsafe(`create or replace function refuse_commit_1001() returns trigger language plpgsql as $$ begin raise exception 'refused at commit'; end $$`)
+    await sql.unsafe(`create constraint trigger refuse_commit_1001 after insert on featherbase.runtime_action_result deferrable initially deferred for each row execute function refuse_commit_1001()`)
     const key = randomUUID()
     try {
       await expect(act(support, 'edit', { ...revision(ticket), assigned_to: worker.user }, key)).rejects.toBeTruthy()
     } finally {
-      await sql.unsafe(`drop trigger refuse_commit_1001 on runtime_action_result`)
+      await sql.unsafe(`drop trigger refuse_commit_1001 on featherbase.runtime_action_result`)
       await sql.unsafe(`drop function refuse_commit_1001()`)
     }
     expect(await stored(ticket)).toBeNull()
@@ -277,12 +277,12 @@ describe('Tickets assignment email on real commits (#1001)', () => {
     const { worker, support, openTicket } = await world(admin, createUser)
     const ticket = await openTicket()
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
-    await sql.unsafe(`create function refuse_mail_1001() returns trigger language plpgsql as $$ begin raise exception 'mail table unavailable'; end $$`)
-    await sql.unsafe(`create trigger refuse_mail_1001 before insert on email_queue for each row execute function refuse_mail_1001()`)
+    await sql.unsafe(`create or replace function refuse_mail_1001() returns trigger language plpgsql as $$ begin raise exception 'mail table unavailable'; end $$`)
+    await sql.unsafe(`create trigger refuse_mail_1001 before insert on featherbase.email_queue for each row execute function refuse_mail_1001()`)
     try {
       expect((await assign(support, ticket, worker.user)).assigned_to).toBe(worker.user)
     } finally {
-      await sql.unsafe(`drop trigger refuse_mail_1001 on email_queue`)
+      await sql.unsafe(`drop trigger refuse_mail_1001 on featherbase.email_queue`)
       await sql.unsafe(`drop function refuse_mail_1001()`)
     }
     expect(await stored(ticket)).toBe(worker.user)

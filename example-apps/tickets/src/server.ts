@@ -25,6 +25,10 @@ interface ReadContext {
   }
 }
 interface Context extends ReadContext {
+  mail: {
+    mayRead(person: string, table: string, rowId: string): Promise<boolean>
+    toPerson(person: string, message: { subject: string; body: string; path?: string; ref_table?: string; reference_name?: string }): Promise<void>
+  }
   documents: ReadContext['documents'] & {
     create(table: string, row: Row): Promise<Row>
     update(table: string, row: Row): Promise<Row>
@@ -168,14 +172,15 @@ function routes(ctx: ReadContext): Record<string, string[]> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return Object.fromEntries(Object.entries(value).map(([key, ids]) => [key, members(ids)]))
 }
-function capabilities(ctx: ReadContext) {
-  const verify = members(configured(ctx, 'verification_admins')).includes(ctx.user)
-  const fulfill = members(configured(ctx, 'fulfillment_admins')).includes(ctx.user)
+function capabilitiesOf(ctx: ReadContext, person: string) {
+  const verify = members(configured(ctx, 'verification_admins')).includes(person)
+  const fulfill = members(configured(ctx, 'fulfillment_admins')).includes(person)
   return {
-    support: verify || fulfill || members(configured(ctx, 'support_users')).includes(ctx.user) || Object.values(routes(ctx)).some(ids => ids.includes(ctx.user)),
+    support: verify || fulfill || members(configured(ctx, 'support_users')).includes(person) || Object.values(routes(ctx)).some(ids => ids.includes(person)),
     verify, fulfill,
   }
 }
+const capabilities = (ctx: ReadContext) => capabilitiesOf(ctx, ctx.user)
 async function all(ctx: ReadContext, table: string, fields: string[], filters: ListArgs['filters'] = []) {
   const rows: Row[] = []
   for (let offset = 0; ; offset += 500) {
@@ -356,6 +361,17 @@ function available(ctx: ReadContext, ticket: Row, type: TicketType | undefined, 
     if (t.state === ticket.ticket_state && !actions.has(t.action) && mayTake(ctx, ticket, t, support)) actions.set(t.action, t)
   return [...actions.values()]
 }
+// #1001: tells a newly assigned person, once this save commits. The description
+// goes in only when the ticket screen would show it to them.
+async function tellAssignee(ctx: Context, ticket: Row, assignee: string, description: unknown, where: Place) {
+  const id = String(ticket.row_id)
+  const visible = (where.open || ticket.owner === assignee || capabilitiesOf(ctx, assignee).support) && await ctx.mail.mayRead(assignee, where.request, id)
+  await ctx.mail.toPerson(assignee, {
+    subject: `Ticket assigned to you: ${String(ticket.title)}`,
+    body: `${ctx.userName} assigned this ticket to you.\n\nTicket: ${String(ticket.title)}\n\n${visible ? `Description:\n${String(description)}` : 'Its description is private, so it is left out of this email.'}`,
+    path: `?ticket=${encodeURIComponent(id)}`, ref_table: 'tickets.ticket', reference_name: id,
+  })
+}
 const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
   async create(ctx) {
     const p = input(ctx, ['title', 'original', 'kind', 'details'])
@@ -443,7 +459,12 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
         else if (verified) values.ticket_state = 'Awaiting approval'
       }
     }
-    return { ticket: await bump(ctx, ticket, values) }
+    const saved = await bump(ctx, ticket, values)
+    // Only here, never in `create`: a load through `create` stays quiet.
+    const assignee = values.assigned_to
+    if (typeof assignee === 'string' && assignee !== ticket.assigned_to && assignee !== ctx.user)
+      await tellAssignee(ctx, saved, assignee, reworded ? original : request.original, where)
+    return { ticket: saved }
   },
   async verify(ctx) {
     const p = input(ctx, ['row_id', 'updated_at', 'email', 'active', 'region', 'evidence'])
