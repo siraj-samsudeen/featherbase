@@ -247,3 +247,80 @@ test('an "In list" tick moves the moment it is clicked, before the save returns'
   expect(inListTick('pop')).not.toBeChecked()
   await waitFor(() => expect(screen.getByTestId('ce-saved')).toHaveTextContent('Took pop out of the list'))
 })
+
+// #1024: the name people see for a Table's rows, chosen on this page.
+const titleRadio = (column: string) => within(screen.getByTestId(`ce-row-${column}`)).queryByRole('radio')
+
+test('a radio per column that can be a title, with the current one selected', async ({ admin }) => {
+  await seed(admin, {
+    title_column: 'glor',
+    columns: [
+      { column_name: 'glor', label: 'Glor', column_type: 'Data' },
+      { column_name: 'pop', label: 'Pop', column_type: 'Int' },
+      { column_name: 'open', label: 'Open', column_type: 'Check' },
+      { column_name: 'opened_on', label: 'Opened on', column_type: 'Date' },
+      { column_name: 'secret', label: 'Secret', column_type: 'Data', hidden: true },
+      { column_name: 'zone', label: 'Zone', column_type: 'Reference', reference_table: 'Person' },
+    ],
+  })
+  await renderApp(`/featherbase/admin/table/${tableSlug(DT)}/columns`, admin)
+  await screen.findByTestId('ce-row-glor', undefined, { timeout: 8000 })
+  expect(titleRadio('glor')).toBeChecked()
+  expect(titleRadio('pop')).not.toBeChecked()
+  for (const none of ['open', 'opened_on', 'secret', 'zone']) expect(titleRadio(none)).toBeNull()
+})
+
+test('a title already stored shows its radio, even on a column that could not be chosen now', async ({ admin }) => {
+  await seed(admin, {
+    title_column: 'secret',
+    columns: [
+      { column_name: 'glor', label: 'Glor', column_type: 'Data' },
+      { column_name: 'pop', label: 'Pop', column_type: 'Int' },
+      { column_name: 'secret', label: 'Secret', column_type: 'Data', hidden: true },
+    ],
+  })
+  await renderApp(`/featherbase/admin/table/${tableSlug(DT)}/columns`, admin)
+  await screen.findByTestId('ce-row-glor', undefined, { timeout: 8000 })
+  expect(titleRadio('secret')).toBeChecked()
+})
+
+test('choosing a title saves at once, naming only the title, and links read it', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: DT, description: 'Kept', columns: [
+    { column_name: 'glor', label: 'Glor', column_type: 'Data', in_list_view: true },
+    { column_name: 'zone_name', label: 'Zone name', column_type: 'Data', in_list_view: true },
+  ] })
+  const user = userEvent.setup()
+  await renderApp(`/featherbase/admin/table/${tableSlug(DT)}/columns`, admin)
+  await screen.findByTestId('ce-row-glor', undefined, { timeout: 8000 })
+  expect(screen.queryByTestId('ce-title-clear')).not.toBeInTheDocument()
+
+  await user.click(titleRadio('zone_name')!)
+  expect(await screen.findByTestId('ce-saved')).toHaveTextContent('Zone name is now the title')
+  await waitFor(() => expect(titleRadio('zone_name')).toBeChecked())
+  const meta = await admin.get<{ title_column: string; description: string; columns: unknown[] }>(`/api/table/${encodeURIComponent(DT)}:meta`)
+  expect(meta).toMatchObject({ title_column: 'zone_name', description: 'Kept' })
+
+  await user.click(screen.getByTestId('ce-title-clear'))
+  await waitFor(() => expect(titleRadio('zone_name')).not.toBeChecked())
+  expect((await admin.get<{ title_column: string | null }>(`/api/table/${encodeURIComponent(DT)}:meta`)).title_column).toBeNull()
+})
+
+test('a refused title shows why, and the stored choice stays selected', async ({ admin }) => {
+  await seed(admin, { title_column: 'glor' })
+  const bridged = globalThis.fetch
+  const user = userEvent.setup()
+  await renderApp(`/featherbase/admin/table/${tableSlug(DT)}/columns`, admin)
+  await screen.findByTestId('ce-row-glor', undefined, { timeout: 8000 })
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) =>
+    init?.method === 'PUT' && String(input).includes('table_def')
+      ? Response.json({ error: { type: 'ValidationError', message: 'Not today' } }, { status: 417 })
+      : bridged(input, init)) as typeof fetch
+  try {
+    await user.click(titleRadio('pop')!)
+    expect(await screen.findByTestId('ce-title-error')).toHaveTextContent('Not today')
+    expect(titleRadio('glor')).toBeChecked()
+    expect(screen.queryByTestId('ce-saved')).not.toBeInTheDocument()
+  } finally {
+    globalThis.fetch = bridged
+  }
+})
