@@ -34,6 +34,12 @@ A Table whose Rows exist only inside a parent Row, reached through a parent
 Column of type Sub-table.
 _Avoid_: child table, grid, nested table
 
+**View**:
+A Table with no rows of its own: a named filter on one base Table, kept in
+metadata, that links can name. Its rows are the base's rows, under the base's
+access. Not a Summary View, which is one person's saved list filter.
+_Avoid_: virtual table, filtered table, lens
+
 **Settings Table**:
 A Table with exactly one instance and no generated database table — think
 System Settings.

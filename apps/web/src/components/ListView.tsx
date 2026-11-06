@@ -11,7 +11,8 @@ import { useNavigation } from '../lib/navigation'
 import { TreeOfAll } from './RelationTree'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
 import { LinkControl } from './FormView'
-import { NO_COLUMN_TYPES, isArchived, isRowsReadOnly, isSystemWritten, useMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isArchived, isRowsReadOnly, isSystemWritten, isView, useMeta } from '../lib/meta'
+import { SaveAsView, ViewBanner } from './TableViews'
 import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, switchColumn, titleListColumn, viewColumns, type ColumnArrangement, type ListColumn } from '../lib/list-view-columns'
 import { useI18n } from '../lib/i18n'
 import { useRealtime } from '../lib/realtime'
@@ -347,8 +348,9 @@ export function ListView({
   // columns" and "Make this the default for everyone" show exactly here.
   // Not on system Tables (their columns are the platform's) nor bound ones
   // (their storage is the source's).
+  // #1021: a view's columns are its base's, shaped there.
   const canShapeColumns = Boolean(
-    caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source,
+    caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && !isView(meta.data),
   )
   // The menu (#738): the Table's list columns first, then every other column
   // the person may read; the column the list leads with (its title, else
@@ -784,12 +786,16 @@ export function ListView({
           </ActionDisclosure>}
           {(canShapeColumns || caps?.manage || isSystemManager) && <ActionDisclosure label="Table administration">
           {canShapeColumns && <Link to="/featherbase/admin/table/$table/columns" params={{ table }} className={buttonClasses()} data-testid="open-columns">Edit columns</Link>}
-          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && <Link to="/featherbase/admin/table/$table/merge" params={{ table }} className={buttonClasses()} data-testid="open-merge">Merge into…</Link>}
+          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && !isView(meta.data) && <Link to="/featherbase/admin/table/$table/merge" params={{ table }} className={buttonClasses()} data-testid="open-merge">Merge into…</Link>}
           {isSystemManager && (
             <>
               {/* NAM-001: change how new rows in this Table are named —
                   never for a Table whose rows the platform writes (#432). */}
-              {!isSystemWritten(meta.data) && (
+              {/* #1021: keep the list's filters as a view links can name. */}
+              {meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data) && !isArchived(meta.data) && (
+                <SaveAsView table={table} filters={filters} />
+              )}
+              {!isSystemWritten(meta.data) && !isView(meta.data) && (
                 <Link
                   to="/featherbase/admin/table/$table/naming"
                   params={{ table }}
@@ -799,14 +805,15 @@ export function ListView({
                   Naming
                 </Link>
               )}
-              <Link
+              {/* #1021: a view takes no grants; its base's apply. */}
+              {!isView(meta.data) && <Link
                 to="/featherbase/admin/table/$table/permissions"
                 params={{ table }}
                 className={buttonClasses()}
                 data-testid="open-permissions"
               >
                 Permissions
-              </Link>
+              </Link>}
               {/* DEL-J1/DEL-R1 (docs/specs/0003-table-deletion.md): the
                   affordance is generic and metadata-gated — never rendered
                   for system tables, never per-table code. */}
@@ -822,7 +829,7 @@ export function ListView({
                   className={buttonClasses({ variant: 'danger' })}
                   data-testid="delete-table"
                 >
-                  Delete Table
+                  {isView(meta.data) ? 'Delete view' : 'Delete Table'}
                 </button>
               )}
             </>
@@ -831,6 +838,7 @@ export function ListView({
         </div>
       </div>
       <ArchivedBanner table={table} meta={meta.data} canUnarchive={isSystemManager} />
+      <ViewBanner meta={meta.data} />
       {conflictsOpen && meta.data && <ImportConflicts key={table} table={table} meta={meta.data} />}
       {settingsUnsaved && (
         <div className="mb-3" data-testid="list-settings-error">
@@ -859,7 +867,9 @@ export function ListView({
               Delete {table}?
             </h2>
             <p className="mb-3 text-sm text-ink-muted" data-testid="delete-table-count">
-              {deleteCount.data
+              {isView(meta.data)
+                ? `The view goes; its ${meta.data.view_of} rows stay as they are.`
+                : deleteCount.data
                 ? `${fmtCount(deleteCount.data.count)} row${deleteCount.data.count === 1 ? '' : 's'} will be permanently deleted.`
                 : 'Counting rows…'}{' '}
               This cannot be undone.

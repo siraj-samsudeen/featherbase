@@ -4,6 +4,7 @@ import {
   Outlet,
   createRootRoute,
   createRoute,
+  Navigate,
   redirect,
   useRouterState,
   useParams,
@@ -911,11 +912,14 @@ const docRoute = createRoute({
 })
 
 function TableFormPage() {
-  const { table } = useTableAddress()
+  const { table, tableMeta } = useTableAddress()
   const { name } = docRoute.useParams()
   const { prefill, path } = docRoute.useSearch()
   const here = useMemo<NavStep>(() => ({ screen: 'row', table, row: name }), [table, name])
   const nav = useAddressNavigation(here, path)
+  // #1021: a view's row is its base's row, and opens as one.
+  if (tableMeta.kind === 'view' && tableMeta.view_of)
+    return <Navigate to="/featherbase/admin/table/$table/row/$name" params={{ table: tableMeta.view_of, name }} search={{ prefill: undefined }} replace />
   // #102 review: the raw prefill string is part of the key — navigating
   // from one ?prefill= URL to another (or clearing it, e.g. Ctrl/Cmd+B)
   // remounts the form instead of retaining the previous form's values.

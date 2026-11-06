@@ -1076,6 +1076,14 @@ function FieldControl({
   const unlinkedTarget = unlinkedSourceTable(field, meta)
   const unlinkedId = `${controlId}-unlinked`
   const unlinkedNote = <UnlinkedNote id={unlinkedId} field={field} meta={meta} />
+  // #1021: a link to a view whose row has since left it keeps the link, and
+  // says so; a new value must still be one of the view's rows.
+  const outsideView = Array.isArray(values.links_outside_view) && values.links_outside_view.includes(field.column_name)
+  const outsideNote = outsideView ? (
+    <p className="mt-1 text-xs text-caution" data-testid={`outside-view-${field.column_name}`}>
+      No longer one of the {field.reference_table} rows. The link stays; a new choice must be one of them.
+    </p>
+  ) : null
   const describedBy = [hintText ? hintId : null, managedHint ? managedId : null, unlinkedTarget ? unlinkedId : null]
     .filter(Boolean)
     .join(' ')
@@ -1097,6 +1105,7 @@ function FieldControl({
       {hint}
       {managedNote}
       {unlinkedNote}
+      {outsideNote}
       {meta.name === 'Person' && field.column_name === 'roles' && <EveryoneRolesNote />}
       {preview}
       {err}
