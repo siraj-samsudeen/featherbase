@@ -504,6 +504,16 @@ describe('release preflight: deployment variables', () => {
     expect(await preflightRelease({ environment: 'production' })).not.toContain('GOOGLE_CLIENT_SECRET set')
   })
 
+  // #969: every MotherDuck source reads the instance's one token.
+  test('a MotherDuck source without the token warns at release, and names the source', async () => {
+    vi.stubEnv('MOTHERDUCK_TOKEN', '')
+    await sql`insert into data_source (row_id, engine) values ('fb_test_md', 'motherduck')`
+    expect(await preflightRelease({ environment: 'production' })).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^WARNING: MOTHERDUCK_TOKEN is not set on a "production" server \(the token of MotherDuck data source fb_test_md\)/)]))
+    vi.stubEnv('MOTHERDUCK_TOKEN', 'made-up-token')
+    expect(await preflightRelease({ environment: 'production' })).toContain('MOTHERDUCK_TOKEN set (the token of MotherDuck data source fb_test_md)')
+  })
+
   // A missing source URL makes only that source unusable, so the release warns
   // and goes ahead; the refusal is at the point of use (#482 decision).
   test("a data source's missing url_env warns at release, and the source refuses its queries", async () => {

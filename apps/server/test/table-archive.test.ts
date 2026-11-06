@@ -57,6 +57,36 @@ describe('#905: archiving a Table', () => {
     expect((await admin.get<{ data: unknown[] }>(url)).data).toHaveLength(1)
   })
 
+  test('no row of an archived Table is retired, reactivated or deleted permanently, whoever asks (#859)', async ({ admin }) => {
+    await plants(admin)
+    await admin.post(`${url}/PLANT-8151:retire`, { reason: 'Closed' })
+    await admin.post('/api/save_row', { table: T, row: { plant_code: '8152', city: 'Salem' } })
+    await archive(admin)
+    const refused = { status: 403, message: expect.stringContaining(`${T} is archived`) }
+    await expectApiError(admin.post(`${url}/PLANT-8152:retire`, { reason: 'Closed' }), refused)
+    await expectApiError(admin.post(`${url}/PLANT-8151:reactivate`, {}), refused)
+    const purge = { ids: ['PLANT-8152'], links: 'clear', reason: 'Made by mistake', confirm: true }
+    await expectApiError(admin.post(`${url}:purge`, purge), refused)
+    expect(await admin.get(`${url}/PLANT-8151:capabilities`)).toMatchObject({ reactivate: false, purge: false })
+    expect(await admin.get(`${url}/PLANT-8152:capabilities`)).toMatchObject({ retire: false, purge: false })
+    expect(await admin.get(`${url}/PLANT-8152`)).toMatchObject({ city: 'Salem', retired_at: null })
+  })
+
+  test('a permanent delete elsewhere neither removes nor unlinks an archived Table\'s rows (#859)', async ({ admin }) => {
+    const unit = await makeTable(admin, { name: 'Arc Unit', id_pattern: 'prompt', columns: ['unit_name'] })
+    const holder = await makeTable(admin, { name: 'Arc Holder', id_pattern: 'prompt', columns: ['holder_name', { column_name: 'unit', column_type: 'Reference', reference_table: 'Arc Unit' }] })
+    await admin.post(unit.url, { row_id: 'U-1', unit_name: 'One' })
+    await admin.post(holder.url, { row_id: 'H-1', holder_name: 'Held', unit: 'U-1' })
+    await archive(admin, undefined, 'Arc Holder')
+    for (const links of ['clear', 'cascade']) {
+      const plan = await admin.get<{ blocked: boolean }>(`${unit.url}:purge_preview?ids=${encodeURIComponent(JSON.stringify(['U-1']))}&links=${links}`)
+      expect(plan.blocked).toBe(true)
+      await expectApiError(admin.post(`${unit.url}:purge`, { ids: ['U-1'], links, reason: 'Made by mistake', confirm: true }), { status: 417 })
+    }
+    expect(await admin.get(`${holder.url}/H-1`)).toMatchObject({ unit: 'U-1' })
+    expect(await admin.get(`${unit.url}/U-1`)).toMatchObject({ unit_name: 'One' })
+  })
+
   test('it leaves the menus and the command bar, and comes back when un-archived', async ({ admin }) => {
     await plants(admin)
     const before = await homeLinks(admin)

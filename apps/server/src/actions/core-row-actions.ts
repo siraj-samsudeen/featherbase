@@ -1,5 +1,5 @@
 import { AppError } from '../errors'
-import { amendDoc, cancelDoc, renameDoc, rowCapabilities, submitDoc } from '../document'
+import { amendDoc, cancelDoc, reactivateDoc, renameDoc, retireDoc, rowCapabilities, submitDoc } from '../document'
 import { applyWorkflowAction } from '../workflow'
 import { rowForCaller } from '../row-readers'
 import { registerRowAction } from '../actions'
@@ -31,6 +31,20 @@ registerRowAction('amend', {
   effect: 'write',
   description: 'Create an editable copy of a cancelled row (amended_from).',
   handler: async ({ table, name, user }) => rowForCaller(table, await amendDoc(table, name, user.row_id), user.row_id),
+})
+
+// #859: take a row out of use without deleting it ({ reason } required; the
+// delete right), or put it back (the write right).
+registerRowAction('retire', {
+  effect: 'write',
+  description: 'Retire a row: hide it from lists and pickers, keeping it and its history. Expects { reason }.',
+  handler: async ({ table, name, args, user }) => rowForCaller(table, await retireDoc(table, name, args.reason, user.row_id), user.row_id),
+})
+
+registerRowAction('reactivate', {
+  effect: 'write',
+  description: 'Reactivate a retired row, putting it back in lists and pickers.',
+  handler: async ({ table, name, user }) => rowForCaller(table, await reactivateDoc(table, name, user.row_id), user.row_id),
 })
 
 registerRowAction('apply_workflow_action', {

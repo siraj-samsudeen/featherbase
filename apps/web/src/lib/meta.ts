@@ -61,6 +61,8 @@ export interface TableMeta {
   // #432: the platform alone writes this Table's rows (Activity Log, Version,
   // Background Job, …). Lists and forms show it read-only for everyone.
   system_written?: boolean
+  /** Private work (mandatory access); never deleted permanently (#859). */
+  access_policy?: unknown
   // #905: an archived Table keeps its rows readable but takes no new rows or
   // edits. Who archived it, when, and what replaced it.
   archived_at?: string | null

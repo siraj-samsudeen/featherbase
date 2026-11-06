@@ -60,6 +60,7 @@ import './actions/master-sync-actions'
 import './actions/row-connections'
 import './actions/collection-aggregate'
 import './actions/collection-summary'
+import './actions/collection-purge'
 import './actions/collection-bulk'
 import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
@@ -2234,6 +2235,7 @@ function listArgsFromQuery(q: Record<string, string>) {
     order_by: q.order_by,
     limit_start: num('limit_start'),
     limit_page_length: num('limit_page_length'),
+    with_retired: q.with_retired === 'true',
   }
 }
 
@@ -2319,7 +2321,7 @@ app.get('/api/table/:table', async (c) => {
         throw new AppError('BadRequestError', 'filters must be valid JSON')
       }
     }
-    return c.json({ count: await countDocs(table, parsed as never, user.row_id) })
+    return c.json({ count: await countDocs(table, parsed as never, user.row_id, { withRetired: c.req.query('with_retired') === 'true' }) })
   }
   if (suffix) {
     const action = getCollectionAction(suffix)

@@ -231,12 +231,13 @@ describe('An app dataset query on a warehouse', () => {
       .rejects.toThrow(/read-only|read only/i)
   })
 
-  // MotherDuck cannot be opened read-only; without a read-scaling token the
-  // query is refused before anything is dialled.
-  test('a MotherDuck source without a read-scaling token is refused', async () => {
-    process.env.DUCK_MD_URL = 'md:never_dialled'
+  // #969: the only way to MotherDuck is a MotherDuck source, whose session
+  // attaches read-only. A DuckDB file source never dials a MotherDuck address.
+  test.each(['md:never_dialled', 'MD:never_dialled', ' md:', 'motherduck:never_dialled'])('a DuckDB source refuses the MotherDuck address %s', async (address) => {
+    process.env.DUCK_MD_URL = address
+    await expect(duckdbDriver.test({ ...cfg, name: 'duck-md', url_env: 'DUCK_MD_URL' })).rejects.toThrow(/holds a MotherDuck address/)
     await expect(duckdbDriver.query!({ ...cfg, name: 'duck-md', url_env: 'DUCK_MD_URL' }, 'select 1 as store', [{ name: 'store', type: 'integer' }]))
-      .rejects.toThrow(/read-scaling token/)
+      .rejects.toThrow(/holds a MotherDuck address/)
   })
 })
 

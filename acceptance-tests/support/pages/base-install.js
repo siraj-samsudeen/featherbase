@@ -53,11 +53,11 @@ function sourceCheckout(mode) {
 }
 
 class BaseInstall {
-  constructor(world) { this.world = world; this.env = isolatedEnvironment({ FEATHERBASE_ENV: 'development' }); }
+  constructor(world) { this.world = world; this.env = isolatedEnvironment({ FEATHERBASE_ENV: 'development', MOTHERDUCK_TOKEN: '' }); }
 
   async fresh({ hosted = false, managed = false, source } = {}) {
     if (source) this.scratch = sourceCheckout(source);
-    this.env = isolatedEnvironment({ FEATHERBASE_ENV: hosted ? 'test' : 'development', FEATHERBASE_INSTANCE: managed ? 'acceptance/local' : '' });
+    this.env = isolatedEnvironment({ FEATHERBASE_ENV: hosted ? 'test' : 'development', FEATHERBASE_INSTANCE: managed ? 'acceptance/local' : '', MOTHERDUCK_TOKEN: '' });
     await Api.disposeAll();
     await resetAcceptance(this.env, this.scratch ?? REPO_ROOT);
     this.api = await Api.asSystemManager();

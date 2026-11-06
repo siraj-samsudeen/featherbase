@@ -124,6 +124,10 @@ export async function settingsRequirements(): Promise<Pick<CheckVariablesOptions
     from data_source where coalesce(trim(url_env), '') <> ''
     group by url_env order by url_env`
   for (const r of rows) named.push({ name: String(r.url_env).trim(), reason: `the url_env of data source ${String(r.sources)}` })
+  // #969: every MotherDuck source reads the instance's one token.
+  const [warehouse] = await sql`
+    select string_agg(row_id, ', ' order by row_id) as sources from data_source where engine = 'motherduck'`
+  if (warehouse?.sources) named.push({ name: 'MOTHERDUCK_TOKEN', reason: `the token of MotherDuck data source ${String(warehouse.sources)}` })
   return { conditions, named }
 }
 
@@ -359,7 +363,7 @@ async function assertAccessConfiguration(environment: string): Promise<string[]>
   if (await installed()) {
     // #559: a Table marked as deciding scope is a security Table too.
     const marked = (await sql`select name from table_def where decides_scope`).map((r) => String(r.name))
-    // Preflight must inspect both sides of migration 0146 before allowing
+    // Preflight must inspect both sides of migration 0150 before allowing
     // that migration to run. Runtime permission evaluation uses operations only.
     const [schema] = await sql`select exists (select 1 from information_schema.columns
       where table_schema = 'featherbase' and table_name = 'permission' and column_name = 'operation') as operations`

@@ -864,7 +864,7 @@ A nested row SHALL be able to hold a link to a row of any table, chosen as on a 
 
 A System Manager SHALL be able to archive a custom table, with an optional note of what replaced it, and to
 un-archive it. While archived, its rows and history SHALL stay readable to whoever could read them, and adding,
-changing, deleting, importing or merging its rows SHALL be refused for everyone, administrators included. Platform
+changing, retiring, reactivating, deleting, permanently deleting, importing or merging its rows SHALL be refused for everyone, administrators included. Platform
 tables, settings, sub-tables, an installed app's tables and tables that decide access SHALL NOT be archived.
 
 #### Scenario: Archive a replaced table
@@ -874,7 +874,7 @@ tables, settings, sub-tables, an installed app's tables and tables that decide a
 
 #### Scenario: No edits to an archived table
 
-- **WHEN** anyone, an administrator included, tries to add, change, delete or import a row of an archived table
+- **WHEN** anyone, an administrator included, tries to add, change, retire, reactivate, delete, permanently delete or import a row of an archived table
 - **THEN** the change is refused, saying the table is archived
 
 #### Scenario: Un-archive

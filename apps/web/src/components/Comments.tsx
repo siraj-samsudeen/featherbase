@@ -20,6 +20,8 @@ export interface VersionRow {
     created?: boolean
     import_run?: string
     resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown }
+    // #859: a retirement or reactivation, with the reason given to retire.
+    retirement?: { action: 'retired' | 'reactivated'; reason?: string }
   } | null
 }
 

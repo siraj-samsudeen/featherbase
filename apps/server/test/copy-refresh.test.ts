@@ -7,17 +7,17 @@ import { buildStandin, changeStandin, STANDIN_TOKENS } from './motherduck-standi
 import { sql } from '../src/db'
 import { grantRole } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
-import { jobRegistrant, registerJob, runOneJob } from '../src/jobs'
+import { enqueue, jobRegistrant, registerJob, runOneJob } from '../src/jobs'
 import { registerCopyRefreshJobs } from '../src/copy-refresh'
 import { invalidateMeta } from '../src/meta'
 import { runMigrations } from '../src/migrate'
 
 let dir: string
-beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir) })
-afterAll(() => { invalidateSources(); overrideVariable('MOTHERDUCK_STANDIN', undefined); rmSync(dir, { recursive: true, force: true }) })
+beforeAll(async () => { dir = await buildStandin(); overrideVariable('MOTHERDUCK_STANDIN', dir); overrideVariable('MOTHERDUCK_TOKEN', STANDIN_TOKENS.reader) })
+afterAll(() => { invalidateSources(); overrideVariable('MOTHERDUCK_STANDIN', undefined); overrideVariable('MOTHERDUCK_TOKEN', undefined); rmSync(dir, { recursive: true, force: true }) })
 
 async function makeCopy(admin: TestClient, sourceTable = 'stores') {
-  await admin.post('/api/table/Data%20Source:motherduck_connect', { name: 'refresh-test', token: STANDIN_TOKENS.reader, databases: ['sales'] })
+  await admin.post('/api/table/Data%20Source:motherduck_connect', { name: 'refresh-test', databases: ['sales'] })
   await admin.post('/api/table/Data%20Source/refresh-test:copy_create', {
     database: 'sales', schema: 'main', table: sourceTable, name: 'Scheduled Stores', key: 'code',
     columns: [{ source: 'code', column_name: 'code' }, { source: 'name', column_name: 'title' }],
@@ -170,6 +170,25 @@ describe('Scheduled copied-table refresh', () => {
     await expect(admin.post('/api/table/Scheduled%20Stores:set_copy_schedule', { cadence: 'hourly', enabled: 'yes' })).rejects.toMatchObject({ status: 417 })
   })
 
+  test('a conflict notice job names a copied table, and gives up after a day of refusals (#934)', async ({ admin, createUser }) => {
+    await makeCopy(admin)
+    await createUser({ email: 'copy.notice934@example.test', roles: ['System Manager'] })
+    await sql`delete from background_job`
+    // A queued payload cannot point the notice at a table that is not a copy.
+    await enqueue('copy_refresh_conflict_notice', { table: 'Person', conflicts: 1 }, { runAt: new Date(0) })
+    await runOneJob()
+    expect(await sql`select job_status from background_job where method = 'copy_refresh_conflict_notice'`).toEqual([{ job_status: 'failed' }])
+    await sql`delete from background_job`
+    await sql`create function featherbase.refuse_refresh_notice() returns trigger language plpgsql as $$
+      begin raise exception 'notice queue unavailable'; end $$`
+    await sql`create trigger refuse_refresh_notice before insert on featherbase.email_queue
+      for each row execute function featherbase.refuse_refresh_notice()`
+    await enqueue('copy_refresh_conflict_notice', { table: 'Scheduled Stores', conflicts: 2, tries: 96 }, { runAt: new Date(0) })
+    await runOneJob()
+    const [last] = await sql`select job_status, error from background_job where method = 'copy_refresh_conflict_notice'`
+    expect(last).toMatchObject({ job_status: 'failed', error: expect.stringContaining('could not be queued for a day') })
+  })
+
   test('a notice outage does not retry a committed refresh', async ({ admin, createUser }) => {
     await changeStandin(dir, 'sales', ['create table outage_stores as select * from stores'])
     await makeCopy(admin, 'outage_stores')
@@ -198,6 +217,53 @@ describe('Scheduled copied-table refresh', () => {
     expect(queued).toEqual([{ attempts: 0, future: true }])
     await admin.post('/api/table/Scheduled%20Stores:import-revert', { run_id: info.last_run_id })
     expect(await admin.get('/api/table/Scheduled%20Stores/S002')).toMatchObject({ title: 'Hill Street' })
+    // #934: the notice is not lost. It waits in its own job, apart from the
+    // copy, and goes out once the queue is back, with no new import batch.
+    const [notice] = await sql`select payload, run_at > now() as later from background_job
+      where method = 'copy_refresh_conflict_notice' and job_status = 'queued'`
+    expect(notice).toMatchObject({ payload: { table: 'Scheduled Stores', conflicts: 1 }, later: true })
+    await runOneJob() // too early: nothing runs
+    expect(await sql`select 1 from featherbase.email_queue where subject = 'Copy refresh conflicts: Scheduled Stores'`).toEqual([])
+    // Still refused when it is due: it tries again later, it does not fail.
+    await sql`update background_job set run_at = now() where method = 'copy_refresh_conflict_notice'`
+    await runOneJob()
+    const [retry] = await sql`select payload, run_at > now() as later from background_job
+      where method = 'copy_refresh_conflict_notice' and job_status = 'queued'`
+    expect(retry).toMatchObject({ payload: { table: 'Scheduled Stores', conflicts: 1, tries: 2 }, later: true })
+    await sql`drop trigger refuse_refresh_notice on featherbase.email_queue`
+    await sql`update background_job set run_at = now() where method = 'copy_refresh_conflict_notice'`
+    const batches = (await sql`select count(*)::int as n from featherbase.import_log where ref_table = 'Scheduled Stores'`)[0].n
+    await runOneJob()
+    const sent = await sql`select recipient, body from featherbase.email_queue where subject = 'Copy refresh conflicts: Scheduled Stores'`
+    expect(sent.map((m) => m.recipient)).toContain('copy.outage840@example.test')
+    expect(sent[0].body).toContain('1 new conflict')
+    expect((await sql`select count(*)::int as n from featherbase.import_log where ref_table = 'Scheduled Stores'`)[0].n).toBe(batches)
+    expect(await sql`select 1 from background_job where method = 'copy_refresh_conflict_notice' and job_status = 'queued'`).toEqual([])
+  })
+
+  test('a refresh whose notice cannot even wait in a job still is not retried (#934)', async ({ admin, createUser }) => {
+    await changeStandin(dir, 'sales', ['create table keep_stores as select * from stores'])
+    await makeCopy(admin, 'keep_stores')
+    await createUser({ email: 'copy.keep934@example.test', roles: ['System Manager'] })
+    const row = await admin.get<{ updated_at: string }>('/api/table/Scheduled%20Stores/S001')
+    await admin.post('/api/save_row', { table: 'Scheduled Stores', row: { row_id: 'S001', title: 'Personal correction', updated_at: row.updated_at } })
+    await changeStandin(dir, 'sales', ["update keep_stores set name = 'New source value' where code in ('S001', 'S002')"])
+    invalidateSources('refresh-test')
+    await sql`create function featherbase.refuse_refresh_notice() returns trigger language plpgsql as $$
+      begin raise exception 'notice queue unavailable'; end $$`
+    await sql`create trigger refuse_refresh_notice before insert on featherbase.email_queue
+      for each row execute function featherbase.refuse_refresh_notice()`
+    await sql`create trigger refuse_notice_job before insert on featherbase.background_job
+      for each row when (new.method = 'copy_refresh_conflict_notice') execute function featherbase.refuse_refresh_notice()`
+    await sql`delete from background_job`
+    const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })
+    await sql`update background_job set run_at = now() where method = ${schedule.method}`
+    await runOneJob()
+    const [execution] = await sql`select outcome, result from job_execution where method = ${schedule.method}`
+    expect(execution.outcome).toBe('success')
+    expect(execution.result).toContain('Conflict notice could not be queued or kept for later')
+    const queued = await sql`select attempts, run_at > now() as future from background_job where method = ${schedule.method} and job_status = 'queued'`
+    expect(queued).toEqual([{ attempts: 0, future: true }])
   })
 
   test('a scheduled change is an undoable system observation', async ({ admin }) => {

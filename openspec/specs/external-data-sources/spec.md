@@ -12,11 +12,11 @@ changing anything at the other end.
 ### Requirement: Connect a data source
 
 A builder with System Manager authority SHALL be able to register a data
-source — a Postgres or MySQL database, a DuckDB warehouse, or a folder of
-CSV files — naming where its connection details are kept rather than typing
-them in, except a MotherDuck warehouse, whose token is pasted in the app;
-those details are never stored in the open, shown back, or written to a log.
-Only a System Manager can register or manage a data source.
+source — a Postgres or MySQL database, a DuckDB file, or a folder of CSV
+files — naming where its connection details are kept rather than typing them
+in. A MotherDuck warehouse uses the instance's one MotherDuck token. Those
+details are never stored in the open, shown back, or written to a log. Only a
+System Manager can register or manage a data source.
 
 #### Scenario: Connect and check it
 
@@ -636,52 +636,16 @@ Then the user sees its sender on one line
 And the user sees its instructions as long text
 ```
 
-### Requirement: Connect a MotherDuck warehouse by pasting its token
-
-MotherDuck is a cloud warehouse. A token, a long secret string, signs in to
-it and decides which databases can be read; a read scaling token is one that
-can only read. A System Manager SHALL be able to connect a MotherDuck
-warehouse by pasting its token and testing it, with no setup on the server.
-The test SHALL say who the token signs in as and how many databases it can
-read, warn when the token can also write, or give a plain reason why it
-failed.
-
-#### Scenario: The token's owner and databases show
-
-```gherkin
-Given the user is a System Manager
-When the user tests a working token that can read five databases
-Then they are told who the token signs in as and that it can read five databases
-```
-
-#### Scenario: A refused token is explained, not echoed
-
-```gherkin
-Given the user is a System Manager
-When the user tests a token that MotherDuck refuses
-Then they are told the token was refused, in plain words
-And the message does not contain the token
-```
-
-#### Scenario: A token that can write is flagged
-
-```gherkin
-Given the user is a System Manager
-When the user tests a working token that can also write to the warehouse
-Then the test succeeds, with a warning to use a read scaling token instead
-```
-
 ### Requirement: Choose which databases a warehouse source reads
 
-After a successful test, the System Manager SHALL choose which databases the
-source reads, from the account's own databases and those shared with it, and
-at least one must be chosen. Only the chosen databases are offered for
-browsing.
+The System Manager SHALL choose which databases the source reads, from the
+account's own databases and those shared with it, and at least one must be
+chosen. Only the chosen databases are offered for browsing.
 
 #### Scenario: Only the two ticked databases appear
 
 ```gherkin
-Given a token that can read five databases, among them "sales" and "stock"
+Given the instance's token can read five databases, among them "sales" and "stock"
 When the user ticks "sales" and "stock" and saves the source
 Then browsing the source offers "sales" and "stock" and no other database
 ```
@@ -689,41 +653,9 @@ Then browsing the source offers "sales" and "stock" and no other database
 #### Scenario: Saving stays blocked until a database is ticked
 
 ```gherkin
-Given a token that has passed its test
+Given the instance's token can read databases
 When the user has ticked no database
 Then the source cannot be saved
-```
-
-### Requirement: A pasted token stays secret
-
-A pasted token SHALL be kept encrypted, and once saved SHALL never be shown,
-returned or written to a log again; the source shows only its last four
-characters.
-
-#### Scenario: Only the token's last four show
-
-```gherkin
-Given a MotherDuck source saved with a token ending in "4f2a"
-When the user opens the source
-Then they see that a token is saved, ending in "4f2a"
-And the rest of the token appears nowhere on the page
-```
-
-### Requirement: A warehouse token can be replaced
-
-A System Manager SHALL be able to replace a MotherDuck source's token at any
-time; the new token is tested before it is saved. It SHALL be refused unless
-it reads every chosen database as the same database: a shared database by its
-share address, and a database the account owns by its name signed in as the
-same MotherDuck user, since another account's database of the same name is a
-different database.
-
-#### Scenario: The new token's last four show
-
-```gherkin
-Given a MotherDuck source saved with a token ending in "4f2a"
-When the user replaces it with a working token ending in "9c1e"
-Then the source shows a token ending in "9c1e"
 ```
 
 ### Requirement: Find a source and its databases from the sidebar
@@ -913,6 +845,60 @@ When the user refreshes the table list of "sales"
 Then "regions" is listed
 ```
 
+### Requirement: Connect a MotherDuck warehouse with the instance's token
+
+MotherDuck is a cloud warehouse. A token, a long secret string, signs in to
+it and decides which databases can be read. An instance has one MotherDuck
+token, set when it is deployed, and everything in Featherbase uses it. A System
+Manager SHALL be able to connect a MotherDuck warehouse without handling the
+token. They SHALL be told who the token signs in as and how many databases it
+can read, or be given a plain reason why it cannot be used.
+
+#### Scenario: The token's owner and databases show
+
+```gherkin
+Given the user is a System Manager
+And the instance's token can read five databases
+When the user starts connecting a MotherDuck warehouse
+Then they are told who the token signs in as and that it can read five databases
+And they are not asked for a token
+```
+
+#### Scenario: A refused token is explained, not echoed
+
+```gherkin
+Given the user is a System Manager
+And MotherDuck refuses the instance's token
+When the user starts connecting a MotherDuck warehouse
+Then they are told the token was refused, in plain words
+And the message does not contain the token
+```
+
+#### Scenario: An instance with no token says so
+
+```gherkin
+Given the user is a System Manager
+And the instance has no MotherDuck token
+When the user starts connecting a MotherDuck warehouse
+Then they are told the instance has no MotherDuck token
+And no database is offered
+```
+
+### Requirement: A MotherDuck warehouse is only ever read
+
+Featherbase SHALL only read a MotherDuck warehouse, with no setting that could
+change this, even when the instance's token has write rights.
+
+#### Scenario: A token with write rights still cannot change the warehouse
+
+```gherkin
+Given the instance's token can also write to the warehouse
+And a table connected from its database "sales"
+When the user tries to change a row of that table
+Then the change is refused
+And the row in the warehouse is unchanged
+```
+
 ### Requirement: Reading a warehouse does not hold up a deploy
 
 A copy, manual or scheduled, SHALL read the warehouse without keeping the apps busy, however long the read takes. It SHALL hold them only while it applies the rows, as one all-or-nothing step.
@@ -945,3 +931,26 @@ A row whose copied values have not changed SHALL NOT be rewritten by Copy again 
 
 - **WHEN** the warehouse changes to the value a person had corrected a row to, and later changes back
 - **THEN** the first refresh closes any open disagreement on that value, and the second raises a new one
+
+### Requirement: A copy refuses whole numbers it cannot hold exactly
+
+A copy or Copy again SHALL refuse the whole run when a whole-number column meets a value beyond ±9,007,199,254,740,991. The refusal SHALL name the column, the value and the row, and no row SHALL change. Values inside that range SHALL copy as numbers.
+
+#### Scenario: A BIGINT past the exact range
+
+- **WHEN** a System Manager copies a warehouse table whose BIGINT column holds 9007199254740993 in one row
+- **THEN** the copy is refused with a message naming that column, the value and the row, and no Table is created
+
+#### Scenario: Copy again meets one later
+
+- **WHEN** a copied table's source later holds such a value and Copy again runs
+- **THEN** Copy again is refused the same way and the copied rows are unchanged
+
+### Requirement: The deleted-at-source marker keeps its name while the Table is copied
+
+While a Table is copied from a data source, the system SHALL refuse to rename or remove its deleted-at-source marker column, so Copy again keeps working.
+
+#### Scenario: Renaming or removing the marker
+
+- **WHEN** a System Manager renames or removes the deleted-at-source column of a copied Table
+- **THEN** the change is refused with a message that the column marks rows deleted at the source, and Copy again still works

@@ -51,10 +51,12 @@
     "Data Source": [
       {
         "row_id": "motherduck",
-        "engine": "duckdb",
-        "url_env": "MOTHERDUCK_URL",
+        "engine": "motherduck",
         "default_schema": "gold.main",
-        "access": "read_only"
+        "databases": [
+          { "name": "gold" },
+          { "name": "marts" }
+        ]
       }
     ]
   },

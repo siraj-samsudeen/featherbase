@@ -9,7 +9,7 @@ approvals or platform-admin changes (pieces B–D).
 
 ## 2. Representation and migration
 
-- [x] 2.1 Migration `0146_operation_permissions`: one Permission row per operation with `scope_mode` and `column_rule`; Permission Column selections; restricted rows as `every` grants requiring their basic grant; restricted Person read as `read_identifiers`; installed apps' grant ids and recorded declarations repointed; dependency constraints; `fc_has_read` that reads only whole Tables.
+- [x] 2.1 Migration `0150_operation_permissions`: one Permission row per operation with `scope_mode` and `column_rule`; Permission Column selections; restricted rows as `every` grants requiring their basic grant; restricted Person read as `read_identifiers`; installed apps' grant ids and recorded declarations repointed; dependency constraints; `fc_has_read` that reads only whole Tables.
 - [x] 2.2 Prove the conversion on a database migrated to 0138 with creator, restricted and line-item grants, through HTTP (`migrate.test.ts`).
 
 ## 3. Enforcement
