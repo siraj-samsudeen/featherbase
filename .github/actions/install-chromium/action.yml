@@ -1,0 +1,28 @@
+# `playwright install --with-deps` downloads large font packages from the Ubuntu
+# mirror, and that alone stalled for about 8 minutes in a quarter of CI runs
+# (#995). The same command still runs, so nothing it installs is left out: it
+# only finds the packages and the browser already here.
+name: Install Playwright Chromium
+description: Installs Chromium and the packages it needs, from a cache when it can.
+inputs:
+  package:
+    description: The workspace package whose Playwright installs it.
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/ms-playwright
+          ~/.cache/playwright-debs
+        key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-
+    - shell: bash
+      env:
+        PACKAGE: ${{ inputs.package }}
+      run: |
+        mkdir -p ~/.cache/playwright-debs
+        sudo find ~/.cache/playwright-debs -name '*.deb' -exec cp -t /var/cache/apt/archives/ {} +
+        pnpm --filter "$PACKAGE" exec playwright install --with-deps chromium
+        find /var/cache/apt/archives -name '*.deb' -exec cp -t ~/.cache/playwright-debs/ {} +

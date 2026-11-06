@@ -13,13 +13,16 @@
 # Shape of the gate. `changes` (tools/ci-scope.mjs) picks the suites a PR needs
 # from its paths; everything runs on main and on whatever it cannot place:
 #
-#   changes -> unit-server (3), PG18 preflight -> coverage-server
+#   changes -> unit-server (5), PG18 preflight -> coverage-server
 #           -> component-shards (4), web-support -> unit-web
-#           -> browser-shards (4), acceptance, served -> e2e
+#           -> browser-shards (4), acceptance (6), served -> e2e
 #   unit-web + e2e -> coverage-merged
 #   checks + unit suites + app-tests + coverage gates -> unit
 #
 #   docs and prose      checks' fast half only
+#   other workflows     checks' fast half only: they run on their own triggers
+#   a spec.md           that capability's scenarios, on one acceptance runner
+#   acceptance-tests/** all of acceptance
 #   client-apps/**      app-tests: the app's tests and platform tests
 #   example-apps/**     app-tests: Tasker's own layers
 #   apps/server/**      platform checks, server suite, preflight, client platform tests
@@ -32,7 +35,7 @@
 # `!= 'false'` below then runs its suite: that is how this fails closed.
 #
 # Coverage gates apply only where what they measure ran. The server gate merges
-# the three shards and the preflight, which share one switch, and is skipped with
+# the five shards and the preflight, which share one switch, and is skipped with
 # them. coverage-merged needs both unit-web and e2e. Each suite's own floor stays
 # inside its job. Labels: `run-all` for everything, `run-e2e` for e2e alone.
 name: test
@@ -108,7 +111,10 @@ jobs:
       platform_checks: ${{ steps.decide.outputs.platform_checks }}
       server: ${{ steps.decide.outputs.server }}
       web: ${{ steps.decide.outputs.web }}
-      e2e: ${{ steps.decide.outputs.e2e }}
+      browser: ${{ steps.decide.outputs.browser }}
+      acceptance: ${{ steps.decide.outputs.acceptance }}
+      acceptance_capabilities: ${{ steps.decide.outputs.acceptance_capabilities }}
+      acceptance_shards: ${{ steps.decide.outputs.acceptance_shards }}
       client_apps: ${{ steps.decide.outputs.client_apps }}
       tasker_tests: ${{ steps.decide.outputs.tasker_tests }}
       coverage_merged: ${{ steps.decide.outputs.coverage_merged }}
@@ -206,8 +212,11 @@ jobs:
       - name: What runs in CI, by path
         run: node --test tools/ci-scope.test.mjs
 
+      # The acceptance partition reads the effective specs, with that project's glob.
       - name: Shard producer and exact-once contracts
-        run: node --test tools/ci-shards.test.mjs
+        run: |
+          npm --prefix acceptance-tests ci --no-audit --no-fund
+          node --test tools/ci-shards.test.mjs
 
       - name: The version check's rules
         run: node --test tools/check-app-versions.test.mjs
@@ -240,7 +249,7 @@ jobs:
         if: ${{ needs.changes.outputs.platform_checks != 'false' }}
         run: pnpm --filter web typecheck
 
-  # The server suite, split by file across three runners. Each shard has its
+  # The server suite, split by file across five runners. Each shard has its
   # own Postgres and MySQL, so the reasons the suite runs files one at a time
   # (one shared database, one `background_job` queue) do not cross shards.
   #
@@ -256,7 +265,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5]
     env:
       # sources-mysql.test.ts runs only when this is set (checkouts without a
       # MySQL skip it); CI provides one so the mysql driver is exercised.
@@ -321,7 +330,9 @@ jobs:
       # `playwright` dependency. CHROMIUM_PATH stays unset so Playwright
       # resolves the browser it installed itself (docs/DEPLOY.md, `CHROMIUM_PATH`).
       - name: Install Chromium for server-side PDF tests
-        run: pnpm --filter server exec playwright install --with-deps chromium
+        uses: ./.github/actions/install-chromium
+        with:
+          package: server
 
       - name: Migrate database
         run: |
@@ -330,12 +341,12 @@ jobs:
       # The suite's config pins fileParallelism: false and a shared
       # globalSetup that empties tab_background_job — do not parallelize
       # around them within a shard.
-      - name: Run server suite shard ${{ matrix.shard }}/3 with coverage
+      - name: Run server suite shard ${{ matrix.shard }}/5 with coverage
         run: >-
           pnpm --filter server exec vitest run --coverage
           --coverage.thresholds.lines=0 --coverage.thresholds.statements=0
           --coverage.thresholds.functions=0 --coverage.thresholds.branches=0
-          --shard=${{ matrix.shard }}/3
+          --shard=${{ matrix.shard }}/5
           --reporter=default --reporter=blob
           --outputFile.blob=.vitest-reports/blob-${{ matrix.shard }}.json
 
@@ -589,7 +600,7 @@ jobs:
           # Keep the driver in the denominator. Merging never connects.
           MYSQL_TEST_URL: mysql://root@127.0.0.1:3306
         run: |
-          for report in blob-1 blob-2 blob-3 release-pg18; do test -s "apps/server/.vitest-reports/$report.json"; done
+          for report in blob-1 blob-2 blob-3 blob-4 blob-5 release-pg18; do test -s "apps/server/.vitest-reports/$report.json"; done
           pnpm --filter server exec vitest run --merge-reports=.vitest-reports --coverage
 
   # Production runs PostgreSQL 18.6, where the release preflight has checks
@@ -736,7 +747,9 @@ jobs:
 
       - name: Install Playwright Chromium
         if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
-        run: pnpm --filter web exec playwright install --with-deps chromium
+        uses: ./.github/actions/install-chromium
+        with:
+          package: web
 
       # As in e2e: the development seed needs a truly loopback PostgreSQL.
       - name: Start loopback PostgreSQL for the packaged seed proof
@@ -768,7 +781,7 @@ jobs:
 
   browser-shards:
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.e2e != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
@@ -806,7 +819,9 @@ jobs:
         run: pnpm apps:prepare
 
       - name: Install Playwright Chromium
-        run: pnpm --filter web exec playwright install --with-deps chromium
+        uses: ./.github/actions/install-chromium
+        with:
+          package: web
 
       # No migrate step and no boot step: in isolated mode
       # (E2E_ISOLATED=1, set by the `e2e` script) Playwright owns the whole
@@ -840,11 +855,19 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # Split by Feature file across runners, each with its own databases, as the
+  # browser suite is. A PR that changed only specs runs those capabilities on one.
   acceptance:
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.e2e != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.acceptance != 'false') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.changes.outputs.acceptance_shards || '[1]') }}
+    env:
+      ACCEPTANCE_CAPABILITIES: ${{ needs.changes.outputs.acceptance_capabilities }}
     services:
       postgres:
         image: postgres:17
@@ -869,9 +892,13 @@ jobs:
         env:
           VITE_COVERAGE: 'true'
         run: pnpm apps:prepare
-      - run: pnpm --filter web exec playwright install --with-deps chromium
+      - uses: ./.github/actions/install-chromium
+        with:
+          package: web
 
+      # One runner collects this; coverage-merged is the only thing that reads it.
       - name: Collect runtime HTTP coverage
+        if: ${{ matrix.shard == 1 && needs.changes.outputs.coverage_merged != 'false' }}
         run: >-
           pnpm --filter server exec vitest run
           --config ../../example-apps/tasker/vitest.integration.config.ts
@@ -888,7 +915,7 @@ jobs:
 
       # Effective specs run on their own runner. The packaged proof invoked
       # by acceptance supplies coverage here; do not execute it a second time.
-      - name: Run acceptance suite
+      - name: Run acceptance shard with its execution receipt
         env:
           VITE_COVERAGE: 'true'
           # Samples require PostgreSQL itself to be local, not Docker forwarding.
@@ -896,31 +923,41 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/postgres
           RUNTIME_PROOF_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/featherbase_runtime_proof_e2e
         run: |
-          npm --prefix acceptance-tests ci
-          npm --prefix acceptance-tests test
+          npm --prefix acceptance-tests ci --no-audit --no-fund
+          node tools/ci-shards.mjs run acceptance ${{ matrix.shard }}
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: acceptance-${{ matrix.shard }}
+          path: .ci-shards/acceptance-${{ matrix.shard }}/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Upload acceptance report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: acceptance-report
+          name: acceptance-report-${{ matrix.shard }}
           path: acceptance-tests/reports/
           if-no-files-found: ignore
 
+      # Only some runners have any: the HTTP coverage is on the first, and the
+      # packaged coverage wherever the proof's Feature file landed. coverage-merged
+      # fails if a kind is missing. The whole folder, so each keeps its subfolder.
       - name: Upload runtime integration coverage
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: runtime-integration-coverage
-          path: |
-            coverage/tasker/integration/
-            coverage/tasker/packaged/
-          if-no-files-found: error
+          name: runtime-integration-coverage-${{ matrix.shard }}
+          path: coverage/tasker/
+          if-no-files-found: ignore
           retention-days: 1
 
   served:
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.e2e != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -943,7 +980,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm apps:prepare
-      - run: pnpm --filter web exec playwright install --with-deps chromium
+      - uses: ./.github/actions/install-chromium
+        with:
+          package: web
 
       # #642: frame policies are response headers, which only the API server
       # serving the BUILT web app sets (the stack above serves pages from the
@@ -978,25 +1017,39 @@ jobs:
       - name: Require every requested producer
         env:
           CHANGES: ${{ needs.changes.result }}
-          WANTED: ${{ needs.changes.outputs.e2e }}
+          BROWSER_WANTED: ${{ needs.changes.outputs.browser }}
+          ACCEPTANCE_WANTED: ${{ needs.changes.outputs.acceptance }}
           BROWSER: ${{ needs.browser-shards.result }}
           ACCEPTANCE: ${{ needs.acceptance.result }}
           SERVED: ${{ needs.served.result }}
         run: |
           [ "$CHANGES" = success ] || exit 1
-          for result in "$BROWSER" "$ACCEPTANCE" "$SERVED"; do
-            [ "$result" = success ] || { [ "$result" = skipped ] && [ "$WANTED" = false ]; } || exit 1
+          for result in "$BROWSER" "$SERVED"; do
+            [ "$result" = success ] || { [ "$result" = skipped ] && [ "$BROWSER_WANTED" = false ]; } || exit 1
           done
+          [ "$ACCEPTANCE" = success ] || { [ "$ACCEPTANCE" = skipped ] && [ "$ACCEPTANCE_WANTED" = false ]; } || exit 1
 
       - uses: actions/checkout@v4
-        if: needs.browser-shards.result == 'success'
+        if: needs.browser-shards.result == 'success' || needs.acceptance.result == 'success'
       - uses: pnpm/action-setup@v4
-        if: needs.browser-shards.result == 'success'
+        if: needs.browser-shards.result == 'success' || needs.acceptance.result == 'success'
       - uses: actions/setup-node@v4
-        if: needs.browser-shards.result == 'success'
+        if: needs.browser-shards.result == 'success' || needs.acceptance.result == 'success'
         with:
           node-version: '26.13.0'
           cache: pnpm
+      - uses: actions/download-artifact@v4
+        if: needs.acceptance.result == 'success'
+        with:
+          pattern: acceptance-[0-9]*
+          path: .ci-shards
+      - name: Require every acceptance artifact and exact-once Feature file execution
+        if: needs.acceptance.result == 'success'
+        env:
+          ACCEPTANCE_CAPABILITIES: ${{ needs.changes.outputs.acceptance_capabilities }}
+        run: |
+          npm --prefix acceptance-tests ci --no-audit --no-fund
+          node tools/ci-shards.mjs collect acceptance
       - run: pnpm install --frozen-lockfile
         if: needs.browser-shards.result == 'success'
       - uses: actions/download-artifact@v4
@@ -1056,8 +1109,9 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: runtime-integration-coverage
+          pattern: runtime-integration-coverage-*
           path: coverage/tasker
+          merge-multiple: true
 
       - name: Install runtime coverage reporter
         run: npm ci --prefix example-apps/tasker --no-audit --no-fund
