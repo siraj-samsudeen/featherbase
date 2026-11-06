@@ -51,7 +51,8 @@ test('a new Table imports with a working link to an existing Table', async ({ se
   await page.goto(`/featherbase/admin/table/${encodeURIComponent(NEW_TABLE)}`)
   const link = page.getByRole('link', { name: /Vellayambalam/ }).first()
   await expect(link).toBeVisible()
-  await link.click()
-  await expect(page).toHaveURL(/\/row\/VLM$/)
+  // A plain click opens the row in the list's drill pane; the link's address is its row page.
+  await expect(link).toHaveAttribute('href', /\/row\/VLM$/)
+  await page.goto((await link.getAttribute('href'))!)
   await expect(page.getByRole('main')).toContainText('Vellayambalam')
 })
