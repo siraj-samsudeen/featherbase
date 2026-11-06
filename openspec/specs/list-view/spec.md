@@ -483,3 +483,5 @@ And a customer "cust-3" with no name, with the order "Bolts"
 When the user opens the orders list
 Then the user sees the customer of the order "Bolts" read by its id "cust-3"
 ```
+
+<!-- Probe for #995: CI timing only, never merged. -->
