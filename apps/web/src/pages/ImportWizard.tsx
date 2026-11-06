@@ -196,6 +196,22 @@ async function fetchTargets(): Promise<ImportTarget[]> {
   return metas.flatMap((m) => (m && !m.archived_at ? [{ name: m.name, columns: mappableColumns(m) }] : []))
 }
 
+// #1014: which of these ids are rows of the Table. Retired rows count: a link
+// to one saves. A list read returns at most 500 rows.
+async function existingRowIds(table: string, ids: string[]): Promise<Set<string>> {
+  const found = new Set<string>()
+  for (let start = 0; start < ids.length; start += 500) {
+    const { data } = await listResource<{ row_id: string }>(table, {
+      filters: [['row_id', 'in', ids.slice(start, start + 500)]],
+      fields: ['row_id'],
+      limit_page_length: 500,
+      with_retired: true,
+    })
+    for (const row of data) found.add(String(row.row_id))
+  }
+  return found
+}
+
 // IMP-013: the target picker. A native <select> over hundreds of Tables was
 // unusable — "New Table…" needed a full scroll-back, and the best candidates
 // were buried alphabetically. This combobox pins the two actions on top,
@@ -1442,6 +1458,32 @@ export function ImportWizard() {
       .filter((c) => c.column_name.trim() && plan.include[c.sourceIndex])
   }
 
+  // #1014: the columns of a new Table that link to another Table, with their
+  // file values' row problems found by reading the target through the server.
+  function linkColumns(plan: SheetPlan) {
+    return plan.mode === 'new' ? sentColumns(plan).filter((c) => c.column_type === 'Reference') : []
+  }
+
+  // Rehearse a new Table's links. The Table does not exist yet, so the server's
+  // import has nothing to rehearse against; a link is only ever its target's row
+  // id (validateLinks), so a value is good exactly when that row id exists.
+  async function linkProblems(plan: SheetPlan, parts: ReturnType<typeof targetParts>) {
+    const problems = new Map<string, string[]>()
+    for (const link of linkColumns(plan)) {
+      const column = link.column_name.trim()
+      const values = [...new Set(parts.flatMap((p) => p.rows.map((r) => r.values[column])).filter((v) => v != null && v !== '').map(String))]
+      const found = await existingRowIds(link.reference_table!, values)
+      for (const part of parts)
+        for (const row of part.rows) {
+          const value = row.values[column]
+          if (value == null || value === '' || found.has(String(value))) continue
+          const key = `${part.sheetIndex}:${row.sourceIndex}`
+          problems.set(key, [...(problems.get(key) ?? []), `"${String(value)}" is not a row of ${link.reference_table}. Links match a row's ID, not its name`])
+        }
+    }
+    return problems
+  }
+
   // Make the Table a new-Table plan imports into. On a second attempt the first
   // may have made it already: an empty one is made again, since the person may
   // have changed its columns since, and one holding rows would double them.
@@ -1462,6 +1504,7 @@ export function ImportWizard() {
         label: c.label.trim() || undefined,
         column_type: c.column_type,
         choices: c.column_type === 'Choice' ? c.choices : undefined,
+        reference_table: c.column_type === 'Reference' ? c.reference_table : undefined,
         in_list_view: inList[c.sourceIndex],
       })),
     })
@@ -1514,6 +1557,21 @@ export function ImportWizard() {
         // them, so a reported row number is true against its own sheet.
         const totals = { valid: 0, updated: 0, changed: 0, unchanged: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, rows_kept: 0, conflicts: 0, retired: 0, tracks_changes: null as boolean | null }
         const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
+        if (plan.mode === 'new') {
+          const parts = targetParts(plan)
+          const problems = await linkProblems(plan, parts)
+          for (const part of parts) {
+            totals.skipped += part.skipped
+            failed.push(...part.failed)
+            for (const row of part.rows) {
+              const message = problems.get(`${part.sheetIndex}:${row.sourceIndex}`)
+              if (message) failed.push({ sheetIndex: part.sheetIndex, sourceIndex: row.sourceIndex, message: message.join('; ') })
+              else totals.valid++
+            }
+          }
+          setPlans((ps) => ps.map((p, j) => (j === i ? { ...p, check: { ...totals, failed } } : p)))
+          continue
+        }
         for (const { sheetIndex: m, rows, skipped, failed: duplicates } of targetParts(plan)) {
           const sheet = memberSheet(plan, m)
           // IMP-I1 disclosure: data rows with nothing in any MAPPED column
@@ -1771,6 +1829,10 @@ export function ImportWizard() {
   const landedCount = targetIndexes.filter((i) => plans[i]?.result).length
   const anyChecked = plans.some((p) => p.check)
   const blockingProblems = plans.reduce((n, p) => n + (p.check?.failed.length ?? 0), 0)
+  // #1014: a link column can't be made without its Table, so Import waits for it.
+  const unpickedOf = (i: number) => (plans[i] ? linkColumns(plans[i]).filter((c) => !c.reference_table) : [])
+  const unpickedLinks = targetIndexes.filter((i) => !plans[i]?.result).flatMap((i) => unpickedOf(i).map((c) => c.label || c.column_name))
+  const activeUnpicked = unpickedOf(activeTarget)
 
   // What a step is called. A group is named by the Table it will become —
   // no one member's sheet name speaks for it.
@@ -2273,7 +2335,7 @@ export function ImportWizard() {
                       <th className="px-2 py-1">Label</th>
                       <th className="px-2 py-1">Column name</th>
                       <th className="px-2 py-1">Type</th>
-                      <th className="px-2 py-1">Choices</th>
+                      <th className="px-2 py-1">Choices or link</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2434,7 +2496,31 @@ export function ImportWizard() {
                           data-rowfield="choices"
                           title={c.column_type === 'Choice' ? c.choices?.split('\n').join(', ') : undefined}
                         >
-                          {c.column_type === 'Choice' ? optionsPreview(c.choices) : ''}
+                          {c.column_type === 'Reference' ? (
+                            <select
+                              value={c.reference_table ?? ''}
+                              onChange={(e) =>
+                                setPlan(i, {
+                                  inferred: {
+                                    ...plan.inferred,
+                                    columns: plan.inferred.columns.map((cc, j) =>
+                                      j === ci ? { ...cc, reference_table: e.target.value || undefined } : cc,
+                                    ),
+                                  },
+                                })
+                              }
+                              aria-label={`Table ${c.label || c.column_name} links to`}
+                              data-rowfield="reference_table"
+                              className="w-40 rounded border border-border px-1 py-0.5 text-sm text-ink"
+                            >
+                              <option value="">Choose a Table…</option>
+                              {(targets.data ?? []).map((t) => (
+                                <option key={t.name} value={t.name}>
+                                  {t.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : c.column_type === 'Choice' ? optionsPreview(c.choices) : ''}
                         </td>
                       </tr>
                     ))}
@@ -2855,7 +2941,7 @@ export function ImportWizard() {
                 {/* Matched rows are not necessarily changed rows. */}
                 {plan.check.failed.length === 0 ? (
                   <span className="text-positive">
-                    ✓ All {fmtCount(plan.check.valid)} rows are ready to import
+                    ✓ All {fmtCount(plan.check.valid)} rows {plan.mode === 'new' ? 'link to a row in their Table' : 'are ready to import'}
                   </span>
                 ) : (
                   <span className="text-negative">
@@ -2979,15 +3065,20 @@ export function ImportWizard() {
         <div className="sticky bottom-0 z-10 mt-4 flex items-center gap-2 rounded-t-[var(--radius-card)] border-t border-border-control bg-surface px-2 py-3 shadow-[0_-6px_16px_color-mix(in_srgb,var(--color-scrim)_9%,transparent)]">
           {/* #202: check what is on screen. Rehearsing targets you cannot
               see puts their report somewhere you are not looking. */}
-          {activePlan?.mode === 'existing' && (
+          {(activePlan?.mode === 'existing' || (activePlan && linkColumns(activePlan).length > 0)) && (
             <button
               onClick={() => void runCheck(activeTarget)}
-              disabled={!!busy}
+              disabled={!!busy || activeUnpicked.length > 0}
               data-testid="iw-check"
               className={buttonClasses({ className: 'disabled:opacity-40' })}
             >
               Check
             </button>
+          )}
+          {unpickedLinks.length > 0 && (
+            <span className="mr-2 rounded bg-caution-tint px-2 py-1 text-sm text-caution" data-testid="iw-links-unpicked">
+              Choose the Table that {unpickedLinks.join(', ')} {unpickedLinks.length === 1 ? 'links' : 'link'} to before importing.
+            </span>
           )}
           {confirmUpdates && (
             <span
@@ -3044,7 +3135,7 @@ export function ImportWizard() {
             ) : (
               <button
                 onClick={() => void runImport(activeTarget)}
-                disabled={!!busy || !!confirmUpdates || !!appendWarning}
+                disabled={!!busy || !!confirmUpdates || !!appendWarning || activeUnpicked.length > 0}
                 data-testid="iw-import-one"
                 className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
               >
@@ -3057,6 +3148,7 @@ export function ImportWizard() {
               !!busy ||
               !!confirmUpdates ||
               !!appendWarning ||
+              unpickedLinks.length > 0 ||
               plans.every((p) => p.mode === 'skip') ||
               targetIndexes.every((i) => plans[i]?.result)
             }

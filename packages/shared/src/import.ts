@@ -11,6 +11,8 @@ export interface InferredColumn {
   choices?: string
   reqd: boolean
   in_list_view: boolean
+  // A Reference column's target. Inference never infers a link; the person picks one.
+  reference_table?: string
 }
 
 export interface InferredTableDef {
