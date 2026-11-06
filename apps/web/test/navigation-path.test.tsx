@@ -16,11 +16,19 @@ const current = () => within(pathNav()).getByRole('button', { current: 'step' })
 const pathParam = (router: { state: unknown }) =>
   new URLSearchParams((router.state as { location: { searchStr: string } }).location.searchStr).get('path')
 
+// A link column's Value is its picker (#1019): the row is picked by its name.
+async function chooseRegion(name: string) {
+  fireEvent.change(await screen.findByTestId('filter-field'), { target: { value: 'region' } })
+  fireEvent.focus(screen.getByTestId('filter-value'))
+  const list = await screen.findByTestId('link-options-region')
+  fireEvent.mouseDown(await within(list).findByRole('button', { name }))
+  await waitFor(() => expect(screen.getByTestId('filter-value')).toHaveValue(name))
+  fireEvent.click(screen.getByTestId('filter-add'))
+}
+
 async function addRegionFilter() {
   fireEvent.click(await screen.findByTestId('filter-toggle'))
-  fireEvent.change(await screen.findByTestId('filter-field'), { target: { value: 'region' } })
-  fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'KL' } })
-  fireEvent.click(screen.getByTestId('filter-add'))
+  await chooseRegion('Kerala')
 }
 
 test('a list shows a path bar whose one step names the list', async ({ admin }) => {
@@ -60,9 +68,7 @@ test("the path's Back is the browser's back, so a new step after it leaves no st
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(3))
   // Back went back through history: there is nothing before the list.
   expect(history.canGoBack()).toBe(false)
-  fireEvent.change(await screen.findByTestId('filter-field'), { target: { value: 'region' } })
-  fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'TN' } })
-  fireEvent.click(screen.getByTestId('filter-add'))
+  await chooseRegion('Tamil Nadu')
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(1))
   history.back()
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(3))
