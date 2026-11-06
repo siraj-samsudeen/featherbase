@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
+import { Link as RouterLink, useBlocker, useNavigate } from '@tanstack/react-router'
 import { choiceLabel, idFromColumn, tableHref, namingColumn, INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, rowDisplayTitle, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
@@ -90,7 +90,14 @@ export function FormView({
   const storage = table === 'Table' && !isNew ? describedTable.data?.storage_identity : null
   const [storageCopy, setStorageCopy] = useState('')
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
+  const routerNavigate = useNavigate()
+  // #1009: where the form itself goes after an action (a new row saved, a row
+  // deleted) is no one walking away from their changes.
+  const leavingOnPurpose = useRef(false)
+  const navigate = ((options: never) => {
+    leavingOnPurpose.current = true
+    return routerNavigate(options)
+  }) as typeof routerNavigate
   const { t } = useI18n()
   const formSettings = useSettings()
   // #795: how this person arranges this Table's rows. A Table its builder
@@ -230,13 +237,25 @@ export function FormView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientScripts.handlers, values, rowLoaded, rowKey])
 
+  const dirty = JSON.stringify(values) !== JSON.stringify(baseline)
+  // #1009: what leaving would lose. Prefilled values save with the row (so Save
+  // is on), but nobody typed them; until the form takes its first values there
+  // is nothing to compare.
+  const unsaved = dirty && appliedBaseline.current === baseline
+    && !(isNew && JSON.stringify(values) === JSON.stringify(prefill ?? {}))
+  // Only a different page unmounts the form: a tab or the side pane keeps it.
+  const leaveGuard = useBlocker({
+    shouldBlockFn: ({ current, next }) => unsaved && !leavingOnPurpose.current && current.pathname !== next.pathname,
+    enableBeforeUnload: () => unsaved && !leavingOnPurpose.current,
+    withResolver: true,
+  })
+
   if (meta.isLoading || (!isNew && (doc.isLoading || access.isLoading)))
     return <p className="text-sm text-ink-subtle">Loading…</p>
   if (meta.isError || (!isNew && doc.isError))
     return <p className="text-sm text-negative">Cannot load {table} {name}</p>
 
   const m = meta.data!
-  const dirty = JSON.stringify(values) !== JSON.stringify(baseline)
 
   // Build the `frm` a client-script handler receives, over a given doc snapshot.
   function makeFrm(docSnapshot: Row): Frm {
@@ -528,13 +547,14 @@ export function FormView({
       {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
     </aside>}
   </div>
+  const saveDisabled = saving || !dirty || (submittable && status !== 'draft') || (editingOverride && !overrideTarget.data)
   const reading = !isNew && rowsReadOnly ? m.reading_presentation : null
   // #825: a Version row reads as the change it records; its fields fold away.
   const changeRecord = !isNew && table === 'Version'
   const RawDetails = reading || changeRecord ? 'details' : 'div'
 
   return (
-    <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
+    <div data-testid="form-view" className={`min-w-0 max-w-5xl [overflow-wrap:anywhere] ${unsaved && !rowsReadOnly ? 'pb-20' : ''}`}>
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
         <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>Admin</RouterLink>
         <span aria-hidden="true">/</span>
@@ -712,7 +732,7 @@ export function FormView({
           {!rowsReadOnly && (
             <button
               onClick={save}
-              disabled={saving || !dirty || (submittable && status !== 'draft') || (editingOverride && !overrideTarget.data)}
+              disabled={saveDisabled}
               data-testid="form-save"
               className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
             >
@@ -992,6 +1012,32 @@ export function FormView({
         </div> },
       ]} />}
       </RawDetails>
+      {/* #1009: Save stays in view, wherever the person has scrolled to. Fixed,
+          since the page's split makes its own scroll box, which pins sticky. */}
+      {unsaved && !rowsReadOnly && (
+        <div role="status" data-testid="form-unsaved-bar"
+          className="fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-card border border-border bg-surface px-4 py-2 shadow-lg max-sm:left-4 max-sm:justify-between">
+          <span className="text-sm font-medium text-ink">{t('Unsaved changes')}</span>
+          <button onClick={save} disabled={saveDisabled} className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}>
+            {saving ? t('Saving…') : t('Save')}
+          </button>
+        </div>
+      )}
+      {leaveGuard.status === 'blocked' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40"
+          onClick={() => leaveGuard.reset()}
+          onKeyDown={(e) => e.key === 'Escape' && leaveGuard.reset()}>
+          <div role="dialog" aria-modal="true" aria-labelledby="unsaved-leave-title" data-testid="unsaved-leave-dialog"
+            className={cardClasses('w-full max-w-lg p-4')} onClick={(e) => e.stopPropagation()}>
+            <h2 id="unsaved-leave-title" className="mb-2 text-base font-semibold text-ink">{t('Leave without saving?')}</h2>
+            <p className="mb-3 text-sm text-ink-muted">{t("Your changes to this form haven't been saved.")}</p>
+            <div className="flex flex-wrap justify-end gap-2 [&>button]:whitespace-nowrap">
+              <button autoFocus onClick={() => leaveGuard.reset()} className={buttonClasses()}>{t('Stay')}</button>
+              <button onClick={() => leaveGuard.proceed()} className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}>{t('Leave without saving')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

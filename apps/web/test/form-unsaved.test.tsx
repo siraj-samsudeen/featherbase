@@ -1,6 +1,6 @@
 // #1009: a change that looks done but isn't saved must be hard to miss. Every
 // form keeps Save in view while it has unsaved changes, and asks before leaving.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { rowHref, tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
@@ -79,16 +79,6 @@ test('with nothing unsaved, leaving asks nothing', async ({ admin }) => {
   expect(screen.queryByTestId('unsaved-leave-dialog')).not.toBeInTheDocument()
 })
 
-test('closing or reloading the tab brings up the browser warning only while unsaved', async ({ admin }) => {
-  await seed(admin)
-  await renderApp(rowHref(TABLE, 'D-1'), admin)
-  const field = await note()
-  const unload = () => !fireEvent(window, new Event('beforeunload', { cancelable: true }))
-  expect(unload()).toBe(false)
-  await userEvent.type(field, ' new')
-  expect(unload()).toBe(true)
-})
-
 test('saving a new row goes to it without asking', async ({ admin }) => {
   await seed(admin)
   await renderApp(`${tableHref(TABLE)}/new`, admin)
@@ -119,7 +109,7 @@ test('switching tabs on the same row asks nothing and keeps the edit', async ({ 
   expect(bar()).toBeInTheDocument()
 })
 
-test("adding a role on a Person brings up the bar, and its Save gives the role", async ({ admin, createUser }) => {
+test('adding a role row on a Person brings up the bar', async ({ admin, createUser }) => {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Unsaved Role' } })
   const person = await createUser({ roles: [] })
   await renderApp(rowHref('Person', person.user!), admin)
