@@ -477,7 +477,7 @@ export function FormView({
     return rowsReadOnly && !isNew ? (
       <ValueField key={f.column_name} field={f} value={value} meta={m} settings={formSettings} columns={arrangement.columns} />
     ) : (
-      <FieldControl key={f.column_name}
+      <FieldControl key={f.column_name} columns={isNew ? 2 : arrangement.columns}
         field={rowsReadOnly || (submittable && status !== 'draft') || managedFields.has(f.column_name) ? { ...f, read_only: true } : f}
         managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
         value={value} error={errors[f.column_name]} errors={errors}
@@ -1069,7 +1069,9 @@ function FieldControl({
   setField,
   managedHint,
   errors,
+  columns,
 }: {
+  columns: 1 | 2
   field: ColumnDef
   value: unknown
   error?: string
@@ -1144,7 +1146,7 @@ function FieldControl({
 
   const wide = ['Text', 'Long Text', 'JSON', 'Sub-table'].includes(field.column_type)
   const wrap = (control: React.ReactNode) => (
-    <div className={`min-w-0 ${wide ? '@2xl:col-span-2' : ''}`} data-form-field={field.column_name} data-label={field.label ?? field.column_name}>
+    <div className={`min-w-0 ${wide && columns === 2 ? '@2xl:col-span-2' : ''}`} data-form-field={field.column_name} data-label={field.label ?? field.column_name}>
       {label}
       {control}
       {hint}
