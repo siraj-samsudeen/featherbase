@@ -10,7 +10,7 @@ function column(c: Partial<ColumnDef> & { column_name: string }): ColumnDef {
   return {
     row_id: c.column_name, parent: 'Site', position: 0, label: null, column_type: 'Data', reference_table: null,
     choices: null, row_table: null, reqd: false, unique: false, default_value: null, read_only: false, hidden: false,
-    in_list_view: false, tier: 'basic', created_by: '', updated_by: '', created_at: '', updated_at: '', status: '',
+    in_list_view: false, tier: 'basic', created_by: '', updated_by: '', created_at: '', updated_at: '', submission_status: '',
     ...c,
   }
 }
@@ -19,7 +19,7 @@ function meta(columns: ColumnDef[], extra: Partial<TableMeta> = {}): TableMeta {
   return {
     name: 'Site', module: '', kind: 'table', is_submittable: false, id_pattern: 'prompt', title_column: 'site_name',
     sort_column: '', sort_order: 'desc', track_changes: false, description: null, custom: true, system: false,
-    created_by: '', updated_by: '', created_at: '', updated_at: '', status: '', position: 0, columns, ...extra,
+    created_by: '', updated_by: '', created_at: '', updated_at: '', submission_status: '', position: 0, columns, ...extra,
   }
 }
 

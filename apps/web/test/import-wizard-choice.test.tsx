@@ -100,10 +100,10 @@ test('a Choice value with spaces around it imports as its option', async ({ admi
 
 test('a refused Table says why, naming the column by its label', async ({ admin }) => {
   const user = await singleSheet('Iwc Blank', [['Zone', 'Empty'], ['a', ''], ['b', '']], admin)
-  await user.selectOptions(typeOf('Zone'), 'Reference')
+  await user.selectOptions(typeOf('Empty'), 'Choice')
   await user.click(screen.getByTestId('iw-import'))
   expect(await screen.findByTestId('iw-failure-0', {}, { timeout: 10000 })).toHaveTextContent(
-    'Iwc Blank failed — Invalid Table definition — zone: Reference column requires reference_table',
+    'Iwc Blank failed — Invalid Table definition — empty: Choice column requires choices',
   )
   clearSession()
 }, 30000)

@@ -86,7 +86,7 @@ async function prepareRun(ctx: HookContext): Promise<void> {
   // A submitted run is finished: no late ticks, no added or removed items,
   // no photos, and no way back to Open. run_status is an ordinary Choice
   // column, so the engine's immutability guard — which watches the standard
-  // `status` column — never sees this transition; the app owns the rule.
+  // `submission_status` column — never sees this transition; the app owns the rule.
   if (!ctx.isNew && ctx.old?.run_status === 'Submitted')
     throw new AppError(
       'ValidationError',

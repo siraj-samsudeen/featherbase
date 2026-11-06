@@ -87,7 +87,7 @@ describe('#800 row action capabilities', () => {
     expect(await user.get(capabilities('cap800-owned'))).toMatchObject({ write: false, submit: false, cancel: false, amend: true })
     expect(await user.get(capabilities(other.row_id))).toMatchObject({ write: false, submit: false, cancel: false, amend: false })
     await expectApiError(user.post(`${rows.rowUrl(other.row_id)}:amend`), { status: 403 })
-    expect(await user.post(`${rows.rowUrl('cap800-owned')}:amend`)).toMatchObject({ status: 'draft', amended_from: 'cap800-owned' })
+    expect(await user.post(`${rows.rowUrl('cap800-owned')}:amend`)).toMatchObject({ submission_status: 'draft', amended_from: 'cap800-owned' })
   })
 
   test('read and write shares refresh the descriptor but never grant rename or lifecycle rights', async ({ admin, createUser }) => {
