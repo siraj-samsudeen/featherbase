@@ -2,7 +2,7 @@
 // reads the server already scopes by permission — the row's own Reference
 // values, its counted backlinks, and the titles of the rows it points at.
 import { describe, expect, test } from 'vitest'
-import { backlinkGroups, forwardLinks, linkTitleState, shownCode } from '../src/lib/relations'
+import { backlinkGroups, forwardLinks, linkedRowText, linkTitleState, shownCode } from '../src/lib/relations'
 import type { ColumnDef, TableMeta } from '../src/lib/meta'
 import type { Connection } from '../src/lib/connections'
 
@@ -114,5 +114,57 @@ describe('shownCode', () => {
 
   test('a code the name already says is not repeated', () => {
     expect(shownCode(PLANT, 'Kerala', 'Kerala')).toBeUndefined()
+  })
+})
+
+// #1020: each Table chooses how links to it read.
+describe('linkedRowText', () => {
+  const CLUSTER = meta([column({ column_name: 'cluster_name' }), column({ column_name: 'cluster_code' })], { name: 'Cluster', title_column: 'cluster_name', id_pattern: 'field:cluster_code' })
+
+  test.each([
+    ['name_code', 'Vellayambalam (VLM)'],
+    ['code_name', 'VLM (Vellayambalam)'],
+    ['name', 'Vellayambalam'],
+    ['code', 'VLM'],
+  ] as const)('%s reads %s', (link_format, text) => {
+    expect(linkedRowText({ ...CLUSTER, link_format }, 'VLM', 'Vellayambalam')).toBe(text)
+  })
+
+  test('a Table that never chose reads Name (code)', () => {
+    expect(linkedRowText(CLUSTER, 'VLM', 'Vellayambalam')).toBe('Vellayambalam (VLM)')
+  })
+
+  test.each(['name_code', 'code_name', 'name', 'code'] as const)('%s shows just the name when there is no separate code', (link_format) => {
+    expect(linkedRowText({ ...CLUSTER, link_format }, 'Kerala', 'Kerala')).toBe('Kerala')
+  })
+
+  test.each(['name_code', 'code_name', 'code'] as const)('%s never shows a generated id', (link_format) => {
+    for (const id_pattern of ['hash', 'integer', 'opaque:psn_', 'CL-.####'])
+      expect(linkedRowText({ ...CLUSTER, id_pattern, link_format }, '7', 'Vellayambalam')).toBe('Vellayambalam')
+  })
+
+  describe('a Table with no title column, whose stand-in title holds its code', () => {
+    const STAND_IN = { ...CLUSTER, title_column: null }
+
+    test.each([
+      ['name_code', 'Kurti Z (1517)'],
+      ['code_name', '1517 (Kurti Z)'],
+      ['name', 'Kurti Z'],
+      ['code', '1517'],
+    ] as const)('%s reads %s', (link_format, text) => {
+      expect(linkedRowText({ ...STAND_IN, link_format }, 'a1b2', 'Kurti Z · 1517')).toBe(text)
+    })
+
+    test('a stand-in with no code stays as it is', () => {
+      expect(linkedRowText({ ...STAND_IN, link_format: 'code' }, 'a1b2', 'Kurti Z')).toBe('Kurti Z')
+    })
+
+    test('a separator inside a name is not a code', () => {
+      expect(linkedRowText({ ...STAND_IN, link_format: 'name' }, 'a1b2', 'Metadata · Whole Table · label')).toBe('Metadata · Whole Table · label')
+    })
+
+    test("the last-resort title, the Table and its generated id, stays whole and shows no id on its own", () => {
+      expect(linkedRowText({ ...STAND_IN, id_pattern: 'integer', link_format: 'code' }, '7', 'Cluster · 7')).toBe('Cluster · 7')
+    })
   })
 })
