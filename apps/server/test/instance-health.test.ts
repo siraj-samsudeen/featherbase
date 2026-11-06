@@ -36,6 +36,13 @@ async function noManagerEmails() {
     select parent from has_role where role = 'System Manager')`
 }
 
+/** Every scheduled job has just run, as on an instance whose worker is up. The
+ *  suite runs no worker, so without this a job counts from the migration's
+ *  `updated_at` and reads as stopped 12 minutes after it (#776). */
+async function jobsJustRan() {
+  await sql`update scheduled_job set last_run_at = now()`
+}
+
 async function apply(file: unknown = { settings: { 'System Settings': { app_name: 'Health Name' } } }) {
   return applyInstanceSettings(file, { by: 'Administrator' })
 }
@@ -53,6 +60,7 @@ describe('the checks (5.1)', () => {
     // period. This scenario starts with freshly enabled, never-run jobs.
     await sql`update scheduled_job set updated_at = now() where last_run_at is null`
     await sql`delete from instance_settings_apply`
+    await jobsJustRan()
     await withVariable('FEATHERBASE_INSTANCE', '', async () => {
       const health = await instanceHealth({ environment: 'development', record: false })
       expect(byKey(health.checks, 'settings-applied')).toMatchObject({ ok: true, state: 'optional', fix: null })
@@ -397,6 +405,7 @@ describe('the health API (5.3, 5.4)', () => {
     await sql`update scheduled_job set updated_at = now() where last_run_at is null`
     await sql`delete from instance_settings_apply`
     await sql`delete from health_check_event`
+    await jobsJustRan()
     const health = await admin.get<{
       checks: (HealthCheck & { since: string | null; history: { ok: boolean }[] })[]
       failing: number
