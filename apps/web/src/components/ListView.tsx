@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { choiceLabel, parseFilters, rowDisplayTitle } from 'shared'
+import { choiceLabel, parseFilters, readYesNo, rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, getToken, listResource } from '../lib/api'
 import { describeFilters, recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
@@ -180,6 +180,8 @@ export function ListView({
   const queryClient = useQueryClient()
   // usable-on-any-device "Lists fit a phone": below 40rem the rows are cards.
   const narrow = useMediaQuery(NARROW_QUERY)
+  // #742: on a phone the filters fold behind one button, so the rows come first.
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
   // UI-013 / #738: per-user saved settings — sort, and which columns show,
@@ -947,11 +949,29 @@ export function ListView({
         </div>
       )}
       {onFiltersChange && !baseFilters.length && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
-      {onFiltersChange && !baseFilters.length && <RecentStrip table={table} meta={meta.data} onApply={onFiltersChange} />}
+      {onFiltersChange && !baseFilters.length && !narrow && <RecentStrip table={table} meta={meta.data} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
         <>
-          <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
-          <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
+          {narrow && (
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((open) => !open)}
+              aria-expanded={filtersOpen}
+              data-testid="filters-toggle"
+              className={buttonClasses({ className: 'mb-3' })}
+            >
+              Filters{filters.length > 0 && ` (${filters.length})`}
+              <ChevronDown aria-hidden data-chevron size={18} className={filtersOpen ? 'rotate-180' : undefined} />
+            </button>
+          )}
+          {(!narrow || filtersOpen) && (
+            <>
+              <StandardFilters meta={meta.data} view={columns} filters={filters} onChange={onFiltersChange} stacked={narrow} />
+              <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
+              {/* #742: on a phone, Recent folds in with the filters it reuses. */}
+              {narrow && !baseFilters.length && <RecentStrip table={table} meta={meta.data} onApply={onFiltersChange} />}
+            </>
+          )}
         </>
       )}
       {selected.size > 0 && !isRowsReadOnly(meta.data) && (
@@ -1637,29 +1657,53 @@ function InlineChildGrid({
 // inputs for the list's visible columns — Choices become dropdowns, text-ish
 // columns match with contains. They read and write the same URL-driven filter
 // list the advanced FilterBar manages, so chips stay in sync.
-const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference', 'Email', 'Small Text'])
+const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference'])
+// How many quick filter boxes show before the rest fold behind "+N more":
+// six in a desktop row, four stacked on a phone.
+const QUICK_FILTER_ROW = 6
+const QUICK_FILTER_STACK = 4
+
+/** The values a column offers to pick from, or null when it is typed. A Yes/No
+ *  column offers the words Yes and No, which the server reads (#742). */
+function choicesOf(f: { column_type: string; choices?: string | null }): string[] | null {
+  if (f.column_type === 'Check') return ['Yes', 'No']
+  if (f.column_type === 'Choice') return (f.choices ?? '').split('\n').filter(Boolean)
+  return null
+}
 
 function StandardFilters({
   meta,
+  view,
   filters,
   onChange,
+  stacked,
 }: {
   meta: import('../lib/meta').TableMeta
+  view: ListColumn[]
   filters: Filter[]
   onChange: (filters: Filter[]) => void
+  /** On a phone, opened from the Filters button: the boxes one above the other. */
+  stacked: boolean
 }) {
   const { t } = useI18n()
-  const columns = meta.columns
-    .filter(
-      (f) =>
-        f.in_list_view &&
-        !f.hidden &&
-        (f.column_type === 'Choice' || STANDARD_TEXT_TYPES.has(f.column_type)),
-    )
-    .slice(0, 4)
+  // #742: the data columns this person sees. Row ID isn't one, so it gets no box.
+  const seen = new Set(view.map((c) => c.column_name))
+  const columns = dataColumns(meta).filter(
+    (f) =>
+      seen.has(f.column_name) &&
+      (choicesOf(f) !== null || STANDARD_TEXT_TYPES.has(f.column_type)),
+  )
   // Drafts for the text inputs (applied on Enter/blur); choices apply at once.
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [showAll, setShowAll] = useState(false)
   if (!columns.length) return null
+  // #742: the first six show; past them, only a box holding a value, until
+  // the person asks for the rest.
+  const inRow = columns.filter(
+    (f, i) => i < (stacked ? QUICK_FILTER_STACK : QUICK_FILTER_ROW) || current(f.column_name, boxOp(f)) !== '',
+  )
+  const shown = showAll ? columns : inRow
+  const folded = columns.length - inRow.length
 
   function current(columnName: string, op: string): string {
     const hit = filters.find((f) => f[0] === columnName && f[1] === op)
@@ -1668,26 +1712,56 @@ function StandardFilters({
     return op === 'like' ? v.replace(/^%|%$/g, '') : v
   }
 
+  // The operator a column's box filters with: a link (picked row) and a
+  // dropdown match exactly; a text box searches.
+  function boxOp(f: { column_type: string; reference_table?: string | null; choices?: string | null }): string {
+    return (f.column_type === 'Reference' && f.reference_table) || choicesOf(f) ? '=' : 'like'
+  }
+
+  // #742: a box picked from shows a link's value as one of its choices — a Yes/No
+  // box reads it with the server's own rule (readYesNo, in shared) — and any
+  // other value as itself, so a filtered list never shows "All".
+  function picked(f: { column_name: string; column_type: string }): string {
+    const raw = current(f.column_name, '=')
+    if (f.column_type !== 'Check') return raw
+    const yesNo = readYesNo(raw)
+    return yesNo === true ? 'Yes' : yesNo === false ? 'No' : raw
+  }
+
+  function unreadable(f: { column_name: string; column_type: string; choices?: string | null }): boolean {
+    const value = picked(f)
+    return value !== '' && !choicesOf(f)!.includes(value)
+  }
+
   function apply(columnName: string, op: string, value: string) {
     const rest = filters.filter((f) => f[0] !== columnName)
     onChange(value ? [...rest, [columnName, op, op === 'like' ? `%${value}%` : value]] : rest)
   }
 
+  // #742: on a desktop the boxes share one line and shrink evenly when it is
+  // full, so six always fit; they wrap only once "+N more" has opened. On a
+  // phone each stacked box takes the full width.
+  const box = stacked ? 'flex flex-col gap-0.5' : 'flex min-w-0 flex-col gap-0.5'
+  const textWidth = stacked ? undefined : 'max-w-[10rem]'
+  const row = showAll ? 'flex-wrap' : 'flex-nowrap'
   return (
-    <div className="mb-3 flex flex-wrap items-end gap-2" data-testid="standard-filters">
-      {columns.map((f) =>
+    <div
+      className={stacked ? 'mb-3 flex flex-col gap-2' : `mb-3 flex ${row} items-end gap-2`}
+      data-testid="standard-filters"
+    >
+      {shown.map((f) =>
         f.column_type === 'Reference' && f.reference_table ? (
           // #793: a link filters by picking a row by its name, not by typing its id.
-          <label key={f.column_name} className="flex flex-col gap-0.5">
+          <label key={f.column_name} className={box}>
             <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex min-w-0 items-center gap-1">
               <LinkControl
                 field={f}
                 value={current(f.column_name, '=')}
                 onChange={(v) => apply(f.column_name, '=', String(v ?? ''))}
-                className={inputClasses('max-w-[10rem]')}
+                className={inputClasses(textWidth)}
                 common={{ 'data-testid': `std-filter-${f.column_name}` }}
                 forFilter
               />
@@ -1704,22 +1778,19 @@ function StandardFilters({
               )}
             </span>
           </label>
-        ) : f.column_type === 'Choice' ? (
-          <label key={f.column_name} className="flex flex-col gap-0.5">
+        ) : choicesOf(f) ? (
+          <label key={f.column_name} className={box}>
             <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
             <select
-              value={current(f.column_name, '=')}
+              value={picked(f)}
               onChange={(e) => apply(f.column_name, '=', e.target.value)}
               data-testid={`std-filter-${f.column_name}`}
-              className={inputClasses('max-w-[20rem]')}
+              className={inputClasses(stacked ? undefined : 'max-w-[20rem]')}
             >
               <option value="">All</option>
-              {(f.choices ?? '')
-                .split('\n')
-                .filter(Boolean)
-                .map((o) => (
+              {[...choicesOf(f)!, ...(unreadable(f) ? [picked(f)] : [])].map((o) => (
                   <option key={o} value={o}>
                     {choiceLabel(o, f.choice_labels, t)}
                   </option>
@@ -1727,7 +1798,7 @@ function StandardFilters({
             </select>
           </label>
         ) : (
-          <label key={f.column_name} className="flex flex-col gap-0.5">
+          <label key={f.column_name} className={box}>
             <span className="text-xs font-semibold text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
@@ -1743,10 +1814,20 @@ function StandardFilters({
               }}
               placeholder={`Filter ${f.label ?? f.column_name}…`}
               data-testid={`std-filter-${f.column_name}`}
-              className={inputClasses('max-w-[10rem]')}
+              className={inputClasses(textWidth)}
             />
           </label>
         ),
+      )}
+      {folded > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll((all) => !all)}
+          data-testid="std-filter-more"
+          className={buttonClasses({ className: 'shrink-0 whitespace-nowrap' })}
+        >
+          {showAll ? 'Show fewer' : `+${folded} more`}
+        </button>
       )}
     </div>
   )
@@ -1786,6 +1867,15 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
   )
 }
 
+// Add filter's column and value controls: on a phone they share one line, the
+// column taking the larger part so its name isn't cut off; from sm up each is at
+// most 10rem, as before.
+const FILTER_COLUMN = 'min-w-0 flex-[3] sm:flex-none sm:max-w-[10rem]'
+const FILTER_PART = 'min-w-0 flex-[2] sm:flex-none sm:max-w-[10rem]'
+// The value dropdown: as FILTER_PART on a phone; from sm up as wide as a readable
+// choice label needs (#826).
+const FILTER_CHOICE = 'min-w-0 flex-[2] sm:flex-none sm:max-w-[20rem]'
+
 export function FilterBar({
   meta,
   filters,
@@ -1797,17 +1887,29 @@ export function FilterBar({
 }) {
   const { t } = useI18n()
   const fields = [
-    { fieldname: 'row_id', label: 'Row ID' },
+    { fieldname: 'row_id', label: 'Row ID', choices: null, choice_labels: undefined },
     ...meta.columns
       .filter((f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden)
-      .map((f) => ({ fieldname: f.column_name, label: f.label ?? f.column_name })),
+      .map((f) => ({
+        fieldname: f.column_name,
+        label: f.label ?? f.column_name,
+        choices: choicesOf(f),
+        choice_labels: f.choice_labels,
+      })),
   ]
   const [field, setField] = useState('row_id')
   const [op, setOp] = useState<string>('=')
   const [value, setValue] = useState('')
-  const choice = ['=', '!='].includes(op)
-    ? meta.columns.find((c) => c.column_name === field && c.column_type === 'Choice')
-    : undefined
+  // #742: a column with set values is picked from, and only matched or not.
+  const picking = fields.find((f) => f.fieldname === field)
+  const choices = picking?.choices ?? null
+  const ops: readonly string[] = choices ? ['=', '!='] : OPS
+
+  function pickField(next: string) {
+    setField(next)
+    setValue('')
+    if (fields.find((f) => f.fieldname === next)?.choices && op !== '!=') setOp('=')
+  }
 
   function add() {
     if (!value.trim()) return
@@ -1818,13 +1920,14 @@ export function FilterBar({
 
   return (
     <div className="mb-3">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* #742: on a phone the comparison stays on one line, its parts shrinking to fit. */}
+      <div className="flex items-center gap-1 sm:flex-wrap sm:gap-2">
         <select
           value={field}
-          onChange={(e) => { setField(e.target.value); setValue('') }}
+          onChange={(e) => pickField(e.target.value)}
           aria-label="Filter by field"
           data-testid="filter-field"
-          className={inputClasses('max-w-[10rem]')}
+          className={inputClasses(FILTER_COLUMN)}
         >
           {fields.map((f) => (
             <option key={f.fieldname} value={f.fieldname}>
@@ -1837,40 +1940,44 @@ export function FilterBar({
           onChange={(e) => setOp(e.target.value)}
           aria-label="Filter condition"
           data-testid="filter-op"
-          className={inputClasses('max-w-[10rem]')}
+          className={inputClasses('w-14 shrink-0 sm:w-auto sm:max-w-[10rem]')}
         >
-          {OPS.map((o) => (
+          {ops.map((o) => (
             <option key={o} value={o}>
               {o}
             </option>
           ))}
         </select>
-        {choice ? (
+        {choices ? (
           <select
             value={value}
             onChange={(e) => setValue(e.target.value)}
             aria-label="Filter value"
             data-testid="filter-value"
-            className={inputClasses('max-w-[20rem]')}
+            className={inputClasses(FILTER_CHOICE)}
           >
             <option value="">Choose a value</option>
-            {(choice.choices ?? '').split('\n').filter(Boolean).map((raw) => (
-              <option key={raw} value={raw}>{choiceLabel(raw, choice.choice_labels, t)}</option>
+            {choices.map((raw) => (
+              <option key={raw} value={raw}>
+                {choiceLabel(raw, picking?.choice_labels, t)}
+              </option>
             ))}
           </select>
-        ) : <input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && add()}
-          placeholder="Value"
-          aria-label="Filter value"
-          data-testid="filter-value"
-          className={inputClasses('max-w-[10rem]')}
-        />}
+        ) : (
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+            placeholder="Value"
+            aria-label="Filter value"
+            data-testid="filter-value"
+            className={inputClasses(FILTER_PART)}
+          />
+        )}
         <button
           onClick={add}
           data-testid="filter-add"
-          className={buttonClasses()}
+          className={buttonClasses({ className: 'shrink-0' })}
         >
           Add filter
         </button>
