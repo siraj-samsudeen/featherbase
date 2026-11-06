@@ -75,6 +75,8 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
     people.set(user.email, person.row_id)
   }
   const personId = (value) => (value && people.has(value) ? people.get(value) : value)
+  for (const store of TASKER_SCENARIOS.stores)
+    await ensure('tasker.store', 'row_id', store.row_id, store, { store_name: store.store_name })
   const projects = new Map()
   for (const scenario of TASKER_SCENARIOS.projects) {
     const project = await ensure('tasker.project', 'row_id', scenario.row_id, scenario, { project_name: scenario.project_name })
@@ -107,7 +109,7 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
   await request(`/api/user_settings/${encodeURIComponent('tasker.preferences')}`, {
     method: 'PUT', body: { mode: TASKER_SCENARIOS.detailMode },
   })
-  log(`Tasker development scenarios ready at ${origin}/tasker/ (${tasks.size} tasks, ${projects.size} projects)`)
+  log(`Tasker development scenarios ready at ${origin}/tasker/ (${tasks.size} tasks, ${projects.size} projects, ${TASKER_SCENARIOS.stores.length} stores)`)
   return { origin, projects: Object.fromEntries(projects), tasks: Object.fromEntries(tasks), focus: task_ids }
 }
 
