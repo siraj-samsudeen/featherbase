@@ -23,11 +23,13 @@ function AccountFrame() {
   const kind = useShellKind()
   const onAppAddress = useOnAppAddress()
   if (kind === 'admin' && onAppAddress === false) return <AdminShell wide={false} />
+  // The page waits for the frame: swapping frames under it would remount it.
+  const deciding = kind === 'loading' || onAppAddress === undefined
   return (
     <div className="flex min-h-screen flex-col bg-canvas" data-testid="account-layout">
       <TopBar forPerson />
       <main className="mx-auto w-full max-w-3xl flex-1 p-4 sm:p-6">
-        <Outlet />
+        {!deciding && <Outlet />}
       </main>
     </div>
   )
