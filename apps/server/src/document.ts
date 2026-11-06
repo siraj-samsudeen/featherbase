@@ -1889,6 +1889,24 @@ async function setRetirement(
 // pointed at the old name — across all Tables and child tables — in one
 // transaction. The row keeps all its other data and children, and its
 // comments, history, attachments and shares (#509).
+// #1029: a row named after its own column moves that column with the id, and
+// the column's rules judge the new value as a save would.
+async function renamedSourceColumn(tx: typeof sql, meta: TableMeta, row: RowValues, target: string, user: string): Promise<RowValues> {
+  const naming = namingColumn(meta.id_pattern)
+  if (!naming) return {}
+  const { prefix, column } = naming
+  const def = meta.columns.find((c) => c.column_name === column)
+  if (!def) return {}
+  const refuse = (message: string) => new AppError('ValidationError', message, { [ROW_KEY]: message })
+  if (!target.startsWith(prefix) || target === prefix)
+    throw refuse(`A ${meta.name} ID is ${prefix} followed by its ${def.label ?? column}`)
+  if (def.read_only) throw refuse(`${def.label ?? column} names this row and is read-only, so the row can't be renamed`)
+  const source = validateValues(meta, { [column]: target.slice(prefix.length) }, 'update')
+  await validateLinks(tx, meta, source, user, '', row)
+  await assertUserPermissions(user, meta, { ...row, ...source })
+  return source
+}
+
 export function renameDoc(...args: Parameters<typeof renameDocImpl>) {
   return appOperation(() => renameDocImpl(...args))
 }
@@ -1933,6 +1951,7 @@ async function renameDocImpl(
     // to (the cascade below would rewrite it), nor a locked row's id as the
     // new name.
     const stx = tx as unknown as typeof sql
+    const source = await renamedSourceColumn(stx, meta, existing as RowValues, target, user)
     await assertRowNotManaged(stx, meta, oldName, user)
     await assertRowNotManaged(stx, meta, target, user)
     await assertNoManagedReference(stx, table, oldName, user)
@@ -1940,7 +1959,11 @@ async function renameDocImpl(
     await assertChildRowsWritable(stx, meta, oldName, user)
     await runHooks('before_rename', { row: existing as RowValues, meta, user, isNew: false, tx: stx })
     // Rename the row itself.
-    await tx`update ${tx(tbl)} set ${tx(meta.row_key)} = ${target}, updated_at = now() where ${tx(meta.row_key)} = ${oldName}`
+    try {
+      await tx`update ${tx(tbl)} set ${tx({ [meta.row_key]: target, ...source, updated_at: new Date() } as Record<string, never>)} where ${tx(meta.row_key)} = ${oldName}`
+    } catch (err) {
+      await mapDbError(meta, err)
+    }
 
     // Re-point this row's own child rows to the new parent name.
     for (const f of meta.columns) {

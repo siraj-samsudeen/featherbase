@@ -62,7 +62,7 @@ describe('renaming a row named after its own column', () => {
     const first = await save(admin, 'Rs Cluster', { code: 'VLM' })
     const second = await save(admin, 'Rs Cluster', { code: 'KOC' })
     // The two get out of step when a save changes the column and keeps the id.
-    await admin.patch(rowUrl('Rs Cluster', String(second.row_id)), { code: 'TVM', updated_at: second.updated_at })
+    await save(admin, 'Rs Cluster', { ...second, code: 'TVM' })
     await expect(rename(admin, 'Rs Cluster', String(first.row_id), 'TVM')).rejects.toMatchObject({ status: 417 })
     expect(await admin.get(rowUrl('Rs Cluster', 'VLM'))).toMatchObject({ row_id: 'VLM', code: 'VLM' })
   })
@@ -76,9 +76,9 @@ describe('renaming a row named after its own column', () => {
   })
 
   test('a read-only column is not moved by a rename', async ({ admin }) => {
-    await cluster(admin, { column: { read_only: true, default_value: 'VLM' } })
-    const row = await save(admin, 'Rs Cluster', { note: 'x' })
-    await expect(rename(admin, 'Rs Cluster', String(row.row_id), 'TVM')).rejects.toMatchObject({ status: 417 })
+    await admin.post('/api/table_def', { name: 'Rs Fixed', id_pattern: 'field:code', columns: [{ column_name: 'code', column_type: 'Data', read_only: true, default_value: 'VLM' }] })
+    const row = await save(admin, 'Rs Fixed', { code: 'VLM' })
+    await expect(rename(admin, 'Rs Fixed', String(row.row_id), 'TVM')).rejects.toMatchObject({ status: 417 })
   })
 
   test('a Table with another naming rule is unchanged', async ({ admin }) => {
