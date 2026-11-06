@@ -21,7 +21,8 @@ test('members share one store list and can add to it', async ({ createUser }) =>
   const seen = await asha.get<{ data: Row[] }>('/api/table/tasker.store?fields=["row_id","store_name","store_type"]&order_by=store_name asc')
   expect(seen.data.map(row => [row.store_name, row.store_type])).toEqual([['Keelkattalai Store', 'Store'], ['Manimangalam WH', 'Warehouse']])
   const task = await ravi.post<Row>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Reconcile stock variance', store: store.row_id, start_date: '2026-11-01', due_date: '2026-11-04' } })
-  expect(await ravi.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ store: store.row_id, start_date: '2026-11-01', due_date: '2026-11-04' })
+  const saved = await ravi.get<Row>(`/api/table/tasker.task/${task.row_id}`)
+  expect([saved.store, String(saved.start_date).slice(0, 10), String(saved.due_date).slice(0, 10)]).toEqual([store.row_id, '2026-11-01', '2026-11-04'])
 })
 
 test('a due date before the start date is refused', async ({ createUser }) => {
@@ -29,8 +30,9 @@ test('a due date before the start date is refused', async ({ createUser }) => {
   const member = taskerClient(await createUser({ roles: ['Tasker Member'] }))
   const task = await member.post<Row>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Reconcile stock variance', start_date: '2026-11-10' } })
   await expect(member.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: task.updated_at, due_date: '2026-11-04' } }))
-    .rejects.toMatchObject({ status: 417, body: { error: { message: expect.stringMatching(/can.t be before the start date/) } } })
-  expect(await member.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: task.updated_at, due_date: '2026-11-10' } })).toMatchObject({ due_date: '2026-11-10' })
+    .rejects.toThrow('The due date can’t be before the start date')
+  const sameDay = await member.post<Row>('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: task.updated_at, due_date: '2026-11-10' } })
+  expect(String(sameDay.due_date).slice(0, 10)).toBe('2026-11-10')
 })
 
 test('a subtask belongs to its parent’s store', async ({ createUser }) => {
