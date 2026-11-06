@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { anonymousTest as test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
@@ -55,4 +56,31 @@ test('a new Table imports with a working link to an existing Table', async ({ se
   await expect(link).toHaveAttribute('href', /\/row\/VLM$/)
   await page.goto((await link.getAttribute('href'))!)
   await expect(page.getByRole('main')).toContainText('Vellayambalam')
+})
+
+// The verifier's find: the ids travel in the read's address, and many long ones
+// passed the real server's limit, which only a real server shows.
+test('Check handles many long values', async ({ session, page, request }) => {
+  const token = await adminToken(request)
+  const headers = { Authorization: `Bearer ${token}` }
+  const LONG = 'Link Long Names'
+  const NEW = 'Link Long Stores'
+  await deleteTableIfExists(request, token, NEW)
+  await deleteTableIfExists(request, token, LONG)
+  await request.post('/api/table_def', {
+    headers,
+    data: { name: LONG, id_pattern: 'field:zone_name', columns: [{ column_name: 'zone_name', column_type: 'Data' }] },
+  })
+  const value = (i: number) => `Vellayambalam Regional Distribution Centre ${String(i).padStart(4, '0')}`
+  await request.post('/api/save_row', { headers, data: { table: LONG, row: { zone_name: value(0) } } })
+
+  const csv = ['store_name,zone', ...Array.from({ length: 600 }, (_, i) => `S${i},${value(i)}`)].join('\n')
+  await signIn(session).click('Import Data')
+  await page.getByTestId('iw-file-input').setInputFiles({ name: 'long.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) })
+  await page.getByTestId('iw-new-name-0').fill(NEW)
+  const row = page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]').nth(1)
+  await row.locator('[data-rowfield=column_type]').selectOption('Reference')
+  await row.getByRole('combobox', { name: 'Table Zone links to' }).selectOption(LONG)
+  await page.getByTestId('iw-check').click()
+  await expect(page.getByTestId('iw-check-0')).toContainText('1 rows ready, 599 with problems')
 })

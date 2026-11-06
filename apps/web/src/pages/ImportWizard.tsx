@@ -197,18 +197,30 @@ async function fetchTargets(): Promise<ImportTarget[]> {
 }
 
 // #1014: which of these ids are rows of the Table. Retired rows count: a link
-// to one saves. A list read returns at most 500 rows.
+// to one saves. The ids travel in a GET's address, which the server caps at
+// about 16 KB, so a batch ends at the 500 rows one read returns or at 8 KB.
 async function existingRowIds(table: string, ids: string[]): Promise<Set<string>> {
   const found = new Set<string>()
-  for (let start = 0; start < ids.length; start += 500) {
+  let batch: string[] = []
+  let size = 0
+  const read = async () => {
     const { data } = await listResource<{ row_id: string }>(table, {
-      filters: [['row_id', 'in', ids.slice(start, start + 500)]],
+      filters: [['row_id', 'in', batch]],
       fields: ['row_id'],
       limit_page_length: 500,
       with_retired: true,
     })
     for (const row of data) found.add(String(row.row_id))
+    batch = []
+    size = 0
   }
+  for (const id of ids) {
+    const length = encodeURIComponent(JSON.stringify(id)).length + 3
+    if (batch.length === 500 || (batch.length > 0 && size + length > 8000)) await read()
+    batch.push(id)
+    size += length
+  }
+  if (batch.length) await read()
   return found
 }
 
@@ -1831,7 +1843,9 @@ export function ImportWizard() {
   const blockingProblems = plans.reduce((n, p) => n + (p.check?.failed.length ?? 0), 0)
   // #1014: a link column can't be made without its Table, so Import waits for it.
   const unpickedOf = (i: number) => (plans[i] ? linkColumns(plans[i]).filter((c) => !c.reference_table) : [])
-  const unpickedLinks = targetIndexes.filter((i) => !plans[i]?.result).flatMap((i) => unpickedOf(i).map((c) => c.label || c.column_name))
+  const unpickedLinks = targetIndexes.filter((i) => !plans[i]?.result).flatMap((i) =>
+    unpickedOf(i).map((c) => `${c.label || c.column_name}${targetIndexes.length > 1 ? ` (in ${plans[i].table})` : ''}`),
+  )
   const activeUnpicked = unpickedOf(activeTarget)
 
   // What a step is called. A group is named by the Table it will become —
