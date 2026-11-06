@@ -4,6 +4,7 @@ export const actions = {
   async probe({ payload, baseTables, changeProposals }) {
     if (payload.op === 'parallel') return Promise.all([changeProposals.list({}), changeProposals.list({})])
     if (payload.op === 'unawaited') { void changeProposals.list({}).catch(() => {}); return true }
+    if (payload.op === 'unawaited_failing') { void baseTables.list('Not Declared', {}).catch(() => {}); return true }
     if (payload.op === 'authority') return { may: await changeProposals.mayDecide(payload.maker, payload.approvers), route: await changeProposals.routeFor(payload.maker, payload.approvers) }
     if (payload.op === 'serialize') return changeProposals.serialize(payload.key) ?? null
     if (payload.op === 'list') return baseTables.list(payload.table, payload.args)

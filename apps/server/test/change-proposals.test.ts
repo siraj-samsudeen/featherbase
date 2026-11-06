@@ -338,6 +338,8 @@ describe('what the helpers refuse', () => {
     const { maker } = await setUp(admin, createUser)
     await expect(probe(maker, { op: 'parallel' })).rejects.toMatchObject({ status: 417 })
     await expect(probe(maker, { op: 'unawaited' })).rejects.toMatchObject({ status: 417 })
+    // A helper left running that then fails still fails the handler, with its own reason.
+    await expect(probe(maker, { op: 'unawaited_failing' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Not Declared') })
   })
 
   test('proposing: nothing to change, a value that is not text, a column both changed and reviewed, bad approvers', async ({ admin, createUser }) => {
