@@ -23,6 +23,6 @@ runs:
         PACKAGE: ${{ inputs.package }}
       run: |
         mkdir -p ~/.cache/playwright-debs
-        sudo find ~/.cache/playwright-debs -name '*.deb' -exec cp -t /var/cache/apt/archives/ {} +
+        sudo find ~/.cache/playwright-debs -maxdepth 1 -name '*.deb' -exec cp -t /var/cache/apt/archives/ {} +
         pnpm --filter "$PACKAGE" exec playwright install --with-deps chromium
-        find /var/cache/apt/archives -name '*.deb' -exec cp -t ~/.cache/playwright-debs/ {} +
+        find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp -t ~/.cache/playwright-debs/ {} +
