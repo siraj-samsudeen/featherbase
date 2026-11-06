@@ -16,7 +16,7 @@ async function plant(admin: Parameters<typeof makeTable>[0], name = 'Pu Plant') 
     id_pattern: 'prompt',
     title_column: 'plant_name',
     description: 'Every plant we run',
-    reading_presentation: { title: 'plant_name', body: 'note' },
+    reading_presentation: { title: 'plant_name', headers: [], body: 'note', attachment_names: 'note', notice: 'Read only' },
     columns: [
       { column_name: 'plant_name', column_type: 'Data' },
       { column_name: 'note', column_type: 'Text' },
