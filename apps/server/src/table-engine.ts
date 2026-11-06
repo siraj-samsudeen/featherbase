@@ -611,6 +611,8 @@ export async function updateTable(
       // Only when named: null or an empty value clears them, leaving them out keeps them.
       ...(named.title_column !== undefined ? { title_column: def.title_column || null } : {}),
       ...(def.link_format !== undefined ? { link_format: def.link_format } : {}),
+      // A title column removed with this update names nothing any more.
+      ...(existing.title_column && opts.remove_columns?.includes(existing.title_column) ? { title_column: null } : {}),
       ...(def.reading_presentation !== undefined ? { reading_presentation: def.reading_presentation } : {}),
       ...(named.description !== undefined ? { description: def.description || null } : {}),
       // Only when given: an update that leaves it out keeps the Table's choice.

@@ -24,6 +24,10 @@
     {
       "name": "dive_ready_signal",
       "required": false
+    },
+    {
+      "name": "linked_tables",
+      "required": false
     }
   ],
   "secrets": [
@@ -36,12 +40,14 @@
     {
       "picker": "Store",
       "options": "stores",
-      "sets": "store"
+      "sets": "store",
+      "hiddenWhen": "view"
     },
     {
       "picker": "Month",
       "options": "months",
-      "sets": "month"
+      "sets": "month",
+      "hiddenWhen": "view"
     }
   ],
   "datasets": [
@@ -1249,6 +1255,30 @@
           "kind": "generic"
         },
         "outbound": true
+      },
+      "my_sections": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "subcategory_search": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "approvals": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       }
     }
   },
@@ -1276,6 +1306,128 @@
       "fromVersion": "0.10.3",
       "toVersion": "0.10.4",
       "operations": []
+    },
+    {
+      "id": "my_sections",
+      "fromVersion": "0.10.4",
+      "toVersion": "0.11.0",
+      "operations": []
     }
-  ]
+  ],
+  "baseTables": {
+    "read": {
+      "Employee": [
+        "employee_name",
+        "employee_status",
+        "person"
+      ],
+      "Job Assignment": [
+        "employee",
+        "job",
+        "site",
+        "floor",
+        "section",
+        "reports_to",
+        "starts_on",
+        "ends_on"
+      ],
+      "Section": [
+        "section_name",
+        "site",
+        "floor",
+        "section_status"
+      ],
+      "Store Floor": [
+        "floor_name",
+        "site"
+      ],
+      "Section Subcategory": [
+        "placement_id",
+        "site",
+        "subcategory",
+        "section",
+        "starts_on",
+        "ends_on"
+      ],
+      "Subcategory": [
+        "subcategory",
+        "is_merchandise",
+        "deleted_at_source"
+      ],
+      "Site Master": [
+        "site_name",
+        "is_store"
+      ]
+    },
+    "propose": {
+      "Section Subcategory": {
+        "columns": [
+          "section",
+          "site",
+          "subcategory"
+        ],
+        "stamp": [
+          "placement_id",
+          "source"
+        ],
+        "startsOn": "starts_on",
+        "endsOn": "ends_on"
+      },
+      "Job Assignment": {
+        "columns": [
+          "section",
+          "floor",
+          "employee",
+          "site",
+          "job"
+        ],
+        "stamp": [
+          "assignment_id",
+          "source"
+        ],
+        "startsOn": "starts_on",
+        "endsOn": "ends_on"
+      }
+    }
+  },
+  "actions": {
+    "version": 2,
+    "tables": [
+      "dash.store_rollout"
+    ],
+    "operations": {
+      "propose_move": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "propose_add": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "propose_section": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "decide": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      }
+    }
+  }
 }
