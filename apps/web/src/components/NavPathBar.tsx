@@ -24,15 +24,17 @@ export function NavPathBar() {
   // #1013: one step is no path, and would only repeat the page's own heading.
   if (!nav || !path || path.steps.length < 2) return null
   return (
-    <PathBar
-      steps={path.steps.map((_, i) => ({ key: String(i), label: labels[i] }))}
-      current={path.at}
-      onStep={nav.go}
-      onBack={() => nav.go(path.at - 1)}
-      onForward={() => nav.go(path.at + 1)}
-      onCopyLink={() => void navigator.clipboard?.writeText(new URL(nav.href(path), window.location.origin).href).catch(() => {})}
-      recent={<RecentWalks paths={settings.recent} onPick={nav.open} />}
-    />
+    <div className="mb-3">
+      <PathBar
+        steps={path.steps.map((_, i) => ({ key: String(i), label: labels[i] }))}
+        current={path.at}
+        onStep={nav.go}
+        onBack={() => nav.go(path.at - 1)}
+        onForward={() => nav.go(path.at + 1)}
+        onCopyLink={() => void navigator.clipboard?.writeText(new URL(nav.href(path), window.location.origin).href).catch(() => {})}
+        recent={<RecentWalks paths={settings.recent} onPick={nav.open} />}
+      />
+    </div>
   )
 }
 
